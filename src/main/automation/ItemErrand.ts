@@ -25,7 +25,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
-import type { SupplyItem } from '../../shared/config';
+import { type SupplyItem } from '../../shared/packConfig';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
 import type { BuyingPlace, DropSources, ItemAsk, RoomId, Route } from '../../shared/world';

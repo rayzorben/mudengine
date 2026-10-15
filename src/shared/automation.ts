@@ -10,6 +10,7 @@
  * representations of a direction: the two agree until one of them is edited.
  */
 import type { CharacterState } from './character';
+import type { LaidSetting } from './extensions';
 import type { RuleFiring } from './rules';
 
 /**
@@ -192,6 +193,8 @@ export interface AutomationSnapshot {
   engagements: EngageDecision[];
   /** Each installed extension's card view, by name (todo 84). */
   extensions: Record<string, unknown>;
+  /** The settings extensions have in force over the character's own (todo 118). */
+  laid: LaidSetting[];
   /** Nobody has pressed a key for `automation.afk.afterMinutes` (`Attendance`, todo 79). */
   away: boolean;
 }
@@ -204,5 +207,6 @@ export const EMPTY_AUTOMATION: AutomationSnapshot = {
   firings: [],
   safety: [],
   engagements: [],
-  extensions: {}
+  extensions: {},
+  laid: []
 };

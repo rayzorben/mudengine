@@ -1,4 +1,4 @@
-import { NumberField, SelectField } from './FormField';
+import { CheckField, NumberField, SelectField } from './FormField';
 import { t } from '../lib/i18n';
 import type { TrainPick } from '@shared/config';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
@@ -6,10 +6,16 @@ import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 export interface TrainStatFieldsProps {
   /** The stem each field's name is built from: `train` or `global-train`. */
   name: string;
+  /** Auto Train Stats, `automation.train.stats`. */
+  stats: boolean;
+  onStats(value: boolean): void;
   pick: TrainPick;
   onPick(pick: TrainPick): void;
   wanted: Readonly<Record<TrainedAttribute, string | number>>;
   onWanted(attribute: TrainedAttribute, value: string): void;
+  /** `automation.train.statHorizon`, as the page holds it. */
+  horizon: string | number;
+  onHorizon(typed: string): void;
 }
 
 /** Each stat's label, one literal key apiece (`i18n-coverage.test.ts` reads literals). */
@@ -35,23 +41,37 @@ function label(attribute: TrainedAttribute): string {
 }
 
 /**
- * How character points are spent (`automation.train.pick`, todo 83) and the
- * six figures `wanted` aims at, as both the character's form and the Global
- * page draw them. The figures are shown only where they are what is spent on.
+ * Auto Train Stats, how character points are spent (`automation.train.pick`,
+ * todo 83), how far ahead the exp rate weighs them, and the six figures
+ * `wanted` aims at, as both the character's form and the Global page draw
+ * them. The figures are shown only where they are what is spent on.
  */
 export default function TrainStatFields({
   name,
+  stats,
+  onStats,
   pick,
   onPick,
   wanted,
-  onWanted
+  onWanted,
+  horizon,
+  onHorizon
 }: TrainStatFieldsProps): React.JSX.Element {
   return (
     <>
+      <CheckField
+        checked={stats}
+        hint={t('settings.train.statsHint')}
+        label={t('settings.train.stats')}
+        name={`${name}-stats`}
+        setting="automation.train.stats"
+        onChange={onStats}
+      />
       <SelectField
         hint={t('settings.train.pickHint')}
         label={t('settings.train.pick')}
         name={`${name}-pick`}
+        setting="automation.train.pick"
         onChange={(value) => onPick(value === 'wanted' ? 'wanted' : 'exp')}
         options={[
           { value: 'exp', label: t('settings.train.pickExp') },
@@ -59,6 +79,16 @@ export default function TrainStatFields({
         ]}
         value={pick}
       />
+      {pick === 'exp' && (
+        <NumberField
+          hint={t('settings.train.statHorizonHint')}
+          label={t('settings.train.statHorizon')}
+          name={`${name}-stat-horizon`}
+          setting="automation.train.statHorizon"
+          onChange={onHorizon}
+          value={horizon}
+        />
+      )}
       {pick === 'wanted' && (
         <>
           <p className="settings-note">{t('settings.train.wantedNote')}</p>
@@ -68,6 +98,7 @@ export default function TrainStatFields({
                 key={attribute}
                 label={label(attribute)}
                 name={`${name}-${attribute}`}
+                setting="automation.train.wanted"
                 onChange={(value) => onWanted(attribute, value)}
                 value={wanted[attribute]}
               />

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 import { AutoDrop } from '../AutoDrop';
 import { CommandQueue } from '../CommandQueue';
-import { DEFAULT_CONFIG, type AutomationConfig, type DropConfig } from '../../../shared/config';
+import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
+import { DEFAULT_DROP, type DropConfig } from '../../../shared/packConfig';
 import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
 import { wireItem } from '../../../shared/entities';
 import type { SafetyDecision } from '../../../shared/automation';
@@ -15,6 +17,7 @@ const automation: AutomationConfig = {
 };
 
 const config = (over: Partial<DropConfig> = {}): DropConfig => ({
+  ...DEFAULT_DROP,
   enabled: true,
   items: ['rusty sword'],
   whenEncumbered: false,
@@ -37,15 +40,23 @@ function carrying(items: CarriedItem[], word: string | null = null): CharacterSt
 }
 
 let sent: string[];
+/** The decision each sent command was offered as, in send order. */
+let kinds: Array<DecisionKind | undefined>;
 let queue: CommandQueue;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   wantedBy = () => null;
   notices = [];
   decisions = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -75,6 +86,7 @@ describe('shedding named junk', () => {
     auto.onCharacter(carrying([item('rusty sword')]));
     drain();
     expect(sent).toEqual(['drop rusty sword']);
+    expect(kinds).toEqual(['drop-junk']);
   });
 
   it('matches by the server’s own rule for a typed name', () => {
@@ -179,6 +191,7 @@ describe('dropping what the realm prices at nothing', () => {
     );
     drain();
     expect(sent).toEqual(['drop rusty nail']);
+    expect(kinds).toEqual(['drop-worthless']);
   });
 
   /* Silence is not zero — this is the case that would empty a pack. */
@@ -240,6 +253,16 @@ describe('keeping what an unfinished quest still needs (todo 52)', () => {
     auto.onCharacter(carrying([item('quest token')]));
     drain();
     expect(sent).toEqual(['drop quest token']);
+  });
+
+  // The case above keeps the same token at the shipped switch: the positive control.
+  it('drops it while a quest needs it with Keep Quest Items off', () => {
+    const auto = make({ items: ['quest token'], keepQuestItems: false });
+    wantedBy = () => 'Smash';
+    auto.onCharacter(carrying([item('quest token')]));
+    drain();
+    expect(sent).toEqual(['drop quest token']);
+    expect(notices).toEqual([]);
   });
 
   it('keeps a worthless item a quest needs', () => {

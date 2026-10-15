@@ -13,6 +13,7 @@ import { Handover, type HandoverEnd, type HandoverPlanner } from './Handover';
 import { t } from '../app/i18n';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { sameItem } from '../../shared/items';
 import type { QuestKeep } from '../../shared/questKeep';
 import type { SaleTrip } from '../../shared/selling';
@@ -26,7 +27,7 @@ export interface SellTripPlanner extends HandoverPlanner, TripPlanner, QuestKeep
 }
 
 export interface SellTripEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -108,6 +109,7 @@ export class SellTrip implements SessionModule {
         verb: 'sell',
         items: ask.items,
         key: 'sell',
+        decision: 'sell-trip',
         reason: (item) => t('automation.sellTrip.reasonSelling', { item, shop })
       },
       state
@@ -118,7 +120,8 @@ export class SellTrip implements SessionModule {
     }
     if (started.kind === 'walking') {
       this.events.notice?.(
-        t('automation.sellTrip.going', { items: ask.items.join(', '), shop, steps: started.steps })
+        t('automation.sellTrip.going', { items: ask.items.join(', '), shop, steps: started.steps }),
+        'sell-trip'
       );
     }
     return null;
@@ -166,7 +169,8 @@ export class SellTrip implements SessionModule {
     this.release();
     if (sold.length > 0) {
       this.events.notice?.(
-        t('automation.sellTrip.done', { items: sold.join(', '), shop: trip.shop })
+        t('automation.sellTrip.done', { items: sold.join(', '), shop: trip.shop }),
+        'sell-trip'
       );
       this.events.decided?.({
         at: this.now(),
@@ -210,7 +214,7 @@ export class SellTrip implements SessionModule {
   /** Said and traced; the reason, for the caller to hand back. */
   private refuse(items: readonly string[], shop: string, why: string): string {
     const sentence = t('automation.sellTrip.refused', { why });
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, 'sell-trip');
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

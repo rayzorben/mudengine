@@ -48,6 +48,7 @@ import type { FightSimulator } from '../../shared/simulator';
 import type { Survival, SurvivalInput } from '../../shared/survival';
 import { prowessSheetOf } from '../../shared/verdict';
 import { lairKey, parseLair, roomId, type WorldRoom, type WorldSpell } from '../../shared/world';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 export interface BlessingChoiceParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
@@ -64,7 +65,7 @@ export interface BlessingChoiceSession {
   config(): AutomationConfig;
   /** This character's measured duration of its own cast, in seconds; null unmeasured. */
   learnedDuration(spell: string): number | null;
-  notice(message: string): void;
+  notice: NoticeSink;
   decided(decision: SafetyDecision): void;
 }
 
@@ -178,6 +179,12 @@ export class BlessingChoice
       this.errands.realmSpeed,
       JSON.stringify(fight.cycle),
       JSON.stringify(income),
+      // The choice's own settings: an edit chooses again.
+      [
+        config.spells.blessMinGain,
+        config.spells.blessHealReserve,
+        config.spells.blessSwapCommandsPerHour
+      ].join(','),
       JSON.stringify(candidates.map(({ name, cost, duration, via }) => [name, cost, duration, via]))
     ].join('#');
     if (context === this.context && this.jobs.size === 0 && this.running.size === 0) return;
@@ -190,13 +197,13 @@ export class BlessingChoice
       cycle: fight.cycle,
       income,
       healCost: first?.heal?.cost ?? null,
-      safeAbove: tuning().menace.survivalSafeAbove,
-      minGain: tuning().spells.blessMinGain,
+      safeAbove: config.combat.safeOddsAbove,
+      minGain: config.spells.blessMinGain,
       manaMax: bare.vitals.manaMax,
       hpMax: bare.vitals.hpMax,
-      healReserve: tuning().spells.blessHealReserve,
+      healReserve: config.spells.blessHealReserve,
       roundSeconds: atSpeed(tuning().hunting, this.errands.realmSpeed).roundSeconds,
-      swapCommandsPerHour: tuning().spells.blessSwapCommandsPerHour
+      swapCommandsPerHour: config.spells.blessSwapCommandsPerHour
     });
     this.take(choice, fight);
   }
@@ -373,7 +380,7 @@ export class BlessingChoice
     this.shown = view;
     if (this.said === message) return;
     this.said = message;
-    this.session.notice(message);
+    this.session.notice(message, 'bless-choose');
     this.session.decided({
       at: Date.now(),
       action: ACTION,

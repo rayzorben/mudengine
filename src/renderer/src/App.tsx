@@ -260,7 +260,7 @@ export default function App() {
    * confidently stale. All are null for a character not in the realm, which is
    * the answer `figureOf` draws as nothing at all.
    */
-  const sheetFor = useCallback((id: SessionId) => liveSheetOf(views[id]?.character), [views]);
+  const sheetFor = useCallback((id: SessionId) => liveSheetOf(views[id]), [views]);
   // The designed status line's preview draws the character's own figures only
   // while it is in the realm; anything else is a sample, not a set of dashes.
   const figuresFor = useCallback(
@@ -674,6 +674,7 @@ export default function App() {
     close: closeSettings,
     openSettings,
     editCharacter,
+    openSetting,
     newCharacter,
     manageServers,
     editGlobal,
@@ -1259,6 +1260,7 @@ export default function App() {
                   onInput={handleInput}
                   onInspect={inspect}
                   onChooseRoom={chooseRoomNamed}
+                  onSetting={openSetting}
                   recentMenu={recentMenu}
                   onResize={handleResize}
                   onSelectPlayer={selectPlayer}
@@ -1266,12 +1268,10 @@ export default function App() {
                   onSelectSlot={slideOuts.selectSlot}
                   onSearchResult={setSearchResult}
                   onSnapshot={applySnapshot}
-                  // A character with no pane parks in the focused one, hidden:
-                  // laid out, so it stays measurable, and out of the tab order.
+                  // No pane: parked hidden in the focused one, measurable, out of the tab order.
                   pane={at >= 0 ? at : paneAt}
                   palette={game.paint(consolePalette)}
-                  // The run banner over this pane: the push main addresses at
-                  // this character, whichever pane is being read.
+                  // The run banner over this pane: this character's, whichever pane is read.
                   run={views[entry.id]?.questRun ?? IDLE_QUEST_RUN}
                   // And how far through the walk the run is on, for the step
                   // count beside the node it is heading for (todo 03).

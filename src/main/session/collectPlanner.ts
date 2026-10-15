@@ -103,7 +103,7 @@ export function areaSearchTrip(
   const planner = collectPlanner(parts);
   const m = parts.modules;
   return new AreaSearch(
-    automation.enabled,
+    automation,
     queue,
     {
       ...planner,

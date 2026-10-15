@@ -19,6 +19,7 @@ import { tuning } from '../app/tuning';
 import type { Priority } from '../../shared/automation';
 import { fightIsRunning, type CarriedItem, type CharacterState } from '../../shared/character';
 import type { GearConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { mobKey } from '../../shared/world';
 import { backstabWorth, derivedBackstabWeapon, withBackstabWeapon } from '../../shared/backstab';
 import {
@@ -63,8 +64,12 @@ export interface EquipmentSources extends PlaceGearSources {
 }
 
 export interface EquipmentEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
+
+/** A carried weapon taken up for a monster the hand cannot hurt, and put back after. */
+const SWAP: DecisionKind = 'weapon-swap';
+const OFF_ROUND: DecisionKind = 'off-round-use';
 
 export class EquipmentManager implements SessionModule {
   /** The set last dressed for, by name, so an unchanged situation sends nothing. */
@@ -184,7 +189,9 @@ export class EquipmentManager implements SessionModule {
       target: state.combat.target
     };
     const set = overlayFor(sets, now);
-    const layer = this.placing ? this.place.layer(state, now.fighting) : NO_PLACE;
+    const layer = this.placing
+      ? this.place.layer(state, now.fighting, this.config.resistMinSaved)
+      : NO_PLACE;
     // The place is part of the situation: walking out of the desert and back
     // in inside the retry floor must still put the armour back on.
     const name = `${set?.name ?? ''}|${placeKey(layer)}`;
@@ -217,7 +224,14 @@ export class EquipmentManager implements SessionModule {
     const plan = swapPlan(kit, state.inventory.items, tuning().spending.maxGear, (item) =>
       this.sources.handsOf(item)
     );
-    this.send(plan, bandFor(now, set), set);
+    this.send(plan, bandFor(now, set), set, this.kindOf(set));
+  }
+
+  /** The row behind a dressing: the place's armour, the pack's backstab weapon, or a written set. */
+  private kindOf(set: GearSet | null): DecisionKind {
+    if (set === null) return 'place-gear';
+    const written = this.config.sets.some((each) => each.when === 'backstab');
+    return set.when === 'backstab' && !written ? 'backstab-weapon' : 'gear-set-wear';
   }
 
   /**
@@ -228,12 +242,12 @@ export class EquipmentManager implements SessionModule {
    */
   wieldFor(state: CharacterState, weapon: string, target: string): void {
     if (!this.enabled || state.inventory.listedAt === null) return;
-    if (!this.wieldInHand(state, weapon, 'combat')) return;
+    if (!this.wieldInHand(state, weapon, 'combat', SWAP)) return;
     // A bless weapon's swap mid-way: the weapon it would put back is the one to come home.
     const swapped = this.sources.yieldSwap();
     const was = this.reached?.was ?? swapped ?? heldWeapon(state.inventory.items)?.name ?? null;
     this.reached = { weapon, was, target: mobKey(target), fought: false };
-    this.events.notice?.(t('automation.gear.reachWield', { weapon, target }));
+    this.events.notice?.(t('automation.gear.reachWield', { weapon, target }), SWAP);
   }
 
   /**
@@ -254,13 +268,18 @@ export class EquipmentManager implements SessionModule {
     if (!reached.fought && here) return;
     this.reached = null;
     if (reached.was === null || !this.enabled) return;
-    if (this.wieldInHand(state, reached.was, 'probe')) {
-      this.events.notice?.(t('automation.gear.reachBack', { weapon: reached.was }));
+    if (this.wieldInHand(state, reached.was, 'probe', SWAP)) {
+      this.events.notice?.(t('automation.gear.reachBack', { weapon: reached.was }), SWAP);
     }
   }
 
   /** `swapPlan` for the weapon hand alone; whether anything was sent. */
-  private wieldInHand(state: CharacterState, weapon: string, band: Priority): boolean {
+  private wieldInHand(
+    state: CharacterState,
+    weapon: string,
+    band: Priority,
+    decision?: DecisionKind
+  ): boolean {
     const plan = swapPlan(
       new Map([[WEAPON_KEY, weapon]]),
       state.inventory.items,
@@ -268,7 +287,7 @@ export class EquipmentManager implements SessionModule {
       (item) => this.sources.handsOf(item)
     );
     if (plan.commands.length === 0) return false;
-    this.send(plan, band, null);
+    this.send(plan, band, null, decision);
     return true;
   }
 
@@ -284,10 +303,13 @@ export class EquipmentManager implements SessionModule {
     const wear = off(layer.wear.values());
     const back = off(layer.putBack.values());
     if (wear.length > 0) {
-      this.events.notice?.(t('automation.gear.forPlace', { items: wear.join(', ') }));
+      this.events.notice?.(t('automation.gear.forPlace', { items: wear.join(', ') }), 'place-gear');
     }
     if (back.length > 0) {
-      this.events.notice?.(t('automation.gear.placeBack', { items: back.join(', ') }));
+      this.events.notice?.(
+        t('automation.gear.placeBack', { items: back.join(', ') }),
+        'place-gear'
+      );
     }
   }
 
@@ -353,7 +375,8 @@ export class EquipmentManager implements SessionModule {
     if ((backstabWorth(better) ?? 0) <= (backstabWorth(hand) ?? 0)) return;
     this.saidBackstab.add(better.name);
     this.events.notice?.(
-      t('automation.gear.betterBackstabWeapon', { item: better.name, hand: hand.name })
+      t('automation.gear.betterBackstabWeapon', { item: better.name, hand: hand.name }),
+      'backstab-weapon'
     );
   }
 
@@ -400,7 +423,7 @@ export class EquipmentManager implements SessionModule {
       // saying so would be the console talking over the fight.
       if (this.saidMissing.has(item)) return;
       this.saidMissing.add(item);
-      this.events.notice?.(t('automation.gear.offRoundMissing', { item }));
+      this.events.notice?.(t('automation.gear.offRoundMissing', { item }), OFF_ROUND);
       return;
     }
 
@@ -413,14 +436,20 @@ export class EquipmentManager implements SessionModule {
         // Per step, so the five of a two-handed dance are five intents and
         // not one coalesced into nothing.
         coalesceKey: `offround:${index}:${command}`,
-        expiresAt: at + tuning().spells.buffExpiresMs
+        expiresAt: at + tuning().spells.buffExpiresMs,
+        decision: OFF_ROUND
       });
     }
-    this.events.notice?.(t('automation.gear.offRound', { item, target }));
+    this.events.notice?.(t('automation.gear.offRound', { item, target }), OFF_ROUND);
   }
 
   /** One plan, enqueued, with what it could not do said out loud. */
-  private send(plan: GearPlan, priority: Priority, set: { name: string } | null): void {
+  private send(
+    plan: GearPlan,
+    priority: Priority,
+    set: { name: string } | null,
+    decision?: DecisionKind
+  ): void {
     const at = this.now();
     let asked = 0;
     for (const command of plan.commands) {
@@ -431,21 +460,23 @@ export class EquipmentManager implements SessionModule {
         command,
         priority,
         coalesceKey: `gear:${command}`,
-        expiresAt: at + tuning().spells.buffExpiresMs
+        expiresAt: at + tuning().spells.buffExpiresMs,
+        decision
       });
     }
     // Said when something went, so the walker asking before each step does not repeat it.
     if (asked > 0 && set !== null) {
-      this.events.notice?.(t('automation.gear.wearing', { set: set.name }));
+      this.events.notice?.(t('automation.gear.wearing', { set: set.name }), 'gear-set-overlay');
     }
     for (const item of plan.missing) {
       if (this.saidMissing.has(item)) continue;
       this.saidMissing.add(item);
-      this.events.notice?.(t('automation.gear.missingFromSet', { item }));
+      this.events.notice?.(t('automation.gear.missingFromSet', { item }), decision);
     }
     if (plan.overflow > 0) {
       this.events.notice?.(
-        t('automation.gear.capped', { max: tuning().spending.maxGear, more: plan.overflow })
+        t('automation.gear.capped', { max: tuning().spending.maxGear, more: plan.overflow }),
+        decision
       );
     }
   }

@@ -16,6 +16,7 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { roomId, type RoomId } from '../../shared/world';
 import { asRoomAndItems, tripRefusal, type TripPlanner } from './askedTrip';
 import type { SessionModule } from './Module';
@@ -23,7 +24,7 @@ import type { SessionModule } from './Module';
 export interface StashFetchPlanner extends CollectPlanner, TripPlanner {}
 
 export interface StashFetchEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -77,7 +78,10 @@ export class StashFetch implements SessionModule {
       planner,
       {
         taking: (taking) =>
-          this.events.notice?.(t('automation.stashFetch.taking', { items: taking.join(', ') })),
+          this.events.notice?.(
+            t('automation.stashFetch.taking', { items: taking.join(', ') }),
+            'stash-fetch'
+          ),
         ended: (end) => this.ended(end)
       },
       now
@@ -137,6 +141,7 @@ export class StashFetch implements SessionModule {
           ? { times: searches, reason: t('automation.stashFetch.reasonSearch') }
           : null,
         key: 'stash',
+        decision: 'stash-fetch',
         reason: (item) =>
           ask.source === 'finds'
             ? t('automation.stashFetch.finds.reasonTaking', { item })
@@ -157,7 +162,8 @@ export class StashFetch implements SessionModule {
           items: ask.items.join(', '),
           room: place,
           steps: started.steps
-        })
+        }),
+        'stash-fetch'
       );
     }
     // Standing there with nothing on the floor ends the trip inside `start`.
@@ -226,7 +232,8 @@ export class StashFetch implements SessionModule {
       this.events.notice?.(
         trip.ask.source === 'finds'
           ? t('automation.stashFetch.finds.done', { items })
-          : t('automation.stashFetch.done', { items })
+          : t('automation.stashFetch.done', { items }),
+        'stash-fetch'
       );
       this.events.decided?.({
         at: this.now(),
@@ -256,7 +263,7 @@ export class StashFetch implements SessionModule {
       ask.source === 'finds'
         ? t('automation.stashFetch.finds.refused', { why })
         : t('automation.stashFetch.refused', { why });
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, 'stash-fetch');
     this.events.decided?.({
       at: this.now(),
       action: actionOf(ask.source),

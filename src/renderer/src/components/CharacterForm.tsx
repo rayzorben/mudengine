@@ -15,6 +15,10 @@ import BetterGearFields from './BetterGearFields';
 import GearSetList from './GearSetList';
 import OffRoundFields from './OffRoundFields';
 import GearSwitches from './GearSwitches';
+import HangUpFieldset from './HangUpFieldset';
+import LaidSettings from './LaidSettings';
+import AfkFieldset from './AfkFieldset';
+import AsksFieldset from './AsksFieldset';
 import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
 import LoginStepRows from './LoginStepRows';
@@ -30,19 +34,25 @@ import CarrySections from './CarrySections';
 import BlessingFields from './BlessingFields';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
-import PickLockFields from './PickLockFields';
+import DoorsFieldset from './DoorsFieldset';
+import RoutingFieldset from './RoutingFieldset';
+import KeepOutFieldset from './KeepOutFieldset';
+import type { MovementChoices } from '@shared/walkChoices';
 import type { LiveSheet } from '../lib/liveSheet';
-import HuntingFields from './HuntingFields';
+import HuntingFieldset from './HuntingFieldset';
+import QuestsFieldset from './QuestsFieldset';
 import PartyFields from './PartyFields';
-import FleeGotoFields from './FleeGotoFields';
+import RetreatFieldset from './RetreatFieldset';
 import ConditionWaitFields from './ConditionWaitFields';
 import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
 import RecoverFields from './RecoverFields';
 import DialFields from './DialFields';
+import MonsterFields from './MonsterFields';
+import FightOddsFields from './FightOddsFields';
 import InvokeFields from './InvokeFields';
 import AttackFields from './AttackFields';
-import FightWordFields from './FightWordFields';
+import AttacksFieldset from './AttacksFieldset';
 import DrainFields from './DrainFields';
 import HealFields from './HealFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
@@ -55,16 +65,7 @@ import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import {
-  barOf,
-  figureOf,
-  joinNames,
-  LOCATE_OPTIONS,
-  penaltiesChoice,
-  penaltiesOf,
-  RETREAT_OPTIONS,
-  splitNames
-} from '../lib/form';
+import { barOf, figureOf, LOCATE_OPTIONS } from '../lib/form';
 import {
   ATTACK_KEYS,
   BLESSING_KEYS,
@@ -85,7 +86,8 @@ import { isThemePreference, THEME_IDS, THEMES } from '@shared/themes';
 import type { ProfileEditable } from '@shared/ipc';
 import type { Loop, ScopedLoop } from '@shared/loops';
 import { ENCODINGS, type StreamEncoding } from '@shared/types';
-import { PVP_ACTIONS, type EngagePolicy, type Server, type VitalsUiConfig } from '@shared/config';
+import { type EngagePolicy, type Server, type VitalsUiConfig } from '@shared/config';
+import { PVP_ACTIONS } from '@shared/safety';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 
 /** Starting a new character from one that already works: see `copyOf`. */
@@ -197,6 +199,8 @@ export default function CharacterForm({
     label: CHARACTER_SECTION_LABEL[id],
     searching
   });
+  const moveChoice = (change: Partial<MovementChoices>): void =>
+    patch({ moveChoices: { ...form.moveChoices, ...change } });
   /**
    * What the character form's spell pickers offer: the shown character's own
    * book, read by `sp`/`pow` and persisted with its belongings. Null is
@@ -227,19 +231,14 @@ export default function CharacterForm({
 
   return (
     <form className="settings-form" data-section={section} onSubmit={onSubmit}>
+      <LaidSettings laid={sheet.laid} />
       {shows('profile') && (
         <SettingsSection {...sectionOf('profile')}>
           {/*
-            Start from a character that already works.
-
-            The second character on a realm otherwise means
-            retyping a realm, a login script, four combat verbs
-            and every threshold — all of which the first one
-            already states, and all of which can be got subtly
-            wrong the second time. A select rather than a
-            duplicate-this-character button on each row, because
-            the question is asked while making one, and this is
-            where somebody already is.
+            Start from a character that already works, rather than retyping
+            a realm, a login script and every threshold. A select, because
+            the question is asked while making one, and this is where
+            somebody already is.
           */}
           {copy !== null && (
             <SelectField
@@ -461,6 +460,7 @@ export default function CharacterForm({
             </p>
 
             <LoginStepRows
+              setting="connection.login.steps"
               onChange={(login) => patch({ login })}
               sendPlaceholder={t('settings.login.stepSendPlaceholder')}
               steps={form.login}
@@ -505,6 +505,7 @@ export default function CharacterForm({
                 hint={t('settings.locate.hint')}
                 label={t('settings.locate.label')}
                 name="locate"
+                setting="profile.locate"
                 onChange={(value) => patch({ locate: asLocateWord(value) })}
                 options={[{ value: '', label: t('settings.locate.realm') }, ...LOCATE_OPTIONS()]}
                 value={form.locate ?? ''}
@@ -529,6 +530,7 @@ export default function CharacterForm({
               checked={form.combat}
               label={t('settings.combat.attackForMe')}
               name="combat"
+              setting="automation.combat.enabled"
               onChange={(value) => patch({ combat: value })}
             />
             {form.combat && (
@@ -538,6 +540,7 @@ export default function CharacterForm({
                   hint={t('settings.combat.hitBackHint')}
                   label={t('settings.combat.hitBack')}
                   name="retaliate"
+                  setting="automation.combat.retaliate"
                   onChange={(value) => patch({ combatRetaliate: value })}
                 />
                 <CheckField
@@ -545,6 +548,7 @@ export default function CharacterForm({
                   hint={t('settings.combat.politeAttacksHint')}
                   label={t('settings.combat.politeAttacks')}
                   name="polite-attacks"
+                  setting="automation.combat.politeAttacks"
                   onChange={(value) => patch({ combatPoliteAttacks: value })}
                 />
                 {/* What it opens fights with, and the three limits
@@ -556,6 +560,7 @@ export default function CharacterForm({
                     hint={t('settings.combat.engageHint')}
                     label={t('settings.combat.engageLabel')}
                     name="engage"
+                    setting="automation.combat.engage"
                     onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
                     options={[
                       { value: 'none', label: t('settings.combat.engageNone') },
@@ -569,6 +574,7 @@ export default function CharacterForm({
                     hint={t('settings.combat.maxMobsHint')}
                     label={t('settings.combat.maxMobsLabel')}
                     name="max-mobs"
+                    setting="automation.combat.maxMobs"
                     onChange={(value) => patch({ combatMaxMobs: value })}
                     value={form.combatMaxMobs}
                   />
@@ -576,6 +582,7 @@ export default function CharacterForm({
                     hint={t('settings.combat.minMobsHint')}
                     label={t('settings.combat.minMobsLabel')}
                     name="min-mobs"
+                    setting="automation.combat.minMobs"
                     onChange={(value) => patch({ combatMinMobs: value })}
                     value={form.combatMinMobs}
                   />
@@ -586,51 +593,15 @@ export default function CharacterForm({
 
           {form.combat && (
             <>
-              <fieldset className="settings-menus" data-fieldset="combat-attacks">
-                <legend>{t('settings.combat.attacksLegend')}</legend>
-                <div className="settings-inline">
-                  <FightWordFields
-                    attack={form.combatAttack}
-                    chosen={realm.chosen}
-                    onAttack={(value) => patch({ combatAttack: value })}
-                    onOpener={(value) => patch({ combatOpener: value })}
-                    opener={form.combatOpener}
-                    prefix=""
-                  />
-                </div>
-                <CheckField
-                  checked={form.combatHideForOpener}
-                  hint={t('settings.combat.hideForOpenerHint')}
-                  label={t('settings.combat.hideForOpener')}
-                  name="hide-for-opener"
-                  onChange={(value) => patch({ combatHideForOpener: value })}
-                />
-                <NumberField
-                  hint={t('settings.combat.refreshHint')}
-                  label={t('settings.combat.refreshLabel')}
-                  name="refresh"
-                  onChange={(value) => patch({ combatRefresh: value })}
-                  value={form.combatRefresh}
-                />
-              </fieldset>
+              <AttacksFieldset chosen={realm.chosen} form={form} patch={patch} />
 
-              <fieldset className="settings-menus" data-fieldset="combat-monsters">
-                <legend>{t('settings.combat.monstersLegend')}</legend>
-                <NumberField
-                  hint={t('settings.combat.maxTargetHealthHint')}
-                  label={t('settings.combat.maxTargetHealthLabel')}
-                  name="max-target-health"
-                  onChange={(value) => patch({ combatMaxTargetHealth: value })}
-                  value={form.combatMaxTargetHealth}
-                />
-                <NumberField
-                  hint={t('settings.combat.maxMonsterExpHint')}
-                  label={t('settings.combat.maxMonsterExpLabel')}
-                  name="max-monster-exp"
-                  onChange={(value) => patch({ combatMaxMonsterExp: value })}
-                  value={form.combatMaxMonsterExp}
-                />
-              </fieldset>
+              <MonsterFields
+                namePrefix=""
+                caps={form.combatCaps}
+                choices={form.combatChoices}
+                onCaps={(next) => patch({ combatCaps: next })}
+                onChoices={(next) => patch({ combatChoices: next })}
+              />
 
               <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
                 <legend>{t('settings.combat.mobRuleLegend')}</legend>
@@ -638,6 +609,7 @@ export default function CharacterForm({
                     that wrong for a whole evening. */}
                 <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
                 <MobRuleList
+                  setting="automation.combat.mobRules"
                   known={mobs}
                   namePrefix="mob-rule"
                   spells={shownBook.spells}
@@ -647,6 +619,11 @@ export default function CharacterForm({
               </fieldset>
             </>
           )}
+          <FightOddsFields
+            namePrefix=""
+            choices={form.combatChoices}
+            onChoices={(next) => patch({ combatChoices: next })}
+          />
         </SettingsSection>
       )}
 
@@ -668,126 +645,14 @@ export default function CharacterForm({
             />
           </fieldset>
 
-          <fieldset className="settings-menus" data-fieldset="health-retreat">
-            <legend>{t('settings.health.retreatLegend')}</legend>
-            {/*
-              The switch and its figures are one row: a switch is two
-              columns and a threshold one, and a check alone above them
-              spent a band saying what the legend had said.
-            */}
-            <div className="settings-inline">
-              <CheckField
-                checked={form.retreat}
-                hint={t('settings.health.retreatHint')}
-                label={t('settings.health.retreatLabel')}
-                name="retreat"
-                onChange={(value) => patch({ retreat: value })}
-              />
-              {form.retreat && (
-                <>
-                  <NumberField
-                    label={t('settings.health.belowHealthLabel')}
-                    name="retreat-health"
-                    bar={barOfHealth(form.retreatBelow)}
-                    figure={ofHealth(form.retreatBelow)}
-                    onChange={(value) => patch({ retreatBelow: value })}
-                    value={form.retreatBelow}
-                  />
-                  <NumberField
-                    hint={t('settings.health.belowManaHint')}
-                    label={t('settings.health.belowManaLabel')}
-                    name="retreat-mana"
-                    bar={barOfMana(form.retreatBelowMana)}
-                    figure={ofMana(form.retreatBelowMana)}
-                    onChange={(value) => patch({ retreatBelowMana: value })}
-                    value={form.retreatBelowMana}
-                  />
-                  <NumberField
-                    hint={t('settings.health.outnumberedHint')}
-                    label={t('settings.health.outnumberedLabel')}
-                    name="outnumbered"
-                    onChange={(value) => patch({ retreatOutnumbered: value })}
-                    value={form.retreatOutnumbered}
-                  />
-                </>
-              )}
-            </div>
-            {form.retreat && (
-              <>
-                <SelectField
-                  hint={t('settings.health.retreatStrategyHint')}
-                  label={t('settings.health.retreatStrategyLabel')}
-                  name="retreat-strategy"
-                  onChange={(value) => patch({ retreatStrategy: value })}
-                  options={RETREAT_OPTIONS()}
-                  value={form.retreatStrategy}
-                />
-                {form.retreatStrategy === 'safe-haven' && (
-                  <TextField
-                    hint={t('settings.health.safeHavenHint')}
-                    label={t('settings.health.safeHavenLabel')}
-                    name="retreat-haven"
-                    onChange={(value) => patch({ retreatHaven: value })}
-                    placeholder={t('settings.health.safeHavenPlaceholder')}
-                    spellCheck={false}
-                    value={form.retreatHaven}
-                    wide
-                  />
-                )}
-              </>
-            )}
-            <FleeGotoFields bar={barOfHealth} figure={ofHealth} form={form} patch={patch} />
-          </fieldset>
+          <RetreatFieldset
+            bar={{ hp: barOfHealth, mana: barOfMana }}
+            figure={{ hp: ofHealth, mana: ofMana }}
+            form={form}
+            patch={patch}
+          />
 
-          <fieldset className="settings-menus" data-fieldset="health-hangup">
-            <legend>{t('settings.health.hangUpLegend')}</legend>
-            {/*
-              The second and last warning left in the open. Every
-              MegaMUD-era client offers this; on this server family
-              it is one of the more reliable ways to die.
-            */}
-            <p className="settings-warn">{t('settings.health.hangUpWarning')}</p>
-            <div className="settings-inline">
-              <CheckField
-                checked={form.hangUp}
-                label={t('settings.health.hangUpLabel')}
-                name="hangup"
-                onChange={(value) => patch({ hangUp: value })}
-              />
-              {form.hangUp && (
-                <NumberField
-                  label={t('settings.health.belowHealthLabel')}
-                  name="hangup-health"
-                  bar={barOfHealth(form.hangUpBelow)}
-                  figure={ofHealth(form.hangUpBelow)}
-                  onChange={(value) => patch({ hangUpBelow: value })}
-                  value={form.hangUpBelow}
-                />
-              )}
-            </div>
-            {form.hangUp && (
-              <>
-                <SelectField
-                  hint={t('settings.health.hangPenaltiesHint')}
-                  label={t('settings.health.hangPenaltiesLabel')}
-                  name="hang-penalties"
-                  onChange={(value) => patch({ hangUpPenalties: penaltiesOf(value) })}
-                  options={[
-                    { value: '', label: t('settings.health.hangPenaltiesRealm') },
-                    { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-                    { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-                  ]}
-                  value={penaltiesChoice(form.hangUpPenalties)}
-                />
-                <CheckField
-                  checked={form.hangUpOnPlayer}
-                  label={t('settings.health.hangUpOnPlayer')}
-                  name="hangup-player"
-                  onChange={(value) => patch({ hangUpOnPlayer: value })}
-                />
-              </>
-            )}
-          </fieldset>
+          <HangUpFieldset bar={barOfHealth} figure={ofHealth} form={form} patch={patch} />
 
           {/*
             *Use this item when that is true* (todo 19), and since
@@ -801,6 +666,7 @@ export default function CharacterForm({
             <legend>{t('settings.health.potionRuleLegend')}</legend>
             <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
             <PotionList
+              setting="automation.health.potions"
               namePrefix="potion-rule"
               onChange={(potionRules) => patch({ potionRules })}
               potions={form.potionRules}
@@ -821,6 +687,7 @@ export default function CharacterForm({
               hint={t('settings.health.useWardsHint')}
               label={t('settings.health.useWards')}
               name="use-wards"
+              setting="automation.health.useWards"
               onChange={(value) => patch({ useWards: value })}
             />
             <WardRules rules={wards} />
@@ -890,6 +757,7 @@ export default function CharacterForm({
             <BlessingFields
               namePrefix=""
               onBlessings={(spellBlessings) => patch({ spellBlessings })}
+              onChange={(field, value) => patch({ [BLESSING_KEYS[field]]: value })}
               onToggle={(field, value) => patch({ [BLESSING_KEYS[field]]: value })}
               spells={shownBook.spells}
               values={blessingValuesOf(form)}
@@ -952,6 +820,7 @@ export default function CharacterForm({
                   remoteParty: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
                 })
               }
+              setting="automation.remotes.party"
               subject={t('settings.party.remotesLegend')}
             />
           </fieldset>
@@ -970,6 +839,7 @@ export default function CharacterForm({
               hint={t('settings.train.levelsHint')}
               label={t('settings.train.levels')}
               name="train-levels"
+              setting="automation.train.levels"
               onChange={(value) => patch({ trainLevels: value })}
             />
             {form.trainLevels && (
@@ -979,6 +849,7 @@ export default function CharacterForm({
                   hint={t('settings.train.trainerHint')}
                   label={t('settings.train.trainerLabel')}
                   name="train-trainer"
+                  setting="automation.train.trainer"
                   onChange={(value) => patch({ trainTrainer: value })}
                   options={[
                     { value: '', label: t('settings.train.trainerCheapest') },
@@ -997,6 +868,7 @@ export default function CharacterForm({
                   hint={t('settings.train.upToHint')}
                   label={t('settings.train.upToLabel')}
                   name="train-up-to"
+                  setting="automation.train.upTo"
                   onChange={(value) => patch({ trainUpTo: value })}
                   value={form.trainUpTo}
                 />
@@ -1018,20 +890,17 @@ export default function CharacterForm({
                   )}
               </>
             )}
-            <CheckField
-              checked={form.trainStats}
-              hint={t('settings.train.statsHint')}
-              label={t('settings.train.stats')}
-              name="train-stats"
-              onChange={(value) => patch({ trainStats: value })}
-            />
             <TrainStatFields
+              horizon={form.trainStatHorizon}
               name="train"
+              onHorizon={(trainStatHorizon) => patch({ trainStatHorizon })}
               onPick={(pick) => patch({ trainPick: pick })}
+              onStats={(trainStats) => patch({ trainStats })}
               onWanted={(attribute, value) =>
                 patch({ trainWanted: { ...form.trainWanted, [attribute]: value } })
               }
               pick={form.trainPick}
+              stats={form.trainStats}
               wanted={form.trainWanted}
             />
           </fieldset>
@@ -1053,6 +922,8 @@ export default function CharacterForm({
               namePrefix="gear"
               onEnabled={(value) => patch({ gearEnabled: value })}
               onResists={(value) => patch({ gearResists: value })}
+              minSaved={form.gearResistMinSaved}
+              onMinSaved={(value) => patch({ gearResistMinSaved: value })}
               resists={form.gearResists}
             />
             <GearSetList
@@ -1067,6 +938,8 @@ export default function CharacterForm({
             namePrefix="gear"
             onUpgrades={(upgrades) => patch({ loot: { ...form.loot, upgrades } })}
             onWeights={(gearWeights) => patch({ loot: { ...form.loot, gearWeights } })}
+            onPerSlot={(gearOffersPerSlot) => patch({ gearOffersPerSlot })}
+            perSlot={form.gearOffersPerSlot}
             upgrades={form.loot.upgrades}
             weights={form.loot.gearWeights}
           />
@@ -1083,17 +956,13 @@ export default function CharacterForm({
 
       {shows('quests') && (
         <SettingsSection {...sectionOf('quests')}>
-          <fieldset className="settings-menus" data-fieldset="quests">
-            <legend>{t('settings.quests.legend')}</legend>
-            <p className="settings-warn">{t('settings.quests.warning')}</p>
-            <CheckField
-              checked={form.questsEnabled}
-              hint={t('settings.quests.enabledHint')}
-              label={t('settings.quests.enabled')}
-              name="quests-enabled"
-              onChange={(value) => patch({ questsEnabled: value })}
-            />
-          </fieldset>
+          <QuestsFieldset
+            enabled={form.questsEnabled}
+            namePrefix=""
+            onEnabled={(questsEnabled) => patch({ questsEnabled })}
+            onRollTries={(questsRollTries) => patch({ questsRollTries })}
+            rollTries={form.questsRollTries}
+          />
         </SettingsSection>
       )}
 
@@ -1114,6 +983,7 @@ export default function CharacterForm({
               hint={t('settings.remotes.answerHint')}
               label={t('settings.remotes.enabledLabel')}
               name="remotes-enabled"
+              setting="automation.remotes.enabled"
               onChange={(value) => patch({ answerRemotes: value })}
             />
             {/*
@@ -1127,10 +997,14 @@ export default function CharacterForm({
                   autoJoin={form.remoteAutoJoin}
                   gang={form.remoteGang}
                   gangpath={form.remoteGangpath}
+                  killAndHangup={form.remoteKillAndHangup}
+                  maxGets={form.remoteMaxGets}
                   name="remotes"
                   onAutoJoin={(value) => patch({ remoteAutoJoin: value })}
+                  onMaxGets={(remoteMaxGets) => patch({ remoteMaxGets })}
                   onGang={(value) => patch({ remoteGang: value })}
                   onGangpath={(value) => patch({ remoteGangpath: value })}
+                  onKillAndHangup={(value) => patch({ remoteKillAndHangup: value })}
                 />
 
                 {/*
@@ -1171,6 +1045,7 @@ export default function CharacterForm({
               hint={t('settings.talk.lookHint')}
               label={t('settings.talk.lookLabel')}
               name="talk-look"
+              setting="automation.talk.lookAtPlayers"
               onChange={(value) => patch({ lookAtPlayers: value })}
             />
           </fieldset>
@@ -1187,12 +1062,14 @@ export default function CharacterForm({
               hint={t('settings.health.pvpNotifyHint')}
               label={t('settings.health.pvpNotifyLabel')}
               name="pvp-notify"
+              setting="automation.safety.pvp.notifyGang"
               onChange={(value) => patch({ pvpNotifyGang: value })}
             />
             <SelectField
               hint={t('settings.health.pvpActionHint')}
               label={t('settings.health.pvpActionLabel')}
               name="pvp-action"
+              setting="automation.safety.pvp.action"
               onChange={(value) =>
                 patch({ pvpAction: PVP_ACTIONS.find((action) => action === value) ?? 'none' })
               }
@@ -1212,10 +1089,12 @@ export default function CharacterForm({
               hint={t('settings.statline.controlHint')}
               label={t('settings.statline.controlLabel')}
               name="statline-control"
+              setting="automation.statline.control"
               onChange={(value) => patch({ statlineControl: value })}
             />
             <p className="settings-note">{t('settings.statline.templateNote')}</p>
           </fieldset>
+          <AsksFieldset asks={form.asks} namePrefix="" onChange={(asks) => patch({ asks })} />
           <RewritesDesigner
             figures={figures}
             idPrefix="rewrites"
@@ -1243,37 +1122,15 @@ export default function CharacterForm({
               rules={form.alertRules}
             />
           </fieldset>
-          {/*
-          Beside the alerts, because both are about a player who is
-          not looking: alerts are what they hear about the character,
-          and this is what the character says for them.
-        */}
-          <fieldset className="settings-menus" data-fieldset="alerts-afk">
-            <legend>{t('settings.afk.legend')}</legend>
-            <div className="settings-inline">
-              <CheckField
-                checked={form.afkEnabled}
-                hint={t('settings.afk.enabledHint')}
-                label={t('settings.afk.enabled')}
-                name="afk-enabled"
-                onChange={(value) => patch({ afkEnabled: value })}
-              />
-              <NumberField
-                hint={t('settings.afk.afterHint')}
-                label={t('settings.afk.afterLabel')}
-                name="afk-after"
-                onChange={(value) => patch({ afkAfterMinutes: value })}
-                value={form.afkAfterMinutes}
-              />
-              <TextField
-                hint={t('settings.afk.replyHint')}
-                label={t('settings.afk.replyLabel')}
-                name="afk-reply"
-                onChange={(value) => patch({ afkReply: value })}
-                value={form.afkReply}
-              />
-            </div>
-          </fieldset>
+          <AfkFieldset
+            after={form.afkAfterMinutes}
+            enabled={form.afkEnabled}
+            namePrefix=""
+            onAfter={(afkAfterMinutes) => patch({ afkAfterMinutes })}
+            onEnabled={(afkEnabled) => patch({ afkEnabled })}
+            onReply={(afkReply) => patch({ afkReply })}
+            reply={form.afkReply}
+          />
         </SettingsSection>
       )}
 
@@ -1288,64 +1145,35 @@ export default function CharacterForm({
             of them had to read all of it. The groups are the
             questions, in the order a step asks them.
           */}
-          <fieldset className="settings-menus" data-fieldset="movement-doors">
-            <legend>{t('settings.movement.doorsLegend')}</legend>
-            <div className="settings-inline">
-              <CheckField
-                checked={form.openDoors}
-                hint={t('settings.movement.openDoorsHint')}
-                label={t('settings.movement.openDoors')}
-                name="open-doors"
-                onChange={(value) => patch({ openDoors: value })}
-              />
-              {form.openDoors && (
-                <NumberField
-                  label={t('settings.movement.openTries')}
-                  name="open-tries"
-                  onChange={(value) => patch({ openTries: value })}
-                  value={form.openTries}
-                />
-              )}
-            </div>
-            {/*
-              Picking above bashing, in the order the walker tries
-              them — and for the reason it does: one costs a
-              command and the other costs a command and some
-              health.
-            */}
-            <PickLockFields
-              onChange={patch}
-              pickLocks={form.pickLocks}
-              pickTries={form.pickTries}
-              picklocks={sheet.picklocks}
-            />
-            <div className="settings-inline">
-              <CheckField
-                checked={form.bashDoors}
-                hint={t('settings.movement.bashDoorsHint')}
-                label={t('settings.movement.bashDoors')}
-                name="bash-doors"
-                onChange={(value) => patch({ bashDoors: value })}
-              />
-              {form.bashDoors && (
-                <NumberField
-                  label={t('settings.movement.bashTries')}
-                  name="bash-tries"
-                  onChange={(value) => patch({ bashTries: value })}
-                  value={form.bashTries}
-                />
-              )}
-            </div>
-          </fieldset>
+          <DoorsFieldset
+            choices={form.moveChoices}
+            namePrefix=""
+            onChange={patch}
+            onChoice={moveChoice}
+            picklocks={sheet.picklocks}
+            value={form}
+          />
 
           <fieldset className="settings-menus" data-fieldset="movement-stealth">
             <legend>{t('settings.movement.stealthLegend')}</legend>
-            <SneakAndRunFields namePrefix="" onChange={patch} value={form} />
+            <SneakAndRunFields
+              choices={form.moveChoices}
+              namePrefix=""
+              onChange={patch}
+              onChoice={moveChoice}
+              value={form}
+            />
           </fieldset>
 
           <fieldset className="settings-menus" data-fieldset="movement-light">
             <legend>{t('settings.movement.lightLegend')}</legend>
-            <LightFields namePrefix="" onChange={patch} value={form} />
+            <LightFields
+              choices={form.moveChoices}
+              namePrefix=""
+              onChange={patch}
+              onChoice={moveChoice}
+              value={form}
+            />
           </fieldset>
 
           <fieldset className="settings-menus" data-fieldset="movement-afflictions">
@@ -1353,18 +1181,12 @@ export default function CharacterForm({
             <ConditionWaitFields namePrefix="" onChange={patch} value={form} />
           </fieldset>
 
-          <fieldset className="settings-menus" data-fieldset="movement-keep-out">
-            <legend>{t('settings.movement.keepOutLegend')}</legend>
-            <TextField
-              hint={t('settings.movement.keepOutOfHint')}
-              label={t('settings.movement.keepOutOf')}
-              name="keep-out-of"
-              onChange={(value) => patch({ keepOutOf: splitNames(value) })}
-              placeholder={t('settings.movement.keepOutOfPlaceholder')}
-              value={joinNames(form.keepOutOf)}
-              wide
-            />
-          </fieldset>
+          <KeepOutFieldset
+            namePrefix=""
+            onChange={(keepOutOf) => patch({ keepOutOf })}
+            value={form.keepOutOf}
+          />
+          <RoutingFieldset choices={form.moveChoices} namePrefix="" onChoice={moveChoice} />
 
           <fieldset className="settings-menus" data-fieldset="movement-carry">
             <legend>{t('settings.movement.carryLegend')}</legend>
@@ -1374,6 +1196,7 @@ export default function CharacterForm({
               hint={t('settings.movement.collectKeysHint')}
               label={t('settings.movement.collectKeys')}
               name="collect-keys"
+              setting="automation.movement.collectKeys"
               onChange={(value) => patch({ collectKeys: value })}
             />
           </fieldset>
@@ -1395,23 +1218,21 @@ export default function CharacterForm({
             built from the survey rather than taken off the shelf
             above.
           */}
-          <fieldset className="settings-menus" data-fieldset="hunting">
-            <legend>{t('settings.hunting.legend')}</legend>
-            <p className="settings-note">{t('settings.hunting.note')}</p>
-            <HuntingFields
-              cash={form.huntCash}
-              enabled={form.huntAuto}
-              namePrefix=""
-              onChange={(change) =>
-                patch({
-                  ...(change.enabled !== undefined && { huntAuto: change.enabled }),
-                  ...(change.radius !== undefined && { huntRadius: change.radius }),
-                  ...(change.cash !== undefined && { huntCash: change.cash })
-                })
-              }
-              radius={form.huntRadius}
-            />
-          </fieldset>
+          <HuntingFieldset
+            cash={form.huntCash}
+            choices={form.huntChoices}
+            enabled={form.huntAuto}
+            namePrefix=""
+            onChange={(change) =>
+              patch({
+                ...(change.enabled !== undefined && { huntAuto: change.enabled }),
+                ...(change.radius !== undefined && { huntRadius: change.radius }),
+                ...(change.cash !== undefined && { huntCash: change.cash })
+              })
+            }
+            onChoices={(huntChoices) => patch({ huntChoices })}
+            radius={form.huntRadius}
+          />
 
           {/*
             The loops this character owns, and the ones it merely

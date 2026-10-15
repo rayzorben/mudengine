@@ -8,6 +8,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { MobRule } from '../../../shared/mobRules';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { MEDITATE_ABILITY } from '../../../shared/abilities';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -81,12 +82,20 @@ function withMob(name: string, disposition: 'passive' | null = null): CharacterS
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -113,6 +122,7 @@ describe('sitting down', () => {
     make(health({ restBelow: 0.5 })).onCharacter(state({ hp: 20, hpMax: 100 }));
     drain();
     expect(sent).toEqual(['rest']);
+    expect(kinds).toEqual(['rest-health']);
   });
 
   it('does nothing above it', () => {
@@ -621,6 +631,7 @@ describe('meditating', () => {
     );
     drain();
     expect(sent).toEqual(['med']);
+    expect(kinds).toEqual(['med-mana']);
   });
 
   /* Todo 50: on by default, and an `abil` list is what says the character has it. */
@@ -830,6 +841,7 @@ describe('resting with the leader', () => {
     withLeader().onCharacter(state({ hp: 100, hpMax: 100, party: together({ state: 'resting' }) }));
     drain();
     expect(sent).toEqual(['rest']);
+    expect(kinds).toEqual(['rest-with-leader']);
   });
 
   it('goes down with a meditating leader only as a class with mana, resting where it does not meditate', () => {
@@ -891,12 +903,12 @@ describe('a verb the realm refuses', () => {
 
   /* And mana is rested for with `rest` from then on (the user, 2026-10-03). */
   it('stops proposing med once the realm says it had no effect, says so once, and rests instead', () => {
-    const notices: string[] = [];
+    const notices: [string, DecisionKind | undefined][] = [];
     const recovery = new Recovery(
       settings(health({ useMeditate: true, restBelowMana: 0.3 })),
       queue,
       {
-        notice: (message) => notices.push(message)
+        notice: (message, decision) => notices.push([message, decision])
       }
     );
     recovery.onCharacter(low());
@@ -912,7 +924,7 @@ describe('a verb the realm refuses', () => {
     drain();
     expect(sent.filter((command) => command === 'med')).toEqual(['med']);
     expect(sent).toContain('rest');
-    expect(notices).toEqual([t('automation.recovery.verbRefused', { verb: 'med' })]);
+    expect(notices).toEqual([[t('automation.recovery.verbRefused', { verb: 'med' }), 'med-mana']]);
   });
 
   it("is not moved by a refusal of somebody else's command", () => {

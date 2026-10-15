@@ -182,7 +182,7 @@ export function useMovement({
    *
    * Three answers and one of them is a question: main measures how far the
    * character has wandered from whatever it was walking, and past
-   * `tuning.walk.resumeAskSteps` it asks rather than walking it back across
+   * `walk.resumeAskSteps` it asks rather than walking it back across
    * the realm. The window holds the question until somebody answers it, and
    * pressing play again with `confirmed` is the answer. See `MovementPrompt`.
    */

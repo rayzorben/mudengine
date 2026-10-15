@@ -33,16 +33,19 @@ type PathsOf<T, Depth extends readonly unknown[] = []> = Depth['length'] extends
 export type SettingPath =
   | `automation.${PathsOf<AppConfig['automation']>}`
   | `connection.login.${PathsOf<AppConfig['connection']['login']>}`
-  | `profile.${keyof Pick<Profile, 'lowLives' | 'autoReconnect' | 'locate'>}`
+  | keyof Pick<AppConfig, 'extensions'>
+  | `profile.${keyof Pick<Profile, 'lowLives' | 'autoReconnect' | 'reconnectTries' | 'locate'>}`
+  | 'profile.login.enabled'
   | `server.${keyof Pick<Server, 'login' | 'hangPenalties' | 'fleeGoto'>}`
   | `loop.${keyof Pick<Loop, 'stops' | 'bounce'> | keyof Pick<LoopStop, 'linger' | 'every'>}`;
 
 /**
- * The settings behind a decision, or the date it was found to have none of its
- * own. An `awaiting` row becomes a list when its setting is added.
+ * The settings behind a decision, or why it has none and since when
+ * (`exempt`): a rule the server enforces, the client's own bookkeeping, a
+ * timeout, or a command the player started.
  */
 export type DecisionSettings =
-  readonly [SettingPath, ...SettingPath[]] | { readonly awaiting: string };
+  readonly [SettingPath, ...SettingPath[]] | { readonly exempt: string; readonly since: string };
 
 export const DECISION_SETTINGS = {
   // Combat
@@ -51,7 +54,10 @@ export const DECISION_SETTINGS = {
     'automation.combat.retaliate',
     'automation.combat.engage'
   ],
-  'mortally-wounded-stop': { awaiting: '2026-10-11' },
+  'mortally-wounded-stop': {
+    exempt: 'the server lets a mortally wounded character do nothing',
+    since: '2026-10-13'
+  },
   'hit-back': [
     'automation.combat.retaliate',
     'automation.combat.mobRules',
@@ -59,7 +65,10 @@ export const DECISION_SETTINGS = {
     'automation.combat.maxTargetHealth'
   ],
   'hit-back-pick': ['automation.combat.mobRules'],
-  'broken-fight-owed': { awaiting: '2026-10-11' },
+  'broken-fight-owed': {
+    exempt: 'bookkeeping: the fight the server broke off is still owed',
+    since: '2026-10-13'
+  },
   'assist-leader': ['automation.party.assistLeader'],
   'defend-party': ['automation.party.defendParty'],
   'engage-gate': [
@@ -68,23 +77,35 @@ export const DECISION_SETTINGS = {
     'automation.combat.minMobs',
     'automation.combat.mobRules'
   ],
-  'typed-break': { awaiting: '2026-10-11' },
+  'typed-break': {
+    exempt: 'the player typed break, and a move or a typed attack releases it',
+    since: '2026-10-13'
+  },
   'row-stance': ['automation.combat.mobRules'],
   'polite-claim': ['automation.combat.politeAttacks', 'automation.combat.mobRules'],
-  'costly-refuse': { awaiting: '2026-10-11' },
-  'cannot-hurt': { awaiting: '2026-10-11' },
-  'weapon-swap': { awaiting: '2026-10-11' },
+  'costly-refuse': ['automation.combat.attackCostly'],
+  'cannot-hurt': {
+    exempt: 'the server says the wielded weapon cannot hurt it',
+    since: '2026-10-13'
+  },
+  'weapon-swap': ['automation.combat.swapWeapons'],
   'realm-avoid': ['automation.combat.mobRules'],
-  'fled-from': { awaiting: '2026-10-11' },
+  'fled-from': ['automation.combat.fledLevels', 'automation.combat.fledForgetMinutes'],
   'exp-cap': ['automation.combat.maxMonsterExperience'],
   'hp-cap': ['automation.combat.maxTargetHealth'],
   'row-not-hostile': ['automation.combat.mobRules', 'automation.combat.engage'],
   'uncertain-hostility': ['automation.combat.engage'],
   'not-hostile': ['automation.combat.engage'],
-  'planned-fight': { awaiting: '2026-10-11' },
+  'planned-fight': {
+    exempt: 'the player chose the detour or quest that names the monster',
+    since: '2026-10-13'
+  },
   'guarded-refuse': ['automation.combat.mobRules'],
   'attack-target': ['automation.combat.mobRules'],
-  'engage-cooldown': { awaiting: '2026-10-11' },
+  'engage-cooldown': {
+    exempt: 'a timeout against attacking one monster twice in a round',
+    since: '2026-10-13'
+  },
   opener: ['automation.combat.opener', 'automation.combat.mobRules'],
   'opener-chosen': ['automation.combat.opener'],
   'attack-verb': ['automation.combat.attack'],
@@ -95,9 +116,14 @@ export const DECISION_SETTINGS = {
     'automation.spells.autoChoose',
     'automation.spells.attackCasts',
     'automation.spells.minMana',
+    'automation.spells.killConfidence',
     'automation.combat.mobRules'
   ],
-  'auto-choose-spell': ['automation.spells.autoChoose', 'automation.spells.attackCasts'],
+  'auto-choose-spell': [
+    'automation.spells.autoChoose',
+    'automation.spells.attackCasts',
+    'automation.spells.killConfidence'
+  ],
   'spell-held-melee': ['automation.spells.minMana', 'automation.combat.mobRules'],
   'drain-standin': [
     'automation.spells.drain',
@@ -116,18 +142,30 @@ export const DECISION_SETTINGS = {
   ],
   'room-debuff-first': ['automation.spells.autoChoose', 'automation.combat.mobRules'],
   'round-change': ['automation.spells.attack', 'automation.combat.attack'],
-  'break-area': { awaiting: '2026-10-11' },
-  'cast-round-gate': { awaiting: '2026-10-11' },
+  'break-area': {
+    exempt: 'the server keeps casting a repeating room spell until break',
+    since: '2026-10-13'
+  },
+  'cast-round-gate': { exempt: 'the server allows one cast a round', since: '2026-10-13' },
   'room-refresh': ['automation.combat.refreshRounds'],
-  'arrival-reread': { awaiting: '2026-10-11' },
+  'arrival-reread': {
+    exempt: 'bookkeeping: an unknown hostility is read before it is fought',
+    since: '2026-10-13'
+  },
   'hide-sneak': [
     'automation.combat.hideForOpener',
     'automation.combat.opener',
     'automation.combat.enabled'
   ],
   search: ['automation.search.enabled', 'automation.search.tries'],
-  'unlisted-searcher': { awaiting: '2026-10-11' },
-  'backstab-hands': { awaiting: '2026-10-11' },
+  'unlisted-searcher': {
+    exempt: 'a safety look at a player the room did not list',
+    since: '2026-10-13'
+  },
+  'backstab-hands': {
+    exempt: 'bookkeeping: what was in hand goes back after a backstab',
+    since: '2026-10-13'
+  },
   // Recovery
   'rest-health': [
     'automation.health.restBelow',
@@ -153,7 +191,7 @@ export const DECISION_SETTINGS = {
   ],
   'rest-for-members': ['automation.party.manageParty', 'automation.health.restTo'],
   'rest-with-leader': ['automation.party.restWithLeader', 'automation.health.useMeditate'],
-  'rest-away': ['automation.health.restNextDoor'],
+  'rest-away': ['automation.health.restNextDoor', 'automation.health.restNextDoorMinutes'],
   'rest-away-back': ['automation.health.restNextDoor'],
   'rest-spell': ['automation.health.restSpell'],
   'heal-self': [
@@ -162,6 +200,7 @@ export const DECISION_SETTINGS = {
     'automation.spells.healBelowInCombat',
     'automation.spells.healTo',
     'automation.spells.autoChooseHeal',
+    'automation.spells.healUrgency',
     'automation.spells.healMinMana'
   ],
   'heal-party': [
@@ -170,6 +209,7 @@ export const DECISION_SETTINGS = {
     'automation.spells.healBelow',
     'automation.spells.healBelowInCombat',
     'automation.spells.autoChooseHeal',
+    'automation.spells.healUrgency',
     'automation.spells.healMinMana'
   ],
   'heal-request': [
@@ -195,7 +235,14 @@ export const DECISION_SETTINGS = {
     'automation.spells.autoChooseBlessings'
   ],
   'bless-expired-notify': ['automation.spells.notifyPartyOnWearOff'],
-  'bless-choose': ['automation.spells.autoChooseBlessings', 'automation.spells.blessings'],
+  'bless-choose': [
+    'automation.spells.autoChooseBlessings',
+    'automation.spells.blessings',
+    'automation.spells.blessMinGain',
+    'automation.spells.blessHealReserve',
+    'automation.spells.blessSwapCommandsPerHour',
+    'automation.combat.safeOddsAbove'
+  ],
   'invoke-item': ['automation.spells.invokeItems', 'automation.spells.invokeWith'],
   'mana-floor': ['automation.spells.minMana', 'automation.spells.healMinMana'],
   rules: ['automation.rules'],
@@ -206,10 +253,11 @@ export const DECISION_SETTINGS = {
     'automation.safety.hangUp.belowHealth',
     'automation.safety.hangUp.onPlayerInRoom',
     'automation.safety.hangUp.penalties',
+    'automation.safety.hangUp.afterRunSeconds',
     'automation.combat.mobRules',
     'server.hangPenalties'
   ],
-  'hang-up-naked': { awaiting: '2026-10-11' },
+  'hang-up-naked': ['automation.safety.hangUp.whenNaked', 'automation.safety.hangUp.nakedMargin'],
   'hang-up-pvp': ['automation.safety.pvp.action'],
   'pvp-run': ['automation.safety.pvp.action', 'automation.safety.retreat.cooldownMs'],
   'pvp-gang': ['automation.safety.pvp.notifyGang'],
@@ -221,7 +269,10 @@ export const DECISION_SETTINGS = {
     'automation.safety.retreat.cooldownMs',
     'automation.combat.mobRules'
   ],
-  'run-direction': { awaiting: '2026-10-11' },
+  'run-direction': {
+    exempt: 'a fixed order, each way out safer than the next; how far to run is retreat.strategy',
+    since: '2026-10-13'
+  },
   'run-open-door': ['automation.movement.openDoors', 'automation.movement.openTries'],
   'run-to-room': ['automation.safety.retreat.strategy', 'automation.safety.retreat.safeHavenRoom'],
   teleport: [
@@ -232,10 +283,16 @@ export const DECISION_SETTINGS = {
     'server.fleeGoto'
   ],
   'panic-call': ['automation.party.sayPanic'],
-  'death-summons': { awaiting: '2026-10-11' },
+  'death-summons': {
+    exempt: 'bookkeeping: a summoning monster leaves its summons on the floor',
+    since: '2026-10-13'
+  },
   'low-lives': ['profile.lowLives'],
-  reconnect: ['profile.autoReconnect'],
-  'link-dead': { awaiting: '2026-10-11' },
+  reconnect: ['profile.autoReconnect', 'profile.reconnectTries'],
+  'link-dead': {
+    exempt: 'a timeout: a socket silent after a command is dead',
+    since: '2026-10-13'
+  },
   'realm-penalty': ['server.hangPenalties'],
   // Gear and loot
   'loot-coins': [
@@ -252,7 +309,10 @@ export const DECISION_SETTINGS = {
   ],
   'loot-upgrade': ['automation.loot.upgrades'],
   'loot-worth': ['automation.loot.minPrice', 'automation.loot.maxEncumbrance'],
-  'loot-not-resting': { awaiting: '2026-10-11' },
+  'loot-not-resting': {
+    exempt: 'the server stands a resting character up for a get',
+    since: '2026-10-13'
+  },
   'coin-discard': ['automation.loot.discardKinds'],
   'loot-convert': ['automation.loot.convertWith', 'automation.loot.convertAt'],
   'floor-after-kill': [
@@ -261,21 +321,27 @@ export const DECISION_SETTINGS = {
     'automation.loot.upgrades',
     'automation.supplies.enabled'
   ],
-  'gear-weighing': ['automation.combat.attack'],
-  'gear-weakest-worn': { awaiting: '2026-10-11' },
-  'floor-gear-check': { awaiting: '2026-10-11' },
+  'gear-weighing': ['automation.loot.gearWeights', 'automation.combat.attack'],
+  'gear-weakest-worn': ['automation.loot.gearWeights'],
+  'floor-gear-check': {
+    exempt: 'an item that cannot be told apart or worn is no upgrade',
+    since: '2026-10-13'
+  },
   'floor-gear-refuse': ['automation.gear.enabled', 'automation.gear.sets'],
-  'found-gear-wear': ['automation.loot.upgrades'],
+  'found-gear-wear': ['automation.loot.upgrades', 'automation.loot.gearWeights'],
   'gear-set-overlay': ['automation.gear.enabled', 'automation.gear.sets'],
   'gear-set-wear': ['automation.gear.enabled', 'automation.gear.sets'],
   'backstab-weapon': ['automation.gear.enabled', 'automation.combat.opener'],
-  'reach-wield': { awaiting: '2026-10-11' },
+  'reach-wield': { exempt: 'the attack chosen needs the weapon in hand', since: '2026-10-13' },
   'off-round-use': ['automation.gear.offRound.item', 'automation.gear.offRound.everyRounds'],
-  'place-gear': ['automation.gear.resists'],
-  'swap-back-check': { awaiting: '2026-10-11' },
-  'restore-gear': { awaiting: '2026-10-11' },
+  'place-gear': ['automation.gear.resists', 'automation.gear.resistMinSaved'],
+  'swap-back-check': {
+    exempt: 'bookkeeping: says when a bless swap left the wrong weapon in hand',
+    since: '2026-10-13'
+  },
+  'restore-gear': { exempt: 'the player asked for the saved gear back', since: '2026-10-13' },
   'reequip-on-recover': ['automation.movement.reequipOnRecover'],
-  'take-floor': { awaiting: '2026-10-11' },
+  'take-floor': ['automation.remotes.maxGets'],
   'gear-recovery-strip': ['automation.movement.recoverGear'],
   'gear-recovery-bounds': [
     'automation.movement.recoverGearFloor',
@@ -289,48 +355,76 @@ export const DECISION_SETTINGS = {
     'automation.drop.whenEncumbered'
   ],
   'drop-worthless': ['automation.drop.worthless', 'automation.drop.enabled'],
-  'drop-quest-keep': { awaiting: '2026-10-11' },
-  'outgrown-pick': ['automation.outgrown.enabled'],
+  'drop-quest-keep': ['automation.drop.keepQuestItems'],
+  'outgrown-pick': ['automation.outgrown.enabled', 'automation.loot.gearWeights'],
   'outgrown-kept': ['automation.supplies.items', 'automation.gear.sets'],
-  'outgrown-rarity': { awaiting: '2026-10-11' },
-  'outgrown-way': ['automation.outgrown.enabled', 'automation.outgrown.ganghouseRoom'],
+  'outgrown-rarity': ['automation.outgrown.keepRare'],
+  'outgrown-way': [
+    'automation.outgrown.enabled',
+    'automation.outgrown.ganghouseRoom',
+    'automation.outgrown.stashFromCopper',
+    'automation.outgrown.sellFromCopper'
+  ],
   'ganghouse-open': ['automation.outgrown.ganghouseRoom'],
-  'sell-trip': { awaiting: '2026-10-11' },
-  'stash-fetch': { awaiting: '2026-10-11' },
-  'chest-read': { awaiting: '2026-10-11' },
-  'item-charges-look': { awaiting: '2026-10-11' },
+  // Started only when an extension asks, so its switch governs them.
+  'sell-trip': ['extensions'],
+  'stash-fetch': ['extensions'],
+  'chest-read': {
+    exempt: 'the player typed the open, and its listing is part of that command',
+    since: '2026-10-13'
+  },
+  'item-charges-look': ['automation.asks.itemUses'],
   'auto-deposit': [
     'automation.banking.autoDeposit',
     'automation.banking.depositThresholdCopper',
     'automation.banking.keepCopper',
     'automation.banking.bank'
   ],
-  withdraw: ['automation.supplies.enabled'],
+  withdraw: ['automation.supplies.enabled', 'automation.supplies.cashBuffer'],
   'supplies-short': ['automation.supplies.enabled', 'automation.supplies.items'],
   'supplies-buy': ['automation.supplies.items'],
-  'supplies-bank': ['automation.supplies.enabled'],
+  'supplies-bank': ['automation.supplies.enabled', 'automation.supplies.cashBuffer'],
   'supplies-surplus': ['automation.supplies.items'],
-  'supply-counter': ['automation.supplies.items'],
-  'gear-trip': { awaiting: '2026-10-11' },
-  'gear-upgrades': { awaiting: '2026-10-11' },
-  'best-in-slot': { awaiting: '2026-10-11' },
-  'gear-worth': { awaiting: '2026-10-11' },
-  'cash-run': { awaiting: '2026-10-11' },
-  'sale-on-the-way': ['automation.supplies.items', 'automation.gear.sets'],
-  'pack-after': { awaiting: '2026-10-11' },
+  'supply-counter': ['automation.supplies.items', 'automation.supplies.dearerSteps'],
+  'gear-trip': { exempt: 'the player started the trip', since: '2026-10-13' },
+  'gear-upgrades': ['automation.loot.gearWeights'],
+  'best-in-slot': ['automation.loot.gearWeights', 'automation.gear.offersPerSlot'],
+  'gear-worth': ['automation.loot.gearWeights'],
+  'cash-run': { exempt: 'the player started the run', since: '2026-10-13' },
+  'sale-on-the-way': [
+    'automation.supplies.items',
+    'automation.gear.sets',
+    'automation.outgrown.sellDetour',
+    'automation.outgrown.sellFromCopper',
+    'automation.outgrown.stashFromCopper',
+    'automation.outgrown.keepRare'
+  ],
+  'pack-after': {
+    exempt: 'bookkeeping: a give or take in a script changed the inventory',
+    since: '2026-10-13'
+  },
   // Walking, loops and detours
-  'walk-start-refuse': { awaiting: '2026-10-11' },
-  'walk-step': { awaiting: '2026-10-11' },
-  'walk-sneak': ['automation.movement.sneak'],
+  'walk-start-refuse': {
+    exempt: 'a route that cannot start is refused, never guessed',
+    since: '2026-10-13'
+  },
+  'walk-step': { exempt: 'the server answers one step at a time', since: '2026-10-13' },
+  'walk-sneak': ['automation.movement.sneak', 'automation.movement.sneakGiveUp'],
   'walk-off-round': ['automation.movement.runBetweenRounds'],
-  'walk-quarry-hold': { awaiting: '2026-10-11' },
+  'walk-quarry-hold': {
+    exempt: 'bookkeeping: the monster it means to fight is here',
+    since: '2026-10-13'
+  },
   'walk-nudge': ['automation.walk.stepTimeoutMs'],
   'walk-timeout-stop': ['automation.walk.stepTimeoutMs'],
-  'walk-wrong-room': { awaiting: '2026-10-11' },
-  'walk-dark-stop': { awaiting: '2026-10-11' },
+  'walk-wrong-room': {
+    exempt: 'an ambiguous room is reported, never guessed',
+    since: '2026-10-13'
+  },
+  'walk-dark-stop': { exempt: 'a dark room cannot be placed, never guessed', since: '2026-10-13' },
   'walk-dark-hold': ['automation.movement.provideLight'],
-  'walk-follow-settle': { awaiting: '2026-10-11' },
-  'walk-player-took-over': { awaiting: '2026-10-11' },
+  'walk-follow-settle': { exempt: "a timeout: the leader's move lands first", since: '2026-10-13' },
+  'walk-player-took-over': { exempt: 'the player typed a move', since: '2026-10-13' },
   'walk-fight-hold': [
     'automation.combat.enabled',
     'automation.combat.retaliate',
@@ -351,23 +445,39 @@ export const DECISION_SETTINGS = {
   ],
   'walk-move-unanswered': ['automation.walk.stepTimeoutMs'],
   'door-open': ['automation.movement.openDoors', 'automation.movement.openTries'],
-  'door-pick': ['automation.movement.pickLocks', 'automation.movement.pickTries'],
+  'door-pick': [
+    'automation.movement.pickLocks',
+    'automation.movement.pickTries',
+    'automation.movement.pickMargin'
+  ],
   'door-bash': [
     'automation.movement.bashDoors',
     'automation.movement.bashTries',
+    'automation.movement.bashMargin',
     'automation.health.restBelow'
   ],
   'door-stop': ['automation.movement.pickLocks', 'automation.movement.bashDoors'],
-  'hidden-search': { awaiting: '2026-10-11' },
-  'lever-pull': { awaiting: '2026-10-11' },
-  'trap-disarm': { awaiting: '2026-10-11' },
-  'room-command': { awaiting: '2026-10-11' },
+  'hidden-search': ['automation.movement.searchHidden'],
+  'lever-pull': ['automation.movement.pullLevers', 'automation.movement.leverTries'],
+  'trap-disarm': ['automation.movement.disarmTraps', 'automation.movement.disarmDoubt'],
+  'room-command': {
+    exempt: "the route needs the room's own command to go on",
+    since: '2026-10-13'
+  },
   'ward-use': ['automation.health.useWards'],
   'light-lit': ['automation.movement.provideLight', 'automation.movement.lightDimRooms'],
   'light-out': ['automation.movement.extinguishInLight', 'automation.movement.lightDimRooms'],
-  'light-buy': ['automation.movement.provideLight', 'automation.movement.buyLight'],
+  'light-buy': [
+    'automation.movement.provideLight',
+    'automation.movement.buyLight',
+    'automation.movement.carryLights'
+  ],
   'key-pickup': ['automation.movement.collectKeys'],
-  'leader-door': ['automation.party.helpWithDoors'],
+  'leader-door': [
+    'automation.party.helpWithDoors',
+    'automation.movement.pickMargin',
+    'automation.movement.bashMargin'
+  ],
   'loop-advance': ['loop.stops', 'loop.bounce'],
   'loop-dwell': ['loop.linger'],
   'loop-skip-empty': ['loop.every'],
@@ -377,23 +487,52 @@ export const DECISION_SETTINGS = {
     'automation.health.restBelowMana',
     'automation.health.restToMana'
   ],
-  'loop-rate-floor': ['automation.walk.minExpPerHour'],
-  'loop-fail': { awaiting: '2026-10-11' },
-  'loop-escape-settle': { awaiting: '2026-10-11' },
+  // The stop names the better spot within `betterSpotRadius`.
+  'loop-rate-floor': [
+    'automation.walk.minExpPerHour',
+    'automation.walk.expRateGraceMinutes',
+    'automation.hunting.betterSpotRadius'
+  ],
+  'loop-fail': ['automation.walk.failedLegs'],
+  'loop-escape-settle': {
+    exempt: 'a timeout: the run lands before the lap goes on',
+    since: '2026-10-13'
+  },
   'hunt-move': [
     'automation.hunting.enabled',
     'automation.hunting.radius',
-    'automation.hunting.cashPerHour'
+    'automation.hunting.cashPerHour',
+    'automation.hunting.moveMargin',
+    'automation.hunting.cashExpShare',
+    'automation.hunting.contestedShare',
+    'automation.hunting.maxDamageShare',
+    'automation.hunting.trivialLevelMargin'
   ],
-  'hunt-resurvey': ['automation.hunting.radius'],
-  'hunt-resume-ask': { awaiting: '2026-10-11' },
+  // What the survey leaves out is what it surveys again.
+  'hunt-resurvey': [
+    'automation.hunting.radius',
+    'automation.hunting.maxDamageShare',
+    'automation.hunting.trivialLevelMargin'
+  ],
+  'hunt-resume-ask': ['automation.walk.resumeAskSteps'],
   'train-level': ['automation.train.levels', 'automation.train.upTo', 'automation.train.trainer'],
-  'train-stats': ['automation.train.stats', 'automation.train.pick', 'automation.train.wanted'],
-  'item-collect': { awaiting: '2026-10-11' },
-  'floor-collect': { awaiting: '2026-10-11' },
-  'area-search': { awaiting: '2026-10-11' },
-  'quest-run': ['automation.quests.enabled'],
-  'travel-replan': { awaiting: '2026-10-11' },
+  'train-stats': [
+    'automation.train.stats',
+    'automation.train.pick',
+    'automation.train.wanted',
+    'automation.train.statHorizon'
+  ],
+  'item-collect': { exempt: 'the player asked for the item', since: '2026-10-13' },
+  'floor-collect': {
+    exempt: 'a command budget: no more gets than one press of the gear button, said when it bites',
+    since: '2026-10-13'
+  },
+  'area-search': ['automation.search.areaMaxSteps', 'automation.search.areaMaxSearches'],
+  'quest-run': ['automation.quests.enabled', 'automation.quests.rollTries'],
+  'travel-replan': {
+    exempt: 'bookkeeping: the character is off the route it planned',
+    since: '2026-10-13'
+  },
   'party-wait': [
     'automation.party.waitBelow',
     'automation.party.waitMinutes',
@@ -401,9 +540,20 @@ export const DECISION_SETTINGS = {
   ],
   'remote-moves': ['automation.remotes.enabled', 'automation.remotes.party'],
   'route-keep-out': ['automation.movement.keepOutOf'],
-  'route-forcing': ['automation.movement.pickLocks', 'automation.movement.bashDoors'],
-  'route-shun': { awaiting: '2026-10-11' },
-  'route-price': { awaiting: '2026-10-11' },
+  'route-forcing': [
+    'automation.movement.pickLocks',
+    'automation.movement.bashDoors',
+    'automation.movement.searchHidden',
+    'automation.movement.pullLevers',
+    'automation.movement.disarmTraps'
+  ],
+  'route-shun': ['automation.movement.avoidRanFromMinutes'],
+  'route-price': [
+    'automation.movement.fightCost',
+    'automation.movement.dangerCost',
+    'automation.movement.anotherWayPenalty',
+    'automation.movement.anotherWayLonger'
+  ],
   // Party and remotes
   'remote-gate': ['automation.remotes.enabled'],
   'remote-grant': [
@@ -411,7 +561,12 @@ export const DECISION_SETTINGS = {
     'automation.remotes.gang',
     'automation.remotes.party'
   ],
-  'remote-refuse-standing': { awaiting: '2026-10-11' },
+  'remote-refuse-standing': [
+    'automation.remotes.allowKillAndHangup',
+    'automation.remotes.players',
+    'automation.remotes.gang',
+    'automation.remotes.party'
+  ],
   'remote-gangpath': ['automation.remotes.gangpath'],
   'remote-answer': ['automation.remotes.enabled'],
   'remote-do': [
@@ -423,7 +578,8 @@ export const DECISION_SETTINGS = {
   'remote-item-commands': [
     'automation.remotes.players',
     'automation.remotes.gang',
-    'automation.remotes.party'
+    'automation.remotes.party',
+    'automation.remotes.maxGets'
   ],
   'remote-move': [
     'automation.remotes.players',
@@ -448,6 +604,7 @@ export const DECISION_SETTINGS = {
     'automation.party.parSeconds',
     'automation.party.parAfterRound',
     'automation.party.parEveryRounds',
+    'automation.party.parAtLoss',
     'automation.onPartyChange'
   ],
   'party-change': ['automation.onPartyChange'],
@@ -456,50 +613,108 @@ export const DECISION_SETTINGS = {
     'automation.health.restBelow',
     'automation.health.restBelowMana'
   ],
-  'sheet-report': { awaiting: '2026-10-11' },
+  'sheet-report': [
+    'automation.remotes.enabled',
+    'automation.remotes.players',
+    'automation.remotes.gang',
+    'automation.remotes.party'
+  ],
   // Routines and the queue
   'enter-realm-batch': ['automation.onEnterRealm'],
   'enter-realm-unread': ['automation.onEnterRealm'],
   'set-statline': ['automation.statline.control'],
-  'ask-who': { awaiting: '2026-10-11' },
-  'ask-abilities': { awaiting: '2026-10-11' },
-  'ask-spellbook': { awaiting: '2026-10-11' },
-  'ask-sheet-buff': { awaiting: '2026-10-11' },
-  'aged-facts': { awaiting: '2026-10-11' },
-  'stat-all': { awaiting: '2026-10-11' },
+  'ask-who': ['automation.asks.whoMinutes'],
+  'ask-abilities': ['automation.asks.abilities'],
+  'ask-spellbook': ['automation.asks.spellbook'],
+  'ask-sheet-buff': ['automation.asks.statsOnBuffEnding'],
+  'aged-facts': [
+    'automation.asks.inventoryMinutes',
+    'automation.asks.statsMinutes',
+    'automation.asks.expMinutes'
+  ],
+  'stat-all': ['automation.asks.statAll'],
   'look-at-player': ['automation.talk.lookAtPlayers'],
   'keep-alive': [
     'automation.idle.enabled',
     'automation.idle.afterSeconds',
     'automation.idle.command'
   ],
-  'login-step': ['server.login', 'connection.login.steps', 'connection.login.enabled'],
-  'login-stop': ['connection.login.enabled'],
-  'queue-refuse': { awaiting: '2026-10-11' },
+  'login-step': ['server.login', 'connection.login.steps', 'profile.login.enabled'],
+  'login-stop': ['profile.login.enabled'],
+  'queue-refuse': {
+    exempt: 'nothing goes out at the stat screen, offline or with automation off',
+    since: '2026-10-13'
+  },
   'queue-pacing': [
     'automation.pacing.window',
     'automation.pacing.minGapMs',
     'automation.pacing.ackTimeoutMs'
   ],
-  'queue-typing-hold': { awaiting: '2026-10-11' },
-  'queue-fumble-resend': { awaiting: '2026-10-11' },
+  'queue-typing-hold': { exempt: 'the player is typing a line', since: '2026-10-13' },
+  'queue-fumble-resend': { exempt: 'the server refused a fumbled command', since: '2026-10-13' },
   'locate-ask': ['profile.locate'],
-  'stale-move-probe': { awaiting: '2026-10-11' },
+  'stale-move-probe': {
+    exempt: 'a timeout: a move the server never answered',
+    since: '2026-10-13'
+  },
   // Extensions
-  'extension-load': { awaiting: '2026-10-11' },
-  'extension-lay-settings': { awaiting: '2026-10-11' },
-  'extension-offer': { awaiting: '2026-10-11' },
-  'extension-steer-hunt': ['automation.hunting.enabled'],
-  'extension-trip': { awaiting: '2026-10-11' }
+  'extension-load': ['extensions'],
+  'extension-lay-settings': ['extensions'],
+  'extension-offer': ['extensions'],
+  'extension-steer-hunt': ['extensions', 'automation.hunting.enabled'],
+  'extension-trip': ['extensions']
 } as const satisfies Record<string, DecisionSettings>;
 
 /** A decision the client makes on its own. Closed: a new one is a row above. */
 export type DecisionKind = keyof typeof DECISION_SETTINGS;
 
+/**
+ * Where a module says a line in the console, naming the decision it reports
+ * where the client made one on its own: the line then carries a gear (todo 119).
+ */
+export type NoticeSink = (message: string, decision?: DecisionKind) => void;
+
 export const DECISION_KINDS = Object.keys(DECISION_SETTINGS) as readonly DecisionKind[];
 
-/** The settings behind one decision; empty while it awaits one. */
+/** The settings behind one decision; empty where it is exempt. */
 export function settingsOf(kind: DecisionKind): readonly SettingPath[] {
   const row: DecisionSettings = DECISION_SETTINGS[kind];
-  return 'awaiting' in row ? [] : row;
+  return Array.isArray(row) ? (row as readonly SettingPath[]) : [];
+}
+
+/** The kind `text` names, or null for anything else: a kind crosses to the console as text. */
+export function asDecisionKind(text: string): DecisionKind | null {
+  return Object.hasOwn(DECISION_SETTINGS, text) ? (text as DecisionKind) : null;
+}
+
+/** A setting some decision reads: what a console line's gear can open. */
+export type GoverningPath = Extract<
+  (typeof DECISION_SETTINGS)[DecisionKind],
+  readonly unknown[]
+>[number];
+
+/**
+ * The settings a decision reads that have no field on any settings page, only
+ * a line in a file (user, 2026-10-14, todo 119: no gear for these). A line
+ * whose settings are all here has no gear; `setting-fields.test.ts` holds the
+ * list to the fields the pages draw.
+ */
+export const FIELDLESS_SETTINGS: Readonly<Partial<Record<GoverningPath, string>>> = {
+  'automation.rules': 'a list of guard expressions in the options file only (2026-10-14)',
+  'automation.events': 'a list of guard expressions in the options file only (2026-10-14)',
+  'automation.safety.retreat.cooldownMs': 'a line in the options file only (2026-10-14)',
+  'loop.stops': "a loop's file, drawn on the loop builder card, not a settings page (2026-10-14)",
+  'loop.bounce': "a loop's file, drawn on the loop builder card, not a settings page (2026-10-14)",
+  'loop.linger': "a loop's file, drawn on the loop builder card, not a settings page (2026-10-14)",
+  'loop.every': "a line in a loop's file only (2026-10-14)"
+};
+
+/** The settings behind `kind` that a settings page draws a field for. */
+export function fieldSettingsOf(kind: DecisionKind): readonly SettingPath[] {
+  return settingsOf(kind).filter((path) => !Object.hasOwn(FIELDLESS_SETTINGS, path));
+}
+
+/** Whether a line about `kind` has a gear: some setting behind it has a field. */
+export function hasSettingField(kind: DecisionKind): boolean {
+  return fieldSettingsOf(kind).length > 0;
 }

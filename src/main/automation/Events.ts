@@ -98,6 +98,7 @@ export class Events implements SessionModule {
         // By name, never by text: two events may send the same command for
         // different reasons, and one of them being dropped is a silent loss.
         coalesceKey: `event:${event.name}`,
+        decision: 'event',
         expiresAt: now + tuning().events.expiresMs,
         reason: `event: ${event.name}`
       });

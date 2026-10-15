@@ -28,6 +28,7 @@ export function panicCall(
     priority: 'emergency',
     coalesceKey: 'escape:panic',
     reason: t('session.safety.panicReason', { why }),
+    decision: 'panic-call',
     stillWanted
   };
 }

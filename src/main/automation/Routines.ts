@@ -35,7 +35,7 @@
  * budget walking and fighting spend from, same as the realm-entry probe.
  * Firing it on every arrival would be one `who` per adventurer in a busy room,
  * so it is **debounced**: the first arrival asks, and every arrival inside
- * `tuning.queue.rosterAskMs` is answered by that same listing.
+ * `automation.asks.whoMinutes` is answered by that same listing.
  *
  * It rode on the idle tick alone until 2026-09-02, which was the wrong clock
  * twice over: it needed `idle.enabled`, and it needed the character to have
@@ -51,6 +51,7 @@ import { PARTY_LISTING_KEY, PartyListing } from './PartyListing';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
+import { askEveryMs } from '../../shared/asks';
 import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
 import {
@@ -65,13 +66,18 @@ import {
 import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { StaleFacts } from './StaleFacts';
 import { AgedFacts } from './AgedFacts';
 import { UnlistedSearcher } from './UnlistedSearcher';
 import { StatAllAsk } from './StatAllAsk';
 
+const UNREAD: DecisionKind = 'enter-realm-unread';
+const STATLINE: DecisionKind = 'set-statline';
+const BOOK: DecisionKind = 'ask-spellbook';
+
 export interface RoutineEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /**
    * Whether the character is on the ground (`Grounded.down`), for the two
    * drains, which keep what they owe until it is up (todo 760); the idle
@@ -174,7 +180,9 @@ export class Routines implements SessionModule {
     this.partyListing = new PartyListing(queue, () => this.config);
     this.stale = new StaleFacts(queue);
     this.searcher = new UnlistedSearcher(queue);
-    this.statAll = new StatAllAsk(queue, (message) => this.events.notice?.(message));
+    this.statAll = new StatAllAsk(queue, (message, decision) =>
+      this.events.notice?.(message, decision)
+    );
   }
 
   configure(config: AutomationConfig): void {
@@ -225,7 +233,7 @@ export class Routines implements SessionModule {
     const commands = missing.map((fact) => REFRESH[fact].command).join(', ');
     if (this.unreadAsks >= tuning().queue.unreadRetries) {
       this.askedAt = null;
-      this.events.notice?.(t('automation.routines.unreadGaveUp', { commands }));
+      this.events.notice?.(t('automation.routines.unreadGaveUp', { commands }), UNREAD);
       return;
     }
     const queued = missing.filter(
@@ -233,7 +241,8 @@ export class Routines implements SessionModule {
         this.queue.offer({
           ...REFRESH[fact],
           priority: 'probe',
-          reason: t('automation.routines.reasonUnread')
+          reason: t('automation.routines.reasonUnread'),
+          decision: UNREAD
         }) === 'queued'
     );
     if (queued.length === 0) return;
@@ -241,7 +250,8 @@ export class Routines implements SessionModule {
     this.events.notice?.(
       t('automation.routines.askingAgain', {
         commands: queued.map((fact) => REFRESH[fact].command).join(', ')
-      })
+      }),
+      UNREAD
     );
   }
 
@@ -310,12 +320,14 @@ export class Routines implements SessionModule {
             // One `st` is as good as two. Coalescing by intent rather than by
             // text is what lets this be safe.
             coalesceKey: `probe:${command}`,
-            reason: t('automation.routines.reasonEnterRealm')
+            reason: t('automation.routines.reasonEnterRealm'),
+            decision: 'enter-realm-batch'
           });
         }
 
         this.events.notice?.(
-          t('automation.routines.enteringRealm', { commands: commands.join(', ') })
+          t('automation.routines.enteringRealm', { commands: commands.join(', ') }),
+          'enter-realm-batch'
         );
         this.askedAt = Date.now();
       }
@@ -339,10 +351,10 @@ export class Routines implements SessionModule {
     this.askUnread();
     if (this.config.enabled) {
       // An old listing waits for the fight to end; what is already owed does not.
-      const aged = fightIsRunning(state) ? [] : this.aged.due(Date.now());
-      if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'));
+      const aged = fightIsRunning(state) ? [] : this.aged.due(Date.now(), this.config.asks);
+      if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'), 'aged-facts');
       else this.stale.ask();
-      this.statAll.onCharacter(state);
+      if (this.config.asks.statAll) this.statAll.onCharacter(state);
     }
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);
@@ -367,7 +379,8 @@ export class Routines implements SessionModule {
       command: SET_STATLINE,
       priority: 'probe',
       coalesceKey: 'probe:statline',
-      reason: t('automation.routines.reasonStatline')
+      reason: t('automation.routines.reasonStatline'),
+      decision: STATLINE
     });
     this.askProfile();
   }
@@ -383,7 +396,8 @@ export class Routines implements SessionModule {
       command: 'pro',
       priority: 'probe',
       coalesceKey: 'probe:pro',
-      reason: t('automation.routines.reasonProfile')
+      reason: t('automation.routines.reasonProfile'),
+      decision: STATLINE
     });
   }
 
@@ -412,7 +426,8 @@ export class Routines implements SessionModule {
       command,
       priority: 'probe',
       coalesceKey: PARTY_LISTING_KEY,
-      reason: t('automation.routines.reasonPartyChanged')
+      reason: t('automation.routines.reasonPartyChanged'),
+      decision: 'party-change'
     });
   }
 
@@ -485,7 +500,8 @@ export class Routines implements SessionModule {
     // Down, the flag waits for the character to be up (todo 760).
     if (!this.config.enabled || this.events.onTheGround()) return;
     const since = Date.now() - this.rosterAskedAt;
-    if (since < tuning().queue.rosterAskMs) return;
+    // `asks.whoMinutes` (todo 118); 0 never asks, so the who list stays as the last listing left it.
+    if (since < askEveryMs(this.config.asks.whoMinutes)) return;
 
     this.rosterUnknown = false;
     this.rosterAskedAt = Date.now();
@@ -493,7 +509,8 @@ export class Routines implements SessionModule {
       command: 'who',
       priority: 'idle',
       coalesceKey: 'idle:who',
-      reason: t('automation.routines.reasonRosterUnknown')
+      reason: t('automation.routines.reasonRosterUnknown'),
+      decision: 'ask-who'
     });
   }
 
@@ -553,7 +570,7 @@ export class Routines implements SessionModule {
    * twice.
    */
   askAbilities(state: CharacterState): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || !this.config.asks.abilities) return;
     if (this.askedAbilities) return;
     /*
      * Somebody has already answered it — the player's own `abil`, or the
@@ -566,12 +583,13 @@ export class Routines implements SessionModule {
       command: 'abil',
       priority: 'probe',
       coalesceKey: 'probe:abil',
-      reason: t('automation.routines.reasonAbilities')
+      reason: t('automation.routines.reasonAbilities'),
+      decision: 'ask-abilities'
     });
   }
 
   private askSpellbook(state: CharacterState): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || !this.config.asks.spellbook) return;
     if (this.askedBook !== null) return;
     const kind = state.vitals.manaType;
     if (kind === null) return;
@@ -580,7 +598,8 @@ export class Routines implements SessionModule {
       command: this.askedBook,
       priority: 'probe',
       coalesceKey: 'probe:spellbook',
-      reason: t('automation.routines.reasonSpellbook')
+      reason: t('automation.routines.reasonSpellbook'),
+      decision: BOOK
     });
   }
 
@@ -605,6 +624,8 @@ export class Routines implements SessionModule {
     this.searcher.onBlock(block);
     if (block.type === 'spellbook-refused') {
       const book = block.groups?.['book'];
+      // A book never asked has no wrong ask to correct; the player's own typed word is theirs.
+      if (!this.config.asks.spellbook) return;
       if (this.bookCorrected || (book !== 'spells' && book !== 'powers')) return;
       this.bookCorrected = true;
       this.askedBook = book;
@@ -621,17 +642,19 @@ export class Routines implements SessionModule {
         command: book,
         priority: 'probe',
         coalesceKey: 'probe:spellbook',
-        reason: t('automation.routines.reasonSpellbook')
+        reason: t('automation.routines.reasonSpellbook'),
+        decision: BOOK
       });
-      this.events.notice?.(t('automation.routines.spellbookCorrected', { book }));
+      this.events.notice?.(t('automation.routines.spellbookCorrected', { book }), BOOK);
       return;
     }
-    if (changesTheBook(block) && this.askedBook !== null) {
+    if (changesTheBook(block) && this.askedBook !== null && this.config.asks.spellbook) {
       this.queue.enqueue({
         command: this.askedBook,
         priority: 'probe',
         coalesceKey: 'probe:spellbook',
-        reason: t('automation.routines.reasonSpellbook')
+        reason: t('automation.routines.reasonSpellbook'),
+        decision: BOOK
       });
       return;
     }
@@ -719,14 +742,15 @@ export class Routines implements SessionModule {
    * for this sheet on the way in.
    */
   askSheet(now: number = Date.now()): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || !this.config.asks.statsOnBuffEnding) return;
     if (this.sheetAskedAt !== null && now - this.sheetAskedAt < tuning().spells.sheetAskMs) return;
     this.sheetAskedAt = now;
     this.queue.enqueue({
       command: 'st',
       priority: 'probe',
       coalesceKey: 'probe:st',
-      reason: t('automation.routines.reasonBuffEnding')
+      reason: t('automation.routines.reasonBuffEnding'),
+      decision: 'ask-sheet-buff'
     });
   }
 
@@ -810,7 +834,8 @@ export class Routines implements SessionModule {
        * queue drops an expired intent rather than sending it.
        */
       expiresAt: Date.now() + tuning().queue.lookExpiresMs,
-      reason: t('automation.routines.reasonLookAtPlayer')
+      reason: t('automation.routines.reasonLookAtPlayer'),
+      decision: 'look-at-player'
     });
   }
 
@@ -883,7 +908,8 @@ export class Routines implements SessionModule {
       keepsLink: true,
       // Worthless if it arrives late — by then something else has happened.
       expiresAt: Date.now() + this.config.idle.afterSeconds * 1000,
-      reason: t('automation.routines.reasonIdle')
+      reason: t('automation.routines.reasonIdle'),
+      decision: 'keep-alive'
     });
 
     /*

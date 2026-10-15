@@ -318,6 +318,61 @@ notices:
       settings page.'
     playerForgetting: '"logging.playerDays: {days}" was added to {file}. A player not seen in that
       many days is dropped from the Players card when the client starts. 0 keeps every player.'
+    nakedHangUp:
+      one: 'Hang Up Naked After a Death was added to {fileList}, on as it always ran: Auto-Hangup
+        off never stopped it, and now it has its own switch.'
+      many: 'Hang Up Naked After a Death was added to {count} files ({fileList}), on as it always
+        ran: Auto-Hangup off never stopped it, and now it has its own switch.'
+    fightChoices:
+      one: 'Combat, spell, hang-up and gear choices the client made on its own (costly monsters,
+        weapon swaps, monsters run from, fight odds, Auto Choose weights, the wait after a run,
+        resist armour) are now settings, added to {fileList} at what the client already did.'
+      many: 'Combat, spell, hang-up and gear choices the client made on its own (costly monsters,
+        weapon swaps, monsters run from, fight odds, Auto Choose weights, the wait after a run,
+        resist armour) are now settings, added to {count} files ({fileList}) at what the client
+        already did.'
+    walkChoices:
+      one: 'Walking and route choices the client made on its own (disarming traps, searching for
+        hidden exits, pulling levers, lock margins, sneak refusals, lights to buy, route prices,
+        loop give-ups, resting next door, Search the area bounds) are now settings, added to
+        {fileList} at what the client already did.'
+      many: 'Walking and route choices the client made on its own (disarming traps, searching for
+        hidden exits, pulling levers, lock margins, sneak refusals, lights to buy, route prices,
+        loop give-ups, resting next door, Search the area bounds) are now settings, added to
+        {count} files ({fileList}) at what the client already did.'
+    carryChoices:
+      one: 'Hunting, outgrown gear, supplies, quest, gear, training, party and remote choices the
+        client made on its own (when a better spot is worth the move, Keep Rare Gear, the sell and
+        stash prices, Keep Quest Items, the cash buffer, rolls per step, items per slot and per
+        @get-all, points looked ahead, par after a loss) are now settings, added to {fileList} at
+        what the client already did.'
+      many: 'Hunting, outgrown gear, supplies, quest, gear, training, party and remote choices the
+        client made on its own (when a better spot is worth the move, Keep Rare Gear, the sell and
+        stash prices, Keep Quest Items, the cash buffer, rolls per step, items per slot and per
+        @get-all, points looked ahead, par after a loss) are now settings, added to {count} files
+        ({fileList}) at what the client already did.'
+    reconnectTries:
+      one: '"Max Re-dials" was added to {fileList}, set to {tries}. 0 keeps dialling for as long
+        as it takes, as the client always did.'
+      many: '"Max Re-dials" was added to {count} character files, set to {tries}. 0 keeps
+        dialling for as long as it takes, as the client always did. {fileList}'
+    tuningPromoted: '{keys} left {file}: each is now a setting on the settings screen and in the
+      options file.'
+    tuningCarried: 'Your own figures were kept as settings: {settings}.'
+    tuningRefused: 'These figures in internal.yaml were not numbers the setting can take, so the
+      setting starts at its default: {keys}.'
+    talkStated: '"automation.talk" was added to {file}, with Auto-Look at New Players off as it
+      was.'
+    asksStated: '"automation.asks" was added to {file}: how often the client asks i, st, exp and
+      who on its own, and whether it asks abil, the spell list, st when a buff ends, stat a and a
+      look at a charged item. Each asks as it always did.'
+    extensionSwitches: '"extensions" was added to {file}: a switch for each installed extension,
+      all on as they were. One can be switched off from the MudEngine settings page.'
+    killAndHangup:
+      one: 'Allow @kill and @hangup was added to {fileList}, off: @kill, @hangup, @relog and
+        @panic! are still refused to everyone.'
+      many: 'Allow @kill and @hangup was added to {count} files ({fileList}), off: @kill, @hangup,
+        @relog and @panic! are still refused to everyone.'
     logKeeping: '"logging.keepDays: {days}" was added to {file}. Session logs and raw transcripts
       older than that many days are deleted now, and once a day while the client runs. 0 keeps them
       all.'
@@ -795,6 +850,7 @@ notices:
     # Connect pressed on a character already playing there, from a tab that
     # had not caught up: dialling again would hang up on the game.
     alreadyConnected: Already connected to {host}:{port}.
+    relogFailed: '@relog hung up, and dialing back failed: {reason}'
     # Connect pressed while a dial was still waiting for the far end to answer.
     dialAgain: The last dial had no answer yet. Giving it up and dialing again.
     # The loops started by name, for the console's right-click menu (todo 28).
@@ -1233,6 +1289,9 @@ terminal:
     copyLink: Copy link
     paste: Paste
     recentFailed: 'Could not list the recent rooms and loops: {message}'
+  # The gear on a line about something the client decided on its own (todo 119).
+  decision:
+    title: Open the settings behind this line
   # A plain Enter the window saw and this console never sent (todo 00): where
   # the caret was, and the key's code, which tells an input method (229) apart.
   enterNotTaken: 'That Enter did not reach the game: the cursor was in {where} (key code {code}).'
@@ -1782,6 +1841,10 @@ rewrites:
 # Extensions found in the home's extensions folder at startup (todo 84).
 extensions:
   loaded: '{title} is installed and running.'
+  off: '{title} is installed and switched off, so it was not started. It can be switched back on
+    from the MudEngine settings page.'
+  switchesUnread: 'No extension was started: the options file could not be read to see which are
+    switched off ({error}).'
   badManifest: 'The extension in {name} has a manifest.json that cannot be read: {error}'
   notAManifest: "The extension in {name} has a manifest.json that lacks its folder's name (lower
     case), a title or a main file."
@@ -2652,6 +2715,10 @@ cards:
   # whose routes reproduce it.
   builder:
     blocked: 'No way through: {reason}'
+    linger: wait
+    lingerAria: Seconds to wait at {room}
+    lingerTitle: Seconds to stay in this room before moving on, for a lair to fill again. 0 walks
+      straight on.
     centreHereAria: Center the map on {name}
     destinationGlobal: Every character
     emptyHint: Click a room to start. Click it again to unselect it, or click it later to close the
@@ -3242,6 +3309,9 @@ cards:
       gone, unless the maximum number already exist.
     placedLabel: Placed here
     unknownRoom: This realm's world data has no room with that number.
+    runHereButton: Run here
+    runHereTooltip: Walk the planned route only as far as this room with auto-combat off, and
+      turn it back on when you arrive
     walkHereButton: Walk here
     walkHereTooltip: Walk the planned route only as far as this room
     walkToButton: Plan route
@@ -3434,6 +3504,9 @@ cards:
     walkButton: Walk it
     walkHereButton: Walk here
     walkHereTooltip: Walk only as far as {roomName}
+    runHereButton: Run here
+    runHereTooltip: Walk only as far as {roomName} with auto-combat off, and turn it back on when
+      you arrive
     walkTooltip: Walk this route (Enter or Alt G)
     # Todo 06: turn off, go.
     runButton: Run it
@@ -3861,6 +3934,18 @@ settings:
       twice: it is set twice, so neither loads
       client: the client already uses it
       typing: it types into the line
+  # The extensions installed in the home, each with its switch (todo 118).
+  extensions:
+    legend: Extensions
+    warning: An extension can send commands through the client and change a character's settings
+      while it runs.
+    note: Extensions are started when the client starts, so a switch takes effect the next time
+      it starts.
+    none: No extension is installed.
+    atNextStart: This takes effect the next time the client starts.
+    # On a character's page while an extension has its own value in force over the player's.
+    laid: '{title} has these settings in force over yours while it runs: {settings}.'
+    laidSetting: '{path} is {value}'
   actions:
     confirmKeep: Keep it
     confirmRemoveCharacter: Remove this character?
@@ -4089,6 +4174,7 @@ settings:
       appearance: Appearance
       keys: Keys
       records: Records
+      extensions: Extensions
   combat:
     attackForMe: Auto-Attack
     attackLegend: Attack
@@ -4164,6 +4250,24 @@ settings:
     maxMobsHint: Will not start a fight in a room with more monsters than this. 0 is no limit.
     maxMobsLabel: Max Monsters in Room
     monstersLegend: Monsters
+    attackCostlyLabel: Attack Alignment-Cost Monsters
+    attackCostlyHint: Attacks a monster the world data says always costs alignment to kill, -10 a
+      kill for as long as you play. Off leaves it alone and says so.
+    swapWeaponsLabel: Swap Weapon When Immune
+    swapWeaponsHint: Wields a weapon from your inventory that can hurt a monster the one in hand
+      cannot. Off, that monster is left alone unless an attack spell can open on it.
+    fledLevelsLabel: Levels After Running
+    fledLevelsHint: A monster you ran from that waits to be attacked is left alone until you are
+      this many levels past the level you ran at.
+    fledMinutesLabel: Minutes After Running
+    fledMinutesHint: Or until this many minutes have passed since you ran.
+    oddsLegend: Fight Odds
+    safeOddsLabel: Safe Above %
+    safeOddsHint: A fight survived more often than this reads as safe (green) on the Combat card,
+      the map, the hunting grounds and routes, and in Auto Choose Blessings.
+    riskyOddsLabel: Risky Above %
+    riskyOddsHint: Above this and up to the safe line reads as risky (yellow); this or less is
+      deadly (red).
     openerHint: Sent only for the first attack of a fight. Blank sends bs for a class that can hide.
     openerLabel: Opening Attack
     openerPlaceholder: bs for a class that can hide
@@ -4242,9 +4346,19 @@ settings:
         about twice this.'
       stepTimeoutLabel: Wait Per Step, ms
       minExpRateHint: Stops a running loop whose exp/hr has dropped below this, once it has run for
-        15 minutes. A loop that has stopped paying looks the same as one that works until someone
-        checks. 0 never stops.
+        the minutes beside it. A loop that has stopped paying looks the same as one that works until
+        someone checks. 0 never stops.
       minExpRateLabel: Stop Loop Under Exp/Hr
+      expRateGraceLabel: Judge Exp Rate After (min)
+      expRateGraceHint: How long a lap runs before its exp rate is judged. The first minutes are the
+        walk to the first lair.
+      failedLegsLabel: Stop Loop After Failures
+      failedLegsHint:
+        How many legs in a row may fail, none of them a fight, before the loop stops and
+        says which stop it could not reach.
+      resumeAskLabel: Ask Before Walking Back (steps)
+      resumeAskHint: Play asks first when the character is this many more steps from a stopped route
+        or loop than when it stopped. 0 asks whenever it is further off.
     realm:
       hostPlaceholder: paramud.mudinfo.net
       loginMenuSendPlaceholder: '1'
@@ -4298,7 +4412,17 @@ settings:
     hangPenaltiesNo: Not charged
     hangUpLabel: Auto-Hangup / Emergency Disconnect
     hangUpLegend: Auto-Hangup
+    hangUpNakedLabel: Hang Up Naked After a Death
+    hangUpNakedHint: With you away from the keyboard and nothing worn after a death, hangs up when a
+      monster or player in the room would attack, even with Auto-Hangup off. A naked character has
+      no items to lose.
+    hangUpNakedMarginLabel: Margin Over Hangup Penalty %
+    hangUpNakedMarginHint: In a realm whose menu states a hangup penalty, hangs up naked only while
+      health stays this far above it.
     hangUpOnPlayer: Hang Up When a Player Is Seen
+    hangUpAfterRunLabel: Wait After a Run (s)
+    hangUpAfterRunHint: After a run, how long a hang-up waits for the move to land, so you log back
+      in away from what you ran from.
     hangUpWarning: On a realm with a hangup penalty, a disconnect costs part of your maximum health,
       and at low health it kills. Use Auto-Run instead.
     restBelowManaHint: Rests for mana below this, with med under Use Meditate; ignored for a class
@@ -4366,6 +4490,9 @@ settings:
       any trap at any health.
     restBeforeTrapsLabel: Keep After a Trap HP %
     restNextDoor: Rest Next Door to a Lair
+    restNextDoorMinutes: Lair Refills Within (min)
+    restNextDoorMinutesHint: A lair whose monsters come back within this many minutes is rested next
+      door to. A rest takes minutes and would outlast it.
     useMeditate: Use Meditate
     useMeditateHint: Rests for mana with med when the character has the Meditate ability, which is
       faster. Off never meditates.
@@ -4456,6 +4583,24 @@ settings:
     radiusHint: How far to look for a lair, in steps. Blank is everywhere the exits reach.
     cash: Cash an Hour (Copper)
     cashHint: Copper an hour the hunt should earn; blank is exp alone.
+    moveMargin: Move When Better By %
+    moveMarginHint: How much more exp an hour another spot must pay than this one before the
+      hunt walks there.
+    cashExpShare: Cash Spot Exp Floor %
+    cashExpShareHint: Under a cash floor, a spot's copper counts only while its exp an hour is at
+      least this share of the best spot's.
+    contestedShare: Shared Spot Worth %
+    contestedShareHint: What a spot is worth while another player is working it, since exp divides
+      among everyone who hit the kill.
+    betterSpotRadius: Better Spot Within (steps)
+    betterSpotRadiusHint: How far a loop that stopped for earning too little exp looks for a better
+      spot to name.
+    maxDamageShare: Skip Rooms Costing Over %
+    maxDamageShareHint: A room whose one visit takes more than this share of your health is left out
+      of the hunting spots.
+    trivialLevelMargin: Too Easy Health Margin %
+    trivialLevelMarginHint: A room that could not take a tenth of your health off you unarmoured is
+      left out as too easy; your health is read this much lower for that test.
   train:
     legend: Training
     warning: A point bought here is permanent, and the screen it is bought on renames the character
@@ -4483,6 +4628,9 @@ settings:
       on the cheapest; nothing will be walked to until then.
     statsHint: At a trainer with unspent CPs, opens the stat screen, buys stats as chosen below, and
       saves. When off, the client leaves that screen alone.
+    statHorizon: Points Looked Ahead
+    statHorizonHint: How many points of each stat are weighed when points go where they raise the
+      exp rate most. Most of what a stat does comes in steps of three to ten points.
     pick: Spend points on
     pickHint:
       The stat that raises the exp rate most is worked out at each level, from what each stat's
@@ -4576,11 +4724,25 @@ settings:
     bankKeepHint: What stays on hand for tolls and shops. 100 copper is 1 gold crown.
     bankKeepLabel: Cash to Keep on Hand
     bankLegend: Banking
+    suppliesLegend: Supplies
+    suppliesEnabledHint: Below an item's minimum, walks to the shop and buys back up to its
+      maximum. The shop is chosen on the item's panel; with none, the nearest that sells it.
+    suppliesNameAria: Item {number}
+    suppliesNamePlaceholder: torch
+    suppliesMinAria: Item {number} minimum
+    suppliesMaxAria: Item {number} maximum
+    suppliesAdd: Add an Item
+    suppliesCashBuffer: Extra Cash Withdrawn
+    suppliesCashBufferHint: Copper withdrawn over a purchase's price when you are short and a bank
+      holds it. 100 copper is 1 gold crown; 0 withdraws exactly what is short.
+    suppliesDearerSteps: Steps per Doubled Price
+    suppliesDearerStepsHint: For an item with no shop named, how many steps out of the way a shop
+      at half the price is worth. 0 takes the nearest.
     bankThresholdHint: Deposits only once cash on hand is over this, so a trip is not wasted on
       small change. 100 copper is 1 gold crown.
     bankThresholdLabel: Deposit When Cash Exceeds
     dropEnabledHint: Only what you list below is ever dropped, and never anything worn, wielded or
-      lit, or anything a quest you can still do needs.
+      lit.
     dropEnabledLabel: Auto-Drop Junk Items
     dropItemsHint: Matched by the start of the name, the same way the game reads drop.
     dropItemsLabel: Junk Item Names
@@ -4615,6 +4777,10 @@ settings:
     dropWorthlessHint: 'Drops anything the world data values at zero: only an explicit zero, never
       an item with no value listed, and never one marked Not Droppable.'
     dropWorthlessLabel: Auto-Drop Worthless Items
+    dropKeepQuestItemsLabel: Keep Quest Items
+    dropKeepQuestItemsHint:
+      Never drops an item a quest you can still do needs. Off drops it like any
+      other junk.
     outgrownLegend: Auto-Sell (or Stash)
     outgrownEnabledLabel: Get Rid of Outgrown Gear
     outgrownEnabledHint: 'Gear you carry that is no better than what you wear in a full slot is
@@ -4624,6 +4790,20 @@ settings:
     outgrownRoomHint: 'Where to hide gear worth keeping, named as a loop stop names a room. Empty
       uses the nearest vault of the house your emblem names, where the world data shows one.'
     outgrownRoomPlaceholder: Silver House Vault 15/921
+    outgrownKeepRareLabel: Keep Rare Gear
+    outgrownKeepRareHint: Keeps gear the world data rates rare or limited, or does not rate at all.
+      Off gets rid of it like common gear.
+    outgrownStashFrom: Stash From (copper)
+    outgrownStashFromHint:
+      Outgrown gear worth this much or more goes to the ganghouse. 100 copper is
+      1 gold crown.
+    outgrownSellFrom: Sell From (copper)
+    outgrownSellFromHint: Outgrown gear worth this much or more is sold at a shop; under it, it is
+      dropped.
+    outgrownSellDetour: Sell Detour (steps)
+    outgrownSellDetourHint:
+      How far off the way to the bank a cash run goes to sell outgrown gear and
+      loot.
     searchEnabledHint: The game hides exits, and a route may be planned through one nobody has found
       yet. Never in combat or while resting, and once per room, not once per status line.
     searchEnabledLabel: Auto-Search Rooms
@@ -4640,6 +4820,52 @@ settings:
     bashDoorsHint: Forces the door when your strength is close to what the world data lists for it.
       It costs health, and a bashed door is left open.
     bashTries: Bashes Per Door
+    bashMargin: Bash Under Strength By
+    bashMarginHint: How far under the door's number your strength may be and still bash. Smaller
+      than the pick's, because a failed bash costs health.
+    pickMargin: Pick Under Picklocks By
+    pickMarginHint: How far under the lock's number your Picklocks may be and still pick. Nobody
+      has measured what the roll against the number looks like.
+    disarmTraps: Auto-Disarm Traps
+    disarmTrapsHint: Sends disarm trap before a trapped way when your Traps makes it cost less than
+      walking in. A failed try sets the trap off, the same as walking in. Off rests for the trap and
+      walks in.
+    disarmDoubt: Give Up Under %
+    disarmDoubtHint: Failed tries in a row whose chance of all failing is under this mean your
+      Traps figure is likelier wrong, and the route walks through the trap.
+    searchHidden: Auto-Search Hidden Exits
+    searchHiddenHint: Searches for a hidden exit on the route that the world data says a search
+      finds, until it is found. Off, routes go around one, or stop at it.
+    pullLevers: Auto-Pull Levers
+    pullLeversHint: Pulls the levers that open a way on the route, walking to one in another room if
+      that is where it is. Off, routes go around such a way, or stop at it.
+    leverTries: Lever Rounds
+    sneakGiveUp: Stop After Refusals
+    sneakGiveUpHint:
+      How many refused sneaks in a row before it stops asking, until the next level or
+      reconnect.
+    carryLights: Lights to Buy
+    carryLightsHint: How many it buys where the world data does not say how long one burns, and the
+      fewest it buys anywhere.
+    routingLegend: Route Costs
+    fightCost: Fight Costs (steps)
+    fightCostHint: What one fight on the way adds to a route, in ordinary steps. Poor odds add more
+      on top.
+    dangerCost: Lair Costs (steps)
+    dangerCostHint: What a lair expected to take half your health in one pass adds to a route. A
+      smaller bite costs less and a bigger one much more.
+    anotherWayPenalty: Another Way Penalty
+    anotherWayPenaltyHint: When the route panel looks for Another way, the plan's own steps cost
+      this many times over. Higher finds ways that share less of the plan; 1 finds none.
+    anotherWayLonger: Another Way Longer By %
+    anotherWayLongerHint: How much longer than the plan Another way may be and still be offered.
+    avoidRanFrom: Avoid Rooms Run From (min)
+    avoidRanFromHint: How long a trip's route goes around a room this character ran out of for its
+      health, where a way around is survivable. Loops never go around. 0 never does.
+    areaMaxSteps: 'Search the Area: Steps'
+    areaMaxStepsHint: The most steps out from where you stand that Search the area offers.
+    areaMaxSearches: 'Search the Area: Searches'
+    areaMaxSearchesHint: The most searches per room that Search the area offers.
     openDoors: Auto-Open Doors
     openDoorsHint: A route stops at a closed door unless this is on. A locked door costs a command
       per try.
@@ -4666,7 +4892,13 @@ settings:
     answerHint: When off, @ commands are read and ignored. Answering needs the other character to
       run mudengine too.
     channelWarning: A channel that lets another player's commands move this character. It answers
-      nobody until something below is granted, and @kill and @hangup are always refused.
+      nobody until something below is granted, and @kill and @hangup are refused unless Allow @kill
+      and @hangup is on.
+    killAndHangupLabel: Allow @kill and @hangup
+    killAndHangupHint: Lets @kill, @hangup, @relog and @panic! through to whoever they are granted
+      to, by name, gang or party; off, all four are refused to everyone.
+    killAndHangupWarning: On, a player granted these can start a fight with another player or hang
+      this character up.
     enabledLabel: Enable Remote Control
     gangLegend: Gang Permissions
     gangWarning: "Membership is read from the who list: this character's row and the asker's must
@@ -4676,6 +4908,10 @@ settings:
     autoJoinHint: Joins a party as soon as its leader invites this character, without waiting for
       @join. Only a leader allowed @join is joined.
     autoJoinLabel: Join When Invited
+    maxGets: Most Items per @get-all
+    maxGetsHint:
+      The most items one @get-all, @drop-all or get all takes, one command each, so a full
+      floor does not use up the commands a fight needs.
     gangpathLabel: Allow Remotes on Gangpath
     legend: Answering Other Players
     playerLegend: Permissions for {name}
@@ -4728,6 +4964,9 @@ settings:
     parEveryRoundsHint: In a fight, send par at most this many rounds apart, and sooner the more
       health the party has lost since the last one. 0 sends none by the round.
     parEveryRoundsLabel: Rounds Between Par
+    parAtLossLabel: Par Sooner After Loss %
+    parAtLossHint: The share of a member's health lost since the last par that sends the next one
+      this round. Half of it sends par half as many rounds sooner.
     remotesLegend: Party @ commands
     remotesNote: What anyone who has **joined** this party may ask this character for. An invitation
       nobody accepted is not membership, and a Deny on someone by name still overrides this.
@@ -4762,9 +5001,14 @@ settings:
   profile:
     accentLabel: Color
     autoConnectLabel: Connect on Start
+    autoLoginHint: Answers the realm's menus with this character's account and slot. Off leaves
+      every prompt for you.
+    autoLoginLabel: Log In Automatically
     autoReconnectHint: Only after a lost connection. Pressing Disconnect, hanging up on low health,
       or leaving the realm yourself all stop it. Waits 0s, 5s, 10s, then 15s.
     autoReconnectLabel: Reconnect if the Connection Drops
+    reconnectTriesLabel: Max Re-dials
+    reconnectTriesHint: Failed dials in a row before reconnecting stops and says so. 0 never stops.
     copyFromHint: Everything except the name and password. A starting point, not a link to later
       changes.
     copyFromLabel: Copy From
@@ -4838,6 +5082,9 @@ settings:
       before the shield is equipped. With no backstab set written, the carried weapon that
       backstabs hardest is worn for a bs opener and your own weapon goes back for the fight.'
     resists: Wear Resist Gear
+    resistMinSavedLabel: Least Damage Saved
+    resistMinSavedHint: Swaps in resist armour only when it saves at least this many hit points a
+      round.
     resistsHint: Wears carried armour that resists the cold, fire, lightning, stone or water this
       room and its monsters cast, and puts back what it replaced once you leave the room.
     upgradesLabel: Auto-Get Better Gear
@@ -4846,6 +5093,8 @@ settings:
     betterLegend: Better Gear
     betterNote: How many of an item's AC points one point of each ability is worth when
       Auto-Get Better Gear and the Gear card rank gear. 0 ignores it.
+    perSlot: Items per Slot
+    perSlotHint: How many better items the Gear card lists for each slot, best first.
     weightDamageResistLabel: DR
     weightDamageResistHint: An item's DR, in the same points as its AC.
     weightProtectionEvilLabel: ProtEvil
@@ -4907,6 +5156,7 @@ settings:
   nav:
     character: Which character
     find: Find a setting
+    findDecision: Settings behind that line
     findNone: No setting matches.
     label: Settings sections
     realm: Which realm
@@ -4996,6 +5246,20 @@ settings:
       on the start of it.
     castLabel: Attack Spell
     autoChoose: Auto Choose Best Spell
+    killConfidenceLabel: Sure Kill Chance %
+    killConfidenceHint: How sure one cast must be of finishing the monster before the cheapest spell
+      that would is cast instead of the hardest hitter.
+    healUrgencyLabel: Low Health Weight
+    healUrgencyHint: How much more a hit point mended low on the bar counts than one near the top
+      when a party heal is weighed against one heal. 0 counts them the same.
+    blessMinGainLabel: Least Gain %
+    blessMinGainHint: The least a chosen blessing must add to be kept up, in fights survived, health
+      a fight costs or exp rate.
+    blessHealReserveLabel: Heals Kept Back
+    blessHealReserveHint: Heal casts the mana left after a blessing must still pay for.
+    blessSwapCommandsLabel: Swap Commands an Hour
+    blessSwapCommandsHint: The most commands an hour a blessing cast by a weapon from your inventory
+      may spend wielding it and putting your weapon back.
     autoChooseHint: 'Picks the attack spell each round from your spellbook and the world data: never
       one the monster resists, the cheapest one that would kill it, otherwise the strongest. Cures
       are picked where their fields are blank. The spells below are cast when this is off, and when
@@ -5055,6 +5319,37 @@ settings:
     note: Buffs, heals and anything conditional are set in automation.rules in the options file.
     rulesPointerNote: One spell, cast by a number, on the mid-round tick, which is the one thing a
       rule cannot do. Everything else a caster needs is in automation.rules.
+  asks:
+    legend: What the Client Asks
+    warning: A fact the client never asks for stays unknown on the cards until you type the command
+      yourself.
+    inventory: Ask i Every, min
+    inventoryHint: Asks i again once the last inventory is this many minutes old, never during a
+      fight. 0 never asks.
+    stats: Ask st Every, min
+    statsHint: Asks st again once the last stat sheet is this many minutes old, never during a
+      fight. 0 never asks.
+    exp: Ask exp Every, min
+    expHint: Asks exp again once the last answer is this many minutes old, never during a fight. 0
+      never asks.
+    who: Ask who Every, min
+    whoHint: When a player arrives who is not on the who list, asks who at most once in this many
+      minutes. 0 never asks.
+    abilities: Ask abil When Needed
+    abilitiesHint: Asks abil once a session, when a route crosses a way the realm opens only past a
+      quest count.
+    spellbook: Ask the Spell List
+    spellbookHint: Asks spells or powers once the prompt shows which, and again when a spell is
+      learned.
+    statsOnBuffEnding: st When Buffs End
+    statsOnBuffEndingHint: Asks st when a line may have ended a buff, so the sheet says which are
+      still up.
+    statAll: Ask stat a
+    statAllHint: Asks stat a out of a fight once for each mix of level, worn gear and buffs, for
+      the regeneration figures.
+    itemUses: Look at Charged Items
+    itemUsesHint: Looks once a session at a charged item whose uses are unknown, before using it to
+      bless.
   statline:
     legend: The Status Line
     controlLabel: Set the Status Line
@@ -5171,6 +5466,9 @@ settings:
     enabled: Auto-Quest
     enabledHint: Lets the Quest card's Run it button carry out a plan step by step, using walking,
       shopping and auto-combat. When off, the button refuses and names this switch.
+    rollTries: Tries per Rolled Step
+    rollTriesHint: How many times a step that rolls is asked before the run gives up on it. Each try
+      is one ask and one listing.
   talk:
     legend: Other Players
     lookHint: Once per person, at an idle moment instead of the instant they arrive, and never
@@ -6643,6 +6941,15 @@ automation:
     reasonAsking: asking {who} {body}
     reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'
     reasonDo: '@do from {from}'
+    reasonKill: '@kill {player} from {from}'
+    killing: '{from} sent @kill {player}; attacking {player}, as Allow @kill and @hangup lets it.'
+    killNobody: '{from} sent @kill naming nobody, so nothing was attacked.'
+    killNotHere: '{from} sent @kill {player}, but no player here goes by that name, so nothing was
+      attacked.'
+    killAmbiguous:
+      '{from} sent @kill {player}, which names more than one player here ({candidates}),
+      so nothing was attacked.'
+    whyRemote: '{from} sent @{raw}'
     reasonDropAll: '@drop-all from {from}'
     reasonEquipAll: '@equip-all from {from}'
     reasonForget: '@forget from {from}'
@@ -6666,7 +6973,8 @@ automation:
       @{raw}.{unresolvedClause}'
     refusedRealmWide: '{from} sent @{raw} on a realm-wide channel; ignored, because a message to
       everyone online is not a message to this character. Ask by telepath.'
-    refusedUnsupported: '{from} sent @{raw}; refused: {reason}'
+    refusedUnsupported: '{from} sent @{raw}; refused: {reason}. Allow @kill and @hangup on the
+      Remotes settings lets it through to whoever it is granted to.'
     unread: Unsupported remote command @{raw} from {from}.
     unresolvedGang: " The gang grants it, but it is not known yet whether they share this
       character's gang. A who list showing both will settle it."
@@ -6794,6 +7102,8 @@ automation:
       {reason}'
     leversScattered: The way to {stepName} needs levers in {roomCount} different rooms, and the
       world data does not say in which order. Pull them by hand and the way opens.
+    leversSwitchedOff: The way to {stepName} opens with a lever, and Auto-Pull Levers is off. The
+      route stops here.
     reasonAmbiguous: the client can no longer tell which room you are in
     reasonBarrier: '{barrier} blocked {command}. {detail}'
     reasonBashing: bashing the {barrier} to {stepName}
@@ -6826,6 +7136,9 @@ automation:
     reasonSearching: searching for the hidden way to {stepName}
     searchHolding: The world data says the way to {stepName} is hidden here. Searching for it, and
       staying put until it is found.
+    searchSwitchedOff:
+      The world data says the way to {stepName} is hidden here, and Auto-Search Hidden
+      Exits is off. The route stops here.
     reasonSneak: sneaking before the route
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
     sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after
@@ -7013,8 +7326,9 @@ remotes:
   showAll: Show all
   showing: '{shown} of {total}'
   support:
-    refused: always refused
-    refusedTitle: Refused for everyone, however it is granted; this client never does it.
+    refused: refused unless allowed
+    refusedTitle: Refused to everyone however it is granted, unless Allow @kill and @hangup is on in
+      the Remotes settings. Allow all never grants it.
     unread: no reply recorded
     unreadTitle: '{because}'
 # Serving the window over HTTP (MUDENGINE_WEB=1): the sign-in page main draws,

@@ -53,6 +53,7 @@ export default function InvokeFields({
         hint={t('settings.spells.invokeItemsHint')}
         label={t('settings.spells.invokeItemsLabel')}
         name="invoke-items"
+        setting="automation.spells.invokeItems"
         onChange={onEnabled}
       />
       {enabled && chosen.length === 0 && (
@@ -69,6 +70,7 @@ export default function InvokeFields({
               : choice.item
           }
           name={`invoke-with-${choice.item}`}
+          setting="automation.spells.invokeWith"
           onChange={(on) => tick(choice.item, on)}
         />
       ))}
@@ -79,6 +81,7 @@ export default function InvokeFields({
           key={item}
           label={choices === null ? item : t('settings.spells.invokeAway', { item })}
           name={`invoke-with-${item}`}
+          setting="automation.spells.invokeWith"
           onChange={(on) => tick(item, on)}
         />
       ))}

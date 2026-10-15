@@ -40,25 +40,24 @@ import { useAutoSave } from '../hooks/useAutoSave';
 import { useCharacterRealm, type CharacterRealmLoaders } from '../hooks/useCharacterRealm';
 import { useSettingsPanel } from '../hooks/useSettingsPanel';
 import { useSettingsFind } from '../hooks/useSettingsFind';
+import { useDecisionPage } from '../hooks/useDecisionPage';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import type { Loop, ScopedLoop } from '@shared/loops';
 import type { SessionId, SettingsSnapshot } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/config';
 import { errorMessage } from '@shared/values';
 import { NO_SHEET, type LiveSheet } from '../lib/liveSheet';
+import { doorFocus, doorTarget, type SettingsDoor } from '../lib/settingPlaces';
 
 export interface SettingsScreenProps extends CharacterRealmLoaders {
   open: boolean;
   /**
    * Which character to open on: a profile id, {@link SETTINGS_NEW_CHARACTER},
-   * or `null` for wherever it was left.
-   *
-   * A string rather than an object on purpose. This drives the effect that runs
-   * when the dialog opens, and an object literal from a caller would be a new
-   * value every render — which is the trap that made a refused save flash and
-   * vanish before anybody could read it.
+   * a decision's settings (`SettingsFocus`, todo 119), or `null` for wherever
+   * it was left. Held as state by the caller, since a new object each render
+   * would rerun the opening effect (a refused save once flashed and vanished).
    */
-  openAt?: string | null;
+  openAt?: SettingsDoor;
   /**
    * What a character's percentage thresholds are percentages *of*, and the
    * figures that say which way pick locks and meditate go (todo 50).
@@ -283,7 +282,7 @@ export default function SettingsScreen({
   const panel = useSettingsPanel();
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const find = useSettingsFind(body);
+  const find = useSettingsFind(body, doorFocus(openAt));
 
   /**
    * Puts a form on screen without making it a step.
@@ -386,7 +385,7 @@ export default function SettingsScreen({
         loadForm(emptyForm(next.servers, next.global));
         return;
       }
-      const asked = openAt === null ? undefined : next.characters.find((e) => e.id === openAt);
+      const asked = next.characters.find((e) => e.id === doorTarget(openAt));
       if (asked) {
         setTab('characters');
         setSelected(asked.id);
@@ -658,6 +657,7 @@ export default function SettingsScreen({
     },
     [snapshot, loadGlobalForm]
   );
+  useDecisionPage(doorFocus(openAt), body, tab, selected, openGlobal);
 
   /** Whichever form is on screen: its way back, and how its saving is going. */
   const active = useMemo(() => {

@@ -40,6 +40,7 @@ import type { Priority } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { HealthConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { bareName } from '../../shared/items';
 import { effectSeconds } from '../../shared/menace';
 import {
@@ -66,7 +67,7 @@ export interface WardSources {
 }
 
 export interface WardEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 export class Wards implements SessionModule {
@@ -93,7 +94,7 @@ export class Wards implements SessionModule {
     // combat lease: a reload saying otherwise is their edit and wins.
     if (this.lent && this.config.useWards && !config.useWards) {
       this.lent = false;
-      this.events.notice?.(t('automation.wards.lendEnded'));
+      this.events.notice?.(t('automation.wards.lendEnded'), 'ward-use');
     }
     this.config = config;
     this.enabled = enabled;
@@ -125,8 +126,8 @@ export class Wards implements SessionModule {
   lend(on: boolean): void {
     if (on !== this.lent && !this.config.useWards) {
       // Two literal calls: the dictionary's readers are found by the key.
-      if (on) this.events.notice?.(t('automation.wards.lentForRun'));
-      else this.events.notice?.(t('automation.wards.returnedAfterRun'));
+      if (on) this.events.notice?.(t('automation.wards.lentForRun'), 'ward-use');
+      else this.events.notice?.(t('automation.wards.returnedAfterRun'), 'ward-use');
     }
     this.lent = on;
   }
@@ -215,6 +216,7 @@ export class Wards implements SessionModule {
           command: `use ${name}`,
           priority,
           coalesceKey: `ward:${id}`,
+          decision: 'ward-use',
           expiresAt: now + tuning().spells.buffExpiresMs,
           reason: t('automation.wards.reason', {
             item: name,
@@ -235,7 +237,8 @@ export class Wards implements SessionModule {
             item: name,
             spell: ward?.name ?? String(id),
             hazard: cast.name
-          })
+          }),
+          'ward-use'
         );
         return;
       }
@@ -248,7 +251,8 @@ export class Wards implements SessionModule {
       t('automation.wards.nothingCarried', {
         hazard: cast.name,
         spells: spells.map((id) => this.sources.spellById(id)?.name ?? String(id)).join(', ')
-      })
+      }),
+      'ward-use'
     );
   }
 }

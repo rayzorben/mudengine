@@ -17,19 +17,28 @@ import { Collect, type CollectEnd, type CollectPlanner } from './Collect';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type {
-  AreaPlan,
-  AreaSearched,
-  AreaSearchEnding,
-  AreaSearchPreview,
-  FloorThing,
-  SearchedRoom
+import {
+  areaLimits,
+  type AreaLimits,
+  type AreaPlan,
+  type AreaSearched,
+  type AreaSearchEnding,
+  type AreaSearchPreview,
+  type FloorThing,
+  type SearchedRoom
 } from '../../shared/areaSearch';
+import type { AutomationConfig, SearchConfig } from '../../shared/config';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { roomAddress, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
+
+/** The master switch, and the bounds the settings put on the dialog. */
+export type AreaSearchSettings = Pick<AutomationConfig, 'enabled'> & {
+  search: Pick<SearchConfig, 'areaMaxSteps' | 'areaMaxSearches'>;
+};
 
 export interface AreaSearchPlanner extends Omit<CollectPlanner, 'routeTo'> {
   /** The rooms within `radius` moves of here, in walking order, or why there are none. */
@@ -54,7 +63,7 @@ export interface AreaSearchPlanner extends Omit<CollectPlanner, 'routeTo'> {
 }
 
 export interface AreaSearchEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -103,7 +112,7 @@ export class AreaSearch implements SessionModule {
   private ran: AreaSearched | null = null;
 
   constructor(
-    private enabled: boolean,
+    private settings: AreaSearchSettings,
     queue: CommandQueue,
     private readonly planner: AreaSearchPlanner,
     private readonly events: AreaSearchEvents = {},
@@ -118,9 +127,9 @@ export class AreaSearch implements SessionModule {
     );
   }
 
-  configure(enabled: boolean): void {
-    this.enabled = enabled;
-    if (!enabled) this.finish('switched-off', t('automation.areaSearch.endedSwitchedOff'));
+  configure(settings: AreaSearchSettings): void {
+    this.settings = settings;
+    if (!settings.enabled) this.finish('switched-off', t('automation.areaSearch.endedSwitchedOff'));
   }
 
   reset(): void {
@@ -142,10 +151,9 @@ export class AreaSearch implements SessionModule {
    * are none; null asks at the radius the dialog first offers.
    */
   preview(asked: number | null): AreaSearchPreview {
-    const { maxRadius, maxSearches, firstRadius, firstSearches } = tuning().areaSearch;
-    const radius = asked ?? firstRadius;
+    const bounds = this.limits();
+    const radius = asked ?? bounds.firstRadius;
     const plan = this.planner.plan(radius);
-    const bounds = { maxRadius, maxSearches, firstRadius, firstSearches };
     const combatOff = !this.planner.fightsBack();
     if (typeof plan === 'string') return { ...bounds, combatOff, plan: { refused: plan } };
     const names = (rooms: readonly RoomId[]): string[] =>
@@ -162,6 +170,12 @@ export class AreaSearch implements SessionModule {
         stranded: names(plan.stranded)
       }
     };
+  }
+
+  /** The dialog's bounds, as the settings stand. */
+  limits(): AreaLimits {
+    const { firstRadius, firstSearches } = tuning().areaSearch;
+    return areaLimits(this.settings.search, { firstRadius, firstSearches });
   }
 
   /** Starts the search; its refusal, said and traced, or null once under way. */
@@ -190,7 +204,8 @@ export class AreaSearch implements SessionModule {
     this.events.notice?.(
       searches === 1
         ? t('automation.areaSearch.starting.one', figures)
-        : t('automation.areaSearch.starting.many', figures)
+        : t('automation.areaSearch.starting.many', figures),
+      'area-search'
     );
     this.next(state);
     return null;
@@ -257,7 +272,7 @@ export class AreaSearch implements SessionModule {
   }
 
   private whyNot(state: CharacterState): string | null {
-    if (!this.enabled) return t('automation.areaSearch.refusalSwitchedOff');
+    if (!this.settings.enabled) return t('automation.areaSearch.refusalSwitchedOff');
     if (state.phase !== 'in-game') return t('automation.areaSearch.refusalNotInRealm');
     if (this.run !== null) return t('automation.areaSearch.refusalRunning');
     if (this.planner.fighting()) return t('automation.areaSearch.refusalFighting');
@@ -301,7 +316,8 @@ export class AreaSearch implements SessionModule {
           reason: () => t('automation.areaSearch.reasonSearch'),
           collectMs,
           // Read only for a `get`, and nothing is named.
-          expiresMs: tuning().search.expiresMs
+          expiresMs: tuning().search.expiresMs,
+          decision: 'area-search'
         },
         state
       );
@@ -366,7 +382,8 @@ export class AreaSearch implements SessionModule {
         room: this.planner.nameOf(room),
         done: run.done.size,
         rooms: run.plan.tour.length
-      })
+      }),
+      'area-search'
     );
   }
 
@@ -384,7 +401,10 @@ export class AreaSearch implements SessionModule {
     run.done.add(room);
     run.missed += 1;
     run.missedInARow += 1;
-    this.events.notice?.(t('automation.areaSearch.missed', { room: this.planner.nameOf(room) }));
+    this.events.notice?.(
+      t('automation.areaSearch.missed', { room: this.planner.nameOf(room) }),
+      'area-search'
+    );
     if (run.missedInARow >= tuning().areaSearch.missedInARow) {
       this.finish('missed', t('automation.areaSearch.endedMissed', { missed: run.missedInARow }));
     }
@@ -405,14 +425,14 @@ export class AreaSearch implements SessionModule {
       rooms: run.rooms
     };
     const because = t('automation.areaSearch.because', { radius: run.plan.radius });
-    if (refused !== null) this.events.notice?.(refused);
-    this.events.notice?.(t('automation.areaSearch.done', { searched, missed }));
+    if (refused !== null) this.events.notice?.(refused, 'area-search');
+    this.events.notice?.(t('automation.areaSearch.done', { searched, missed }), 'area-search');
     this.events.decided?.({ at: this.now(), action: ACTION, because, acted: searched > 0 });
   }
 
   private refuse(why: string): string {
     const sentence = t('automation.areaSearch.refused', { why });
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, 'area-search');
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

@@ -34,9 +34,10 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AfkConfig } from '../../shared/config';
 import type { SessionModule } from './Module';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 export interface AfkEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 export class Afk implements SessionModule {
@@ -91,8 +92,9 @@ export class Afk implements SessionModule {
       command: `/${from} ${reply}`,
       priority: 'probe',
       coalesceKey: `afk:${key}`,
-      reason: t('automation.afk.reasonReply')
+      reason: t('automation.afk.reasonReply'),
+      decision: 'afk-reply'
     });
-    this.events.notice?.(t('automation.afk.replied', { player: from }));
+    this.events.notice?.(t('automation.afk.replied', { player: from }), 'afk-reply');
   }
 }

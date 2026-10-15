@@ -13,6 +13,8 @@ import { linkAt } from '../lib/linkify';
 import { t } from '../lib/i18n';
 import { measurePitch } from '../lib/fonts';
 import type { TerminalConfig } from '@shared/config';
+import type { DecisionKind } from '@shared/decisionSettings';
+import type { NoticeDecision } from '@shared/ipc';
 import type { TerminalPalette } from '@shared/themes';
 import type {
   EnterPlace,
@@ -29,7 +31,7 @@ import { screenNotices, terminalSurface, type ScreenNotices } from '../lib/scree
 import type { NameIndex, SpanHit } from '../lib/names';
 import type { Box } from '../lib/menu';
 import { anchorRect, type PopoverAnchor } from '../lib/popover';
-import { MARK_GLYPH } from './marks';
+import { DECISION_GLYPH, MARK_GLYPH } from './marks';
 import { GLYPH_CELLS, SGR_RESET } from '@shared/template';
 import { sliceLines, splitMarks } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
@@ -60,8 +62,8 @@ export interface TerminalHandle {
    * worse than losing it: the reader cannot tell where one ends.
    */
   reset(): void;
-  /** Print an engine message inline, in the game's own visual language. */
-  notice(message: string): void;
+  /** Print an engine message inline, in the game's own visual language; a decision gets its gear. */
+  notice(message: string, decision?: NoticeDecision): void;
   jumpToLatest(): void;
   focus(): void;
   /** Find in the backscroll. Empty query clears the highlight. */
@@ -138,6 +140,8 @@ export interface TerminalViewProps {
    * pressed and nothing else.
    */
   onAct?(action: TerminalActionName): void;
+  /** A line's gear clicked: the settings behind the decision it reports (todo 119). */
+  onSetting?(decision: DecisionKind): void;
   /**
    * The rows under Copy and Paste: the recent rooms and loops (todo 28). Asked
    * when the menu opens. Never rejects: `useRecentMenu` reports a failed ask
@@ -197,6 +201,7 @@ export default function TerminalView({
   onSelectSlot,
   onChooseRoom,
   onAct,
+  onSetting,
   recent,
   reportSize = true,
   settings,
@@ -278,6 +283,7 @@ export default function TerminalView({
     onSelectSlot,
     onChooseRoom,
     onAct,
+    onSetting,
     onEdge
   });
   handlers.current = {
@@ -292,6 +298,7 @@ export default function TerminalView({
     onSelectSlot,
     onChooseRoom,
     onAct,
+    onSetting,
     onEdge
   };
 
@@ -441,7 +448,10 @@ export default function TerminalView({
     // The terminal answers no query a server sends and turns on no reporting
     // mode: xterm's answer would be typed into the game (todo 832).
     silenceQueries(term);
-    stampsRef.current = drawStamps(term);
+    stampsRef.current = drawStamps(term, {
+      glyph: DECISION_GLYPH,
+      open: (decision) => handlers.current.onSetting?.(decision)
+    });
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
     /*
@@ -902,9 +912,9 @@ export default function TerminalView({
      * notices raised in one turn would all read the cursor as it was before
      * any of them. Where the bytes go is `screenNotices`'s.
      */
-    const postNotice = (message: string): void => {
+    const postNotice = (message: string, decision?: NoticeDecision): void => {
       notices.expect();
-      writer.settled(() => notices.notice(message));
+      writer.settled(() => notices.notice(message, decision));
     };
 
     handlers.current.onReady({

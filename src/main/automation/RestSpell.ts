@@ -30,6 +30,7 @@ import {
 import { prowessSheetOf } from '../../shared/verdict';
 import type { WorldSpell } from '../../shared/world';
 import type { SessionModule } from './Module';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 export interface RestSpellSources {
   realmSpell(name: string): WorldSpell | null;
@@ -37,7 +38,7 @@ export interface RestSpellSources {
   realmClass(): ProwessClass & { mageryType: number | null; family: RealmFamily | null };
   /** How many times faster than the stock clocks the realm runs. */
   speed(): number;
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
   gate?: CastGate;
 }
@@ -89,6 +90,7 @@ export class RestSpell implements SessionModule {
       command: found.word,
       priority: 'probe',
       coalesceKey: 'rest-spell',
+      decision: 'rest-spell',
       expiresAt: at + tuning().spells.buffExpiresMs,
       reason: t('automation.recovery.restSpellReason', { spell: found.configured }),
       ...gatedCast(this.sources.gate ?? OPEN_CAST_GATE, found.configured, () => {
@@ -142,7 +144,8 @@ export class RestSpell implements SessionModule {
             spell,
             saved: answer.savedSeconds,
             payback: answer.paybackSeconds
-          })
+          }),
+      'rest-spell'
     );
   }
 }

@@ -18,7 +18,7 @@
  *   from a room it may have left. Planning again from here is the same rule
  *   `Walker` follows after any failure.
  * - **A stop that is not a fight is counted.** A door nobody can open does not
- *   become better on the tenth attempt, so after `tuning.loop.maxFailures` consecutive
+ *   become better on the tenth attempt, so after `walk.failedLegs` consecutive
  *   non-combat failures the loop stops and says which stop it could not reach.
  * - **The player outranks it.** Anything typed stops the loop, as it stops a
  *   walk, and it says so once.
@@ -57,8 +57,10 @@ import {
   type MovementConfig,
   type WalkConfig
 } from '../../shared/config';
+import { expRateGraceMs } from '../../shared/walkChoices';
 import { afflictionHolding, type AfflictionHold } from '../../shared/walk';
 import type { CarriedLap } from '../../shared/underway';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { RoomId, Route } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -73,7 +75,7 @@ import type { SessionModule } from './Module';
 const LOST = ['automation.walk.reasonAmbiguous', 'automation.walk.reasonTimeout'] as const;
 
 export interface LoopEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** Progress changed, so the renderer can redraw. */
   progress?(progress: LoopProgress): void;
   /**
@@ -490,7 +492,8 @@ export class LoopRunner implements SessionModule {
     // character back past everything it is standing next to.
     this.index = this.joining(loop).stop;
     this.events.notice?.(
-      t('automation.loops.started', { loopName: loop.name, stopCount: loop.stops.length })
+      t('automation.loops.started', { loopName: loop.name, stopCount: loop.stops.length }),
+      'loop-advance'
     );
     this.holdForVitals(state);
     this.publish();
@@ -513,7 +516,7 @@ export class LoopRunner implements SessionModule {
    * and dwell as though nothing had happened. `SessionManager.stopMoving` is
    * the one path that does both.
    */
-  stop(reason: string): void {
+  stop(reason: string, decision?: DecisionKind): void {
     if (this.status !== 'running') return;
     this.clearTimer();
     // Before anything else moves: where the character is standing *now* is the
@@ -525,7 +528,7 @@ export class LoopRunner implements SessionModule {
     this.offline = false;
     this.lingering = false;
     this.waiting = false;
-    this.events.notice?.(t('automation.loops.stopped', { reason }));
+    this.events.notice?.(t('automation.loops.stopped', { reason }), decision);
     this.publish();
   }
 
@@ -589,7 +592,7 @@ export class LoopRunner implements SessionModule {
 
   /**
    * Whether the lap's experience rate has fallen under `walk.minExpPerHour` —
-   * MegaMUD's `MinExpRate`, judged only once `tuning.loop.expRateGraceMs` has
+   * MegaMUD's `MinExpRate`, judged only once `walk.expRateGraceMinutes` have
    * passed since the anchor, because the first minutes of any lap are the walk
    * to the first lair. Returns the rate when it has, and null otherwise; an
    * unread experience figure is never a low one.
@@ -601,7 +604,7 @@ export class LoopRunner implements SessionModule {
     const exp = state.progress.exp;
     if (anchor === null || exp === null) return null;
     const elapsed = this.now() - anchor.at;
-    if (elapsed < tuning().loop.expRateGraceMs) return null;
+    if (elapsed < expRateGraceMs(this.walk)) return null;
     const rate = ((exp - anchor.exp) * 3_600_000) / elapsed;
     return rate < floor ? rate : null;
   }
@@ -965,12 +968,13 @@ export class LoopRunner implements SessionModule {
       return;
     }
     this.failures += 1;
-    if (this.failures >= tuning().loop.maxFailures) {
+    if (this.failures >= this.walk.failedLegs) {
       this.stop(
         t('automation.loops.giveUpReason', {
           stopName: this.loop.stops[this.index]?.room ?? t('automation.loops.fallbackNextStop'),
           why: why ?? t('automation.loops.fallbackWhy')
-        })
+        }),
+        'loop-fail'
       );
       return;
     }
@@ -986,7 +990,8 @@ export class LoopRunner implements SessionModule {
       t('automation.loops.skippingStop', {
         stopName: this.loop.stops[this.index]?.room ?? t('automation.loops.fallbackStop'),
         why: why ?? t('automation.loops.fallbackWhy')
-      })
+      }),
+      'loop-fail'
     );
     this.step();
   }
@@ -1057,7 +1062,7 @@ export class LoopRunner implements SessionModule {
       });
       // The stop was already loud; naming the better lair makes it useful (todo 05).
       const better = this.events.betterSpot?.() ?? null;
-      this.stop(better === null ? reason : `${reason} ${better}`);
+      this.stop(better === null ? reason : `${reason} ${better}`, 'loop-rate-floor');
       return;
     }
     /*
@@ -1509,7 +1514,8 @@ export class LoopRunner implements SessionModule {
           ? t('automation.loops.mended')
           : beside
             ? t('automation.loops.tooHurtBeside')
-            : t('automation.loops.tooHurt')
+            : t('automation.loops.tooHurt'),
+        'loop-vitals-hold'
       );
     } else {
       this.events.notice?.(
@@ -1517,7 +1523,8 @@ export class LoopRunner implements SessionModule {
           ? t('automation.loops.manaBack')
           : beside
             ? t('automation.loops.tooDrainedBeside')
-            : t('automation.loops.tooDrained')
+            : t('automation.loops.tooDrained'),
+        'loop-vitals-hold'
       );
     }
     this.publish();
@@ -1608,8 +1615,8 @@ export class LoopRunner implements SessionModule {
 
   private fail(why: string): string {
     this.failures += 1;
-    if (this.failures >= tuning().loop.maxFailures) {
-      this.stop(why);
+    if (this.failures >= this.walk.failedLegs) {
+      this.stop(why, 'loop-fail');
       return why;
     }
     // Try the stop after this one: a loop with one unreachable room is still

@@ -10,7 +10,7 @@ import type { barOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { CharacterFields } from '../lib/characterForm';
 
-type FleeGotoForm = Pick<CharacterFields, 'fleeGoto' | 'fleeGotoBelow' | 'fleeGotoCommand'>;
+export type FleeGotoForm = Pick<CharacterFields, 'fleeGoto' | 'fleeGotoBelow' | 'fleeGotoCommand'>;
 
 export interface FleeGotoFieldsProps {
   form: FleeGotoForm;
@@ -40,12 +40,14 @@ export default function FleeGotoFields({
           hint={t('settings.health.fleeGotoHint')}
           label={t('settings.health.fleeGotoLabel')}
           name={`${namePrefix}flee-goto`}
+          setting="automation.safety.fleeGoto.enabled"
           onChange={(value) => patch({ fleeGoto: value })}
         />
         {form.fleeGoto && (
           <NumberField
             label={t('settings.health.belowHealthLabel')}
             name={`${namePrefix}flee-goto-health`}
+            setting="automation.safety.fleeGoto.belowHealth"
             bar={bar(form.fleeGotoBelow)}
             figure={figure?.(form.fleeGotoBelow) ?? null}
             onChange={(value) => patch({ fleeGotoBelow: value })}
@@ -58,6 +60,7 @@ export default function FleeGotoFields({
           hint={t('settings.health.fleeGotoCommandHint')}
           label={t('settings.health.fleeGotoCommandLabel')}
           name={`${namePrefix}flee-goto-command`}
+          setting="automation.safety.fleeGoto.command"
           onChange={(value) => patch({ fleeGotoCommand: value })}
           placeholder={t('settings.health.fleeGotoCommandPlaceholder')}
           spellCheck={false}

@@ -213,7 +213,8 @@ export class AutoLight implements SessionModule {
       priority: 'probe',
       coalesceKey: 'light:look',
       expiresAt: this.now() + tuning().light.expiresMs,
-      reason: t('automation.light.reasonLook', { item })
+      reason: t('automation.light.reasonLook', { item }),
+      decision: 'light-lit'
     });
   }
 
@@ -357,7 +358,8 @@ export class AutoLight implements SessionModule {
         expiresAt,
         reason: lightIsUsable(readied)
           ? t('automation.light.reasonRemoveDim', { item: readied.name })
-          : t('automation.light.reasonRemoveSpent', { item: readied.name })
+          : t('automation.light.reasonRemoveSpent', { item: readied.name }),
+        decision: 'light-lit'
       });
     }
     this.queue.enqueue({
@@ -365,7 +367,8 @@ export class AutoLight implements SessionModule {
       priority,
       coalesceKey: 'light',
       expiresAt,
-      reason: t('automation.light.reasonLight', { item: choice.light.name, room: where })
+      reason: t('automation.light.reasonLight', { item: choice.light.name, room: where }),
+      decision: 'light-lit'
     });
     this.litAt = this.now();
     this.asked = choice.light.name;
@@ -404,7 +407,8 @@ export class AutoLight implements SessionModule {
       expiresAt: this.now() + tuning().light.expiresMs,
       // A move typed after the proposal would take the light off in the next room, which may be dark.
       stillWanted: () => this.events.moveInFlight?.() !== true && this.decidedIn === here,
-      reason: t('automation.light.reasonExtinguish', { item: sight.lit })
+      reason: t('automation.light.reasonExtinguish', { item: sight.lit }),
+      decision: 'light-out'
     });
     this.events.decided?.({
       at: this.now(),

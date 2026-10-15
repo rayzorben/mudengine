@@ -27,9 +27,14 @@ export class RowTimes {
   /** The repaint has erased that row since, so what is written next replaces it. */
   private erased = false;
 
-  /** What goes in front of `text`, written on the cursor's row, and the row as `text` leaves it. */
-  before(text: string, kind: RowText): RowTime | null {
-    const put = this.put(text, kind);
+  /**
+   * What goes in front of `text`, written on the cursor's row, and the row as
+   * `text` leaves it. A piece that carries out a decision (`decided`, the echo
+   * of a command a setting made) times its row wherever it lands, so the gear
+   * the time carries is on it (todo 119).
+   */
+  before(text: string, kind: RowText, decided = false): RowTime | null {
+    const put = decided ? 'time' : this.put(text, kind);
     if (put === 'time') this.timed = true;
     if (put === 'clear') this.timed = false;
     if (put !== null || visible(text)) this.erased = false;

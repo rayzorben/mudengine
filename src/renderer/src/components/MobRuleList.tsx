@@ -14,8 +14,11 @@ import {
 } from '@shared/mobRules';
 import { int } from '@shared/values';
 import type { SpellOption } from '@shared/ipc';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export interface MobRuleListProps {
+  /** The setting the list edits whole, for a console line's gear (todo 119). */
+  setting?: SettingPath;
   rows: readonly MobRule[];
   /**
    * The monsters the realm names, as suggestions rather than options
@@ -62,6 +65,7 @@ export interface MobRuleListProps {
  * `hangup`) carries none of that, so choosing one takes them off (`treated`).
  */
 export default function MobRuleList({
+  setting,
   rows,
   known,
   spells,
@@ -87,7 +91,7 @@ export default function MobRuleList({
   };
 
   return (
-    <>
+    <div className="settings-list" data-setting={setting}>
       {rows.length > 0 && (
         <ul className="settings-steps settings-mob-rules">
           {rows.map((row, index) => (
@@ -217,7 +221,7 @@ export default function MobRuleList({
         <Icon name="plus" />
         {t('settings.combat.mobRuleAdd')}
       </button>
-    </>
+    </div>
   );
 }
 

@@ -229,6 +229,7 @@ export class AutoInvoke implements SessionModule {
         command: `use ${name}`,
         priority: 'probe',
         coalesceKey: `invoke:${name}`,
+        decision: 'invoke-item',
         expiresAt: now + tuning().spells.buffExpiresMs,
         reason: t('automation.invoke.reason', { item: name, spell: spell.name }),
         // Spent when the `use` leaves, so one held for the round is proposed
@@ -289,6 +290,7 @@ export class AutoInvoke implements SessionModule {
         command,
         priority: 'probe' as const,
         coalesceKey: `${SWAP_KEY}${index}:${command}`,
+        decision: 'invoke-item' as const,
         reason
       };
       const backSent = (): void => {

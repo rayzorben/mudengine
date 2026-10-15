@@ -41,12 +41,26 @@ export function asManifest(value: unknown, folder: string): ExtensionManifest | 
   return ui === undefined ? { name, title, main } : { name, title, main, ui };
 }
 
-/** What the window is told of an installed extension. */
-export interface ExtensionInfo {
-  name: string;
-  title: string;
-  /** Where its card's page is served, or null for none. */
-  page: string | null;
+/**
+ * What the window is told of an installed extension: loaded this launch, with
+ * where its card's page is served (null for none), or not loaded, where the
+ * options file switched it off (todo 118), and so with no page.
+ */
+export type ExtensionInfo = { name: string; title: string } & (
+  { loaded: true; page: string | null } | { loaded: false; page: null }
+);
+
+/**
+ * A setting an extension has in force over the character's own (todo 118),
+ * drawn on the character's settings page so the value there is not mistaken
+ * for the one in force.
+ */
+export interface LaidSetting {
+  /** The extension's title. */
+  by: string;
+  /** Under `automation`, dotted as the options file nests it: `combat.attack`. */
+  path: string;
+  value: unknown;
 }
 
 /**

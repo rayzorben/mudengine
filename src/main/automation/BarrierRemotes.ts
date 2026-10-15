@@ -24,10 +24,13 @@ import {
   type RoomId
 } from '../../shared/world';
 import type { CommandQueue } from './CommandQueue';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 
 export interface BarrierRemotesEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
+
+const BARRIER: DecisionKind = 'remote-barrier';
 
 interface Row {
   /** The try held: the trap is disarmed, the lock picked, the door bashed open. */
@@ -48,7 +51,7 @@ const ROWS: Readonly<Record<BarrierJob, Row>> = {
       (block.groups['direction'] === undefined ||
         asSpokenDirection(block.groups['direction']) === direction),
     failed: () => false,
-    tries: (odds) => disarmTries(odds, tuning().walk.disarmDoubt),
+    tries: (odds, config) => disarmTries(odds, config.movement.disarmDoubt),
     skill: () => t('automation.remotes.skillTraps')
   },
   pick: {
@@ -107,7 +110,7 @@ export class BarrierRemotes {
   ): void {
     const direction = argument === null ? null : asSpokenDirection(argument);
     if (direction === null) {
-      this.events.notice?.(t('automation.remotes.barrierNoWay', { from, job }));
+      this.events.notice?.(t('automation.remotes.barrierNoWay', { from, job }), BARRIER);
       return;
     }
     this.end(null);
@@ -116,7 +119,7 @@ export class BarrierRemotes {
       state.room.exits.find((way) => way.direction === direction)?.requirement ?? undefined;
     const refusal = this.refusal(job, need, state, words);
     if (refusal !== null) {
-      this.events.notice?.(refusal);
+      this.events.notice?.(refusal, BARRIER);
       answer('{failed}');
       return;
     }
@@ -135,7 +138,8 @@ export class BarrierRemotes {
       answer
     };
     this.events.notice?.(
-      t('automation.remotes.barrierTrying', { ...words, percent: Math.round(odds * 100), tries })
+      t('automation.remotes.barrierTrying', { ...words, percent: Math.round(odds * 100), tries }),
+      BARRIER
     );
     this.latest = state;
     this.tryOnce();
@@ -148,7 +152,8 @@ export class BarrierRemotes {
     this.latest = state;
     if (row.held(block, running.direction)) {
       this.events.notice?.(
-        t('automation.remotes.barrierHeld', { ...this.words(running), count: running.spent + 1 })
+        t('automation.remotes.barrierHeld', { ...this.words(running), count: running.spent + 1 }),
+        BARRIER
       );
       this.end('{ok}');
       return;
@@ -163,7 +168,7 @@ export class BarrierRemotes {
     this.latest = state;
     const moved = roomAddress(state.room) !== running.here;
     if (!this.config.enabled || fightIsRunning(state) || moved) {
-      this.events.notice?.(t('automation.remotes.barrierLeft', this.words(running)));
+      this.events.notice?.(t('automation.remotes.barrierLeft', this.words(running)), BARRIER);
       this.end('{failed}');
     }
   }
@@ -221,7 +226,7 @@ export class BarrierRemotes {
     if (running === null || state === null) return;
     const refusal = this.tooHurt(running.job, running.need, state, this.words(running));
     if (refusal !== null) {
-      this.events.notice?.(refusal);
+      this.events.notice?.(refusal, BARRIER);
       this.end('{failed}');
       return;
     }
@@ -231,6 +236,7 @@ export class BarrierRemotes {
       coalesceKey: 'remote:barrier',
       stillWanted: () => this.running === running,
       reason: t('automation.remotes.reasonBarrier', this.words(running)),
+      decision: BARRIER,
       onSent: () => {
         running.out = true;
         this.arm(running, tuning().walk.disarmAnswerMs);
@@ -250,7 +256,7 @@ export class BarrierRemotes {
         this.failedOnce(running);
         return;
       }
-      this.events.notice?.(t('automation.remotes.barrierLeft', this.words(running)));
+      this.events.notice?.(t('automation.remotes.barrierLeft', this.words(running)), BARRIER);
       this.end('{failed}');
     }, ms);
   }
@@ -263,7 +269,8 @@ export class BarrierRemotes {
       return;
     }
     this.events.notice?.(
-      t('automation.remotes.barrierGaveUp', { ...this.words(running), count: running.spent })
+      t('automation.remotes.barrierGaveUp', { ...this.words(running), count: running.spent }),
+      BARRIER
     );
     this.end('{failed}');
   }

@@ -52,6 +52,7 @@ export default function PlayerGrants({
         hint={t('settings.remotes.addPlayerHint')}
         label={t('settings.remotes.addPlayerLabel')}
         name="remotes-add-player"
+        setting="automation.remotes.players"
         onChange={setTyped}
         onSubmit={() => {
           const key = typed.trim().toLowerCase();

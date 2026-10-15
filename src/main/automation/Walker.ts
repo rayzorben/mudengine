@@ -75,6 +75,7 @@ import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 import { WalkClock } from './walk/clock';
 import type { IntentFilter, WalkerEvents, WalkInFlight } from './walk/ports';
+import type { DecisionKind } from '../../shared/decisionSettings';
 import { Holds } from './walk/Holds';
 import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
 import { DisarmBeforeStep } from './walk/Disarm';
@@ -244,7 +245,7 @@ export class Walker implements SessionModule {
       quiet: () => this.quiet,
       step: () => this.route?.steps[this.index],
       publish: () => this.publish(),
-      stop: (reason) => this.stop(reason),
+      stop: (reason, decision) => this.stop(reason, false, decision),
       stepAgain: () => this.sendCurrent(false),
       stepWhenFree: () => this.retry(this.events.stateNow?.(), false)
     };
@@ -270,7 +271,8 @@ export class Walker implements SessionModule {
       ...inFlight,
       kind: () => this.kind,
       destination: () => this.route?.steps.at(-1),
-      detour: (route, state, ahead) => this.detour(route, state, ahead)
+      detour: (route, state, ahead) => this.detour(route, state, ahead),
+      movement: () => this.config.movement
     });
     this.barriers = new Barriers(
       config,
@@ -279,10 +281,10 @@ export class Walker implements SessionModule {
       {
         ...inFlight,
         retry: (state, fresh) => this.retry(state, fresh),
-        dispatch: (step, command, reason, onSent) => this.dispatch(step, command, reason, onSent),
+        dispatch: (...args) => this.dispatch(...args),
         onWire: (step) => this.onWire(step),
         nudgeAfter: () => this.nudgeAfter(),
-        reprint: (reason) => this.reprint(reason)
+        reprint: (reason, decision) => this.reprint(reason, decision)
       },
       this.clock,
       this.holds,
@@ -747,7 +749,7 @@ export class Walker implements SessionModule {
   }
 
   /** Ends the walk. Safe to call when not walking, and drops a leg's line kept for a fight. */
-  stop(reason: string, quiet = false): void {
+  stop(reason: string, quiet = false, decision?: DecisionKind): void {
     if (this.fought.clear()) this.publish();
     if (this.status !== 'walking') return;
     this.clock.clear();
@@ -758,10 +760,9 @@ export class Walker implements SessionModule {
     this.reason = reason;
     // Put by for a walk to the same journey only (`Levers.drop`).
     this.levers.drop();
-    // `this.quiet` is the whole walk's silence and `quiet` is this stop's; a
-    // loop's leg ending is already reported by the loop, which says what it
-    // decided to do about it rather than merely that a walk ended.
-    if (!quiet && !this.quiet) this.events.notice?.(t('automation.walk.stopped', { reason }));
+    // The walk's silence or this stop's: a loop's leg ending is reported by the loop.
+    if (!quiet && !this.quiet)
+      this.events.notice?.(t('automation.walk.stopped', { reason }), decision);
     // Quiet or not, whoever walks *because of* something else must hear it end.
     this.events.ended?.(false, reason);
     this.publish();
@@ -859,6 +860,7 @@ export class Walker implements SessionModule {
     this.offRounds.onBlock(block);
     if (this.status !== 'walking') return;
     if (isSneakAnswer(block.type)) return this.sneak.answered(block.type);
+    if (block.type === 'user-sneaking') this.sneak.sneaked();
     if (block.type === 'trap-disarmed') return this.disarm.answered(block.groups['direction']);
 
     /*
@@ -1294,7 +1296,8 @@ export class Walker implements SessionModule {
     if (name === this.warnedLight) return;
     this.warnedLight = name;
     this.events.notice?.(
-      t('automation.walk.darkLightSpent', { stepName: step.name, lightName: name })
+      t('automation.walk.darkLightSpent', { stepName: step.name, lightName: name }),
+      'walk-dark-hold'
     );
   }
 
@@ -1561,26 +1564,24 @@ export class Walker implements SessionModule {
     // rather than starting again — otherwise `openTries` would never be reached.
     if (fresh) this.barriers.forget();
     /*
-     * Whatever must go ahead of the step, in its band, so a torch asked for
-     * here is lit before the character moves; only a fresh send. The disarm,
-     * then the sneak, on **every** send: `DisarmBeforeStep`, `SneakBeforeStep`.
+     * Whatever must go ahead of the step, in its band (a search, a torch), on
+     * a fresh send. The disarm, then the sneak, on **every** send, asked of the
+     * state read again: a search sent above has broken stealth (todo 120).
      */
     const now = this.events.stateNow?.() ?? from;
     if (now !== undefined) this.noteRoomBehind(now);
     if (fresh && now !== undefined) {
       this.events.beforeStep?.({ name: step.name, light: step.light }, now);
-      // And the ward the room ahead wants, in the same band and after the
-      // light for the same reason: both must reach the wire before the step.
+      // And the ward the room ahead wants, in the same band, after the light.
       this.events.wardFor?.(step.to, now);
-      // And the shut door, in place of the step (`Barriers.openShutWayFirst`):
-      // after the light, which only a fresh send asks for; before the sneak.
+      // The shut door in place of the step (`Barriers.openShutWayFirst`), before the sneak.
       if (this.barriers.openShutWayFirst(step, now)) return;
-      // And a hidden exit its action has not opened yet: the lever or the item
-      // takes the step's place (`Levers.pullLeversFirst`).
+      // A hidden exit not opened yet: its lever or item first (`Levers.pullLeversFirst`).
       if (this.levers.pullLeversFirst(step, now)) return;
     }
-    if (now !== undefined && this.disarm.ask(now)) return;
-    if (now !== undefined && this.sneak.ask(now, this.config.movement.sneak)) return;
+    const ready = this.events.stateNow?.() ?? now;
+    if (ready !== undefined && this.disarm.ask(ready, this.config.movement)) return;
+    if (ready !== undefined && this.sneak.ask(ready, this.config.movement)) return;
     /*
      * And where the realm's own spell will put the character, for an exit
      * whose cast moves them — a draw *or* an address. Both answer with two
@@ -1607,12 +1608,13 @@ export class Walker implements SessionModule {
     step: RouteStep,
     command: string,
     reason: string,
-    onSent: () => void = () => this.noteStepSent(step, command)
+    onSent: () => void = () => this.noteStepSent(step, command),
+    decision?: DecisionKind
   ): void {
     this.stepSent = false;
     // Never coalesced: a second `n` is a different move, which is exactly the
     // distinction text-matching de-duplication cannot make.
-    const queued = this.queue.enqueue({ command, priority: 'movement', reason, onSent });
+    const queued = this.queue.enqueue({ command, priority: 'movement', reason, onSent, decision });
     /*
      * The arbiter's answer, which this used to throw away.
      *
@@ -1703,7 +1705,7 @@ export class Walker implements SessionModule {
         this.pollForSend(command);
         return;
       }
-      this.stop(t('automation.walk.reasonNotSent', { command }));
+      this.stop(t('automation.walk.reasonNotSent', { command }), false, 'walk-timeout-stop');
     });
   }
 
@@ -1726,7 +1728,8 @@ export class Walker implements SessionModule {
       if (this.status !== 'walking') return;
       if (this.afterTheLine(() => this.waitForAnswer(command))) return;
       if (portalLeftUnseen(this.route?.steps[this.index], this.events.stateNow?.())) {
-        if (!this.quiet) this.events.notice?.(t('automation.walk.noNudgeUnseen', { command }));
+        if (!this.quiet)
+          this.events.notice?.(t('automation.walk.noNudgeUnseen', { command }), 'walk-nudge');
       } else if (this.holds.standing()) this.nudge(command);
       this.waitForPrompt(command);
     });
@@ -1804,7 +1807,7 @@ export class Walker implements SessionModule {
        */
       if (this.afterTheLine(() => this.waitForPrompt(command))) return;
       if (this.holds.refusedAtDeadline(command) || this.roomCommands.refusedAtDeadline()) return;
-      this.stop(t('automation.walk.reasonTimeout', { command }));
+      this.stop(t('automation.walk.reasonTimeout', { command }), false, 'walk-timeout-stop');
     });
   }
 
@@ -1817,18 +1820,15 @@ export class Walker implements SessionModule {
    * bare room reprint, because the server had kept none of them). That is
    * exactly the fact a stalled step is waiting for, for one command.
    *
-   * `REREAD_ROOM`, the named empty command every other client-side re-read
-   * sends, rather than a bare `''` here: one fact, one spelling, and the
-   * places that send it stay findable.
+   * `REREAD_ROOM`, the named empty command every other client-side re-read sends,
+   * rather than a bare `''`: one fact, one spelling, and every sender findable.
    *
    * `probe`, the least urgent band, and coalesced: this must never displace an
    * attack or an escape, and **one per command sent** is the whole budget — the
    * beat is re-armed by `onSent`, so a step and each forcing attempt behind it
    * get one apiece and nothing gets two. A second for the same command would
-   * be the client answering its own silence with more of it. Through the
-   * arbiter rather than around it, which is what keeps it off a half-typed
-   * line: gluing our Enter onto the player's partial command is the failure
-   * `CommandQueue` exists for.
+   * be the client answering its own silence with more of it. Through the arbiter,
+   * which keeps it off a half-typed line (the failure `CommandQueue` exists for).
    *
    * The cost this used to carry is paid off (2026-09-02). A reprint is a room
    * block, and arriving rooms consume the expectation queue, so when the step's
@@ -1842,11 +1842,10 @@ export class Walker implements SessionModule {
    * through `CharacterTracker.observeReread` now, so the block answering it is
    * attributed to it and **takes no move**. Still cancelled while queued the
    * moment the step confirms: a command not sent is cheaper than one correctly
-   * accounted for. Behind a portal too, save from a room left unseen
-   * (`portalLeftUnseen`, todo 808).
+   * accounted for. Behind a portal too, save from a room left unseen (808).
    */
   private nudge(command: string): void {
-    this.reprint(t('automation.walk.reasonNudge', { command }));
+    this.reprint(t('automation.walk.reasonNudge', { command }), 'walk-nudge');
   }
 
   /**
@@ -1855,8 +1854,9 @@ export class Walker implements SessionModule {
    * (`Barriers.onSearchAnswered`): two queued together would be one wasted
    * and one resolved against a step it does not answer.
    */
-  private reprint(reason: string): void {
-    this.queue.enqueue({ command: REREAD_ROOM, priority: 'probe', coalesceKey: NUDGE_KEY, reason });
+  private reprint(reason: string, decision: DecisionKind): void {
+    const command = REREAD_ROOM;
+    this.queue.enqueue({ command, priority: 'probe', coalesceKey: NUDGE_KEY, reason, decision });
   }
 
   /** Drops a nudge that has not gone out; what has gone cannot be recalled. */

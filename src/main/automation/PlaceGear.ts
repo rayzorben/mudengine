@@ -20,8 +20,6 @@ export interface PlaceGearSources {
   exposureAt(room: RoomId): Exposure | null;
   /** A carried item as the choice reads it, or null where the realm has no slot for it. */
   placeItem(item: CharacterState['inventory']['items'][number]): PlaceItem | null;
-  /** Hit points a round a swap has to save (`tuning.placeGear.minSaved`). */
-  minSaved(): number;
 }
 
 export class PlaceGear {
@@ -85,8 +83,10 @@ export class PlaceGear {
   /**
    * The layer for the kit now. Nothing is put back while a fight is running:
    * a swap back mid-fight is a round spent on the wrong side of the edge.
+   * `minSaved` is the hit points a round a swap has to save
+   * (`automation.gear.resistMinSaved`).
    */
-  layer(state: CharacterState, fighting: boolean): PlaceLayer {
+  layer(state: CharacterState, fighting: boolean, minSaved: number): PlaceLayer {
     const here = roomAddress(state.room);
     const exposure = here === null ? null : this.exposureAt(here);
     const items = this.itemsOf(state.inventory.items);
@@ -98,9 +98,7 @@ export class PlaceGear {
       return was === undefined ? item : { ...item, equipped: sameItem(item.name, was) };
     });
     const wear =
-      exposure === null
-        ? new Map<string, string>()
-        : placeChoice(exposure, baseline, this.sources.minSaved());
+      exposure === null ? new Map<string, string>() : placeChoice(exposure, baseline, minSaved);
     for (const [slot] of wear) {
       if (this.replaced.has(slot)) continue;
       const worn = items.find((item) => item.equipped && item.slot === slot);

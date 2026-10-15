@@ -126,7 +126,12 @@ describe.skipIf(!available)('the Gear card on gmud.mdb', () => {
     state = { ...state, inventory: { ...state.inventory, wealth: 100 } };
     const planStarted = performance.now();
     const plan = await planGearTrip(
-      { world: () => w, errands: errands as never, state: () => state },
+      {
+        config: () => DEFAULT_CONFIG.automation,
+        world: () => w,
+        errands: errands as never,
+        state: () => state
+      },
       picks.slice(0, 6)
     );
     const planMs = performance.now() - planStarted;

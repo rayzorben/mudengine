@@ -1,0 +1,80 @@
+/**
+ * What a route pays for what it walks through (todo 118), one fieldset for the
+ * character form and the options page beside Avoiding: a fight and a lair in
+ * steps, how Another way is looked for, and how long a trip goes round a room
+ * this character ran from. The router reads them per request, so each
+ * character's own figures price its own routes.
+ */
+import ChoiceFields, { type ChoiceRow } from './ChoiceFields';
+import { t } from '../lib/i18n';
+import { movementChoices, type MovementChoices } from '@shared/walkChoices';
+
+type RoutePrice =
+  'fightCost' | 'dangerCost' | 'anotherWayPenalty' | 'anotherWayLonger' | 'avoidRanFromMinutes';
+
+export interface RoutingFieldsetProps {
+  choices: MovementChoices;
+  onChoice(patch: Partial<MovementChoices>): void;
+  /** Put before each field's name, so the two pages' fields keep apart. */
+  namePrefix: string;
+}
+
+function rows(): ReadonlyArray<ChoiceRow<RoutePrice>> {
+  return [
+    {
+      field: 'fightCost',
+      name: 'fight-cost',
+      setting: 'automation.movement.fightCost',
+      label: t('settings.movement.fightCost'),
+      hint: t('settings.movement.fightCostHint')
+    },
+    {
+      field: 'dangerCost',
+      name: 'danger-cost',
+      setting: 'automation.movement.dangerCost',
+      label: t('settings.movement.dangerCost'),
+      hint: t('settings.movement.dangerCostHint')
+    },
+    {
+      field: 'anotherWayPenalty',
+      name: 'another-way-penalty',
+      setting: 'automation.movement.anotherWayPenalty',
+      label: t('settings.movement.anotherWayPenalty'),
+      hint: t('settings.movement.anotherWayPenaltyHint')
+    },
+    {
+      field: 'anotherWayLonger',
+      name: 'another-way-longer',
+      setting: 'automation.movement.anotherWayLonger',
+      label: t('settings.movement.anotherWayLonger'),
+      hint: t('settings.movement.anotherWayLongerHint'),
+      share: true
+    },
+    {
+      field: 'avoidRanFromMinutes',
+      name: 'avoid-ran-from',
+      setting: 'automation.movement.avoidRanFromMinutes',
+      label: t('settings.movement.avoidRanFrom'),
+      hint: t('settings.movement.avoidRanFromHint')
+    }
+  ];
+}
+
+export default function RoutingFieldset({
+  choices,
+  onChoice,
+  namePrefix
+}: RoutingFieldsetProps): React.JSX.Element {
+  return (
+    <fieldset className="settings-menus" data-fieldset="movement-routing">
+      <legend>{t('settings.movement.routingLegend')}</legend>
+      <ChoiceFields
+        namePrefix={namePrefix}
+        onChange={onChoice}
+        read={movementChoices}
+        rows={rows()}
+        values={choices}
+      />
+    </fieldset>
+  );
+}

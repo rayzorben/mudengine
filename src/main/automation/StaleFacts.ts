@@ -11,26 +11,28 @@
 import { readBy, REFRESH, type StaleFact } from '../../shared/staleness';
 import type { BlockType } from '../../shared/blocks';
 import type { CommandQueue } from './CommandQueue';
+import type { DecisionKind } from '../../shared/decisionSettings';
 
 export class StaleFacts {
-  /** Each owed fact and the words it is asked in. */
-  private readonly owed = new Map<StaleFact, string>();
+  /** Each owed fact, the words it is asked in and the decision behind it, if a setting has one. */
+  private readonly owed = new Map<StaleFact, { reason: string; decision?: DecisionKind }>();
 
   constructor(private readonly queue: Pick<CommandQueue, 'offer'>) {}
 
   /** Owes each fact, asked for in the words of whatever made it stale. */
-  owe(facts: readonly StaleFact[], reason: string): void {
-    for (const fact of facts) this.owed.set(fact, reason);
+  owe(facts: readonly StaleFact[], reason: string, decision?: DecisionKind): void {
+    for (const fact of facts) this.owed.set(fact, { reason, decision });
     this.ask();
   }
 
   /** Offers what is still owed; a send pays it off. */
   ask(): void {
-    for (const [fact, reason] of this.owed) {
+    for (const [fact, { reason, decision }] of this.owed) {
       this.queue.offer({
         ...REFRESH[fact],
         priority: 'probe',
         reason,
+        decision,
         onSent: () => this.owed.delete(fact)
       });
     }

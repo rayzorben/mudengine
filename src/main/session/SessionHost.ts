@@ -22,7 +22,9 @@
  * per query rather than held per graph.
  */
 import { t } from '../app/i18n';
+import { errorMessage } from '../../shared/values';
 import type { Loop } from '../../shared/loops';
+import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
 import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
@@ -118,6 +120,8 @@ export interface SessionSlot {
   readonly debug: SessionDebug;
   /** The last character name published, so the roster is republished on change. */
   named: string | null;
+  /** Where `@relog` dials once its hang-up has closed the socket (todo 118); null otherwise. */
+  redialTo: ConnectionTarget | null;
 }
 
 export interface SessionHostOptions {
@@ -331,6 +335,8 @@ export interface SessionHostOptions {
    * thing that would keep it.
    */
   autoReconnect: (id: SessionId) => boolean;
+  /** The character's `reconnectTries`, read through like `autoReconnect`; 0 (never stop) for one with no file. */
+  reconnectTries: (id: SessionId) => number;
   /** The character's `lowLives`, read through like `autoReconnect`; 0 for one with no file. */
   lowLives: (id: SessionId) => number;
   /**
@@ -362,6 +368,13 @@ export interface SessionHostOptions {
   /** Coalesced facts: routed to every window, which may render a tab for it. */
   toAll: (channel: string, payload: unknown) => void;
   notice: (notice: Notice) => void;
+}
+
+/** A character's notice, with the gear for a decision that has a field to open. */
+function noticeOf(session: SessionId, message: string, decision?: DecisionKind): Notice {
+  return decision === undefined || !hasSettingField(decision)
+    ? { session, message }
+    : { session, message, decision: { kind: decision, at: Date.now() } };
 }
 
 export class SessionHost {
@@ -414,11 +427,12 @@ export class SessionHost {
       floor: () => this.options.lowLives(id),
       automationOn: () => this.options.configFor(id).automation.enabled,
       ask: (ask) => this.options.toAll(Push.lowLives, { session: id, payload: ask }),
-      notice: (message) => this.options.notice({ session: id, message })
+      notice: (message, decision) => this.options.notice(noticeOf(id, message, decision))
     });
 
     const reconnect = new Reconnect({
       enabled: () => this.options.autoReconnect(id),
+      maxTries: () => this.options.reconnectTries(id),
       held: (target) => lowLives.holds(target),
       // `dial` rather than `connect`, deliberately: `connect` calls a scheduled
       // retry off, and a retry calling itself off is a ladder with one rung.
@@ -426,7 +440,7 @@ export class SessionHost {
       // The rail draws it and the tab's dial acts on it, so a retry armed or
       // called off is a roster change like any other.
       changed: () => this.options.publishRoster(),
-      notice: (message) => this.options.notice({ session: id, message })
+      notice: (message, decision) => this.options.notice(noticeOf(id, message, decision))
     });
 
     /*
@@ -565,19 +579,23 @@ export class SessionHost {
           // Where a lost connection would be dialled back to, and whether it
           // had lasted long enough to count as settled.
           reconnect.observe(state);
+          if (state.phase === 'closed') this.relog(slot);
         },
         // A socket that went without this client asking. Only these are ever
         // dialled again — see `Reconnect` for what the other closes are.
         dropped: (why) => reconnect.lost(why),
+        redial: () => {
+          slot.redialTo = slot.manager.state.target;
+        },
         telnet: (event) => {
           debug.telnet(event);
           this.options.toAll(Push.telnet, { session: id, payload: event });
         },
-        notice: (message) => {
+        notice: (message, decision) => {
           debug.notice(message);
           // In the capture too: a refusal said only on screen left nothing to read afterwards.
           this.slots.get(id)?.capture?.notice(message);
-          this.options.notice({ session: id, message });
+          this.options.notice(noticeOf(id, message, decision));
         },
         learned: (discoveries) =>
           this.options.toAll(Push.learned, { session: id, payload: discoveries }),
@@ -634,7 +652,8 @@ export class SessionHost {
       capture: null,
       debug,
       named: null,
-      realm: null
+      realm: null,
+      redialTo: null
     };
     this.slots.set(id, slot);
     /*
@@ -658,6 +677,8 @@ export class SessionHost {
    */
   async connect(id: SessionId, target: ConnectionTarget): Promise<ConnectionState> {
     const slot = this.ensure(id);
+    // A dial of any kind is the one `@relog` was waiting to make.
+    slot.redialTo = null;
     /*
      * A Connect at the realm a reconnect is dialling back is that reconnect
      * dialling now, and a failure goes back on the ladder (todo 22). Any other
@@ -673,6 +694,18 @@ export class SessionHost {
       return slot.manager.state;
     }
     return ladder ? slot.reconnect.now() : this.dial(slot, target);
+  }
+
+  /** `@relog`'s hang-up has closed the socket: dial back as Connect does, low lives asked first. */
+  private relog(slot: SessionSlot): void {
+    const target = slot.redialTo;
+    if (target === null) return;
+    void this.connect(slot.id, target).catch((error: unknown) =>
+      this.options.notice({
+        session: slot.id,
+        message: t('notices.session.relogFailed', { reason: errorMessage(error) })
+      })
+    );
   }
 
   /**

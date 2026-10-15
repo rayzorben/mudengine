@@ -258,6 +258,7 @@ describe('the "stand up at" health thresholds', () => {
       restBeforeTraps: 0.45,
       // And by `statedTheRestNextDoor`, on.
       restNextDoor: true,
+      restNextDoorMinutes: DEFAULT_CONFIG.automation.health.restNextDoorMinutes,
       // Renamed by `theManaPairRests`, the ceiling stated off, and Use
       // Meditate at its default, on (todo 50).
       restBelowMana: 0.3,
@@ -520,7 +521,14 @@ describe('the round combat macro', () => {
       hideForOpener: false,
       // And by `statedTheMobRules`, empty, which is what the client already
       // does without the key.
-      mobRules: []
+      mobRules: [],
+      // And by `statedTheFightChoices`, at what the client already did.
+      attackCostly: false,
+      swapWeapons: true,
+      fledLevels: 2,
+      fledForgetMinutes: 30,
+      safeOddsAbove: 0.6,
+      riskyOddsAbove: 0.25
     });
   });
 
@@ -972,7 +980,9 @@ describe('the hang-up refusal becoming whether the realm charges', () => {
   it('gives the options file the new default, with its sentence', () => {
     fs.writeFileSync(home.options, block(true), 'utf8');
     migrate();
-    expect(hangUp(home.options)).toEqual({ enabled: true, penalties: false });
+    // The naked hang-up's two keys (todo 118) are another migration's.
+    expect(hangUp(home.options)).toMatchObject({ enabled: true, penalties: false });
+    expect(hangUp(home.options)).not.toHaveProperty('onlyWhenClean');
     expect(fs.readFileSync(home.options, 'utf8')).toContain('charges for a hang-up');
   });
 
@@ -980,8 +990,10 @@ describe('the hang-up refusal becoming whether the realm charges', () => {
     const copied = profile('festus', block(true));
     const chosen = profile('soul', block(false));
     migrate();
-    expect(hangUp(copied)).toEqual({ enabled: true });
-    expect(hangUp(chosen)).toEqual({ enabled: true, penalties: false });
+    expect(hangUp(copied)).toMatchObject({ enabled: true });
+    expect(hangUp(copied)).not.toHaveProperty('penalties');
+    expect(hangUp(copied)).not.toHaveProperty('onlyWhenClean');
+    expect(hangUp(chosen)).toMatchObject({ enabled: true, penalties: false });
   });
 
   it('says so, naming the files, and is safe to run again', () => {
@@ -2713,11 +2725,8 @@ describe("the walk's nudge interval in an existing tuning file", () => {
     expect(Object.keys(walk())).toEqual([
       'holdMs',
       'maxHolds',
-      // How far the character may wander before play asks rather than walking
-      // it back. Beside the hold budget, where the shipped file puts it.
-      'resumeAskSteps',
-      // And how far a drawn plan may drift before pressing Walk asks about the
-      // plan it is redrawn as, which is the other half of the same question.
+      // How far a drawn plan may drift before pressing Walk asks about the plan
+      // it is redrawn as, beside the hold budget.
       'replanDriftSteps',
       'nudgeAfterMs',
       'nudgeSamples',
@@ -2730,7 +2739,6 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       // How often a searching walk asks the server to reprint the room, which
       // is what stops it searching one whose exit it has already found.
       'searchRecheckEvery',
-      'leverTries',
       // How long it stands in the room it has arrived in for whatever was
       // chasing it to walk in after it, rather than dragging it on. Appended,
       // like the two below: the shipped file states it beside `maxHolds`, and
@@ -2792,8 +2800,6 @@ describe("the walk's nudge interval in an existing tuning file", () => {
       searchRetryMs: DEFAULT_INTERNAL.tuning.walk.searchRetryMs,
       searchSayEveryMs: DEFAULT_INTERNAL.tuning.walk.searchSayEveryMs,
       searchRecheckEvery: DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery,
-      leverTries: DEFAULT_INTERNAL.tuning.walk.leverTries,
-      resumeAskSteps: DEFAULT_INTERNAL.tuning.walk.resumeAskSteps,
       replanDriftSteps: DEFAULT_INTERNAL.tuning.walk.replanDriftSteps,
       trailSteps: DEFAULT_INTERNAL.tuning.walk.trailSteps,
       lightWaitMs: DEFAULT_INTERNAL.tuning.walk.lightWaitMs,
@@ -3187,7 +3193,9 @@ describe('peers became remotes', () => {
     expect(remotes()).toEqual({
       enabled: false,
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      autoJoin: false
+      autoJoin: false,
+      maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+      allowKillAndHangup: false
     });
   });
 
@@ -3242,7 +3250,9 @@ describe('peers became remotes', () => {
     expect(automation.remotes).toEqual({
       enabled: false,
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      autoJoin: false
+      autoJoin: false,
+      maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+      allowKillAndHangup: false
     });
   });
 });
@@ -4393,6 +4403,7 @@ describe('resting before a trap', () => {
       restBelow: 0.5,
       restBeforeTraps: 0.45,
       restNextDoor: true,
+      restNextDoorMinutes: DEFAULT_CONFIG.automation.health.restNextDoorMinutes,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
@@ -4439,6 +4450,7 @@ describe('the loop pause pair folded into the resting pair', () => {
       restTo: 0.9,
       restBeforeTraps: 0.45,
       restNextDoor: true,
+      restNextDoorMinutes: DEFAULT_CONFIG.automation.health.restNextDoorMinutes,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
@@ -4466,6 +4478,7 @@ describe('the loop pause pair folded into the resting pair', () => {
       restTo: 0.75,
       restBeforeTraps: 0.45,
       restNextDoor: true,
+      restNextDoorMinutes: DEFAULT_CONFIG.automation.health.restNextDoorMinutes,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
@@ -4486,6 +4499,7 @@ describe('the loop pause pair folded into the resting pair', () => {
       restTo: 0.9,
       restBeforeTraps: 0.45,
       restNextDoor: true,
+      restNextDoorMinutes: DEFAULT_CONFIG.automation.health.restNextDoorMinutes,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
@@ -4508,6 +4522,7 @@ describe('the loop pause pair folded into the resting pair', () => {
       restTo: 0.9,
       restBeforeTraps: 0.45,
       restNextDoor: true,
+      restNextDoorMinutes: DEFAULT_CONFIG.automation.health.restNextDoorMinutes,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
@@ -4882,12 +4897,6 @@ describe('the tuning keys 2026-09-03 added and retired', () => {
       DEFAULT_INTERNAL.tuning.hunting.measuredFightsMin
     );
     expect(file['view']?.['questRunLingerMs']).toBe(DEFAULT_INTERNAL.tuning.view.questRunLingerMs);
-    expect(file['world']?.['anotherWayPenalty']).toBe(
-      DEFAULT_INTERNAL.tuning.world.anotherWayPenalty
-    );
-    expect(file['world']?.['anotherWayLonger']).toBe(
-      DEFAULT_INTERNAL.tuning.world.anotherWayLonger
-    );
     expect(file['world']?.['hazardSupplyCount']).toBe(
       DEFAULT_INTERNAL.tuning.world.hazardSupplyCount
     );
@@ -5007,10 +5016,7 @@ describe('light before the dark, and the supplies list', () => {
       (parse(fs.readFileSync(home.options, 'utf8'))['automation'] as Record<string, unknown>)[
         'supplies'
       ]
-    ).toEqual({
-      enabled: true,
-      items: []
-    });
+    ).toEqual(DEFAULT_CONFIG.automation.supplies);
     expect(notesOf(said, 'notices.migration.suppliesStated')).toHaveLength(1);
     migrate();
     expect(notesOf(said, 'notices.migration.suppliesStated')).toEqual([]);
@@ -5511,7 +5517,6 @@ describe('the hunting survey’s reach', () => {
 
   it('writes the survey’s new keys in beside the ones the file states', () => {
     migrate();
-    expect(block('hunting')['maxDamageShare']).toBe(DEFAULT_INTERNAL.tuning.hunting.maxDamageShare);
     expect(block('hunting')['trivialShare']).toBe(DEFAULT_INTERNAL.tuning.hunting.trivialShare);
     expect(block('hunting')['fillerRadius']).toBe(DEFAULT_INTERNAL.tuning.hunting.fillerRadius);
     expect(block('hunting')['stepMs']).toBe(1250);
@@ -5633,7 +5638,6 @@ describe('the walker’s search count', () => {
   it('writes in the keys that replace it, at their own defaults', () => {
     migrate();
     expect(walkBlock()['searchRetryMs']).toBe(DEFAULT_INTERNAL.tuning.walk.searchRetryMs);
-    expect(walkBlock()['leverTries']).toBe(DEFAULT_INTERNAL.tuning.walk.leverTries);
   });
 
   it('says so, because a figure that vanished silently is one nobody trusts', () => {
@@ -6520,7 +6524,7 @@ describe('the quest run is stated', () => {
 
     fs.writeFileSync(home.options, 'automation:\n  quests:\n    enabled: true\n', 'utf8');
     migrate();
-    expect(automation()['quests']).toEqual({ enabled: true });
+    expect(automation()['quests']).toEqual({ ...DEFAULT_CONFIG.automation.quests, enabled: true });
   });
 });
 
@@ -6579,7 +6583,12 @@ describe('training is stated', () => {
   it('leaves what a stated block says alone, and adds the keys it predates', () => {
     fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
     migrate();
-    expect(automation()['train']).toEqual({ stats: true, levels: false, trainer: 0 });
+    expect(automation()['train']).toEqual({
+      stats: true,
+      levels: false,
+      trainer: 0,
+      statHorizon: DEFAULT_CONFIG.automation.train.statHorizon
+    });
   });
 
   /*
@@ -6591,7 +6600,7 @@ describe('training is stated', () => {
     fs.writeFileSync(home.options, 'automation:\n  train:\n    stats: true\n', 'utf8');
     migrate();
     const train = automation()['train'] as Record<string, unknown>;
-    expect(Object.keys(train)).toEqual(['levels', 'trainer', 'stats']);
+    expect(Object.keys(train)).toEqual(['levels', 'trainer', 'stats', 'statHorizon']);
     expect(
       notesOf(said, 'notices.migration.levelling.one', 'notices.migration.levelling.many')
     ).toHaveLength(1);
@@ -7123,7 +7132,8 @@ describe('running between rounds is stated', () => {
       'movement'
     ]!;
     const keys = Object.keys(movement);
-    expect(keys[keys.indexOf('sneak') + 1]).toBe('runBetweenRounds');
+    // After sneak, with the sneak's own refusal count (todo 118) between them.
+    expect(keys.indexOf('runBetweenRounds')).toBeGreaterThan(keys.indexOf('sneak'));
     expect(movement['runBetweenRounds']).toBe(true);
     expect(text).toContain('# Time a run to the combat rounds');
     expect(fs.readFileSync(soul, 'utf8')).toContain('runBetweenRounds: false');
@@ -7447,6 +7457,516 @@ describe('the gear weights are stated and Auto-Get Better Gear goes off once (to
     migrate();
     expect(fs.readFileSync(festus, 'utf8')).toBe(text);
     expect(lootOf(festus)['upgrades']).toBe(true);
+    expect(said).toEqual([]);
+  });
+});
+
+describe('the talk block is stated (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-talk-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds talk after onPartyChange with its paragraph, once', () => {
+    fs.writeFileSync(home.options, 'automation:\n  onPartyChange: party\n  idle: {}\n', 'utf8');
+    migrate();
+    const automation = parse(fs.readFileSync(home.options, 'utf8')).automation as Record<
+      string,
+      unknown
+    >;
+    const keys = Object.keys(automation);
+    expect(keys[keys.indexOf('onPartyChange') + 1]).toBe('talk');
+    expect(automation['talk']).toEqual(DEFAULT_CONFIG.automation.talk);
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('# What this character learns');
+    expect(notesOf(said, 'notices.migration.talkStated')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+});
+
+describe('hanging up naked gets its own switch and its margin leaves internal.yaml (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const hangUpOf = (file: string): Record<string, unknown> =>
+    (
+      parse(fs.readFileSync(file, 'utf8')).automation as Record<
+        string,
+        Record<string, Record<string, unknown>>
+      >
+    )['safety']!['hangUp']!;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-naked-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states the switch after onPlayerInRoom and carries a margin the player changed', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  safety:\n    hangUp:\n      enabled: false\n      onPlayerInRoom: false\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      home.internal,
+      'tuning:\n  session:\n    # The margin.\n    nakedHangMargin: 0.25\n    retreatSettleMs: 5000\n',
+      'utf8'
+    );
+    // A character that states its own hang-up block gets the player's figure too.
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(
+      festus,
+      'name: Festus\nautomation:\n  safety:\n    hangUp:\n      enabled: true\n',
+      'utf8'
+    );
+    migrate();
+    expect(hangUpOf(festus)['nakedMargin']).toBe(0.25);
+    const hangUp = hangUpOf(home.options);
+    const keys = Object.keys(hangUp);
+    expect(keys.slice(keys.indexOf('onPlayerInRoom') + 1)).toEqual([
+      'whenNaked',
+      'nakedMargin',
+      'afterRunSeconds'
+    ]);
+    expect(hangUp['whenNaked']).toBe(true);
+    expect(hangUp['nakedMargin']).toBe(0.25);
+    const internal = fs.readFileSync(home.internal, 'utf8');
+    expect(internal).not.toContain('nakedHangMargin');
+    expect(internal).not.toContain('# The margin.');
+    expect(internal).toContain('retreatSettleMs: 5000');
+    expect(notesOf(said, 'notices.migration.tuningPromoted')).toHaveLength(1);
+    expect(notesOf(said, 'notices.migration.tuningCarried')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+
+  it('writes a carried figure into an options file that states no hang-up block', () => {
+    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
+    fs.writeFileSync(home.internal, 'tuning:\n  session:\n    nakedHangMargin: 0.3\n', 'utf8');
+    migrate();
+    // The block the figure made is stated whole by the next step.
+    expect(hangUpOf(home.options)).toEqual({
+      nakedMargin: 0.3,
+      afterRunSeconds: DEFAULT_CONFIG.automation.safety.hangUp.afterRunSeconds
+    });
+  });
+
+  it('carries nothing when the player left the shipped figure', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  safety:\n    hangUp:\n      enabled: false\n',
+      'utf8'
+    );
+    fs.writeFileSync(home.internal, 'tuning:\n  session:\n    nakedHangMargin: 0.1\n', 'utf8');
+    migrate();
+    expect(hangUpOf(home.options)['nakedMargin']).toBe(
+      DEFAULT_CONFIG.automation.safety.hangUp.nakedMargin
+    );
+    expect(notesOf(said, 'notices.migration.tuningCarried')).toEqual([]);
+  });
+});
+
+describe('the fixed figures of combat, spells, hang-up and gear become settings (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml'),
+      profileTemplate: path.resolve('resources/config/profile.default.yaml')
+    });
+  const automationOf = (file: string): Record<string, Record<string, unknown>> =>
+    parse(fs.readFileSync(file, 'utf8')).automation as Record<string, Record<string, unknown>>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-choices-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states each beside its switch, at the player own figure, in units a player reads', () => {
+    fs.writeFileSync(
+      home.options,
+      [
+        'automation:',
+        '  combat:',
+        '    enabled: false',
+        '    maxMonsterExperience: 0',
+        '  spells:',
+        '    autoChoose: false',
+        '    attack: ""',
+        '    autoChooseHeal: false',
+        '    autoChooseBlessings: false',
+        '  safety:',
+        '    hangUp:',
+        '      enabled: false',
+        '  gear:',
+        '    resists: true',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      home.internal,
+      [
+        'tuning:',
+        '  combat:',
+        '    fledForgetMs: 600000',
+        '    openAbove: 0.95',
+        '  menace:',
+        '    survivalSafeAbove: 0.7',
+        '  spells:',
+        '    killConfidence: 0.9',
+        '  session:',
+        '    hangUpAfterRunMs: 5000',
+        '  placeGear:',
+        '    minSaved: 5',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    migrate();
+    const { combat, spells, safety, gear } = automationOf(home.options);
+    const keys = Object.keys(combat!);
+    const after = keys.indexOf('maxMonsterExperience') + 1;
+    expect(keys.slice(after, after + 6)).toEqual([
+      'attackCostly',
+      'swapWeapons',
+      'fledLevels',
+      'fledForgetMinutes',
+      'safeOddsAbove',
+      'riskyOddsAbove'
+    ]);
+    expect(combat!['attackCostly']).toBe(false);
+    expect(combat!['swapWeapons']).toBe(true);
+    expect(combat!['fledForgetMinutes']).toBe(10);
+    expect(combat!['safeOddsAbove']).toBe(0.7);
+    const spellKeys = Object.keys(spells!);
+    expect(spellKeys[spellKeys.indexOf('autoChoose') + 1]).toBe('killConfidence');
+    expect(spellKeys[spellKeys.indexOf('autoChooseHeal') + 1]).toBe('healUrgency');
+    expect(spells!['killConfidence']).toBe(DEFAULT_CONFIG.automation.spells.killConfidence);
+    expect((safety!['hangUp'] as Record<string, unknown>)['afterRunSeconds']).toBe(5);
+    expect(gear!['resistMinSaved']).toBe(5);
+    const internal = fs.readFileSync(home.internal, 'utf8');
+    expect(internal).not.toContain('fledForgetMs');
+    expect(internal).not.toContain('placeGear');
+    expect(internal).toContain('openAbove: 0.95');
+    expect(
+      notesOf(said, 'notices.migration.fightChoices.one', 'notices.migration.fightChoices.many')
+    ).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+
+  it('states the re-dials in each character file, the shipped 999999 as 0', () => {
+    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
+    fs.writeFileSync(home.internal, 'tuning:\n  reconnect:\n    maxAttempts: 999999\n', 'utf8');
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(festus, 'name: Festus\nautoReconnect: true\nlowLives: 2\n', 'utf8');
+    migrate();
+    const written = parse(fs.readFileSync(festus, 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(written)).toEqual(['name', 'autoReconnect', 'reconnectTries', 'lowLives']);
+    expect(written['reconnectTries']).toBe(0);
+    expect(
+      notesOf(said, 'notices.migration.reconnectTries.one', 'notices.migration.reconnectTries.many')
+    ).toHaveLength(1);
+    expect(notesOf(said, 'notices.migration.tuningCarried')).toEqual([]);
+  });
+
+  it('carries a limit the player set', () => {
+    fs.writeFileSync(home.options, 'automation:\n  enabled: true\n', 'utf8');
+    fs.writeFileSync(home.internal, 'tuning:\n  reconnect:\n    maxAttempts: 40\n', 'utf8');
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(festus, 'name: Festus\nautoReconnect: true\n', 'utf8');
+    migrate();
+    expect(
+      (parse(fs.readFileSync(festus, 'utf8')) as Record<string, unknown>)['reconnectTries']
+    ).toBe(40);
+  });
+});
+
+describe('the walk and route figures and three barrier switches become settings (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const automationOf = (file: string): Record<string, Record<string, unknown>> =>
+    parse(fs.readFileSync(file, 'utf8')).automation as Record<string, Record<string, unknown>>;
+  const after = (block: Record<string, unknown>, key: string, count: number): string[] => {
+    const keys = Object.keys(block);
+    return keys.slice(keys.indexOf(key) + 1, keys.indexOf(key) + 1 + count);
+  };
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-walk-choices-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states each beside its switch, at the player own figure, in minutes', () => {
+    fs.writeFileSync(
+      home.options,
+      [
+        'automation:',
+        '  walk:',
+        '    minExpPerHour: 0',
+        '  movement:',
+        '    bashTries: 3',
+        '    sneak: false',
+        '    buyLight: true',
+        '    keepOutOf: []',
+        '  health:',
+        '    restNextDoor: true',
+        '  search:',
+        '    tries: 1',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      home.internal,
+      [
+        'tuning:',
+        '  combat:',
+        '    shunRoomMs: 1800000',
+        '    openAbove: 0.95',
+        '  world:',
+        '    fightCost: 45',
+        '  loop:',
+        '    expRateGraceMs: 600000',
+        '  rest:',
+        '    lairClockMaxSeconds: 300',
+        '  walk:',
+        '    pickMargin: 20',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    // A character that states its own movement block gets the player's figure too.
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(festus, 'name: Festus\nautomation:\n  movement:\n    sneak: true\n', 'utf8');
+    migrate();
+    const { walk, movement, health, search } = automationOf(home.options);
+    expect(after(movement!, 'bashTries', 7)).toEqual([
+      'pickMargin',
+      'bashMargin',
+      'disarmTraps',
+      'disarmDoubt',
+      'searchHidden',
+      'pullLevers',
+      'leverTries'
+    ]);
+    expect(after(movement!, 'sneak', 1)).toEqual(['sneakGiveUp']);
+    expect(after(movement!, 'buyLight', 1)).toEqual(['carryLights']);
+    expect(after(movement!, 'keepOutOf', 5)).toEqual([
+      'fightCost',
+      'dangerCost',
+      'anotherWayPenalty',
+      'anotherWayLonger',
+      'avoidRanFromMinutes'
+    ]);
+    expect(movement!['disarmTraps']).toBe(true);
+    expect(movement!['fightCost']).toBe(45);
+    expect(movement!['avoidRanFromMinutes']).toBe(30);
+    expect(movement!['pickMargin']).toBe(DEFAULT_CONFIG.automation.movement.pickMargin);
+    expect(after(walk!, 'minExpPerHour', 3)).toEqual([
+      'expRateGraceMinutes',
+      'failedLegs',
+      'resumeAskSteps'
+    ]);
+    expect(walk!['expRateGraceMinutes']).toBe(10);
+    expect(health!['restNextDoorMinutes']).toBe(5);
+    expect(after(search!, 'tries', 2)).toEqual(['areaMaxSteps', 'areaMaxSearches']);
+    expect(automationOf(festus)['movement']!['fightCost']).toBe(45);
+    const internal = fs.readFileSync(home.internal, 'utf8');
+    for (const gone of ['shunRoomMs', 'fightCost', 'expRateGraceMs', 'lairClockMaxSeconds']) {
+      expect(internal).not.toContain(gone);
+    }
+    expect(internal).toContain('openAbove: 0.95');
+    expect(
+      notesOf(said, 'notices.migration.walkChoices.one', 'notices.migration.walkChoices.many')
+    ).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+});
+
+describe('the hunting, outgrown, supplies and other figures become settings (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const automationOf = (file: string): Record<string, Record<string, unknown>> =>
+    parse(fs.readFileSync(file, 'utf8')).automation as Record<string, Record<string, unknown>>;
+  const after = (block: Record<string, unknown>, key: string, count: number): string[] => {
+    const keys = Object.keys(block);
+    return keys.slice(keys.indexOf(key) + 1, keys.indexOf(key) + 1 + count);
+  };
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-carry-choices-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states each beside its block’s own keys, at the player’s own figure', () => {
+    fs.writeFileSync(
+      home.options,
+      [
+        'automation:',
+        '  hunting:',
+        '    enabled: false',
+        '    radius: 0',
+        '    cashPerHour: 0',
+        '  outgrown:',
+        '    enabled: false',
+        "    ganghouseRoom: ''",
+        '  drop:',
+        '    worthless: false',
+        '  supplies:',
+        '    enabled: true',
+        '    items: []',
+        '  party:',
+        '    parEveryRounds: 5',
+        '  remotes:',
+        '    players: {}',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    fs.writeFileSync(
+      home.internal,
+      [
+        'tuning:',
+        '  hunting:',
+        '    moveMargin: 0.4',
+        '    stepMs: 1250',
+        '  outgrown:',
+        '    sellFromCopper: 500',
+        '    confirmMs: 8000',
+        '  spending:',
+        '    maxGets: 6',
+        '    maxGear: 10',
+        '  remotes:',
+        '    parAtLoss: 0.25',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    // A character that states its own hunting block gets the player's figure too.
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(festus, 'name: Festus\nautomation:\n  hunting:\n    enabled: true\n', 'utf8');
+    migrate();
+    const { hunting, outgrown, drop, supplies, party, remotes } = automationOf(home.options);
+    expect(after(hunting!, 'cashPerHour', 6)).toEqual([
+      'moveMargin',
+      'cashExpShare',
+      'contestedShare',
+      'betterSpotRadius',
+      'maxDamageShare',
+      'trivialLevelMargin'
+    ]);
+    expect(hunting!['moveMargin']).toBe(0.4);
+    expect(hunting!['maxDamageShare']).toBe(DEFAULT_CONFIG.automation.hunting.maxDamageShare);
+    expect(after(outgrown!, 'ganghouseRoom', 4)).toEqual([
+      'keepRare',
+      'stashFromCopper',
+      'sellFromCopper',
+      'sellDetour'
+    ]);
+    expect(outgrown!['keepRare']).toBe(true);
+    expect(outgrown!['sellFromCopper']).toBe(500);
+    expect(drop!['keepQuestItems']).toBe(true);
+    expect(after(supplies!, 'items', 2)).toEqual(['cashBuffer', 'dearerSteps']);
+    expect(party!['parAtLoss']).toBe(DEFAULT_CONFIG.automation.party.parAtLoss);
+    expect(remotes!['maxGets']).toBe(6);
+    expect(automationOf(festus)['hunting']!['moveMargin']).toBe(0.4);
+    const internal = fs.readFileSync(home.internal, 'utf8');
+    for (const gone of ['moveMargin', 'sellFromCopper', 'maxGets', 'parAtLoss']) {
+      expect(internal).not.toContain(gone);
+    }
+    // Positive control: the keys nobody promoted stay where they were.
+    expect(internal).toContain('maxGear: 10');
+    expect(internal).toContain('confirmMs: 8000');
+    expect(
+      notesOf(said, 'notices.migration.carryChoices.one', 'notices.migration.carryChoices.many')
+    ).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
     expect(said).toEqual([]);
   });
 });
@@ -7869,5 +8389,177 @@ describe('theRealmIsTheMenusChoice', () => {
     expect(Object.keys(read(home.state('mob-lore.json')).spawns)).toEqual([
       playedKey('gmud.zip', 'orohost:2427')
     ]);
+  });
+});
+
+describe('what the client asks on its own becomes a block, and its periods leave internal.yaml (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const automationOf = (file: string): Record<string, unknown> =>
+    parse(fs.readFileSync(file, 'utf8')).automation as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-asks-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states the block after statline, in minutes, with the figure the player changed', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  enabled: true\n  statline:\n    control: false\n  idle:\n    enabled: true\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      home.internal,
+      'tuning:\n  queue:\n    # How old.\n    packRefreshMs: 600000\n    rosterAskMs: 60000\n    fumbleRetryMs: 1000\n',
+      'utf8'
+    );
+    migrate();
+    const automation = automationOf(home.options);
+    const keys = Object.keys(automation);
+    expect(keys[keys.indexOf('statline') + 1]).toBe('asks');
+    expect(automation['asks']).toEqual({ ...DEFAULT_CONFIG.automation.asks, inventoryMinutes: 10 });
+    const internal = fs.readFileSync(home.internal, 'utf8');
+    expect(internal).not.toContain('packRefreshMs');
+    expect(internal).not.toContain('rosterAskMs');
+    expect(internal).not.toContain('# How old.');
+    expect(internal).toContain('fumbleRetryMs: 1000');
+    expect(notesOf(said, 'notices.migration.asksStated')).toHaveLength(1);
+    expect(notesOf(said, 'notices.migration.tuningCarried')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+
+  it('leaves a block the player already states as they wrote it', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  statline:\n    control: false\n  asks:\n    inventoryMinutes: 3\n',
+      'utf8'
+    );
+    fs.writeFileSync(home.internal, 'tuning:\n  queue:\n    packRefreshMs: 600000\n', 'utf8');
+    migrate();
+    expect(automationOf(home.options)['asks']).toEqual({ inventoryMinutes: 3 });
+    expect(notesOf(said, 'notices.migration.asksStated')).toHaveLength(0);
+  });
+});
+
+describe('Allow @kill and @hangup is stated, off (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const remotesOf = (file: string): Record<string, unknown> =>
+    (parse(fs.readFileSync(file, 'utf8')).automation as Record<string, Record<string, unknown>>)[
+      'remotes'
+    ]!;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-killhangup-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds the switch after maxGets in every file that states remotes', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  remotes:\n    enabled: true\n    maxGets: 10\n    gang: []\n',
+      'utf8'
+    );
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(
+      festus,
+      'name: Festus\nautomation:\n  remotes:\n    enabled: true\n    maxGets: 4\n',
+      'utf8'
+    );
+    migrate();
+    for (const file of [home.options, festus]) {
+      const remotes = remotesOf(file);
+      const keys = Object.keys(remotes);
+      expect(keys[keys.indexOf('maxGets') + 1]).toBe('allowKillAndHangup');
+      expect(remotes['allowKillAndHangup']).toBe(false);
+    }
+    expect(notesOf(said, 'notices.migration.killAndHangup.many')).toHaveLength(1);
+    const text = fs.readFileSync(festus, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(festus, 'utf8')).toBe(text);
+    expect(notesOf(said, 'notices.migration.killAndHangup.many')).toHaveLength(0);
+  });
+});
+
+describe('a switch per installed extension is stated (todo 118)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const optionsOf = (): Record<string, unknown> =>
+    parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-extensions-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states the block empty after keys, with its paragraph, once', () => {
+    fs.writeFileSync(home.options, 'keys:\n  Numpad5: map\nlogging:\n  enabled: true\n', 'utf8');
+    migrate();
+    const keys = Object.keys(optionsOf());
+    expect(keys[keys.indexOf('keys') + 1]).toBe('extensions');
+    expect(optionsOf()['extensions']).toEqual(DEFAULT_CONFIG.extensions);
+    expect(notesOf(said, 'notices.migration.extensionSwitches')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+
+  it('leaves a block the player already states as they wrote it', () => {
+    fs.writeFileSync(
+      home.options,
+      'keys:\n  Numpad5: map\nextensions:\n  planner: false\n',
+      'utf8'
+    );
+    migrate();
+    expect(optionsOf()['extensions']).toEqual({ planner: false });
+    expect(notesOf(said, 'notices.migration.extensionSwitches')).toHaveLength(0);
   });
 });

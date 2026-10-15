@@ -68,6 +68,7 @@ import {
 import { archiveWorldOf, databasePath, shippedArchives } from '../world/bundledArchive';
 import { CONDITION_WAIT_KEYS } from '../../shared/walk';
 import { DEFAULT_LOW_LIVES } from '../../shared/lives';
+import { DEFAULT_RECONNECT_TRIES } from '../../shared/profiles';
 import { THEMES, type ThemeId } from '../../shared/themes';
 import { FOUND_HIDING } from '../../shared/players';
 
@@ -181,6 +182,9 @@ function migrateAll(options: MigrationOptions): void {
   liftServersOutOfOptions(home, note);
   liftLoopsOutOfOptions(home, note);
   liftLoopsOutOfProfiles(home, note);
+  // Once the files are where they live, and before any step states a promoted
+  // key at its shipped figure.
+  const carried = takenTuning(home, note, PROMOTIONS);
   dropStandUpThresholds(home, note);
   dropTheRoundMacro(home, note);
   dropDiagnosticsPreference(home, note);
@@ -285,6 +289,15 @@ function migrateAll(options: MigrationOptions): void {
   statedGearLockHours(home, note, options.template);
   statedLootUpgrades(home, note, options.template);
   statedGearWeights(home, note, options.template);
+  statedTheTalkBlock(home, note, options.template);
+  statedTheNakedHangUp(home, note, options.template, carried);
+  statedTheFightChoices(home, note, options.template, carried);
+  statedReconnectTries(home, note, options.profileTemplate, carried);
+  statedTheWalkChoices(home, note, options.template, carried);
+  statedTheCarryChoices(home, note, options.template, carried);
+  statedTheAsks(home, note, options.template, carried);
+  statedKillAndHangup(home, note, options.template);
+  statedTheExtensionSwitches(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -715,6 +728,15 @@ function theThemesWereCut(home: Home, note: (message: string) => void): void {
   }
 }
 
+/** The paragraph above a top-level key of the character template, or undefined. */
+function profileTemplateComment(template: string | undefined, key: string): string | undefined {
+  const shipped = templateOf(template)?.contents;
+  const row = isMap(shipped)
+    ? shipped.items.find((item) => keyText(item as Pair) === key)
+    : undefined;
+  return (row !== undefined && isScalar(row.key) && row.key.commentBefore) || undefined;
+}
+
 /**
  * `lowLives` (2026-10-05, todo 07): the lives at which the client asks before
  * logging a character in, stated in every character's file beside
@@ -727,11 +749,7 @@ function statedLowLives(
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const shipped = templateOf(template)?.contents;
-  const row = isMap(shipped)
-    ? shipped.items.find((item) => keyText(item as Pair) === 'lowLives')
-    : undefined;
-  const comment = (row !== undefined && isScalar(row.key) && row.key.commentBefore) || undefined;
+  const comment = profileTemplateComment(template, 'lowLives');
   const stated = stateInEveryProfile(home, 'lowLives', DEFAULT_LOW_LIVES, comment, 'autoReconnect');
   if (stated.length === 0) return;
   const params = { count: stated.length, lives: DEFAULT_LOW_LIVES, fileList: stated.join(', ') };
@@ -2995,6 +3013,32 @@ function theEscapeIsADirection(
 }
 
 /**
+ * The paragraph the template puts above the key at `at`, at any depth, read
+ * from the map when the key is its first (`templateComments` says why).
+ */
+function templateCommentAt(
+  template: string | undefined,
+  at: readonly string[]
+): string | undefined {
+  const parent = templateOf(template)?.getIn(at.slice(0, -1), true);
+  if (!isMap(parent)) return undefined;
+  const index = parent.items.findIndex((item) => keyText(item as Pair) === at.at(-1));
+  return index === -1 ? undefined : commentAbove(parent, index);
+}
+
+/**
+ * The comment above the key at `index` of a map. **The first key of a map does
+ * not own the comment above it**: `yaml` files that one on the map, which is
+ * the trap `leadFor` exists for one level up.
+ */
+function commentAbove(map: YAMLMap, index: number): string | undefined {
+  const comment =
+    ((map.items[index] as Pair).key as Scalar).commentBefore ??
+    (index === 0 ? map.commentBefore : undefined);
+  return typeof comment === 'string' ? comment : undefined;
+}
+
+/**
  * Every comment the shipped template puts above a block under `root:`, one and
  * two levels down, keyed by dotted path.
  *
@@ -3017,15 +3061,10 @@ function templateComments(template: string | undefined, root: string): Map<strin
     for (const [index, inner] of pair.value.items.entries()) {
       const innerKey = keyText(inner);
       if (innerKey === null) continue;
-      /*
-       * **The first key of a map does not own the comment above it** — `yaml`
-       * files that one on the *map*, which is the trap `leadFor` exists for
-       * one level up. Read from whichever of the two holds it, or the opening
-       * paragraph of every group here is lost on its way into somebody's file.
-       */
-      const innerComment =
-        (inner.key as Scalar).commentBefore ?? (index === 0 ? pair.value.commentBefore : undefined);
-      if (typeof innerComment === 'string') {
+      // Read from whichever of the key and the map holds it, or the opening
+      // paragraph of every group here is lost on its way into somebody's file.
+      const innerComment = commentAbove(pair.value, index);
+      if (innerComment !== undefined) {
         found.set(`${root}.${key}.${innerKey}`, innerComment);
       }
     }
@@ -3421,6 +3460,19 @@ function theSheetAnswersPickAndMeditate(
 const PARTY_BLOCK = ['automation', 'party'] as const;
 const SPELLS_BLOCK = ['automation', 'spells'] as const;
 const REMOTES_BLOCK = ['automation', 'remotes'] as const;
+const HANG_UP_BLOCK = ['automation', 'safety', 'hangUp'] as const;
+const COMBAT_BLOCK = ['automation', 'combat'] as const;
+const GEAR_BLOCK = ['automation', 'gear'] as const;
+const MOVEMENT_BLOCK = ['automation', 'movement'] as const;
+const WALK_BLOCK = ['automation', 'walk'] as const;
+const SEARCH_BLOCK = ['automation', 'search'] as const;
+const HUNTING_BLOCK = ['automation', 'hunting'] as const;
+const OUTGROWN_BLOCK = ['automation', 'outgrown'] as const;
+const DROP_BLOCK = ['automation', 'drop'] as const;
+const SUPPLIES_BLOCK = ['automation', 'supplies'] as const;
+const QUESTS_BLOCK = ['automation', 'quests'] as const;
+const TRAIN_BLOCK = ['automation', 'train'] as const;
+const ASKS_BLOCK = ['automation', 'asks'] as const;
 
 function stateIn(
   home: Home,
@@ -3521,11 +3573,10 @@ function stateKeysIn(
   after: string,
   keys: ReadonlyArray<readonly [string, unknown]>
 ): string[] {
-  const comments = templateComments(template, 'automation');
   const stated = new Set<string>();
   let anchor = after;
   for (const [key, value] of keys) {
-    const comment = comments.get([...block, key].join('.'));
+    const comment = templateCommentAt(template, [...block, key]);
     for (const file of stateIn(home, block, key, value, anchor, comment)) stated.add(file);
     anchor = key;
   }
@@ -4758,6 +4809,302 @@ function statedGearWeights(
 }
 
 /**
+ * `automation.talk` (todo 118) into the options file's `automation:` block,
+ * after `onPartyChange`, as the template ships it. The block was read and
+ * drawn but never stated, so a player reading the file could not find it.
+ */
+function statedTheTalkBlock(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (stateTemplateBlock(home, template, ['automation'], 'talk', 'onPartyChange')) {
+    note(t('notices.migration.talkStated', { file: home.options }));
+  }
+}
+
+/**
+ * `statePromoted` for keys named from a block's shipped values, bound to one
+ * run's files and carried figures: the shape every `stated*Choices` step uses.
+ */
+function promoterFor(home: Home, template: string | undefined, carried: Carried) {
+  return <T extends object>(
+    block: readonly string[],
+    shipped: T,
+    after: string,
+    keys: ReadonlyArray<keyof T & string>
+  ): string[] =>
+    statePromoted(
+      home,
+      template,
+      carried,
+      block,
+      after,
+      keys.map((key) => [key, shipped[key]] as const)
+    );
+}
+
+/**
+ * Hanging up naked under its own switch, and its margin out of `internal.yaml`
+ * (todo 118), into every file that states `hangUp:`, after `onPlayerInRoom`,
+ * at the player's own margin where they had tuned one. On, as it always ran.
+ */
+function statedTheNakedHangUp(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined,
+  carried: Carried
+): void {
+  const stated = promoterFor(home, template, carried)(
+    HANG_UP_BLOCK,
+    DEFAULT_CONFIG.automation.safety.hangUp,
+    'onPlayerInRoom',
+    ['whenNaked', 'nakedMargin']
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.nakedHangUp.one', params)
+      : t('notices.migration.nakedHangUp.many', params)
+  );
+}
+
+/**
+ * The choices auto-combat, the spells and the hang-up made on figures of
+ * their own, as settings (todo 118), each into every file that states its
+ * block, beside the switch it tunes, at the player's own figure where they had
+ * tuned one in `internal.yaml`, else at what the client always did.
+ */
+function statedTheFightChoices(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined,
+  carried: Carried
+): void {
+  const { combat, spells, safety, gear } = DEFAULT_CONFIG.automation;
+  const promoted = promoterFor(home, template, carried);
+  const stated = new Set([
+    ...promoted(COMBAT_BLOCK, combat, 'maxMonsterExperience', [
+      'attackCostly',
+      'swapWeapons',
+      'fledLevels',
+      'fledForgetMinutes',
+      'safeOddsAbove',
+      'riskyOddsAbove'
+    ]),
+    ...promoted(SPELLS_BLOCK, spells, 'autoChoose', ['killConfidence']),
+    ...promoted(SPELLS_BLOCK, spells, 'autoChooseHeal', ['healUrgency']),
+    ...promoted(SPELLS_BLOCK, spells, 'autoChooseBlessings', [
+      'blessMinGain',
+      'blessHealReserve',
+      'blessSwapCommandsPerHour'
+    ]),
+    ...promoted(HANG_UP_BLOCK, safety.hangUp, 'nakedMargin', ['afterRunSeconds']),
+    ...promoted(GEAR_BLOCK, gear, 'resists', ['resistMinSaved'])
+  ]);
+  if (stated.size === 0) return;
+  const params = { count: stated.size, fileList: [...stated].join(', ') };
+  note(
+    stated.size === 1
+      ? t('notices.migration.fightChoices.one', params)
+      : t('notices.migration.fightChoices.many', params)
+  );
+}
+
+/**
+ * The choices a route and a loop made on figures of their own, and the three
+ * new barrier switches, as settings (todo 118): each into every file that
+ * states its block, beside the switch it tunes, at the player's own figure
+ * where they had tuned one in `internal.yaml`, else at what the client always
+ * did. The switches ship on, as the walk always disarmed, searched and pulled.
+ */
+function statedTheWalkChoices(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined,
+  carried: Carried
+): void {
+  const { movement, walk, health, search } = DEFAULT_CONFIG.automation;
+  const promoted = promoterFor(home, template, carried);
+  const stated = new Set([
+    ...promoted(MOVEMENT_BLOCK, movement, 'bashTries', [
+      'pickMargin',
+      'bashMargin',
+      'disarmTraps',
+      'disarmDoubt',
+      'searchHidden',
+      'pullLevers',
+      'leverTries'
+    ]),
+    ...promoted(MOVEMENT_BLOCK, movement, 'sneak', ['sneakGiveUp']),
+    ...promoted(MOVEMENT_BLOCK, movement, 'buyLight', ['carryLights']),
+    ...promoted(MOVEMENT_BLOCK, movement, 'keepOutOf', [
+      'fightCost',
+      'dangerCost',
+      'anotherWayPenalty',
+      'anotherWayLonger',
+      'avoidRanFromMinutes'
+    ]),
+    ...promoted(WALK_BLOCK, walk, 'minExpPerHour', [
+      'expRateGraceMinutes',
+      'failedLegs',
+      'resumeAskSteps'
+    ]),
+    ...promoted(HEALTH_BLOCK, health, 'restNextDoor', ['restNextDoorMinutes']),
+    ...promoted(SEARCH_BLOCK, search, 'tries', ['areaMaxSteps', 'areaMaxSearches'])
+  ]);
+  if (stated.size === 0) return;
+  const params = { count: stated.size, fileList: [...stated].join(', ') };
+  note(
+    stated.size === 1
+      ? t('notices.migration.walkChoices.one', params)
+      : t('notices.migration.walkChoices.many', params)
+  );
+}
+
+/**
+ * Todo 118's hunting, outgrown gear, supplies, quest, gear, training, party and
+ * remotes figures, and the Keep Rare Gear and Keep Quest Items switches, into
+ * every file that states each block without them, with the template's
+ * paragraph: at the player's own tuning figure where they had changed it, else
+ * what the client already did. `statedTheWalkChoices`' shape.
+ */
+function statedTheCarryChoices(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined,
+  carried: Carried
+): void {
+  const { hunting, outgrown, drop, supplies, quests, gear, train, party, remotes } =
+    DEFAULT_CONFIG.automation;
+  const promoted = promoterFor(home, template, carried);
+  const stated = new Set([
+    ...promoted(HUNTING_BLOCK, hunting, 'cashPerHour', [
+      'moveMargin',
+      'cashExpShare',
+      'contestedShare',
+      'betterSpotRadius',
+      'maxDamageShare',
+      'trivialLevelMargin'
+    ]),
+    ...promoted(OUTGROWN_BLOCK, outgrown, 'ganghouseRoom', [
+      'keepRare',
+      'stashFromCopper',
+      'sellFromCopper',
+      'sellDetour'
+    ]),
+    ...promoted(DROP_BLOCK, drop, 'worthless', ['keepQuestItems']),
+    ...promoted(SUPPLIES_BLOCK, supplies, 'items', ['cashBuffer', 'dearerSteps']),
+    ...promoted(QUESTS_BLOCK, quests, 'enabled', ['rollTries']),
+    ...promoted(GEAR_BLOCK, gear, 'resistMinSaved', ['offersPerSlot']),
+    ...promoted(TRAIN_BLOCK, train, 'pick', ['statHorizon']),
+    ...promoted(PARTY_BLOCK, party, 'parEveryRounds', ['parAtLoss']),
+    ...promoted(REMOTES_BLOCK, remotes, 'players', ['maxGets'])
+  ]);
+  if (stated.size === 0) return;
+  const params = { count: stated.size, fileList: [...stated].join(', ') };
+  note(
+    stated.size === 1
+      ? t('notices.migration.carryChoices.one', params)
+      : t('notices.migration.carryChoices.many', params)
+  );
+}
+
+/**
+ * `automation.asks` (todo 118), the template's block whole into the options
+ * file after `statline`, at the player's own periods where they had tuned the
+ * four in `internal.yaml`, else at what the client always asked. A block
+ * already stated is the player's and is left alone. Characters overlay it.
+ */
+function statedTheAsks(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined,
+  carried: Carried
+): void {
+  const stated = stateTemplateBlock(home, template, ['automation'], 'asks', 'statline');
+  const own = [...carried].filter(([to]) => to.startsWith(`${ASKS_BLOCK.join('.')}.`));
+  if (own.length > 0) {
+    edit(home.options, (document) => {
+      let changed = false;
+      for (const [to, value] of own) {
+        const at = to.split('.');
+        // Over the shipped figure just written; never over one the player stated.
+        if (!stated && document.hasIn(at)) continue;
+        document.setIn(at, value);
+        changed = true;
+      }
+      return changed;
+    });
+  }
+  if (stated) note(t('notices.migration.asksStated', { file: home.options }));
+}
+
+/**
+ * The top-level `extensions:` block (todo 118), a switch per installed
+ * extension, into the options file after `keys:` with the template's
+ * paragraph. It ships empty, so every installed extension stays on as it was.
+ * Only the options file: extensions load once per client. Idempotent: a block
+ * already there is left alone.
+ */
+function statedTheExtensionSwitches(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (stateTemplateBlock(home, template, [], 'extensions', 'keys')) {
+    note(t('notices.migration.extensionSwitches', { file: home.options }));
+  }
+}
+
+/**
+ * `automation.remotes.allowKillAndHangup` (todo 118) into every file that
+ * states `remotes:`, after `maxGets`, off: `@kill`, `@hangup`, `@relog` and
+ * `@panic!` stay refused as they always were until the player turns it on.
+ */
+function statedKillAndHangup(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateKeysIn(home, template, REMOTES_BLOCK, 'maxGets', [
+    ['allowKillAndHangup', DEFAULT_CONFIG.automation.remotes.allowKillAndHangup]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.killAndHangup.one', params)
+      : t('notices.migration.killAndHangup.many', params)
+  );
+}
+
+/**
+ * `reconnectTries` (todo 118), the old `tuning.reconnect.maxAttempts`, into
+ * every character file beside `autoReconnect` with the template's paragraph:
+ * the player's own figure where they had set one, else 0, never stopping, as
+ * the shipped 999999 effectively never did.
+ */
+function statedReconnectTries(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined,
+  carried: Carried
+): void {
+  const tries = carried.get(RECONNECT_TRIES) ?? DEFAULT_RECONNECT_TRIES;
+  const comment = profileTemplateComment(template, RECONNECT_TRIES);
+  const stated = stateInEveryProfile(home, RECONNECT_TRIES, tries, comment, 'autoReconnect');
+  if (stated.length === 0) return;
+  const params = { count: stated.length, tries: String(tries), fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.reconnectTries.one', params)
+      : t('notices.migration.reconnectTries.many', params)
+  );
+}
+
+/**
  * `logging.keepDays` (2026-10-05, todo 04) into the options file's `logging:`
  * block, at the shipped week, after `capture` and with the template's
  * paragraph. Only the options file: the logs are one folder swept by its
@@ -5059,6 +5406,212 @@ function pinTheRunBetweenRounds(home: Home, note: (message: string) => void): vo
   }
 }
 
+/**
+ * A tuning key a player chooses, made a setting (todo 118): where it was under
+ * `tuning:`, where it goes, and how its figure converts to the setting's unit
+ * (milliseconds to minutes, say).
+ */
+interface Promotion {
+  readonly from: readonly string[];
+  readonly to: readonly string[];
+  readonly convert?: (value: number) => number;
+  /** What the setting ships at, where `to` is a character's own key rather than one `DEFAULT_CONFIG` holds. */
+  readonly shipped?: unknown;
+}
+
+/** A character file's own `reconnectTries`, top-level beside `autoReconnect`. */
+const RECONNECT_TRIES = 'reconnectTries';
+
+/** Every promoted key, in one list so one launch says what moved in one notice. */
+const PROMOTIONS: readonly Promotion[] = [
+  { from: ['session', 'nakedHangMargin'], to: [...HANG_UP_BLOCK, 'nakedMargin'] },
+  { from: ['combat', 'fledLevels'], to: [...COMBAT_BLOCK, 'fledLevels'] },
+  {
+    from: ['combat', 'fledForgetMs'],
+    to: [...COMBAT_BLOCK, 'fledForgetMinutes'],
+    convert: (ms) => Math.max(1, Math.round(ms / 60_000))
+  },
+  { from: ['menace', 'survivalSafeAbove'], to: [...COMBAT_BLOCK, 'safeOddsAbove'] },
+  { from: ['menace', 'survivalRiskyAbove'], to: [...COMBAT_BLOCK, 'riskyOddsAbove'] },
+  { from: ['spells', 'killConfidence'], to: [...SPELLS_BLOCK, 'killConfidence'] },
+  { from: ['spells', 'healUrgency'], to: [...SPELLS_BLOCK, 'healUrgency'] },
+  { from: ['spells', 'blessMinGain'], to: [...SPELLS_BLOCK, 'blessMinGain'] },
+  { from: ['spells', 'blessHealReserve'], to: [...SPELLS_BLOCK, 'blessHealReserve'] },
+  {
+    from: ['spells', 'blessSwapCommandsPerHour'],
+    to: [...SPELLS_BLOCK, 'blessSwapCommandsPerHour']
+  },
+  {
+    from: ['session', 'hangUpAfterRunMs'],
+    to: [...HANG_UP_BLOCK, 'afterRunSeconds'],
+    convert: (ms) => Math.round(ms / 1000)
+  },
+  { from: ['placeGear', 'minSaved'], to: [...GEAR_BLOCK, 'resistMinSaved'] },
+  // A character's own key: the shipped 999999 was no limit, which is 0 now.
+  {
+    from: ['reconnect', 'maxAttempts'],
+    to: [RECONNECT_TRIES],
+    shipped: DEFAULT_RECONNECT_TRIES,
+    convert: (tries) => (tries >= 999_999 ? DEFAULT_RECONNECT_TRIES : tries)
+  },
+  { from: ['walk', 'sneakGiveUp'], to: [...MOVEMENT_BLOCK, 'sneakGiveUp'] },
+  { from: ['walk', 'pickMargin'], to: [...MOVEMENT_BLOCK, 'pickMargin'] },
+  { from: ['walk', 'bashMargin'], to: [...MOVEMENT_BLOCK, 'bashMargin'] },
+  { from: ['walk', 'disarmDoubt'], to: [...MOVEMENT_BLOCK, 'disarmDoubt'] },
+  { from: ['walk', 'leverTries'], to: [...MOVEMENT_BLOCK, 'leverTries'] },
+  { from: ['light', 'carryAtLeast'], to: [...MOVEMENT_BLOCK, 'carryLights'] },
+  { from: ['world', 'fightCost'], to: [...MOVEMENT_BLOCK, 'fightCost'] },
+  { from: ['world', 'dangerCost'], to: [...MOVEMENT_BLOCK, 'dangerCost'] },
+  { from: ['world', 'anotherWayPenalty'], to: [...MOVEMENT_BLOCK, 'anotherWayPenalty'] },
+  { from: ['world', 'anotherWayLonger'], to: [...MOVEMENT_BLOCK, 'anotherWayLonger'] },
+  {
+    from: ['combat', 'shunRoomMs'],
+    to: [...MOVEMENT_BLOCK, 'avoidRanFromMinutes'],
+    // Floored at a minute: 0 here is *never go round*, which the figure never meant.
+    convert: (ms) => Math.max(1, Math.round(ms / 60_000))
+  },
+  { from: ['walk', 'resumeAskSteps'], to: [...WALK_BLOCK, 'resumeAskSteps'] },
+  { from: ['loop', 'maxFailures'], to: [...WALK_BLOCK, 'failedLegs'] },
+  {
+    from: ['loop', 'expRateGraceMs'],
+    to: [...WALK_BLOCK, 'expRateGraceMinutes'],
+    convert: (ms) => Math.round(ms / 60_000)
+  },
+  {
+    from: ['rest', 'lairClockMaxSeconds'],
+    to: [...HEALTH_BLOCK, 'restNextDoorMinutes'],
+    convert: (seconds) => Math.max(1, Math.round(seconds / 60))
+  },
+  { from: ['areaSearch', 'maxRadius'], to: [...SEARCH_BLOCK, 'areaMaxSteps'] },
+  { from: ['areaSearch', 'maxSearches'], to: [...SEARCH_BLOCK, 'areaMaxSearches'] },
+  ...(
+    [
+      'moveMargin',
+      'cashExpShare',
+      'contestedShare',
+      'betterSpotRadius',
+      'maxDamageShare',
+      'trivialLevelMargin'
+    ] as const
+  ).map((key) => ({ from: ['hunting', key], to: [...HUNTING_BLOCK, key] })),
+  { from: ['outgrown', 'stashFromCopper'], to: [...OUTGROWN_BLOCK, 'stashFromCopper'] },
+  { from: ['outgrown', 'sellFromCopper'], to: [...OUTGROWN_BLOCK, 'sellFromCopper'] },
+  { from: ['cashRun', 'sellDetour'], to: [...OUTGROWN_BLOCK, 'sellDetour'] },
+  { from: ['supplies', 'cashBuffer'], to: [...SUPPLIES_BLOCK, 'cashBuffer'] },
+  { from: ['supplies', 'dearerSteps'], to: [...SUPPLIES_BLOCK, 'dearerSteps'] },
+  { from: ['quests', 'rollTries'], to: [...QUESTS_BLOCK, 'rollTries'] },
+  { from: ['spending', 'maxGets'], to: [...REMOTES_BLOCK, 'maxGets'] },
+  { from: ['gear', 'perSlot'], to: [...GEAR_BLOCK, 'offersPerSlot'] },
+  { from: ['train', 'statHorizon'], to: [...TRAIN_BLOCK, 'statHorizon'] },
+  { from: ['remotes', 'parAtLoss'], to: [...PARTY_BLOCK, 'parAtLoss'] },
+  ...(
+    [
+      ['packRefreshMs', 'inventoryMinutes'],
+      ['sheetRefreshMs', 'statsMinutes'],
+      ['experienceRefreshMs', 'expMinutes'],
+      ['rosterAskMs', 'whoMinutes']
+    ] as const
+  ).map(([from, to]) => ({
+    from: ['queue', from],
+    to: [...ASKS_BLOCK, to],
+    // Floored at a minute: 0 here is *never ask*, which the figure never meant.
+    convert: (ms: number) => Math.max(1, Math.round(ms / 60_000))
+  }))
+];
+
+/** The figures the player had changed, converted, by the setting's dotted path. */
+type Carried = ReadonlyMap<string, unknown>;
+
+/** The value at a path in a plain object, or undefined. */
+function valueAt(root: unknown, at: readonly string[]): unknown {
+  return at.reduce<unknown>((node, key) => (isRecord(node) ? node[key] : undefined), root);
+}
+
+/**
+ * Takes the promoted keys out of the player's `internal.yaml`, comment and
+ * all, since nothing reads them there now, and hands back each figure that
+ * differed from what its setting ships, for `statePromoted` to state wherever
+ * the setting is stated. A figure of the wrong kind is said and not carried.
+ */
+function takenTuning(
+  home: Home,
+  note: (message: string) => void,
+  promotions: readonly Promotion[]
+): Carried {
+  const carried = new Map<string, unknown>();
+  const moved: string[] = [];
+  const refused: string[] = [];
+  for (const { from, to, convert, shipped: own } of promotions) {
+    const at = ['tuning', ...from];
+    let held: unknown;
+    edit(home.internal, (document) => {
+      if (!document.hasIn(at)) return false;
+      held = document.getIn(at);
+      leadFor(document, at, undefined);
+      document.deleteIn(at);
+      // A group the promotion emptied (`placeGear`) goes with its last key.
+      const group = document.getIn(at.slice(0, -1), true);
+      if (isMap(group) && group.items.length === 0) {
+        leadFor(document, at.slice(0, -1), undefined);
+        document.deleteIn(at.slice(0, -1));
+      }
+      return true;
+    });
+    if (held === undefined) continue;
+    moved.push(at.join('.'));
+    const shipped = own ?? valueAt(DEFAULT_CONFIG, to);
+    if (typeof held !== typeof shipped) {
+      refused.push(`${at.join('.')}: ${String(held)}`);
+      continue;
+    }
+    const value = typeof held === 'number' && convert !== undefined ? convert(held) : held;
+    if (value !== shipped) carried.set(to.join('.'), value);
+  }
+  if (moved.length > 0) {
+    note(t('notices.migration.tuningPromoted', { keys: moved.join(', '), file: home.internal }));
+  }
+  if (carried.size > 0) {
+    const settings = [...carried].map(([to, value]) => `${to}: ${String(value)}`).join(', ');
+    note(t('notices.migration.tuningCarried', { settings }));
+  }
+  if (refused.length > 0) {
+    note(t('notices.migration.tuningRefused', { keys: refused.join(', ') }));
+  }
+  return carried;
+}
+
+/**
+ * `stateKeysIn`, with each key the player had tuned stated at their figure
+ * rather than the shipped one, and that figure also written into the options
+ * file where it states no block for it: the tuning key reached every
+ * character, and so does the setting. A figure the options file already states
+ * is the player's and is kept.
+ */
+function statePromoted(
+  home: Home,
+  template: string | undefined,
+  carried: Carried,
+  block: readonly string[],
+  after: string,
+  keys: ReadonlyArray<readonly [string, unknown]>
+): string[] {
+  const valued = keys.map(
+    ([key, shipped]) => [key, carried.get([...block, key].join('.')) ?? shipped] as const
+  );
+  const stated = stateKeysIn(home, template, block, after, valued);
+  for (const [key] of keys) {
+    const at = [...block, key];
+    const value = carried.get(at.join('.'));
+    if (value === undefined) continue;
+    edit(home.options, (document) => {
+      if (document.hasIn(at)) return false;
+      document.setIn(at, value);
+      return true;
+    });
+  }
+  return stated;
+}
+
 function statedTheStepNudge(home: Home, note: (message: string) => void): void {
   let stated = false;
   edit(home.internal, (document) => {
@@ -5140,8 +5693,8 @@ function theActionsBecameAFamily(home: Home, note: (message: string) => void): v
  * it the file has no figure and the behaviour is invisible in the one place
  * the client tells the player to look for it.
  *
- * Beside `resumeAskSteps`, where the shipped file puts it and where the
- * distance it is not is already explained.
+ * Beside `maxHolds`, where `resumeAskSteps` stood before it became a setting
+ * (todo 118).
  */
 function statedTheReplanDrift(home: Home, note: (message: string) => void): void {
   let stated = false;
@@ -5155,7 +5708,7 @@ function statedTheReplanDrift(home: Home, note: (message: string) => void): void
       DEFAULT_INTERNAL.tuning.walk.replanDriftSteps
     ) as Pair;
     const at = block.items.findIndex(
-      (item) => isScalar(item.key) && String(item.key.value) === 'resumeAskSteps'
+      (item) => isScalar(item.key) && String(item.key.value) === 'maxHolds'
     );
     if (at === -1) block.items.push(pair);
     else block.items.splice(at + 1, 0, pair);
@@ -7410,7 +7963,6 @@ function theTuningBlockGainedKeys(
     addGroup('reconnect', {
       stepMs: DEFAULT_INTERNAL.tuning.reconnect.stepMs,
       maxDelayMs: DEFAULT_INTERNAL.tuning.reconnect.maxDelayMs,
-      maxAttempts: DEFAULT_INTERNAL.tuning.reconnect.maxAttempts,
       maxFlaps: DEFAULT_INTERNAL.tuning.reconnect.maxFlaps,
       settledMs: DEFAULT_INTERNAL.tuning.reconnect.settledMs
     });
@@ -7470,21 +8022,17 @@ function theTuningBlockGainedKeys(
     /* Snapping one card over the console to another (todo 02, 2026-09-13). */
     addKey('view', 'snapDistance', DEFAULT_INTERNAL.tuning.view.snapDistance);
     /*
-     * And what the survey leaves out and measures (the same todo): the two
-     * exclusions, the margin the beneath-this-level test reads the bar at,
-     * and the two sweeps a loop's ring and its fillers are measured with.
+     * And what the survey leaves out and measures (the same todo): the
+     * beneath-this-level exclusion and the two sweeps a loop's ring and its
+     * fillers are measured with. The other exclusion and the margin are
+     * `automation.hunting` settings now (todo 118).
      */
-    addKey('hunting', 'maxDamageShare', DEFAULT_INTERNAL.tuning.hunting.maxDamageShare);
     addKey('hunting', 'trivialShare', DEFAULT_INTERNAL.tuning.hunting.trivialShare);
-    addKey('hunting', 'trivialLevelMargin', DEFAULT_INTERNAL.tuning.hunting.trivialLevelMargin);
     addKey('hunting', 'clusterRadius', DEFAULT_INTERNAL.tuning.hunting.clusterRadius);
     addKey('hunting', 'fillerRadius', DEFAULT_INTERNAL.tuning.hunting.fillerRadius);
     addKey('hunting', 'sizeTolerance', DEFAULT_INTERNAL.tuning.hunting.sizeTolerance);
-    /* A lair's clock and the look next door (2026-09-12, todo 08). */
-    addKey('rest', 'lairClockMaxSeconds', DEFAULT_INTERNAL.tuning.rest.lairClockMaxSeconds);
+    /* The look next door (2026-09-12, todo 08); the lair's clock is a setting now. */
     addKey('rest', 'peekMs', DEFAULT_INTERNAL.tuning.rest.peekMs);
-    /* How sure a kill must be before the cheapest spell wins (2026-09-12, todo 09). */
-    addKey('spells', 'killConfidence', DEFAULT_INTERNAL.tuning.spells.killConfidence);
     /*
      * How long a command the realm threw away waits before it goes again
      * (2026-09-06, todo 02) — the server's own 1,000ms fumble delay.
@@ -7508,7 +8056,6 @@ function theTuningBlockGainedKeys(
      * documentation they are comparing it against does.
      */
     addKey('walk', 'searchRecheckEvery', DEFAULT_INTERNAL.tuning.walk.searchRecheckEvery);
-    addKey('walk', 'leverTries', DEFAULT_INTERNAL.tuning.walk.leverTries);
     /*
      * How long a command may go unanswered before the link is called dead
      * (2026-09-07, todo 00). It is the only number that decides whether a
@@ -7620,8 +8167,6 @@ function theTuningBlockGainedKeys(
     addKey('remotes', 'healAskAgainMs', DEFAULT_INTERNAL.tuning.remotes.healAskAgainMs);
     addKey('hunting', 'measuredFightsMin', DEFAULT_INTERNAL.tuning.hunting.measuredFightsMin);
     addKey('view', 'questRunLingerMs', DEFAULT_INTERNAL.tuning.view.questRunLingerMs);
-    addKey('world', 'anotherWayPenalty', DEFAULT_INTERNAL.tuning.world.anotherWayPenalty);
-    addKey('world', 'anotherWayLonger', DEFAULT_INTERNAL.tuning.world.anotherWayLonger);
     addKey('world', 'hazardSupplyCount', DEFAULT_INTERNAL.tuning.world.hazardSupplyCount);
     // And what a door's lever in another room may cost to walk to (todo 837).
     addKey('world', 'leverDetourCost', DEFAULT_INTERNAL.tuning.world.leverDetourCost);
@@ -7652,17 +8197,13 @@ function theTuningBlockGainedKeys(
     // The worker threads that run the odds book's and the blessing choice's fights (2026-10-06).
     addKey('menace', 'simulatorThreads', DEFAULT_INTERNAL.tuning.menace.simulatorThreads);
     addKey('hunting', 'speedShare', DEFAULT_INTERNAL.tuning.hunting.speedShare);
-    // How old each listing may get before it is asked again (2026-10-08).
-    for (const key of ['packRefreshMs', 'sheetRefreshMs', 'experienceRefreshMs'] as const)
-      addKey('queue', key, DEFAULT_INTERNAL.tuning.queue[key]);
+    // How old each listing may get is `automation.asks` now (todo 118).
     // How often an invitation nobody has answered is followed up (todo 01, 2026-10-09).
     addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
     // The longest telepath a @loop or @goto answer is cut to (todo 32, 2026-10-10).
     addKey('remotes', 'telepathMax', DEFAULT_INTERNAL.tuning.remotes.telepathMax);
     // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).
     addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
-    // How much lost health brings the next par sooner (2026-10-10).
-    addKey('remotes', 'parAtLoss', DEFAULT_INTERNAL.tuning.remotes.parAtLoss);
     // How many shops a row naming no shop tries before it waits (todo 49, 2026-10-11).
     addKey('supplies', 'countersPerTrip', DEFAULT_INTERNAL.tuning.supplies.countersPerTrip);
     // A party member's cure's backoff (todo 80, 2026-10-11).
@@ -8002,10 +8543,7 @@ const TRAIL_STEPS_COMMENT = ` How many confirmed moves the trail keeps -- the ba
  *
  * The paragraph above `toolbar:` lists every button there is by name, so it is
  * refreshed from the shipped template when it still recommends the old three.
- * And `tuning.walk.resumeAskSteps` is written in beside `maxHolds`, for
- * `statedTheStepNudge`'s reason: a key added inside an existing block reaches
- * nobody who has already run the client, and this one decides whether pressing
- * play walks a character across the realm or asks first.
+ * (It also wrote `tuning.walk.resumeAskSteps`, a setting since todo 118.)
  */
 function theTransportBecameOneButton(
   home: Home,
@@ -8016,24 +8554,6 @@ function theTransportBecameOneButton(
   let changed = false;
   edit(home.internal, (document) => {
     let touched = false;
-
-    const walk = document.getIn(['tuning', 'walk'], true);
-    if (isMap(walk) && !walk.has('resumeAskSteps')) {
-      // The default itself, never a copy: `internal.test.ts` binds the shipped
-      // template to `TUNING_DEFAULTS`, and a literal here would be a third copy
-      // nothing binds. `statedTheStepNudge` states the whole argument.
-      const pair = document.createPair(
-        'resumeAskSteps',
-        DEFAULT_INTERNAL.tuning.walk.resumeAskSteps
-      ) as Pair;
-      const at = walk.items.findIndex(
-        (item) => isScalar(item.key) && String(item.key.value) === 'maxHolds'
-      );
-      if (at === -1) walk.items.push(pair);
-      else walk.items.splice(at + 1, 0, pair);
-      if (isScalar(pair.key)) pair.key.commentBefore = RESUME_ASK_COMMENT;
-      touched = true;
-    }
 
     const buttons = document.getIn(['toolbar', 'pinned'], true);
     if (isSeq(buttons)) {
@@ -8102,18 +8622,3 @@ function templateLead(template: string | undefined, root: string): string | unde
   const comment = (pair.key as Scalar).commentBefore;
   return typeof comment === 'string' ? comment : undefined;
 }
-
-const RESUME_ASK_COMMENT = ` How far the character may have wandered from what it was walking before
- pressing play asks about it first.
-
- A stop is a pause that may or may not be permanent, so the thing it stopped is
- still there hours later -- and the character may have been walked across the
- realm, or killed and reborn in a temple on another map, in between. Picking it
- back up is then a journey in its own right that nobody asked for, which on a
- realm full of wandering monsters is not free. Past this many steps the client
- answers play with a question.
-
- Measured as how much *further* away the character is now than when the
- movement stopped -- for a route and for a lap alike, so a movement stopped and
- started again from the same room never asks however far it still has to go,
- and a character killed and reborn two maps away does.`;

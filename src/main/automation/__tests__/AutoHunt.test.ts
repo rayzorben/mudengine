@@ -17,6 +17,7 @@ import {
 } from '../../../shared/hunting';
 import { retimed, type Loop } from '../../../shared/loops';
 import type { Route } from '../../../shared/world';
+import { noticeLog, type NoticeLog } from './noticeLog';
 
 const config = (over: Partial<HuntingAutomationConfig> = {}): HuntingAutomationConfig => ({
   ...DEFAULT_CONFIG.automation.hunting,
@@ -84,6 +85,7 @@ const ROUTE: Route = {
 } as Route;
 
 let notices: string[];
+let log: NoticeLog;
 let decisions: SafetyDecision[];
 let walked: Route[];
 /** Whether each walk was asked as a run, in order. */
@@ -152,13 +154,14 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
     DEFAULT_CONFIG.automation.health,
     true,
     planner,
-    { notice: (message) => notices.push(message), decided: (d) => decisions.push(d) },
+    { notice: log.notice, decided: (d) => decisions.push(d) },
     () => clock
   );
 }
 
 beforeEach(() => {
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   decisions = [];
   walked = [];
   runs = [];
@@ -192,6 +195,7 @@ describe('going hunting on its own', () => {
     expect(started).toHaveLength(1);
     expect(started[0]!.name).toContain('Graveyard');
     expect(decisions.at(-1)).toMatchObject({ action: 'hunt', acted: true });
+    expect(log.kinds).toEqual(['hunt-move', 'hunt-move']);
   });
 
   /* The loop is built from the survey, never filed: a lair that stops being
@@ -243,6 +247,7 @@ describe('going hunting on its own', () => {
     expect(walked).toHaveLength(0);
     expect(decisions.at(-1)).toMatchObject({ action: 'hunt', acted: false });
     expect(notices.some((line) => line.length > 0)).toBe(true);
+    expect(log.kinds).toEqual(['hunt-resurvey']);
   });
 
   /* And one situation is said once, not once per status line. */
@@ -333,8 +338,8 @@ describe('going hunting on its own', () => {
    */
 
   /** A lap running at the Graveyard, having been walked to and started. */
-  function hunting(): AutoHunt {
-    const auto = hunt();
+  function hunting(choices: Partial<HuntingAutomationConfig> = {}): AutoHunt {
+    const auto = hunt({}, choices);
     const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
     auto.onCharacter(at);
     here = '1/816';
@@ -405,6 +410,15 @@ describe('going hunting on its own', () => {
     // this client asks for before it walks anywhere.
     auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 3_500 } }));
     expect(walked).toHaveLength(1);
+  });
+
+  // The case above stays for the same figures at the shipped margin: the positive control.
+  it('moves for the same difference with the margin set under it', () => {
+    const auto = hunting({ moveMargin: 0.05 });
+    answer = advice([spot('lair:a', 12_000), spot('lair:b', 11_000, 'Sewer', 920)]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 3_500 } }));
+    expect(walked).toHaveLength(2);
   });
 
   /*
@@ -686,11 +700,9 @@ describe('going hunting on its own', () => {
 
   it('keeps nothing from a stay too short to say what a lair pays', () => {
     // A grace shorter than the least stay, so the least stay is what decides.
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      loop: { ...DEFAULT_INTERNAL.tuning.loop, expRateGraceMs: 60_000 }
-    });
     const auto = hunt();
+    const walk = { ...DEFAULT_CONFIG.automation.walk, expRateGraceMinutes: 1 };
+    auto.configure(config(), walk, DEFAULT_CONFIG.automation.health, true);
     const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
     auto.onCharacter(at);
     here = '1/816';

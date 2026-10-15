@@ -113,3 +113,12 @@ export const MARK_GLYPH: Record<MarkIcon, string> = {
     '<path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/><path d="m3.5 3.5 17 17"/>'
   )
 };
+
+/*
+ * The gear on a line about a decision the client made on its own (todo 119):
+ * the ring and teeth `Icon`'s `settings` draws from this same body, so the
+ * console's gear and the chrome's are one picture.
+ */
+export const GEAR_BODY =
+  '<circle cx="12" cy="12" r="3.1"/><circle cx="12" cy="12" r="7.3"/><path d="M12 2.6v2.8M12 18.6v2.8M21.4 12h-2.8M5.4 12H2.6M18.63 5.37l-1.98 1.98M7.35 16.65l-1.98 1.98M18.63 18.63l-1.98-1.98M7.35 7.35L5.37 5.37"/>';
+export const DECISION_GLYPH = svg(GEAR_BODY);

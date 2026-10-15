@@ -53,6 +53,7 @@ import Icon from './Icon';
 import { type BuilderMarks } from './MapPlan';
 import MapView from './MapView';
 import RoomMatches from './RoomMatches';
+import { CountInput } from './SupplyControls';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
 import { loopFor, notableSteps, pickRoom, shapeOf, stopParts, suggestedName } from '../lib/builder';
@@ -74,7 +75,7 @@ import type { CharacterState } from '@shared/character';
 import type { FoundRoom } from '@shared/destinations';
 import { LOOP_LIMITS } from '@shared/drafts';
 import { roomsWithFinds, type Find } from '@shared/finds';
-import type { Loop, LoopScope } from '@shared/loops';
+import { LINGER_MAX_SECONDS, type Loop, type LoopScope } from '@shared/loops';
 import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import {
@@ -178,6 +179,8 @@ function LoopBuilderCard({
    * and the person it was written for could not say what it did.
    */
   const [prefer, setPrefer] = useState(true);
+  /** Seconds to wait at each waypoint, by room; a stop's `linger`. */
+  const [lingers, setLingers] = useState<Readonly<Record<RoomId, number>>>({});
   const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
   const finder = useRef<HTMLInputElement>(null);
 
@@ -397,7 +400,7 @@ function LoopBuilderCard({
     (place) => t('cards.builder.loopName', { place })
   );
   const name = typedName ?? offered;
-  const loop = loopFor(plan, picks, name, prefer);
+  const loop = loopFor(plan, picks, name, prefer, lingers);
   const blocked = plan.legs.find((leg) => leg.route.blocked);
 
   /* The legs between consecutive waypoints, read off the planned steps. */
@@ -580,6 +583,20 @@ function LoopBuilderCard({
                     <span className="chip off">
                       {stopParts({ room: `${stop.name} ${stop.id}` }).at}
                     </span>
+                    <label className="builder-linger" title={t('cards.builder.lingerTitle')}>
+                      <span className="quiet">{t('cards.builder.linger')}</span>
+                      <CountInput
+                        className="number"
+                        label={t('cards.builder.lingerAria', { room: stop.name })}
+                        onCommit={(seconds) =>
+                          setLingers((held) => ({
+                            ...held,
+                            [stop.id]: Math.min(LINGER_MAX_SECONDS, seconds)
+                          }))
+                        }
+                        value={lingers[stop.id] ?? 0}
+                      />
+                    </label>
                   </div>
                 </li>
               );

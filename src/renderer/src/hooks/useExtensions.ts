@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { ExtensionInfo } from '@shared/extensions';
 
@@ -10,25 +10,27 @@ import type { ExtensionInfo } from '@shared/extensions';
 let known: ExtensionInfo[] | null = null;
 
 /**
- * The extensions installed in the home that draw a card (todo 84), empty
- * until main has answered and wherever none is installed.
+ * Every extension installed in the home, switched off ones included (todo
+ * 118), empty until main has answered and wherever none is installed.
  */
-export function useExtensions(): readonly ExtensionInfo[] {
-  const [extensions, setExtensions] = useState<readonly ExtensionInfo[]>([]);
+export function useInstalledExtensions(): readonly ExtensionInfo[] {
+  const [extensions, setExtensions] = useState<readonly ExtensionInfo[]>(known ?? []);
   useEffect(() => {
+    if (known !== null) return;
     let live = true;
-    const show = (all: ExtensionInfo[]): void => {
-      if (live) setExtensions(all.filter((each) => each.page !== null));
-    };
-    if (known !== null) show(known);
-    else
-      void window.mudengine.listExtensions().then((all) => {
-        known = all;
-        show(all);
-      });
+    void window.mudengine.listExtensions().then((all) => {
+      known = all;
+      if (live) setExtensions(all);
+    });
     return () => {
       live = false;
     };
   }, []);
   return extensions;
+}
+
+/** The extensions running this launch that draw a card (todo 84). */
+export function useExtensions(): readonly ExtensionInfo[] {
+  const installed = useInstalledExtensions();
+  return useMemo(() => installed.filter((each) => each.loaded && each.page !== null), [installed]);
 }

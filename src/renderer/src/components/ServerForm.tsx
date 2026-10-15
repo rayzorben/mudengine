@@ -178,6 +178,7 @@ export default function ServerForm({
         <p className="settings-note">{t('settings.realms.loginNote')}</p>
 
         <LoginStepRows
+          setting="server.login"
           onChange={(login) => onChange({ ...draft, login })}
           sendPlaceholder={t('settings.realms.stepSendPlaceholder')}
           steps={draft.login}
@@ -263,6 +264,7 @@ export default function ServerForm({
             hint={t('settings.health.hangPenaltiesHint')}
             label={t('settings.health.hangPenaltiesLabel')}
             name="realm-hang-penalties"
+            setting="server.hangPenalties"
             onChange={(value) => onChange({ ...draft, hangPenalties: penaltiesOf(value) })}
             options={[
               { value: '', label: t('settings.health.hangPenaltiesGlobal') },
@@ -281,6 +283,7 @@ export default function ServerForm({
           hint={t('settings.health.fleeGotoRealmHint')}
           label={t('settings.health.fleeGotoCommandLabel')}
           name="realm-flee-goto"
+          setting="server.fleeGoto"
           onChange={(value) => onChange({ ...draft, fleeGoto: value })}
           placeholder={t('settings.health.fleeGotoCommandPlaceholder')}
           spellCheck={false}

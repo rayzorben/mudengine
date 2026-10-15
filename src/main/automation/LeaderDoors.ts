@@ -14,7 +14,6 @@
  * `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
@@ -27,9 +26,10 @@ import {
   type RoomId
 } from '../../shared/world';
 import type { CommandQueue } from './CommandQueue';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 export interface LeaderDoorsEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** Whether the leader runs this client, so it sends the party at a door itself. */
   leaderSendsHands?(leader: string): boolean;
 }
@@ -90,6 +90,7 @@ export class LeaderDoors {
       priority: 'movement',
       coalesceKey: DOOR_KEY,
       stillWanted: this.stillHere(),
+      decision: 'leader-door',
       reason: t('automation.party.reasonOpenForLeader', {
         barrier: door.barrier,
         direction: DIRECTION_NAME[door.direction]
@@ -121,7 +122,7 @@ export class LeaderDoors {
     const tell = (message: string): void => {
       if (this.told.has(direction)) return;
       this.told.add(direction);
-      this.events.notice?.(message);
+      this.events.notice?.(message, 'leader-door');
     };
     if (fightIsRunning(state)) {
       tell(t('automation.party.helpDoorFighting', words));
@@ -138,7 +139,7 @@ export class LeaderDoors {
       return;
     }
     const { picklocks, strength } = state.progress;
-    const { pickMargin, bashMargin } = tuning().walk;
+    const { pickMargin, bashMargin } = this.config.movement;
     const pick = canPick(need?.pickDifficulty, picklocks, pickMargin, stated);
     // No figure from a realm that does know the exit is a plain door; one it
     // has no record of (an unresolved room, no world data) may be keyed.
@@ -161,6 +162,7 @@ export class LeaderDoors {
       priority: 'movement',
       coalesceKey: DOOR_KEY,
       stillWanted: this.stillHere(),
+      decision: 'leader-door',
       reason: pick
         ? t('automation.party.reasonPickForLeader', words)
         : t('automation.party.reasonBashForLeader', words),

@@ -14,7 +14,8 @@ import {
   moves,
   routeOf,
   stepOf,
-  useRigs
+  useRigs,
+  type Rig
 } from '../walk/__tests__/walking';
 import {
   EMPTY_CHARACTER,
@@ -55,6 +56,8 @@ let sent: string[];
 let notices: string[];
 let queue: CommandQueue;
 let walker: Walker;
+let kindOf: Rig['kindOf'];
+let decisionOf: Rig['decisionOf'];
 
 /*
  * The shared rig, read through this file's own variables: a test swaps
@@ -64,7 +67,9 @@ let walker: Walker;
  */
 const walkerOn = useRigs();
 beforeEach(() => {
-  ({ sent, notices, queue, walker } = walkerOn({}, config, (command) => sent.push(command)));
+  ({ sent, notices, queue, walker, kindOf, decisionOf } = walkerOn({}, config, (command) =>
+    sent.push(command)
+  ));
 });
 afterEach(() => walker.dispose());
 
@@ -674,9 +679,9 @@ describe('stopping', () => {
 
     expect(walker.progress.status).toBe('stopped');
     expect(walker.progress.reason).toBe(t('automation.walk.reasonCombat'));
-    expect(notices).toContain(
-      t('automation.walk.stopped', { reason: t('automation.walk.reasonCombat') })
-    );
+    const stopped = t('automation.walk.stopped', { reason: t('automation.walk.reasonCombat') });
+    expect(notices).toContain(stopped);
+    expect(kindOf(stopped)).toBe('walk-fight-hold');
   });
 
   /* A loop narrates its own legs, so this one stays silent — the fact still
@@ -782,7 +787,10 @@ describe('stopping', () => {
 
     vi.advanceTimersByTime(5000);
     expect(walker.progress.status).toBe('stopped');
-    expect(walker.progress.reason).toBe(t('automation.walk.reasonTimeout', { command: 'e' }));
+    const reason = t('automation.walk.reasonTimeout', { command: 'e' });
+    expect(walker.progress.reason).toBe(reason);
+    expect(kindOf(t('automation.walk.stopped', { reason }))).toBe('walk-timeout-stop');
+    expect(decisionOf('')).toBe('walk-nudge');
     // And exactly one nudge. A second would be the client answering its own
     // silence with more of it.
     expect(sent.filter((command) => command.length === 0)).toEqual(['']);
@@ -1923,6 +1931,7 @@ describe('sneaking before a route', () => {
     walk.start(ROUTE, at(1, 1));
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['sn']);
+    expect(decisionOf('sn')).toBe('walk-sneak');
     walk.onBlock(block('user-sneak-initiate'));
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['sn', 'e']);
@@ -2060,7 +2069,7 @@ describe('sneaking before a route', () => {
     const walk = sneaking(() => base);
     walk.start(ROUTE, base);
     vi.advanceTimersByTime(200);
-    const giveUp = tuning().walk.sneakGiveUp;
+    const giveUp = config.movement.sneakGiveUp;
     for (let i = 0; i < giveUp; i += 1) {
       // Each refusal comes with its prompt, which is the queue's credit.
       queue.notePrompt();
@@ -2073,8 +2082,96 @@ describe('sneaking before a route', () => {
     vi.advanceTimersByTime(200);
     expect(sent.length).toBeGreaterThan(giveUp + 1);
     expect(sent.slice(giveUp + 1)).not.toContain('sn');
-    const said = t('automation.walk.sneakGaveUp', { count: tuning().walk.sneakGiveUp });
+    const said = t('automation.walk.sneakGaveUp', { count: config.movement.sneakGiveUp });
     expect(notices.filter((line) => line === said)).toHaveLength(1);
+    walk.dispose();
+  });
+
+  /*
+   * Todo 120: the room's search goes out from `beforeStep` on an idle queue and
+   * breaks the stealth the walk had, so the `sn` is asked after it, not skipped.
+   */
+  it('sneaks again after a search sent ahead of the step', () => {
+    let current: CharacterState = { ...at(1, 1), stealth: 'sneaking' };
+    const walk = new Walker({ ...config, movement: { ...config.movement, sneak: true } }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => current,
+      beforeStep: () => {
+        queue.enqueue({ command: 'search', priority: 'movement', reason: 'search' });
+        // What the tracker does at the send (`StealthReceipt.sent`).
+        current = { ...current, stealth: 'seen' };
+      }
+    });
+    walk.start(ROUTE, current);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['search', 'sn']);
+    queue.notePrompt();
+    walk.onBlock(block('user-sneak-initiate'));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['search', 'sn', 'e']);
+    walk.dispose();
+  });
+
+  // The same with the search still waiting on a busy window: the queue decides.
+  it('asks for the sn behind a search still queued in the step band, not behind a probe', () => {
+    const asked = (band: 'movement' | 'probe'): boolean => {
+      const busy = new CommandQueue(
+        { ...config, pacing: { ...config.pacing, window: 0 } },
+        { send: (command) => sent.push(command) }
+      );
+      const current: CharacterState = { ...at(1, 1), stealth: 'sneaking' };
+      const walk = new Walker({ ...config, movement: { ...config.movement, sneak: true } }, busy, {
+        stateNow: () => current,
+        beforeStep: () => busy.enqueue({ command: 'search', priority: band, reason: 'search' })
+      });
+      walk.start(ROUTE, current);
+      const sn = busy.queued((intent) => intent.command === 'sn');
+      walk.dispose();
+      busy.dispose();
+      return sn;
+    };
+    expect(asked('movement')).toBe(true);
+    expect(asked('probe')).toBe(false);
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * Todo 120 (Rayzor, 2026-10-12): four refusals spread over twelve tries, with
+   * `Sneaking...` moves between them, read as four in a row and the walk said
+   * *the last 4 tries failed*. A move that printed `Sneaking...` ends the run.
+   */
+  it('counts refusals only in a row: a move that printed Sneaking... starts again', () => {
+    let current = at(1, 1);
+    const walk = sneaking(() => current);
+    const four = routeOf(
+      stepOf(1, 2, 'e'),
+      stepOf(2, 3, 'e'),
+      stepOf(3, 4, 'e'),
+      stepOf(4, 5, 'e')
+    );
+    walk.start(four, current);
+    vi.advanceTimersByTime(200);
+    for (let room = 2; room <= 4; room += 1) {
+      // Two refused, one let through, and the step went sneaking.
+      for (const answer of [
+        'user-sneak-failed',
+        'user-sneak-failed',
+        'user-sneak-initiate'
+      ] as const) {
+        queue.notePrompt();
+        walk.onBlock(block(answer));
+        vi.advanceTimersByTime(200);
+      }
+      walk.onBlock(block('user-sneaking'));
+      queue.notePrompt();
+      current = at(1, room);
+      walk.onCharacter(current);
+      vi.advanceTimersByTime(200);
+    }
+    // Six refusals, never four in a row: the fourth room is still asked (the positive control).
+    expect(sent.filter((command) => command === 'sn')).toHaveLength(10);
+    const said = t('automation.walk.sneakGaveUp', { count: config.movement.sneakGiveUp });
+    expect(notices).not.toContain(said);
     walk.dispose();
   });
 
@@ -2111,7 +2208,7 @@ describe('sneaking before a route', () => {
     const three = routeOf(stepOf(1, 2, 'e'), stepOf(2, 3, 'e'), stepOf(3, 4, 'e'));
     walk.start(three, base);
     vi.advanceTimersByTime(200);
-    const giveUp = tuning().walk.sneakGiveUp;
+    const giveUp = config.movement.sneakGiveUp;
     for (let i = 0; i < giveUp; i += 1) {
       queue.notePrompt();
       walk.onBlock(block('user-sneak-failed'));

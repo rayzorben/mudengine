@@ -12,19 +12,28 @@
 import { isPrompt, type Block } from '../../shared/blocks';
 import { inAParty, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { judgeRemote } from '../../shared/remotes';
 import { t } from '../app/i18n';
 import type { CommandQueue, Intent } from './CommandQueue';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
 export interface AutoJoinEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 /** `join <leader>`, one per leader however it was asked for: an invitation and a `@join` are one join. */
-export function joinIntent(leader: string, reason: string): Intent {
-  return { command: `join ${leader}`, priority: 'user', coalesceKey: joinKey(leader), reason };
+export function joinIntent(leader: string, reason: string, decision: DecisionKind): Intent {
+  return {
+    command: `join ${leader}`,
+    priority: 'user',
+    coalesceKey: joinKey(leader),
+    reason,
+    decision
+  };
 }
+
+const JOIN: DecisionKind = 'party-autojoin';
 
 function joinKey(leader: string): string {
   return `remote:join:${leader.toLowerCase()}`;
@@ -68,7 +77,7 @@ export class AutoJoin {
     if (leader === undefined || this.joining(leader)) return;
 
     if (inAParty(state) || state.party.following !== null) {
-      this.events.notice?.(t('automation.remotes.autoJoinInParty', { from: leader }));
+      this.events.notice?.(t('automation.remotes.autoJoinInParty', { from: leader }), JOIN);
       return;
     }
     const verdict = judgeRemote(leader, 'join', remotes, evidenceAbout(leader, state));
@@ -79,13 +88,14 @@ export class AutoJoin {
           : t('automation.remotes.autoJoinNotGranted', {
               from: leader,
               unresolvedClause: unresolvedClauseOf(verdict)
-            })
+            }),
+        JOIN
       );
       return;
     }
     const key = joinKey(leader);
     this.queue.enqueue({
-      ...joinIntent(leader, t('automation.remotes.reasonAutoJoin', { from: leader })),
+      ...joinIntent(leader, t('automation.remotes.reasonAutoJoin', { from: leader }), JOIN),
       onSent: () => {
         this.sentTo = key;
       }

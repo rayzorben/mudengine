@@ -5,6 +5,8 @@ import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type MovementConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { wireItem, type ItemEntity } from '../../../shared/entities';
+import { noticeLog, type NoticeLog } from './noticeLog';
+import { recordOffers, type Offered } from './offered';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -48,13 +50,17 @@ const NORTH: KeyedWay = { keyId: BONE_KEY, direction: 'n', itemName: 'bone key' 
 
 let sent: string[];
 let said: string[];
+let log: NoticeLog;
 let queue: CommandQueue;
+let offers: Offered;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  said = [];
+  log = noticeLog();
+  said = log.notices;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -79,7 +85,7 @@ function make(
     idOf: (name) => (name === 'bone key' ? BONE_KEY : null),
     ...over
   };
-  return new AutoKeys(config, enabled, queue, sources, { notice: (m) => said.push(m), ...events });
+  return new AutoKeys(config, enabled, queue, sources, { notice: log.notice, ...events });
 }
 
 const drain = (): void => void vi.advanceTimersByTime(500);
@@ -93,6 +99,8 @@ describe('a key the way out needs, lying on this floor', () => {
     expect(sent).toEqual(['get bone key']);
     expect(said).toHaveLength(1);
     expect(said[0]).toContain('bone key');
+    expect(log.kinds).toEqual(['key-pickup']);
+    expect(offers.decisionOf('get bone key')).toBe('key-pickup');
   });
 
   it('asks once per room however often the floor is reprinted', () => {

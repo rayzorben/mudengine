@@ -34,9 +34,12 @@ function block(type: BlockType, groups: Record<string, string> = {}): Block {
 
 let queued: Intent[];
 let charges: ItemCharges;
+/** `automation.asks.itemUses`, as the session's settings say it. */
+let itemUses: boolean;
 
 beforeEach(() => {
   queued = [];
+  itemUses = true;
   charges = new ItemCharges(
     {
       enqueue: (intent) => {
@@ -44,7 +47,8 @@ beforeEach(() => {
         return true;
       }
     },
-    () => ({ itemsNamed: (names) => Object.fromEntries(names.map((name) => [name, ITEMS[name]])) })
+    () => ({ itemsNamed: (names) => Object.fromEntries(names.map((name) => [name, ITEMS[name]])) }),
+    () => ({ asks: { itemUses } })
   );
 });
 
@@ -116,5 +120,15 @@ describe('the uses left on a charged item', () => {
     charges.reset();
     charges.lookOnce('cloak of faith', 'test');
     expect(queued).toHaveLength(2);
+  });
+
+  it('looks at nothing while Look at Charged Items is off', () => {
+    itemUses = false;
+    charges.lookOnce('cloak of faith', 'test');
+    expect(queued).toEqual([]);
+    // The positive control: the same unknown count, the setting on.
+    itemUses = true;
+    charges.lookOnce('cloak of faith', 'test');
+    expect(queued.map((intent) => intent.command)).toEqual(['look cloak of faith']);
   });
 });

@@ -11,6 +11,7 @@ import { t } from '../app/i18n';
 import { membersBelow, type CharacterState } from '../../shared/character';
 import { membersStill, type HealthConfig } from '../../shared/config';
 import type { LoopProgress } from '../../shared/loops';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 /**
  * Why the party waits for a member: it said `@wait`, its health is under
@@ -36,7 +37,7 @@ export interface PartyWaitMoves {
   lapStopped(): boolean;
   /** Walk the lap on again, said out loud where it cannot. */
   resumeLap(who: string): void;
-  notice(message: string): void;
+  notice: NoticeSink;
   /** `party.waitMinutes`, read when a wait begins; 0 waits for ever. */
   waitMinutes(): number;
 }
@@ -157,7 +158,10 @@ export class PartyWait {
     this.giveUpOnHurt();
     this.waiting.clear();
     this.paused = false;
-    this.moves.notice(t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }));
+    this.moves.notice(
+      t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
+      'party-wait'
+    );
     if (this.moves.lapStopped()) this.moves.resumeLap(who[0] ?? '');
   }
 }

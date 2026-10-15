@@ -28,6 +28,7 @@ export default function RecoverFields({ value, onChange }: RecoverFieldsProps): 
         hint={t('settings.movement.recoverGearHint')}
         label={t('settings.movement.recoverGear')}
         name="recover-gear"
+        setting="automation.movement.recoverGear"
         onChange={(checked) => onChange({ recoverGear: checked })}
       />
       {/*
@@ -40,6 +41,7 @@ export default function RecoverFields({ value, onChange }: RecoverFieldsProps): 
             hint={t('settings.movement.recoverGearFloorHint')}
             label={t('settings.movement.recoverGearFloorLabel')}
             name="recover-gear-floor"
+            setting="automation.movement.recoverGearFloor"
             onChange={(floor) => onChange({ recoverGearFloor: floor })}
             value={value.recoverGearFloor}
           />
@@ -47,6 +49,7 @@ export default function RecoverFields({ value, onChange }: RecoverFieldsProps): 
             hint={t('settings.movement.recoverGearTriesHint')}
             label={t('settings.movement.recoverGearTriesLabel')}
             name="recover-gear-tries"
+            setting="automation.movement.recoverGearTries"
             onChange={(tries) => onChange({ recoverGearTries: tries })}
             value={value.recoverGearTries}
           />
@@ -57,12 +60,14 @@ export default function RecoverFields({ value, onChange }: RecoverFieldsProps): 
         hint={t('settings.movement.reequipOnRecoverHint')}
         label={t('settings.movement.reequipOnRecover')}
         name="reequip-on-recover"
+        setting="automation.movement.reequipOnRecover"
         onChange={(checked) => onChange({ reequipOnRecover: checked })}
       />
       <NumberField
         hint={t('settings.movement.gearLockHoursHint')}
         label={t('settings.movement.gearLockHoursLabel')}
         name="gear-lock-hours"
+        setting="automation.movement.gearLockHours"
         onChange={(hours) => onChange({ gearLockHours: hours })}
         value={value.gearLockHours}
       />

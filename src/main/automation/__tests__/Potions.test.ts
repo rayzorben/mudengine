@@ -5,6 +5,7 @@ import { Potions } from '../Potions';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
 import { wireItem } from '../../../shared/entities';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -38,11 +39,19 @@ function state(
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -62,6 +71,7 @@ describe('drinking by a number', () => {
     const potions = drinker();
     potions.onCharacter(state({ hp: 20 }));
     expect(sent).toEqual(['drink healing potion']);
+    expect(kinds).toEqual(['potion']);
     potions.onCharacter(state({ mana: 5 }));
     expect(sent).toEqual(['drink healing potion', 'drink mana potion']);
   });

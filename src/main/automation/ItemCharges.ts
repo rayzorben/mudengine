@@ -7,10 +7,12 @@
  * every look sent here is at an item with a `UseCount`, which always prints
  * its uses, or at one gone from the pack (`You don't see X here.`, which drops
  * that look). A `look` the player types at a charged item while one of these
- * is out is not told apart. The arithmetic is `shared/charges.ts`. See `mudengine-automation`
+ * is out is not told apart. `asks.itemUses` off, nothing is looked at
+ * (todo 118). The arithmetic is `shared/charges.ts`. See `mudengine-automation`
  * › parts/recovery.md, *A charged bless item is used when its uses come back*.
  */
 import type { Block } from '../../shared/blocks';
+import type { AsksConfig } from '../../shared/asks';
 import { chargesAfter, type ChargeEvent } from '../../shared/charges';
 import { capacityNamed, type BlessingRealm } from '../../shared/invoke';
 import { bareName } from '../../shared/items';
@@ -19,7 +21,7 @@ import type { SessionModule } from './Module';
 
 /** How a look is asked: what an `Intent` carries besides the command. */
 export type LookAsk = Pick<Intent, 'reason'> &
-  Partial<Pick<Intent, 'priority' | 'coalesceKey' | 'expiresAt'>>;
+  Partial<Pick<Intent, 'priority' | 'coalesceKey' | 'expiresAt' | 'decision'>>;
 
 /** What a consumer reads and asks of the ledger. */
 export interface ChargeLedger {
@@ -49,7 +51,9 @@ export class ItemCharges implements SessionModule, ChargeLedger {
   constructor(
     private readonly queue: Pick<CommandQueue, 'enqueue'>,
     /** The realm the items are read in, at the point of use; undefined while none is loaded. */
-    private readonly realm: () => Pick<BlessingRealm, 'itemsNamed'> | undefined
+    private readonly realm: () => Pick<BlessingRealm, 'itemsNamed'> | undefined,
+    /** The settings as last loaded: `asks.itemUses` says whether a count is looked for. */
+    private readonly config: () => { readonly asks: Pick<AsksConfig, 'itemUses'> }
   ) {}
 
   reset(): void {
@@ -75,9 +79,10 @@ export class ItemCharges implements SessionModule, ChargeLedger {
 
   lookOnce(item: string, reason: string): void {
     const key = bareName(item);
+    if (!this.config().asks.itemUses) return;
     if (this.asked.has(key) || this.usesLeft(item) !== null) return;
     this.asked.add(key);
-    this.look(item, { reason, coalesceKey: `charges:look:${key}` });
+    this.look(item, { reason, coalesceKey: `charges:look:${key}`, decision: 'item-charges-look' });
   }
 
   used(item: string): void {

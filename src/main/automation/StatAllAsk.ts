@@ -13,6 +13,7 @@ import type { Block } from '../../shared/blocks';
 import { fightIsRunning, type CharacterState } from '../../shared/character';
 import { ownSheetFor, statedBasis } from '../../shared/stated';
 import type { CommandQueue } from './CommandQueue';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 /** `StatCommand`'s shortest spelling of the `all` branch (`StatCommand.cs:27`). */
 export const STAT_ALL = 'stat a';
@@ -31,7 +32,7 @@ export class StatAllAsk {
 
   constructor(
     private readonly queue: Pick<CommandQueue, 'offer'>,
-    private readonly notice: (message: string) => void,
+    private readonly notice: NoticeSink,
     private readonly now: () => number = () => Date.now()
   ) {}
 
@@ -54,6 +55,7 @@ export class StatAllAsk {
       priority: 'probe',
       coalesceKey: `probe:${STAT_ALL}`,
       reason: t('automation.routines.reasonStatAll'),
+      decision: 'stat-all',
       onSent: () => this.sent(gear)
     });
   }
@@ -81,7 +83,10 @@ export class StatAllAsk {
     const { unansweredAsks: limit, settleMs } = tuning().statAll;
     if (this.unanswered < limit || this.now() - this.lastSentAt < settleMs) return false;
     this.givenUp = true;
-    this.notice(t('automation.routines.statAllGaveUp', { command: STAT_ALL, count: limit }));
+    this.notice(
+      t('automation.routines.statAllGaveUp', { command: STAT_ALL, count: limit }),
+      'stat-all'
+    );
     return true;
   }
 

@@ -39,12 +39,11 @@ export interface HuntingConstants {
   backstabMultiplier: number;
   maxLoopRooms: number;
   maxSpots: number;
-  betterSpotRadius: number;
-  /** A room whose one cycle takes more than this share of the bar is too dangerous to start in. */
+  /** A room whose one cycle takes more than this share of the bar is too dangerous to start in (`automation.hunting`). */
   maxDamageShare: number;
   /** A room that could not take this share off an *unarmoured* character is beneath this level. */
   trivialShare: number;
-  /** The bar is read this much lower for that test — the level less five percent. */
+  /** The bar is read this much lower for that test (`automation.hunting`). */
   trivialLevelMargin: number;
   /** How far apart a loop's own rooms are measured, in steps. */
   clusterRadius: number;
@@ -72,10 +71,10 @@ type ServerClock =
  * `GameSpeedMultiplier`): every server clock divided by it, the rest as given.
  * The one place the tuning clocks are scaled, so no reader mixes the two.
  */
-export function atSpeed<T extends Omit<HuntingConstants, 'speed'>>(
+export function atSpeed<T extends Pick<HuntingConstants, ServerClock>>(
   server: T,
   speed: number
-): T & HuntingConstants {
+): T & Pick<HuntingConstants, ServerClock | 'speed'> {
   const clocks = {} as Pick<HuntingConstants, ServerClock>;
   for (const key of [
     'roundSeconds',

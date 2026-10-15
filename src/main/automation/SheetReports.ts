@@ -2,7 +2,9 @@
  * The `@stats` answer sent again when it changes (todo 86): a level, a
  * training or a stat that moved changes who the leader should send at a trap
  * or a door. Only to a party member who asked before, so only a mudengine
- * client that reads it; dropped when they leave the party.
+ * client that reads it; dropped when they leave the party. Run only while
+ * automation and remote control are on, the gate the first answer passed
+ * (`Remotes.onCharacter`, todo 118).
  * `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
@@ -39,7 +41,8 @@ export class SheetReports {
         command: `/${who} ${now}`,
         priority: 'user',
         coalesceKey: `remote:sheet:${key}`,
-        reason: t('automation.remotes.reasonSheetChanged', { who })
+        reason: t('automation.remotes.reasonSheetChanged', { who }),
+        decision: 'sheet-report'
       });
     }
   }

@@ -4,13 +4,21 @@ import AlertList from './AlertList';
 import BlessingFields from './BlessingFields';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
-import HuntingFields from './HuntingFields';
+import HuntingFieldset from './HuntingFieldset';
+import AfkFieldset from './AfkFieldset';
+import AsksFieldset from './AsksFieldset';
+import QuestsFieldset from './QuestsFieldset';
 import PartyFields from './PartyFields';
 import { partyFormOf, partyOf } from '../lib/characterForm';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
+import DoorsFieldset, { doorChangeOf } from './DoorsFieldset';
+import RoutingFieldset from './RoutingFieldset';
+import KeepOutFieldset from './KeepOutFieldset';
+import LoopFields from './LoopFields';
+import type { MovementChoices } from '@shared/walkChoices';
 import MobRuleList from './MobRuleList';
 import BetterGearFields from './BetterGearFields';
 import GearSetList from './GearSetList';
@@ -27,6 +35,9 @@ import AttackFields, { ATTACK_KIND } from './AttackFields';
 import DrainFields, { isDrainText } from './DrainFields';
 import HealFields from './HealFields';
 import CarrySections from './CarrySections';
+import NakedHangUpFields from './NakedHangUpFields';
+import MonsterFields from './MonsterFields';
+import FightOddsFields from './FightOddsFields';
 import Icon from './Icon';
 import { CheckField, NumberField, SelectField, TextField } from './FormField';
 import FightWordFields from './FightWordFields';
@@ -34,6 +45,7 @@ import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
 import AliasFields from './AliasFields';
 import KeyFields from './KeyFields';
+import ExtensionSwitches from './ExtensionSwitches';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
 import RewritesDesigner from './RewriteDesigner';
@@ -41,11 +53,15 @@ import TrainStatFields from './TrainStatFields';
 
 import { t } from '../lib/i18n';
 import {
-  RETREAT_STRATEGIES,
-  PVP_ACTIONS,
-  type EngagePolicy,
-  type RetreatStrategy
+  DEFAULT_CONFIG,
+  GEAR_RANGES,
+  QUESTS_RANGES,
+  REMOTES_RANGES,
+  TRAIN_RANGES,
+  type EngagePolicy
 } from '@shared/config';
+import { int } from '@shared/values';
+import { RETREAT_STRATEGIES, PVP_ACTIONS, type RetreatStrategy } from '@shared/safety';
 import type { GlobalDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
@@ -138,7 +154,7 @@ export type GlobalScope = 'client' | 'defaults';
  * are ours: MegaMUD ran behind a terminal somebody else had already dialled.
  */
 const SECTIONS: Record<GlobalScope, readonly Section[]> = {
-  client: ['appearance', 'keys', 'records'],
+  client: ['appearance', 'keys', 'records', 'extensions'],
   defaults: [
     'realm',
     'combat',
@@ -160,6 +176,7 @@ type Section =
   | 'appearance'
   | 'keys'
   | 'records'
+  | 'extensions'
   | 'realm'
   | 'combat'
   | 'health'
@@ -187,9 +204,11 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   appearance: [{ id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }],
   keys: [{ id: 'keys', label: t('settings.keys.legend') }],
   records: [],
+  extensions: [{ id: 'extensions', label: t('settings.extensions.legend') }],
   realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
   combat: [
     { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
+    { id: 'combat-odds', label: t('settings.combat.oddsLegend') },
     { id: 'combat-mob-rules', label: t('settings.combat.mobRuleLegend') }
   ],
   health: [
@@ -216,6 +235,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'movement-light', label: t('settings.movement.lightLegend') },
     { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
+    { id: 'movement-routing', label: t('settings.movement.routingLegend') },
     { id: 'movement-carry', label: t('settings.movement.carryLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
@@ -232,13 +252,17 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
     { id: 'alerts-afk', label: t('settings.afk.legend') }
   ],
-  rewrites: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }]
+  rewrites: [
+    { id: 'rewrites-statline', label: t('settings.statline.legend') },
+    { id: 'rewrites-asks', label: t('settings.asks.legend') }
+  ]
 };
 
 const SECTION_LABEL: Record<Section, string> = {
   appearance: t('settings.client.tabs.appearance'),
   keys: t('settings.client.tabs.keys'),
   records: t('settings.client.tabs.records'),
+  extensions: t('settings.client.tabs.extensions'),
   realm: t('settings.global.tabs.realm'),
   combat: t('settings.tabs.combat'),
   health: t('settings.tabs.health'),
@@ -260,7 +284,8 @@ import {
   joinNames,
   percentOf as percent,
   RETREAT_OPTIONS,
-  splitNames
+  splitNames,
+  wholeOf as whole
 } from '../lib/form';
 
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
@@ -322,6 +347,11 @@ export default function GlobalSettings({
     (value: Partial<GlobalDraft['automation']>): void => patch('automation', value),
     [patch]
   );
+  // A change to the walk's or the combat block's own figures, back onto the draft (todo 118).
+  const moveChoice = (change: Partial<MovementChoices>): void =>
+    automation({ movement: { ...draft.automation.movement, ...change } });
+  const combatChange = (change: Partial<GlobalDraft['automation']['combat']>): void =>
+    automation({ combat: { ...draft.automation.combat, ...change } });
   const offRound = (value: Partial<GlobalDraft['automation']['gear']['offRound']>): void =>
     automation({
       gear: { ...draft.automation.gear, offRound: { ...draft.automation.gear.offRound, ...value } }
@@ -807,6 +837,7 @@ export default function GlobalSettings({
               checked={draft.automation.combat.enabled}
               label={t('settings.combat.attackForMe')}
               name="global-combat"
+              setting="automation.combat.enabled"
               onChange={(value) =>
                 automation({ combat: { ...draft.automation.combat, enabled: value } })
               }
@@ -816,6 +847,7 @@ export default function GlobalSettings({
               hint={t('settings.combat.hitBackHint')}
               label={t('settings.combat.hitBack')}
               name="global-retaliate"
+              setting="automation.combat.retaliate"
               onChange={(value) =>
                 automation({ combat: { ...draft.automation.combat, retaliate: value } })
               }
@@ -825,6 +857,7 @@ export default function GlobalSettings({
               hint={t('settings.combat.politeAttacksHint')}
               label={t('settings.combat.politeAttacks')}
               name="global-polite-attacks"
+              setting="automation.combat.politeAttacks"
               onChange={(value) =>
                 automation({ combat: { ...draft.automation.combat, politeAttacks: value } })
               }
@@ -854,6 +887,7 @@ export default function GlobalSettings({
                 hint={t('settings.combat.engageHint')}
                 label={t('settings.combat.engageLabel')}
                 name="global-engage"
+                setting="automation.combat.engage"
                 onChange={(value) =>
                   automation({
                     combat: { ...draft.automation.combat, engage: value as EngagePolicy }
@@ -873,6 +907,7 @@ export default function GlobalSettings({
               hint={t('settings.combat.hideForOpenerHint')}
               label={t('settings.combat.hideForOpener')}
               name="global-hide-for-opener"
+              setting="automation.combat.hideForOpener"
               onChange={(value) =>
                 automation({ combat: { ...draft.automation.combat, hideForOpener: value } })
               }
@@ -883,6 +918,7 @@ export default function GlobalSettings({
                 hint={t('settings.combat.maxMobsHint')}
                 label={t('settings.combat.maxMobsLabel')}
                 name="global-max-mobs"
+                setting="automation.combat.maxMobs"
                 onChange={(value) =>
                   automation({
                     combat: {
@@ -897,6 +933,7 @@ export default function GlobalSettings({
                 hint={t('settings.combat.minMobsHint')}
                 label={t('settings.combat.minMobsLabel')}
                 name="global-min-mobs"
+                setting="automation.combat.minMobs"
                 onChange={(value) =>
                   automation({
                     combat: {
@@ -909,37 +946,18 @@ export default function GlobalSettings({
               />
             </div>
 
-            <fieldset className="settings-menus" data-fieldset="combat-monsters">
-              <legend>{t('settings.combat.monstersLegend')}</legend>
-              <NumberField
-                hint={t('settings.combat.maxTargetHealthHint')}
-                label={t('settings.combat.maxTargetHealthLabel')}
-                name="global-max-target-health"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      maxTargetHealth: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.maxTargetHealth)}
-              />
-              <NumberField
-                hint={t('settings.combat.maxMonsterExpHint')}
-                label={t('settings.combat.maxMonsterExpLabel')}
-                name="global-max-monster-exp"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      maxMonsterExperience: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.maxMonsterExperience)}
-              />
-            </fieldset>
+            <MonsterFields
+              namePrefix="global-"
+              caps={draft.automation.combat}
+              choices={draft.automation.combat}
+              onCaps={combatChange}
+              onChoices={combatChange}
+            />
+            <FightOddsFields
+              namePrefix="global-"
+              choices={draft.automation.combat}
+              onChoices={combatChange}
+            />
             <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
               <legend>{t('settings.combat.mobRuleLegend')}</legend>
               <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
@@ -949,6 +967,7 @@ export default function GlobalSettings({
                 what it is for a character on a realm the client holds no data
                 for either. */}
               <MobRuleList
+                setting="automation.combat.mobRules"
                 known={[]}
                 namePrefix="global-mob-rule"
                 spells={realmSpells}
@@ -964,6 +983,7 @@ export default function GlobalSettings({
                   hint={t('settings.combat.refreshHint')}
                   label={t('settings.combat.refreshLabel')}
                   name="global-refresh"
+                  setting="automation.combat.refreshRounds"
                   onChange={(value) =>
                     automation({
                       combat: {
@@ -980,6 +1000,7 @@ export default function GlobalSettings({
                 <NumberField
                   label={t('settings.global.combat.pacingWindowLabel')}
                   name="global-pacing-window"
+                  setting="automation.pacing.window"
                   onChange={(value) =>
                     automation({
                       pacing: {
@@ -993,6 +1014,7 @@ export default function GlobalSettings({
                 <NumberField
                   label={t('settings.global.combat.pacingMinGapLabel')}
                   name="global-pacing-gap"
+                  setting="automation.pacing.minGapMs"
                   onChange={(value) =>
                     automation({
                       pacing: {
@@ -1006,6 +1028,7 @@ export default function GlobalSettings({
                 <NumberField
                   label={t('settings.global.combat.pacingTimeoutLabel')}
                   name="global-pacing-timeout"
+                  setting="automation.pacing.ackTimeoutMs"
                   onChange={(value) =>
                     automation({
                       pacing: {
@@ -1036,7 +1059,12 @@ export default function GlobalSettings({
                   automation({
                     health: {
                       ...draft.automation.health,
-                      [field]: field === 'restSpell' ? value : fraction(value)
+                      [field]:
+                        field === 'restSpell'
+                          ? value
+                          : field === 'restNextDoorMinutes'
+                            ? whole(value)
+                            : fraction(value)
                     }
                   })
                 }
@@ -1050,7 +1078,8 @@ export default function GlobalSettings({
                   restBeforeTraps: percent(draft.automation.health.restBeforeTraps),
                   restBelowMana: percent(draft.automation.health.restBelowMana),
                   restToMana: percent(draft.automation.health.restToMana),
-                  restSpell: draft.automation.health.restSpell
+                  restSpell: draft.automation.health.restSpell,
+                  restNextDoorMinutes: draft.automation.health.restNextDoorMinutes
                 }}
               />
             </fieldset>
@@ -1069,6 +1098,7 @@ export default function GlobalSettings({
               <legend>{t('settings.health.potionRuleLegend')}</legend>
               <p className="settings-note">{t('settings.health.potionRuleNote')}</p>
               <PotionList
+                setting="automation.health.potions"
                 namePrefix="global-potion"
                 onChange={(potions) =>
                   automation({ health: { ...draft.automation.health, potions } })
@@ -1084,6 +1114,7 @@ export default function GlobalSettings({
                 hint={t('settings.health.useWardsHint')}
                 label={t('settings.health.useWards')}
                 name="global-use-wards"
+                setting="automation.health.useWards"
                 onChange={(value) =>
                   automation({ health: { ...draft.automation.health, useWards: value } })
                 }
@@ -1100,6 +1131,7 @@ export default function GlobalSettings({
                   checked={draft.automation.retreat.enabled}
                   label={t('settings.health.retreatLabel')}
                   name="global-retreat"
+                  setting="automation.safety.retreat.enabled"
                   onChange={(value) =>
                     automation({ retreat: { ...draft.automation.retreat, enabled: value } })
                   }
@@ -1107,6 +1139,7 @@ export default function GlobalSettings({
                 <NumberField
                   label={t('settings.health.belowHealthLabel')}
                   name="global-retreat-health"
+                  setting="automation.safety.retreat.belowHealth"
                   onChange={(value) =>
                     automation({
                       retreat: { ...draft.automation.retreat, belowHealth: fraction(value) }
@@ -1119,6 +1152,7 @@ export default function GlobalSettings({
                   hint={t('settings.health.belowManaHint')}
                   label={t('settings.health.belowManaLabel')}
                   name="global-retreat-mana"
+                  setting="automation.safety.retreat.belowMana"
                   onChange={(value) =>
                     automation({
                       retreat: { ...draft.automation.retreat, belowMana: fraction(value) }
@@ -1131,6 +1165,7 @@ export default function GlobalSettings({
                   hint={t('settings.health.outnumberedHint')}
                   label={t('settings.health.outnumberedLabel')}
                   name="global-outnumbered"
+                  setting="automation.safety.retreat.whenOutnumbered"
                   onChange={(value) =>
                     automation({
                       retreat: {
@@ -1146,6 +1181,7 @@ export default function GlobalSettings({
                 hint={t('settings.health.retreatStrategyHint')}
                 label={t('settings.health.retreatStrategyLabel')}
                 name="global-retreat-strategy"
+                setting="automation.safety.retreat.strategy"
                 onChange={(value) =>
                   automation({
                     retreat: {
@@ -1164,6 +1200,7 @@ export default function GlobalSettings({
                   hint={t('settings.health.safeHavenHint')}
                   label={t('settings.health.safeHavenLabel')}
                   name="global-retreat-haven"
+                  setting="automation.safety.retreat.safeHavenRoom"
                   onChange={(value) =>
                     automation({ retreat: { ...draft.automation.retreat, safeHavenRoom: value } })
                   }
@@ -1205,6 +1242,7 @@ export default function GlobalSettings({
                   checked={draft.automation.hangUp.enabled}
                   label={t('settings.health.hangUpLabel')}
                   name="global-hangup"
+                  setting="automation.safety.hangUp.enabled"
                   onChange={(value) =>
                     automation({ hangUp: { ...draft.automation.hangUp, enabled: value } })
                   }
@@ -1212,6 +1250,7 @@ export default function GlobalSettings({
                 <NumberField
                   label={t('settings.health.belowHealthLabel')}
                   name="global-hangup-health"
+                  setting="automation.safety.hangUp.belowHealth"
                   onChange={(value) =>
                     automation({
                       hangUp: { ...draft.automation.hangUp, belowHealth: fraction(value) }
@@ -1220,12 +1259,25 @@ export default function GlobalSettings({
                   bar={barOfHealth(draft.automation.hangUp.belowHealth)}
                   value={percent(draft.automation.hangUp.belowHealth)}
                 />
+                <NumberField
+                  hint={t('settings.health.hangUpAfterRunHint')}
+                  label={t('settings.health.hangUpAfterRunLabel')}
+                  name="global-hangup-after-run"
+                  setting="automation.safety.hangUp.afterRunSeconds"
+                  onChange={(value) =>
+                    automation({
+                      hangUp: { ...draft.automation.hangUp, afterRunSeconds: whole(value) }
+                    })
+                  }
+                  value={String(draft.automation.hangUp.afterRunSeconds)}
+                />
               </div>
               <CheckField
                 checked={draft.automation.hangUp.penalties}
                 hint={t('settings.health.hangPenaltiesHint')}
                 label={t('settings.health.hangPenaltiesLabel')}
                 name="global-hang-penalties"
+                setting="automation.safety.hangUp.penalties"
                 onChange={(value) =>
                   automation({ hangUp: { ...draft.automation.hangUp, penalties: value } })
                 }
@@ -1234,9 +1286,23 @@ export default function GlobalSettings({
                 checked={draft.automation.hangUp.onPlayerInRoom}
                 label={t('settings.health.hangUpOnPlayer')}
                 name="global-hangup-player"
+                setting="automation.safety.hangUp.onPlayerInRoom"
                 onChange={(value) =>
                   automation({ hangUp: { ...draft.automation.hangUp, onPlayerInRoom: value } })
                 }
+              />
+              <NakedHangUpFields
+                margin={String(percent(draft.automation.hangUp.nakedMargin))}
+                namePrefix="global-"
+                onMargin={(value) =>
+                  automation({
+                    hangUp: { ...draft.automation.hangUp, nakedMargin: fraction(value) }
+                  })
+                }
+                onWhenNaked={(whenNaked) =>
+                  automation({ hangUp: { ...draft.automation.hangUp, whenNaked } })
+                }
+                whenNaked={draft.automation.hangUp.whenNaked}
               />
             </fieldset>
 
@@ -1247,6 +1313,7 @@ export default function GlobalSettings({
                 hint={t('settings.health.pvpNotifyHint')}
                 label={t('settings.health.pvpNotifyLabel')}
                 name="global-pvp-notify"
+                setting="automation.safety.pvp.notifyGang"
                 onChange={(value) =>
                   automation({ pvp: { ...draft.automation.pvp, notifyGang: value } })
                 }
@@ -1255,6 +1322,7 @@ export default function GlobalSettings({
                 hint={t('settings.health.pvpActionHint')}
                 label={t('settings.health.pvpActionLabel')}
                 name="global-pvp-action"
+                setting="automation.safety.pvp.action"
                 onChange={(value) =>
                   automation({
                     pvp: {
@@ -1283,12 +1351,9 @@ export default function GlobalSettings({
                     [field]:
                       ATTACK_KIND[field] === 'text'
                         ? value
-                        : ATTACK_KIND[field] === 'floor'
-                          ? fraction(value)
-                          : Math.max(
-                              field === 'areaMinMobs' ? 1 : 0,
-                              Number.parseInt(value, 10) || 0
-                            )
+                        : ATTACK_KIND[field] === 'count'
+                          ? Math.max(field === 'areaMinMobs' ? 1 : 0, whole(value))
+                          : fraction(value)
                   }
                 })
               }
@@ -1299,7 +1364,8 @@ export default function GlobalSettings({
               values={{
                 ...draft.automation.spells,
                 minMana: percent(draft.automation.spells.minMana),
-                areaMinMana: percent(draft.automation.spells.areaMinMana)
+                areaMinMana: percent(draft.automation.spells.areaMinMana),
+                killConfidence: percent(draft.automation.spells.killConfidence)
               }}
             />
             <fieldset className="settings-menus" data-fieldset="spells-drain">
@@ -1333,7 +1399,11 @@ export default function GlobalSettings({
                     spells: {
                       ...draft.automation.spells,
                       [field]:
-                        field === 'heal' || field === 'healPartyWith' ? value : fraction(value)
+                        field === 'heal' || field === 'healPartyWith'
+                          ? value
+                          : field === 'healUrgency'
+                            ? whole(value)
+                            : fraction(value)
                     }
                   })
                 }
@@ -1354,6 +1424,7 @@ export default function GlobalSettings({
                 hint={t('settings.spells.invokeItemsHint')}
                 label={t('settings.spells.invokeItemsLabel')}
                 name="global-invoke-items"
+                setting="automation.spells.invokeItems"
                 onChange={(value) =>
                   automation({ spells: { ...draft.automation.spells, invokeItems: value } })
                 }
@@ -1381,11 +1452,22 @@ export default function GlobalSettings({
                 onBlessings={(blessings) =>
                   automation({ spells: { ...draft.automation.spells, blessings } })
                 }
+                onChange={(field, value) =>
+                  automation({
+                    spells: {
+                      ...draft.automation.spells,
+                      [field]: field === 'blessMinGain' ? fraction(value) : whole(value)
+                    }
+                  })
+                }
                 onToggle={(field, value) =>
                   automation({ spells: { ...draft.automation.spells, [field]: value } })
                 }
                 spells={realmSpells}
-                values={draft.automation.spells}
+                values={{
+                  ...draft.automation.spells,
+                  blessMinGain: percent(draft.automation.spells.blessMinGain)
+                }}
               />
             </fieldset>
           </SettingsSection>
@@ -1439,6 +1521,7 @@ export default function GlobalSettings({
                     }
                   })
                 }
+                setting="automation.remotes.party"
                 subject={t('settings.party.remotesLegend')}
               />
             </fieldset>
@@ -1451,90 +1534,27 @@ export default function GlobalSettings({
             {/* Four questions, four fieldsets (todo 00) -- the character page
               groups them the same way, because one setting keeps one shape on
               every page that shows it. */}
-            <fieldset className="settings-menus" data-fieldset="movement-doors">
-              <legend>{t('settings.movement.doorsLegend')}</legend>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.openDoors}
-                  hint={t('settings.movement.openDoorsHint')}
-                  label={t('settings.movement.openDoors')}
-                  name="global-open-doors"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, openDoors: value } })
+            <DoorsFieldset
+              choices={draft.automation.movement}
+              namePrefix="global-"
+              onChange={(patch) =>
+                automation({
+                  movement: {
+                    ...draft.automation.movement,
+                    ...doorChangeOf(patch)
                   }
-                />
-                <NumberField
-                  label={t('settings.movement.openTries')}
-                  name="global-open-tries"
-                  onChange={(value) =>
-                    automation({
-                      movement: {
-                        ...draft.automation.movement,
-                        openTries: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.movement.openTries}
-                />
-              </div>
-              {/*
-              Picking above bashing, in the order the walker tries them: one
-              costs a command and the other costs a command and some health.
-            */}
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.pickLocks}
-                  hint={t('settings.movement.pickLocksHint')}
-                  label={t('settings.movement.pickLocks')}
-                  name="global-pick-locks"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, pickLocks: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.movement.pickTries')}
-                  name="global-pick-tries"
-                  onChange={(value) =>
-                    automation({
-                      movement: {
-                        ...draft.automation.movement,
-                        pickTries: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.movement.pickTries}
-                />
-              </div>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.movement.bashDoors}
-                  hint={t('settings.movement.bashDoorsHint')}
-                  label={t('settings.movement.bashDoors')}
-                  name="global-bash-doors"
-                  onChange={(value) =>
-                    automation({ movement: { ...draft.automation.movement, bashDoors: value } })
-                  }
-                />
-                <NumberField
-                  label={t('settings.movement.bashTries')}
-                  name="global-bash-tries"
-                  onChange={(value) =>
-                    automation({
-                      movement: {
-                        ...draft.automation.movement,
-                        bashTries: Number.parseInt(value, 10) || 0
-                      }
-                    })
-                  }
-                  value={draft.automation.movement.bashTries}
-                />
-              </div>
-            </fieldset>
+                })
+              }
+              onChoice={moveChoice}
+              value={draft.automation.movement}
+            />
 
             <fieldset className="settings-menus" data-fieldset="movement-stealth">
               <legend>{t('settings.movement.stealthLegend')}</legend>
               <SneakAndRunFields
+                choices={draft.automation.movement}
                 namePrefix="global-"
+                onChoice={moveChoice}
                 onChange={(fields) =>
                   automation({ movement: { ...draft.automation.movement, ...fields } })
                 }
@@ -1545,7 +1565,9 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="movement-light">
               <legend>{t('settings.movement.lightLegend')}</legend>
               <LightFields
+                choices={draft.automation.movement}
                 namePrefix="global-"
+                onChoice={moveChoice}
                 onChange={(light) =>
                   automation({ movement: { ...draft.automation.movement, ...light } })
                 }
@@ -1564,22 +1586,19 @@ export default function GlobalSettings({
               />
             </fieldset>
 
-            <fieldset className="settings-menus" data-fieldset="movement-keep-out">
-              <legend>{t('settings.movement.keepOutLegend')}</legend>
-              <TextField
-                hint={t('settings.movement.keepOutOfHint')}
-                label={t('settings.movement.keepOutOf')}
-                name="global-keep-out-of"
-                onChange={(value) =>
-                  automation({
-                    movement: { ...draft.automation.movement, keepOutOf: splitNames(value) }
-                  })
-                }
-                placeholder={t('settings.movement.keepOutOfPlaceholder')}
-                value={joinNames(draft.automation.movement.keepOutOf)}
-                wide
-              />
-            </fieldset>
+            <KeepOutFieldset
+              namePrefix="global-"
+              onChange={(keepOutOf) =>
+                automation({ movement: { ...draft.automation.movement, keepOutOf } })
+              }
+              value={draft.automation.movement.keepOutOf}
+            />
+
+            <RoutingFieldset
+              choices={draft.automation.movement}
+              namePrefix="global-"
+              onChoice={moveChoice}
+            />
 
             <fieldset className="settings-menus" data-fieldset="movement-carry">
               <legend>{t('settings.movement.carryLegend')}</legend>
@@ -1588,6 +1607,7 @@ export default function GlobalSettings({
                 hint={t('settings.movement.recoverGearHint')}
                 label={t('settings.movement.recoverGear')}
                 name="global-recover-gear"
+                setting="automation.movement.recoverGear"
                 onChange={(value) =>
                   automation({ movement: { ...draft.automation.movement, recoverGear: value } })
                 }
@@ -1597,6 +1617,7 @@ export default function GlobalSettings({
                 hint={t('settings.movement.reequipOnRecoverHint')}
                 label={t('settings.movement.reequipOnRecover')}
                 name="global-reequip-on-recover"
+                setting="automation.movement.reequipOnRecover"
                 onChange={(value) =>
                   automation({
                     movement: { ...draft.automation.movement, reequipOnRecover: value }
@@ -1607,6 +1628,7 @@ export default function GlobalSettings({
                 hint={t('settings.movement.gearLockHoursHint')}
                 label={t('settings.movement.gearLockHoursLabel')}
                 name="global-gear-lock-hours"
+                setting="automation.movement.gearLockHours"
                 onChange={(value) =>
                   automation({
                     movement: {
@@ -1622,6 +1644,7 @@ export default function GlobalSettings({
                 hint={t('settings.movement.collectKeysHint')}
                 label={t('settings.movement.collectKeys')}
                 name="global-collect-keys"
+                setting="automation.movement.collectKeys"
                 onChange={(value) =>
                   automation({ movement: { ...draft.automation.movement, collectKeys: value } })
                 }
@@ -1646,63 +1669,49 @@ export default function GlobalSettings({
               this character spends its night, and what it takes to be worth
               staying.
             */}
-            <fieldset className="settings-menus" data-fieldset="hunting">
-              <legend>{t('settings.hunting.legend')}</legend>
-              <p className="settings-note">{t('settings.hunting.note')}</p>
-              <HuntingFields
-                cash={
-                  draft.automation.hunting.cashPerHour > 0
-                    ? String(draft.automation.hunting.cashPerHour)
-                    : ''
-                }
-                enabled={draft.automation.hunting.enabled}
-                namePrefix="global-"
-                onChange={(change) =>
-                  automation({
-                    hunting: {
-                      ...draft.automation.hunting,
-                      ...(change.enabled !== undefined && { enabled: change.enabled }),
-                      ...(change.radius !== undefined && {
-                        radius: Math.max(0, Number.parseInt(change.radius, 10) || 0)
-                      }),
-                      ...(change.cash !== undefined && {
-                        cashPerHour: Math.max(0, Number.parseInt(change.cash, 10) || 0)
-                      })
-                    }
-                  })
-                }
-                radius={
-                  draft.automation.hunting.radius > 0 ? String(draft.automation.hunting.radius) : ''
-                }
-              />
-            </fieldset>
+            <HuntingFieldset
+              choices={draft.automation.hunting}
+              onChoices={(choices) =>
+                automation({ hunting: { ...draft.automation.hunting, ...choices } })
+              }
+              cash={
+                draft.automation.hunting.cashPerHour > 0
+                  ? String(draft.automation.hunting.cashPerHour)
+                  : ''
+              }
+              enabled={draft.automation.hunting.enabled}
+              namePrefix="global-"
+              onChange={(change) =>
+                automation({
+                  hunting: {
+                    ...draft.automation.hunting,
+                    ...(change.enabled !== undefined && { enabled: change.enabled }),
+                    ...(change.radius !== undefined && {
+                      radius: Math.max(0, Number.parseInt(change.radius, 10) || 0)
+                    }),
+                    ...(change.cash !== undefined && {
+                      cashPerHour: Math.max(0, Number.parseInt(change.cash, 10) || 0)
+                    })
+                  }
+                })
+              }
+              radius={
+                draft.automation.hunting.radius > 0 ? String(draft.automation.hunting.radius) : ''
+              }
+            />
 
             {/*
             Not behind Advanced: a floor that stops the lap is a decision about
             the character's night, not a number with a right answer already.
           */}
-            <div className="settings-inline">
-              <NumberField
-                hint={t('settings.global.movement.minExpRateHint')}
-                label={t('settings.global.movement.minExpRateLabel')}
-                name="global-min-exp-rate"
-                onChange={(value) =>
-                  automation({
-                    walk: {
-                      ...draft.automation.walk,
-                      minExpPerHour: Math.max(0, Number.parseInt(value, 10) || 0)
-                    }
-                  })
-                }
-                value={String(draft.automation.walk.minExpPerHour)}
-              />
-            </div>
+            <LoopFields onChange={(walk) => automation({ walk })} walk={draft.automation.walk} />
             <Advanced label={t('settings.global.movement.advancedWalking')}>
               <div className="settings-inline">
                 <NumberField
                   hint={t('settings.global.movement.stepTimeoutHint')}
                   label={t('settings.global.movement.stepTimeoutLabel')}
                   name="global-step-timeout"
+                  setting="automation.walk.stepTimeoutMs"
                   onChange={(value) =>
                     automation({
                       walk: {
@@ -1734,6 +1743,7 @@ export default function GlobalSettings({
                   checked={draft.automation.idle.enabled}
                   label={t('settings.global.movement.idleEnabled')}
                   name="global-idle"
+                  setting="automation.idle.enabled"
                   onChange={(value) =>
                     automation({ idle: { ...draft.automation.idle, enabled: value } })
                   }
@@ -1741,6 +1751,7 @@ export default function GlobalSettings({
                 <NumberField
                   label={t('settings.global.movement.idleAfterLabel')}
                   name="global-idle-after"
+                  setting="automation.idle.afterSeconds"
                   onChange={(value) =>
                     automation({
                       idle: {
@@ -1754,6 +1765,7 @@ export default function GlobalSettings({
                 <TextField
                   label={t('settings.global.movement.idleCommandLabel')}
                   name="global-idle-command"
+                  setting="automation.idle.command"
                   onChange={(value) =>
                     automation({ idle: { ...draft.automation.idle, command: value } })
                   }
@@ -1766,6 +1778,7 @@ export default function GlobalSettings({
                 hint={t('settings.global.movement.onEnterHint')}
                 label={t('settings.global.movement.onEnterLabel')}
                 name="global-enter"
+                setting="automation.onEnterRealm"
                 onChange={(value) => automation({ onEnterRealm: splitNames(value) })}
                 placeholder={t('settings.global.movement.onEnterPlaceholder')}
                 spellCheck={false}
@@ -1775,6 +1788,7 @@ export default function GlobalSettings({
               <TextField
                 label={t('settings.global.movement.onPartyChangeLabel')}
                 name="global-party-change"
+                setting="automation.onPartyChange"
                 onChange={(value) => automation({ onPartyChange: value })}
                 placeholder={t('settings.global.movement.onPartyChangePlaceholder')}
                 spellCheck={false}
@@ -1790,18 +1804,16 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="train">
               <legend>{t('settings.train.legend')}</legend>
               <p className="settings-warn">{t('settings.train.warning')}</p>
-              <CheckField
-                checked={draft.automation.train.stats}
-                hint={t('settings.train.statsHint')}
-                label={t('settings.train.stats')}
-                name="global-train-stats"
-                onChange={(value) =>
-                  automation({ train: { ...draft.automation.train, stats: value } })
-                }
-              />
               <TrainStatFields
+                horizon={draft.automation.train.statHorizon}
                 name="global-train"
+                onHorizon={(value) => {
+                  const { statHorizon } = DEFAULT_CONFIG.automation.train;
+                  const horizon = int(value, statHorizon, ...TRAIN_RANGES.statHorizon);
+                  automation({ train: { ...draft.automation.train, statHorizon: horizon } });
+                }}
                 onPick={(pick) => automation({ train: { ...draft.automation.train, pick } })}
+                onStats={(stats) => automation({ train: { ...draft.automation.train, stats } })}
                 onWanted={(attribute, value) =>
                   automation({
                     train: {
@@ -1814,6 +1826,7 @@ export default function GlobalSettings({
                   })
                 }
                 pick={draft.automation.train.pick}
+                stats={draft.automation.train.stats}
                 wanted={draft.automation.train.wanted}
               />
             </fieldset>
@@ -1836,6 +1849,10 @@ export default function GlobalSettings({
                 namePrefix="global-gear"
                 onEnabled={(enabled) => automation({ gear: { ...draft.automation.gear, enabled } })}
                 onResists={(resists) => automation({ gear: { ...draft.automation.gear, resists } })}
+                minSaved={draft.automation.gear.resistMinSaved}
+                onMinSaved={(value) =>
+                  automation({ gear: { ...draft.automation.gear, resistMinSaved: whole(value) } })
+                }
                 resists={draft.automation.gear.resists}
               />
               <GearSetList
@@ -1854,6 +1871,12 @@ export default function GlobalSettings({
               onWeights={(gearWeights) =>
                 automation({ loot: { ...draft.automation.loot, gearWeights } })
               }
+              onPerSlot={(value) => {
+                const { offersPerSlot } = DEFAULT_CONFIG.automation.gear;
+                const perSlot = int(value, offersPerSlot, ...GEAR_RANGES.offersPerSlot);
+                automation({ gear: { ...draft.automation.gear, offersPerSlot: perSlot } });
+              }}
+              perSlot={draft.automation.gear.offersPerSlot}
               upgrades={draft.automation.loot.upgrades}
               weights={draft.automation.loot.gearWeights}
             />
@@ -1870,22 +1893,19 @@ export default function GlobalSettings({
 
         {shows('quests') && (
           <SettingsSection {...sectionOf('quests')}>
-            <fieldset className="settings-menus" data-fieldset="quests">
-              <legend>{t('settings.quests.legend')}</legend>
-              {/*
-                In the open, like opening fights unasked: a run has the character
-                for as long as a chain takes, and the sentence that says so is
-                not a tooltip.
-              */}
-              <p className="settings-warn">{t('settings.quests.warning')}</p>
-              <CheckField
-                checked={draft.automation.quests.enabled}
-                hint={t('settings.quests.enabledHint')}
-                label={t('settings.quests.enabled')}
-                name="global-quests-enabled"
-                onChange={(value) => automation({ quests: { enabled: value } })}
-              />
-            </fieldset>
+            <QuestsFieldset
+              enabled={draft.automation.quests.enabled}
+              namePrefix="global-"
+              onEnabled={(enabled) =>
+                automation({ quests: { ...draft.automation.quests, enabled } })
+              }
+              onRollTries={(value) => {
+                const { rollTries } = DEFAULT_CONFIG.automation.quests;
+                const tries = int(value, rollTries, ...QUESTS_RANGES.rollTries);
+                automation({ quests: { ...draft.automation.quests, rollTries: tries } });
+              }}
+              rollTries={draft.automation.quests.rollTries}
+            />
           </SettingsSection>
         )}
 
@@ -1904,6 +1924,7 @@ export default function GlobalSettings({
                 hint={t('settings.remotes.answerHint')}
                 label={t('settings.remotes.enabledLabel')}
                 name="global-remotes-enabled"
+                setting="automation.remotes.enabled"
                 onChange={(value) =>
                   automation({ remotes: { ...draft.automation.remotes, enabled: value } })
                 }
@@ -1923,6 +1944,8 @@ export default function GlobalSettings({
                     autoJoin={draft.automation.remotes.autoJoin}
                     gang={draft.automation.remotes.gang}
                     gangpath={draft.automation.remotes.gangpath}
+                    killAndHangup={draft.automation.remotes.allowKillAndHangup}
+                    maxGets={draft.automation.remotes.maxGets}
                     name="global-remotes"
                     onAutoJoin={(value) =>
                       automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
@@ -1932,6 +1955,23 @@ export default function GlobalSettings({
                     }
                     onGangpath={(value) =>
                       automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
+                    }
+                    onKillAndHangup={(value) =>
+                      automation({
+                        remotes: { ...draft.automation.remotes, allowKillAndHangup: value }
+                      })
+                    }
+                    onMaxGets={(value) =>
+                      automation({
+                        remotes: {
+                          ...draft.automation.remotes,
+                          maxGets: int(
+                            value,
+                            DEFAULT_CONFIG.automation.remotes.maxGets,
+                            ...REMOTES_RANGES.maxGets
+                          )
+                        }
+                      })
                     }
                   />
                 </>
@@ -1957,10 +1997,16 @@ export default function GlobalSettings({
                 hint={t('settings.statline.controlHint')}
                 label={t('settings.statline.controlLabel')}
                 name="global-statline-control"
+                setting="automation.statline.control"
                 onChange={(value) => automation({ statline: { control: value } })}
               />
               <p className="settings-note">{t('settings.statline.templateNote')}</p>
             </fieldset>
+            <AsksFieldset
+              asks={draft.automation.asks}
+              namePrefix="global-"
+              onChange={(asks) => automation({ asks })}
+            />
             <RewritesDesigner
               figures={null}
               idPrefix="global-rewrites"
@@ -1998,48 +2044,24 @@ export default function GlobalSettings({
                 rules={draft.ui.alerts.rules}
               />
             </fieldset>
-            {/*
-            Beside the alerts, because both are about a player who is not
-            looking: alerts are what they hear about the character, and this
-            is what the character says for them.
-          */}
-            <fieldset className="settings-menus" data-fieldset="alerts-afk">
-              <legend>{t('settings.afk.legend')}</legend>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.afk.enabled}
-                  hint={t('settings.afk.enabledHint')}
-                  label={t('settings.afk.enabled')}
-                  name="global-afk-enabled"
-                  onChange={(value) =>
-                    automation({ afk: { ...draft.automation.afk, enabled: value } })
+            <AfkFieldset
+              after={String(draft.automation.afk.afterMinutes)}
+              enabled={draft.automation.afk.enabled}
+              namePrefix="global-"
+              onAfter={(value) =>
+                automation({
+                  afk: {
+                    ...draft.automation.afk,
+                    afterMinutes: Math.max(1, Number.parseInt(value, 10) || 5)
                   }
-                />
-                <NumberField
-                  hint={t('settings.afk.afterHint')}
-                  label={t('settings.afk.afterLabel')}
-                  name="global-afk-after"
-                  onChange={(value) =>
-                    automation({
-                      afk: {
-                        ...draft.automation.afk,
-                        afterMinutes: Math.max(1, Number.parseInt(value, 10) || 5)
-                      }
-                    })
-                  }
-                  value={String(draft.automation.afk.afterMinutes)}
-                />
-                <TextField
-                  hint={t('settings.afk.replyHint')}
-                  label={t('settings.afk.replyLabel')}
-                  name="global-afk-reply"
-                  onChange={(value) =>
-                    automation({ afk: { ...draft.automation.afk, reply: value } })
-                  }
-                  value={draft.automation.afk.reply}
-                />
-              </div>
-            </fieldset>
+                })
+              }
+              onEnabled={(value) =>
+                automation({ afk: { ...draft.automation.afk, enabled: value } })
+              }
+              onReply={(value) => automation({ afk: { ...draft.automation.afk, reply: value } })}
+              reply={draft.automation.afk.reply}
+            />
           </SettingsSection>
         )}
 
@@ -2123,6 +2145,15 @@ export default function GlobalSettings({
                 value={draft.logging.maxBytes}
               />
             </Advanced>
+          </SettingsSection>
+        )}
+
+        {shows('extensions') && (
+          <SettingsSection {...sectionOf('extensions')}>
+            <ExtensionSwitches
+              onChange={(extensions) => onChange({ ...draft, extensions })}
+              switches={draft.extensions}
+            />
           </SettingsSection>
         )}
 

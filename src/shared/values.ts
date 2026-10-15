@@ -57,6 +57,11 @@ export function int(value: unknown, fallback: number, min: number, max: number):
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+/** One of a closed set, or the default. A guess is never passed through. */
+export function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
 /**
  * A 0–1 fraction, read forgivingly.
  *
@@ -103,6 +108,11 @@ export function errorMessage(error: unknown): string {
 
 /** One day in milliseconds: what a setting counted in days is compared in. */
 export const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A setting counted in minutes, as a clock compares it. */
+export function minutesMs(minutes: number): number {
+  return minutes * 60_000;
+}
 
 const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
 

@@ -120,6 +120,7 @@ beforeEach(async () => {
     configFor: () => config,
     wordsFor: () => ({ locate: 'rm', coins: {} }),
     autoReconnect: () => autoReconnect,
+    reconnectTries: () => 0,
     // Never read, so nothing is held: the low-lives block below says otherwise.
     livesAt: () => null,
     lowLives: () => 2,
@@ -198,7 +199,8 @@ describe('SessionHost', () => {
     expect(() => host?.ensure('soul')).not.toThrow();
     expect(notices).toContainEqual({
       session: 'soul',
-      message: t('extensions.failed', { name: 'broken', hook: 'session', error: 'no start' })
+      message: t('extensions.failed', { name: 'broken', hook: 'session', error: 'no start' }),
+      decision: { kind: 'extension-load', at: expect.any(Number) }
     });
   });
 
@@ -618,7 +620,8 @@ describe('a character low on lives', () => {
     expect(state.phase).toBe('idle');
     expect(notices).toContainEqual({
       session: 'thorn',
-      message: t('session.lowLives.held', { lives: 2, floor: 2 })
+      message: t('session.lowLives.held', { lives: 2, floor: 2 }),
+      decision: { kind: 'low-lives', at: expect.any(Number) }
     });
   });
 
@@ -660,7 +663,11 @@ describe('a character low on lives', () => {
     // The question closed with the first answer.
     expect(await held.answerLowLives('thorn', 'log-in')).toBe(false);
     expect(held.get('thorn')?.manager.state.phase).toBe('idle');
-    expect(notices).toContainEqual({ session: 'thorn', message: t('session.lowLives.stayed') });
+    expect(notices).toContainEqual({
+      session: 'thorn',
+      message: t('session.lowLives.stayed'),
+      decision: { kind: 'low-lives', at: expect.any(Number) }
+    });
   });
 
   /*

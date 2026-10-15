@@ -11,22 +11,42 @@ import type { AlertRule } from '@shared/notifications';
 import {
   DEFAULT_CONFIG,
   DEFAULT_REALM_NAME,
-  RETREAT_STRATEGIES,
   type BankingConfig,
-  type DropConfig,
-  type OutgrownConfig,
   type EngagePolicy,
   type LootConfig,
   type PartyConfig,
   type PotionRule,
-  type PvpAction,
-  type RetreatStrategy,
   type RewritesUiConfig,
   type SearchConfig,
-  type TrainPick
+  type TrainPick,
+  combatCaps,
+  combatChoices,
+  type CombatCaps,
+  type CombatChoices,
+  GEAR_RANGES,
+  QUESTS_RANGES,
+  REMOTES_RANGES,
+  TRAIN_RANGES,
+  type GearConfig,
+  spellWeights,
+  type SpellWeights,
+  restNextDoorMinutesOf
 } from '@shared/config';
+import { type DropConfig, type OutgrownConfig, type SuppliesConfig } from '@shared/packConfig';
+import { huntChoices, type HuntChoices } from '@shared/huntChoices';
+import { movementChoices, type MovementChoices } from '@shared/walkChoices';
+import type { AsksConfig } from '@shared/asks';
+import {
+  DEFAULT_SAFETY,
+  HANG_UP_RANGES,
+  RETREAT_STRATEGIES,
+  type HangUpConfig,
+  type PvpAction,
+  type RetreatStrategy
+} from '@shared/safety';
+import { int } from '@shared/values';
 import type { MobRule } from '@shared/mobRules';
-import type { ProfileAccent } from '@shared/profiles';
+import { asReconnectTries, DEFAULT_RECONNECT_TRIES, type ProfileAccent } from '@shared/profiles';
 import type { LocateWord } from '@shared/locate';
 import type { ThemePreference } from '@shared/themes';
 import type {
@@ -42,9 +62,13 @@ import type { StreamEncoding } from '@shared/types';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { RemoteGrant, RemoteName } from '@shared/remotes';
 import { asLowLives, DEFAULT_LOW_LIVES } from '@shared/lives';
-import { fractionOf, percentOf } from './form';
+import { fractionOf, percentOf, shareOf, wholeOf } from './form';
 import type { AttackField, AttackFieldsProps } from '../components/AttackFields';
-import type { BlessingFieldsProps, BlessingSwitch } from '../components/BlessingFields';
+import type {
+  BlessingFieldsProps,
+  BlessingSwitch,
+  BlessingWeight
+} from '../components/BlessingFields';
 import type { DrainField, DrainFieldsProps } from '../components/DrainFields';
 import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
 import { sameJson } from './history';
@@ -119,8 +143,11 @@ export interface CharacterFields {
   theme: ThemePreference | '';
   autoConnect: boolean;
   autoReconnect: boolean;
+  autoLogin: boolean;
   /** As typed. See `Profile.lowLives`. */
   lowLives: string;
+  /** As typed. See `Profile.reconnectTries`. */
+  reconnectTries: string;
   serverName: string | null;
   host: string;
   port: string;
@@ -143,6 +170,11 @@ export interface CharacterFields {
   /** This character's own answer, null where it is left to the realm (todo 01). */
   hangUpPenalties: boolean | null;
   hangUpOnPlayer: boolean;
+  hangUpNaked: boolean;
+  /** A percentage string, like `hangUpBelow`. */
+  hangUpNakedMargin: string;
+  /** Seconds a hang-up waits for a run to land, as typed. */
+  hangUpAfterRun: string;
   pvpNotifyGang: boolean;
   pvpAction: PvpAction;
   retreat: boolean;
@@ -180,15 +212,19 @@ export interface CharacterFields {
   combatRefresh: string;
   /** The player's own rules for the realm's monsters. See `MobRuleList`. */
   combatMobRules: MobRule[];
-  combatMaxTargetHealth: string;
   combatMinMobs: string;
-  combatMaxMonsterExp: string;
+  /** The health and exp caps, held whole as the file has them. */
+  combatCaps: CombatCaps;
+  /** The choices of todo 118, held whole as the file has them. See `CombatChoices`. */
+  combatChoices: CombatChoices;
   /** Health — resting and meditating. Percentages on screen, fractions on disk. */
   restBelow: string;
   restTo: string;
   restBeforeTraps: string;
   /** Rest next door to a lair rather than in it. */
   restNextDoor: boolean;
+  /** A lair refilling within this many minutes is rested next door to, as text. */
+  restNextDoorMinutes: string;
   restBelowMana: string;
   restToMana: string;
   /** Rest for mana with `med`, and meditate before resting. */
@@ -206,6 +242,12 @@ export interface CharacterFields {
   spellAreaAttack: string;
   /** Derive the round spell and the cures from the book. */
   spellAutoChoose: boolean;
+  /** Auto Choose's weights, as typed: shares as percents. See `SpellWeights`. */
+  spellKillConfidence: string;
+  spellHealUrgency: string;
+  spellBlessMinGain: string;
+  spellBlessHealReserve: string;
+  spellBlessSwapCommands: string;
   /** Derive the heal, single or party-wide, from the book. */
   spellAutoChooseHeal: boolean;
   spellAreaMinMobs: string;
@@ -273,12 +315,16 @@ export interface CharacterFields {
   keepOutOf: string[];
   /** Bend down for a key an exit of this room needs. */
   collectKeys: boolean;
+  /** The walk's own figures and the three barrier switches (todo 118), held whole as the file has them. */
+  moveChoices: MovementChoices;
   /** Going hunting on its own — `automation.hunting`. */
   huntAuto: boolean;
   /** How far to look for a lair, as text; '' is everywhere the exits reach. */
   huntRadius: string;
   /** Copper an hour the hunt should earn, as text; '' is exp alone. */
   huntCash: string;
+  /** The hunt's own figures (todo 118), held whole as the carry blocks are. */
+  huntChoices: HuntChoices;
   /** Spending character points on the stat screen — `automation.train`. */
   trainStats: boolean;
   /** How the points are spent: by the exp rate, or toward `trainWanted`. */
@@ -289,12 +335,20 @@ export interface CharacterFields {
   /** `automation.train.upTo`, as text, or '' for no ceiling. */
   trainUpTo: string;
   trainWanted: Record<TrainedAttribute, string>;
+  /** `automation.train.statHorizon`, as typed. */
+  trainStatHorizon: string;
   /** Running a quest's plan — `automation.quests`. */
   questsEnabled: boolean;
+  /** `automation.quests.rollTries`, as typed. */
+  questsRollTries: string;
   /** Which kit to be in, and when — `automation.gear`. */
   gearEnabled: boolean;
   /** The armour the room calls for, `automation.gear.resists`. */
   gearResists: boolean;
+  /** `automation.gear.resistMinSaved`, as typed. */
+  gearResistMinSaved: string;
+  /** `automation.gear.offersPerSlot`, as typed. */
+  gearOffersPerSlot: string;
   gearSets: GearSet[];
   gearOffRoundItem: string;
   /** As text, so a half-typed figure is not read as 0. */
@@ -313,6 +367,7 @@ export interface CharacterFields {
   outgrown: OutgrownConfig;
   search: SearchConfig;
   banking: BankingConfig;
+  supplies: SuppliesConfig;
   /**
    * The loops this character walks — `automation.loops`.
    *
@@ -342,6 +397,8 @@ export interface CharacterFields {
   aliases: StatedPair[];
   /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
   statlineControl: boolean;
+  /** What the client asks the realm on its own (`automation.asks`). */
+  asks: AsksConfig;
   /** The status line and listings this player designed — `ui.rewrites`. */
   rewrites: RewritesUiConfig;
   /** Whether the gang's own channel is one of the channels it answers on. */
@@ -361,6 +418,10 @@ export interface CharacterFields {
    * somebody pressed Save on an unrelated field.
    */
   remotePlayers: Record<string, RemoteGrant>;
+  /** `automation.remotes.maxGets`, as typed. */
+  remoteMaxGets: string;
+  /** `@kill`, `@hangup`, `@relog` and `@panic!` let through to a grant. */
+  remoteKillAndHangup: boolean;
 }
 
 /** Where each of `HealFields`' values lives on this form. */
@@ -372,7 +433,8 @@ export const HEAL_KEYS = {
   healTo: 'spellHealTo',
   healMinMana: 'spellHealMinMana',
   autoChooseHeal: 'spellAutoChooseHeal',
-  healParty: 'spellHealParty'
+  healParty: 'spellHealParty',
+  healUrgency: 'spellHealUrgency'
 } as const satisfies Record<HealField | HealSwitch, keyof CharacterFields>;
 
 /** The form's heal, in the shape `HealFields` draws. */
@@ -390,7 +452,8 @@ export const ATTACK_KEYS = {
   areaAttack: 'spellAreaAttack',
   areaMinMobs: 'spellAreaMinMobs',
   areaMinMana: 'spellAreaMinMana',
-  areaCasts: 'spellAreaCasts'
+  areaCasts: 'spellAreaCasts',
+  killConfidence: 'spellKillConfidence'
 } as const satisfies Record<AttackField | 'autoChoose', keyof CharacterFields>;
 
 /** The form's attack spell, in the shape `AttackFields` draws. */
@@ -415,14 +478,47 @@ export function drainValuesOf(form: CharacterFields): DrainFieldsProps['values']
 export const BLESSING_KEYS = {
   autoBless: 'spellAutoBless',
   autoChooseBlessings: 'spellAutoChooseBlessings',
-  notifyPartyOnWearOff: 'spellNotifyWearOff'
-} as const satisfies Record<BlessingSwitch, keyof CharacterFields>;
+  notifyPartyOnWearOff: 'spellNotifyWearOff',
+  blessMinGain: 'spellBlessMinGain',
+  blessHealReserve: 'spellBlessHealReserve',
+  blessSwapCommandsPerHour: 'spellBlessSwapCommands'
+} as const satisfies Record<BlessingSwitch | BlessingWeight, keyof CharacterFields>;
 
 /** The form's blessings, in the shape `BlessingFields` draws. */
 export function blessingValuesOf(form: CharacterFields): BlessingFieldsProps['values'] {
   return {
-    ...(valuesOf(BLESSING_KEYS, form) as Record<BlessingSwitch, boolean>),
+    ...(valuesOf(BLESSING_KEYS, form) as Record<BlessingSwitch, boolean> &
+      Record<BlessingWeight, string>),
     blessings: form.spellBlessings
+  };
+}
+
+/** The settings todo 118 made of fixed figures, as this form types them (shares as percents). */
+type ChoiceFields = Pick<
+  CharacterFields,
+  | 'spellKillConfidence'
+  | 'spellHealUrgency'
+  | 'spellBlessMinGain'
+  | 'spellBlessHealReserve'
+  | 'spellBlessSwapCommands'
+  | 'hangUpAfterRun'
+  | 'gearResistMinSaved'
+>;
+
+/** The choices off a resolved or default config, for `formOf` and `emptyForm` alike. */
+function choiceFieldsOf(
+  spells: SpellWeights,
+  hangUp: Pick<HangUpConfig, 'afterRunSeconds'>,
+  gear: Pick<GearConfig, 'resistMinSaved'>
+): ChoiceFields {
+  return {
+    spellKillConfidence: percent(spells.killConfidence),
+    spellHealUrgency: String(spells.healUrgency),
+    spellBlessMinGain: percent(spells.blessMinGain),
+    spellBlessHealReserve: String(spells.blessHealReserve),
+    spellBlessSwapCommands: String(spells.blessSwapCommandsPerHour),
+    hangUpAfterRun: String(hangUp.afterRunSeconds),
+    gearResistMinSaved: String(gear.resistMinSaved)
   };
 }
 
@@ -442,7 +538,10 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     theme: entry.theme,
     autoConnect: entry.autoConnect,
     autoReconnect: entry.autoReconnect,
+    autoLogin: entry.autoLogin,
     lowLives: String(entry.lowLives),
+    reconnectTries: String(entry.reconnectTries),
+    ...choiceFieldsOf(entry.spells, entry.hangUp, entry.gear),
     serverName: entry.serverName,
     host: entry.target.host,
     port: String(entry.target.port),
@@ -470,6 +569,8 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     hangUpBelow: String(Math.round(entry.hangUp.belowHealth * 100)),
     hangUpPenalties: entry.hangUp.penalties,
     hangUpOnPlayer: entry.hangUp.onPlayerInRoom,
+    hangUpNaked: entry.hangUp.whenNaked,
+    hangUpNakedMargin: percent(entry.hangUp.nakedMargin),
     pvpNotifyGang: entry.pvp.notifyGang,
     pvpAction: entry.pvp.action,
     combat: entry.combat.enabled,
@@ -486,9 +587,9 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     // the form.
     combatRefresh: String(entry.combat.refreshRounds),
     combatMobRules: entry.combat.mobRules.map((row) => ({ ...row })),
-    combatMaxTargetHealth: String(entry.combat.maxTargetHealth),
     combatMinMobs: String(entry.combat.minMobs),
-    combatMaxMonsterExp: String(entry.combat.maxMonsterExperience),
+    combatCaps: combatCaps({ ...entry.combat }),
+    combatChoices: combatChoices({ ...entry.combat }),
     restBelow: percent(entry.health.restBelow),
     restTo: percent(entry.health.restTo),
     restBeforeTraps: percent(entry.health.restBeforeTraps),
@@ -498,6 +599,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     meditateFirst: entry.health.meditateFirst,
     restSpell: entry.health.restSpell,
     restNextDoor: entry.health.restNextDoor,
+    restNextDoorMinutes: String(entry.health.restNextDoorMinutes),
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
     useWards: entry.health.useWards,
     spellAttack: entry.spells.attack,
@@ -550,18 +652,23 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     walkWhileConfused: entry.movement.walkWhileConfused,
     keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
+    moveChoices: movementChoices({ ...entry.movement }),
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
     huntCash: entry.hunting.cashPerHour > 0 ? String(entry.hunting.cashPerHour) : '',
+    huntChoices: huntChoices({ ...entry.hunting }),
     trainStats: entry.train.stats,
     trainPick: entry.train.pick,
     trainLevels: entry.train.levels,
     trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
     trainUpTo: entry.train.upTo > 0 ? String(entry.train.upTo) : '',
     trainWanted: wantedStrings(entry.train.wanted),
+    trainStatHorizon: String(entry.train.statHorizon),
     questsEnabled: entry.quests.enabled,
+    questsRollTries: String(entry.quests.rollTries),
     gearEnabled: entry.gear.enabled,
     gearResists: entry.gear.resists,
+    gearOffersPerSlot: String(entry.gear.offersPerSlot),
     gearSets: entry.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
     gearOffRoundItem: entry.gear.offRound.item,
     gearOffRoundEvery:
@@ -571,6 +678,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     outgrown: { ...entry.outgrown },
     search: { ...entry.search },
     banking: { ...entry.banking },
+    supplies: structuredClone(entry.supplies),
     // This character's *own* loops. What it inherits is shown beside them and
     // is not editable from here -- see `LoopSection`.
     loops: entry.loops,
@@ -584,9 +692,12 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     remoteGang: [...entry.remotes.gang],
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
+    remoteMaxGets: String(entry.remotes.maxGets),
+    remoteKillAndHangup: entry.remotes.allowKillAndHangup,
     lookAtPlayers: entry.talk.lookAtPlayers,
     aliases: entry.aliases.map((pair) => ({ ...pair })),
     statlineControl: entry.statline.control,
+    asks: { ...entry.asks },
     rewrites: entry.rewrites
   };
 }
@@ -631,8 +742,10 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     changePassword: form.changePassword,
     autoConnect: form.autoConnect,
     autoReconnect: form.autoReconnect,
+    autoLogin: form.autoLogin,
     // A field cleared to retype is the default, never 0: 0 turns the question off.
     lowLives: asLowLives(form.lowLives),
+    reconnectTries: asReconnectTries(form.reconnectTries),
     accent: form.accent,
     theme: form.theme,
     login: form.login,
@@ -663,15 +776,23 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
       mobRules: form.combatMobRules,
-      maxTargetHealth: Math.max(0, Number.parseInt(form.combatMaxTargetHealth, 10) || 0),
       minMobs: Math.max(0, Number.parseInt(form.combatMinMobs, 10) || 0),
-      maxMonsterExperience: Math.max(0, Number.parseInt(form.combatMaxMonsterExp, 10) || 0)
+      ...form.combatCaps,
+      // The fields keep each figure as typed; the draft holds risky under safe.
+      ...combatChoices(form.combatChoices)
     },
     hangUp: {
       enabled: form.hangUp,
       belowHealth: (Number.parseInt(form.hangUpBelow, 10) || 0) / 100,
       penalties: form.hangUpPenalties,
-      onPlayerInRoom: form.hangUpOnPlayer
+      onPlayerInRoom: form.hangUpOnPlayer,
+      whenNaked: form.hangUpNaked,
+      nakedMargin: fractionOf(form.hangUpNakedMargin),
+      afterRunSeconds: int(
+        form.hangUpAfterRun,
+        DEFAULT_SAFETY.hangUp.afterRunSeconds,
+        ...HANG_UP_RANGES.afterRunSeconds
+      )
     },
     pvp: { notifyGang: form.pvpNotifyGang, action: form.pvpAction },
     party: partyOf(form.party),
@@ -685,6 +806,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       meditateFirst: form.meditateFirst,
       restSpell: form.restSpell.trim(),
       restNextDoor: form.restNextDoor,
+      restNextDoorMinutes: restNextDoorMinutesOf(form.restNextDoorMinutes),
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
       potions: form.potionRules.map((rule) => ({ ...rule, name: rule.name.trim() })),
@@ -726,7 +848,14 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       autoBless: form.spellAutoBless,
       autoChooseBlessings: form.spellAutoChooseBlessings,
       invokeItems: form.spellInvokeItems,
-      invokeWith: [...form.spellInvokeWith]
+      invokeWith: [...form.spellInvokeWith],
+      ...spellWeights({
+        killConfidence: shareOf(form.spellKillConfidence),
+        healUrgency: form.spellHealUrgency,
+        blessMinGain: shareOf(form.spellBlessMinGain),
+        blessHealReserve: form.spellBlessHealReserve,
+        blessSwapCommandsPerHour: form.spellBlessSwapCommands
+      })
     },
     movement: {
       openDoors: form.openDoors,
@@ -750,14 +879,16 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       walkWhilePoisoned: form.walkWhilePoisoned,
       walkWhileConfused: form.walkWhileConfused,
       keepOutOf: form.keepOutOf,
-      collectKeys: form.collectKeys
+      collectKeys: form.collectKeys,
+      ...form.moveChoices
     },
     hunting: {
       enabled: form.huntAuto,
       // Blank and 0 are the same answer — *everywhere the exits reach* — which
       // is what the field's own hint says.
       radius: Number.parseInt(form.huntRadius, 10) || 0,
-      cashPerHour: Math.max(0, Number.parseInt(form.huntCash, 10) || 0)
+      cashPerHour: Math.max(0, Number.parseInt(form.huntCash, 10) || 0),
+      ...form.huntChoices
     },
     train: {
       stats: form.trainStats,
@@ -767,9 +898,21 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       // 0 is *the cheapest that will take me*, which is what the picker's
       // first entry means and what an unset field says.
       trainer: Number.parseInt(form.trainTrainer, 10) || 0,
-      upTo: Math.max(0, Number.parseInt(form.trainUpTo, 10) || 0)
+      upTo: Math.max(0, Number.parseInt(form.trainUpTo, 10) || 0),
+      statHorizon: int(
+        form.trainStatHorizon,
+        DEFAULT_CONFIG.automation.train.statHorizon,
+        ...TRAIN_RANGES.statHorizon
+      )
     },
-    quests: { enabled: form.questsEnabled },
+    quests: {
+      enabled: form.questsEnabled,
+      rollTries: int(
+        form.questsRollTries,
+        DEFAULT_CONFIG.automation.quests.rollTries,
+        ...QUESTS_RANGES.rollTries
+      )
+    },
     gear: {
       enabled: form.gearEnabled,
       // Rows are kept as typed and dropped at the boundary, so a set being
@@ -784,13 +927,24 @@ export function draftOf(form: CharacterFields): ProfileDraft {
         item: form.gearOffRoundItem.trim(),
         everyRounds: Number.parseInt(form.gearOffRoundEvery, 10) || 0
       },
-      resists: form.gearResists
+      resists: form.gearResists,
+      resistMinSaved: int(
+        form.gearResistMinSaved,
+        DEFAULT_CONFIG.automation.gear.resistMinSaved,
+        ...GEAR_RANGES.resistMinSaved
+      ),
+      offersPerSlot: int(
+        form.gearOffersPerSlot,
+        DEFAULT_CONFIG.automation.gear.offersPerSlot,
+        ...GEAR_RANGES.offersPerSlot
+      )
     },
     loot: form.loot,
     drop: form.drop,
     outgrown: form.outgrown,
     search: form.search,
     banking: form.banking,
+    supplies: form.supplies,
     loops: form.loops,
     alerts: {
       // Whole, with the name trimmed as `normalizeAlertRules` trims it: a row
@@ -808,10 +962,17 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       autoJoin: form.remoteAutoJoin,
       gang: form.remoteGang,
       party: form.remoteParty,
-      players: form.remotePlayers
+      players: form.remotePlayers,
+      maxGets: int(
+        form.remoteMaxGets,
+        DEFAULT_CONFIG.automation.remotes.maxGets,
+        ...REMOTES_RANGES.maxGets
+      ),
+      allowKillAndHangup: form.remoteKillAndHangup
     },
     talk: { lookAtPlayers: form.lookAtPlayers },
     statline: { control: form.statlineControl },
+    asks: form.asks,
     aliases: form.aliases,
     rewrites: form.rewrites
   };
@@ -915,6 +1076,7 @@ export function emptyForm(
   const outgrown = defaults?.automation.outgrown ?? DEFAULT_CONFIG.automation.outgrown;
   const search = defaults?.automation.search ?? DEFAULT_CONFIG.automation.search;
   const banking = defaults?.automation.banking ?? DEFAULT_CONFIG.automation.banking;
+  const supplies = defaults?.automation.supplies ?? DEFAULT_CONFIG.automation.supplies;
 
   return {
     id: '',
@@ -934,7 +1096,10 @@ export function emptyForm(
      * standing while its client sits at a closed socket is one being killed.
      */
     autoReconnect: true,
+    autoLogin: true,
     lowLives: String(DEFAULT_LOW_LIVES),
+    reconnectTries: String(DEFAULT_RECONNECT_TRIES),
+    ...choiceFieldsOf(spells, hangUp, gear),
     /*
      * The realm the client ships as its default, by name — and the first realm
      * on disk only if that one is not there.
@@ -976,6 +1141,8 @@ export function emptyForm(
     // realm's own, and whether a realm charges is a fact about the realm.
     hangUpPenalties: null,
     hangUpOnPlayer: hangUp.onPlayerInRoom,
+    hangUpNaked: hangUp.whenNaked,
+    hangUpNakedMargin: percent(hangUp.nakedMargin),
     pvpNotifyGang: pvp.notifyGang,
     pvpAction: pvp.action,
     combat: combat.enabled,
@@ -989,9 +1156,9 @@ export function emptyForm(
     party: partyFormOf(party),
     combatRefresh: String(combat.refreshRounds),
     combatMobRules: combat.mobRules.map((row) => ({ ...row })),
-    combatMaxTargetHealth: String(combat.maxTargetHealth),
     combatMinMobs: String(combat.minMobs),
-    combatMaxMonsterExp: String(combat.maxMonsterExperience),
+    combatCaps: combatCaps({ ...combat }),
+    combatChoices: combatChoices({ ...combat }),
     restBelow: percent(health.restBelow),
     restTo: percent(health.restTo),
     restBeforeTraps: percent(health.restBeforeTraps),
@@ -1001,6 +1168,7 @@ export function emptyForm(
     meditateFirst: health.meditateFirst,
     restSpell: health.restSpell,
     restNextDoor: health.restNextDoor,
+    restNextDoorMinutes: String(health.restNextDoorMinutes),
     potionRules: health.potions.map((rule) => ({ ...rule })),
     useWards: health.useWards,
     spellAttack: spells.attack,
@@ -1053,18 +1221,23 @@ export function emptyForm(
     walkWhileConfused: movement.walkWhileConfused,
     keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
+    moveChoices: movementChoices({ ...movement }),
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
     huntCash: hunting.cashPerHour > 0 ? String(hunting.cashPerHour) : '',
+    huntChoices: huntChoices({ ...hunting }),
     trainStats: train.stats,
     trainPick: train.pick,
     trainLevels: train.levels,
     trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
     trainUpTo: train.upTo > 0 ? String(train.upTo) : '',
     trainWanted: wantedStrings(train.wanted),
+    trainStatHorizon: String(train.statHorizon),
     questsEnabled: quests.enabled,
+    questsRollTries: String(quests.rollTries),
     gearEnabled: gear.enabled,
     gearResists: gear.resists,
+    gearOffersPerSlot: String(gear.offersPerSlot),
     gearSets: gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
     gearOffRoundItem: gear.offRound.item,
     gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',
@@ -1073,6 +1246,7 @@ export function emptyForm(
     outgrown: { ...outgrown },
     search: { ...search },
     banking: { ...banking },
+    supplies: structuredClone(supplies),
     loops: [],
     alertRules: (alerts.rules ?? []).map((rule) => ({ ...rule })),
     afkEnabled: afk.enabled,
@@ -1084,10 +1258,13 @@ export function emptyForm(
     remoteGang: [...remotes.gang],
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
+    remoteMaxGets: String(remotes.maxGets),
+    remoteKillAndHangup: remotes.allowKillAndHangup,
     lookAtPlayers: talk.lookAtPlayers,
     // None of its own: Global's reach it through the overlay.
     aliases: [],
     statlineControl: statline.control,
+    asks: { ...(defaults?.automation.asks ?? DEFAULT_CONFIG.automation.asks) },
     rewrites
   };
 }
@@ -1108,7 +1285,8 @@ export function partyFormOf(party: PartyConfig): PartyForm {
     waitMinutes: String(party.waitMinutes),
     parSeconds: String(party.parSeconds),
     parEveryRounds: String(party.parEveryRounds),
-    regroupMinutes: String(party.regroupMinutes)
+    regroupMinutes: String(party.regroupMinutes),
+    parAtLoss: percent(party.parAtLoss)
   };
 }
 
@@ -1118,15 +1296,11 @@ export function partyOf(form: PartyForm): PartyConfig {
     askForHealBelow: fractionOf(form.askForHealBelow),
     waitBelow: fractionOf(form.waitBelow),
     // A field left empty keeps the shipped figure: 0 here means *wait for ever*.
-    waitMinutes: whole(form.waitMinutes, DEFAULT_CONFIG.automation.party.waitMinutes),
-    parSeconds: whole(form.parSeconds, DEFAULT_CONFIG.automation.party.parSeconds),
-    parEveryRounds: whole(form.parEveryRounds, DEFAULT_CONFIG.automation.party.parEveryRounds),
-    regroupMinutes: whole(form.regroupMinutes, DEFAULT_CONFIG.automation.party.regroupMinutes)
+    waitMinutes: wholeOf(form.waitMinutes, DEFAULT_CONFIG.automation.party.waitMinutes),
+    parSeconds: wholeOf(form.parSeconds, DEFAULT_CONFIG.automation.party.parSeconds),
+    parEveryRounds: wholeOf(form.parEveryRounds, DEFAULT_CONFIG.automation.party.parEveryRounds),
+    regroupMinutes: wholeOf(form.regroupMinutes, DEFAULT_CONFIG.automation.party.regroupMinutes),
+    // A cleared field keeps the shipped share: 0 would ask `par` every round at any loss.
+    parAtLoss: shareOf(form.parAtLoss) ?? DEFAULT_CONFIG.automation.party.parAtLoss
   };
-}
-
-/** A whole number as typed, or `fallback` where nothing readable was typed. */
-function whole(typed: string, fallback: number): number {
-  const number = Number.parseInt(typed, 10);
-  return Number.isFinite(number) ? number : fallback;
 }

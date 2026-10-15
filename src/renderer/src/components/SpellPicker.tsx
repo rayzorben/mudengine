@@ -5,6 +5,7 @@ import { useListNavigation } from '../hooks/useListNavigation';
 import { t } from '../lib/i18n';
 import type { SpellOption } from '@shared/ipc';
 import type { SpellTargeting } from '@shared/spellcraft';
+import type { SettingPath } from '@shared/decisionSettings';
 
 /**
  * A spell name field with the character's own book behind it.
@@ -218,6 +219,8 @@ export interface SpellFieldProps {
    * is told what the realm says about it.
    */
   warning?: React.ReactNode;
+  /** See `FormFieldProps.setting`. */
+  setting?: SettingPath;
 }
 
 /** The labeled settings-row face of the picker. */
@@ -230,12 +233,13 @@ export default function SpellField({
   spells,
   disabled,
   placeholder,
-  warning
+  warning,
+  setting
 }: SpellFieldProps): React.JSX.Element {
   return (
     <>
       {warning !== undefined && <p className="settings-warn">{warning}</p>}
-      <FormField hint={hint} label={label} name={name}>
+      <FormField hint={hint} label={label} name={name} setting={setting}>
         {({ describedBy }) => (
           <SpellCombo
             describedBy={describedBy}

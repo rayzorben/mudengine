@@ -9,6 +9,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../.
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { t } from '../../app/i18n';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const PAR = DEFAULT_CONFIG.automation.onPartyChange;
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -283,5 +284,38 @@ describe('leading the party through a portal', () => {
     expect(walk.progress.hold).toBeNull();
     walk.dispose();
     it.dispose();
+  });
+});
+
+describe('the decision behind the say, the wait and the invitation (todo 119)', () => {
+  it('names the @party say by its switch and the regroup by its time', () => {
+    vi.useFakeTimers();
+    const decided: Array<[string, DecisionKind | undefined]> = [];
+    const lines: Array<DecisionKind | undefined> = [];
+    const settings: AutomationConfig = {
+      ...CONFIG,
+      pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
+    };
+    const queue = new CommandQueue(settings, {
+      send: (command, intent) => decided.push([command, intent.decision])
+    });
+    const it = new PartyRegroup(settings, queue, {
+      notice: (_message, decision) => lines.push(decision)
+    });
+    it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul', 'Yang']));
+    it.onCharacter(state('3/681', [], []));
+    it.onBlock(listing);
+    it.onCharacter(state('3/681', [], ['Soul']));
+    vi.advanceTimersByTime(500);
+    expect(decided).toEqual([
+      ['.@party go vortex', 'party-relay-portal'],
+      [PAR, 'party-regroup'],
+      ['invite Soul', 'party-regroup']
+    ]);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(new Set(lines)).toEqual(new Set(['party-regroup']));
+    it.dispose();
+    queue.dispose();
+    vi.useRealTimers();
   });
 });

@@ -26,7 +26,7 @@ export interface MovementPromptProps {
  * is a journey across the realm nobody asked for, through everything that
  * lives on the way, with the player watching something else.
  *
- * So past `tuning.walk.resumeAskSteps` main answers play with this instead of
+ * So past `walk.resumeAskSteps` main answers play with this instead of
  * a command, and the window holds the question. **Back asks here too**
  * (`MovementConfirm.kind`): a press of the toolbar's back button the realm
  * cannot answer in one step is a journey the person meant as a step, which is

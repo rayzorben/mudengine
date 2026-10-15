@@ -3,7 +3,7 @@
  * the Self card in the renderer so the two cannot count differently.
  */
 import type { CharacterState } from './character';
-import type { SupplyItem } from './config';
+import { type SupplyItem } from './packConfig';
 import { bareName } from './items';
 import { nameAnswersTo, type RoomId } from './world';
 

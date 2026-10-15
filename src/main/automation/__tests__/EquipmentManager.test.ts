@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EquipmentManager, type EquipmentSources } from '../EquipmentManager';
 import { CommandQueue } from './../CommandQueue';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig, type GearConfig } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
@@ -65,6 +66,8 @@ const fighting = (target: string | null, items: CarriedItem[]): CharacterState =
   });
 
 let sent: string[];
+/** The decision each sent command carries (todo 119). */
+let kinds: Array<DecisionKind | undefined>;
 let notices: string[];
 let queue: CommandQueue;
 let clock: number;
@@ -76,7 +79,6 @@ const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   yieldSwap: () => null,
   exposureAt: () => ({}),
   placeItem: () => null,
-  minSaved: () => 2,
   wantsRest: () => false,
   wearer: () => UNKNOWN_WEARER,
   refusesBackstabWith: () => false,
@@ -88,7 +90,13 @@ beforeEach(() => {
   sent = [];
   notices = [];
   clock = Date.now();
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -501,6 +509,7 @@ describe('the weapon that can hurt the monster', () => {
     manager.onCharacter(standing(holding), false);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['wear golden pike', 'wear club']);
+    expect(kinds).toEqual(['weapon-swap', 'weapon-swap']);
   });
 
   /* Todo 60: a `wear` stands a resting character up, so the old weapon waits for the step. */

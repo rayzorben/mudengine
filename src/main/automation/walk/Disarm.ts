@@ -12,6 +12,7 @@
  */
 import type { CommandQueue } from '../CommandQueue';
 import type { CharacterState } from '../../../shared/character';
+import type { MovementConfig } from '../../../shared/config';
 import { jobCommand, walkersThrough, type HandAnswer } from '../../../shared/barrierHands';
 import { disarmTries, disarmWorth } from '../../../shared/walk';
 import { asSpokenDirection, trapOn, type RouteStep } from '../../../shared/world';
@@ -33,6 +34,8 @@ export class DisarmBeforeStep {
   private waiting: RouteStep | null = null;
   private sent = false;
   private odds = 0;
+  /** `movement.disarmDoubt` at the ask, which the failures it answers are counted against. */
+  private doubt = 0;
   private traps: number | null = null;
 
   constructor(
@@ -62,7 +65,10 @@ export class DisarmBeforeStep {
    * Sends `disarm trap <dir>` ahead of the step when it is wanted. True while
    * the step waits for the answer; false when the step can go.
    */
-  ask(state: CharacterState): boolean {
+  ask(
+    state: CharacterState,
+    movement: Pick<MovementConfig, 'disarmTraps' | 'disarmDoubt'>
+  ): boolean {
     const step = this.inFlight.step();
     if (step === undefined) return false;
     // Asked again while one is out (a fight hold cleared the clock): wait again.
@@ -72,6 +78,8 @@ export class DisarmBeforeStep {
     }
     if (this.hands.waitingAt(step)) return true;
     if (trapOn(step) === null || step.direction === 'portal') return false;
+    // Auto-Disarm Traps off: the trap hold rests for the trap and the step walks in.
+    if (!movement.disarmTraps) return false;
     if (this.disarmed(step)) return false;
     // Inside a timed spell's corridor the next step is the one thing that helps (todo 104).
     if (this.events.moveOnly?.(state) === true) return false;
@@ -79,20 +87,21 @@ export class DisarmBeforeStep {
     const gaveUpAt = this.givenUp.get(wayOf(step));
     const selfDone = gaveUpAt !== undefined && gaveUpAt === state.progress.traps;
     this.traps = state.progress.traps;
+    this.doubt = movement.disarmDoubt;
     // The best hand here, a member leading; worth it for everyone who walks the way.
     const hand = this.hands.best('disarm', step, state, selfDone);
     if (hand === null || hand.odds === null || !disarmWorth(hand.odds, walkersThrough(state))) {
       return false;
     }
     if (!hand.self) {
-      const tries = disarmTries(hand.odds, tuning().walk.disarmDoubt);
+      const tries = disarmTries(hand.odds, movement.disarmDoubt);
       if (
         this.hands.ask('disarm', step, hand, tries, (answer) => this.memberAnswered(step, answer))
       ) {
         return true;
       }
       // Nothing went to them; they count as asked, so the next hand is asked.
-      return this.ask(state);
+      return this.ask(state, movement);
     }
     const odds = hand.odds;
     this.waiting = step;
@@ -103,6 +112,7 @@ export class DisarmBeforeStep {
       priority: 'movement',
       coalesceKey: DISARM_KEY,
       reason: t('automation.walk.reasonDisarm', { stepName: step.name }),
+      decision: 'trap-disarm',
       onSent: () => this.waitForAnswer(step)
     });
     if (offered !== 'queued' && offered !== 'joined') {
@@ -129,7 +139,10 @@ export class DisarmBeforeStep {
     // A disarm the player typed is recorded; only the walk's own sends the step.
     if (this.waiting !== step) return;
     if (!this.inFlight.quiet()) {
-      this.events.notice?.(t('automation.walk.trapDisarmed', { stepName: step.name }));
+      this.events.notice?.(
+        t('automation.walk.trapDisarmed', { stepName: step.name }),
+        'trap-disarm'
+      );
     }
     this.goOn();
   }
@@ -160,7 +173,11 @@ export class DisarmBeforeStep {
       if (this.sent) this.failedOnce(step);
       else if (this.queue.queued((intent) => intent.coalesceKey === DISARM_KEY)) {
         return this.deadline(step);
-      } else this.events.notice?.(t('automation.walk.disarmUnsent', { stepName: step.name }));
+      } else
+        this.events.notice?.(
+          t('automation.walk.disarmUnsent', { stepName: step.name }),
+          'trap-disarm'
+        );
       this.goOn();
     });
   }
@@ -168,11 +185,12 @@ export class DisarmBeforeStep {
   private failedOnce(step: RouteStep): void {
     const way = wayOf(step);
     this.failed = { way, count: this.failed.way === way ? this.failed.count + 1 : 1 };
-    const limit = disarmTries(this.odds, tuning().walk.disarmDoubt);
+    const limit = disarmTries(this.odds, this.doubt);
     if (this.failed.count < limit) return;
     this.givenUp.set(way, this.traps);
     this.events.notice?.(
-      t('automation.walk.disarmGaveUp', { stepName: step.name, count: this.failed.count })
+      t('automation.walk.disarmGaveUp', { stepName: step.name, count: this.failed.count }),
+      'trap-disarm'
     );
   }
 

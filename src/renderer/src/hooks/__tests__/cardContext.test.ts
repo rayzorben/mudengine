@@ -10,7 +10,7 @@ import { EMPTY_VIEW, type SessionView } from '../useSessionViews';
 import { ZERO_METER } from '../useStreamPressure';
 import { useToolbarPins } from '../useToolbarPins';
 import { mount } from './mount';
-import type { SupplyItem } from '@shared/config';
+import { type SupplyItem } from '@shared/packConfig';
 import type { SessionId } from '@shared/ipc';
 
 /*

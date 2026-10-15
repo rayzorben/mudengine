@@ -6,6 +6,7 @@ import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
 import type { RealmFamily } from '../../../shared/realm';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -41,13 +42,21 @@ function state(...members: PartyMember[]): CharacterState {
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 let family: RealmFamily | null;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   family = 'greatermud';
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -61,6 +70,7 @@ describe("curing a party member's poison (todo 80)", () => {
   it('casts the poison cure on a member the GreaterMUD listing marks P, and on nobody else', () => {
     make().onCharacter(state(member('Soul', 'P'), member('Yang', null)));
     expect(sent).toEqual(['cure poison Soul']);
+    expect(kinds).toEqual(['cure-party']);
   });
 
   it('casts nothing where the server has not told GreaterMUD', () => {

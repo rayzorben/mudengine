@@ -58,7 +58,7 @@ export interface SettingsNavProps {
     addLabel: string;
   };
   /** The find field over the sections, on a page that has sections. */
-  find?: Pick<SettingsFind, 'query' | 'setQuery' | 'found'>;
+  find?: Pick<SettingsFind, 'query' | 'setQuery' | 'found' | 'decision'>;
 }
 
 /**
@@ -128,7 +128,8 @@ export default function SettingsNav({
       {picker && <NavPicker {...picker} />}
       {find && (
         <FindField
-          label={t('settings.nav.find')}
+          // Opened from a console's gear, the field says what it is narrowed to.
+          label={find.decision ? t('settings.nav.findDecision') : t('settings.nav.find')}
           nested
           onChange={find.setQuery}
           query={find.query}

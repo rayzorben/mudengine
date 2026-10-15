@@ -22,6 +22,7 @@ import { healthFraction, percentText } from '../../shared/automation';
 import type { Block, BlockType } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { landed } from '../../shared/walk';
 import { panicCall } from './panicCall';
 
@@ -57,7 +58,7 @@ export interface FleeGotoParts {
 export interface FleeGotoSession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
-  notice(message: string): void;
+  notice: NoticeSink;
 }
 
 export class FleeGoto implements SessionModule {
@@ -107,7 +108,10 @@ export class FleeGoto implements SessionModule {
   /** On connect and on leaving the realm: a teleport still unanswered is dropped out loud. */
   reset(): void {
     if (this.awaiting !== null) {
-      this.session.notice(t('session.safety.teleportDropped', { command: this.awaiting.command }));
+      this.session.notice(
+        t('session.safety.teleportDropped', { command: this.awaiting.command }),
+        'teleport'
+      );
       this.decided(this.awaiting.why, false, t('session.safety.teleportDroppedReason'));
       this.travel.teleportRefused(this.awaiting.at);
     }
@@ -159,14 +163,14 @@ export class FleeGoto implements SessionModule {
         (command.length === 0
           ? t('session.safety.teleportUnstated')
           : t('session.safety.teleportRefusedBefore', { command }));
-      this.session.notice(t('session.safety.teleportNot', { why, refused }));
+      this.session.notice(t('session.safety.teleportNot', { why, refused }), 'teleport');
       this.decided(why, false, refused);
       return;
     }
 
     this.lastAsked = now;
     this.travel.teleportSent(now);
-    this.session.notice(t('session.safety.teleporting', { command, why }));
+    this.session.notice(t('session.safety.teleporting', { command, why }), 'teleport');
     const awaiting = {
       command,
       why,
@@ -187,6 +191,7 @@ export class FleeGoto implements SessionModule {
       priority: 'emergency',
       coalesceKey: 'escape:teleport',
       reason: t('session.safety.teleportReason', { why }),
+      decision: 'teleport',
       stillWanted,
       onSent: () => {
         awaiting.sent = true;
@@ -209,7 +214,10 @@ export class FleeGoto implements SessionModule {
     // A death drops it sent or not: `stillWanted` keeps an unsent one off the wire.
     if (block.type === 'user-dies') {
       this.awaiting = null;
-      this.session.notice(t('session.safety.teleportDropped', { command: waiting.command }));
+      this.session.notice(
+        t('session.safety.teleportDropped', { command: waiting.command }),
+        'teleport'
+      );
       this.decided(waiting.why, false, t('session.safety.escapeKilled'));
       this.travel.teleportRefused(waiting.at);
       return;
@@ -228,7 +236,8 @@ export class FleeGoto implements SessionModule {
       if (KEPT.has(block.type) && waiting.echo.echoed) this.refused = waiting.command;
       this.travel.teleportRefused(waiting.at);
       this.session.notice(
-        t('session.safety.teleportRefused', { command: waiting.command, answer: block.text })
+        t('session.safety.teleportRefused', { command: waiting.command, answer: block.text }),
+        'teleport'
       );
       this.decided(waiting.why, false, block.text);
       return;
@@ -242,7 +251,10 @@ export class FleeGoto implements SessionModule {
     this.awaiting = null;
     this.travel.teleportRefused(waiting.at);
     const seconds = Math.round(tuning().session.retreatPatienceMs / 1000);
-    this.session.notice(t('session.safety.teleportGaveUp', { command: waiting.command, seconds }));
+    this.session.notice(
+      t('session.safety.teleportGaveUp', { command: waiting.command, seconds }),
+      'teleport'
+    );
     this.decided(waiting.why, false, t('session.safety.escapeUnanswered'));
   }
 

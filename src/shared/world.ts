@@ -3274,6 +3274,19 @@ export type RouteBlock =
       name: string;
       word: string;
     }
+  | {
+      /**
+       * A hidden exit only a switched-off barrier switch opens (todo 118):
+       * *Auto-Search Hidden Exits* for one a search finds, *Auto-Pull Levers*
+       * for one the levers in its room open. Priced as a wall, so the walk
+       * stops at it, and named as a setting somebody can change.
+       */
+      kind: 'switchedOff';
+      at: RoomId;
+      to: RoomId;
+      name: string;
+      barrier: 'search' | 'levers';
+    }
   /** No path at all, gates ignored: the two rooms are not joined in the data. */
   | { kind: 'unreachable' };
 
@@ -3293,6 +3306,7 @@ export const ROUTE_BLOCK_KINDS = [
   'quest',
   'door',
   'keptOut',
+  'switchedOff',
   'unreachable'
 ] as const;
 
@@ -3478,6 +3492,10 @@ export function describeBlock(block: RouteBlock): string {
     }
     case 'keptOut':
       return `${block.name} is kept out of — "${block.word}" is on your Keep Out Of list`;
+    case 'switchedOff':
+      return block.barrier === 'search'
+        ? `${block.name} is through a hidden exit, and Auto-Search Hidden Exits is switched off`
+        : `${block.name} is through a hidden exit a lever opens, and Auto-Pull Levers is switched off`;
     case 'unreachable':
       return 'No way there at all — the realm data joins no path between the two';
   }
@@ -3509,6 +3527,7 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
     case 'born':
     case 'quest':
     case 'keptOut':
+    case 'switchedOff':
     case 'unreachable':
       return null;
   }
@@ -3628,7 +3647,7 @@ export interface Route {
    *
    * The other three are defined by what they assume — a room avoided, an
    * item carried, a charge spent. This one is defined by what it *is not*:
-   * the plan's own edges are priced `tuning.world.anotherWayPenalty` times
+   * the plan's own edges are priced `movement.anotherWayPenalty` times
    * over and the search asked again, so it leaves the plan wherever a detour
    * costs less than that much of what it replaces. Offered when at least
    * `alternativeMinSteps` of its rooms are not on the plan and it is no more

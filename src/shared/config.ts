@@ -17,8 +17,22 @@
  *    emits, so it is not a matter of taste.
  */
 import { PRIORITY } from './automation';
-import { bool, fraction, int, isRecord, str } from './values';
+import { bool, fraction, int, isRecord, oneOf, str } from './values';
 import { DEFAULT_GAME_VIEW, normalizeGameView, type GameViewConfig } from './gameViewConfig';
+import { DEFAULT_SAFETY, normalizeSafety, type SafetyConfig } from './safety';
+import {
+  DEFAULT_DROP,
+  DEFAULT_OUTGROWN,
+  DEFAULT_SUPPLIES,
+  normalizeDrop,
+  normalizeOutgrown,
+  normalizeSupplies,
+  type DropConfig,
+  type OutgrownConfig,
+  type SuppliesConfig
+} from './packConfig';
+import { DEFAULT_HUNT_CHOICES, huntChoices, type HuntChoices } from './huntChoices';
+import { DEFAULT_ASKS, normalizeAsks, type AsksConfig } from './asks';
 import { normalizeBlessings, type BlessingConfig } from './blessings';
 import { asEvents, type ScheduledEvent } from './events';
 import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
@@ -27,6 +41,19 @@ import { asCoinNames, type CoinNames } from './coins';
 import { asGearWeights, DEFAULT_GEAR_WEIGHTS, type GearWeights } from './gearWeighing';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import { DEFAULT_LOGGING, normalizeLogging, type LoggingConfig } from './logging';
+import {
+  DEFAULT_EXTENSION_SWITCHES,
+  normalizeExtensionSwitches,
+  type ExtensionSwitches
+} from './extensionSwitches';
+import {
+  DEFAULT_LOOP_CHOICES,
+  DEFAULT_MOVEMENT_CHOICES,
+  loopChoices,
+  movementChoices,
+  type LoopChoices,
+  type MovementChoices
+} from './walkChoices';
 /*
  * `DENOMINATIONS` is the one *value* this module takes from `character.ts`, and
  * it is safe: nothing under `character.ts` imports `config.ts` back, so the
@@ -493,22 +520,8 @@ export interface AfkConfig {
   reply: string;
 }
 
-export interface WalkConfig {
+export interface WalkConfig extends LoopChoices {
   stepTimeoutMs: number;
-  /**
-   * Experience per hour below which a running loop is stopped — MegaMUD's
-   * `MinExpRate` with `LogoffLowExp`, both `0` (off) in its own defaults and
-   * off here. A lap that has stopped working — the lair empty tonight, a door
-   * shut, a monster that no longer dies — looks exactly like a lap that is
-   * working, for as long as nobody is watching, which for a character grinding
-   * unattended is all night. The rate is measured over the lap since it
-   * started (or resumed, or came back online) and judged only after
-   * `tuning.loop.expRateGraceMs`, because the first minutes of any lap are
-   * walking to the first lair. Stopped out loud with the two figures, and the
-   * tab reads `stopped`; MegaMUD logs off, which this client does not do on
-   * its own (`automation.safety.hangUp` says why). 0 never stops.
-   */
-  minExpPerHour: number;
   /**
    * How long a finished walk stays on screen before the card clears itself.
    *
@@ -546,146 +559,6 @@ export interface IdleConfig {
    */
   command: string;
 }
-
-/**
- * Hanging up to save a character, and why it is not the simple option.
- *
- * Every MegaMUD-era client offers "disconnect when health is low". On this
- * server family that is one of the more reliable ways to *die*: an unclean
- * disconnect costs a percentage of **maximum** HP — fatal at low health, and
- * recorded as `DisconnectPenalty` — or drops random items. Five conditions make
- * it unclean, and they are precisely the ones that co-occur with wanting to
- * press the button. See docs/greatermud/combat.md.
- *
- * So this exists, and it defaults to refusing. Walking out is the escape that
- * works; hanging up is the escape that works *afterwards*.
- */
-export interface HangUpConfig {
-  /** Off unless somebody asks for it, and it says what it will and will not do. */
-  enabled: boolean;
-  /** Fraction of maximum health below which hanging up is considered. */
-  belowHealth: number;
-  /**
-   * Whether this realm charges for a hang-up at all (todo 01).
-   *
-   * Where it does, hanging up is refused while the client can see a reason it
-   * would be charged; where it does not, it hangs up below `belowHealth`.
-   * **Off by default**: a PvE realm charges nothing. Paradigm's realm menu
-   * states it (`Hang Penalties 25%`), and what it said outranks this; a
-   * realm's own `server.yaml` (`hangPenalties`) outranks the options file,
-   * and a character's own file outranks its realm.
-   */
-  penalties: boolean;
-  /**
-   * Also hang up when a player is in the room, at any health.
-   *
-   * Off by default. It is the PvP panic button, and it is also the one most
-   * likely to fire during the five-minute window, which is where a realm's
-   * penalty bites.
-   */
-  onPlayerInRoom: boolean;
-}
-
-/**
- * Running away, which is the escape that actually works.
- *
- * **It walks. There is no command for running away** — see `NOT_COMMANDS` in
- * `src/shared/commands.ts` for the eleven refusals that settled that — so
- * every escape this client makes is a **direction**, chosen from what it knows
- * about the room it is standing in, and it is never sent unless there is one.
- * Moving out carries none of the penalty an unclean disconnect does, which is
- * why `HangUpConfig` tells you to do this instead.
- *
- * Off by default like everything automated: a client that starts running away
- * on its own the first time somebody opens it is a client that decides when a
- * fight is lost, and that is the player's call until they say otherwise.
- */
-export interface RetreatConfig {
-  enabled: boolean;
-  /** Fraction of maximum health below which the character runs. */
-  belowHealth: number;
-  /**
-   * Also run below this fraction of maximum mana — MegaMUD's `ManaRun%`. A
-   * caster out of mana is losing whatever the health bar says: its next round
-   * lands nothing, and the round after that is the monster's. 0 (MegaMUD's own
-   * default) never runs for mana; a class with no pool has a null maximum and
-   * is never judged by it, as everywhere.
-   */
-  belowMana: number;
-  /**
-   * Also run when this many things are hitting it at once.
-   *
-   * Zero disables it. Being fought by three things is the situation a health
-   * threshold notices too late — by the time the bar is low the next round has
-   * already been rolled.
-   */
-  whenOutnumbered: number;
-  /**
-   * The shortest gap between attempts.
-   *
-   * An escape can fail — the exit is blocked, the move is refused — and
-   * retrying every status line would fill the queue with them. This is a floor
-   * on retrying, not a rate limit: the emergency band is not paced.
-   */
-  cooldownMs: number;
-  /**
-   * How far to go, **not** how to choose the exit.
-   *
-   * Choosing the exit is `Travel.escape`'s ladder and is not
-   * configurable, because every rung of it is strictly better than the one
-   * below and nobody would knowingly pick a worse one: retrace the trail
-   * first, then an exit the realm data says leads back onto it, then any exit
-   * the realm can place, then any exit the server just printed. Only the last
-   * rung is a room the character has never seen, and all four beat standing
-   * still.
-   *
-   * `step-back` is that one move and then nothing more. `safe-haven` takes the
-   * same move and then, once the fight is over and the character is placed,
-   * plans a route to `safeHavenRoom` — the walker refuses to walk into a
-   * fight, so a route can never be the escape itself.
-   */
-  strategy: RetreatStrategy;
-  /**
-   * Where `safe-haven` runs to, as a loop stop names a room: `Newhaven, Town
-   * Gates 1/2150`. A bare name shared by several rooms is refused, with the
-   * candidates, exactly as a loop stop is. Empty is none.
-   */
-  safeHavenRoom: string;
-}
-
-/**
- * The last-ditch escape below `retreat` (todo 813): the realm's own teleport,
- * sent mid-fight in the emergency band, written out **literally** because each
- * realm implementation spells it differently — GreaterMUD `sys go 1 297`,
- * MajorMUD `sys goto silvermere` — and it is never derived. The realm's
- * `server.yaml` (`fleeGoto:`) states the command; a character's own `command`
- * replaces it, and this file's is used only where neither states one.
- *
- * Off by default. On GreaterMUD `sys` is a sysop's tool (`SysCommand.cs:196`);
- * a player is answered `Your command had no effect.`, read as a refusal.
- * Never above `retreat.belowHealth` while the retreat is on: the walked escape
- * has the first word. See `FleeGoto`.
- */
-export interface FleeGotoConfig {
-  enabled: boolean;
-  /** Fraction of maximum health at or below which the teleport is sent. */
-  belowHealth: number;
-  /** The literal command; empty follows the realm, and none anywhere sends nothing. */
-  command: string;
-}
-
-/**
- * Two, where there were three.
- *
- * The third was `flee`, and it did not describe a way out — it described
- * sending the word `flee` and letting the realm pick the exit, which the realm
- * never did because the word is not a command. `reverse-step` was the same
- * thing with one attempt in front of it, and its documented fallback was that
- * word again. Both are gone: what is left is *one move* against *one move and
- * then walk home*, which is the only axis a person was ever choosing on.
- */
-export const RETREAT_STRATEGIES = ['step-back', 'safe-haven'] as const;
-export type RetreatStrategy = (typeof RETREAT_STRATEGIES)[number];
 
 /**
  * Which monsters auto-combat will open a fight with.
@@ -901,6 +774,28 @@ export interface CombatConfig {
    * do nothing on a derivative realm.
    */
   maxMonsterExperience: number;
+  /**
+   * Attack a monster the realm says always costs alignment to kill (todo 118).
+   * Off: every kill of one is evil points, for as long as the character plays.
+   */
+  attackCostly: boolean;
+  /** Wield a carried weapon that can hurt a monster the one in hand cannot (todo 46). */
+  swapWeapons: boolean;
+  /**
+   * A monster run from that waits to be attacked is left alone until the
+   * character is this many levels past the level it ran at, or
+   * `fledForgetMinutes` have passed (`src/shared/fled.ts`).
+   */
+  fledLevels: number;
+  fledForgetMinutes: number;
+  /**
+   * The shares of fights survived above which a fight's odds read as safe
+   * (green) and as risky (yellow); the rest is deadly (red). The Combat
+   * card, the map's lairs, the hunting grounds, routes and Auto Choose
+   * Blessings all read these (`survivalLevel`).
+   */
+  safeOddsAbove: number;
+  riskyOddsAbove: number;
 }
 
 /**
@@ -1062,6 +957,15 @@ export interface RemotesConfig {
    * name, as `PlayerRegistry` keys it. Absent is an empty grant: nothing.
    */
   players: Record<string, RemoteGrant>;
+  /** The most items one `@get-all`, `@drop-all` or typed `get all` takes, one command each. */
+  maxGets: number;
+  /**
+   * Let `@kill`, `@hangup`, `@relog` and `@panic!` through to whoever is
+   * granted them by name, gang or party. Off, all four are refused to
+   * everyone however granted (todo 118): each lets another player start a
+   * fight with a person or end this character's session.
+   */
+  allowKillAndHangup: boolean;
 }
 
 /**
@@ -1219,61 +1123,15 @@ export interface SearchConfig {
   /**
    * How many searches one room is worth.
    *
-   * The server may answer a first `search` with nothing and a second with an
-   * exit — nothing in the realm data or on the wire says whether one look is
-   * enough, which is also why the walker's own search for a *named* hidden
-   * exit is paced rather than counted (`walk.searchRetryMs`). One by default:
-   * a room searched three times is three
-   * commands, and the honest answer to "how many does it take" is that nobody
-   * has measured it.
+   * A bare `search` rolls each hidden item against Perception (GreaterMUD
+   * `Player.TrySearch`), so a second one can find what the first missed. It
+   * never finds an exit; the walker's `search <direction>` does that. One by
+   * default: a room searched three times is three commands.
    */
   tries: number;
-}
-
-export interface DropConfig {
-  enabled: boolean;
-  /** Item names to drop whenever the pack lists them. Prefixes, as `drop` reads them. */
-  items: string[];
-  /**
-   * Only shed junk while the server itself grades the load as anything but
-   * `None` (`Encumbrance: 840/2400 - Medium [35%]`). The server's own word,
-   * because the thresholds behind the grades are unsampled — MegaMUD's "67%
-   * is Heavy" is folklore this client has never seen on the wire. An unread
-   * grade drops nothing: unknown is not encumbered, and a drop is not a thing
-   * to do on a guess.
-   */
-  whenEncumbered: boolean;
-  /**
-   * Also drop anything the realm prices at **zero**, without naming it.
-   *
-   * The one entity predicate safe to act on unasked here, and only because it
-   * is the realm's own explicit zero rather than an absence: a price the realm
-   * does not state leaves the item alone, because "worth nothing" and "nobody
-   * has said" are different claims and only one of them is a reason to throw
-   * something away.
-   *
-   * Nothing the realm marks `Not Droppable` is ever dropped by it, nothing
-   * equipped is, and the named list above stays the authority on everything
-   * else — the realm does not mark quest items, which is why this is bounded
-   * to a column it does mark.
-   */
-  worthless: boolean;
-}
-
-/**
- * Getting rid of gear the character has outgrown (todo 12): an unworn item no
- * better than what is worn in a full slot, and not kept by the supply list, a
- * gear set, a key, `LoyalItem` or the ganghouse deed, emblem and keys, is
- * stashed in the ganghouse, sold, or dropped, one at a time. Off by default.
- */
-export interface OutgrownConfig {
-  enabled: boolean;
-  /**
-   * The ganghouse room to `hide` things in, as a loop stop names a room
-   * (`Silver House Vault 15/921`). Empty uses the house's nearest vault the
-   * world data shows (`ganghouseVaults`, todo 51).
-   */
-  ganghouseRoom: string;
+  /** The most steps out, and searches a room, Search the area offers. */
+  areaMaxSteps: number;
+  areaMaxSearches: number;
 }
 
 /**
@@ -1286,41 +1144,6 @@ export interface OutgrownConfig {
  * live), and a `bank` behind it so the vault's own figure is established the
  * first time and maintained for free afterwards.
  */
-/**
- * One thing the character keeps a stock of — MegaMUD's *Must Have Minimum* /
- * *Minimum To Keep* / *Maximum To Get* on an item, with the shop it is bought
- * from.
- *
- * `name` is the realm's own spelling of the item, matched against the pack the
- * way the server matches a typed name (`nameAnswersTo`). `min` is the count
- * below which the character goes shopping and `max` what it buys back up to.
- * `shop` names the shop and `at` says which room, because a shop's name is not
- * a place (`WorldGraph.shopPlace`): null leaves the name to be settled when
- * the errand is planned, and refused out loud if it cannot be.
- */
-export interface SupplyItem {
-  name: string;
-  min: number;
-  max: number;
-  shop: string;
-  at: { map: number; room: number } | null;
-}
-
-/**
- * Keeping the pack stocked — `automation.supplies`.
- *
- * Per character, because what one keeps is a fact about how it plays: a
- * caster's torches are a fighter's healing potions. When a listed item falls
- * below its minimum the client holds whatever it was doing, walks to the
- * shop, buys back up to the maximum one at a time, and lets the loop go on
- * from wherever the shop is. Everything about the trip is said out loud and
- * recorded as a safety decision, refusals included.
- */
-export interface SuppliesConfig {
-  enabled: boolean;
-  items: SupplyItem[];
-}
-
 export interface BankingConfig {
   autoDeposit: boolean;
   /**
@@ -1452,7 +1275,7 @@ export interface HealthConfig {
    * A lair is dangerous for what it is *about* to contain: measured twice, a
    * character sat down at 20% in a room whose clock makes three wererats
    * every twenty seconds and met them at 2%. On, a rest proposed in a room
-   * the realm marks as a lair with a clock under `tuning.rest.lairClockMaxSeconds`
+   * the realm marks as a lair with a clock under `restNextDoorMinutes`
    * is refused there, out loud with the figure; a neighbour the realm holds
    * no lair in is peeked (`l <direction>`), entered only if empty, rested in,
    * and stepped back from when nothing else has the character. Where no
@@ -1461,6 +1284,8 @@ export interface HealthConfig {
    * default is the one that killed the character.
    */
   restNextDoor: boolean;
+  /** A lair refilling within this many minutes is rested next door to; a rest outlasts it. */
+  restNextDoorMinutes: number;
   /**
    * Rest before stepping through a trap until health covers the trap and
    * still leaves this fraction of maximum after it. 0 walks into any trap at
@@ -1589,7 +1414,7 @@ export type PotionVerb = (typeof POTION_VERBS)[number];
  * `WalkConfig` above is the *timing* of a walk and belongs to the walker;
  * this is what the walker is allowed to do on the way.
  */
-export interface MovementConfig {
+export interface MovementConfig extends MovementChoices {
   /**
    * Open a closed door a route step ran into, instead of stopping the route.
    *
@@ -1623,7 +1448,7 @@ export interface MovementConfig {
    *
    * Gated on the realm's own number: a barrier records what strength has to
    * reach (`Door [41 picklocks/strength]`), and this is attempted only when
-   * the character's strength is within `BASH_MARGIN` of it.
+   * the character's strength is within `bashMargin` of it.
    *
    * **On by default** (2026-09-07), which is the one automated thing here that
    * costs health — `You take 3 damage for bashing the door!` — and is on
@@ -1644,7 +1469,7 @@ export interface MovementConfig {
    * door is unlocked and **still shut**, so an `open` follows. Both sentences
    * and the whole sequence are in `captures/002`.
    *
-   * Gated on the realm's picklocks number within `PICK_MARGIN`. Tried before
+   * Gated on the realm's picklocks number within `pickMargin`. Tried before
    * bashing when both are available, because a failed pick costs a command and
    * a failed bash costs a command and some health. The router reads this and
    * `bashDoors` too (`Traveller.forcing`): a lock only a switched-off skill
@@ -1754,7 +1579,7 @@ export interface MovementConfig {
    * rooms this character cannot see in, when the inventory holds no usable
    * light that would do (todo 11). The shop least out of the way, as many as
    * burn for the dark stretch where the realm states the uses, else
-   * `tuning.light.carryAtLeast`. On by default under `provideLight`, which
+   * `carryLights`. On by default under `provideLight`, which
    * readies what it buys.
    */
   buyLight: boolean;
@@ -1826,7 +1651,7 @@ export interface MovementConfig {
  * worth walking to. Neither is restated here: two vocabularies for one
  * question is how somebody sets one and wonders why the other still decides.
  */
-export interface HuntingAutomationConfig {
+export interface HuntingAutomationConfig extends HuntChoices {
   /** Walk to the best hunting ground and run it, unasked. Off. */
   enabled: boolean;
   /**
@@ -1878,6 +1703,8 @@ export interface TrainConfig {
   levels: boolean;
   /** Train no level past this one (todo 80, MegaMUD's train-above ceiling); 0 is none. */
   upTo: number;
+  /** How many points of each stat are weighed ahead when `pick` is `exp`. */
+  statHorizon: number;
   /**
    * Where to go and level: the trainer's own shop row, or 0 for *the cheapest
    * that will take me*.
@@ -2187,44 +2014,26 @@ export interface SpellsConfig {
    * and says so (`chooseBlessings`).
    */
   autoChooseBlessings: boolean;
-}
-
-export interface SafetyConfig {
-  hangUp: HangUpConfig;
-  retreat: RetreatConfig;
-  fleeGoto: FleeGotoConfig;
-  pvp: PvpConfig;
-}
-
-/** What a PvP reaction may do about the fight itself. */
-export const PVP_ACTIONS = ['none', 'retreat', 'retreat-then-hangup'] as const;
-
-export type PvpAction = (typeof PVP_ACTIONS)[number];
-
-/**
- * What to do the moment a player opens on this character — MegaMUD's
- * NotifyGang, on the wire this client has already read: `<Name> moves to
- * attack you!` and a player's blow both put the attacker in
- * `combat.attackers` and start `HangUpWatch`'s five-minute clock, and this is
- * the reaction to that same evidence.
- *
- * Both halves off, like everything automated — and this one reaches other
- * people twice over: the broadcast speaks to the whole gang, and a retreat is
- * the client deciding a fight is lost.
- */
-export interface PvpConfig {
   /**
-   * Say so on the gangpath — `bg`, the realm's own verb — once per attacker
-   * per five-minute window: the room and the health ride along, because the
-   * gang deciding whether to come needs where and how bad.
+   * How sure one cast has to be of finishing the monster before the cheapest
+   * spell that would outranks the hardest hitter, under `autoChoose`.
    */
-  notifyGang: boolean;
+  killConfidence: number;
   /**
-   * `retreat` runs when the attack is seen, whatever `retreat.enabled` says;
-   * `retreat-then-hangup` (MegaMUD's Flee Then Hangup) hangs up once it no
-   * longer counts, under the realm's penalty (`Safety`). `none` does neither.
+   * How steeply a low bar outweighs a high one when a party heal is weighed
+   * against a single heal: a point mended is worth (1 - share) ^ this.
    */
-  action: PvpAction;
+  healUrgency: number;
+  /**
+   * The least a blessing chosen by `autoChooseBlessings` must add: survival in
+   * shares of fights, the health a fight costs in shares of the bar, or the
+   * exp rate as a share of the rate without it.
+   */
+  blessMinGain: number;
+  /** Heal casts a chosen blessing's mana floor keeps affordable after its own cast. */
+  blessHealReserve: number;
+  /** The most commands an hour a chosen bless weapon's swap from the pack may spend. */
+  blessSwapCommandsPerHour: number;
 }
 
 /**
@@ -2303,6 +2112,11 @@ export interface PartyConfig {
    * more health the party has lost since the last one (`PartyListing`); 0 never.
    */
   parEveryRounds: number;
+  /**
+   * The share of a member's health lost since the last `par` that asks for the
+   * next one on this round; half of it, half as many rounds sooner.
+   */
+  parAtLoss: number;
   /**
    * Leading, say `@party <command>` before a room's own command that moves only
    * the one who types it (`go vortex`), so a follower runs it too (todo 839).
@@ -2405,6 +2219,8 @@ export interface AutomationConfig {
   aliases: Aliases;
   /** Whether the client sets the prompt's shape on the way in. See `StatlineConfig`. */
   statline: StatlineConfig;
+  /** What the client asks the realm on its own to keep the cards current. See `AsksConfig`. */
+  asks: AsksConfig;
   /**
    * The loops a character walks to gain levels — MegaMUD's loops.
    *
@@ -2443,6 +2259,8 @@ export interface AutomationConfig {
  */
 export interface QuestsConfig {
   enabled: boolean;
+  /** How many times a step that rolls (`testskill`) is asked before it gives up. */
+  rollTries: number;
 }
 
 /**
@@ -2466,6 +2284,10 @@ export interface GearConfig {
   offRound: OffRoundConfig;
   /** Wear carried armour the room's elements call for (todo 69, `PlaceGear`); apart from `enabled`. */
   resists: boolean;
+  /** Hit points a round a resist swap has to save before it is made. */
+  resistMinSaved: number;
+  /** How many better items the Gear card offers a slot, best first. */
+  offersPerSlot: number;
 }
 
 /**
@@ -2490,6 +2312,8 @@ export interface AppConfig {
   automation: AutomationConfig;
   /** Keys bound to a line, global only. See `shared/keys.ts`. */
   keys: KeyBindings;
+  /** Each installed extension on or off, global only. See `shared/extensionSwitches.ts`. */
+  extensions: ExtensionSwitches;
   /** The game view's console, global only (todo 140). */
   gameView: GameViewConfig;
 }
@@ -2694,6 +2518,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     aliases: {},
     // Off: the statline is kept server-side, not changed unasked. See `StatlineConfig`.
     statline: { control: false },
+    asks: DEFAULT_ASKS,
     // Empty is a bare Enter: the room, re-read without telling the room. See
     // `IdleConfig.command` and `REREAD_ROOM`.
     idle: { enabled: true, afterSeconds: 45, command: REREAD_ROOM },
@@ -2703,30 +2528,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Comfortably longer than the queue's own acknowledgement timeout, so a
     // step is not abandoned while the arbiter is still waiting its turn to
     // send it.
-    walk: { clearAfterSeconds: 15, stepTimeoutMs: 8000, minExpPerHour: 0 },
-    safety: {
-      // Off, and refusing when on. See `HangUpConfig`: the panic button every
-      // MegaMUD-era client offers is, here, a way to die.
-      hangUp: {
-        enabled: false,
-        belowHealth: 0.15,
-        penalties: false,
-        onPlayerInRoom: false
-      },
-      retreat: {
-        enabled: false,
-        belowHealth: 0.3,
-        belowMana: 0,
-        whenOutnumbered: 0,
-        cooldownMs: 3000,
-        strategy: 'step-back',
-        safeHavenRoom: ''
-      },
-      // Off, and between the retreat's floor and the hang-up's, so the
-      // teleport has its turn before the panic button. See `FleeGotoConfig`.
-      fleeGoto: { enabled: false, belowHealth: 0.2, command: '' },
-      pvp: { notifyGang: false, action: 'none' }
-    },
+    walk: { clearAfterSeconds: 15, stepTimeoutMs: 8000, ...DEFAULT_LOOP_CHOICES },
+    safety: DEFAULT_SAFETY,
     // Off, like every other thing the client would do without being asked. The
     // shape it defaults to is the minimal one that still works: open on what
     // the realm data says would attack you anyway, hit back at whatever hits
@@ -2744,7 +2547,13 @@ export const DEFAULT_CONFIG: AppConfig = {
       mobRules: [],
       maxTargetHealth: 0,
       minMobs: 0,
-      maxMonsterExperience: 0
+      maxMonsterExperience: 0,
+      attackCostly: false,
+      swapWeapons: true,
+      fledLevels: 2,
+      fledForgetMinutes: 30,
+      safeOddsAbove: 0.6,
+      riskyOddsAbove: 0.25
     },
     // Off, like everything automated. A client that sits down on its own is one
     // deciding when a fight is over.
@@ -2763,6 +2572,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       parSeconds: 0,
       parAfterRound: false,
       parEveryRounds: 5,
+      parAtLoss: 0.25,
       relayPortals: true,
       regroupMinutes: 5,
       helpWithDoors: false
@@ -2785,6 +2595,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       restBelow: 0.35,
       restTo: 0.7,
       restNextDoor: true,
+      restNextDoorMinutes: 10,
       restBeforeTraps: 0.45,
       restBelowMana: 0,
       restToMana: 0,
@@ -2809,15 +2620,15 @@ export const DEFAULT_CONFIG: AppConfig = {
       convertWith: '',
       convertAt: 'never'
     },
-    drop: { enabled: false, items: [], whenEncumbered: false, worthless: false },
-    outgrown: { enabled: false, ganghouseRoom: '' },
-    search: { enabled: false, tries: 1 },
+    drop: DEFAULT_DROP,
+    outgrown: DEFAULT_OUTGROWN,
+    search: { enabled: false, tries: 1, areaMaxSteps: 15, areaMaxSearches: 10 },
     // 500 gold and 5 gold, on the measured ladder: 100 copper to the gold.
     banking: { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500, bank: 0 },
     // On, with nothing listed: the switch is what the toolbar flips, and the
     // list is what the Self card and the item panel fill. An empty list does
     // nothing, so the default is safe and the first item added starts working.
-    supplies: { enabled: true, items: [] },
+    supplies: DEFAULT_SUPPLIES,
     remotes: {
       enabled: true,
       gangpath: false,
@@ -2829,7 +2640,9 @@ export const DEFAULT_CONFIG: AppConfig = {
        * and are not.
        */
       party: ['health', 'bless-expired', 'heal'],
-      players: {}
+      players: {},
+      maxGets: 10,
+      allowKillAndHangup: false
     },
     loops: [],
     events: [],
@@ -2856,12 +2669,14 @@ export const DEFAULT_CONFIG: AppConfig = {
       walkWhilePoisoned: false,
       walkWhileConfused: false,
       keepOutOf: ['vortex', 'Negative Power Plane'],
-      collectKeys: true
+      collectKeys: true,
+      ...DEFAULT_MOVEMENT_CHOICES
     },
     hunting: {
       enabled: false,
       radius: 0,
-      cashPerHour: 0
+      cashPerHour: 0,
+      ...DEFAULT_HUNT_CHOICES
     },
     train: {
       stats: false,
@@ -2869,10 +2684,18 @@ export const DEFAULT_CONFIG: AppConfig = {
       wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 },
       levels: false,
       trainer: 0,
-      upTo: 0
+      upTo: 0,
+      statHorizon: 10
     },
-    quests: { enabled: false },
-    gear: { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 }, resists: true },
+    quests: { enabled: false, rollTries: 12 },
+    gear: {
+      enabled: false,
+      sets: [],
+      offRound: { item: '', everyRounds: 0 },
+      resists: true,
+      resistMinSaved: 2,
+      offersPerSlot: 20
+    },
     spells: {
       autoChoose: false,
       attack: '',
@@ -2901,10 +2724,16 @@ export const DEFAULT_CONFIG: AppConfig = {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
-      autoChooseBlessings: false
+      autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120
     }
   },
   keys: MEGAMUD_KEYS,
+  extensions: DEFAULT_EXTENSION_SWITCHES,
   gameView: DEFAULT_GAME_VIEW
 };
 
@@ -3000,11 +2829,6 @@ export function resolveUiFonts(families: readonly string[]): string[] {
 /* Normalisation                                                              */
 /* -------------------------------------------------------------------------- */
 
-/** A YAML document, before we have proven anything about its shape. */
-function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return allowed.includes(value as T) ? (value as T) : fallback;
-}
-
 /**
  * Accepts either a YAML list or a single string, so both of these work:
  *
@@ -3093,6 +2917,7 @@ export function normalizeConfig(input: unknown): AppConfig {
     logging: normalizeLogging(raw['logging']),
     automation: normalizeAutomation(raw['automation']),
     keys: normalizeKeys(raw['keys']),
+    extensions: normalizeExtensionSwitches(raw['extensions']),
     gameView: normalizeGameView(raw['gameView'])
   };
 }
@@ -3648,8 +3473,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
       stepTimeoutMs: int(walk['stepTimeoutMs'], d.walk.stepTimeoutMs, 1000, 120_000),
       // Zero is meaningful: keep it until something else happens.
       clearAfterSeconds: int(walk['clearAfterSeconds'], d.walk.clearAfterSeconds, 0, 3600),
-      // Zero is off. Capped where no realm's experience curve reaches in an hour.
-      minExpPerHour: int(walk['minExpPerHour'], d.walk.minExpPerHour, 0, 100_000_000)
+      ...loopChoices(walk)
     },
     safety: normalizeSafety(raw['safety']),
     combat: normalizeCombat(raw['combat']),
@@ -3689,6 +3513,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
         d.statline.control
       )
     },
+    asks: normalizeAsks(raw['asks']),
     loops: asLoops(raw['loops']),
     events: asEvents(raw['events']),
     movement: normalizeMovement(raw['movement']),
@@ -3706,6 +3531,12 @@ function normalizeAutomation(value: unknown): AutomationConfig {
  * `when` the table does not know is dropped — the closed union's runtime
  * half — and a blank `mob` is *any monster* rather than a refusal.
  */
+/** The gear block's whole-number bounds, for the file and the settings screen. */
+export const GEAR_RANGES = {
+  resistMinSaved: [0, 999],
+  offersPerSlot: [1, 100]
+} as const satisfies Partial<Record<keyof GearConfig, readonly [number, number]>>;
+
 export function normalizeGear(value: unknown): GearConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.gear;
@@ -3728,14 +3559,25 @@ export function normalizeGear(value: unknown): GearConfig {
       // Bounded low: a floor of twenty rounds is a fight that has ended.
       everyRounds: int(offRound['everyRounds'], d.offRound.everyRounds, 0, 20)
     },
-    resists: bool(raw['resists'], d.resists)
+    resists: bool(raw['resists'], d.resists),
+    resistMinSaved: int(raw['resistMinSaved'], d.resistMinSaved, ...GEAR_RANGES.resistMinSaved),
+    offersPerSlot: int(raw['offersPerSlot'], d.offersPerSlot, ...GEAR_RANGES.offersPerSlot)
   };
 }
 
-/** One switch, off unless the file says on. */
+/** The quests block's one whole number, bounded for the file and the settings screen. */
+export const QUESTS_RANGES = {
+  rollTries: [1, 100]
+} as const satisfies Partial<Record<keyof QuestsConfig, readonly [number, number]>>;
+
+/** One switch, off unless the file says on, and how many rolls a step is worth. */
 export function normalizeQuests(value: unknown): QuestsConfig {
   const raw = isRecord(value) ? value : {};
-  return { enabled: bool(raw['enabled'], DEFAULT_CONFIG.automation.quests.enabled) };
+  const d = DEFAULT_CONFIG.automation.quests;
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    rollTries: int(raw['rollTries'], d.rollTries, ...QUESTS_RANGES.rollTries)
+  };
 }
 
 /**
@@ -3770,6 +3612,7 @@ function normalizeHealth(value: unknown): HealthConfig {
      */
     restTo: ceilingOver(fraction(raw['restTo'], d.restTo), restBelow),
     restNextDoor: bool(raw['restNextDoor'], d.restNextDoor),
+    restNextDoorMinutes: restNextDoorMinutesOf(raw['restNextDoorMinutes']),
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     restBelowMana,
     restToMana: ceilingOver(fraction(raw['restToMana'], d.restToMana), restBelowMana),
@@ -3800,6 +3643,11 @@ function normalizeHealth(value: unknown): HealthConfig {
  * and only one of which is ever consulted. Where they collide the *deny* lists
  * union and so do the allows, then deny wins at judgement — narrowing again.
  */
+/** The remotes block's one whole number, bounded for the file and the settings screen. */
+export const REMOTES_RANGES = {
+  maxGets: [1, 100]
+} as const satisfies Partial<Record<keyof RemotesConfig, readonly [number, number]>>;
+
 function normalizeRemotes(value: unknown, d: RemotesConfig): RemotesConfig {
   const raw = isRecord(value) ? value : {};
   return {
@@ -3808,7 +3656,9 @@ function normalizeRemotes(value: unknown, d: RemotesConfig): RemotesConfig {
     autoJoin: bool(raw['autoJoin'], d.autoJoin),
     gang: remoteNames(raw['gang'], d.gang),
     party: remoteNames(raw['party'], d.party),
-    players: playerGrants(raw['players'], d.players)
+    players: playerGrants(raw['players'], d.players),
+    maxGets: int(raw['maxGets'], d.maxGets, ...REMOTES_RANGES.maxGets),
+    allowKillAndHangup: bool(raw['allowKillAndHangup'], d.allowKillAndHangup)
   };
 }
 
@@ -3899,32 +3749,6 @@ function gate(value: unknown, fallback: EncumbranceGate): EncumbranceGate {
   return GATES.find((known) => known === word) ?? fallback;
 }
 
-function normalizeDrop(value: unknown): DropConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.drop;
-  const items = Array.isArray(raw['items'])
-    ? raw['items']
-        .filter((entry): entry is string => typeof entry === 'string')
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0)
-    : d.items;
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    items,
-    whenEncumbered: bool(raw['whenEncumbered'], d.whenEncumbered),
-    worthless: bool(raw['worthless'], d.worthless)
-  };
-}
-
-function normalizeOutgrown(value: unknown): OutgrownConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.outgrown;
-  return {
-    enabled: bool(raw['enabled'], d.enabled),
-    ganghouseRoom: str(raw['ganghouseRoom'], d.ganghouseRoom).trim()
-  };
-}
-
 /**
  * Auto-search. One search a room by default, and a ceiling on the count.
  *
@@ -3938,7 +3762,24 @@ function normalizeSearch(value: unknown): SearchConfig {
   const d = DEFAULT_CONFIG.automation.search;
   return {
     enabled: bool(raw['enabled'], d.enabled),
-    tries: int(raw['tries'], d.tries, 1, 5)
+    tries: int(raw['tries'], d.tries, 1, 5),
+    ...areaBounds(raw)
+  };
+}
+
+/** How soon a lair refills for Rest Next Door, one reading for the file and the settings screen. */
+export function restNextDoorMinutesOf(value: unknown): number {
+  return int(value, DEFAULT_CONFIG.automation.health.restNextDoorMinutes, 1, 60);
+}
+
+/** Search the area's two bounds, one reading for the file and the settings screen. */
+export function areaBounds(
+  raw: Record<string, unknown>
+): Pick<SearchConfig, 'areaMaxSteps' | 'areaMaxSearches'> {
+  const d = DEFAULT_CONFIG.automation.search;
+  return {
+    areaMaxSteps: int(raw['areaMaxSteps'], d.areaMaxSteps, 1, 50),
+    areaMaxSearches: int(raw['areaMaxSearches'], d.areaMaxSearches, 1, 20)
   };
 }
 
@@ -4001,7 +3842,8 @@ function normalizeMovement(value: unknown): MovementConfig {
     // One word once, however it was spelt: two spellings of one word are one
     // place kept out of.
     keepOutOf: uniqueWords(stringList(raw['keepOutOf'], d.keepOutOf)),
-    collectKeys: bool(raw['collectKeys'], d.collectKeys)
+    collectKeys: bool(raw['collectKeys'], d.collectKeys),
+    ...movementChoices(raw)
   };
 }
 
@@ -4012,9 +3854,15 @@ export function normalizeHuntingAutomation(value: unknown): HuntingAutomationCon
   return {
     enabled: bool(raw['enabled'], d.enabled),
     radius: int(raw['radius'], d.radius, 0, 9_999),
-    cashPerHour: int(raw['cashPerHour'], d.cashPerHour, 0, 100_000_000)
+    cashPerHour: int(raw['cashPerHour'], d.cashPerHour, 0, 100_000_000),
+    ...huntChoices(raw)
   };
 }
+
+/** The train block's whole-number bounds past the wanted figures. */
+export const TRAIN_RANGES = {
+  statHorizon: [1, 100]
+} as const satisfies Partial<Record<keyof TrainConfig, readonly [number, number]>>;
 
 /** A wanted figure is a whole number; the race's ceiling is applied at the screen, not here. */
 export function normalizeTrain(value: unknown): TrainConfig {
@@ -4033,20 +3881,11 @@ export function normalizeTrain(value: unknown): TrainConfig {
     // A shop row number. 0 is *the cheapest that will take me*, which is also
     // what a negative or unreadable figure means: never a guess at a room.
     trainer: int(raw['trainer'], d.trainer, 0, 999_999),
-    upTo: int(raw['upTo'], d.upTo, 0, 999)
+    upTo: int(raw['upTo'], d.upTo, 0, 999),
+    statHorizon: int(raw['statHorizon'], d.statHorizon, ...TRAIN_RANGES.statHorizon)
   };
 }
 
-/**
- * The supplies list, bounded because it crossed a file somebody edits by hand.
- *
- * A row with no name is dropped rather than defaulted, as a buff with no name
- * is. `min` and `max` are whole counts; a `max` below `min` reads as `min`, so
- * "keep at least three" with no ceiling stated buys back to three. `shop` is
- * the shop's name as the realm's item index spells it and `at` the room the
- * name was settled to, kept beside it for the reason a loop stop carries
- * coordinates: six rooms are called General Store.
- */
 /**
  * The *use this when that* list — `automation.health.potions`.
  *
@@ -4075,33 +3914,6 @@ function normalizePotionRules(value: unknown): PotionRule[] {
     });
   }
   return rules;
-}
-
-function normalizeSupplies(value: unknown): SuppliesConfig {
-  const raw = isRecord(value) ? value : {};
-  const d = DEFAULT_CONFIG.automation.supplies;
-  const items: SupplyItem[] = [];
-  if (Array.isArray(raw['items'])) {
-    for (const entry of raw['items']) {
-      if (!isRecord(entry)) continue;
-      const name = str(entry['name'], '').trim();
-      if (name.length === 0) continue;
-      const min = int(entry['min'], 0, 0, 1000);
-      const max = Math.max(min, int(entry['max'], 0, 0, 1000));
-      const shop = str(entry['shop'], '').trim();
-      const at = isRecord(entry['at']) ? entry['at'] : null;
-      const map = at === null ? null : int(at['map'], -1, 0, 999);
-      const room = at === null ? null : int(at['room'], -1, 0, 999_999);
-      items.push({
-        name,
-        min,
-        max,
-        shop,
-        at: map !== null && room !== null && map >= 0 && room >= 0 ? { map, room } : null
-      });
-    }
-  }
-  return { enabled: bool(raw['enabled'], d.enabled), items };
 }
 
 function normalizeSpells(value: unknown): SpellsConfig {
@@ -4149,9 +3961,46 @@ function normalizeSpells(value: unknown): SpellsConfig {
     blessings: normalizeBlessings(raw['blessings']),
     notifyPartyOnWearOff: bool(raw['notifyPartyOnWearOff'], d.notifyPartyOnWearOff),
     autoBless: bool(raw['autoBless'], d.autoBless),
-    autoChooseBlessings: bool(raw['autoChooseBlessings'], d.autoChooseBlessings)
+    autoChooseBlessings: bool(raw['autoChooseBlessings'], d.autoChooseBlessings),
+    ...spellWeights(raw)
   };
 }
+
+/** The Auto Choose weights that were fixed figures until todo 118, read from a file or a draft. */
+export type SpellWeights = Pick<
+  SpellsConfig,
+  | 'killConfidence'
+  | 'healUrgency'
+  | 'blessMinGain'
+  | 'blessHealReserve'
+  | 'blessSwapCommandsPerHour'
+>;
+
+export function spellWeights(raw: Record<string, unknown>): SpellWeights {
+  const d = DEFAULT_CONFIG.automation.spells;
+  return {
+    killConfidence: fraction(raw['killConfidence'], d.killConfidence),
+    healUrgency: int(raw['healUrgency'], d.healUrgency, ...SPELL_RANGES.healUrgency),
+    blessMinGain: fraction(raw['blessMinGain'], d.blessMinGain),
+    blessHealReserve: int(
+      raw['blessHealReserve'],
+      d.blessHealReserve,
+      ...SPELL_RANGES.blessHealReserve
+    ),
+    blessSwapCommandsPerHour: int(
+      raw['blessSwapCommandsPerHour'],
+      d.blessSwapCommandsPerHour,
+      ...SPELL_RANGES.blessSwapCommandsPerHour
+    )
+  };
+}
+
+/** The whole-number spell weights' bounds, one statement for the file and the settings screen. */
+export const SPELL_RANGES = {
+  healUrgency: [0, 10],
+  blessHealReserve: [0, 20],
+  blessSwapCommandsPerHour: [0, 3600]
+} as const satisfies Partial<Record<keyof SpellsConfig, readonly [number, number]>>;
 
 function normalizeCures(value: unknown): SpellsConfig['cures'] {
   const raw = isRecord(value) ? value : {};
@@ -4189,6 +4038,7 @@ function normalizeParty(value: unknown): PartyConfig {
     parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
     parAfterRound: bool(raw['parAfterRound'], d.parAfterRound),
     parEveryRounds: int(raw['parEveryRounds'], d.parEveryRounds, ...PARTY_RANGES.parEveryRounds),
+    parAtLoss: fraction(raw['parAtLoss'], d.parAtLoss),
     relayPortals: bool(raw['relayPortals'], d.relayPortals),
     regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes),
     helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors)
@@ -4228,6 +4078,17 @@ function normalizeCombat(value: unknown): CombatConfig {
     refreshRounds: int(raw['refreshRounds'], d.refreshRounds, 0, 20),
     mobRules: normalizeMobRules(raw['mobRules']),
     minMobs: int(raw['minMobs'], d.minMobs, 0, 99),
+    ...combatCaps(raw),
+    ...combatChoices(raw)
+  };
+}
+
+/** The two caps on what a fight is opened on, read from a file or a draft. */
+export type CombatCaps = Pick<CombatConfig, 'maxTargetHealth' | 'maxMonsterExperience'>;
+
+export function combatCaps(raw: Record<string, unknown>): CombatCaps {
+  const d = DEFAULT_CONFIG.automation.combat;
+  return {
     maxMonsterExperience: int(raw['maxMonsterExperience'], d.maxMonsterExperience, 0, 100_000_000),
     // Capped far above any health the shipped realm states, so a typo cannot
     // silently mean "never fight anything".
@@ -4235,46 +4096,49 @@ function normalizeCombat(value: unknown): CombatConfig {
   };
 }
 
-function normalizeSafety(value: unknown): SafetyConfig {
-  const raw = isRecord(value) ? value : {};
-  const hangUp = isRecord(raw['hangUp']) ? raw['hangUp'] : {};
-  const retreat = isRecord(raw['retreat']) ? raw['retreat'] : {};
-  const pvp = isRecord(raw['pvp']) ? raw['pvp'] : {};
-  const fleeGoto = isRecord(raw['fleeGoto']) ? raw['fleeGoto'] : {};
-  const f = DEFAULT_CONFIG.automation.safety.retreat;
-  const g = DEFAULT_CONFIG.automation.safety.fleeGoto;
-  const d = DEFAULT_CONFIG.automation.safety.hangUp;
-  const p = DEFAULT_CONFIG.automation.safety.pvp;
+/** The combat choices that were fixed figures until todo 118, read from a file or a draft. */
+export type CombatChoices = Pick<
+  CombatConfig,
+  | 'attackCostly'
+  | 'swapWeapons'
+  | 'fledLevels'
+  | 'fledForgetMinutes'
+  | 'safeOddsAbove'
+  | 'riskyOddsAbove'
+>;
+
+export function combatChoices(raw: Record<string, unknown>): CombatChoices {
+  const choices = combatChoiceFields(raw);
+  // Never above the safe line: a risky band above safe has nothing in it.
+  return { ...choices, riskyOddsAbove: Math.min(choices.riskyOddsAbove, choices.safeOddsAbove) };
+}
+
+/**
+ * Each combat choice bounded on its own, the risky line not yet held under the
+ * safe one: what a settings field reads back per keystroke, since typing 70
+ * into the safe field passes through 7, and the risky line must survive that.
+ */
+export function combatChoiceFields(raw: Record<string, unknown>): CombatChoices {
+  const d = DEFAULT_CONFIG.automation.combat;
   return {
-    retreat: {
-      enabled: bool(retreat['enabled'], f.enabled),
-      belowHealth: fraction(retreat['belowHealth'], f.belowHealth),
-      belowMana: fraction(retreat['belowMana'], f.belowMana),
-      // Zero is meaningful: never run merely because there are several.
-      whenOutnumbered: int(retreat['whenOutnumbered'], f.whenOutnumbered, 0, 20),
-      // Floored at a second. Anything shorter retries before the server has
-      // had a chance to answer the first attempt.
-      cooldownMs: int(retreat['cooldownMs'], f.cooldownMs, 1000, 60_000),
-      strategy: oneOf<RetreatStrategy>(retreat['strategy'], RETREAT_STRATEGIES, f.strategy),
-      safeHavenRoom: str(retreat['safeHavenRoom'], f.safeHavenRoom).trim()
-    },
-    fleeGoto: {
-      enabled: bool(fleeGoto['enabled'], g.enabled),
-      belowHealth: fraction(fleeGoto['belowHealth'], g.belowHealth),
-      command: str(fleeGoto['command'], g.command).trim()
-    },
-    hangUp: {
-      enabled: bool(hangUp['enabled'], d.enabled),
-      belowHealth: fraction(hangUp['belowHealth'], d.belowHealth),
-      penalties: bool(hangUp['penalties'], d.penalties),
-      onPlayerInRoom: bool(hangUp['onPlayerInRoom'], d.onPlayerInRoom)
-    },
-    pvp: {
-      notifyGang: bool(pvp['notifyGang'], p.notifyGang),
-      action: oneOf<PvpAction>(pvp['action'], PVP_ACTIONS, p.action)
-    }
+    attackCostly: bool(raw['attackCostly'], d.attackCostly),
+    swapWeapons: bool(raw['swapWeapons'], d.swapWeapons),
+    fledLevels: int(raw['fledLevels'], d.fledLevels, ...COMBAT_RANGES.fledLevels),
+    fledForgetMinutes: int(
+      raw['fledForgetMinutes'],
+      d.fledForgetMinutes,
+      ...COMBAT_RANGES.fledForgetMinutes
+    ),
+    safeOddsAbove: fraction(raw['safeOddsAbove'], d.safeOddsAbove),
+    riskyOddsAbove: fraction(raw['riskyOddsAbove'], d.riskyOddsAbove)
   };
 }
+
+/** The whole-number combat settings' bounds, one statement for the file and the settings screen. */
+export const COMBAT_RANGES = {
+  fledLevels: [0, 50],
+  fledForgetMinutes: [1, 1440]
+} as const satisfies Partial<Record<keyof CombatConfig, readonly [number, number]>>;
 
 /**
  * The health a held journey walks on again at.

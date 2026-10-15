@@ -15,6 +15,7 @@ import type { Attendance } from '../automation/Attendance';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { RuleEngine } from '../automation/RuleEngine';
 import type { TelnetClient } from '../net/TelnetClient';
+import type { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Appraisal } from './Appraisal';
 import type { SessionSink } from './SessionSink';
@@ -44,8 +45,8 @@ export interface PublisherParts {
 export interface PublisherSession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
-  /** Each installed extension's card view, by name. */
-  extensions(): Record<string, unknown>;
+  /** The extensions running: each card's view and the settings they lay. */
+  extensions(): Pick<SessionExtensions, 'views' | 'laid'>;
 }
 
 /** The members of the session's sink this calls, and no more. */
@@ -203,7 +204,8 @@ export class Publisher {
       firings: this.rules.firings.reverse(),
       safety: [...this.safetyLog].reverse(),
       engagements: [...this.engageLog].reverse(),
-      extensions: this.session.extensions(),
+      extensions: this.session.extensions().views(),
+      laid: [...this.session.extensions().laid],
       away: this.attendance.away
     };
   }

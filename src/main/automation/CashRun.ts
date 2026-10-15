@@ -35,6 +35,7 @@ import {
   type Denomination
 } from '../../shared/character';
 import { encumbranceAtLeast } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { RoomId, Route } from '../../shared/world';
 
 export interface CashRunPlanner {
@@ -66,7 +67,7 @@ export interface CashRunPlanner {
 }
 
 export interface CashRunEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -111,6 +112,8 @@ const ACTION = 'cash run';
 const LOOK_KEY = 'cash:look';
 const USE_KEY = 'cash:use';
 const SELL_KEY = 'cash:sell';
+/** The counter on the way and what it takes; the run itself is the player's. */
+const SALE: DecisionKind = 'sale-on-the-way';
 
 export class CashRun implements SessionModule {
   private run: Run | null = null;
@@ -523,7 +526,8 @@ export class CashRun implements SessionModule {
         verb: 'sell',
         items: sale.items,
         key: SELL_KEY,
-        reason: (item) => t('automation.sellTrip.reasonSelling', { item, shop: sale.shop })
+        reason: (item) => t('automation.sellTrip.reasonSelling', { item, shop: sale.shop }),
+        decision: SALE
       },
       this.planner.current()
     );
@@ -539,7 +543,8 @@ export class CashRun implements SessionModule {
         shop: sale.shop,
         items: sale.items.join(', '),
         copper: sale.copper.toLocaleString()
-      })
+      }),
+      SALE
     );
   }
 
@@ -547,7 +552,7 @@ export class CashRun implements SessionModule {
   private chooseSale(bank: RoomId, tokens: readonly number[]): CashRunSale | null {
     const { sale, questKept } = this.planner.saleOnTheWay(bank, tokens);
     for (const { item, quest } of questKept) {
-      this.events.notice?.(t('automation.quests.stillNeeds', { quest, item }));
+      this.events.notice?.(t('automation.quests.stillNeeds', { quest, item }), SALE);
     }
     return sale;
   }

@@ -4,13 +4,14 @@ import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
-  ACTIONABLE_REMOTES,
-  isActionable,
+  GRANTABLE_REMOTES,
+  isGrantable,
   REMOTE_NAMES,
   REMOTES,
   type RemoteName,
   type RemoteStance
 } from '@shared/remotes';
+import type { SettingPath } from '@shared/decisionSettings';
 
 /**
  * The `@` command permission grid, in the one place it is drawn.
@@ -28,7 +29,9 @@ import {
  * extensions (`@bless-expired`, the `-room` pair, `@stats`). Twenty-seven of
  * them round-trip here; the rest are `unread` — no capture shows the reply format, so answering would
  * mean inventing one another client then fails to parse — or `refused`, which
- * this client declines on its own account however granted (`@kill`, `@hangup`).
+ * this client declines on its own account however granted (`@kill`, `@hangup`)
+ * unless `remotes.allowKillAndHangup` is on. Those four can be set, and say
+ * beside the toggle that they wait on the switch (todo 118).
  *
  * The unsettable ones are **drawn and disabled with the reason beside them**
  * rather than hidden. Hiding them would make the list read as the whole
@@ -37,7 +40,8 @@ import {
  * *no capture shows a reply* beside it says the true thing: this is known, and
  * it is not answerable yet.
  *
- * **Allow all means all the settable ones**, which is `ACTIONABLE_REMOTES`. It
+ * **Allow all means the answerable ones**, which is `ACTIONABLE_REMOTES`, never
+ * the four standing refusals: each of those is granted by name. It
  * writes the names out rather than storing a wildcard, so a later build that
  * makes `@looponce` answerable does not silently hand it to everybody who once
  * pressed a button — the safe direction for a permission is the one that grants
@@ -92,6 +96,8 @@ export interface RemoteListProps {
   onSetAll(stance: 'allow' | 'unset'): void;
   /** Hands the caret back to the game when the find field is left. */
   returnFocus?(): void;
+  /** The setting the grid edits, on a settings page (`FormFieldProps.setting`). */
+  setting?: SettingPath;
 }
 
 export default function RemoteList({
@@ -103,7 +109,8 @@ export default function RemoteList({
   fromParty,
   onSet,
   onSetAll,
-  returnFocus
+  returnFocus,
+  setting
 }: RemoteListProps) {
   const [query, setQuery] = useState('');
 
@@ -120,10 +127,10 @@ export default function RemoteList({
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = REMOTE_NAMES.filter((name) => terms.every((term) => `@${name}`.includes(term)));
 
-  const granted = ACTIONABLE_REMOTES.filter((name) => allowed.has(name)).length;
+  const granted = GRANTABLE_REMOTES.filter((name) => allowed.has(name)).length;
 
   return (
-    <div className="remote-list" data-mode={mode}>
+    <div className="remote-list" data-mode={mode} data-setting={setting}>
       <div className="remote-list-tools">
         <FindField
           label={t('remotes.findPlaceholder')}
@@ -162,7 +169,7 @@ export default function RemoteList({
       </div>
 
       <p className="remote-list-count">
-        {t('remotes.granted', { granted, total: ACTIONABLE_REMOTES.length })}
+        {t('remotes.granted', { granted, total: GRANTABLE_REMOTES.length })}
         {/*
           A narrowed list says so and says how to undo it, the rule every card
           table keeps — and not before anything is hidden.
@@ -184,7 +191,7 @@ export default function RemoteList({
         <ul className="remote-rows">
           {shown.map((name) => {
             const spec = REMOTES[name];
-            const settable = isActionable(name);
+            const settable = isGrantable(name);
             const on = allowed.has(name);
             const off = denied.has(name);
             return (
@@ -268,6 +275,12 @@ export default function RemoteList({
                     ) : null}
                   </span>
                 )}
+                {/* A standing refusal granted still waits on the switch, and says so. */}
+                {settable && spec.support === 'refused' ? (
+                  <span className="quiet-note" title={t('remotes.support.refusedTitle')}>
+                    {t('remotes.support.refused')}
+                  </span>
+                ) : null}
               </li>
             );
           })}

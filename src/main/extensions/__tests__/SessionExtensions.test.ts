@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { ExtensionSession, ExtensionSessionHost } from '../api';
 import type { LoadedExtension } from '../ExtensionLoader';
 import { SessionExtensions, type ExtensionHostKit } from '../SessionExtensions';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const loaded = (name: string, session: (kit: ExtensionHostKit) => ExtensionSession) => {
   let kit: ExtensionHostKit | null = null;
@@ -17,6 +18,7 @@ const loaded = (name: string, session: (kit: ExtensionHostKit) => ExtensionSessi
 
 function make(entries: ReturnType<typeof loaded>[]) {
   const notices: string[] = [];
+  const kinds: Array<DecisionKind | undefined> = [];
   let relaid = 0;
   const extensions = new SessionExtensions(
     entries.map((entry) => entry.extension),
@@ -26,11 +28,14 @@ function make(entries: ReturnType<typeof loaded>[]) {
     },
     {
       relayer: () => (relaid += 1),
-      notice: (message) => notices.push(message),
+      notice: (message, decision) => {
+        notices.push(message);
+        kinds.push(decision);
+      },
       changed: () => {}
     }
   );
-  return { extensions, notices, relaid: () => relaid };
+  return { extensions, notices, kinds, relaid: () => relaid };
 }
 
 describe('one character’s extensions', () => {
@@ -46,6 +51,33 @@ describe('one character’s extensions', () => {
     expect(extensions.over(DEFAULT_CONFIG.automation).combat.attack).toBe('kic');
     layer(null);
     expect(extensions.over(DEFAULT_CONFIG.automation)).toBe(DEFAULT_CONFIG.automation);
+  });
+
+  it('names what it laid, and tells the window, leaving out a setting the client lacks', () => {
+    let layer: ExtensionHostKit['layer'] = () => {};
+    const planner = loaded('planner', (kit) => {
+      layer = kit.layer;
+      return { view: () => null };
+    });
+    let changed = 0;
+    const extensions = new SessionExtensions(
+      [planner.extension],
+      (_extension, kit) => {
+        planner.capture(kit);
+        return {} as ExtensionSessionHost;
+      },
+      { relayer: () => {}, notice: () => {}, changed: () => (changed += 1) }
+    );
+    layer([
+      [['combat', 'attack'], 'kic'],
+      [['combat', 'noSuchSetting'], 1]
+    ]);
+    expect(changed).toBe(1);
+    extensions.over(DEFAULT_CONFIG.automation);
+    expect(extensions.laid).toEqual([{ by: 'planner', path: 'combat.attack', value: 'kic' }]);
+    layer(null);
+    extensions.over(DEFAULT_CONFIG.automation);
+    expect(extensions.laid).toEqual([]);
   });
 
   it('drives the character while any one extension says it is, and stops when it says so', () => {
@@ -82,10 +114,12 @@ describe('one character’s extensions', () => {
       },
       view: () => null
     }));
-    const { extensions, notices } = make([planner]);
+    const { extensions, notices, kinds } = make([planner]);
     extensions.onCharacter({} as never);
     extensions.onCharacter({} as never);
     expect(notices).toHaveLength(1);
+    // Its gear opens the switch that turns the extension off.
+    expect(kinds).toEqual(['extension-load']);
   });
 
   it('answers a card’s button, or why it could not', async () => {

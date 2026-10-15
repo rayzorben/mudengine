@@ -10,11 +10,12 @@ import type { SessionModule } from './Module';
 import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { allowanceLeft, expiredSlots, lockedSlots } from '../../shared/gearLocks';
 import { playedFor } from '../../shared/tally';
 
 export interface GearLockEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 const MINUTE_MS = 60_000;
@@ -50,7 +51,10 @@ export class GearLockWatch implements SessionModule {
     if (expired.length > 0) {
       const slots = expired.map((worn) => worn.slot);
       if (this.release(slots, now) && allowance > 0) {
-        this.events.notice?.(t('automation.gearLocks.released', { slots: slots.join(', ') }));
+        this.events.notice?.(
+          t('automation.gearLocks.released', { slots: slots.join(', ') }),
+          'gear-lock-release'
+        );
       }
       return;
     }
@@ -61,7 +65,8 @@ export class GearLockWatch implements SessionModule {
       t('automation.gearLocks.held', {
         slots: held.map((worn) => worn.slot).join(', '),
         minutes: Math.ceil((allowanceLeft(state.loadout, played, allowance) ?? 0) / MINUTE_MS)
-      })
+      }),
+      'gear-lock-release'
     );
   }
 }

@@ -49,9 +49,12 @@ import { credentialsNamed, fillLogin, type Credential } from '../../shared/login
 import { isPrompt, type Block } from '../../shared/blocks';
 import type { LoginConfig, LoginStep } from '../../shared/config';
 import type { SessionModule } from './Module';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
+
+const STOP: DecisionKind = 'login-stop';
 
 export interface LoginEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The next prompt is owed: the socket opened, or an answer reached the wire. */
   promptOwed?(): void;
   /** A prompt or the statline arrived, which pays what the way in owes. */
@@ -248,7 +251,7 @@ export class LoginAutomator implements SessionModule {
     if (block.type === 'login-failed') {
       this.stopped = true;
       this.why = 'login-refused';
-      this.events.notice?.(t('automation.login.rejected'));
+      this.events.notice?.(t('automation.login.rejected'), STOP);
       return;
     }
 
@@ -272,7 +275,7 @@ export class LoginAutomator implements SessionModule {
     if (block.type === 'prompt-menu' && !this.entersRealm) {
       if (!this.saidHeldAtMenu) {
         this.saidHeldAtMenu = true;
-        this.events.notice?.(t('automation.login.heldAtMenu'));
+        this.events.notice?.(t('automation.login.heldAtMenu'), STOP);
       }
       return;
     }
@@ -337,7 +340,7 @@ export class LoginAutomator implements SessionModule {
       !this.config.steps.some((step) => credentialsNamed(step.send).length > 0)
     ) {
       this.saidAccountUnsent = true;
-      this.events.notice?.(t('automation.login.noAccountRow'));
+      this.events.notice?.(t('automation.login.noAccountRow'), 'login-step');
     }
 
     for (const [index, step] of this.config.steps.entries()) {
@@ -386,14 +389,16 @@ export class LoginAutomator implements SessionModule {
           t('automation.login.unknownPlaceholder', {
             placeholder: filled.placeholder,
             promptText: step.when
-          })
+          }),
+          STOP
         );
         return;
       }
       if (filled.kind === 'missing') {
         this.stopped = true;
         this.events.notice?.(
-          t('automation.login.credentialMissing', { credentialType: filled.credential })
+          t('automation.login.credentialMissing', { credentialType: filled.credential }),
+          STOP
         );
         return;
       }
@@ -423,7 +428,10 @@ export class LoginAutomator implements SessionModule {
 
     if (repeated) {
       this.stopped = true;
-      this.events.notice?.(t('automation.login.promptRepeated', { promptText: block.text.trim() }));
+      this.events.notice?.(
+        t('automation.login.promptRepeated', { promptText: block.text.trim() }),
+        STOP
+      );
     }
   }
 
@@ -432,6 +440,7 @@ export class LoginAutomator implements SessionModule {
       command,
       priority: 'user',
       reason,
+      decision: 'login-step',
       ...(secret ? { secret: true } : {}),
       /*
        * An answer means what it means only at the screen it answers. The

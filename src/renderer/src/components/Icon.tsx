@@ -1,4 +1,5 @@
 import { memo, type ReactNode } from 'react';
+import { GEAR_BODY } from './marks';
 
 /**
  * The icon set, drawn rather than typed.
@@ -123,13 +124,8 @@ const ICONS: Record<IconName, ReactNode> = {
    * rather than as one toothed outline, because a single path with that many
    * corners turns to mush at the 14px this is used at in a menu.
    */
-  settings: (
-    <>
-      <circle cx="12" cy="12" r="3.1" />
-      <circle cx="12" cy="12" r="7.3" />
-      <path d="M12 2.6v2.8M12 18.6v2.8M21.4 12h-2.8M5.4 12H2.6M18.63 5.37l-1.98 1.98M7.35 16.65l-1.98 1.98M18.63 18.63l-1.98-1.98M7.35 7.35L5.37 5.37" />
-    </>
-  ),
+  // One body with the console's gear (`marks.ts`, todo 119).
+  settings: <g dangerouslySetInnerHTML={{ __html: GEAR_BODY }} />,
   server: (
     <>
       <rect x="3" y="4" width="18" height="7" rx="2" />

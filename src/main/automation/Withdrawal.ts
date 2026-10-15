@@ -11,6 +11,7 @@
 import type { CommandQueue } from './CommandQueue';
 import type { Block } from '../../shared/blocks';
 import { balanceOf, type CharacterState } from '../../shared/character';
+import type { DecisionKind } from '../../shared/decisionSettings';
 
 /** The vault, as the balance names it. */
 export interface Vault {
@@ -31,6 +32,8 @@ export interface WithdrawalAsk {
   /** How long `bank` and then `withdraw` each have to be answered. */
   answerMs: number;
   expiresMs: number;
+  /** The decision both commands are, for their echoes' gear icon; omitted where the player started it. */
+  decision?: DecisionKind;
 }
 
 export type WithdrawalEnd =
@@ -73,7 +76,8 @@ export class Withdrawal {
       priority: 'probe',
       coalesceKey: `${ask.key}:bank`,
       expiresAt: this.now() + ask.expiresMs,
-      reason: ask.reasons.balance
+      reason: ask.reasons.balance,
+      decision: ask.decision
     });
     this.arm();
   }
@@ -106,7 +110,8 @@ export class Withdrawal {
       priority: 'probe',
       coalesceKey: `${asked.ask.key}:withdraw`,
       expiresAt: this.now() + asked.ask.expiresMs,
-      reason: asked.ask.reasons.withdraw(amount)
+      reason: asked.ask.reasons.withdraw(amount),
+      decision: asked.ask.decision
     });
     this.arm();
   }

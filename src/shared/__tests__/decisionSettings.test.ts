@@ -24,23 +24,35 @@ function at(path: string): unknown {
 const rows: ReadonlyArray<[string, DecisionSettings]> = Object.entries(DECISION_SETTINGS);
 
 describe('every automated decision has a setting (todo 118)', () => {
-  it('names at least one setting for each decision, or the date it was found to have none', () => {
+  it('names at least one setting for each decision, or why it has none', () => {
     const bare = rows
-      .filter(([, row]) => !('awaiting' in row) && row.length === 0)
+      .filter(([, row]) => Array.isArray(row) && row.length === 0)
       .map(([kind]) => kind);
     expect(bare).toEqual([]);
   });
 
-  it('dates every decision still awaiting a setting', () => {
-    const undated = rows
-      .filter(([, row]) => 'awaiting' in row && !/^\d{4}-\d{2}-\d{2}$/.test(row.awaiting))
+  it('says why, and since when, a decision has no setting of its own', () => {
+    const bare = rows
+      .filter(([, row]) => 'exempt' in row)
+      .filter(([, row]) => {
+        const { exempt, since } = row as { exempt: string; since: string };
+        return exempt.trim().length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(since);
+      })
       .map(([kind]) => kind);
-    expect(undated).toEqual([]);
+    expect(bare).toEqual([]);
+  });
+
+  it('leaves no decision awaiting a setting', () => {
+    const awaiting = rows.filter(([, row]) => 'awaiting' in row).map(([kind]) => kind);
+    expect(awaiting).toEqual([]);
   });
 
   it('names options paths the shipped options hold', () => {
     const missing = DECISION_KINDS.flatMap((kind) => settingsOf(kind))
-      .filter((path) => path.startsWith('automation.') || path.startsWith('connection.'))
+      .filter(
+        (path) =>
+          path.startsWith('automation.') || path.startsWith('connection.') || path === 'extensions'
+      )
       .filter((path) => at(path) === undefined);
     expect(missing).toEqual([]);
   });

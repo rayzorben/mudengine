@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 
 import { noticeRows, noticeSequence } from '../console';
 import { drawnBelow, screenNotices, terminalSurface } from '../screenNotices';
+import { STAMP_OSC } from '@shared/stamps';
 
 /*
  * Todo 02 (2026-10-03): Paradigm's stat screen leaves the cursor on the field
@@ -149,5 +150,29 @@ describe('a notice in the scrolling game', () => {
       noticeSequence('Started Goblin caves.', true)
     ]);
     expect(notices.active).toBe(false);
+  });
+});
+
+/*
+ * A notice about a decision carries the row stamp its gear hangs off (todo
+ * 119), and only once it is in the text: a lift erases the rows laid over a
+ * drawn screen, and a gear left there would sit on the server's menu.
+ */
+describe('a notice about a decision while the server draws a screen', () => {
+  it('carries no stamp under the menu, and one once the screen is saved', async () => {
+    const { term, notices, chunk } = await drawnScreen(32);
+    const stamps: string[] = [];
+    term.parser.registerOscHandler(STAMP_OSC, (payload) => {
+      stamps.push(payload);
+      return true;
+    });
+    notices.expect();
+    notices.notice(HELD, { kind: 'found-gear-wear', at: 9 });
+    await parsed(term);
+    // The positive control for the absence: the notice is on screen, under the menu.
+    expect(screenText(term).join('\n')).toContain('Automation is paused');
+    expect(stamps).toEqual([]);
+    for (const bytes of capture.saved) await chunk(bytes);
+    expect(stamps).toEqual(['9;found-gear-wear']);
   });
 });

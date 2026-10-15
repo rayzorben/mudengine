@@ -109,6 +109,7 @@ import type { MobRule } from '../../shared/mobRules';
 import { tuning } from '../app/tuning';
 import { holdsMeditate } from '../../shared/abilities';
 import type { SessionModule } from './Module';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 
 /**
  * Whether the fight the combat flag names is in *this* room.
@@ -187,6 +188,9 @@ export function fightIsHere(state: CharacterState): boolean {
 export type RecoverySettings = Pick<AutomationConfig, 'health' | 'enabled' | 'party'> & {
   combat: Pick<CombatConfig, 'mobRules'>;
 };
+
+/** Every rest or meditate beside a resting leader is one setting's decision. */
+const LEADER: DecisionKind = 'rest-with-leader';
 
 export class Recovery implements SessionModule {
   private state: CharacterState | null = null;
@@ -281,7 +285,7 @@ export class Recovery implements SessionModule {
     private settings: RecoverySettings,
     private readonly queue: CommandQueue,
     private readonly events: {
-      notice?(message: string): void;
+      notice?: NoticeSink;
       /**
        * Whether the server refuses `rest` outright while poisoned — the
        * GreaterMUD family's rule (`RestCommand.cs:28`, which tests `Poison`
@@ -371,7 +375,10 @@ export class Recovery implements SessionModule {
     if (this.refused.has(verb)) return;
     this.refused.add(verb);
     this.askedUntil = 0;
-    this.events.notice?.(t('automation.recovery.verbRefused', { verb }));
+    this.events.notice?.(
+      t('automation.recovery.verbRefused', { verb }),
+      verb === 'rest' ? 'rest-health' : 'med-mana'
+    );
   }
 
   /**
@@ -463,7 +470,7 @@ export class Recovery implements SessionModule {
         other === 'med'
           ? t('automation.recovery.reasonMana')
           : t('automation.recovery.reasonHealth');
-      this.propose(other, reason);
+      this.propose(other, reason, 'rest-med-switch');
       return;
     }
     /*
@@ -491,11 +498,12 @@ export class Recovery implements SessionModule {
      */
     const manaWanted = this.wantsMana(mana, manaMax);
     if (manaWanted && this.meditates(state) && (this.config.meditateFirst || !restTakes)) {
-      this.propose('med', t('automation.recovery.reasonMana'));
+      this.propose('med', t('automation.recovery.reasonMana'), 'med-mana');
       return;
     }
     const restForMana = manaWanted && !this.meditates(state) && !this.refused.has('rest');
     if (restWanted || restForMana) {
+      const restKind: DecisionKind = restWanted ? 'rest-health' : 'rest-for-mana';
       /*
        * **A poisoned character cannot rest at all on this engine.**
        * `RestCommand.cs:28` tests `GetAbility(Poison)` before anything else
@@ -517,14 +525,15 @@ export class Recovery implements SessionModule {
       if (this.restIsPoisoned(state)) {
         if (!this.saidPoisoned) {
           this.saidPoisoned = true;
-          this.events.notice?.(t('automation.recovery.restPoisoned'));
+          this.events.notice?.(t('automation.recovery.restPoisoned'), restKind);
         }
         return;
       }
       if (restWanted) this.events.beforeRest?.(state, this.config.restTo);
       this.propose(
         'rest',
-        restWanted ? t('automation.recovery.reasonHealth') : t('automation.recovery.reasonMana')
+        restWanted ? t('automation.recovery.reasonHealth') : t('automation.recovery.reasonMana'),
+        restKind
       );
       return;
     }
@@ -541,16 +550,25 @@ export class Recovery implements SessionModule {
     const leader = leaderOf(state);
     if (leader?.activity?.state === 'resting') {
       if (this.refused.has('rest')) return;
-      this.propose('rest', t('automation.party.reasonRestWithLeader', { leader: leader.name }));
+      this.propose(
+        'rest',
+        t('automation.party.reasonRestWithLeader', { leader: leader.name }),
+        LEADER
+      );
     } else if (leader?.activity?.state === 'meditating' && manaMax !== null && manaMax > 0) {
       // Down beside the leader, by whichever verb this character rests for mana with.
       const name = leader.name;
       if (this.meditates(state)) {
-        this.propose('med', t('automation.party.reasonMeditateWithLeader', { leader: name }));
+        this.propose(
+          'med',
+          t('automation.party.reasonMeditateWithLeader', { leader: name }),
+          LEADER
+        );
       } else if (!this.refused.has('rest')) {
         this.propose(
           'rest',
-          t('automation.party.reasonRestWhileLeaderMeditates', { leader: name })
+          t('automation.party.reasonRestWhileLeaderMeditates', { leader: name }),
+          LEADER
         );
       }
     }
@@ -566,7 +584,7 @@ export class Recovery implements SessionModule {
     if (this.membersHeld.size === 0 || this.refused.has('rest')) return false;
     if (this.restIsPoisoned(state)) return false;
     const who = [...new Set(this.membersHeld.values())].join(', ');
-    this.propose('rest', t('automation.party.reasonRestForMember', { who }));
+    this.propose('rest', t('automation.party.reasonRestForMember', { who }), 'rest-for-members');
     return true;
   }
 
@@ -690,9 +708,10 @@ export class Recovery implements SessionModule {
     return value / max < threshold;
   }
 
-  private propose(command: string, reason: string): void {
+  private propose(command: string, reason: string, decision: DecisionKind): void {
     this.queue.enqueue({
       command,
+      decision,
       priority: 'probe',
       /*
        * One key for the whole module, not one per command.

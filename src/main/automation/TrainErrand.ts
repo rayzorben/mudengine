@@ -28,6 +28,7 @@ import {
 } from '../../shared/navigation';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { REFRESH } from '../../shared/staleness';
 import { carriedCount } from '../../shared/supplies';
 import { bestTrainer, pricedOut, walkSurvived } from '../../shared/training';
@@ -81,7 +82,7 @@ export interface TrainPlanner {
 }
 
 export interface TrainEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The trace: what was done, and what was refused and why. */
   decided?(decision: SafetyDecision): void;
 }
@@ -272,7 +273,7 @@ export class TrainErrand implements SessionModule {
     if (this.phase.kind === 'idle') return;
     this.phase = { kind: 'idle' };
     this.planner.release();
-    this.events.notice?.(t('automation.train.abandonedDied'));
+    this.events.notice?.(t('automation.train.abandonedDied'), 'train-level');
   }
 
   /** Every state change: is a level waiting, and is this the moment to go? */
@@ -383,7 +384,10 @@ export class TrainErrand implements SessionModule {
     const best = bestTrainer(reached, tuning().train.costSlack);
     if (best !== null) {
       if (skipped.length > 0) {
-        this.events.notice?.(t('automation.train.skipping', { skipped: skipped.join('; ') }));
+        this.events.notice?.(
+          t('automation.train.skipping', { skipped: skipped.join('; ') }),
+          'train-level'
+        );
       }
       this.go(state, level, best.trainer, best.way);
       return;
@@ -608,7 +612,8 @@ export class TrainErrand implements SessionModule {
         this.events.notice?.(
           light !== null
             ? t('automation.train.goingFetching', where)
-            : t('automation.train.goingKeyed', where)
+            : t('automation.train.goingKeyed', where),
+          'train-level'
         );
         this.phase = { kind: 'walking', to, trainer: chosen, fetching: needs };
         return;
@@ -624,7 +629,8 @@ export class TrainErrand implements SessionModule {
         room: chosen.roomName,
         steps: route.steps.length,
         cost: chosen.cost.toLocaleString()
-      })
+      }),
+      'train-level'
     );
     const refused = this.planner.walk(route);
     if (refused !== null) {
@@ -663,6 +669,7 @@ export class TrainErrand implements SessionModule {
     if (this.askedOwed === level) return;
     // A refused enqueue is *not now*: marked only once the queue takes it.
     const taken = this.queue.enqueue({
+      decision: 'train-level',
       ...REFRESH.experience,
       priority: 'probe',
       reason: t('automation.train.reasonAskOwed')
@@ -701,15 +708,19 @@ export class TrainErrand implements SessionModule {
     const prize = here === null ? null : this.planner.prize(here);
     if (prize !== null) {
       if (state.room.items.some((item) => nameAnswersTo(item.name, prize.name))) {
-        this.events.notice?.(t('automation.train.takingPrize', { item: prize.name }));
+        this.events.notice?.(
+          t('automation.train.takingPrize', { item: prize.name }),
+          'train-level'
+        );
         this.queue.enqueue({
+          decision: 'train-level',
           command: `get ${prize.name}`,
           priority: 'probe',
           coalesceKey: 'train:prize',
           reason: t('automation.train.reasonPrize', { item: prize.name })
         });
       } else {
-        this.events.notice?.(t('automation.train.prizeGone', { item: prize.name }));
+        this.events.notice?.(t('automation.train.prizeGone', { item: prize.name }), 'train-level');
       }
     }
     this.send(trainer);
@@ -720,6 +731,7 @@ export class TrainErrand implements SessionModule {
     this.phase = phase;
     // `joined` is the one still waiting from before: its `onSent` is now this one, for this phase.
     const offered = this.queue.offer({
+      decision: 'train-level',
       command: 'train',
       priority: 'probe',
       coalesceKey: 'train:level',
@@ -768,7 +780,7 @@ export class TrainErrand implements SessionModule {
        */
       this.attempted = null;
       this.planner.release();
-      this.events.notice?.(t('automation.train.levelled', { level }));
+      this.events.notice?.(t('automation.train.levelled', { level }), 'train-level');
       this.events.decided?.({
         at: this.now(),
         action: ACTION,
@@ -805,7 +817,7 @@ export class TrainErrand implements SessionModule {
 
   private refuse(why: string, quietly = false): void {
     this.said = { why, at: this.now() };
-    if (!quietly) this.events.notice?.(why);
+    if (!quietly) this.events.notice?.(why, 'train-level');
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

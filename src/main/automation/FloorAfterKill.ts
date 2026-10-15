@@ -12,9 +12,9 @@
  * A death spell's summons arrive as silently, so `DeathSummons` asks the same
  * read (todo 57).
  */
-import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { REREAD_ROOM, type RereadClaim, type RereadClaims } from '../../shared/commands';
+import type { DecisionKind } from '../../shared/decisionSettings';
 import type { CommandQueue } from './CommandQueue';
 
 const KEY = 'loot:floor';
@@ -52,7 +52,7 @@ export class FloorAfterKill {
   }
 
   /** Something died here that may have left more than the room shows: read it again, for `reason`. */
-  ask(reason: string = t('automation.loot.reasonFloorAfterKill')): void {
+  ask(reason: string, decision?: DecisionKind): void {
     // A lapsed window leaves nothing owed: a read the queue dropped never went
     // out, and a claim still unanswered past it is the write-off's.
     if (!this.inFlight) this.reset();
@@ -68,6 +68,7 @@ export class FloorAfterKill {
       coalesceKey: KEY,
       expiresAt,
       reason,
+      ...(decision === undefined ? {} : { decision }),
       // Straight after the send that filed it: null outside the realm, where nothing is owed.
       onSent: () => {
         this.queued = false;

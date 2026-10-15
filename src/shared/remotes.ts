@@ -41,7 +41,8 @@
  * dies on this server — and a chat message from somebody else is the last thing
  * that should be able to overrule either. They are answered with a refusal
  * rather than ignored, because a safety feature that silently declines is worse
- * than one never offered.
+ * than one never offered. `remotes.allowKillAndHangup` (off) lets them, with
+ * `@relog` and `@panic!`, through to whoever is granted them (todo 118).
  *
  * Dependency-free, like everything in `shared/`.
  */
@@ -1473,5 +1474,27 @@ export function isActionable(name: RemoteName): boolean {
   return support === 'answered' || support === 'acted';
 }
 
-/** Every remote a grant may usefully carry, in the vocabulary's own order. */
+/** Every remote this client answers or acts on, in the vocabulary's own order: what *Allow all* grants. */
 export const ACTIONABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isActionable);
+
+/**
+ * Whether a grant can carry `name`: one this client answers, or one of the
+ * four standing refusals (`@kill`, `@hangup`, `@relog`, `@panic!`), which a
+ * grant lets through only while `remotes.allowKillAndHangup` is on (todo 118).
+ * *Allow all* never grants those four: each is granted by name.
+ */
+export function isGrantable(name: RemoteName): boolean {
+  return isActionable(name) || REMOTES[name].support === 'refused';
+}
+
+/** Every remote a grant may carry, in the vocabulary's own order. */
+export const GRANTABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isGrantable);
+
+/**
+ * Whether `name` is decided by the grants: an actionable remote always, a
+ * standing refusal only while `letThrough` (`allowKillAndHangup`) is on.
+ * Otherwise the table answers it for everyone.
+ */
+export function judgedByGrant(name: RemoteName, letThrough: boolean): boolean {
+  return isActionable(name) || (letThrough && REMOTES[name].support === 'refused');
+}

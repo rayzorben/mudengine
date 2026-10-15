@@ -10,7 +10,6 @@
  * `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import {
   fightIsRunning,
   inAParty,
@@ -18,18 +17,20 @@ import {
   type CharacterState
 } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind } from '../../shared/decisionSettings';
 import type { CommandQueue, Intent } from './CommandQueue';
 
 /** Every ask for the party listing shares it, so asks that meet in the queue are one `par`. */
 export const PARTY_LISTING_KEY = 'probe:party';
 
 /** One `par`, under the party-change ask's key and word, so every ask for the listing is one. */
-export function partyListingIntent(config: AutomationConfig): Intent {
+export function partyListingIntent(config: AutomationConfig, decision: DecisionKind): Intent {
   return {
     command: config.onPartyChange || 'par',
     priority: 'probe',
     coalesceKey: PARTY_LISTING_KEY,
-    reason: t('automation.routines.reasonPar')
+    reason: t('automation.routines.reasonPar'),
+    decision
   };
 }
 
@@ -67,11 +68,11 @@ export class PartyListing {
   /** A combat round has come round. */
   afterRound(state: CharacterState): void {
     if (!inAParty(state)) return;
-    const { parAfterRound, parEveryRounds } = this.config().party;
+    const { parAfterRound, parEveryRounds, parAtLoss } = this.config().party;
     if (parAfterRound) return this.ask(state);
     if (parEveryRounds <= 0) return;
     this.roundsSince += 1;
-    const due = roundsUntilPar(parEveryRounds, this.lost(state), tuning().remotes.parAtLoss);
+    const due = roundsUntilPar(parEveryRounds, this.lost(state), parAtLoss);
     if (this.roundsSince >= due) this.ask(state);
   }
 
@@ -101,6 +102,6 @@ export class PartyListing {
         member.health === null ? [] : [[member.name.toLowerCase(), member.health] as const]
       )
     );
-    this.queue.enqueue(partyListingIntent(this.config()));
+    this.queue.enqueue(partyListingIntent(this.config(), 'party-listing-clock'));
   }
 }

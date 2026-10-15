@@ -16,8 +16,10 @@ import type { RemotesConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import {
   ACTIONABLE_REMOTES,
+  GRANTABLE_REMOTES,
   grantFor,
   judgeRemote,
+  judgedByGrant,
   type RemoteGrant,
   type RemoteName
 } from '@shared/remotes';
@@ -710,8 +712,11 @@ function effective(
   inGang: boolean | null,
   inParty: boolean
 ): readonly RemoteName[] {
-  return ACTIONABLE_REMOTES.filter(
-    (remote) => judgeRemote(name, remote, remotes, { inGang, inParty }).allowed
+  // The four standing refusals count only while the switch lets a grant decide them (todo 118).
+  return GRANTABLE_REMOTES.filter(
+    (remote) =>
+      judgedByGrant(remote, remotes.allowKillAndHangup) &&
+      judgeRemote(name, remote, remotes, { inGang, inParty }).allowed
   );
 }
 
@@ -795,7 +800,7 @@ function PlayerAccess({
             <span className="chip on" title={allowed.map((remote) => `@${remote}`).join(', ')}>
               {t('cards.player.access.allowedValue', {
                 granted: allowed.length,
-                total: ACTIONABLE_REMOTES.length
+                total: GRANTABLE_REMOTES.length
               })}
             </span>
           )}
@@ -828,7 +833,7 @@ function PlayerAccess({
             >
               {t('cards.player.access.allowedValue', {
                 granted: remotes.gang.length,
-                total: ACTIONABLE_REMOTES.length
+                total: GRANTABLE_REMOTES.length
               })}
             </span>
           ) : (
@@ -853,7 +858,7 @@ function PlayerAccess({
             <span className="chip on" title={t('cards.player.access.partyShareTooltip')}>
               {t('cards.player.access.allowedValue', {
                 granted: remotes.party.length,
-                total: ACTIONABLE_REMOTES.length
+                total: GRANTABLE_REMOTES.length
               })}
             </span>
           ) : (

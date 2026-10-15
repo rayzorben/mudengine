@@ -9,6 +9,7 @@ import type { WorldItem, WorldSpell } from '../../../shared/world';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { BlockType } from '../../../shared/blocks';
 import { blockOf } from '../../../shared/__tests__/blocks';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -74,11 +75,19 @@ const sources = (over: Partial<InvokeSources> = {}): InvokeSources => ({
 });
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -95,6 +104,7 @@ describe('asking a carried item for its blessing', () => {
     run().consider(state());
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['use shimmering longsword']);
+    expect(kinds).toEqual(['invoke-item']);
   });
 
   it('does nothing when it was not asked to', () => {

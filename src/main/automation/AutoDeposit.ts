@@ -60,6 +60,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { BankingConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
@@ -72,6 +73,8 @@ interface PendingDeposit {
   keep: number;
   /** The band both commands go out in — see the header. */
   priority: Priority;
+  /** The threshold's own deposit is a decision; a press or an extension's ask is not. */
+  decision?: DecisionKind;
   /** Given up on after this, so an `i` the server swallowed cannot arm the slot for ever. */
   expiresAt: number;
   /**
@@ -124,7 +127,7 @@ export class AutoDeposit implements SessionModule {
      * {@link wrongBank} can tell *not a bank* from *not your bank*.
      */
     private readonly bankHere: (state: CharacterState) => number | null,
-    private readonly events: { notice?(message: string): void } = {},
+    private readonly events: { notice?: NoticeSink } = {},
     private readonly now: () => number = () => Date.now()
   ) {}
 
@@ -167,7 +170,13 @@ export class AutoDeposit implements SessionModule {
    * character not in the realm — where a `deposit` is a menu answer and the
    * button is not on screen to be pressed in the first place.
    */
-  request(keep: number, priority: Priority, state: CharacterState, anyCounter = false): boolean {
+  request(
+    keep: number,
+    priority: Priority,
+    state: CharacterState,
+    anyCounter = false,
+    decision?: DecisionKind
+  ): boolean {
     if (state.phase !== 'in-game') return false;
     const at = this.now();
     // One at a time: the second press before the first listing lands is the
@@ -184,7 +193,7 @@ export class AutoDeposit implements SessionModule {
     }
 
     const expiresAt = at + tuning().banking.expiresMs;
-    this.pending = { keep, priority, expiresAt, refreshed: false, anyCounter };
+    this.pending = { keep, priority, expiresAt, refreshed: false, anyCounter, decision };
     /*
      * The refresh, and the whole of what goes out now. `enqueue` answering
      * `false` here means a stale `i` from an expired request is still queued —
@@ -199,6 +208,7 @@ export class AutoDeposit implements SessionModule {
       coalesceKey: COUNT_KEY,
       expiresAt,
       reason: t('automation.banking.reasonCount'),
+      decision,
       onSent: () => {
         if (this.pending !== null) this.pending.refreshed = true;
       }
@@ -227,11 +237,11 @@ export class AutoDeposit implements SessionModule {
     // out of a bank — or into a different one — inside one.
     const counter = this.bankHere(state);
     if (counter === null) {
-      this.events.notice?.(t('automation.banking.notAtCounter'));
+      this.events.notice?.(t('automation.banking.notAtCounter'), pending.decision);
       return;
     }
     if (!pending.anyCounter && this.wrongBank(counter)) {
-      this.events.notice?.(t('automation.banking.notYourBank'));
+      this.events.notice?.(t('automation.banking.notYourBank'), pending.decision);
       return;
     }
 
@@ -241,7 +251,7 @@ export class AutoDeposit implements SessionModule {
       // Said out loud rather than quietly dropped: a button that reports
       // nothing is indistinguishable from one that is broken, which is the
       // failure this whole change is about.
-      this.events.notice?.(t('automation.banking.nothingToBank'));
+      this.events.notice?.(t('automation.banking.nothingToBank'), pending.decision);
       return;
     }
     this.askedAtWealth = wealth;
@@ -255,7 +265,8 @@ export class AutoDeposit implements SessionModule {
       reason: t('automation.banking.reasonDeposit', {
         surplus: String(surplus),
         keep: String(pending.keep)
-      })
+      }),
+      decision: pending.decision
     });
     /*
      * And `bank` behind it, every time: the first deposit at an unasked vault
@@ -267,7 +278,8 @@ export class AutoDeposit implements SessionModule {
       priority: pending.priority,
       coalesceKey: 'auto-deposit-confirm',
       expiresAt,
-      reason: t('automation.banking.reasonConfirm')
+      reason: t('automation.banking.reasonConfirm'),
+      decision: pending.decision
     });
   }
 
@@ -310,7 +322,7 @@ export class AutoDeposit implements SessionModule {
     if (wealth === this.askedAtWealth) return;
     // The threshold reads the maintained figure to decide *whether* to ask;
     // what it deposits is the listing's, which is the whole point of the ask.
-    if (!this.request(this.config.keepCopper, 'probe', state)) return;
+    if (!this.request(this.config.keepCopper, 'probe', state, false, 'auto-deposit')) return;
     this.lastAt = at;
   }
 }

@@ -1,13 +1,12 @@
 /**
  * The counter a cash run sells at on its way to the bank (todo 64): what the
  * pack carries that is worth a counter's while, and of the counters taking any
- * of it within `tuning.cashRun.sellDetour` of the walk to the bank, the one
+ * of it within `automation.outgrown.sellDetour` of the walk to the bank, the one
  * whose sale pays most. What is sold is what `OutgrownGear` would part with
  * (outgrown gear, never what a setting or an unfinished quest keeps) plus loot
  * that is no gear at all, in the same price band and rarity. The detour is the
  * engine's (`stockingPlaces` with the bank as destination).
  */
-import { tuning } from '../app/tuning';
 import { WEAR_SLOTS } from '../world/gearUpgrades';
 import { rarityBook } from '../world/itemRarity';
 import { copperOf, rarityOf } from '../world/outgrownItems';
@@ -18,6 +17,7 @@ import type { CharacterState } from '../../shared/character';
 import { soldForCopper } from '../../shared/coins';
 import type { AutomationConfig } from '../../shared/config';
 import { keptRegardless, type KeptNames } from '../../shared/outgrown';
+import type { OutgrownChoices } from '../../shared/packConfig';
 import type { QuestKeep } from '../../shared/questKeep';
 import { sheddable, type Rarity } from '../../shared/rarity';
 import { entityNumber } from '../../shared/entities';
@@ -37,6 +37,8 @@ export interface SaleReads {
   traveller(state: CharacterState): Traveller;
   /** What an unfinished quest still needs (todo 52). */
   quests: QuestKeep;
+  /** The price bands, the rare-gear switch and the detour (`automation.outgrown`). */
+  choices: OutgrownChoices;
 }
 
 export interface SaleModules {
@@ -60,7 +62,8 @@ export function saleReadsOf(
     outgrown: (state) => outgrownNow(m, config, state).map((found) => found.item.name),
     rarity: (id) => rarityBook(world).of(id).rarity,
     traveller: (state) => m.errands.travellerNow(state),
-    quests
+    quests,
+    choices: config.outgrown
   };
 }
 
@@ -80,7 +83,7 @@ function forSale(reads: SaleReads, state: CharacterState, tokens: readonly numbe
   const questKept: QuestKept[] = [];
   const kept = reads.kept(state);
   const outgrown = new Set(reads.outgrown(state));
-  const { sellFromCopper, stashFromCopper } = tuning().outgrown;
+  const { sellFromCopper, stashFromCopper, keepRare } = reads.choices;
   for (const item of state.inventory.items) {
     if (keptRegardless(item, kept)) continue;
     // Gear goes only once outgrown: an unworn piece for a slot with room may still be worn.
@@ -89,7 +92,7 @@ function forSale(reads: SaleReads, state: CharacterState, tokens: readonly numbe
     // A name several rows share, with no room to settle it, is not guessed at.
     const id = entityNumber(item);
     if (id === null || tokens.includes(id) || wanted.has(id)) continue;
-    if (!sheddable(rarityOf(item, realm))) continue;
+    if (!sheddable(rarityOf(item, realm), keepRare)) continue;
     // The ganghouse's band and above is not sold at half its worth on the way past.
     const worth = copperOf(item, realm);
     if (worth === null || worth < sellFromCopper || worth >= stashFromCopper) continue;
@@ -123,7 +126,7 @@ function bestCounter(
   bank: RoomId
 ): CashRunSale | null {
   const { world } = reads;
-  const { sellDetour } = tuning().cashRun;
+  const { sellDetour } = reads.choices;
   const charm = state.progress.charm;
   const counters = new Map<RoomId, CashRunSale & { detour: number }>();
   const places = world.stockingPlaces([...wanted.keys()], here, bank, reads.traveller(state), true);

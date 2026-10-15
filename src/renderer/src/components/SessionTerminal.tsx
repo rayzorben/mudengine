@@ -12,6 +12,7 @@ import { tuning } from '../lib/tuning';
 import { fillFrom } from '../hooks/useBackscrollPages';
 import { useReadBack } from '../hooks/useReadBack';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
+import type { DecisionKind } from '@shared/decisionSettings';
 import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
 import type { WalkProgress } from '@shared/walk';
@@ -37,6 +38,8 @@ export interface SessionTerminalProps {
   onSelectSlot?(session: SessionId, slot: string, at: PopoverAnchor): void;
   /** A room's name clicked in the console: the route panel, on that room. */
   onChooseRoom?(name: string): void;
+  /** A line's gear clicked: the settings behind that decision, for this character (todo 119). */
+  onSetting?(session: SessionId, decision: DecisionKind): void;
   /** This character's recent rooms and loops, for the right-click menu (`useRecentMenu`). */
   recentMenu?(session: SessionId): Promise<MenuItem[]>;
   /** Whether a pane is currently showing this character. */
@@ -116,6 +119,7 @@ function SessionTerminal({
   onSelectGang,
   onSelectSlot,
   onChooseRoom,
+  onSetting,
   recentMenu,
   run,
   walk,
@@ -177,9 +181,9 @@ function SessionTerminal({
        */
       onHandle(session, {
         ...handle,
-        notice: (message) => {
-          if (attached.current) handle.notice(message);
-          else pending.current.push((to) => to.notice(message));
+        notice: (message, decision) => {
+          if (attached.current) handle.notice(message, decision);
+          else pending.current.push((to) => to.notice(message, decision));
         },
         ...handOut(handle)
       });
@@ -333,6 +337,11 @@ function SessionTerminal({
     (action: TerminalActionName) => void api.terminalAct(session, action),
     [api, session]
   );
+  // A gear opens this terminal's character's settings, for the same reason.
+  const setting = useCallback(
+    (decision: DecisionKind) => onSetting?.(session, decision),
+    [onSetting, session]
+  );
   // The banner's Stop is this terminal's character's run, whichever pane has
   // the keyboard — the same reason `act` binds the session above. A press
   // that takes the control away hands the caret back to the console, as
@@ -364,6 +373,7 @@ function SessionTerminal({
         onSelectSlot={selectSlot}
         onChooseRoom={onChooseRoom}
         onAct={act}
+        onSetting={setting}
         recent={recent}
         onReady={handleReady}
         onResize={resize}

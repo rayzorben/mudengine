@@ -1,7 +1,8 @@
 /**
  * The monsters this character ran from for its health, and at what level: a
  * fight is not opened on one again until the character is `fledLevels` past
- * the level it ran at, or `fledForgetMs` has passed. Kept with what the
+ * the level it ran at, or `fledForgetMinutes` have passed (both
+ * `automation.combat`). Kept with what the
  * character owns (`Belongings`), per realm, so a restart does not walk it
  * back into the mad wizard it ran from three times.
  *
@@ -10,6 +11,7 @@
  * once must not stop earning the levels that would lift it. Dependency-free
  * like everything in `shared/`.
  */
+import { minutesMs } from './values';
 import { mobKey } from './world';
 
 export interface FledEntry {
@@ -18,6 +20,11 @@ export interface FledEntry {
   /** The character's level when it ran; null where the sheet had not said. */
   level: number | null;
   at: number;
+}
+
+/** `automation.combat.fledForgetMinutes` as the clock compares it. */
+export function fledForgetMs(minutes: number): number {
+  return minutesMs(minutes);
 }
 
 /** Whether an entry is still in force at `now`. */

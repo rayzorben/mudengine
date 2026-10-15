@@ -19,6 +19,7 @@ import {
   type RouteStep
 } from '../../../shared/world';
 import type { CharacterState } from '../../../shared/character';
+import type { MovementConfig } from '../../../shared/config';
 import type { WalkKind } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -37,6 +38,8 @@ export interface LeversWalk extends Pick<WalkInFlight, 'quiet' | 'stop' | 'stepA
    * before the first step: the levers pulled where the route begins.
    */
   detour(route: Route, state: CharacterState, ahead?: () => void): void;
+  /** *Auto-Pull Levers* and its rounds, as the walk's settings stand now. */
+  movement(): Pick<MovementConfig, 'pullLevers' | 'leverTries'>;
 }
 
 export type LeversEvents = Pick<
@@ -172,11 +175,14 @@ export class Levers {
       this.errands = [];
       this.detoured.clear();
       const why = typeof on === 'string' ? on : (on?.reason ?? t('automation.walk.refusalNoRoute'));
-      this.events.notice?.(t('automation.walk.leverResumeRefused', { reason: why }));
+      this.events.notice?.(t('automation.walk.leverResumeRefused', { reason: why }), 'lever-pull');
       return false;
     }
     if (!this.walk.quiet()) {
-      this.events.notice?.(t('automation.walk.leverResumed', { roomCount: errand.rooms.length }));
+      this.events.notice?.(
+        t('automation.walk.leverResumed', { roomCount: errand.rooms.length }),
+        'lever-pull'
+      );
     }
     if (on.steps.length === 0) return this.finishErrand(state);
     this.walk.detour(on, state);
@@ -224,7 +230,7 @@ export class Levers {
    */
   pullLeversFirst(step: RouteStep, state: CharacterState): boolean {
     if (step.direction === 'portal') return false;
-    if (!openableHere(step.requirement)) return false;
+    if (!openableHere(step.requirement) || !this.walk.movement().pullLevers) return false;
     if (state.room.exits.length === 0) return false;
     if (state.room.exits.some((exit) => exit.direction === step.direction)) return false;
     return this.pullLevers(step);
@@ -258,8 +264,8 @@ export class Levers {
    */
   pullLevers(step: RouteStep): boolean {
     const need = step.requirement;
-    if (!openableHere(need)) return false;
-    if (this.levered >= tuning().walk.leverTries) return false;
+    if (!openableHere(need) || this.leversOff(step)) return false;
+    if (this.levered >= this.walk.movement().leverTries) return false;
     this.levered += 1;
     this.pull(
       need!.actions!.flatMap((act) => act.say.slice(0, 1)),
@@ -337,7 +343,7 @@ export class Levers {
     const key = `${step.from}|${step.direction}`;
     if (this.detoured.has(key)) return false;
     const levers = this.events.leversFor?.(step.from, step.direction) ?? [];
-    if (levers.length === 0) return false;
+    if (levers.length === 0 || this.leversOff(step)) return false;
 
     // The set-or-alternatives reading is `leverRooms`; the router prices it the same way.
     const { rooms, everyRoom } = leverRooms(levers, step.requirement?.actionsNeeded);
@@ -412,7 +418,8 @@ export class Levers {
           phrase: pulling[0]!.say,
           roomName: pulling[0]!.roomName,
           stepName: step.name
-        })
+        }),
+        'lever-pull'
       );
     }
     this.walk.detour(best.route, state);
@@ -426,7 +433,8 @@ export class Levers {
         command: phrase,
         priority: 'movement',
         coalesceKey: `${LEVER_PULL}${(this.pulls += 1)}`,
-        reason: t('automation.walk.reasonLever', { stepName, phrase })
+        reason: t('automation.walk.reasonLever', { stepName, phrase }),
+        decision: 'lever-pull'
       });
     }
   }
@@ -477,7 +485,8 @@ export class Levers {
       this.events.notice?.(
         next === undefined
           ? t('automation.walk.leverPulled', { destination: errand.backName })
-          : t('automation.walk.leverNext', { roomCount: errand.rooms.length })
+          : t('automation.walk.leverNext', { roomCount: errand.rooms.length }),
+        'lever-pull'
       );
     }
     const on = this.events.replan?.(to, this.walk.kind());
@@ -628,7 +637,8 @@ export class Levers {
     this.errands.push({ rooms: chain, back: destination.to, backName: destination.name });
     if (!this.walk.quiet()) {
       this.events.notice?.(
-        t('automation.walk.leverRun', { roomCount: chain.length, stepName: step.name })
+        t('automation.walk.leverRun', { roomCount: chain.length, stepName: step.name }),
+        'lever-pull'
       );
     }
     /*
@@ -660,8 +670,21 @@ export class Levers {
         stepName: step.name,
         roomCount: rooms,
         reason: why ?? t('automation.walk.refusalNoRoute')
-      })
+      }),
+      'lever-pull'
     );
+  }
+
+  /** Whether *Auto-Pull Levers* is off, said once per step: the way stays shut. */
+  private leversOff(step: RouteStep): boolean {
+    if (this.walk.movement().pullLevers) return false;
+    if (this.leverSaid || this.walk.quiet()) return true;
+    this.leverSaid = true;
+    this.events.notice?.(
+      t('automation.walk.leversSwitchedOff', { stepName: step.name }),
+      'lever-pull'
+    );
+    return true;
   }
 
   /** Said once per step: the realm keeps this exit's levers in several rooms. */
@@ -669,7 +692,8 @@ export class Levers {
     if (this.leverSaid || this.walk.quiet()) return;
     this.leverSaid = true;
     this.events.notice?.(
-      t('automation.walk.leversScattered', { stepName: step.name, roomCount: rooms })
+      t('automation.walk.leversScattered', { stepName: step.name, roomCount: rooms }),
+      'lever-pull'
     );
   }
 
@@ -682,7 +706,8 @@ export class Levers {
         phrase: lever.say,
         roomName: lever.roomName,
         reason: why ?? t('automation.walk.refusalNoRoute')
-      })
+      }),
+      'lever-pull'
     );
   }
 
@@ -711,7 +736,7 @@ export class Levers {
      * Writing it into `refusedEdges` is what took a real corridor out of every
      * route for the session (todo 01).
      */
-    if (openableHere(need)) return this.levered >= tuning().walk.leverTries;
+    if (openableHere(need)) return this.levered >= this.walk.movement().leverTries;
     /*
      * And an exit the realm names a lever for **anywhere** is not blamed until
      * that errand has been run: the client had something left to do and had

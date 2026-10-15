@@ -12,12 +12,16 @@
  * tab leaves this window is dropped; its later notices go to the window that
  * has the tab now.
  */
-import type { Notice, SessionId } from '@shared/ipc';
+import type { Notice, NoticeDecision, SessionId } from '@shared/ipc';
 
 /** One character's console, as far as a notice needs it. */
 export interface NoticeConsole {
-  notice(message: string): void;
+  notice(message: string, decision?: NoticeDecision): void;
 }
+
+/** Prints one notice, with the decision it reports where it reports one. */
+const print = (to: NoticeConsole, { message, decision }: Notice): void =>
+  to.notice(message, decision);
 
 export interface HeldNotices {
   /** Prints the notice where it belongs, or keeps it until that console is there. */
@@ -34,8 +38,8 @@ export interface HeldNotices {
 }
 
 export function heldNotices(): HeldNotices {
-  const own = new Map<SessionId, string[]>();
-  let client: string[] = [];
+  const own = new Map<SessionId, Notice[]>();
+  let client: Notice[] = [];
   let lastTabs: ReadonlySet<SessionId> = new Set();
 
   /** What waited for `id`'s console, printed into it, oldest first. */
@@ -43,12 +47,12 @@ export function heldNotices(): HeldNotices {
     const waiting = own.get(id);
     if (waiting === undefined) return;
     own.delete(id);
-    for (const message of waiting) to.notice(message);
+    for (const notice of waiting) print(to, notice);
   };
   const flushClient = (to: NoticeConsole): void => {
     const waiting = client;
     client = [];
-    for (const message of waiting) to.notice(message);
+    for (const notice of waiting) print(to, notice);
   };
 
   return {
@@ -56,15 +60,15 @@ export function heldNotices(): HeldNotices {
       const about = notice.session;
       const to = consoles.get(about ?? shown);
       if (to === undefined) {
-        if (about === null) client = [...client, notice.message];
-        else own.set(about, [...(own.get(about) ?? []), notice.message]);
+        if (about === null) client = [...client, notice];
+        else own.set(about, [...(own.get(about) ?? []), notice]);
         return;
       }
       // A console registers a commit before `release` runs: what waited for
       // it goes first, so its lines stay in the order they were said.
       if (about === null) flushClient(to);
       else flushOwn(about, to);
-      to.notice(notice.message);
+      print(to, notice);
     },
 
     release(consoles, shown, tabs) {

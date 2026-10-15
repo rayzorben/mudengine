@@ -11,10 +11,10 @@
 import type { CommandQueue } from './CommandQueue';
 import { Handover, type HandoverEnd, type HandoverPlanner } from './Handover';
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { CharacterState } from '../../shared/character';
-import type { OutgrownConfig } from '../../shared/config';
+import { type OutgrownConfig } from '../../shared/packConfig';
 import {
   outgrownVerb,
   outgrownWay,
@@ -45,7 +45,7 @@ export interface OutgrownPlanner extends HandoverPlanner, QuestKeep {
 }
 
 export interface OutgrownEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The trace: what was done, and what was refused and why. */
   decided?(decision: SafetyDecision): void;
 }
@@ -60,6 +60,8 @@ interface Plan {
 }
 
 const ACTION = 'outgrown gear';
+/** Which way an item goes, and the trip there: the row behind each line it says. */
+const WAY: DecisionKind = 'outgrown-way';
 
 /** Why an item goes: what is worn in its slot instead. */
 function outgrownBecause(found: OutgrownItem): string {
@@ -118,7 +120,7 @@ export class OutgrownGear implements SessionModule {
   abandon(): void {
     if (this.trip === null) return;
     this.end();
-    this.events.notice?.(t('automation.outgrown.abandonedDied'));
+    this.events.notice?.(t('automation.outgrown.abandonedDied'), WAY);
   }
 
   private get switchedOn(): boolean {
@@ -153,29 +155,33 @@ export class OutgrownGear implements SessionModule {
     const name = item.item.name;
     const quest = this.planner.wantedBy(item.item);
     if (quest !== null) {
-      this.sayOnce(t('automation.outgrown.keptQuest', { item: name, quest }));
+      this.sayOnce(t('automation.outgrown.keptQuest', { item: name, quest }), 'outgrown-kept');
       return null;
     }
     // A spare of the item worn goes too: `hide`, `sell` and `drop` take an unworn copy
     // first (`ItemContainer.GetItems`; `drop 12 iron` left Soul's worn staff in hand,
     // `logs/2026-10-05_14-39-59_soul.log:275`).
-    if (!sheddable(item.rarity)) {
+    if (!sheddable(item.rarity, this.config.keepRare)) {
       this.sayOnce(
         item.rarity === 'unknown'
           ? t('automation.outgrown.keptRarityUnknown', { item: name })
-          : t('automation.outgrown.keptRare', { item: name })
+          : t('automation.outgrown.keptRare', { item: name }),
+        'outgrown-rarity'
       );
       return null;
     }
     if (item.copper === null) {
-      this.sayOnce(t('automation.outgrown.keptUnpriced', { item: name, worn: item.worn }));
+      this.sayOnce(
+        t('automation.outgrown.keptUnpriced', { item: name, worn: item.worn }),
+        'outgrown-rarity'
+      );
       return null;
     }
     const refused = this.refused.get(name) ?? new Set<OutgrownWay>();
-    const { stashFromCopper, sellFromCopper } = tuning().outgrown;
+    const { stashFromCopper, sellFromCopper } = this.config;
     const house = item.copper >= stashFromCopper ? this.planner.ganghouse(state) : null;
     if (house !== null && 'refused' in house && !refused.has('stash')) {
-      this.sayOnce(house.refused);
+      this.sayOnce(house.refused, 'ganghouse-open');
     }
     const droppable = item.item.notDroppable !== true;
     // Two sweeps of the map, so asked only where a sale could be the answer.
@@ -192,7 +198,7 @@ export class OutgrownGear implements SessionModule {
     });
     switch (way) {
       case null:
-        this.sayOnce(t('automation.outgrown.keptNoWay', { item: name }));
+        this.sayOnce(t('automation.outgrown.keptNoWay', { item: name }), WAY);
         return null;
       case 'stash':
         return house !== null && 'room' in house
@@ -221,6 +227,7 @@ export class OutgrownGear implements SessionModule {
         verb: outgrownVerb(plan.way),
         items: [name],
         key: 'outgrown',
+        decision: WAY,
         reason: () => outgrownBecause(plan.item)
       },
       state
@@ -238,7 +245,8 @@ export class OutgrownGear implements SessionModule {
         place: plan.place,
         steps: started.steps,
         worn: plan.item.worn
-      })
+      }),
+      WAY
     );
     if (held) this.planner.hold();
   }
@@ -270,7 +278,8 @@ export class OutgrownGear implements SessionModule {
           item: name,
           verb: outgrownVerb(plan.way),
           worn: plan.item.worn
-        })
+        }),
+        WAY
       );
       this.events.decided?.({
         at: this.now(),
@@ -306,7 +315,7 @@ export class OutgrownGear implements SessionModule {
       verb: outgrownVerb(plan.way),
       why
     });
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, WAY);
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
@@ -316,9 +325,9 @@ export class OutgrownGear implements SessionModule {
     });
   }
 
-  private sayOnce(sentence: string): void {
+  private sayOnce(sentence: string, decision: DecisionKind): void {
     if (this.said.has(sentence)) return;
     this.said.add(sentence);
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, decision);
   }
 }

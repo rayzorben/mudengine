@@ -33,10 +33,11 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       '`RULES` and `BATCH_RULES`'
   },
   'src/shared/stamps.ts': {
-    count: 1,
+    count: 2,
     because:
       'the stamp pattern is built from `STAMP_OSC` so the number main writes and the one ' +
-      '`unstamped` removes cannot drift (todo 25, 2026-10-07); module-level'
+      '`unstamped` removes cannot drift (todo 25, 2026-10-07), and the payload `stampAt` ' +
+      'reads from the same grammar (todo 119, 2026-10-14); module-level'
   },
   'src/shared/statline.ts': {
     count: 1,

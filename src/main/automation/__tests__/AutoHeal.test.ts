@@ -7,6 +7,7 @@ import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
 import type { WorldSpell } from '../../../shared/world';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -46,11 +47,19 @@ function state(
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -64,6 +73,7 @@ describe('healing by a number', () => {
     make(spells()).onCharacter(state({ hp: 40 }));
     drain();
     expect(sent).toEqual(['minor healing']);
+    expect(kinds).toEqual(['heal-self']);
   });
 
   it('casts by the short word when the spellbook or the realm can name it', () => {
@@ -84,6 +94,7 @@ describe('healing by a number', () => {
     realm.onCharacter(state({}, [member('Yang', 0.3)]));
     drain();
     expect(sent).toEqual(['mihe Yang']);
+    expect(kinds.at(-1)).toBe('heal-party');
   });
 
   it('does nothing above it, with no spell, or when unknown', () => {
@@ -507,15 +518,22 @@ describe('choosing the heal from the spellbook', () => {
  */
 describe('a member asking for a heal', () => {
   let said: string[];
+  let saidKinds: (DecisionKind | undefined)[];
   const healer = (over: Partial<SpellsConfig> = {}) => {
     said = [];
+    saidKinds = [];
     return new AutoHeal(
       spells({ healParty: true, healPartyWith: 'minor healing', ...over }),
       true,
       queue,
       undefined,
       undefined,
-      { notice: (message) => said.push(message) }
+      {
+        notice: (message, kind) => {
+          said.push(message);
+          saidKinds.push(kind);
+        }
+      }
     );
   };
 
@@ -526,6 +544,7 @@ describe('a member asking for a heal', () => {
     auto.onCharacter(now);
     drain();
     expect(sent).toEqual(['minor healing Yang']);
+    expect(kinds).toEqual(['heal-request']);
   });
 
   it('takes the request as the number where the listing states none', () => {
@@ -577,6 +596,7 @@ describe('a member asking for a heal', () => {
     expect(sent).toEqual([]);
     expect(said).toHaveLength(1);
     expect(said[0]).toBe(t('automation.heal.requestLowMana', { from: 'Yang' }));
+    expect(saidKinds).toEqual(['mana-floor']);
   });
 
   it('is one cast, and leaves the ceiling to the thresholds', () => {

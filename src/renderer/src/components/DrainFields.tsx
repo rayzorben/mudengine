@@ -8,6 +8,7 @@
 import { useMemo } from 'react';
 import type { VitalThresholds } from '@shared/character';
 import type { SpellOption } from '@shared/ipc';
+import type { SettingPath } from '@shared/decisionSettings';
 import { NumberField } from './FormField';
 import SpellField, { drainsIn } from './SpellPicker';
 import { barOf, figureOf } from '../lib/form';
@@ -44,13 +45,26 @@ export default function DrainFields({
   namePrefix
 }: DrainFieldsProps): React.JSX.Element {
   const drains = useMemo(() => drainsIn(spells), [spells]);
-  const threshold = (field: DrainThreshold, name: string, label: string, hint: string) => {
+  const threshold = ({
+    field,
+    name,
+    label,
+    hint,
+    setting
+  }: {
+    field: DrainThreshold;
+    name: string;
+    label: string;
+    hint: string;
+    setting: SettingPath;
+  }) => {
     const typed = Number.parseInt(String(values[field]), 10) || 0;
     return (
       <NumberField
         hint={hint}
         label={label}
         name={`${namePrefix}${name}`}
+        setting={setting}
         bar={barOf(typed, bands)}
         {...(hpMax === undefined ? {} : { figure: figureOf(typed, hpMax) })}
         onChange={(value) => onChange(field, value)}
@@ -66,6 +80,7 @@ export default function DrainFields({
           hint={t('settings.spells.drainHint')}
           label={t('settings.spells.drainLabel')}
           name={`${namePrefix}drain`}
+          setting="automation.spells.drain"
           onChange={(value) => onChange('drain', value)}
           spells={drains}
           value={values.drain}
@@ -74,22 +89,25 @@ export default function DrainFields({
           hint={t('settings.spells.areaDrainHint')}
           label={t('settings.spells.areaDrainLabel')}
           name={`${namePrefix}area-drain`}
+          setting="automation.spells.areaDrain"
           onChange={(value) => onChange('areaDrain', value)}
           spells={drains}
           value={values.areaDrain}
         />
-        {threshold(
-          'drainBelow',
-          'drain-below',
-          t('settings.spells.drainBelowLabel'),
-          t('settings.spells.drainBelowHint')
-        )}
-        {threshold(
-          'drainTo',
-          'drain-to',
-          t('settings.spells.drainToLabel'),
-          t('settings.spells.drainToHint')
-        )}
+        {threshold({
+          field: 'drainBelow',
+          name: 'drain-below',
+          label: t('settings.spells.drainBelowLabel'),
+          hint: t('settings.spells.drainBelowHint'),
+          setting: 'automation.spells.drainBelow'
+        })}
+        {threshold({
+          field: 'drainTo',
+          name: 'drain-to',
+          label: t('settings.spells.drainToLabel'),
+          hint: t('settings.spells.drainToHint'),
+          setting: 'automation.spells.drainTo'
+        })}
       </div>
     </>
   );

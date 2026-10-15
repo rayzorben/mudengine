@@ -6,7 +6,7 @@ import { t } from '../../app/i18n';
 import { notesOf } from '../../app/copyMatch';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
-import type { SupplyItem } from '../../../shared/config';
+import { type SupplyItem } from '../../../shared/packConfig';
 import type { Loop } from '../../../shared/loops';
 import type { BuyingPlace, DropPlace, Route } from '../../../shared/world';
 import type { FetchStep, PlannedFetch } from '../../../shared/navigation';

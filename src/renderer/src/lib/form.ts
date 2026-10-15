@@ -7,7 +7,8 @@
  * the forgiving variants.
  */
 import { vitalLevel, type VitalLevel, type VitalThresholds } from '@shared/character';
-import { RETREAT_STRATEGIES, type EncumbranceGate, type RetreatStrategy } from '@shared/config';
+import { type EncumbranceGate } from '@shared/config';
+import { RETREAT_STRATEGIES, type RetreatStrategy } from '@shared/safety';
 import { LOCATE_WORDS, locateCommand, type LocateWord } from '@shared/locate';
 import { t } from './i18n';
 
@@ -48,8 +49,19 @@ export function percentOf(fraction: number): number {
 
 /** And back, forgivingly: a field somebody cleared is 0, not NaN. */
 export function fractionOf(value: string): number {
+  return shareOf(value) ?? 0;
+}
+
+/** A typed percent as a share; a cleared field is unset, so a shared reader ships its default. */
+export function shareOf(value: string): number | undefined {
   const number = Number.parseInt(value, 10);
-  return Number.isFinite(number) ? Math.min(1, Math.max(0, number / 100)) : 0;
+  return Number.isFinite(number) ? Math.min(1, Math.max(0, number / 100)) : undefined;
+}
+
+/** A typed count as a whole number: negative is 0, and a cleared field is `fallback`. */
+export function wholeOf(value: string, fallback = 0): number {
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) ? Math.max(0, number) : fallback;
 }
 
 /**

@@ -14,6 +14,7 @@ describe('a macro step worked out at its turn', () => {
   let queue: CommandQueue;
   let state: CharacterState;
   let mob: string | null;
+  let maxGets = DEFAULT_CONFIG.automation.remotes.maxGets;
 
   const parts = (): MacroParts => ({
     send: (data) => sent.push(data.trim()),
@@ -24,7 +25,7 @@ describe('a macro step worked out at its turn', () => {
     batch: () => 1,
     state: () => state,
     mob: () => mob,
-    aliases: () => ({})
+    automation: () => ({ aliases: {}, remotes: { maxGets } })
   });
 
   /** Each prompt credits one command and lets the next go. */
@@ -37,6 +38,7 @@ describe('a macro step worked out at its turn', () => {
   };
 
   beforeEach(() => {
+    maxGets = DEFAULT_CONFIG.automation.remotes.maxGets;
     vi.useFakeTimers();
     sent = [];
     notices = [];
@@ -59,6 +61,15 @@ describe('a macro step worked out at its turn', () => {
     state = { ...state, room: { ...state.room, items: [wireItem('torch'), wireItem('rope')] } };
     prompts(2);
     expect(sent).toEqual(['sw', 'get torch', 'get rope']);
+  });
+
+  it('gets no more than the remotes block allows, read at the step’s turn', () => {
+    queueMacro('sw;get all', parts());
+    maxGets = 1;
+    state = { ...state, room: { ...state.room, items: [wireItem('torch'), wireItem('rope')] } };
+    prompts(2);
+    expect(sent).toEqual(['sw', 'get torch']);
+    expect(notices).toContain(t('session.clientCommand.getAllCapped', { max: 1, total: 2 }));
   });
 
   it('names the monster auto-combat would open on, at its turn', () => {

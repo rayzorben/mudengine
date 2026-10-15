@@ -1,7 +1,8 @@
 /**
  * Finding the extensions installed in the home (todo 84): every folder under
  * `extensions/` holding a `manifest.json` that names it, and the ES module
- * the manifest points at, imported once at startup. A folder that is not an
+ * the manifest points at, imported once at startup unless the options file's
+ * `extensions:` switches it off (todo 118). A folder that is not an
  * extension is passed over; one that claims to be and cannot load is said,
  * never a crash, and the client carries on without it.
  */
@@ -30,8 +31,15 @@ function isExtension(value: unknown): value is Extension {
   );
 }
 
-/** One folder's extension, or why it is not one; null for a folder that does not claim to be. */
-async function loadOne(dir: string): Promise<LoadedExtension | string | null> {
+/**
+ * One folder's extension; its manifest alone where the player switched it off,
+ * so its code is never imported; why it is not one; or null for a folder that
+ * does not claim to be.
+ */
+async function loadOne(
+  dir: string,
+  on: (name: string) => boolean
+): Promise<LoadedExtension | ExtensionManifest | string | null> {
   const file = path.join(dir, 'manifest.json');
   if (!fs.existsSync(file)) return null;
   const folder = path.basename(dir);
@@ -42,6 +50,7 @@ async function loadOne(dir: string): Promise<LoadedExtension | string | null> {
     return t('extensions.badManifest', { name: folder, error: errorMessage(error) });
   }
   if (manifest === null) return t('extensions.notAManifest', { name: folder });
+  if (!on(manifest.name)) return manifest;
   const real = fs.realpathSync(dir);
   const main = path.resolve(real, manifest.main);
   // A manifest naming a file outside its own folder is not loaded.
@@ -58,28 +67,41 @@ async function loadOne(dir: string): Promise<LoadedExtension | string | null> {
   }
 }
 
+/** What startup found under the extensions folder. */
+export interface FoundExtensions {
+  loaded: LoadedExtension[];
+  /** Installed and switched off in the options file (`extensions:`), never imported. */
+  off: ExtensionManifest[];
+  /** What was said about the folders that failed. */
+  problems: string[];
+}
+
 /**
- * Every extension under `root`, in folder order, and what was said about the
- * folders that failed. An absent `root` is no extensions and nothing said.
+ * Every extension under `root`, in folder order: those `on` answers yes for
+ * loaded, the rest named and left alone. An absent `root` is no extensions and
+ * nothing said.
  */
 export async function loadExtensions(
-  root: string
-): Promise<{ loaded: LoadedExtension[]; problems: string[] }> {
+  root: string,
+  on: (name: string) => boolean
+): Promise<FoundExtensions> {
   const loaded: LoadedExtension[] = [];
+  const off: ExtensionManifest[] = [];
   const problems: string[] = [];
-  if (!fs.existsSync(root)) return { loaded, problems };
+  if (!fs.existsSync(root)) return { loaded, off, problems };
   const folders = fs
     .readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
     .map((entry) => entry.name)
     .sort();
   for (const folder of folders) {
-    const result = await loadOne(path.join(root, folder));
+    const result = await loadOne(path.join(root, folder), on);
     if (result === null) continue;
     if (typeof result === 'string') problems.push(result);
-    else loaded.push(result);
+    else if ('module' in result) loaded.push(result);
+    else off.push(result);
   }
-  return { loaded, problems };
+  return { loaded, off, problems };
 }
 
 /**

@@ -33,6 +33,7 @@ import {
   type QueueSnapshot
 } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind } from '../../shared/decisionSettings';
 import { tuning } from '../app/tuning';
 
 export { PRIORITY, type Priority, type QueueSnapshot };
@@ -111,6 +112,11 @@ export interface Intent {
   resolve?: () => readonly string[];
   /** Free-text note, for the decision trace. */
   reason?: string;
+  /**
+   * The decision this command carries out, where a setting made it: the
+   * console hangs a gear off its echo that opens those settings (todo 119).
+   */
+  decision?: DecisionKind;
   /**
    * This command carries a credential and must never be written down.
    *

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutoSearch } from '../AutoSearch';
 import { wireExit } from '../../../shared/entities';
 import { CommandQueue } from '../CommandQueue';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { DEFAULT_CONFIG, type AutomationConfig, type SearchConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 
@@ -12,6 +13,7 @@ const automation: AutomationConfig = {
 };
 
 const config = (over: Partial<SearchConfig> = {}): SearchConfig => ({
+  ...DEFAULT_CONFIG.automation.search,
   enabled: true,
   tries: 1,
   ...over
@@ -45,6 +47,8 @@ function state(
 }
 
 let sent: string[];
+/** The decision each sent command carries (todo 119). */
+let kinds: Array<DecisionKind | undefined>;
 let queue: CommandQueue;
 /**
  * The character as the send-time ask reads it (`Intent.stillWanted`).
@@ -68,7 +72,13 @@ const at = (search: AutoSearch, said: CharacterState): void => {
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
   now = state();
   quarry = () => false;
   moves = 0;
@@ -76,7 +86,8 @@ beforeEach(() => {
     new AutoSearch(over, enabled, queue, {
       stateNow: () => now,
       quarry: (said) => quarry(said),
-      moveInFlight: () => moves > 0
+      moveInFlight: () => moves > 0,
+      standsDown: () => false
     });
 });
 afterEach(() => {
@@ -89,6 +100,7 @@ describe('searching a room the client arrives in', () => {
     const search = queueSearch();
     at(search, state());
     expect(sent).toEqual(['search']);
+    expect(kinds).toEqual(['search']);
   });
 
   /*
@@ -361,6 +373,36 @@ describe('moves typed ahead', () => {
     now = street(2);
     queue.noteTyping(false);
     expect(sent).toEqual([]);
+  });
+});
+
+describe('ahead of a step (todo 120)', () => {
+  /*
+   * Rayzor, 2026-10-12: with no `sn` holding the step, the walker sent each
+   * step from the arrival and the status line's search found a move in flight
+   * every time, so a walk searched nothing.
+   */
+  it('searches the room a walk is about to leave, though the step is queued behind it', () => {
+    const search = queueSearch();
+    now = state();
+    search.beforeStep(now);
+    queue.enqueue({ command: 'e', priority: 'movement', reason: 'step' });
+    expect(sent).toEqual(['search', 'e']);
+    // And the status line after it is the same search, already spent.
+    moves = 1;
+    at(search, state());
+    expect(sent).toEqual(['search', 'e']);
+  });
+
+  it('keeps every other gate: switch, fight, budget', () => {
+    queueSearch(config({ enabled: false })).beforeStep(state());
+    queueSearch().beforeStep(state({}, { inCombat: true }));
+    expect(sent).toEqual([]);
+    const search = queueSearch();
+    search.beforeStep(state());
+    search.beforeStep(state());
+    // One room, one try: the positive control is the first search.
+    expect(sent).toEqual(['search']);
   });
 });
 

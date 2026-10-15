@@ -27,7 +27,7 @@ export interface CashRunAsk {
 /**
  * The one counter a trip to the bank stops at to sell, and what it takes: the
  * counter whose detour off the walk to the bank is within
- * `tuning.cashRun.sellDetour` and whose sale pays the most (todo 64).
+ * `automation.outgrown.sellDetour` and whose sale pays the most (todo 64).
  */
 export interface CashRunSale {
   room: RoomId;

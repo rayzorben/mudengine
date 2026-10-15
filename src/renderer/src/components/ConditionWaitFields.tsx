@@ -1,6 +1,7 @@
 import { CheckField } from './FormField';
 import { t } from '../lib/i18n';
 import { CONDITION_WAIT_KEYS, type ConditionWaits } from '@shared/walk';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export interface ConditionWaitFieldsProps {
   value: ConditionWaits;
@@ -10,19 +11,25 @@ export interface ConditionWaitFieldsProps {
 }
 
 /** One switch per stated condition a walk waits out; paralysis has none. */
-const WAITS: Record<keyof ConditionWaits, { name: string; label: string; hint: string }> = {
+const WAITS: Record<
+  keyof ConditionWaits,
+  { name: string; setting: SettingPath; label: string; hint: string }
+> = {
   walkWhileBlind: {
     name: 'walk-while-blind',
+    setting: 'automation.movement.walkWhileBlind',
     label: t('settings.movement.walkWhileBlind'),
     hint: t('settings.movement.walkWhileBlindHint')
   },
   walkWhilePoisoned: {
     name: 'walk-while-poisoned',
+    setting: 'automation.movement.walkWhilePoisoned',
     label: t('settings.movement.walkWhilePoisoned'),
     hint: t('settings.movement.walkWhilePoisonedHint')
   },
   walkWhileConfused: {
     name: 'walk-while-confused',
+    setting: 'automation.movement.walkWhileConfused',
     label: t('settings.movement.walkWhileConfused'),
     hint: t('settings.movement.walkWhileConfusedHint')
   }
@@ -46,6 +53,7 @@ export default function ConditionWaitFields({
           key={key}
           label={WAITS[key].label}
           name={`${namePrefix}${WAITS[key].name}`}
+          setting={WAITS[key].setting}
           onChange={(checked) => onChange({ [key]: checked })}
         />
       ))}

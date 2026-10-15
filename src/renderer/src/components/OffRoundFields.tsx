@@ -33,6 +33,7 @@ export default function OffRoundFields({
           hint={t('settings.gear.offRoundItemHint')}
           label={t('settings.gear.offRoundItem')}
           name={`${namePrefix}-offround-item`}
+          setting="automation.gear.offRound.item"
           onChange={onItem}
           value={item}
         />
@@ -40,6 +41,7 @@ export default function OffRoundFields({
           hint={t('settings.gear.offRoundEveryHint')}
           label={t('settings.gear.offRoundEvery')}
           name={`${namePrefix}-offround-every`}
+          setting="automation.gear.offRound.everyRounds"
           onChange={onEvery}
           value={every}
         />

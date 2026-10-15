@@ -170,22 +170,12 @@ const TUNING_DEFAULTS = {
     /** Where the wait stops growing, and sits for every attempt afterwards. */
     maxDelayMs: 15_000,
     /**
-     * Consecutive failures before the client stops and says so.
-     *
-     * Effectively no limit, which is what somebody who left a character
-     * connected overnight wants: a router that comes back at 4am should find
-     * the client still asking. It is a number rather than a boolean so that a
-     * limit is *available* — and so that "it retried for ever" is a value
-     * somebody chose rather than a behaviour with nothing behind it.
-     */
-    maxAttempts: 999_999,
-    /**
      * Consecutive connections that **opened and were dropped** before settling,
      * before the client stops dialling and says so.
      *
-     * Far lower than `maxAttempts` and bounding a different thing. An outage
-     * refuses or never answers, and dialling that for as long as it takes is
-     * the whole point of the number above. A server that accepts and hangs up
+     * Far lower than a character's `reconnectTries` and bounding a different
+     * thing. An outage refuses or never answers, and dialling that for as
+     * long as it takes is the whole point of that setting. A server that accepts and hangs up
      * seconds later is a full BBS, a realm rebooting — or a front end
      * answering a refused password with a sentence this client has no pattern
      * for, in which case the credentials go back out on every rung.
@@ -423,16 +413,6 @@ const TUNING_DEFAULTS = {
     /** How many times it is asked again before the client gives up and says so. */
     unreadRetries: 3,
     /**
-     * How old the pack (`i`), the sheet (`st`) and `exp` may get before each
-     * is asked again. A broadcast the client misreads stays wrong until the
-     * next `i` or `st` replaces it: rayzor's pack held a burnt-out torch as lit for 18
-     * minutes (2026-10-08) until the player typed `i`. `probe` band, never
-     * during a fight.
-     */
-    packRefreshMs: 120_000,
-    sheetRefreshMs: 300_000,
-    experienceRefreshMs: 300_000,
-    /**
      * How long a command the server threw away waits before it is sent again.
      *
      * `You fumble in confusion!` is `ActionFigure.CheckConfusion` discarding
@@ -454,20 +434,6 @@ const TUNING_DEFAULTS = {
      * here unnormalised cannot spin a timer hot.
      */
     minIdleTickMs: 100,
-    /**
-     * The shortest gap between two roster catch-up `who` commands.
-     *
-     * Somebody entering the realm is a fact about who is online, and the only
-     * thing that settles what they *are* is a listing. Asking on each arrival
-     * would spend a command per arrival on a busy realm; asking only when the
-     * character next goes quiet meant a character that fights and walks all
-     * evening never asked at all, which is how a `who` on screen and a record
-     * saying *offline* ended up on the same screen.
-     *
-     * So it is a debounce rather than a quiet period: the first arrival asks,
-     * and the arrivals inside the window are answered by the same listing.
-     */
-    rosterAskMs: 60_000,
     /**
      * The floor between two looks at other players.
      *
@@ -552,17 +518,11 @@ const TUNING_DEFAULTS = {
     assistFreshMs: 60_000,
     /**
      * The share of a fight's simulated runs survived, at full health, above
-     * which a planned fight costs no more than `world.fightCost`. Below it the
+     * which a planned fight costs no more than `automation.movement.fightCost`. Below it the
      * plan adds up to `world.survivalCost` (`navigation/plan.ts`). It prices a
      * route; auto-combat never refuses a fight on it (the user, 2026-10-03).
      */
-    openAbove: 0.95,
-    /** A monster run from that waits to be attacked is not attacked again until the character is this many levels past it… */
-    fledLevels: 2,
-    /** …or this long has passed, so a loop whose one monster was run from goes on earning. */
-    fledForgetMs: 1_800_000,
-    /** A room run out of for health is kept out of, by routes and the hunting survey, for this long (todo 73). */
-    shunRoomMs: 900_000
+    openAbove: 0.95
   },
   /**
    * How a monster's hazards are priced when auto-combat decides what to hit
@@ -618,17 +578,14 @@ const TUNING_DEFAULTS = {
      */
     deathOverRounds: 5,
     /**
-     * The fight, run (`simulateFight`): how many times, how long a fight may
-     * run before it is called, and the shares of fights survived that must be
-     * exceeded to read as safe (green) and as merely risky (yellow); the rest
-     * is deadly (red). Todo 03 set them: over 60% is green, 25% or less is
-     * almost certainly not survivable. Three hundred runs are 3 to 6ms; the
-     * figures move a point or two between seeds.
+     * The fight, run (`simulateFight`): how many times, and how long a fight
+     * may run before it is called. The shares that read as safe and risky are
+     * `automation.combat.safeOddsAbove` and `riskyOddsAbove` (todo 118).
+     * Three hundred runs are 3 to 6ms; the figures move a point or two
+     * between seeds.
      */
     survivalTrials: 300,
     survivalRoundCap: 120,
-    survivalSafeAbove: 0.6,
-    survivalRiskyAbove: 0.25,
     /**
      * How long fights run on the socket's thread before it is handed back,
      * where no worker runs them (`SlicedSimulator`: the tests, the probes, a
@@ -667,12 +624,6 @@ const TUNING_DEFAULTS = {
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
-    /**
-     * How sure one cast has to be of finishing the monster before the
-     * cheapest spell that would outranks the hardest hitter (`chooseAttackSpell`,
-     * todo 09). The reviewer's worked example switched at 99%.
-     */
-    killConfidence: 0.9,
     /** How long a heal proposal stays worth sending. */
     healExpiresMs: 3000,
     /** Long enough for the next status line to say whether the heal worked. */
@@ -684,13 +635,6 @@ const TUNING_DEFAULTS = {
      * client asks again if it is still low.
      */
     healRequestMs: 10_000,
-    /**
-     * How steeply a low bar outweighs a high one when a party-wide heal is
-     * weighed against a single heal (`planHeal`, todo 05): a point mended is
-     * worth `(1 - share) ^ healUrgency`. At 2, a point mended at 35% is worth
-     * about ten mended at 80%.
-     */
-    healUrgency: 2,
     /**
      * A heal whose weighted worth is within this share of the best is as
      * good, and the cheapest of those is cast.
@@ -735,26 +679,11 @@ const TUNING_DEFAULTS = {
      */
     blessSlack: 0.25,
     /**
-     * The least a blessing chosen by `autoChooseBlessings` must add for its
-     * upkeep: survival in shares of fights, the health a fight costs in
-     * shares of the bar, or the exp rate as a share of the rate without it
-     * (`chooseBlessings`).
-     */
-    blessMinGain: 0.02,
-    /**
-     * The most commands an hour Auto Choose Blessings lets a bless weapon's
-     * swap from the pack spend (todo 42): the swap's commands, once each time
-     * the blessing lapses. This client's own ceiling, like `blessMinGain`.
-     */
-    blessSwapCommandsPerHour: 120,
-    /**
      * How long after a bless weapon's swap sent its last `wear` the weapon it
      * put back may still be missing from the hand before the player is told
      * (`SwapBack`, todo 42). The server answers a `wear` within the round.
      */
     swapBackMs: 10_000,
-    /** Heal casts a chosen blessing's mana floor keeps affordable after its own cast. */
-    blessHealReserve: 2,
     /** Runs of the hunted fight, bare and with each set of blessings, kept for the choice. */
     blessChoiceRuns: 256,
     /**
@@ -911,23 +840,13 @@ const TUNING_DEFAULTS = {
      * arithmetic cannot (`measuredPerRound`, off the GreaterMUD lineage).
      */
     measuredFightsMin: 30,
-    /** How far the loop's own low-experience stop looks for a better lair, in steps. */
-    betterSpotRadius: 80,
-    /**
-     * A room whose one cycle takes more than this share of the health bar is
-     * left out before the ranking: a lair that costs half the bar a visit is
-     * a lair whose rate is mostly resting, and starting there wastes the
-     * evening whatever it pays (todo 00, 2026-09-13).
-     */
-    maxDamageShare: 0.5,
     /**
      * And a room that could not take this share off an *unarmoured* character
      * — every blow landing, at full damage — is beneath this level and left
-     * out too. The bar is read `trivialLevelMargin` lower for the test, which
-     * is the todo's *level minus five percent*.
+     * out too. The bar is read `automation.hunting.trivialLevelMargin` lower
+     * for the test.
      */
     trivialShare: 0.1,
-    trivialLevelMargin: 0.05,
     /**
      * How far apart a loop's own rooms are measured, in steps, by a bounded
      * sweep from each — the ring's real length rather than the survey's
@@ -943,12 +862,6 @@ const TUNING_DEFAULTS = {
      * walking — the todo's *just enough to meet the timing requirements*.
      */
     sizeTolerance: 0.05,
-    /**
-     * Under a cash floor, a spot's copper counts only while its exp an hour is
-     * at least this share of the best spot's (todo 71). A floor set above what
-     * any ground pays would otherwise rank grounds by copper alone.
-     */
-    cashExpShare: 0.5,
     /**
      * A hunt's measured exp an hour (todo 70): kept per character and spot,
      * trusted for this long, only from a stay of at least `measuredMinutesLeast`,
@@ -996,16 +909,6 @@ const TUNING_DEFAULTS = {
      */
     simulatingMs: 5000,
     /**
-     * What a lair pays while somebody else is working it — `AutoHunt`.
-     *
-     * Experience divides among everybody who hit the kill (`Mob.cs:2270`), so
-     * a second player in the lair is the plain halving this states. A price on
-     * a candidate, never on the spot being walked: once a rate has actually
-     * been *measured* there, the measurement is the figure and a model's guess
-     * at the sharing is not needed.
-     */
-    contestedShare: 0.5,
-    /**
      * How long a lair stays priced as somebody else's after they were seen in
      * it.
      *
@@ -1015,17 +918,7 @@ const TUNING_DEFAULTS = {
      * strength of a passer-by. Long enough that somebody working a lair is
      * still working it, short enough that a passer-by is forgotten.
      */
-    contestedForgetMs: 1_800_000,
-    /**
-     * How much better another lair must look before a hunt moves to it.
-     *
-     * A margin *and* a grace (`tuning.loop.expRateGraceMs`, the low-experience
-     * stop's own), because the alternative is a character chasing estimates
-     * round the realm: every move costs the walk there and the first cycle,
-     * and two lairs within a few per cent of each other are the same lair for
-     * this purpose.
-     */
-    moveMargin: 0.25
+    contestedForgetMs: 1_800_000
   },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {
@@ -1080,13 +973,6 @@ const TUNING_DEFAULTS = {
      */
     retryMs: 60_000,
     /**
-     * How many points of each stat are weighed when points go where they raise
-     * the exp rate most (`train.pick: exp`, todo 83). Most of what a stat does
-     * moves in steps of three to ten points, so one point alone mostly shows
-     * nothing; ten cross every step but crits' charm (thirty).
-     */
-    statHorizon: 10,
-    /**
      * How many of the best spots a stat is weighed over: the best alone often
      * waits on its lair's clock, which no stat moves.
      */
@@ -1119,13 +1005,7 @@ const TUNING_DEFAULTS = {
   /** Readying a light before a dark step — `AutoLight`. */
   light: {
     /** A `light`/`remove` still queued after this is for a room already left. */
-    expiresMs: 4000,
-    /**
-     * The fewest lights bought before a dark way (`LightAhead`, todo 11): what
-     * is bought where the realm states no uses, and the floor under the count
-     * the uses give.
-     */
-    carryAtLeast: 1
+    expiresMs: 4000
   },
   /** Keeping the pack stocked — `Supplies`. */
   supplies: {
@@ -1150,39 +1030,7 @@ const TUNING_DEFAULTS = {
      * to wake it. Checked again at each lapse while the errand's own leg is
      * still walking, so a long walk to the shop is never cut short.
      */
-    errandTimeoutMs: 300_000,
-    /**
-     * What one **doubling** of a counter's price is worth in steps of detour,
-     * when the client is choosing which of several to stop at.
-     *
-     * Detour decides and this breaks the tie, which is the ordering a person
-     * asking for petrol already has: 4.01 two minutes off the road beats 3.99
-     * twenty-five minutes off it. The realm's markups run from 100% to 32,760%
-     * over Paradigm's 242 shops, so the choice is real — but a torch is a
-     * torch, and no price on one is worth crossing a map for.
-     *
-     * **A doubling rather than a percentage**, because the ratio is the part
-     * the data states exactly: the base figure belongs to the *item* and is the
-     * same at every counter that stocks it (0 of 1,539 rows differ), so between
-     * two of them the markup is the whole difference and `(100 + markup)` is
-     * the price in the item's own unknown unit. Ranking on its logarithm makes
-     * the gap between two counters exactly the number of doublings, and stops a
-     * sixtyfold markup from buying sixty times the walking.
-     *
-     * At twenty: twice the price is worth twenty moves of going out of the way,
-     * and the whole realm's span of markups is worth about a hundred and
-     * seventy. Zero makes the price count for nothing and detour decide alone.
-     */
-    dearerSteps: 20,
-    /**
-     * Copper withdrawn over what a purchase costs, where the vault holds it.
-     *
-     * The price is the server's own arithmetic and exact, but a counter's
-     * markup is the realm's to change, and a purse withdrawn to the copper is
-     * one refused the moment anything moves. A thousand is ten gold crowns: a
-     * second waterskin, not a fortune carried about. Zero withdraws exactly.
-     */
-    cashBuffer: 1000
+    errandTimeoutMs: 300_000
   },
   /** Carrying a quest's plan through the arbiter — `QuestRunner`. */
   quests: {
@@ -1194,13 +1042,6 @@ const TUNING_DEFAULTS = {
      * that delay on top.
      */
     replyMs: 12_000,
-    /**
-     * How many times a step that rolls (`testskill`) is asked again after
-     * the counter stayed put. The red book passes one try in seven at
-     * Intellect 45; twelve tries fail one time in six, and every try is one
-     * ask and one listing.
-     */
-    rollTries: 12,
     /**
      * How many times a listing the outcome waits on — `abil` for a counter,
      * `i` for a pack a script handed something to — is asked for, `replyMs`
@@ -1238,10 +1079,6 @@ const TUNING_DEFAULTS = {
   },
   /** Getting rid of outgrown gear — `OutgrownGear` (todo 12). */
   outgrown: {
-    /** Worth this much copper or more (the realm's price), it is stashed in the ganghouse. */
-    stashFromCopper: 10_000,
-    /** Worth this much or more, it is walked to a counter that buys it; under it, dropped. */
-    sellFromCopper: 1_000,
     /** A `hide`, `sell` or `drop` that leaves the pack holding as many after this is refused. */
     confirmMs: 8000
   },
@@ -1269,8 +1106,6 @@ const TUNING_DEFAULTS = {
   },
   /** The Gear card and the trip that buys from it — `gearReads`, `gearTripPlan`, `GearTrip`. */
   gear: {
-    /** Better items listed per slot, best first. */
-    perSlot: 20,
     /**
      * The most stops a trip's order is solved exactly for (items at the same
      * counters are one stop, a vault is one). The table doubles with each, so
@@ -1298,12 +1133,6 @@ const TUNING_DEFAULTS = {
     bankMs: 12000,
     /** Banks weighed within this many moves of where the token lands. */
     bankSteps: 40,
-    /**
-     * A counter on the way to the bank is stopped at only where it adds this
-     * much or less to the walk, as the router prices it (todo 64: from the
-     * Paradigm landings, 11 to 120 of 633 sellable dropped items sell within 10).
-     */
-    sellDetour: 10,
     /** Full in a room whose monsters stay this long without a fight, the run walks on and tries the next room. */
     clearMs: 20000,
     /** Legs one walk to the bank may take (a fight ends a leg) before the run gives up. */
@@ -1324,10 +1153,6 @@ const TUNING_DEFAULTS = {
   },
   /** Searching every room near the character — `AreaSearch`. */
   areaSearch: {
-    /** The widest radius the dialog offers, in moves from where the character stands. */
-    maxRadius: 15,
-    /** The most searches a room is given. */
-    maxSearches: 10,
     /** What the dialog offers first: the rooms a few steps away, each searched once. */
     firstRadius: 3,
     firstSearches: 1,
@@ -1368,13 +1193,6 @@ const TUNING_DEFAULTS = {
      * slowly, and a `rest` that arrives two seconds late is still a rest.
      */
     expiresMs: 5000,
-    /**
-     * A lair whose effective respawn is at most this many seconds is not a
-     * resting place (`RestAway`, todo 08). A rest from 20% to 70% takes
-     * minutes, so a clock of ten minutes or less is one that runs out during
-     * it; a boss's clock of hours is not.
-     */
-    lairClockMaxSeconds: 600,
     /** How long a `l <direction>` and then the step next door may go unanswered. */
     peekMs: 4000,
     /**
@@ -1403,11 +1221,6 @@ const TUNING_DEFAULTS = {
   /** Walking a planned route — `Walker`. */
   walk: {
     /**
-     * Sneaking stops being asked for after this many failures in a row
-     * (`You don't think you're sneaking.`), until the next connection or level.
-     */
-    sneakGiveUp: 4,
-    /**
      * How long a step waits, from the send, for the answer to the `sn` ahead
      * of it before it goes without knowing whether the character is sneaking.
      * The answer comes in the same read as the prompt after it; this is a
@@ -1420,12 +1233,6 @@ const TUNING_DEFAULTS = {
      * fixed line, so this is the failure's answer as well as a lost line's.
      */
     disarmAnswerMs: 3_000,
-    /**
-     * Failed disarms in a row whose chance at the stats' Traps falls under
-     * this make the figure the likelier thing to be wrong, and the walk goes
-     * through on the trap hold's terms (`disarmTries`).
-     */
-    disarmDoubt: 0.01,
     /**
      * How long a disarmed way stays safe: the server re-arms it 300 s after
      * the disarm (`TrapExit.TryDisarm`), read short by the answer's travel.
@@ -1489,24 +1296,6 @@ const TUNING_DEFAULTS = {
     /** Move answers timed before a run is timed to the rounds; at most `nudgeSamples`. */
     offRoundStepSamples: 3,
     /**
-     * How far the character may have wandered from what it was walking before
-     * pressing play asks about it first.
-     *
-     * A stop is a pause that may or may not be permanent, so the thing it
-     * stopped is still there hours later — and the character may have been
-     * walked across the realm, or killed and reborn in a temple on another
-     * map, in between. Picking it back up is then a journey in its own right
-     * that nobody asked for, which on a realm full of wandering monsters is
-     * not free. Past this many steps `SessionManager.startMoving` answers with
-     * a question instead of a command.
-     *
-     * Measured as how much *further* away the character is now than when the
-     * movement stopped — for a route and for a lap alike, so a movement
-     * stopped and started again from the same room never asks however far it
-     * still has to go, and a character killed and reborn two maps away does.
-     */
-    resumeAskSteps: 30,
-    /**
      * How far the character may have strayed from the room a drawn plan starts
      * in before pressing Walk asks about the plan it is redrawn as.
      *
@@ -1523,7 +1312,7 @@ const TUNING_DEFAULTS = {
      * inside the distance at which a way somewhere else stops being the same
      * way. Past it the new plan is put back on screen to be read.
      *
-     * Its own figure rather than `resumeAskSteps`: that one bounds walking a
+     * Its own figure rather than `automation.walk.resumeAskSteps`: that one bounds walking a
      * *stopped* movement back across the realm, which is a journey nobody
      * asked for, and this one bounds how far a plan may drift before it is
      * worth a second look. 0 asks about every redrawn plan.
@@ -1708,18 +1497,6 @@ const TUNING_DEFAULTS = {
      */
     ranFromForgetMs: 10_000,
     /**
-     * How far below a barrier's stated number the character's own skill may
-     * sit and still be worth spending a command on.
-     *
-     * **Not measured.** The realm records one number per barrier and nothing
-     * says what a roll against it looks like. The two differ because the two
-     * attempts do not cost the same: a failed pick costs a command, a failed
-     * bash costs a command *and* health, so the cheaper attempt is allowed the
-     * longer reach.
-     */
-    bashMargin: 10,
-    pickMargin: 20,
-    /**
      * How long a walk stands at a hidden exit between two searches for it.
      *
      * There is no *count*: the realm's own data says a search reveals this
@@ -1768,16 +1545,6 @@ const TUNING_DEFAULTS = {
      */
     searchRecheckEvery: 3,
     /**
-     * How many rounds of levers one action-gated exit is worth — format 23's
-     * other kind of hidden exit (`Levers.pullLevers`).
-     *
-     * Counted where a search is paced, and the difference is what the data
-     * says: the realm names the exact phrase that opens this one, so a couple
-     * of rounds either works or the phrase is not what the realm claims. A
-     * search is a skill check the realm expects to fail sometimes.
-     */
-    leverTries: 2,
-    /**
      * How many levers-behind-levers one walk will fetch (todo 807): an errand
      * met on an errand's way is pushed onto the one it serves. The deepest the
      * fork reported is five (the Treetops' chain); the bound is for a realm
@@ -1821,8 +1588,6 @@ const TUNING_DEFAULTS = {
   },
   /** Running a loop — `LoopRunner`. */
   loop: {
-    /** Consecutive non-combat failures before the loop gives up on itself. */
-    maxFailures: 3,
     /** How many times a lost loop asks the realm where it is before giving up. */
     maxLocates: 5,
     /**
@@ -1876,14 +1641,7 @@ const TUNING_DEFAULTS = {
      * a multiplier: a proportional margin is nothing at all under a low floor,
      * which is the character that most needs the gap.
      */
-    resumeMarginWhenUncapped: 0.1,
-    /**
-     * How long a lap runs before its experience rate is held against
-     * `automation.walk.minExpPerHour`. The first minutes of any lap are the
-     * walk to the first lair, at no experience at all, and a floor judged
-     * then would stop every lap on the way out of town.
-     */
-    expRateGraceMs: 900_000
+    resumeMarginWhenUncapped: 0.1
   },
   /** Answering for an absent player; see `automation.afk`. */
   afk: {
@@ -1929,13 +1687,6 @@ const TUNING_DEFAULTS = {
      */
     inviteAgainMs: 5_000,
     /**
-     * The share of a member's bar lost since the last party listing that asks
-     * for the next one on this round (`party.parEveryRounds`). Half of it asks
-     * half as many rounds sooner. The user's ask (2026-10-10): the more damage,
-     * the sooner `par`, so a heal is cast on the bar as it is.
-     */
-    parAtLoss: 0.25,
-    /**
      * The longest line the server keeps: its `TGSModule` appends a typed
      * character only while the line is under 255 and drops the rest
      * (GreaterMUD source, `TGSModule.cs:299`). A `@loop` or `@goto` answer
@@ -1954,19 +1705,8 @@ const TUNING_DEFAULTS = {
    * eighteen.
    */
   spending: {
-    /** One `@get-all`, or one `@drop-all`. */
-    maxGets: 10,
     /** One press of the gear button. */
     maxGear: 10
-  },
-  /** The armour the room the character stands in calls for (todo 69, `PlaceGear`). */
-  placeGear: {
-    /**
-     * Hit points a round a swap has to save before it is made. The swap is a
-     * `wear` there and another back at the edge; below this the commands buy
-     * less than a heal does (todo 69, open question 2).
-     */
-    minSaved: 2
   },
   /** What one session keeps in memory for the diagnostics cards. */
   session: {
@@ -2083,20 +1823,6 @@ const TUNING_DEFAULTS = {
     safetyLogLimit: 40,
     /** How long a `safe-haven` retreat waits for the fight to end. */
     retreatPatienceMs: 20_000,
-    /**
-     * How long a hang-up waits for a run on the wire to land, so the
-     * character logs back in away from what it ran from (`Safety`). A step
-     * answers in about 1.2s (the movement round, measured); this is two and a
-     * half of them.
-     */
-    hangUpAfterRunMs: 3_000,
-    /**
-     * The share of maximum health a naked character must keep above a
-     * charged realm's hang-up penalty before it hangs up anyway (todo 79):
-     * the charge is a share of maximum health, and a naked character has no
-     * items for it to take instead.
-     */
-    nakedHangMargin: 0.1,
     /** How long a `safe-haven` retreat waits for the escape move to land. */
     retreatSettleMs: 5_000,
     /**
@@ -2299,13 +2025,7 @@ const TUNING_DEFAULTS = {
      */
     portalPenalty: 3,
     /**
-     * One fight in a plan costs this many ordinary steps, so a key off a
-     * monster is weighed against a longer walk to a shop that sells it
-     * (`navigation/plan.ts`).
-     */
-    fightCost: 30,
-    /**
-     * The most a planned fight's odds add on top of `fightCost`, in steps:
+     * The most a planned fight's odds add on top of `automation.movement.fightCost`, in steps:
      * all of it for a fight never survived, nothing at `combat.openAbove`.
      * About resting the whole bar back: Festus rested 1.09 hp a second
      * (median of five clean rests, 319 HP) and walked a step every 1.86 s on
@@ -2340,23 +2060,6 @@ const TUNING_DEFAULTS = {
      * make saving a route mean nothing.
      */
     preferredStepCost: 0.1,
-    /**
-     * What a lair expected to take half of the character's current health in
-     * one pass costs to route through, in plain steps.
-     *
-     * A lair is priced by one pass through it (`lairPassage`): its worst
-     * monster that attacks on sight, as many as the lair holds at once, for
-     * the rounds spent inside (`passRounds`), as a share of the health the
-     * character has *now*. The step costs `dangerCost × share / (1 − share)`:
-     * a tenth of the bar costs about two doors, a quarter about five, a half
-     * this figure, and the price climbs as a pass approaches the whole bar,
-     * up to `nearWallCost` at `deadlyShare`. Used where the lair's fight has
-     * not been run; a run fight prices the room as a run (`runDeathCost`).
-     * Two hundred is about what resting half a bar back takes, in commands:
-     * `HPRegen`, three times over, every fifteen seconds
-     * (docs/greatermud/player-and-world.md).
-     */
-    dangerCost: 200,
     /**
      * The share of current health one pass is expected to take at which a
      * lair is priced at `nearWallCost`, and a room spell at `wallCost`. One is
@@ -2417,21 +2120,6 @@ const TUNING_DEFAULTS = {
      * shown. One more A* per route planned for a reader.
      */
     alternativeMinSteps: 10,
-    /**
-     * What a step along the plan costs while the router is asked for a way
-     * that differs from it (`Route.another`): the plan's own edges are priced
-     * this many times over and the search asked again, so it leaves the plan
-     * wherever a detour costs less than this much of what it replaces. 1
-     * finds the plan again and offers nothing.
-     */
-    anotherWayPenalty: 3,
-    /**
-     * How much longer than the plan a different way may be and still be
-     * offered, as a share of the plan's steps: 0.5 is half again as long. A
-     * way that differs is expected to be dearer — that is why it was not the
-     * plan — and past this it is a tour rather than a choice.
-     */
-    anotherWayLonger: 0.5,
     /**
      * The most a walk to a door's lever in another room and back may cost
      * before the door is priced as the wall it was (todo 837). The Grand

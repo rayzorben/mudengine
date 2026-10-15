@@ -74,6 +74,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { sameItem } from '../../shared/items';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -96,7 +97,7 @@ export interface KeyedWay {
 }
 
 export interface KeyEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** Whether an escape is in flight; nothing is picked up while one is. */
   escaping?(): boolean;
   /**
@@ -226,7 +227,8 @@ export class AutoKeys implements SessionModule {
         reason: t('automation.keys.reasonNeeded', {
           item: lying.name,
           direction: way.direction
-        })
+        }),
+        decision: 'key-pickup'
       });
       /*
        * Said out loud, because this fires with auto-loot off and picking
@@ -234,7 +236,8 @@ export class AutoKeys implements SessionModule {
        * server's own `You took bone key.` says *what*; only this says *why*.
        */
       this.events.notice?.(
-        t('automation.keys.picking', { item: lying.name, direction: way.direction })
+        t('automation.keys.picking', { item: lying.name, direction: way.direction }),
+        'key-pickup'
       );
     }
   }
@@ -262,7 +265,8 @@ export class AutoKeys implements SessionModule {
     if (lookalike === undefined) return;
     this.said.add(way.keyId);
     this.events.notice?.(
-      t('automation.keys.ambiguous', { item: lookalike.name, direction: way.direction })
+      t('automation.keys.ambiguous', { item: lookalike.name, direction: way.direction }),
+      'key-pickup'
     );
   }
 }

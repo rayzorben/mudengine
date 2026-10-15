@@ -261,6 +261,7 @@ describe('a spell the world database says has no effect', () => {
   });
   const unit = (fallback: string) => {
     const notices: string[] = [];
+    const kinds: unknown[] = [];
     const spells = new AttackSpells(
       {
         ...DEFAULT_CONFIG.automation.spells,
@@ -269,20 +270,26 @@ describe('a spell the world database says has no effect', () => {
         autoChoose: false,
         minMana: 0
       },
-      { notice: (message) => notices.push(message) },
+      {
+        notice: (message, kind) => {
+          notices.push(message);
+          kinds.push(kind);
+        }
+      },
       (name) =>
         name === 'harm' ? harm : name === 'spiritual hammer' || name === 'hamm' ? hammer : null,
       () => ({ combat: null, magery: null, crits: 0, family: null })
     );
-    return { spells, notices };
+    return { spells, notices, kinds };
   };
 
   it('opens with the attack verb rather than the configured spell, and says why', () => {
-    const { spells, notices } = unit('');
+    const { spells, notices, kinds } = unit('');
     expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toEqual([
       t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'big zombie' })
     ]);
+    expect(kinds).toEqual(['attack-spell']);
     // Said once for the fight, however often it is asked.
     expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toHaveLength(1);
@@ -311,9 +318,9 @@ describe('a spell the world database says has no effect', () => {
 
   it('casts the fallback instead where one is set', () => {
     const { spells } = unit('hamm');
-    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')?.command).toBe(
-      'hamm big zombie'
-    );
+    const opening = spells.opening(fighting, zombie(true), 'in the room', 'a');
+    expect(opening?.command).toBe('hamm big zombie');
+    expect(opening?.decision).toBe('spell-opener');
   });
 
   it('casts it where the rows disagree, and on the living (the control)', () => {
@@ -356,20 +363,27 @@ describe('a spell held back while the melee round is expected to finish the mons
   const kobold = (remaining: number | null) => ({ name: 'kobold', entity: null, remaining });
   const unit = (family: RealmFamily | null = 'greatermud') => {
     const notices: string[] = [];
+    const kinds: unknown[] = [];
     const spells = new AttackSpells(
       { ...DEFAULT_CONFIG.automation.spells, attack: 'harm', autoChoose: false, minMana: 0 },
-      { notice: (message) => notices.push(message) },
+      {
+        notice: (message, kind) => {
+          notices.push(message);
+          kinds.push(kind);
+        }
+      },
       (name) => (name === 'harm' ? harm : null),
       () => ({ combat: null, magery: null, crits: 0, family })
     );
-    return { spells, notices };
+    return { spells, notices, kinds };
   };
 
   it('opens with the attack verb on a monster one round finishes, and says why once', () => {
-    const { spells, notices } = unit();
+    const { spells, notices, kinds } = unit();
     expect(spells.opening(armed, kobold(5), 'in the room', 'a')).toBeNull();
     expect(spells.opening(armed, kobold(5), 'in the room', 'a')).toBeNull();
     expect(notesOf(notices, 'automation.spells.heldForMelee')).toHaveLength(1);
+    expect(kinds).toEqual(['spell-held-melee']);
   });
 
   it('swaps the repeated spell for the attack verb once the monster is that low', () => {
@@ -536,7 +550,9 @@ describe('the next room spell in the book', () => {
 
   it('casts the typed room spell while the pool pays for it (the control)', () => {
     const { spells } = unit(true);
-    expect(spells.change(crowded(60), target, 'a', 'a')?.command).toBe('fbal');
+    const change = spells.change(crowded(60), target, 'a', 'a');
+    expect(change?.command).toBe('fbal');
+    expect(change?.decision).toBe('room-spell');
   });
 
   it('casts swarm when fireball cannot be paid for, and says so', () => {
@@ -640,6 +656,7 @@ describe('the next room spell in the book', () => {
       const { spells, notices } = debuffing();
       const first = spells.change(tough(80), orc(80), 'a', 'a');
       expect(first?.command).toBe('corr');
+      expect(first?.decision).toBe('room-debuff-first');
       expect(notesOf(notices, 'automation.spells.debuffFirst')).toHaveLength(1);
       spells.sent(first!.action);
       expect(spells.change(tough(80), orc(80), 'a', 'a')?.command).toBe('fbal');

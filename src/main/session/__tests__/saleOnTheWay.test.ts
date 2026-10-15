@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { saleOnTheWay, type SaleReads } from '../saleOnTheWay';
-import { tuning } from '../../app/tuning';
+import { DEFAULT_OUTGROWN } from '../../../shared/packConfig';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { ItemEntity } from '../../../shared/entities';
 import type { Rarity } from '../../../shared/rarity';
@@ -77,6 +77,7 @@ function reads(
     rarity: (id) => ROWS[id]?.rarity ?? 'unknown',
     traveller: () => ({}),
     quests: { wantedBy: (found) => (found.ids?.[0] === 13 ? 'The Lost Crown' : null) },
+    choices: DEFAULT_OUTGROWN,
     ...over
   };
 }
@@ -107,6 +108,15 @@ describe('the sale on the way to the bank', () => {
     expect(sale?.shop).toBe('Junkyard');
   });
 
+  it('sells a rare stone too with Keep Rare Gear off', () => {
+    const pack = [item('rusty dagger'), item('star sapphire')];
+    const off = { choices: { ...DEFAULT_OUTGROWN, keepRare: false } };
+    // Positive control: the same pack keeps the sapphire at the shipped switch.
+    expect(saleOnTheWay(reads(pack, ALL), BANK, []).sale?.items).toEqual(['rusty dagger']);
+    const { sale } = saleOnTheWay(reads(pack, ALL, off), BANK, []);
+    expect(sale?.items.sort()).toEqual(['rusty dagger', 'star sapphire']);
+  });
+
   it('keeps an item a quest still needs, and says which quest', () => {
     const choice = saleOnTheWay(reads([item('rusty dagger'), item('old map')], ALL), BANK, []);
     expect(choice.sale?.items).toEqual(['rusty dagger']);
@@ -114,12 +124,20 @@ describe('the sale on the way to the bank', () => {
   });
 
   it('drops a counter past the detour the run allows', () => {
-    const far = tuning().cashRun.sellDetour + 1;
+    const far = DEFAULT_OUTGROWN.sellDetour + 1;
     const fake = reads([item('rusty dagger')], [place(1, 9, 'Far Smithy', far)]);
     const choice = saleOnTheWay(fake, BANK, []);
     // Positive control: the counter was asked for and found.
     expect(fake.asked).toEqual([[1]]);
     expect(choice.sale).toBeNull();
+  });
+
+  // The case above drops the same counter at the shipped detour: the positive control.
+  it('stops at it where the outgrown block allows the longer detour', () => {
+    const far = DEFAULT_OUTGROWN.sellDetour + 1;
+    const choices = { ...DEFAULT_OUTGROWN, sellDetour: far };
+    const fake = reads([item('rusty dagger')], [place(1, 9, 'Far Smithy', far)], { choices });
+    expect(saleOnTheWay(fake, BANK, []).sale?.shop).toBe('Far Smithy');
   });
 
   it('picks the counter that pays most, and the shorter detour on a tie', () => {

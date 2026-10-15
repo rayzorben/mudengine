@@ -11,6 +11,7 @@
 import { t } from '../app/i18n';
 import { standingOf, type CharacterState } from '../../shared/character';
 import type { AutomationConfig, CombatConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { occupantAttacksOnSight, rowPeaceFor, type RowPeace } from '../../shared/mobRules';
 import { mobKey } from '../../shared/world';
 import type { SessionModule } from './Module';
@@ -21,8 +22,14 @@ export type RowOverridesSettings = Pick<AutomationConfig, 'enabled'> & {
 };
 
 export interface RowOverridesEvents {
-  notice(message: string): void;
+  notice: NoticeSink;
 }
+
+/** The decision each claim stands for: a friend row leaves it alone, a not hostile one waits. */
+const PEACE_DECISION: Readonly<Record<RowPeace, DecisionKind>> = {
+  friend: 'row-stance',
+  'not-hostile': 'row-not-hostile'
+};
 
 /** The sentence for each claim a row can make over the realm. */
 function overrideWords(peace: RowPeace, target: string): string {
@@ -68,7 +75,7 @@ export class RowOverrides implements SessionModule {
       const key = mobKey(who.name);
       if (this.said.has(key)) continue;
       this.said.add(key);
-      this.events.notice(overrideWords(peace, who.name));
+      this.events.notice(overrideWords(peace, who.name), PEACE_DECISION[peace]);
     }
   }
 }

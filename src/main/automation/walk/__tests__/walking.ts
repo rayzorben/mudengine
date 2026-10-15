@@ -7,13 +7,16 @@
  */
 import { afterEach, beforeEach, vi } from 'vitest';
 
-import { CommandQueue } from '../../CommandQueue';
+import { CommandQueue, type Intent } from '../../CommandQueue';
 import { Walker } from '../../Walker';
 import type { WalkerEvents } from '../ports';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../../shared/character';
 import type { Block, BlockType } from '../../../../shared/blocks';
 import type { WalkProgress } from '../../../../shared/walk';
+import type { DecisionKind } from '../../../../shared/decisionSettings';
+import { noticeLog } from '../../__tests__/noticeLog';
+import { recordOffers } from '../../__tests__/offered';
 import type { Direction, Route, RouteStep } from '../../../../shared/world';
 import { wireExit } from '../../../../shared/entities';
 import { blockOf } from '../../../../shared/__tests__/blocks';
@@ -21,7 +24,7 @@ import { blockOf } from '../../../../shared/__tests__/blocks';
 export const CONFIG: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
   pacing: { window: 4, minGapMs: 0, ackTimeoutMs: 1000 },
-  walk: { stepTimeoutMs: 5000, clearAfterSeconds: 15, minExpPerHour: 0 },
+  walk: { ...DEFAULT_CONFIG.automation.walk, stepTimeoutMs: 5000, clearAfterSeconds: 15 },
   /*
    * Every door switch **off** here, whatever ships (`openDoors` and `bashDoors`
    * became on by default 2026-09-07). These tests are about the barrier ladder
@@ -140,6 +143,14 @@ export interface Rig {
   /** Every command that reached the wire, in order, unless `send` was given. */
   sent: string[];
   notices: string[];
+  /** The decision each notice reports, index for index with `notices`. */
+  kinds: Array<DecisionKind | undefined>;
+  /** Every intent offered to the queue, in order. */
+  offered: Intent[];
+  /** The decision the first notice reading `message` reports. */
+  kindOf(message: string): DecisionKind | undefined;
+  /** The decision the first intent offered for `command` was offered as. */
+  decisionOf(command: string): DecisionKind | undefined;
   progress: WalkProgress[];
   ends: Array<[boolean, string | null]>;
   dispose(): void;
@@ -158,12 +169,13 @@ export function rig(
   send?: (command: string) => void
 ): Rig {
   const sent: string[] = [];
-  const notices: string[] = [];
+  const { notices, kinds, notice, kindOf } = noticeLog();
   const progress: WalkProgress[] = [];
   const ends: Array<[boolean, string | null]> = [];
   const queue = new CommandQueue(config, { send: send ?? ((command) => sent.push(command)) });
+  const { intents: offered, decisionOf } = recordOffers(queue);
   const walker = new Walker(config, queue, {
-    notice: (message) => notices.push(message),
+    notice,
     progress: (now) => progress.push(now),
     ended: (arrived, reason) => ends.push([arrived, reason]),
     // Standing, as the session answers for a character that is up (todo 764).
@@ -175,6 +187,10 @@ export function rig(
     queue,
     sent,
     notices,
+    kinds,
+    offered,
+    kindOf,
+    decisionOf,
     progress,
     ends,
     dispose: () => {

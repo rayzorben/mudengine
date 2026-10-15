@@ -13,11 +13,14 @@ import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState, PartyMember } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { CommandQueue } from './CommandQueue';
 import { partyListingIntent } from './PartyListing';
 
+export const FOLLOW_UP: DecisionKind = 'party-invite-followup';
+
 export interface InviteFollowUpEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** `@join` to somebody whose invitation still stands. */
   askJoin(member: string, state: CharacterState): void;
 }
@@ -76,7 +79,9 @@ export class InviteFollowUp {
       const key = member.toLowerCase();
       const last = this.askedAt.get(key);
       if (last !== undefined && (!this.listed || (!this.owed && now - last < again))) continue;
-      if (last === undefined) this.events.notice?.(t('automation.party.askingInvited', { member }));
+      if (last === undefined) {
+        this.events.notice?.(t('automation.party.askingInvited', { member }), FOLLOW_UP);
+      }
       this.askedAt.set(key, now);
       this.events.askJoin(member, state);
     }
@@ -86,7 +91,7 @@ export class InviteFollowUp {
       this.timer = setTimeout(() => {
         this.timer = null;
         this.owed = true;
-        this.queue.enqueue(partyListingIntent(this.config));
+        this.queue.enqueue(partyListingIntent(this.config, FOLLOW_UP));
       }, again);
     }
   }

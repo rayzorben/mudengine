@@ -5,6 +5,7 @@ import type { ScheduledEvent } from '../../../shared/events';
 import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -16,19 +17,27 @@ function state(over: Partial<CharacterState> = {}): CharacterState {
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 let clock: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   clock = new Date('2026-08-27T09:00:00').getTime();
   // The queue compares expiry against Date.now(); without this the test's
   // injected clock and the fake Date drift apart by however far the real
   // clock stands from 09:00 — a test that passed all night and expired at
   // breakfast.
   vi.setSystemTime(clock);
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -53,6 +62,7 @@ describe('a timed event', () => {
     events.check();
     drain();
     expect(sent).toEqual(['party']);
+    expect(kinds).toEqual(['event']);
   });
 
   /* Fed no state while down, so the clock asks (todo 755). */

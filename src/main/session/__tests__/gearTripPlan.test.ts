@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { t } from '../../app/i18n';
-import { tuning } from '../../app/tuning';
 import { planGearTrip, type GearPlanParts } from '../gearTripPlan';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { chargedInCopper } from '../../../shared/coins';
+import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { BuyingPlace, CashPlace, PlanFight, RoomId, Route } from '../../../shared/world';
 
 /** A corridor `1/0`..`1/9`: the character at `1/0`, the armoury at `1/3`, a smithy at `1/6`, a bank at `1/2`. */
@@ -36,7 +36,9 @@ const FIGHT: PlanFight = {
   odds: { kind: 'unread' }
 };
 
-function parts(purse: number | null): GearPlanParts {
+const BUFFER = DEFAULT_CONFIG.automation.supplies.cashBuffer;
+
+function parts(purse: number | null, cashBuffer = BUFFER): GearPlanParts {
   const state: CharacterState = {
     ...structuredClone(EMPTY_CHARACTER),
     room: { ...EMPTY_CHARACTER.room, map: 1, number: 0 },
@@ -44,6 +46,7 @@ function parts(purse: number | null): GearPlanParts {
     progress: { ...EMPTY_CHARACTER.progress, charm: 50 }
   };
   return {
+    config: () => ({ supplies: { cashBuffer } }),
     state: () => state,
     world: () => ({
       stockingPlaces: (items) =>
@@ -99,7 +102,13 @@ describe('planning a gear trip', () => {
     const plan = await planGearTrip(parts(100), PICKS);
     const bank = plan.stops[0];
     expect(bank?.kind).toBe('bank');
-    expect(bank?.kind === 'bank' && bank.withdraw).toBe(2000 - 100 + tuning().supplies.cashBuffer);
+    expect(bank?.kind === 'bank' && bank.withdraw).toBe(2000 - 100 + BUFFER);
+  });
+
+  it('draws exactly the shortfall with the supplies buffer at 0', async () => {
+    const plan = await planGearTrip(parts(100, 0), PICKS);
+    const bank = plan.stops[0];
+    expect(bank?.kind === 'bank' && bank.withdraw).toBe(2000 - 100);
   });
 
   it('walks to no vault while the purse is unread', async () => {

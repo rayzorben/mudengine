@@ -10,7 +10,6 @@
  * not how you escape*.
  */
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import {
   PVP_WINDOW_MS,
   playersHere,
@@ -30,9 +29,13 @@ import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { nakedAfterDeath } from '../../shared/gearLocks';
 import { stanceHere } from '../../shared/mobRules';
 import type { ConnectionEnd } from '../../shared/types';
+
+const HANG_UP: DecisionKind = 'hang-up';
+const GANG: DecisionKind = 'pvp-gang';
 
 /** What the two decisions read, and the one escape they hand on. */
 export interface SafetyParts {
@@ -57,7 +60,7 @@ export interface SafetySession {
   config(): AutomationConfig;
   /** Hang up, and record who asked. See `SessionManager.disconnect`. */
   disconnect(by: ConnectionEnd): void;
-  notice(message: string): void;
+  notice: NoticeSink;
 }
 
 export class Safety implements SessionModule {
@@ -184,7 +187,7 @@ export class Safety implements SessionModule {
           ? state.online.find((entry) => entry.name.toLowerCase() === state.name?.toLowerCase())
           : undefined;
         if (own !== undefined && (own.gang === null || own.gang.length === 0)) {
-          this.session.notice(t('session.safety.pvpNoGang', { attacker }));
+          this.session.notice(t('session.safety.pvpNoGang', { attacker }), GANG);
           this.publisher.noteSafety({
             at,
             action: 'pvp-alert',
@@ -199,7 +202,7 @@ export class Safety implements SessionModule {
           if (state.room.name) parts.push(`at ${state.room.name}`);
           const { hp, hpMax } = state.vitals;
           if (hp !== null) parts.push(hpMax !== null ? `[HP=${hp}/${hpMax}]` : `[HP=${hp}]`);
-          this.session.notice(t('session.safety.pvpAlerted', { attacker }));
+          this.session.notice(t('session.safety.pvpAlerted', { attacker }), GANG);
           this.publisher.noteSafety({
             at,
             action: 'pvp-alert',
@@ -210,7 +213,8 @@ export class Safety implements SessionModule {
             command: `bg ${parts.join(' ')}`,
             priority: 'combat',
             coalesceKey: 'pvp-gang-alert',
-            reason: t('session.safety.pvpAlertReason', { attacker })
+            reason: t('session.safety.pvpAlertReason', { attacker }),
+            decision: GANG
           });
         }
       }
@@ -242,7 +246,8 @@ export class Safety implements SessionModule {
         t('session.safety.pvpHangUpLater', {
           attacker,
           minutes: Math.ceil(PVP_WINDOW_MS / 60_000)
-        })
+        }),
+        'hang-up-pvp'
       );
   }
 
@@ -263,7 +268,7 @@ export class Safety implements SessionModule {
     if (key !== this.protectedSaid) {
       this.protectedSaid = key;
       const why = whyStalker(state, stalker);
-      this.session.notice(t('session.safety.hangUpSafeRoom', { why }));
+      this.session.notice(t('session.safety.hangUpSafeRoom', { why }), HANG_UP);
       this.publisher.noteSafety({
         at: Date.now(),
         action: 'hang up',
@@ -282,7 +287,8 @@ export class Safety implements SessionModule {
     this.session.notice(
       chosen.percent > 0
         ? t('session.safety.realmCharges', { realm: chosen.realm, percent: chosen.percent })
-        : t('session.safety.realmChargesNothing', { realm: chosen.realm })
+        : t('session.safety.realmChargesNothing', { realm: chosen.realm }),
+      'realm-penalty'
     );
   }
 
@@ -316,7 +322,8 @@ export class Safety implements SessionModule {
       Date.now() >= this.pvpHangUp.at &&
       this.hangUpOrRefuse(
         state,
-        t('session.safety.whyPvpOver', { attacker: this.pvpHangUp.attacker })
+        t('session.safety.whyPvpOver', { attacker: this.pvpHangUp.attacker }),
+        'hang-up-pvp'
       )
     )
       return;
@@ -333,16 +340,16 @@ export class Safety implements SessionModule {
     /*
      * Naked after a death with nobody at the keyboard, somewhere a hang-up
      * would be charged for a monster or a player: MegaMUD's `HangupNaked`,
-     * with no setting, Auto-Hangup off included (todo 79). In a charged realm
+     * under its own switch, Auto-Hangup off included (todos 79, 118). In a charged realm
      * the room that makes it dangerous is the room that makes it charged, so
      * it goes there only while health covers the charge the realm menu
      * stated (`nakedPaysTheCharge`); a naked character has no items to lose.
      */
-    if (this.nakedAndAway(state)) {
+    if (safety.whenNaked && this.nakedAndAway(state)) {
       const why = t('session.safety.whyNaked');
       const paid = this.nakedPaysTheCharge(state, why);
-      if (paid === null) this.hangUpOrRefuse(state, why);
-      else this.hangUpNow(why, paid);
+      if (paid === null) this.hangUpOrRefuse(state, why, 'hang-up-naked');
+      else this.hangUpNow(why, paid, 'hang-up-naked');
       return;
     }
     if (!safety.enabled) {
@@ -373,11 +380,21 @@ export class Safety implements SessionModule {
     if (this.waitForTheRun(why)) return;
     // Health alone: a player or a `hangup` row is a reason the run did not answer.
     if (!company && stalker === null && this.theRunGotOut(state, why)) return;
-    this.hangUpOrRefuse(state, why);
+    this.hangUpOrRefuse(state, why, HANG_UP);
+  }
+
+  /**
+   * Another player's `@hangup`, `@relog` or `@panic!`, granted and let through
+   * (todo 118): the same hang-up, under the same charge refusals, as the
+   * client's own. True when it hung up.
+   */
+  hangUpAsked(why: string, decision?: DecisionKind): boolean {
+    const state = this.tracker.current;
+    return this.mayAct(state) && this.hangUpOrRefuse(state, why, decision);
   }
 
   /** Hang up for `why`, or say once why a charge refuses it here. True when it hung up. */
-  private hangUpOrRefuse(state: CharacterState, why: string): boolean {
+  private hangUpOrRefuse(state: CharacterState, why: string, decision?: DecisionKind): boolean {
     const refusal = this.refusedHere(state);
     if (refusal !== null) {
       // Once per reason-set, not once per status line: at low health this runs
@@ -386,7 +403,8 @@ export class Safety implements SessionModule {
       if (key !== this.lastHangUpRefusal) {
         this.lastHangUpRefusal = key;
         this.session.notice(
-          t('session.safety.hangUpRefused', { why, reasons: refusal.reasons.join('; ') })
+          t('session.safety.hangUpRefused', { why, reasons: refusal.reasons.join('; ') }),
+          decision
         );
         this.publisher.noteSafety({
           at: Date.now(),
@@ -406,15 +424,16 @@ export class Safety implements SessionModule {
         ? t('session.safety.hangingUpClean', { why })
         : menu !== null
           ? t('session.safety.hangingUpUncharged', { why, realm: menu.realm })
-          : t('session.safety.hangingUpUnchargedSetting', { why })
+          : t('session.safety.hangingUpUnchargedSetting', { why }),
+      decision
     );
     return true;
   }
 
   /** Hang up for `why`, saying `notice`. */
-  private hangUpNow(why: string, notice: string): void {
+  private hangUpNow(why: string, notice: string, decision?: DecisionKind): void {
     this.lastHangUpRefusal = null;
-    this.session.notice(notice);
+    this.session.notice(notice, decision);
     this.publisher.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
     // Through the same path the player's own disconnect takes, so the phase,
     // the walker, the queue and the roster are all torn down identically —
@@ -441,7 +460,7 @@ export class Safety implements SessionModule {
 
   /**
    * The notice for a naked hang-up in a charged realm whose menu stated the
-   * charge, while health stays `nakedHangMargin` of maximum above it; null
+   * charge, while health stays `hangUp.nakedMargin` of maximum above it; null
    * where the charge refuses it as any other hang-up. A setting saying the
    * realm charges names no figure, so it always refuses.
    */
@@ -449,7 +468,7 @@ export class Safety implements SessionModule {
     const menu = this.realmMenu.penalty;
     if (menu === null || menu.percent <= 0) return null;
     const fraction = healthFraction(state);
-    const margin = tuning().session.nakedHangMargin;
+    const margin = this.automationConfig.safety.hangUp.nakedMargin;
     if (fraction === null || fraction - menu.percent / 100 < margin) return null;
     return t('session.safety.hangingUpNakedCharged', {
       why,
@@ -475,7 +494,7 @@ export class Safety implements SessionModule {
 
   /**
    * Whether the hang-up waits for a run on the wire to land, at most
-   * `hangUpAfterRunMs`. The run goes first and the hang-up decides on its
+   * `hangUp.afterRunSeconds`. The run goes first and the hang-up decides on its
    * answer (`settleTheRun`): festus ran `ne` and hung up in the same
    * millisecond at 29%, with no chance to see whether the run got him out.
    */
@@ -485,7 +504,7 @@ export class Safety implements SessionModule {
     if (this.runWaited === null) {
       this.runWaited = { since: now, landings: this.travel.landings };
       const refused = t('session.safety.hangUpAfterRun', { why });
-      this.session.notice(refused);
+      this.session.notice(refused, HANG_UP);
       this.publisher.noteSafety({
         at: now,
         action: 'hang up',
@@ -494,7 +513,7 @@ export class Safety implements SessionModule {
         refused
       });
     }
-    return now - this.runWaited.since < tuning().session.hangUpAfterRunMs;
+    return now - this.runWaited.since < this.automationConfig.safety.hangUp.afterRunSeconds * 1000;
   }
 
   /**
@@ -528,7 +547,7 @@ export class Safety implements SessionModule {
       return true;
     }
     this.gotOut = null;
-    this.session.notice(t('session.safety.hangUpRunCaught', { why }));
+    this.session.notice(t('session.safety.hangUpRunCaught', { why }), HANG_UP);
     return false;
   }
 
@@ -600,7 +619,7 @@ export class Safety implements SessionModule {
 
   /** A hang-up that stays off for a reason that is not a charge: said and traced. */
   private sayNotHangingUp(why: string, refused: string): void {
-    this.session.notice(t('session.safety.hangUpNotBut', { why, refused }));
+    this.session.notice(t('session.safety.hangUpNotBut', { why, refused }), HANG_UP);
     this.publisher.noteSafety({
       at: Date.now(),
       action: 'hang up',
@@ -621,7 +640,7 @@ export class Safety implements SessionModule {
     if (stalker === null) return;
     const why = whyStalker(state, stalker);
     const reason = t('session.safety.hangUpOffReason');
-    this.session.notice(t('session.safety.hangUpSwitchedOff', { why, reason }));
+    this.session.notice(t('session.safety.hangUpSwitchedOff', { why, reason }), HANG_UP);
     this.publisher.noteSafety({
       at: Date.now(),
       action: 'hang up',

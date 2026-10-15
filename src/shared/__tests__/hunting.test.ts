@@ -25,9 +25,13 @@ import {
   type SpotInput,
   type SpotMob
 } from '../hunting';
+import { DEFAULT_HUNT_CHOICES } from '../huntChoices';
 import { DEFAULT_INTERNAL } from '../internal';
 
-const C: HuntingConstants = atSpeed(DEFAULT_INTERNAL.tuning.hunting, 1);
+const C: HuntingConstants = {
+  ...atSpeed(DEFAULT_INTERNAL.tuning.hunting, 1),
+  ...DEFAULT_HUNT_CHOICES
+};
 
 /*
  * `Room.GetDelayInSeconds`: minutes, except an Arena room and a negative
@@ -50,7 +54,7 @@ describe('the respawn clock', () => {
 
   /* `GameSpeed`: a realm at 5 runs every clock five times as fast, a stated `Delay` with them. */
   it('reads a stated delay at the realm’s speed', () => {
-    const fast = atSpeed(DEFAULT_INTERNAL.tuning.hunting, 5);
+    const fast = { ...atSpeed(DEFAULT_INTERNAL.tuning.hunting, 5), ...DEFAULT_HUNT_CHOICES };
     expect(fast).toMatchObject({ roundSeconds: 1, restTickSeconds: 3, roomRegenSeconds: 121 / 5 });
     expect(respawnSeconds(2, 'majormud', fast)).toBe(24);
     expect(respawnSeconds(2, 'greatermud', fast)).toBe(18);

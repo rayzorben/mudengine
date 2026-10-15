@@ -172,8 +172,8 @@ export class FightSetup {
       recasts: at === 'rested' ? [] : this.recasts(state, roundCap),
       retreat: this.retreat(state, family, at),
       levels: {
-        safeAbove: tuning().menace.survivalSafeAbove,
-        riskyAbove: tuning().menace.survivalRiskyAbove
+        safeAbove: this.session.config().combat.safeOddsAbove,
+        riskyAbove: this.session.config().combat.riskyOddsAbove
       },
       trials: tuning().menace.survivalTrials,
       roundCap,
@@ -244,7 +244,7 @@ export class FightSetup {
    * what a fight's odds move with that the sheet does not show.
    */
   settingsKey(state: CharacterState): string {
-    const { spells } = this.session.config();
+    const { spells, combat } = this.session.config();
     return [
       JSON.stringify(this.up(state)),
       JSON.stringify(this.retreat(state, this.errands.realmClass().family, 'rested')),
@@ -257,6 +257,9 @@ export class FightSetup {
       healFloor(spells, true),
       spells.attack,
       spells.autoChoose,
+      spells.killConfidence,
+      combat.safeOddsAbove,
+      combat.riskyOddsAbove,
       state.spellbook?.length ?? -1,
       state.vitals.hpMax,
       state.vitals.manaMax,

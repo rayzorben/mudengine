@@ -520,7 +520,8 @@ export class Holds {
     this.walk.stop(
       this.resumeAfterFight
         ? t('automation.walk.reasonFightUnending')
-        : t('automation.walk.reasonCombat')
+        : t('automation.walk.reasonCombat'),
+      'walk-fight-hold'
     );
     return true;
   }
@@ -675,7 +676,10 @@ export class Holds {
        * on a command the server never answered.
        */
       if (spent >= patience) {
-        this.walk.stop(t('automation.walk.reasonMoveUnanswered', { command: step.command }));
+        this.walk.stop(
+          t('automation.walk.reasonMoveUnanswered', { command: step.command }),
+          'walk-move-unanswered'
+        );
       } else this.reaskAfter();
       return;
     }
@@ -854,7 +858,8 @@ export class Holds {
       this.hold = 'resting';
       // Said, because a lap that pauses for a second should say why — the rule
       // every other hold here follows. Once per hold, not once per beat.
-      if (!this.walk.quiet()) this.events.notice?.(t('automation.walk.restHolding'));
+      if (!this.walk.quiet())
+        this.events.notice?.(t('automation.walk.restHolding'), 'walk-rest-hold');
       this.walk.publish();
     }
 
@@ -933,7 +938,8 @@ export class Holds {
     if (this.darkSince === null) {
       if (this.events.lightComing?.(state) !== true) return false;
       this.darkSince = Date.now();
-      if (!this.walk.quiet()) this.events.notice?.(t('automation.walk.holdingDark'));
+      if (!this.walk.quiet())
+        this.events.notice?.(t('automation.walk.holdingDark'), 'walk-dark-hold');
     }
     if (this.hold !== 'dark') {
       this.hold = 'dark';
@@ -988,7 +994,8 @@ export class Holds {
     this.darkSince = null;
     if (this.hold !== 'dark') return;
     this.hold = null;
-    if (!this.walk.quiet()) this.events.notice?.(t('automation.walk.lightResumed'));
+    if (!this.walk.quiet())
+      this.events.notice?.(t('automation.walk.lightResumed'), 'walk-dark-hold');
     this.walk.publish();
   }
 
@@ -1091,7 +1098,7 @@ export class Holds {
       if (isAfflictionHold(this.hold)) {
         this.hold = null;
         if (!this.walk.quiet() && !spent)
-          this.events.notice?.(t('automation.walk.afflictionResumed'));
+          this.events.notice?.(t('automation.walk.afflictionResumed'), 'walk-affliction-hold');
         this.walk.publish();
       }
       this.heldSince = null;
@@ -1101,7 +1108,7 @@ export class Holds {
     this.heldSince ??= Date.now();
     if (this.hold !== reason) {
       this.hold = reason;
-      if (!this.walk.quiet()) this.events.notice?.(holdingSentence(reason));
+      if (!this.walk.quiet()) this.events.notice?.(holdingSentence(reason), 'walk-affliction-hold');
       this.walk.publish();
     }
     this.walk.retryAfter(tuning().walk.holdMs, state);
@@ -1139,7 +1146,10 @@ export class Holds {
         this.hold = null;
         this.trapFloor = null;
         if (!this.walk.quiet() && step !== undefined) {
-          this.events.notice?.(t('automation.walk.trapResumed', { stepName: step.name }));
+          this.events.notice?.(
+            t('automation.walk.trapResumed', { stepName: step.name }),
+            'walk-trap-rest'
+          );
         }
         this.walk.publish();
       }
@@ -1156,7 +1166,8 @@ export class Holds {
             damage: trapOn(step)?.damage ?? 0,
             needed: floor,
             hp
-          })
+          }),
+          'walk-trap-rest'
         );
       }
       this.walk.publish();

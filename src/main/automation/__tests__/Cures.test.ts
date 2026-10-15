@@ -11,6 +11,7 @@ import {
   type Afflictions,
   type CharacterState
 } from '../../../shared/character';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -39,11 +40,19 @@ function state(afflictions: Partial<Afflictions>, vitals: Partial<CharacterState
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -55,6 +64,7 @@ describe('curing by a sentence', () => {
     const cures = new Cures(spells(), true, queue);
     cures.onCharacter(state({ poisoned: 'yes' }));
     expect(sent).toEqual(['cure poison']);
+    expect(kinds).toEqual(['cure-self']);
     cures.onCharacter(state({ poisoned: 'yes', blind: 'yes', diseased: 'yes' }));
     expect(sent).toEqual(['cure poison', 'cure blindness', 'cure disease']);
   });

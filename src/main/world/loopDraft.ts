@@ -282,7 +282,13 @@ function fingerprint(traveller: Traveller): string {
     // changes which doors a draft can walk through.
     traveller.forcing === undefined
       ? ''
-      : `${traveller.forcing.pick ? 'p' : ''}${traveller.forcing.bash ? 'b' : ''}`,
+      : (['pick', 'bash', 'search', 'levers', 'disarm'] as const)
+          .filter((how) => traveller.forcing![how])
+          .join(','),
+    // And what its settings price a fight and a lair at; a draft never asks for Another way.
+    traveller.prices === undefined
+      ? ''
+      : `${traveller.prices.fightCost}/${traveller.prices.dangerCost}`,
     // And what it keeps out of: a word added changes which ways a draft walks.
     (traveller.keepOut?.words ?? []).join('\n'),
     (traveller.keepOut?.allowed ?? []).join('\n'),

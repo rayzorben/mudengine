@@ -28,7 +28,7 @@ import Icon from './Icon';
 import { InventoryBody, type InventoryBodyProps } from './InventoryCard';
 import { findAction } from './findAction';
 import type { CharacterState } from '@shared/character';
-import type { SupplyItem } from '@shared/config';
+import { type SupplyItem } from '@shared/packConfig';
 import type { SessionId } from '@shared/ipc';
 import { CAN_SEE_FROM, lightPhrase } from '@shared/light';
 import { carriedCount, type SupplyCounter } from '@shared/supplies';

@@ -32,6 +32,9 @@ import { fileSlug } from './files';
 import { asRoomReference, type RoomId, type RoomReference } from './world';
 import type { AfflictionHold } from './walk';
 
+/** The longest a stop's `linger` may be, in seconds. */
+export const LINGER_MAX_SECONDS = 600;
+
 /** One place a loop visits, named the way a person would say it. */
 export interface LoopStop {
   /**
@@ -382,7 +385,7 @@ function asStops(value: unknown, limit?: number): LoopStop[] {
     stops.push({
       room,
       ...(typeof linger === 'number' && Number.isFinite(linger) && linger > 0
-        ? { linger: Math.min(600, Math.round(linger)) }
+        ? { linger: Math.min(LINGER_MAX_SECONDS, Math.round(linger)) }
         : {}),
       /*
        * No ceiling, unlike `linger`: a linger is time the character stands

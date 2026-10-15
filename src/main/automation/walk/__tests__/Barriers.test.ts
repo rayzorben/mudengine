@@ -69,6 +69,27 @@ describe('when Walker asks the ladder', () => {
     const other = walkerOn({ stateNow: () => calm });
     other.walker.start(hidden, calm);
     expect(other.sent).toEqual(['search e']);
+    expect(other.decisionOf('search e')).toBe('hidden-search');
+  });
+
+  // Auto-Search Hidden Exits off (todo 118): the room the control above searches, unsearched.
+  it('sends no search with Auto-Search Hidden Exits off, and stops at the refusal', () => {
+    const hidden = routeOf(
+      stepOf(1, 2, 'e', {
+        requirement: { kind: 'hidden', raw: 'Hidden/Searchable', searchable: true }
+      })
+    );
+    const calm = printing(1, [['n', null]]);
+    const off = configWith({ movement: { searchHidden: false } });
+    const { walker, sent, notices, kindOf } = walkerOn({ stateNow: () => calm }, off);
+    walker.start(hidden, calm);
+    expect(sent).toEqual(['e']);
+    walker.onBlock(wire('direction-failed'));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['e']);
+    const switchedOff = t('automation.walk.searchSwitchedOff', { stepName: 'Room 2' });
+    expect(notices).toContain(switchedOff);
+    expect(kindOf(switchedOff)).toBe('hidden-search');
   });
 
   // Mutant: the shut door opened before the light is asked for.
@@ -90,7 +111,7 @@ describe('when Walker asks the ladder', () => {
 
   // Mutant: the skills kept only while walking.
   it('grades a door against a sheet read before the walk began', () => {
-    const { walker, sent } = walkerOn(
+    const { walker, sent, decisionOf } = walkerOn(
       {},
       configWith({ movement: { bashDoors: true, bashTries: 1 } })
     );
@@ -99,16 +120,19 @@ describe('when Walker asks the ladder', () => {
     walker.onBlock(wire('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
     expect(moves(sent)).toEqual(['e', 'bas e']);
+    expect(decisionOf('bas e')).toBe('door-bash');
   });
 
   // Mutant: configure not handed on to the ladder.
   it('opens doors once the configuration says to', () => {
-    const { walker, sent } = walkerOn();
+    const { walker, sent, decisionOf } = walkerOn();
     walker.configure(configWith({ movement: { openDoors: true, openTries: 1 } }));
     walker.start(ROUTE, at(1, 1));
     walker.onBlock(wire('direction-failed', { barrier: 'door' }));
     vi.advanceTimersByTime(200);
     expect(moves(sent)).toEqual(['e', 'open e']);
+    expect(decisionOf('open e')).toBe('door-open');
+    expect(decisionOf('e')).toBeUndefined();
   });
 });
 
@@ -134,7 +158,7 @@ describe('what the ladder remembers, let go', () => {
 
   // Mutants: the landing does not pass the door; passing it keeps the rounds.
   it('stands at the next door for rounds of its own, and says so again', () => {
-    const { walker, notices } = walkerOn();
+    const { walker, notices, kindOf } = walkerOn();
     const holding = t('automation.walk.barrierHolding', {
       barrier: 'door',
       detail: t('automation.walk.barrierNotAllowed')
@@ -142,6 +166,7 @@ describe('what the ladder remembers, let go', () => {
     walker.start(ROUTE, at(1, 1));
     walker.onBlock(wire('direction-failed', { barrier: 'door' }));
     expect(notices.filter((line) => line === holding)).toHaveLength(1);
+    expect(kindOf(holding)).toBe('door-stop');
     vi.advanceTimersByTime(TUNING.walk.barrierRetryMs + 200);
     walker.onCharacter(at(1, 2));
     settle();

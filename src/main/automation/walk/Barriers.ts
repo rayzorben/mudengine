@@ -45,6 +45,7 @@ import type { Holds } from './Holds';
 import type { Levers } from './Levers';
 import { jobCommand } from '../../../shared/barrierHands';
 import type { PartyHands } from './PartyHands';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 /**
  * The attempt on a barrier that is on the wire, while it is.
@@ -53,6 +54,13 @@ import type { PartyHands } from './PartyHands';
  * next rung, and the step is no longer queued behind it — see `sendOpen`.
  */
 type Forcing = 'bash' | 'pick' | 'open' | 'key';
+
+/** The setting behind a forcing attempt; a key the route planned for is not one a switch governs. */
+const FORCING_DECISION: Record<Exclude<Forcing, 'open'>, DecisionKind | undefined> = {
+  bash: 'door-bash',
+  pick: 'door-pick',
+  key: undefined
+};
 
 /** What the barrier ladder asks of the walk it stands still, answered by `Walker`. */
 export interface BarriersWalk extends Pick<
@@ -66,13 +74,19 @@ export interface BarriersWalk extends Pick<
    * it is on the wire, and its answer waited for after. `onSent` is the
    * step's own unless said otherwise.
    */
-  dispatch(step: RouteStep, command: string, reason: string, onSent?: () => void): void;
+  dispatch(
+    step: RouteStep,
+    command: string,
+    reason: string,
+    onSent?: () => void,
+    decision?: DecisionKind
+  ): void;
   /** The step's command reached the wire; false for one the walk has moved past. */
   onWire(step: RouteStep): boolean;
   /** How long to give the server before asking it to say something. */
   nudgeAfter(): number;
   /** One bare Enter on the nudge's own key: the room reprinted. */
-  reprint(reason: string): void;
+  reprint(reason: string, decision: DecisionKind): void;
 }
 
 export type BarriersEvents = Pick<
@@ -163,6 +177,8 @@ export class Barriers {
    * always speaks; see `holdSearching` for why it speaks again.
    */
   private searchSaidAt = 0;
+  /** Whether this step's switched-off search has been said. Said once. */
+  private searchOffSaid = false;
   /**
    * The forcing attempt on the wire, if one is.
    *
@@ -452,6 +468,17 @@ export class Barriers {
   private searchFor(step: RouteStep): boolean {
     const need = step.requirement;
     if (need?.kind !== 'hidden' || need.searchable !== true) return false;
+    // Auto-Search Hidden Exits off: the route stops here, and says which switch once.
+    if (!this.config.movement.searchHidden) {
+      if (!this.searchOffSaid && !this.walk.quiet()) {
+        this.events.notice?.(
+          t('automation.walk.searchSwitchedOff', { stepName: step.name }),
+          'hidden-search'
+        );
+      }
+      this.searchOffSaid = true;
+      return false;
+    }
     this.holdSearching(step);
     return true;
   }
@@ -475,7 +502,10 @@ export class Barriers {
     const now = Date.now();
     if (!this.walk.quiet() && now - this.searchSaidAt >= tuning().walk.searchSayEveryMs) {
       this.searchSaidAt = now;
-      this.events.notice?.(t('automation.walk.searchHolding', { stepName: step.name }));
+      this.events.notice?.(
+        t('automation.walk.searchHolding', { stepName: step.name }),
+        'hidden-search'
+      );
     }
     this.searched += 1;
     this.queue.enqueue({
@@ -492,7 +522,8 @@ export class Barriers {
        * search of a different way is a different intent.
        */
       coalesceKey: `walk:search:${step.direction}`,
-      reason: t('automation.walk.reasonSearching', { stepName: step.name })
+      reason: t('automation.walk.reasonSearching', { stepName: step.name }),
+      decision: 'hidden-search'
     });
     this.armSearchBeat();
   }
@@ -584,7 +615,10 @@ export class Barriers {
     // On the step nudge's key: both are *make the server reprint this room*,
     // and two bare Enters queued together would be one wasted and one
     // resolved against a step it does not answer.
-    this.walk.reprint(t('automation.walk.reasonRereading', { stepName: step.name }));
+    this.walk.reprint(
+      t('automation.walk.reasonRereading', { stepName: step.name }),
+      'hidden-search'
+    );
     this.armSearchBeat();
   }
 
@@ -607,6 +641,7 @@ export class Barriers {
   mustSearchFirst(state: CharacterState, step: RouteStep): boolean {
     const need = step.requirement;
     if (need?.kind !== 'hidden' || need.searchable !== true) return false;
+    if (!this.config.movement.searchHidden) return false;
     // The server said it found this one. That outranks reading it back off a
     // list the client may not be able to parse -- see `found`.
     if (this.found) return false;
@@ -744,7 +779,8 @@ export class Barriers {
         reason: t('automation.walk.reasonOpening', {
           barrier: t('automation.walk.fallbackBarrier'),
           stepName: step.name
-        })
+        }),
+        decision: 'door-open'
       });
     }
     this.walk.stepAgain();
@@ -763,7 +799,7 @@ export class Barriers {
     const { movement } = this.config;
     const need = step.requirement;
     const stated = barrierStated(need);
-    const { pickMargin, bashMargin } = tuning().walk;
+    const { pickMargin, bashMargin } = movement;
     const jobs = [
       {
         job: 'pick',
@@ -879,7 +915,7 @@ export class Barriers {
     if (
       movement.pickLocks &&
       this.picked < movement.pickTries &&
-      canPick(need?.pickDifficulty, this.picklocks, tuning().walk.pickMargin, stated)
+      canPick(need?.pickDifficulty, this.picklocks, movement.pickMargin, stated)
     ) {
       this.picked += 1;
       this.sendForcing('pick', jobCommand('pick', step.direction), step, barrier);
@@ -889,7 +925,7 @@ export class Barriers {
       movement.bashDoors &&
       this.bashed < movement.bashTries &&
       !this.tooHurtToBash() &&
-      meetsBarrier(need?.bashDifficulty, this.strength, tuning().walk.bashMargin, stated)
+      meetsBarrier(need?.bashDifficulty, this.strength, movement.bashMargin, stated)
     ) {
       this.bashed += 1;
       this.sendForcing('bash', jobCommand('bash', step.direction), step, barrier);
@@ -968,7 +1004,8 @@ export class Barriers {
     }
     if (this.barrierRounds === 0 && !this.walk.quiet()) {
       this.events.notice?.(
-        t('automation.walk.barrierHolding', { barrier, detail: this.barrierDetail(step) })
+        t('automation.walk.barrierHolding', { barrier, detail: this.barrierDetail(step) }),
+        'door-stop'
       );
     }
     this.barrierRounds += 1;
@@ -1007,7 +1044,8 @@ export class Barriers {
       step,
       `open ${step.direction}`,
       t('automation.walk.reasonOpening', { barrier, stepName: step.name }),
-      () => this.noteOpenSent(step)
+      () => this.noteOpenSent(step),
+      'door-open'
     );
   }
 
@@ -1059,7 +1097,9 @@ export class Barriers {
         ? t('automation.walk.reasonPicking', { barrier, stepName: step.name })
         : kind === 'key'
           ? t('automation.walk.reasonUnlocking', { barrier, stepName: step.name })
-          : t('automation.walk.reasonBashing', { barrier, stepName: step.name })
+          : t('automation.walk.reasonBashing', { barrier, stepName: step.name }),
+      undefined,
+      FORCING_DECISION[kind]
     );
   }
 
@@ -1089,7 +1129,8 @@ export class Barriers {
         barrier,
         command,
         detail: this.barrierDetail(step)
-      })
+      }),
+      'door-stop'
     );
   }
 
@@ -1129,6 +1170,7 @@ export class Barriers {
     this.keyed = false;
     this.searched = 0;
     this.searchSaidAt = 0;
+    this.searchOffSaid = false;
     this.found = false;
     this.levers.forgetPulls();
     this.forcing = null;

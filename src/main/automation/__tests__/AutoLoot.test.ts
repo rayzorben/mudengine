@@ -4,16 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutoLoot } from '../AutoLoot';
 import { FloorAfterKill } from '../FloorAfterKill';
 import { CommandQueue } from '../CommandQueue';
-import {
-  DEFAULT_CONFIG,
-  type AutomationConfig,
-  type LootConfig,
-  type SuppliesConfig
-} from '../../../shared/config';
+import { DEFAULT_CONFIG, type AutomationConfig, type LootConfig } from '../../../shared/config';
+import { DEFAULT_SUPPLIES, type SuppliesConfig } from '../../../shared/packConfig';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
 import type { FloorGear } from '../../../shared/upgrades';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { tradeWords } from '../../../shared/gearWeighing';
 import { t } from '../../app/i18n';
 import { REREAD_ROOM } from '../../../shared/commands';
@@ -52,6 +49,8 @@ function state(over: Partial<CharacterState['vitals']> = {}): CharacterState {
 }
 
 let sent: string[];
+/** The decision each sent command was offered as, in send order. */
+let kinds: Array<DecisionKind | undefined>;
 let queue: CommandQueue;
 /**
  * The claims the commands sent are waiting on, filed as the session files
@@ -63,8 +62,9 @@ let tracker: CharacterTracker;
 /** A queue whose sends reach the tracker as `SessionManager`'s do. */
 function queueOf(config: AutomationConfig): CommandQueue {
   return new CommandQueue(config, {
-    send: (command) => {
+    send: (command, intent) => {
       sent.push(command);
+      kinds.push(intent.decision);
       if (command.length > 0) tracker.observeCommand(command);
       else tracker.observeReread();
     }
@@ -74,6 +74,7 @@ function queueOf(config: AutomationConfig): CommandQueue {
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   tracker = new CharacterTracker();
   // In the realm, where an Enter files a claim on the room it reprints.
   tracker.apply({ ...block('status-line'), text: '[HP=80/KAI=5]:' });
@@ -86,7 +87,7 @@ afterEach(() => {
 });
 
 /** A supplies list with nothing on it, which is what most of these cases want. */
-const NO_SUPPLIES: SuppliesConfig = { enabled: false, items: [] };
+const NO_SUPPLIES: SuppliesConfig = { ...DEFAULT_SUPPLIES, enabled: false };
 
 let notices: string[] = [];
 /** On the ground, as `Grounded.down` answers it (todo 760). */
@@ -148,6 +149,7 @@ describe('coins on the floor', () => {
     auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
     drain();
     expect(sent).toEqual(['get gold']);
+    expect(kinds).toEqual(['loot-coins']);
   });
 
   // Todo 830: on a realm that calls runic coins dime bags, `get dime`.
@@ -235,6 +237,7 @@ describe('cash a search turned up', () => {
     );
     drain();
     expect(sent).toEqual(['get 4 copper']);
+    expect(kinds).toEqual(['loot-hidden-coins']);
   });
 
   /*
@@ -336,7 +339,11 @@ describe('named items', () => {
  * is found; a torch is both bought and found.
  */
 describe('a supply found on the floor', () => {
-  const stocking = (items: SuppliesConfig['items']): SuppliesConfig => ({ enabled: true, items });
+  const stocking = (items: SuppliesConfig['items']): SuppliesConfig => ({
+    ...DEFAULT_SUPPLIES,
+    enabled: true,
+    items
+  });
   const supply = (
     name: string,
     min: number,
@@ -424,6 +431,7 @@ describe('a supply found on the floor', () => {
 
   it('takes nothing off a list that is switched off', () => {
     const auto = make(loot(), true, {
+      ...DEFAULT_SUPPLIES,
       enabled: false,
       items: [supply('black star key', 2, 2)]
     });
@@ -898,6 +906,7 @@ describe('reading the floor after a kill', () => {
       };
     };
     const auto = make(loot({ upgrades: false }), true, {
+      ...DEFAULT_SUPPLIES,
       enabled: true,
       items: [{ name: 'torch', min: 2, max: 4, shop: '', at: null }]
     });

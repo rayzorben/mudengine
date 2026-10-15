@@ -8,8 +8,11 @@ import Icon from './Icon';
 
 import { t } from '../lib/i18n';
 import type { LoginStepDraft } from '@shared/drafts';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export interface LoginStepRowsProps {
+  /** The setting the list edits whole, for a console line's gear (todo 119). */
+  setting?: SettingPath;
   steps: LoginStepDraft[];
   onChange(steps: LoginStepDraft[]): void;
   /** Each form words its own, the realm's naming the realm and a character's the character. */
@@ -18,16 +21,16 @@ export interface LoginStepRowsProps {
 }
 
 export default function LoginStepRows({
+  setting,
   steps,
   onChange,
   whenPlaceholder,
   sendPlaceholder
 }: LoginStepRowsProps) {
-  if (steps.length === 0) return null;
   const edit = (index: number, change: Partial<LoginStepDraft>): void =>
     onChange(steps.map((entry, at) => (at === index ? { ...entry, ...change } : entry)));
   return (
-    <ul className="settings-steps">
+    <ul className="settings-steps" data-setting={setting}>
       {steps.map((step, index) => (
         // Keyed by position, deliberately: rows are edited in place and
         // identified by nothing else — two blank rows are genuinely the same

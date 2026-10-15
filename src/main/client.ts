@@ -101,7 +101,7 @@ import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
 import type { LoopJoin, MovementStart, WalkStart } from '../shared/movement';
-import type { AreaSearchPreview } from '../shared/areaSearch';
+import { areaLimits, type AreaSearchPreview } from '../shared/areaSearch';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
@@ -114,6 +114,7 @@ import { roomBrief } from './world/roomBrief';
 import { slotGear, weighingOf } from './world/slotGear';
 import { asGearPicks } from '../shared/gearTrip';
 import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, NOT_KEPT, type HuntingAdvice } from '../shared/hunting';
+import { DEFAULT_HUNT_CHOICES } from '../shared/huntChoices';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { attachSnapshot } from './session/attach';
@@ -143,21 +144,23 @@ import {
 } from '../shared/ipc';
 import {
   asAutomationSwitch,
-  type SupplyItem,
   automationSwitches,
   DEFAULT_CONFIG,
   type AppConfig
 } from '../shared/config';
+import { type SupplyItem } from '../shared/packConfig';
 import { DEFAULT_INTERNAL } from '../shared/internal';
 import { isRemoteName, REMOTE_NAMES, type RemoteGrant, type RemoteName } from '../shared/remotes';
-import { UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
+import { DEFAULT_RECONNECT_TRIES, UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
 import type { SessionSummary } from '../shared/ipc';
 import type { RealmWorld } from '../shared/realm';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
-import type { ExtensionInfo } from '../shared/extensions';
+import type { ExtensionInfo, ExtensionManifest } from '../shared/extensions';
+import { extensionOn } from '../shared/extensionSwitches';
+import { readExtensionSwitches } from './config/extensionSwitches';
 import { loadExtensions, pageFile, type LoadedExtension } from './extensions/ExtensionLoader';
 import { prowessSheetOf } from '../shared/verdict';
 import { EMPTY_MAP, type LocalMap } from '../shared/map';
@@ -304,6 +307,8 @@ const windows = new WindowRegistry();
 let host: SessionHost | null = null;
 /** The extensions found in the home at startup (todo 84). */
 let extensions: readonly LoadedExtension[] = [];
+/** Installed and switched off in the options file, so never loaded (todo 118). */
+let extensionsOff: readonly ExtensionManifest[] = [];
 /** Main's flight recorder and each window's (`FlightRecorder`), stopped at teardown. */
 const recorders = new Set<FlightRecorder>();
 /** Deletes session logs past `logging.keepDays` (todo 04). */
@@ -1609,6 +1614,7 @@ function createHost(): SessionHost {
      * has to reach a session that is already counting down.
      */
     autoReconnect: (id) => profileFor(id)?.autoReconnect ?? false,
+    reconnectTries: (id) => profileFor(id)?.reconnectTries ?? DEFAULT_RECONNECT_TRIES,
     // Read through for the same reason; a character with no file asks nothing, as it dials nothing.
     lowLives: (id) => profileFor(id)?.lowLives ?? 0,
     /*
@@ -1870,13 +1876,20 @@ function registerIpc(): void {
     (_caller, session: SessionId) => host?.get(session)?.manager.automation ?? EMPTY_AUTOMATION
   );
   // The extensions installed, and one of a card's buttons (todo 84).
-  handle(Invoke.listExtensions, (): ExtensionInfo[] =>
-    extensions.map(({ manifest }) => ({
+  handle(Invoke.listExtensions, (): ExtensionInfo[] => [
+    ...extensions.map(({ manifest }): ExtensionInfo => ({
       name: manifest.name,
       title: manifest.title,
-      page: manifest.ui === undefined ? null : platform.extensionPage(manifest.name)
+      page: manifest.ui === undefined ? null : platform.extensionPage(manifest.name),
+      loaded: true
+    })),
+    ...extensionsOff.map(({ name, title }): ExtensionInfo => ({
+      name,
+      title,
+      page: null,
+      loaded: false
     }))
-  );
+  ]);
   handle(
     Invoke.extensionAction,
     async (_caller, session: SessionId, name: unknown, action: unknown, args: unknown) => {
@@ -2145,13 +2158,14 @@ function registerIpc(): void {
   handle(
     Invoke.previewAreaSearch,
     (_caller, session: SessionId, radius: unknown): AreaSearchPreview => {
-      const { maxRadius, maxSearches, firstRadius, firstSearches } = tuning().areaSearch;
       const manager = host?.get(session)?.manager;
-      const steps = radius === null ? null : areaBound(radius, maxRadius);
+      const bounds =
+        manager?.areaSearch.limits() ??
+        areaLimits(DEFAULT_CONFIG.automation.search, tuning().areaSearch);
+      const steps = radius === null ? null : areaBound(radius, bounds.maxRadius);
       if (manager === undefined || (radius !== null && steps === null)) {
         const refused =
           manager === undefined ? t('app.session.notConnected') : t('app.area.invalid');
-        const bounds = { maxRadius, maxSearches, firstRadius, firstSearches };
         return { ...bounds, combatOff: null, plan: { refused } };
       }
       return manager.areaSearch.preview(steps);
@@ -2160,9 +2174,9 @@ function registerIpc(): void {
   handle(
     Invoke.searchArea,
     (_caller, session: SessionId, radius: unknown, searches: unknown): string | null => {
-      const { maxRadius, maxSearches } = tuning().areaSearch;
       const manager = host?.get(session)?.manager;
       if (manager === undefined) return t('app.session.notConnected');
+      const { maxRadius, maxSearches } = manager.areaSearch.limits();
       const steps = areaBound(radius, maxRadius);
       const times = areaBound(searches, maxSearches);
       if (steps === null || times === null) return t('app.area.invalid');
@@ -2726,7 +2740,7 @@ function registerIpc(): void {
           heal: null,
           poisonHoldsRest: false,
           measured: null,
-          constants: atSpeed(tuning().hunting, 1)
+          constants: { ...atSpeed(tuning().hunting, 1), ...DEFAULT_HUNT_CHOICES }
         },
         floor: NO_FLOOR,
         pace: null,
@@ -3553,16 +3567,27 @@ export function startClient(host: Host, built: { simulatorWorker: string }): voi
      */
     if (!ownsTheProfile) return;
     // Found before anything is built, so every character's session is made with them.
-    void loadExtensions(path.join(home.root, 'extensions'))
+    const switches = readExtensionSwitches(home.options);
+    const on = (name: string): boolean =>
+      'switches' in switches && extensionOn(switches.switches, name);
+    void loadExtensions(path.join(home.root, 'extensions'), on)
       .catch((error: unknown) => ({
         loaded: [],
+        off: [],
         problems: [t('extensions.loadingFailed', { error: errorMessage(error) })]
       }))
-      .then(({ loaded, problems }) => {
+      .then(({ loaded, off, problems }) => {
         extensions = loaded;
+        extensionsOff = off;
         build();
         for (const each of loaded) {
           announce('extensions', t('extensions.loaded', { title: each.manifest.title }), 'log');
+        }
+        if ('unread' in switches && off.length > 0) {
+          announce('extensions', t('extensions.switchesUnread', { error: switches.unread }));
+        } else {
+          for (const each of off)
+            announce('extensions', t('extensions.off', { title: each.title }));
         }
         for (const problem of problems) announce('extensions', problem);
       });

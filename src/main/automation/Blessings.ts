@@ -529,6 +529,7 @@ export class Blessings implements SessionModule {
       // least urgent thing in the client, below walking and the player.
       priority: state.inCombat ? 'combat' : 'probe',
       coalesceKey: `blessing:${key}`,
+      decision: 'bless',
       expiresAt: now + tuning().spells.buffExpiresMs,
       reason: t('automation.blessing.reason', { name: entry.spell }),
       // The clocks are spent when the cast leaves, so one held for the round
@@ -569,6 +570,7 @@ export class Blessings implements SessionModule {
       command: `/${caster} @bless-expired ${spell}`,
       priority: 'probe',
       coalesceKey: `bless-expired:${caster.toLowerCase()}:${spell.toLowerCase()}`,
+      decision: 'bless-expired-notify',
       expiresAt: this.now() + tuning().spells.buffExpiresMs,
       reason: t('automation.blessing.notifyReason', { caster, spell })
     });

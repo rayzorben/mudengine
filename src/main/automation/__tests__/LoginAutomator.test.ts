@@ -8,6 +8,7 @@ import type { Block, BlockType } from '../../../shared/blocks';
 import type { LineTerminator } from '../../../shared/types';
 import { t } from '../../app/i18n';
 import { notesOf } from '../../app/copyMatch';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 /**
  * The two prompts the local server actually prints, verbatim.
@@ -878,5 +879,25 @@ describe('why a lost socket must not be dialled again', () => {
     login.onBlock(block('prompt-menu', '[PARADIGM]:'));
     login.reset();
     expect(login.standDown).toBeNull();
+  });
+});
+
+describe('the decision behind each answer and stop (todo 119)', () => {
+  it('names an answer by the login steps and a refusal by the switch that stops it', () => {
+    const decided: Array<DecisionKind | undefined> = [];
+    const lines: Array<[string, DecisionKind | undefined]> = [];
+    const answers = new CommandQueue(
+      { ...DEFAULT_CONFIG.automation, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      { send: (_command, intent) => decided.push(intent.decision) }
+    );
+    const steps = new LoginAutomator(credentials, answers, {
+      notice: (message, decision) => lines.push([message, decision])
+    });
+    steps.onBlock(block('prompt-username', USERNAME));
+    vi.advanceTimersByTime(50);
+    steps.onBlock(block('login-failed', 'Invalid username/password!'));
+    expect(decided).toEqual(['login-step']);
+    expect(lines).toContainEqual([t('automation.login.rejected'), 'login-stop']);
+    answers.dispose();
   });
 });

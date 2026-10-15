@@ -77,7 +77,8 @@ import type { CommandQueue } from './CommandQueue';
 import { countMobs } from './RuleEngine';
 import { t } from '../app/i18n';
 import type { EngageDecision } from '../../shared/automation';
-import { avoided, type FledEntry } from '../../shared/fled';
+import type { DecisionKind } from '../../shared/decisionSettings';
+import { avoided, fledForgetMs, type FledEntry } from '../../shared/fled';
 import type { Block } from '../../shared/blocks';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import {
@@ -1061,7 +1062,8 @@ export class AutoCombat implements SessionModule {
             ? t('automation.combat.attackStandsIn', { verb, plain: PLAIN_ATTACK_VERB })
             : blamed.blames === 'character'
               ? t('automation.combat.verbRefused', { verb })
-              : t('automation.combat.verbRefusedWeapon', { verb })
+              : t('automation.combat.verbRefusedWeapon', { verb }),
+          'attack-verb'
         );
         // The verb is out of the chain now, so the next attack in it goes on this line.
         if (this.inAFight() === null) this.answeredNo(null);
@@ -1277,7 +1279,7 @@ export class AutoCombat implements SessionModule {
     // The fight already committed to is finished first, whoever swung last.
     const held = this.focusHere(state);
     if (held !== null) {
-      return this.swing(held, t('automation.combat.whyStillOn', { target: held }));
+      return this.swing(held, t('automation.combat.whyStillOn', { target: held }), 'hit-back');
     }
     /*
      * And the first pick is the worst of the whole fight, not of whoever has
@@ -1345,7 +1347,8 @@ export class AutoCombat implements SessionModule {
       pick.name,
       ward === undefined
         ? this.explain(pick.name, verdicts[first] ?? null, pool.length, true)
-        : t('automation.combat.whyHitBackGuard', { target: pick.name, ward: ward.name })
+        : t('automation.combat.whyHitBackGuard', { target: pick.name, ward: ward.name }),
+      pool.length > 1 ? 'hit-back-pick' : 'hit-back'
     );
   }
 
@@ -1640,7 +1643,11 @@ export class AutoCombat implements SessionModule {
 
     // A party's fight is joined whether or not the proposal got through: the
     // trace says so either way, because the decision was made.
-    const swung = this.swing(choice.target, choice.because);
+    const swung = this.swing(
+      choice.target,
+      choice.because,
+      assist !== null ? 'assist-leader' : defend !== null ? 'defend-party' : 'attack-target'
+    );
     if (swung || joined !== null) {
       // The word the fight is fought with, typed or chosen for this monster (todo 47).
       this.note(choice.target, true, undefined, choice.because, this.attackVerb(choice.target));
@@ -1812,9 +1819,10 @@ export class AutoCombat implements SessionModule {
       }
       /*
        * Attacking it would certainly cost the character ten evil points,
-       * cumulatively, for as long as it plays. No setting spends that unasked.
+       * cumulatively, for as long as it plays: spent only when the player
+       * says so (`attackCostly`).
        */
-      if (who.costly === 'always') {
+      if (who.costly === 'always' && !this.config.attackCostly) {
         decline(who, t('automation.combat.refusedCostly', { target: who.name }));
         continue;
       }
@@ -2079,7 +2087,8 @@ export class AutoCombat implements SessionModule {
   private fledFrom(state: CharacterState, name: string): string | null {
     if (this.guard === null) return null;
     const level = state.progress.level;
-    const { fledLevels: band, fledForgetMs: forgetMs } = tuning().combat;
+    const { fledLevels: band, fledForgetMinutes } = this.config;
+    const forgetMs = fledForgetMs(fledForgetMinutes);
     const entry = avoided(this.guard.fled(), name, level, { band, forgetMs, now: Date.now() });
     if (entry === null) return null;
     return entry.level === null
@@ -2215,7 +2224,7 @@ export class AutoCombat implements SessionModule {
    * while the first attack is still queued are one attack, but attacking a
    * second monster after the first died is a different intent and gets through.
    */
-  private swing(target: string, why: string): boolean {
+  private swing(target: string, why: string, decision: DecisionKind): boolean {
     const now = Date.now();
     const cooldown = this.engageCooldown;
     const key = mobKey(target);
@@ -2258,10 +2267,17 @@ export class AutoCombat implements SessionModule {
       if (cast === null) return false;
     }
     if (cast === null && opener === null) this.lastChosen = this.fightWord(target);
-    const proposal = cast ?? {
+    const proposal: Proposal = cast ?? {
       command: `${verb} ${target}`,
-      action: { kind: 'melee' } as const,
-      reason: t('automation.combat.reason', { why: because })
+      action: { kind: 'melee' },
+      reason: t('automation.combat.reason', { why: because }),
+      // A blank opener setting is a backstab chosen for the character (`openerWord`).
+      decision:
+        opener === null
+          ? decision
+          : this.config.opener.trim().length === 0
+            ? 'opener-chosen'
+            : 'opener'
     };
     const refused = this.refusedLast;
     if (
@@ -2299,6 +2315,7 @@ export class AutoCombat implements SessionModule {
       // Asked again at the send (todo 74): queued before a death, it went out in the temple.
       stillWanted: () => this.state === null || canStillHit(this.state, key),
       reason: proposal.reason,
+      decision: proposal.decision,
       onSent: () => this.attackSent(proposal)
     });
   }
@@ -2401,7 +2418,7 @@ export class AutoCombat implements SessionModule {
   private sayOpenerNeedsClass(verb: string): void {
     if (this.saidOpenerNeedsClass) return;
     this.saidOpenerNeedsClass = true;
-    this.events.notice?.(t('automation.combat.openerWrongClass', { verb }));
+    this.events.notice?.(t('automation.combat.openerWrongClass', { verb }), 'opener');
   }
 
   /**
@@ -2415,7 +2432,7 @@ export class AutoCombat implements SessionModule {
   private sayOpenerNeedsStealth(verb: string): void {
     if (this.saidOpenerNeedsStealth) return;
     this.saidOpenerNeedsStealth = true;
-    this.events.notice?.(t('automation.combat.openerNeedsStealth', { verb }));
+    this.events.notice?.(t('automation.combat.openerNeedsStealth', { verb }), 'opener');
   }
 
   /**
@@ -2451,11 +2468,13 @@ export class AutoCombat implements SessionModule {
   /**
    * What the hand can do to `target`: the server's own refusal with this hand
    * outranks the realm's `hurts` or `unknown`; a carried weapon the realm says
-   * can still goes in hand.
+   * can still goes in hand, unless `swapWeapons` is off: then nothing carried
+   * is taken up, and the hand cannot.
    */
   private reachOf(state: CharacterState, target: string): WeaponReach {
     const refused = this.noEffect.refuses(target, weaponInHand(state));
     const said = this.events.reach?.(state, target, refused) ?? REACH_UNKNOWN;
+    if (said.kind === 'swap' && !this.config.swapWeapons) return { kind: 'cannot' };
     return refused && said.kind !== 'swap' ? { kind: 'cannot' } : said;
   }
 
@@ -2530,7 +2549,8 @@ export class AutoCombat implements SessionModule {
       if (held === null && blamed.weapon === null) continue;
       this.refused.delete(skill);
       this.events.notice?.(
-        t('automation.combat.verbBack', { verb: REFUSED_WORDS[skill]?.at(-1) ?? skill })
+        t('automation.combat.verbBack', { verb: REFUSED_WORDS[skill]?.at(-1) ?? skill }),
+        'attack-verb'
       );
     }
   }
@@ -2602,6 +2622,7 @@ export class AutoCombat implements SessionModule {
       coalesceKey: 'round-attack',
       expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: change.reason,
+      decision: change.decision,
       onSent: () => this.attackSent(change)
     });
   }
@@ -2654,6 +2675,7 @@ export class AutoCombat implements SessionModule {
       // deciding anything about.
       expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: t('automation.combat.reasonRefresh'),
+      decision: 'room-refresh',
       // Only a look that went out spends the count (todo 833). Held by the
       // player's half-typed line or refused, the rounds it waited through are
       // still rounds without a look.

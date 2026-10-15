@@ -9,6 +9,7 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { ItemEntity } from '../../shared/entities';
 import { wearPlan } from '../../shared/gear';
 import { tradeWords } from '../../shared/gearWeighing';
@@ -17,6 +18,11 @@ import type { FloorGear, FloorGearReader } from '../../shared/upgrades';
 import { offerEach, type CommandQueue } from './CommandQueue';
 
 type Better = Extract<FloorGear, { kind: 'better' }>;
+
+/** The wear and what it says are Auto-Get Better Gear's (todo 119). */
+const GEAR: DecisionKind = 'found-gear-wear';
+/** Better gear left lying for a gear set, a death's hold, the hands or the weight. */
+const REFUSED: DecisionKind = 'floor-gear-refuse';
 
 /** The loot line's reason: what it fills, or what it is better than and, by the weights, what the swap gains and gives up. */
 function reasonFor(item: string, gear: Better): string {
@@ -43,7 +49,7 @@ export class FoundGear {
   constructor(
     private readonly queue: Pick<CommandQueue, 'offer'>,
     private readonly read: FloorGearReader | undefined,
-    private readonly notice: (message: string) => void
+    private readonly notice: NoticeSink
   ) {}
 
   /** Whether a floor item can be weighed: false with no world database, and no kill read is owed. */
@@ -103,10 +109,14 @@ export class FoundGear {
         priority: 'probe',
         coalesceKey: `loot:wear:${command}`,
         expiresAt,
-        reason
+        reason,
+        decision: GEAR
       }));
       if (unsent.length > 0) {
-        this.notice(t('automation.loot.notWorn', { item: held.name, commands: unsent.join(', ') }));
+        this.notice(
+          t('automation.loot.notWorn', { item: held.name, commands: unsent.join(', ') }),
+          GEAR
+        );
       }
     }
   }
@@ -132,25 +142,31 @@ export class FoundGear {
     const worn = gear.worn ?? '';
     switch (gear.why) {
       case 'heavy':
-        this.notice(t('automation.loot.gearHeavy', { item: name, slot: gear.slot }));
+        this.notice(t('automation.loot.gearHeavy', { item: name, slot: gear.slot }), REFUSED);
         return;
       case 'ceiling':
-        this.notice(t('automation.loot.gearCeiling', { item: name, slot: gear.slot }));
+        this.notice(t('automation.loot.gearCeiling', { item: name, slot: gear.slot }), REFUSED);
         return;
       case 'unread':
-        this.notice(t('automation.loot.gearUnread', { item: name, slot: gear.slot }));
+        this.notice(t('automation.loot.gearUnread', { item: name, slot: gear.slot }), GEAR);
         return;
       case 'classUnread':
-        this.notice(t('automation.loot.gearClassUnread', { item: name, slot: gear.slot, worn }));
+        this.notice(
+          t('automation.loot.gearClassUnread', { item: name, slot: gear.slot, worn }),
+          GEAR
+        );
         return;
       case 'kit':
-        this.notice(t('automation.loot.gearKit', { item: name, slot: gear.slot, worn }));
+        this.notice(t('automation.loot.gearKit', { item: name, slot: gear.slot, worn }), REFUSED);
         return;
       case 'hands':
-        this.notice(t('automation.loot.gearHands', { item: name, worn }));
+        this.notice(t('automation.loot.gearHands', { item: name, worn }), REFUSED);
         return;
       case 'locked':
-        this.notice(t('automation.loot.gearLocked', { item: name, slot: gear.slot, worn }));
+        this.notice(
+          t('automation.loot.gearLocked', { item: name, slot: gear.slot, worn }),
+          REFUSED
+        );
         return;
       default: {
         const never: never = gear.why;

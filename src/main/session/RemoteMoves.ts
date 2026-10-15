@@ -24,6 +24,7 @@ import {
 } from '../../shared/loops';
 import type { Movement, MovementKind, MovementStart } from '../../shared/movement';
 import type { MoveAnswer, PathReport } from '../../shared/remotes';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { WalkProgress } from '../../shared/walk';
 import { roomId, type RoomId, type RoomReference, type Route } from '../../shared/world';
 
@@ -63,7 +64,7 @@ export class RemoteMoves {
   constructor(
     private readonly session: RemoteMovesSession,
     private readonly rooms: RemoteRooms,
-    private readonly notice: (message: string) => void,
+    private readonly notice: NoticeSink,
     private readonly loops: RemoteLoops
   ) {}
 
@@ -90,7 +91,7 @@ export class RemoteMoves {
   private stop(from: string): boolean {
     const { kind, moving } = this.session.movement;
     if (kind === null || !moving) {
-      this.notice(t('session.remotes.stopNothing', { who: from }));
+      this.notice(t('session.remotes.stopNothing', { who: from }), 'remote-moves');
       return false;
     }
     this.session.stopMoving(from);
@@ -101,17 +102,21 @@ export class RemoteMoves {
   private resume(from: string): boolean {
     const stopped = this.waiting();
     if (stopped === null) {
-      this.notice(t('session.remotes.regoNothing', { who: from }));
+      this.notice(t('session.remotes.regoNothing', { who: from }), 'remote-moves');
       return false;
     }
     const answer = this.resumeAgreed(null);
     if ('started' in answer) {
       this.stoppedBy = null;
-      this.notice(t('session.remotes.regoResumed', { who: from, name: stopped.name }));
+      this.notice(
+        t('session.remotes.regoResumed', { who: from, name: stopped.name }),
+        'remote-moves'
+      );
       return true;
     }
     this.notice(
-      t('session.remotes.regoRefused', { who: from, name: stopped.name, reason: whyNot(answer) })
+      t('session.remotes.regoRefused', { who: from, name: stopped.name, reason: whyNot(answer) }),
+      'remote-moves'
     );
     return false;
   }
@@ -122,7 +127,7 @@ export class RemoteMoves {
     const match = matchLoopIn(pools, request);
     switch (match.kind) {
       case 'none':
-        this.notice(t('session.remotes.loopNone', { who: from, request }));
+        this.notice(t('session.remotes.loopNone', { who: from, request }), 'remote-moves');
         return { kind: 'unknown', request, candidates: [] };
       case 'several': {
         const names = match.loops.map((loop) => loop.name);
@@ -132,7 +137,8 @@ export class RemoteMoves {
             request,
             count: names.length,
             names: names.join('; ')
-          })
+          }),
+          'remote-moves'
         );
         return { kind: 'unknown', request, candidates: names };
       }
@@ -157,14 +163,16 @@ export class RemoteMoves {
     const answer = kept ? this.resumeAgreed(loop.name) : this.session.startLoop(loop);
     if (!('started' in answer)) {
       this.notice(
-        t('session.remotes.loopRefused', { who: from, name: loop.name, reason: whyNot(answer) })
+        t('session.remotes.loopRefused', { who: from, name: loop.name, reason: whyNot(answer) }),
+        'remote-moves'
       );
       return false;
     }
     this.notice(
       replacing === null
         ? t('session.remotes.loopStarted', { who: from, name: loop.name })
-        : t('session.remotes.loopReplaced', { who: from, name: loop.name, was: replacing })
+        : t('session.remotes.loopReplaced', { who: from, name: loop.name, was: replacing }),
+      'remote-moves'
     );
     return true;
   }
@@ -180,7 +188,7 @@ export class RemoteMoves {
     const match = this.rooms.matchStop(readStop(request));
     switch (match.kind) {
       case 'none':
-        this.notice(t('session.remotes.gotoNone', { who: from, request }));
+        this.notice(t('session.remotes.gotoNone', { who: from, request }), 'remote-moves');
         return { kind: 'unknown', request, candidates: [] };
       case 'several': {
         const addresses = match.rooms.map(({ map, room }) => roomId(map, room));
@@ -190,7 +198,8 @@ export class RemoteMoves {
             request,
             count: addresses.length,
             addresses: addresses.join(', ')
-          })
+          }),
+          'remote-moves'
         );
         return { kind: 'unknown', request, candidates: addresses };
       }
@@ -198,14 +207,18 @@ export class RemoteMoves {
         const replacing = this.running();
         const walk = this.walkTo(match.at);
         if (typeof walk === 'string') {
-          this.notice(t('session.remotes.gotoRefused', { who: from, request, reason: walk }));
+          this.notice(
+            t('session.remotes.gotoRefused', { who: from, request, reason: walk }),
+            'remote-moves'
+          );
           return FAILED;
         }
         const room = { who: from, ...walk, address: roomId(match.at.map, match.at.room) };
         this.notice(
           replacing === null
             ? t('session.remotes.gotoWalking', room)
-            : t('session.remotes.gotoReplaced', { ...room, was: replacing })
+            : t('session.remotes.gotoReplaced', { ...room, was: replacing }),
+          'remote-moves'
         );
         return OK;
       }
@@ -266,7 +279,10 @@ export class RemoteMoves {
   private comeBack(from: string, at: RoomReference): boolean {
     const walk = this.walkTo(at);
     if (typeof walk === 'string') {
-      this.notice(t('session.remotes.comebackRefused', { who: from, reason: walk }));
+      this.notice(
+        t('session.remotes.comebackRefused', { who: from, reason: walk }),
+        'remote-moves'
+      );
       return false;
     }
     this.notice(
@@ -274,7 +290,8 @@ export class RemoteMoves {
         who: from,
         stepCount: walk.stepCount,
         address: roomId(at.map, at.room)
-      })
+      }),
+      'remote-moves'
     );
     return true;
   }
