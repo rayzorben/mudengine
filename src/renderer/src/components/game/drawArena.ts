@@ -1,8 +1,10 @@
 /**
  * The room you stand in, as the game view draws it (todo 140): a see-through
- * round arena over its tile. The party stands on the left and monsters on the
- * right, each ring its health (a monster's its wound band, the target's only;
- * others are unknown, never full), an inner ring for mana or kai. Exits are
+ * round arena over its tile. The character stands on its own room's square at
+ * the middle, see-through; the party in a half circle behind it to the left and
+ * monsters in one to the right. Each ring is its health (a monster's its wound
+ * band, the target's only; others are unknown, never full), an inner ring for
+ * mana or kai. Exits are
  * discs on the rim at their bearing with the next room's name, and each blow
  * is a line from attacker to target that fades with the damage.
  */
@@ -51,7 +53,7 @@ const NUMBER_HOLD_MS = 600;
 const NUMBER_OUT_MS = 400;
 const NUMBER_GROW_MS = 140;
 
-/** Where each token stands: the party on an arc to the left, monsters to the right. */
+/** Where each token stands: the character at the middle, the party on an arc to the left, monsters to the right. */
 export function standings(
   disc: Disc,
   tokens: readonly ArenaToken[]
@@ -66,23 +68,27 @@ export function standings(
         y: disc.y + Math.sin(angle) * disc.r * reach
       });
     });
+  // The character stands on its own room's square, at the middle (user, 2026-10-14).
+  for (const token of tokens) if (token.self) out.set(token.key, { x: disc.x, y: disc.y });
+  // The party in a half circle behind it to the left, monsters in one to the right.
   place(
-    tokens.filter((one) => one.side === 'party'),
-    218,
-    142,
-    0.6
+    tokens.filter((one) => one.side === 'party' && !one.self),
+    235,
+    125,
+    0.55
   );
   place(
     tokens.filter((one) => one.side === 'foe'),
-    -38,
-    38,
-    0.6
+    -55,
+    55,
+    0.58
   );
+  // Other players below, apart from both.
   place(
     tokens.filter((one) => one.side === 'player'),
-    110,
-    70,
-    0.66
+    112,
+    68,
+    0.78
   );
   return out;
 }
@@ -200,9 +206,10 @@ function drawToken(
     ctx.fillStyle = token.hostile ? pal.hp : pal.muted;
   } else {
     const colour = token.side === 'player' ? pal.player : token.self ? pal.accent : pal.heal;
+    // The character's own token is see-through: its room's square shows under it.
     ctx.shadowColor = pal.shade;
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = pal.ink;
+    ctx.shadowBlur = token.self ? 0 : 14;
+    ctx.fillStyle = token.self ? hexA(pal.ink, 0.35) : pal.ink;
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.fill();
