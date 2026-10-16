@@ -39,6 +39,8 @@ import type { Replanned, WalkStart } from '@shared/movement';
 import type { LoopJoining } from '../lib/loops';
 import type { PlannedHere } from '../hooks/useSlideOuts';
 import type { FoundRoom } from '@shared/destinations';
+import type { RoomNickname } from '@shared/roomNicknames';
+import { nicknamedLabel, nicknameMarks } from '../lib/nicknames';
 
 /** Which of the plan's routes is on screen — see `chosen`. */
 type Way = 'plan' | 'round' | 'carrying' | 'viaItem' | 'another' | 'keyed' | 'keptOut';
@@ -431,8 +433,15 @@ export default function RoutePanel({
    * has wandered to. So it survives both of those and goes when the reader
    * searches for somewhere else — a tick cleared by a redraw would have put
    * the character in the boss room on the very press that redrew the plan.
+   *
+   * Null until the reader presses it, and then it starts at MegaMUD's *Stop
+   * before entering room* for the destination (`Route.arrival`, todo 144):
+   * its 190 boss rooms start on.
    */
-  const [stopShort, setStopShort] = useState(false);
+  const [stopShort, setStopShort] = useState<boolean | null>(null);
+  /** MegaMUD's name for the destination, off each plan `onRoute` draws to it; a walk's redraw keeps it. */
+  const [arrival, setArrival] = useState<RoomNickname | null>(null);
+  const stopping = stopShort ?? arrival?.stopBefore === true;
   /** Whether the alternatives are unfolded under the head. */
   const [offering, setOffering] = useState(false);
   /** Folded runs of same-reading rooms that have been opened, by first step. */
@@ -511,6 +520,7 @@ export default function RoutePanel({
         .then((answer) => {
           if (planning.current !== mine) return;
           setRoute(answer);
+          setArrival(answer.arrival ?? null);
           setPlanningTo(null);
         })
         .catch((error) => {
@@ -601,7 +611,8 @@ export default function RoutePanel({
    * into the same boss.
    */
   useEffect(() => {
-    setStopShort(false);
+    setStopShort(null);
+    setArrival(null);
   }, [target]);
 
   /*
@@ -705,7 +716,7 @@ export default function RoutePanel({
        * route. Only reachable this way: every other caller passes a prefix,
        * which is not `shown`.
        */
-      const trimmed = stopShort && plan === shown ? plan.steps.slice(0, -1) : null;
+      const trimmed = stopping && plan === shown ? plan.steps.slice(0, -1) : null;
       if (trimmed !== null && trimmed.length === 0) {
         setRefused(t('cards.route.alreadyBefore', { roomName: plan.steps[0]!.name }));
         return;
@@ -746,7 +757,7 @@ export default function RoutePanel({
         })
         .catch((error) => setRefused(errorMessage(error)));
     },
-    [collectFirst, crossing, forLoop, stopShort, onCollectThenWalk, onWalk, onClose, route, shown]
+    [collectFirst, crossing, forLoop, stopping, onCollectThenWalk, onWalk, onClose, route, shown]
   );
 
   /**
@@ -932,10 +943,19 @@ export default function RoutePanel({
           {route !== null && shown !== null ? (
             <div className="route-result">
               <div className="route-head">
-                <strong>{target?.name}</strong>
+                <strong>
+                  {target === null
+                    ? null
+                    : nicknamedLabel({ name: target.name, nickname: arrival })}
+                </strong>
                 <span className="chip off">
                   {target?.map}/{target?.room}
                 </span>
+                {nicknameMarks(arrival).map((mark) => (
+                  <span className="chip off" key={mark}>
+                    {mark}
+                  </span>
+                ))}
                 {/*
               What the realm data says about the room being planned to, so a
               room clicked on the map or picked from the search says what it
@@ -1407,14 +1427,21 @@ export default function RoutePanel({
                       const before = shown.steps.at(-2);
                       return (
                         <button
-                          aria-pressed={stopShort}
+                          aria-pressed={stopping}
                           className="chip pick route-stop"
-                          onClick={() => setStopShort(!stopShort)}
+                          onClick={() => setStopShort(!stopping)}
                           onMouseDown={keepFocus}
                           title={
-                            before === undefined
-                              ? undefined
-                              : t('cards.route.stopShortTooltip', { roomName: before.name })
+                            [
+                              before === undefined
+                                ? null
+                                : t('cards.route.stopShortTooltip', { roomName: before.name }),
+                              arrival?.stopBefore === true
+                                ? t('cards.route.stopShortMegamud', { nickname: arrival.name })
+                                : null
+                            ]
+                              .filter((line) => line !== null)
+                              .join('\n') || undefined
                           }
                           type="button"
                         >
@@ -1701,7 +1728,7 @@ export default function RoutePanel({
                        * exactly like the others is a list stating the opposite
                        * of what the press will do.
                        */
-                      const skipped = stopShort && steps.length > 0 ? steps.length - 1 : -1;
+                      const skipped = stopping && steps.length > 0 ? steps.length - 1 : -1;
                       const signatures = steps.map(stepSignature);
                       const runs =
                         skipped < 0

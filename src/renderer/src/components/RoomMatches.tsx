@@ -3,12 +3,14 @@
  * to before under *Recent*, newest first and saying when, then the realm's
  * other rooms (user, 2026-10-10). Main orders them so (`Invoke.searchRooms`);
  * the route panel, the Map card's fields and the loop builder all draw this.
+ * MegaMUD's name for a room goes before the realm's (`lib/nicknames.ts`).
  */
 import type { ReactNode } from 'react';
 
 import type { ListNavigation } from '../hooks/useListNavigation';
 import { t } from '../lib/i18n';
 import { foundRoomHint } from '../lib/visited';
+import { nicknamedLabel, withMarks } from '../lib/nicknames';
 import { wasVisited, type FoundRoom } from '@shared/destinations';
 
 export interface RoomMatchesProps {
@@ -54,8 +56,8 @@ export default function RoomMatches({
                 onMouseDown={(event) => event.preventDefault()}
                 type="button"
               >
-                <span>{room.name}</span>
-                <span className="hint">{foundRoomHint(room, now)}</span>
+                <span>{nicknamedLabel(room)}</span>
+                <span className="hint">{withMarks(foundRoomHint(room, now), room.nickname)}</span>
               </button>
             </li>
           ])}

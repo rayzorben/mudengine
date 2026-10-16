@@ -32,6 +32,7 @@
  * search answers with.
  */
 import { latestFirst } from './recent';
+import type { RoomNickname } from './roomNicknames';
 import type { WorldRoom } from './world';
 
 /** One place a character was sent, and the last time it was. */
@@ -76,8 +77,13 @@ export interface Visited {
   visitedAt: number | null;
 }
 
-/** A room a search offers, with when it was last walked to. */
-export type FoundRoom = WorldRoom & Visited;
+/** MegaMUD's name for a room a search offers, or null where its goto list has none. */
+export interface Nicknamed {
+  nickname: RoomNickname | null;
+}
+
+/** A room a search offers, with when it was last walked to and MegaMUD's name for it. */
+export type FoundRoom = WorldRoom & Visited & Nicknamed;
 
 /** Whether a found room was walked to before, which puts it under *Recent*. */
 export const wasVisited = (room: Visited): boolean => room.visitedAt !== null;

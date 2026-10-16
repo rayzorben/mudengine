@@ -114,6 +114,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           forgetFind={ctx.forgetFind}
           verdict={view.verdict}
           asks={view.asks}
+          searchRooms={ctx.searchRooms}
         />
       );
     case 'map':

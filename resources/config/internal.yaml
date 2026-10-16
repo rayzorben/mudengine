@@ -1512,6 +1512,13 @@ tuning:
     # every destination it matches, above the realm's own answer.
     destinationsShown: 5
 
+    # Rooms MegaMUD's room names add to a search, after the recent ones.
+    nicknamesShown: 25
+
+    # How long after the window opens MegaMUD's room names are read (a 60ms parse cold,
+    # measured 2026-10-16), so the first room search does not pay for it.
+    nicknamesReadAfterMs: 3000
+
     # Loops started by name offered on the console's right-click menu.
     recentLoopsShown: 5
 

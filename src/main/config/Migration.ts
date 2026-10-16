@@ -8292,6 +8292,9 @@ function theTuningBlockGainedKeys(
     addKey('remotes', 'parOnWordMs', DEFAULT_INTERNAL.tuning.remotes.parOnWordMs);
     // When the console's marks record is written whole again (todo 143, 2026-10-16).
     addKey('session', 'marksWholeAt', DEFAULT_INTERNAL.tuning.session.marksWholeAt);
+    // MegaMUD's room names: how many a search shows, and when the list is read (todo 144, 2026-10-16).
+    for (const key of ['nicknamesShown', 'nicknamesReadAfterMs'] as const)
+      addKey('records', key, DEFAULT_INTERNAL.tuning.records[key]);
     // The longest telepath a @loop or @goto answer is cut to (todo 32, 2026-10-10).
     addKey('remotes', 'telepathMax', DEFAULT_INTERNAL.tuning.remotes.telepathMax);
     // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).

@@ -1,9 +1,10 @@
 /**
  * A walk to a room a person named, as `@goto` (todo 17) and a macro's
- * `{goto}` line (todo 134) both read and walk it: a room name, `map/room`, or
- * both (`readStop`), matched against the realm, and the player's own route
- * there through the one navigation engine. One match or none; several are
- * said with their addresses, never picked between.
+ * `{goto}` line (todo 134) both read and walk it: a MegaMUD code (`VXDF`,
+ * todo 144) and a room name, `map/room`, or both (`readStop`), matched
+ * against the realm, and the player's own route there through the one
+ * navigation engine. One match or none; several, a code's room and rooms of
+ * that name among them, are said with their addresses, never picked between.
  */
 import { readStop, type RoomMatch } from '../../shared/loops';
 import { roomId, type RoomId, type RoomReference, type Route } from '../../shared/world';
@@ -11,12 +12,25 @@ import { roomId, type RoomId, type RoomReference, type Route } from '../../share
 /** Where a room is and the way there from here (`Errands`). */
 export interface RoomFinder {
   matchStop(stop: { name: string; at: RoomReference | null }): RoomMatch;
+  /** The room a MegaMUD code names on this realm, case ignored, or null. */
+  roomCoded(code: string): RoomReference | null;
   planFromHere(to: RoomId): Route | string;
 }
 
 /** The room a request names, as `@goto` reads it. */
-export function roomNamed(request: string, rooms: Pick<RoomFinder, 'matchStop'>): RoomMatch {
-  return rooms.matchStop(readStop(request));
+export function roomNamed(
+  request: string,
+  rooms: Pick<RoomFinder, 'matchStop' | 'roomCoded'>
+): RoomMatch {
+  const named = rooms.matchStop(readStop(request));
+  const coded = rooms.roomCoded(request);
+  if (coded === null) return named;
+  const others = (
+    named.kind === 'one' ? [named.at] : named.kind === 'several' ? named.rooms : []
+  ).filter((at) => at.map !== coded.map || at.room !== coded.room);
+  return others.length === 0
+    ? { kind: 'one', at: coded }
+    : { kind: 'several', rooms: [coded, ...others] };
 }
 
 /**

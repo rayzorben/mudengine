@@ -1,0 +1,146 @@
+/**
+ * Converts MegaMUD's goto list (`ROOMS.md`) into the room names the client
+ * ships, each tied to the realm room it names.
+ *
+ * A row is `checksum:flags:minLevel:maxLevel:class:CODE:Area:Name`; the format
+ * and the flag bits are in `docs/mega-paramud.md` › *The room list*. Each row
+ * is placed, in order, by the `map room` typed at the end of its name where
+ * the realm has a room there, else by its checksum as the replayed path files
+ * saw it, else by a name only one realm room has. A typed `map room` and a
+ * checksum that disagree go to whichever room the MegaMUD name begins; where
+ * neither or both do, the row is dropped. A checksum seen in more than one room
+ * is never used: it is a hash and collides. Dropped rows are counted in the
+ * file's header and listed by `--list`.
+ *
+ *   npm run build:rooms [-- <mega-paramud/Default> <out.yaml> <realm database>] [--list]
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { coordinateTail, idOf, recordedRealm, replay, stepLines } from './lib/megamud-paths.mjs';
+
+const args = process.argv.slice(2);
+const list = args.includes('--list');
+const [source = path.resolve('mega-paramud/Default'), out = path.resolve('resources/rooms/megamud.yaml'), realm = ''] =
+  args.filter((arg) => !arg.startsWith('--'));
+
+// The realm the paths were recorded against, as `build:loops` reads it.
+const world = recordedRealm(realm);
+
+/* MegaMUD's Room Details dialog, in its order; see docs/mega-paramud.md. */
+const STOP_BEFORE = 0x10;
+const AVOID = 0x20;
+const HIDDEN = 0x40;
+
+const rows = fs
+  .readFileSync(path.join(source, 'ROOMS.md'), 'latin1')
+  .split(/\r?\n/)
+  .filter((line) => line.length > 0)
+  .map((line) => {
+    const field = line.split(':');
+    const { name, id } = coordinateTail(world, field.slice(7).join(':'));
+    return {
+      checksum: field[0].toUpperCase(),
+      flags: Number.parseInt(field[1], 16),
+      minLevel: Number(field[2]),
+      maxLevel: Number(field[3]),
+      code: field[5],
+      name,
+      id
+    };
+  });
+const byCode = new Map(rows.map((row) => [row.code, row]));
+
+/* Checksum → room ids, learned by replaying every path file from a start ROOMS.md places. */
+const seen = new Map();
+const learn = (checksum, room) => {
+  const ids = seen.get(checksum) ?? new Set();
+  ids.add(idOf(room));
+  seen.set(checksum, ids);
+};
+for (const file of fs.readdirSync(source).filter((name) => /\.mp$/i.test(name))) {
+  const lines = fs.readFileSync(path.join(source, file), 'latin1').split(/\r?\n/);
+  const start = byCode.get(/^\[(\w+):/.exec(lines[1] ?? '')?.[1] ?? '');
+  const from = start?.id ? world.byId(start.id) : null;
+  if (!from) continue;
+  const steps = stepLines(lines);
+  const walked = replay(world, from, steps.map((step) => step.command));
+  if (!walked) continue;
+  steps.forEach((step, at) => learn(step.checksum, walked.stood[at]));
+  // A goto path's third line names the room it ends in: where the replay finished.
+  const end = byCode.get(/^\[(\w+):/.exec(lines[2] ?? '')?.[1] ?? '');
+  if (end) learn(end.checksum, walked.rooms.at(-1));
+}
+
+const fold = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const named = (id, name) => fold(world.byId(id).name).startsWith(fold(name));
+
+/** The room a row names, or why it names none. */
+function place(row) {
+  const ids = seen.get(row.checksum);
+  const checked = ids && ids.size === 1 ? [...ids][0] : null;
+  if (row.id && checked && checked !== row.id) {
+    // The typed map/room is sometimes a typo (Narrow Ledge 15/640 for 16/640).
+    const fits = [row.id, checked].filter((id) => named(id, row.name));
+    return fits.length === 1
+      ? { id: fits[0] }
+      : { dropped: `typed ${row.id} and checksum ${checked} disagree` };
+  }
+  if (row.id) return { id: row.id };
+  if (checked) return { id: checked };
+  const found = world.findByName(row.name);
+  if (found.length === 1) return { id: idOf(found[0]) };
+  return { dropped: found.length > 1 ? `${found.length} rooms share the name` : 'no such room' };
+}
+
+const quote = (text) => `'${text.replace(/'/g, "''")}'`;
+const entries = [];
+const dropped = [];
+for (const row of rows) {
+  const placed = place(row);
+  if (placed.dropped) {
+    dropped.push(`${row.code}  ${row.name}  (${placed.dropped})`);
+    continue;
+  }
+  const room = world.byId(placed.id);
+  const fields = [
+    `code: ${quote(row.code)}`,
+    `name: ${quote(row.name)}`,
+    `room: ${quote(`${room.name} ${idOf(room)}`)}`,
+    (row.flags & STOP_BEFORE) !== 0 ? 'stopBefore: true' : null,
+    (row.flags & AVOID) !== 0 ? 'avoid: true' : null,
+    (row.flags & HIDDEN) !== 0 ? 'hidden: true' : null,
+    row.minLevel > 0 ? `minLevel: ${row.minLevel}` : null,
+    row.maxLevel > 0 ? `maxLevel: ${row.maxLevel}` : null
+  ].filter((field) => field !== null);
+  entries.push(`  - { ${fields.join(', ')} }`);
+}
+
+fs.mkdirSync(path.dirname(out), { recursive: true });
+fs.writeFileSync(
+  out,
+  `# MegaMUD's room names, each tied to the realm room it names.
+#
+# Generated by \`npm run build:rooms\` from mega-paramud/Default/ROOMS.md (the
+# goto list) and its path files, against the shipped Paradigm world. The client
+# keeps an entry on a realm only where that realm has \`room\` under the same
+# name, so on another realm the entries that do not fit are left out.
+#
+# stopBefore, avoid and hidden are MegaMUD's "Stop before entering room",
+# "Avoid this room" and "Hide in goto list"; minLevel and maxLevel its level
+# range. Its shop, bank, trainer and class fields are left out: the realm data
+# states those.
+#
+# ${entries.length} of ${rows.length} rows. Dropped ${dropped.length}: no room, a name several
+# rooms share, or a typed map/room and checksum that disagree.
+rooms:
+${entries.join('\n')}
+`,
+  'utf8'
+);
+
+console.log(
+  `${entries.length} room names written to ${path.relative(process.cwd(), out)} ` +
+    `(dropped ${dropped.length} of ${rows.length})`
+);
+if (list) for (const line of dropped) console.log(`  dropped ${line}`);

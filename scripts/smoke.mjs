@@ -6620,7 +6620,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
            * called Mossy Tunnel. The room arrives here with no move behind it,
            * so a unique name is the only signal the resolver has.
            */
-          const same = await window.mudengine.searchRooms('${SESSION}', cell.name);
+          // Rooms of that name only: the search also answers MegaMUD's names (todo 144),
+          // and 'Wastelands Vortex (Pillaged Museum)' is another room.
+          const found = await window.mudengine.searchRooms('${SESSION}', cell.name);
+          const same = found.filter((room) => room.name === cell.name);
           if (same.length !== 1) return { ambiguous: same.length, name: cell.name };
           // The realm's own script, off the room record. answersHere was an
           // IPC channel until 2026-09-02 and is now a field on the room the

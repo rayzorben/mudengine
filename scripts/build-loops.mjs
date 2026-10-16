@@ -22,52 +22,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { WorldGraph } from '../src/main/world/WorldGraph.ts';
-import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { worldLeg } from '../src/main/session/navigation.ts';
+import {
+  coordinateTail,
+  idOf,
+  recordedRealm,
+  replay,
+  startRoom,
+  stepLines
+} from './lib/megamud-paths.mjs';
 
 const source = process.argv[2] ?? path.resolve('mega-paramud/Default');
 const out = process.argv[3] ?? path.resolve('resources/loops/megamud.yaml');
-/*
- * The realm those paths were recorded against — not necessarily the one this
- * client ships. `mega-paramud` is Paradigm's, and replaying its paths through
- * stock GreaterMUD fits 7 loops out of 488: the room numbers are a different
- * realm's. Pass the database the paths belong to.
- */
-const realm = process.argv[4] ?? '';
-
-const world = realm
-  ? new RealmLibrary({
-      shippedDir: path.resolve('resources/world'),
-      cacheDir: path.join(path.dirname(path.resolve('resources/config/user.yaml')), 'realms'),
-      notify: (message) => console.log(`  ${message}`)
-    }).load(realm).graph
-  : WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'));
-const DIRECTIONS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd']);
-/** MegaMUD records long forms too; the realm data is canonical short. */
-const LONG = {
-  north: 'n', south: 's', east: 'e', west: 'w',
-  northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw',
-  up: 'u', down: 'd'
-};
-
-/**
- * `Ancient Crypt-1 1943` → the room at 1/1943.
- *
- * The coordinates were typed by hand into 488 file names, so every spelling
- * in the corpus is accepted: `-1 1943`, `- 2 10134` (a space after the dash),
- * and `(17/25)` in parentheses.
- */
-function startRoom(name) {
-  const suffix =
-    /-\s*(\d{1,3})\s+(\d{1,6})\s*$/.exec(name) ?? /\((\d{1,3})\/(\d{1,6})\)\s*$/.exec(name);
-  if (suffix) {
-    const room = world.byId(`${suffix[1]}/${suffix[2]}`);
-    if (room) return room;
-  }
-  const found = world.findByName(name);
-  return found.length === 1 ? found[0] : null;
-}
+// The database the paths belong to, where it is not the shipped Paradigm (`recordedRealm`).
+const world = recordedRealm(process.argv[4] ?? '');
 
 /**
  * What a person calls this loop, off the file's own first line.
@@ -81,24 +49,16 @@ function startRoom(name) {
  * Half, Middle and Full Loop — which is what somebody looking for one of them
  * would type.
  *
- * The coordinates are shed, and the realm decides which digits they are. All
- * 488 titles were typed by hand and the tail is spelled every way a person
- * spells it — `-17 9507`, `  14 5489`, `+6 924`, `(17/25)`, `Section7 519` —
- * so a pattern loose enough to catch them all is loose enough to take the `11`
- * off `Undermountain Level 11`. So a trailing pair of numbers is coordinates
- * only when **the realm has a room there**; otherwise it is part of the name.
- * That keeps the fourteen whose title names a different room from the one the
- * second line starts at, without ever asking the pattern to be sure on its own.
+ * The coordinates are shed where the realm has a room there (`coordinateTail`),
+ * which keeps the fourteen whose title names a different room from the one the
+ * second line starts at.
  */
 function friendlyTitle(line, room) {
   const title = (/^\[([^\]]*)\]/.exec(line ?? '')?.[1] ?? '').trim();
   if (title.length === 0) return '';
 
-  const pair = /[\s\-+(/]*(\d{1,3})[\s/]+(\d{1,6})\)?\s*$/.exec(title);
-  if (pair && ((Number(pair[1]) === room.map && Number(pair[2]) === room.room) ||
-      world.byId(`${pair[1]}/${pair[2]}`))) {
-    return title.slice(0, pair.index).trim();
-  }
+  const tail = coordinateTail(world, title);
+  if (tail.id !== null) return tail.name;
   // Half a suffix: `Siren Trees-5`, `Bone-strewn Hillside (Vultures)- 9993`. A
   // dash or a plus is required, so `Eladrin Level 1` keeps its level.
   const one = /\s*[-+]\s*(\d{1,6})\s*$/.exec(title);
@@ -107,45 +67,6 @@ function friendlyTitle(line, room) {
   }
   return title;
 }
-
-/** Every room the recorded directions walk through, or null where they do not fit. */
-function replay(from, steps) {
-  const rooms = [from];
-  let here = from;
-  for (const step of steps) {
-    // `w[use dragon key w]` — the bracket is MegaMUD's extra commands for the
-    // same move, which the route planner and walker handle themselves — and
-    // `e -- comment` is an annotation. Both are shed before reading the move.
-    let command = step
-      .replace(/\[.*\]\s*$/, '')
-      .replace(/\s+--.*$/, '')
-      .trim()
-      .toLowerCase();
-    command = LONG[command] ?? command;
-    const exit = DIRECTIONS.has(command)
-      ? here.exits.find((entry) => entry.direction === command)
-      : here.exits.find((entry) => entry.requirement?.commands?.includes(command));
-    if (!exit) {
-      /*
-       * Not every recorded step is a move: the corpus stashes loot
-       * (`hide 500 gold`), checks state (`stat`, `v`), wields (`wea moon`)
-       * and talks to NPCs mid-loop. A step that is not a direction and not a
-       * text exit of this room is an in-place action — the character stays
-       * put and the replay carries on. A *direction* that does not fit is
-       * still a real mismatch and fails the loop.
-       */
-      if (!DIRECTIONS.has(command)) continue;
-      return null;
-    }
-    const next = world.byId(`${exit.map}/${exit.room}`);
-    if (!next) return null;
-    rooms.push(next);
-    here = next;
-  }
-  return rooms;
-}
-
-const idOf = (room) => `${room.map}/${room.room}`;
 
 /**
  * The fewest waypoints whose routes reproduce the loop.
@@ -197,25 +118,17 @@ for (const name of files) {
     dropped.start += 1;
     continue;
   }
-  const from = startRoom(header[3]);
+  const from = startRoom(world, header[3]);
   if (!from) {
     dropped.start += 1;
     continue;
   }
-  /*
-   * Steps begin at the first `<room>:<flags>:<command>` line. Counting header
-   * lines instead does not work: a goto path names a start *and* an end room,
-   * a loop names only the one it returns to, so a fixed offset silently drops
-   * a loop's first step and every replay then fails on the second.
-   */
-  const steps = lines
-    .map((line) => /^[0-9A-F]{8}:[0-9A-F]{4}:(.*)$/i.exec(line)?.[1])
-    .filter((step) => step !== undefined && step.length > 0);
-  const rooms = replay(from, steps);
-  if (!rooms) {
+  const walked = replay(world, from, stepLines(lines).map((step) => step.command));
+  if (!walked) {
     dropped.steps += 1;
     continue;
   }
+  const { rooms } = walked;
   const stops = waypoints(rooms);
   if (stops.length < 2) {
     dropped.tiny += 1;

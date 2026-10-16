@@ -25,7 +25,7 @@ import type { CombatTally } from '../../shared/tally';
 import type { ConnectionState, StreamLine, TelnetEvent } from '../../shared/types';
 import type { RoomVerdict } from '../../shared/verdict';
 import type { WalkProgress } from '../../shared/walk';
-import type { RoomId } from '../../shared/world';
+import type { RoomId, RoomReference } from '../../shared/world';
 
 export interface SessionSink {
   /** What the console is shown, with where its rows' times go (`stampChunk` writes them in). */
@@ -190,4 +190,6 @@ export interface SessionSink {
   aliasFile?(): AliasFile | null;
   /** The shipped loops, which `@loop` reaches after the character's own (todo 32). */
   loopShelf?(): readonly Loop[];
+  /** The room a MegaMUD code names on this character's realm, or null (todo 144). */
+  roomCoded?(code: string): RoomReference | null;
 }
