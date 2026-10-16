@@ -704,6 +704,10 @@ tuning:
     # the formula and the sheet. A round counts once its target lived
     # through it; for swings, not a fight's first.
     measuredRoundsMin: 30
+    # A party member's damage a round is measured off this session's fights
+    # it struck in (measuredFightsMin of them); the lairs' fights beside the
+    # party are run again once it moves by partyDamageStep of itself.
+    partyDamageStep: 0.1
     trivialShare: 0.1
     clusterRadius: 30
     fillerRadius: 8

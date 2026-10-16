@@ -30,7 +30,7 @@ import { NO_REALM_PLAYERS, type PlayerRegistry } from '../../../shared/players';
 import type { Find, RealmFinds, Sighting } from '../../../shared/finds';
 import type { RealmShops, Shelf } from '../../../shared/shops';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
-import type { HuntingAdvice, KeptSpeed, MeasuredRate } from '../../../shared/hunting';
+import type { HuntingAdvice, KeptSpeed, MeasuredRate, SpotMob } from '../../../shared/hunting';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
@@ -8278,6 +8278,46 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const paired = await settled();
     expect(paired.pay?.share).toBe(2);
     expect(goblinPay(paired)).toBe(150);
+  });
+
+  /* Todo 152: in a party, a spot is priced with the members fighting beside the character. */
+  it('prices each spot with the members fighting beside it', async () => {
+    const fights: FightSink = {
+      ...record().fights,
+      memberMeasured: (name) => (name === 'Soul' ? { perRound: 50, fights: 40 } : null)
+    };
+    const socket = await surveyed(fights);
+    // Kept beneath the level too: a party kills a goblin quick enough to make it so.
+    const goblin = async (): Promise<{ advice: HuntingAdvice; mob: SpotMob | undefined }> => {
+      await settled();
+      const advice = manager!['errands'].huntingGrounds(null, null, { beneath: true });
+      const spot = [...advice.spots, ...advice.unmeasured].find(
+        (each) => each.mobs[0]?.name === 'goblin'
+      );
+      return { advice, mob: spot?.mobs[0] };
+    };
+    const alone = await goblin();
+    expect(alone.advice.assumptions.party).toBeNull();
+    // A member whose health nobody has said takes its share of the exp and is not in the fight.
+    socket.write('Soul started to follow you.\r\n[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members.length > 0);
+    const unread = await goblin();
+    expect(unread.advice.pay?.share).toBe(2);
+    expect(unread.advice.assumptions.party).toMatchObject({ fighters: 0, leftOut: 1 });
+    expect(unread.mob?.rounds).toBe(alone.mob?.rounds);
+    // Its client says its health: it fights, dealing its measured fifty a round.
+    socket.write('Soul telepaths: {HP=320/320,MA=0/0}\r\n[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members[0]?.vitals !== null);
+    const beside = await goblin();
+    expect(beside.advice.assumptions.party).toMatchObject({
+      fighters: 1,
+      leftOut: 0,
+      unmeasured: 0,
+      damage: 50
+    });
+    expect(beside.mob?.rounds).toBeLessThan(alone.mob!.rounds!);
+    // The blows stay whole in the estimate; the run fight shares them.
+    expect(beside.mob?.perRound).toBe(alone.mob?.perRound);
   });
 
   /* 2026-10-06: read afresh on each connection, orohost's speed took a caster eleven minutes. */

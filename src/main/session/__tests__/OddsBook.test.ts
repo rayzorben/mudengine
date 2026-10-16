@@ -397,4 +397,33 @@ describe('the prediction stamped on a fight at its opening (todo 26)', () => {
     expect(odds.predict('ogre', tracker.current)).toBeNull();
     odds.dispose();
   });
+  /* Todo 152: a lair hunted beside the party, run when the hunting grounds ask, for one party at a time. */
+  it('runs a lair beside the party asked about, and forgets the last party for another', async () => {
+    const { odds, tracker } = book();
+    const party = (hp: number) => ({
+      key: `soul:${hp}`,
+      party: { members: [{ hp, perRound: 10 }], retarget: 0.5, retargetMember: 0.5 }
+    });
+    const simulator = (odds as unknown as { simulator: SlicedSimulator }).simulator;
+    const run = vi.spyOn(simulator, 'run');
+    expect(odds.partyLair(lairRoom, party(300))).toEqual({ kind: 'unread' });
+    odds.refresh(tracker.current);
+    expect(odds.partyLair(lairRoom, party(300))).toEqual({ kind: 'pending' });
+    await vi.waitFor(() => expect(odds.partyLair(lairRoom, party(300)).kind).toBe('run'));
+    // The first fight run is the one asked for, with the party beside it.
+    expect(run.mock.calls[0]?.[0].party).toEqual(party(300).party);
+    // The fight alone is its own, and still owed.
+    await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    expect(run.mock.calls.filter(([input]) => input.party === undefined).length).toBeGreaterThan(0);
+    // Another party: pending again, and the first is forgotten.
+    expect(odds.partyLair(lairRoom, party(400))).toEqual({ kind: 'pending' });
+    await vi.waitFor(() => expect(odds.partyLair(lairRoom, party(400)).kind).toBe('run'));
+    expect(odds.partyLair(lairRoom, party(300))).toEqual({ kind: 'pending' });
+    // Asked alone, the last party's owed fight is not run.
+    odds.alone();
+    const before = run.mock.calls.length;
+    await vi.waitFor(() => expect(odds.lairsLeft).toBe(0));
+    expect(run.mock.calls.slice(before).some(([input]) => input.party !== undefined)).toBe(false);
+    odds.dispose();
+  });
 });

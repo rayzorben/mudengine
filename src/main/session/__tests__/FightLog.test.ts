@@ -445,3 +445,28 @@ describe('a record in segments', () => {
     log.dispose();
   });
 });
+
+/* Todo 152: what a party member deals a round, off this session's fights it struck in. */
+describe('what the record says another player deals a round', () => {
+  const ask = { least: 2, roundMs: 5000, openerRounds: 1 };
+
+  it('measures each named player over the fights it struck in', () => {
+    const log = new FightLog(file);
+    // 10s is three rounds, one blow one round: 60 over four rounds.
+    log.record(fight({ others: 45, ms: 10_000, struckBy: { soul: 45 } }));
+    log.record(fight({ others: 15, ms: null, struckBy: { soul: 15 } }));
+    log.record(fight({ others: 0 }));
+    expect(log.memberMeasured('Soul', ask)).toEqual({ perRound: 15, fights: 2 });
+    log.dispose();
+  });
+
+  it('measures nobody under the least, nor a name no fight carries', () => {
+    const log = new FightLog(file);
+    log.record(fight({ others: 45, ms: 10_000, struckBy: { soul: 45 } }));
+    expect(log.memberMeasured('Soul', ask)).toBeNull();
+    expect(log.memberMeasured('Rand', { ...ask, least: 1 })).toBeNull();
+    // Positive control: the one fight measures at a least of one.
+    expect(log.memberMeasured('Soul', { ...ask, least: 1 })).toEqual({ perRound: 15, fights: 1 });
+    log.dispose();
+  });
+});

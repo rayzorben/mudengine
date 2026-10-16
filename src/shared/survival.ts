@@ -105,6 +105,21 @@ export interface SurvivalRetreat {
   caught: number;
 }
 
+/**
+ * The party fighting beside the character (todo 152, `partyFight.ts`): each
+ * member's health and damage a round. Every monster picks its target each
+ * round among the players (`Mob.TryFindTarget`): it keeps the one it has
+ * unless a roll says look again, `retarget` while it is this character and
+ * `retargetMember` while it is a member, then takes any of them alike. A
+ * member is met unarmoured, so it falls as early as it could; one that falls
+ * draws and deals nothing more.
+ */
+export interface SurvivalParty {
+  members: ReadonlyArray<{ hp: number; perRound: number }>;
+  retarget: number;
+  retargetMember: number;
+}
+
 /** What counts as safe and as merely risky: shares of fights survived that must be *exceeded*. */
 export interface SurvivalLevels {
   safeAbove: number;
@@ -159,6 +174,8 @@ export interface SurvivalInput {
   recasts: Recast[];
   /** The run the character makes; null fights to the end. */
   retreat: SurvivalRetreat | null;
+  /** The members fighting beside it, hunting a lair; absent fights alone. */
+  party?: SurvivalParty;
   levels: SurvivalLevels;
   trials: number;
   roundCap: number;
@@ -322,6 +339,21 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       };
     });
   const sides = compile(input.player, input.sheet);
+  /*
+   * The members beside it (todo 152), each met unarmoured: a member's armour
+   * is not known, so it falls as early as it could. A pass fights alone.
+   */
+  const party =
+    input.party !== undefined && input.party.members.length > 0 && input.passing !== true
+      ? input.party
+      : null;
+  const bare: MenacePlayer = {
+    armourClass: 0,
+    damageResist: 0,
+    magicRes: 0,
+    family: input.player.family ?? null
+  };
+  const memberModels = party === null ? [] : all.map(({ subject }) => worstModel(subject, bare));
   // A fight the character cannot win is not one this can price.
   if (sides.slice(0, foes.length).every((side) => side.attack === null && side.cast === null)) {
     return null;
@@ -378,6 +410,10 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     const alive = met.map((index) => sides[index]!.hp);
     const states: MobState[] = met.map(() => freshMobState());
     const swinging = met.map((index) => foes[index]!.waits !== true);
+    const memberHp = party?.members.map((member) => member.hp) ?? [];
+    const memberHeld = memberHp.map(() => 0);
+    // Whom each foe is aimed at: 0 the character, k the k-th member; unset before its first round.
+    const aims: number[] = [];
     for (const index of [...met]) summon(drawSummons(random, all[index]!.arrives ?? NO_SUMMONS));
     // The foes as the character now meets them, and the top of its bar: a lapse moves both.
     let facing = sides;
@@ -423,16 +459,9 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         const side = facing[met[target]!]!;
         swinging[target] = true;
         alive[target] = strike(side, alive[target]!);
-        if (alive[target]! <= 0 && side.death !== null) {
-          const harm = side.death.high > 0 ? between(random, side.death.low, side.death.high) : 0;
-          hp -= harm;
-          lost += harm;
-          // Cast by the dying monster at the character, so resisted like any mob cast (Spell.cs:1052).
-          if (side.death.summons.length > 0 && random() >= side.death.resist) {
-            summon(drawSummons(random, side.death.summons));
-          }
-        }
+        if (alive[target]! <= 0) felled(side);
       }
+      partyStrikes();
 
       foesRound();
       if (hp <= 0) {
@@ -500,9 +529,16 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       const called: number[] = [];
       for (const [slot, index] of met.entries()) {
         if (alive[slot]! <= 0 || !swinging[slot]) continue;
-        const outcome = rollMobRound(random, facing[index]!.model, states[slot]!);
-        harm += outcome.harm;
-        held = Math.max(held, outcome.held);
+        const aim = aimAt(slot);
+        const model = aim === 0 ? facing[index]!.model : memberModels[index]!;
+        const outcome = rollMobRound(random, model, states[slot]!);
+        if (aim === 0) {
+          harm += outcome.harm;
+          held = Math.max(held, outcome.held);
+        } else {
+          memberHp[aim - 1] = memberHp[aim - 1]! - outcome.harm;
+          memberHeld[aim - 1] = Math.max(memberHeld[aim - 1]!, outcome.held);
+        }
         if (outcome.mended > 0) {
           alive[slot] = Math.min(sides[index]!.hp, alive[slot]! + outcome.mended);
         }
@@ -513,6 +549,56 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       worstRound = Math.max(worstRound, harm + struckBack);
       // Those called come in after the round, and swing from the next.
       summon(called);
+    }
+
+    /**
+     * Whom a foe's round is aimed at (`Mob.TryFindTarget`): the one it had,
+     * unless that member has fallen or the roll says look again, and then any
+     * player standing alike. Alone, always the character, with nothing drawn.
+     */
+    function aimAt(slot: number): number {
+      if (party === null) return 0;
+      const was = aims[slot];
+      if (was !== undefined && (was === 0 || memberHp[was - 1]! > 0)) {
+        if (random() >= (was === 0 ? party.retarget : party.retargetMember)) return was;
+      }
+      const standing = [0, ...memberHp.flatMap((left, at) => (left > 0 ? [at + 1] : []))];
+      const aim = standing[Math.floor(random() * standing.length)]!;
+      aims[slot] = aim;
+      return aim;
+    }
+
+    /**
+     * The members' round: what those standing and not held deal, on the foe
+     * the party is fighting, which a party strikes together.
+     */
+    function partyStrikes(): void {
+      if (party === null) return;
+      let dealt = 0;
+      for (const [at, member] of party.members.entries()) {
+        if (memberHp[at]! <= 0) continue;
+        if (memberHeld[at]! > 0) {
+          memberHeld[at] = memberHeld[at]! - 1;
+          continue;
+        }
+        dealt += member.perRound;
+      }
+      const slot = alive.findIndex((health) => health > 0);
+      if (dealt <= 0 || slot === -1) return;
+      swinging[slot] = true;
+      alive[slot] = alive[slot]! - dealt;
+      if (alive[slot]! <= 0) felled(facing[met[slot]!]!);
+    }
+
+    /** A foe brought down: its death spell, cast at the character and resisted like any mob cast (Spell.cs:1052). */
+    function felled(side: FoeSide): void {
+      if (side.death === null) return;
+      const harm = side.death.high > 0 ? between(random, side.death.low, side.death.high) : 0;
+      hp -= harm;
+      lost += harm;
+      if (side.death.summons.length > 0 && random() >= side.death.resist) {
+        summon(drawSummons(random, side.death.summons));
+      }
     }
 
     /**

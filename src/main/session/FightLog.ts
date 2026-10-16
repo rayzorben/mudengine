@@ -13,13 +13,16 @@
 import { errorMessage } from '../../shared/values';
 import {
   AS_PRINTED,
+  foldDealt,
   foldFight,
   foldOutput,
   measuredPerRound,
+  memberPerRound,
   measuredTiming,
   mergeFolds,
   mergeOutputs,
   summarizeFolds,
+  type DealtFolds,
   type FightFolds,
   type FightOutput,
   type FightOutputs,
@@ -27,6 +30,7 @@ import {
   type FightSink,
   type FightSummary,
   type MeasureAsk,
+  type MeasuredDealt,
   type MeasuredOutput,
   type MeasuredTiming,
   type MobResolver
@@ -70,6 +74,12 @@ export class FightLog implements FightSink {
   private readonly recorded: FightFolds = new Map();
   /** And what this character dealt in them, per level. */
   private readonly recordedOutput: FightOutputs = new Map();
+  /**
+   * And what every other player named dealt in them. This session's only: a
+   * member's level and gear move between sessions, and the record before
+   * holds no names to fold.
+   */
+  private readonly recordedDealt: DealtFolds = new Map();
   private start: Before | null = null;
   private open: Open | null = null;
   /** Fights appended to the open segment while its count was still unknown. */
@@ -107,6 +117,7 @@ export class FightLog implements FightSink {
   record(fight: FightRecord): void {
     foldFight(this.recorded, fight);
     foldOutput(this.recordedOutput, fight);
+    foldDealt(this.recordedDealt, fight);
     this.rows.hold(fight);
   }
 
@@ -227,6 +238,11 @@ export class FightLog implements FightSink {
    */
   timing(least: number): MeasuredTiming {
     return measuredTiming(this.outputTables(), least);
+  }
+
+  /** What another player deals a round, off this session's fights (`memberPerRound`). */
+  memberMeasured(name: string, ask: MeasureAsk): MeasuredDealt | null {
+    return memberPerRound(this.recordedDealt, name, ask);
   }
 
   /** The per-level outputs that answer: the folded record and this session's; the first ask starts the fold. */

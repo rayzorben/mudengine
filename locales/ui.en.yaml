@@ -2023,6 +2023,17 @@ cards:
     # lineage), the character's fight record does: said, with its count.
     measured: "Kills rated from this character's own fight history: {perRound} damage a round over
       {fights} fights, from level {level} up."
+    # In a party, each spot is rated with the members fighting beside the
+    # character: those whose own client said their health (@health), and what
+    # each was seen dealing. The odds of a lair share the monsters' blows among them.
+    partyOne: Rated with one party member fighting beside you.
+    partyMany: Rated with {count} party members fighting beside you.
+    partyDealing: Their damage this session adds {damage} a round.
+    partyAlone: Rated as your own fight, since nobody in the party has said their health; each still takes a share of the exp.
+    partyUnmeasuredOne: One of them has not fought enough this session to rate its damage, so it counts as none.
+    partyUnmeasuredMany: '{count} of them have not fought enough this session to rate their damage, so it counts as none.'
+    partyLeftOutOne: One more in the party is not rated, since its health is not known; it still takes a share of the exp.
+    partyLeftOutMany: '{count} more in the party are not rated, since their health is not known; they still take a share of the exp.'
     # Past the best few, a lair is ranked on the first estimate: its loop not
     # walked out, nothing beside it added.
     rough: rough

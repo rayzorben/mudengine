@@ -866,6 +866,13 @@ const TUNING_DEFAULTS = {
      */
     measuredRoundsMin: 30,
     /**
+     * How far a party member's measured damage a round moves, as a share of
+     * itself, before the lairs' fights beside the party are run again (todo
+     * 152): every lair the survey reaches is a fight to run, and a figure
+     * settling over the session moved by a few per cent on each kill.
+     */
+    partyDamageStep: 0.1,
+    /**
      * And a room that could not take this share off an *unarmoured* character
      * — every blow landing, at full damage — is beneath this level and left
      * out too. The bar is read `automation.hunting.trivialLevelMargin` lower
