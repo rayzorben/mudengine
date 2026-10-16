@@ -29,7 +29,8 @@ import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { NoEffectBook, readNoEffectRow, type NoEffectRow } from './NoEffectBook';
 import { readRoundTally, RoundsBook } from './RoundsBook';
-import { LORE_REPAIRS, type LoreDocument } from './loreRepairs';
+import { runRepairs, type RepairDocument } from './fileRepairs';
+import { LORE_REPAIRS } from './loreRepairs';
 import { t } from '../app/i18n';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
@@ -759,7 +760,7 @@ export class RealmLore {
     this.suspended = false;
 
     const file = this.repair(
-      typeof parsed === 'object' && parsed !== null ? (parsed as LoreDocument) : {}
+      typeof parsed === 'object' && parsed !== null ? (parsed as RepairDocument) : {}
     ) as Partial<LoreFile>;
     for (const [realm, table] of readTables(file.realms, (name, value) => {
       const entry = readEntry(value);
@@ -839,20 +840,10 @@ export class RealmLore {
    * before any table is read. Each removal is said with its count, and the
    * ids are written back with the next save, so none runs twice.
    */
-  private repair(parsed: LoreDocument): LoreDocument {
-    const done = parsed['repaired'];
-    this.repaired = new Set(
-      Array.isArray(done) ? done.filter((id): id is string => typeof id === 'string') : []
-    );
-    let file = parsed;
-    for (const step of LORE_REPAIRS) {
-      if (this.repaired.has(step.id)) continue;
-      const result = step.apply(file);
-      file = result.file;
-      this.repaired.add(step.id);
-      this.schedule();
-      if (result.removed > 0) this.options.notify?.(step.why(result.removed));
-    }
+  private repair(parsed: RepairDocument): RepairDocument {
+    const { file, repaired, ran } = runRepairs(parsed, LORE_REPAIRS, this.options.notify);
+    this.repaired = repaired;
+    if (ran) this.schedule();
     return file;
   }
 

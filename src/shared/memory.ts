@@ -50,6 +50,20 @@ export const DISCOVERY_REASONS = [
 
 export type DiscoveryReason = (typeof DISCOVERY_REASONS)[number];
 
+/**
+ * The reasons that record a way through the realm, as opposed to a shop's
+ * stock: what the map draws and what `found-ways-forgotten` removed (todo 151).
+ */
+export const WAY_REASONS: ReadonlySet<DiscoveryReason> = new Set<DiscoveryReason>([
+  'unknown-exit',
+  'unknown-room'
+]);
+
+/** Whether a record is a way found by walking. */
+export function isFoundWay(discovery: Pick<Discovery, 'reason'>): boolean {
+  return WAY_REASONS.has(discovery.reason);
+}
+
 /** Whether a value off disk is a reason this build knows. */
 export function isDiscoveryReason(value: unknown): value is DiscoveryReason {
   return DISCOVERY_REASONS.includes(value as DiscoveryReason);

@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { t } from '../../app/i18n';
+import { MEMORY_REPAIRS } from '../memoryRepairs';
 import { WorldMemory } from '../WorldMemory';
 import type { Discovery } from '../../../shared/memory';
 
@@ -116,7 +118,8 @@ describe('what a character remembers about its realm', () => {
       JSON.stringify({
         version: 1,
         realm: 'test-realm',
-        discoveries: [discovery(), { from: '1/10' }]
+        discoveries: [discovery(), { from: '1/10' }],
+        repaired: MEMORY_REPAIRS.map((step) => step.id)
       }),
       'utf8'
     );
@@ -243,5 +246,59 @@ describe('forgetting an observation the player says is wrong', () => {
 
     const again = new WorldMemory(file, 'test-realm');
     expect(again.all.map((entry) => entry.command)).toEqual(['jump cliff']);
+  });
+});
+
+/*
+ * Todo 151: a build without the fix wrote found ways from the room it wrongly
+ * believed the character stood in, and the file cannot say which. The repair
+ * drops every way, once, says how many, keeps a shop's stock, and records
+ * that it ran.
+ */
+describe('the repairs a memory file is given once', () => {
+  const writeOld = (): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: 'test-realm',
+        discoveries: [
+          discovery({ from: '1/297', command: 'e', to: '1/2140' }),
+          discovery({ command: 'climb tree', to: null, reason: 'unknown-room' }),
+          discovery({ reason: 'unknown-stock', command: 'rope', to: null })
+        ]
+      })
+    );
+  };
+
+  it('forgets every found way, says so, and keeps the stock', () => {
+    writeOld();
+    const said: string[] = [];
+    const memory = new WorldMemory(file, 'test-realm', undefined, (m) => said.push(m));
+    expect(memory.all.map((entry) => entry.reason)).toEqual(['unknown-stock']);
+    expect(said).toEqual([t('notices.world.memory.foundWaysForgotten.many', { count: 2 })]);
+    memory.close();
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.repaired).toEqual(['found-ways-forgotten-2026-10']);
+    expect(written.discoveries).toHaveLength(1);
+
+    // Positive control: the step ran, so a way learned after it stays put.
+    const later = new WorldMemory(file, 'test-realm');
+    expect(later.learn(discovery({ command: 'n' }))).not.toBeNull();
+    later.close();
+    const again: string[] = [];
+    const reread = new WorldMemory(file, 'test-realm', undefined, (m) => again.push(m));
+    expect(reread.all.map((entry) => entry.command)).toEqual(['rope', 'n']);
+    expect(again).toEqual([]);
+  });
+
+  it('gives a file written from nothing nothing to repair', () => {
+    const memory = new WorldMemory(file, 'test-realm');
+    memory.learn(discovery());
+    memory.close();
+    const said: string[] = [];
+    expect(new WorldMemory(file, 'test-realm', undefined, (m) => said.push(m)).all).toHaveLength(1);
+    expect(said).toEqual([]);
   });
 });

@@ -7409,10 +7409,15 @@ describe('starting and stopping a movement', () => {
     return { socket, world, notices };
   }
 
-  /** Puts the character somewhere else without walking it there. */
+  /**
+   * Puts the character somewhere else without walking it there. The exits are
+   * the room's own: a nameless block printing one the room lacks is not kept
+   * as that room (todo 151).
+   */
   async function standIn(socket: net.Socket, room: number): Promise<void> {
+    const exits = [room > 1 ? 'south' : null, room < 40 ? 'north' : null].filter(Boolean);
     socket.write(
-      `Location:            1,${room}\r\nRoom ${room}\r\nObvious exits: south, north\r\n`
+      `Location:            1,${room}\r\nRoom ${room}\r\nObvious exits: ${exits.join(', ')}\r\n`
     );
     await until(() => manager!.character.room.number === room);
   }

@@ -961,6 +961,14 @@ notices:
       invalidFile: '{fileName} is not a memory file — starting fresh.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
+      # Todo 151: a once-only repair of what an earlier version wrote (`memoryRepairs.ts`).
+      foundWaysForgotten:
+        one: 'Forgot {count} way found by walking. Earlier versions could write one
+          from the wrong room, so all were removed. A real one is noted again the next time it is
+          walked.'
+        many: 'Forgot {count} ways found by walking. Earlier versions could write
+          them from the wrong room, so all were removed. A real one is noted again the next time it
+          is walked.'
     finds:
       invalidFile: '{fileName} is not a find log — starting fresh.'
       readError: 'Could not read {fileName}: {message}'
@@ -1124,6 +1132,15 @@ game:
     # A compass exit onto another map number: in the tip, and beside its stub.
     otherMap: '{direction} onto map {map}'
     otherMapMark: 'map {map}'
+    # Floors and stairs (todo 151). The strip lists the floors stairs on screen reach.
+    floors: Floor
+    floorButton: 'Show floor {floor}'
+    yourFloor: Your floor
+    # A stair's peek window: its mark, the room it reaches, that room's floor.
+    peekTitle: '{glyph} {roomName} · floor {floor}'
+    peekTitleOtherMap: '{glyph} {roomName}'
+    stairClimb: '{count} floors of one room each'
+    stairOdd: 'The stairs say floor {expected}; this room is on {floor}'
     zoomIn: Zoom in
     zoomOut: Zoom out
     home: Back to you

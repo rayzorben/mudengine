@@ -1,8 +1,8 @@
 /**
  * The steps out of a room that a flat map can draw: each compass exit, with
  * the room it lands in. The one placing rule for the Map card's window
- * (`localMap`) and the game view's whole-map plane (`realmLayout`), which
- * also follows `leapSteps`, the ways the plane cannot draw.
+ * (`localMap`) and the game view's floors (`realmLayout`), which also
+ * follows `leapSteps`, the ways a flat floor cannot draw.
  *
  * A draw reaches no particular room, so an exit whose cast scatters is not a
  * step: drawing onwards from the room its table names would put a corridor on
@@ -15,15 +15,12 @@ import type { WorldGraph } from './WorldGraph';
 
 export type PlaneGraph = Pick<WorldGraph, 'beyond' | 'byId'>;
 
-/** A room one way out of another, and the cell offset it is drawn at. */
-export interface PlaneLink {
+/** A room one compass exit out of another, and the cell offset it is drawn at. */
+export interface PlaneStep {
   dx: number;
   dy: number;
   to: RoomId;
   destination: WorldRoom;
-}
-
-export interface PlaneStep extends PlaneLink {
   exit: WorldExit;
 }
 
@@ -71,24 +68,10 @@ export function* offPlaneWays(graph: LeapGraph, room: WorldRoom): Generator<OffP
 }
 
 /**
- * Where the plane sets down a room reached by a way it cannot draw: up to the
- * north-east, down to the south-west, a room's teleport (`go path`) east. The
- * floor above then sits beside the stairs instead of wherever its room
- * numbers fall.
+ * The ways off the plane the game view's layout follows (`realmLayout`): up and
+ * down change the floor, a teleport sets its landing beside the room.
  */
-const LEAP: Record<OffPlaneWay['kind'], { dx: number; dy: number }> = {
-  up: { dx: 1, dy: -1 },
-  down: { dx: -1, dy: 1 },
-  teleport: { dx: 1, dy: 0 }
-};
-
-/** The ways off the plane the game view's layout follows, with where it sets each down. */
-export function* leapSteps(
-  graph: LeapGraph,
-  room: WorldRoom
-): Generator<PlaneLink & { way: OffPlaneWay }> {
-  for (const way of offPlaneWays(graph, room)) {
-    if (way.kind !== 'teleport' && way.exit.requirement?.spellEffect === 'scatters') continue;
-    yield { ...LEAP[way.kind], to: way.to, destination: way.destination, way };
-  }
+export function* leapSteps(graph: LeapGraph, room: WorldRoom): Generator<OffPlaneWay> {
+  for (const way of offPlaneWays(graph, room))
+    if (way.kind === 'teleport' || way.exit.requirement?.spellEffect !== 'scatters') yield way;
 }

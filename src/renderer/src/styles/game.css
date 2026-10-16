@@ -1165,3 +1165,44 @@
     transition: none !important;
   }
 }
+
+/* The floor strip (todo 151): the floor shown and the floors its stairs reach. */
+.gv-floors {
+  /* The row the sheet and the talk panel start on, under the legend. */
+  top: 118px;
+  left: 16px;
+  display: grid;
+  gap: 2px;
+  max-height: calc(50vh - 140px);
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.gv-floors-label {
+  padding: 0 2px 2px;
+  color: var(--game-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.gv-floors button {
+  min-width: 42px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--game-stair) !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gv-floors button:hover {
+  background: color-mix(in srgb, var(--game-white) 8%, transparent) !important;
+}
+
+.gv-floors button[data-on='true'] {
+  background: var(--game-accent) !important;
+  color: var(--game-ink) !important;
+}
+
+.gv-floors button[data-home='true']:not([data-on='true']) {
+  box-shadow: inset 0 0 0 1.5px var(--game-accent);
+}
