@@ -18,6 +18,7 @@ import {
   spellsTaughtInReach
 } from './indexQuests';
 import type { BuiltItemFrom, ItemLanding } from './indexQuests';
+import { openingsIn, withOpenings, type CounterOpening } from './questOpenings';
 import { indexSpellHazards } from './spellHazard';
 import { gateNames, nameGate } from './navigation/stepGates';
 import type { ScriptLine } from '../../shared/world';
@@ -148,8 +149,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 68 | **Where a spell is learned.** A script's `learnspell` (Chancellor Annora's `knowledge` teaches a Druid `frozen spike`) was a quest reward and nothing else, so a spell's detail could not say where to go. `BuiltSpell.from` is `spellsTaughtInReach`, the owners, rooms and words an item's `from` carries, and each handover's `p` is the copper its line's `price` takes. A topic ending in a number is a word again (`isStepArgument`), so Naram Fireblade's `learn 3` (`flame enchantment`, 360,000 copper) and his three peers' tables are reached: 36 more blocks in gmud.zip, 54 in pmud.zip, and every `NPC #N` the export's `Spells."Learned From"` names is found (todo 71) |
  * | 69 | **A roll table's quest step carries the gates of the line that rolls it.** `random N` was not followed, so a counter granted in a roll table was a step with no gates and no owner but whoever greeted with the table: DarkbaneQuest's two steps (blocks 1810, 1811) read as open to everybody, asked of the orc warlord, where the realm rolls them from the Ghost of Justice Darkbane's `return` (block 1809) behind class, `minlevel 50`, `goodaligned -51`, `failability 205` and the holy item 1655. `Reached.rolledBy` carries each rolling line's gates and takes into the step's routes; a roll's threshold is never a phrase; a roll table is never a greeting's root. Four roll tables grant a counter in gmud.zip and pmud.zip alike (todo 132) |
  * | 70 | **`failroomitem` is a gate on the room, not an item to carry.** The server checks the room's floor, visible or hidden, for it (`TextBlockPart.cs:998`), and `spellHazard.ts` put it in `hz.av` beside `failitem`, which every reader takes as *carry this*: `rock check` (the rock outcropping its own script drops), `branch check` (the withered tree) and stock's `hydra boss check` (the great hydra statue). It is now followed at full weight as `roomitem` is (todo 135) |
+ * | 71 | **The ways a quest counter lets through.** A room command or exit whose gate wants a counter at a rank (`Quest.opens`, `questOpenings.ts`), with its own level gate, less the ways the quest's own steps go on to use: a step, a command that gives an item a step takes back, a way into a step's room. A quest that pays nothing kept counts one its last rank goes through as its reward, at that way's level: MerchantCaptain's `secure passage to talkiran` at Blackwater Harbor, Wharf (14/759), level 65 on pmud.zip and 70 on gmud.zip (todo 155) |
  */
-export const REALM_FORMAT = 70;
+export const REALM_FORMAT = 71;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1669,6 +1671,8 @@ export function buildRealm(
   /** Levers whose phrase several of the room's own commands answer to. */
   let ambiguousLevers = 0;
   let openableHere = 0;
+  /** The ways each quest counter lets through (format 71), told to their quests below. */
+  const counterWays: CounterOpening[] = [];
   for (const { room, cmd } of drafts) {
     const action = cmd === null ? undefined : blocks.get(cmd)?.action;
     const answers =
@@ -1716,6 +1720,8 @@ export function buildRealm(
     }
     if (answers.length > 0) room['cmd'] = answers;
     if (mine.length > 0) levered += 1;
+    const exits = room['x'] as Record<string, BuiltExit>;
+    counterWays.push(...openingsIn({ here, commands: answers, exits }));
 
     /*
      * And the other end: an exit stating `Needs N Actions` gets the phrases,
@@ -1726,7 +1732,6 @@ export function buildRealm(
      * another room is a route this planner does not plan. What is recorded
      * either way is *where* each lever is, so the client can say so.
      */
-    const exits = room['x'] as Record<string, BuiltExit>;
     for (const [direction, exit] of Object.entries(exits)) {
       if (exit.i === undefined) continue;
       const found = byExit.get(`${here}:${direction}`);
@@ -1760,7 +1765,11 @@ export function buildRealm(
    * second opinion about the same rows. The walk itself was made before the
    * item index, which needs it too — see `blocks` above.
    */
-  const quests = indexQuests(source, { classes, races, spells }, reach, names);
+  const quests = withOpenings(
+    indexQuests(source, { classes, races, spells }, reach, names),
+    counterWays,
+    fromScripts.from
+  );
 
   return {
     lines,

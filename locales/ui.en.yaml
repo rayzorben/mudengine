@@ -2444,10 +2444,18 @@ cards:
     # it keeps.
     tile:
       ahead: step {rank} needs level {level}
+      # The wait is the level of the way the quest opens as its reward.
+      aheadOpens: what it opens needs level {level}
       levelsOff:
         many: '{count} levels off'
         one: '{count} level off'
       paysNothing: Nothing this character keeps
+      # A quest that pays nothing kept and lets a room command or an exit
+      # through once it is finished: that way is what it pays (todo 155).
+      opens:
+        command: '{say} at {place}'
+        exit: '{direction} exit at {place}'
+      opensTitle: Finishing the quest lets you use this
       # A class's routes pay differently and the class is not read yet.
       unread: class rewards unknown
       unreadTitle: Some steps pay by class, and this character's class has not been read yet
