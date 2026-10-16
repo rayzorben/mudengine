@@ -590,15 +590,17 @@ export class Travel implements SessionModule {
 
   /**
    * A walk ended, arrived or not. A walk home a fight cut short is armed again
-   * so the character is still going somewhere (todo 03); a run that arrived
-   * turns auto-combat back on; an arrival spends the choice to cross; a back
-   * press gives its trail entry up. Before the modules hear it, as it was.
+   * so the character is still going somewhere (todo 03); a run that ended,
+   * arrived or stopped short, or the walk home that replaced it, turns
+   * auto-combat back on (todo 145); an arrival spends the choice to cross; a
+   * back press gives its trail entry up. Before the modules hear it, as it was.
    */
   walkEnded(arrived: boolean): void {
     const home = this.homeward;
     this.homeward = null;
     const standing = this.tracker.current;
-    if (home !== null && !arrived && fightIsRunning(standing)) {
+    const homeAgain = home !== null && !arrived && fightIsRunning(standing);
+    if (homeAgain) {
       const { map, number } = standing.room;
       this.retreat = {
         room: home,
@@ -609,8 +611,15 @@ export class Travel implements SessionModule {
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
     if (arrived && this.walkAsked) this.combatOnAfterRun(true);
-    // The player's run stopped short leaves it off, and the run is over: nothing is owed at a relaunch.
-    else if (this.walkAsked && this.walkRun) this.combatHeldOff = false;
+    // Stopped short, auto-combat goes back on where the run turned it off: a run
+    // stopped on a spent token left Festus taking a planar storm's arcs with it
+    // off (todo 145). Off before the run, it stays off. A walk home that replaced
+    // the run gives it back when it ends, unless a fight armed it again.
+    else if (
+      this.combatHeldOff &&
+      ((this.walkAsked && this.walkRun) || (home !== null && !homeAgain))
+    )
+      this.combatOnAfterRun(arrived);
     this.clearFor(null);
     this.walkAsked = false;
     this.walkRun = false;
@@ -619,9 +628,9 @@ export class Travel implements SessionModule {
 
   /**
    * A route the player asked for arrives with auto-combat on, walked or run
-   * (the user, 2026-10-03 for run it, 2026-10-08 for any). A route stopped
-   * short leaves it as it was, except a hunt's run that turned it off, which
-   * gives it back however it ended (`AutoHunt.idle`).
+   * (the user, 2026-10-03 for run it, 2026-10-08 for any). A run stopped short
+   * gives back what it turned off, the player's, a hunt's (`AutoHunt.idle`) and
+   * a gear trip's alike (todo 145); a walk stopped short leaves it as it was.
    */
   combatOnAfterRun(arrived: boolean): void {
     if (arrived)
@@ -634,6 +643,15 @@ export class Travel implements SessionModule {
         t('automation.combat.onAfterRunEnded'),
         t('automation.combat.onAfterRunEndedRefused')
       );
+  }
+
+  /**
+   * A stop or a death gives the walk home up before the walker says it ended,
+   * so the run it replaced gives back its switch here (todo 145).
+   */
+  private dropWalkHome(): void {
+    if (this.homeward !== null && this.combatHeldOff) this.combatOnAfterRun(false);
+    this.homeward = null;
   }
 
   /** The lap is at its first stop: it fights (`LoopEvents.wantsCombat`). */
@@ -2253,7 +2271,7 @@ export class Travel implements SessionModule {
    */
   stopMoving(by: string | null = null): void {
     // A walk home the player stops is not carried past the fight it stops in.
-    this.homeward = null;
+    this.dropWalkHome();
     const reason = personStop(by);
     const owed = this.errandOwes;
     this.errandOwes = null;
@@ -2502,7 +2520,7 @@ export class Travel implements SessionModule {
    * where the decision is still revisable.
    */
   stopGoingAnywhere(): void {
-    this.homeward = null;
+    this.dropWalkHome();
     const retreat = this.retreat;
     if (retreat !== null) {
       this.retreat = null;

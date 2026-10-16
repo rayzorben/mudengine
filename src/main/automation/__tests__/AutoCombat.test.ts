@@ -3486,6 +3486,15 @@ describe('one target until it is dead', () => {
 });
 
 describe('a typed break', () => {
+  /* Todo 145: switched off, "it resumes when you move or attack" was untrue. */
+  it('says nothing about resuming when auto-combat is switched off', () => {
+    make(combat({ enabled: false })).noteUserCommand('break');
+    expect(notices).not.toContain(t('automation.combat.standDown'));
+    // Positive control: the same break with it switched on says it.
+    make(combat()).noteUserCommand('break');
+    expect(notices).toContain(t('automation.combat.standDown'));
+  });
+
   it('stands engaging down until the player moves or attacks', () => {
     const auto = make(combat());
     const slime = mob('large acid slime', 'hostile');

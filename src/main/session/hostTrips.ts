@@ -138,7 +138,7 @@ export function hostTrips(
       escaping: () => parts.modules().travel.escaping,
       release: parts.release,
       combatOffForRun: () => parts.modules().travel.combatOffForRun(),
-      combatOnAfterRun: () => parts.modules().travel.combatOnAfterRun(true),
+      combatOnAfterRun: (arrived) => parts.modules().travel.combatOnAfterRun(arrived),
       wearCommands: (bought, state) => {
         const { world } = parts.modules();
         const wanted = bought.map((buy) => ({

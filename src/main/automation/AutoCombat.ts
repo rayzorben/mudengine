@@ -868,7 +868,8 @@ export class AutoCombat implements SessionModule {
        * sent after it is the engine overriding the player with extra steps.
        */
       this.queue.cancel((intent) => intent.coalesceKey?.startsWith('attack:') === true);
-      if (Date.now() >= this.standDownUntil) {
+      // With it switched off nothing resumes, so the notice is not said (todo 145).
+      if (this.switchedOn && Date.now() >= this.standDownUntil) {
         this.events.notice?.(t('automation.combat.standDown'));
       }
       this.standDownUntil = Date.now() + tuning().combat.breakStandoffMs;
