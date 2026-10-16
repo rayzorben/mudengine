@@ -8,6 +8,8 @@ import iconv from 'iconv-lite';
 
 import { editorInput } from '../editorInput';
 import { IDLE_FLUSH_MS, SessionManager, type SessionDeps } from '../SessionManager';
+import { MarkBook } from '../MarkBook';
+import type { TimedChunk } from '../../../shared/stamps';
 import type { SessionSink } from '../SessionSink';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { type RetreatConfig } from '../../../shared/safety';
@@ -20,7 +22,7 @@ import { escapeRegExp } from '../../../shared/regex';
 import { PlayerBook } from '../../world/PlayerBook';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
 import { ABANDON_MS } from '../TerminalFeed';
-import type { StreamLine, StreamChunk } from '../../../shared/types';
+import type { StreamLine } from '../../../shared/types';
 import type { AutomationSnapshot } from '../../../shared/automation';
 import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
@@ -2508,9 +2510,10 @@ describe('a listing reaching the sink', () => {
  */
 describe('a listing the player has the client draw', () => {
   it('draws the pack as a table in place of the listing, at the prompt', async () => {
-    const painted: StreamChunk[] = [];
+    const painted: TimedChunk[] = [];
     const { sink } = collect();
-    manager = build({ ...sink, data: (chunk) => painted.push(chunk) });
+    const book = new MarkBook({ lines: 100 });
+    manager = build({ ...sink, data: (chunk) => painted.push(chunk) }, { marks: book });
     // Automation off: its own `rm` on arrival opens a quiet window this host
     // never answers, and a listing inside one is withheld as that answer.
     manager.configure(
@@ -2552,8 +2555,10 @@ describe('a listing the player has the client draw', () => {
     expect(plain.indexOf('Keys:')).toBeGreaterThan(plain.indexOf('6 torch'));
     expect(plain.lastIndexOf('[HP=148/MA=5]:')).toBeGreaterThan(plain.indexOf('Keys:'));
     // Every carried thing carries the pack card's control, sent as the realm's verb.
-    const marks = painted.flatMap((chunk) => chunk.marks ?? []);
-    const actions = marks.flatMap((entry) => entry.mark.inline ?? []).filter((g) => g.commands);
+    const marks = book.painted(
+      painted.flatMap((chunk) => chunk.lines ?? []).map((line) => line.id)
+    );
+    const actions = marks.flatMap((entry) => entry.mark?.inline ?? []).filter((g) => g.commands);
     expect(actions.map((g) => g.commands?.[0])).toEqual(['wear rope and grapple', 'wear torch']);
   });
 });

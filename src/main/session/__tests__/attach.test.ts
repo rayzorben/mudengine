@@ -2,20 +2,28 @@ import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER } from '../../../shared/character';
 import { EMPTY_AUTOMATION } from '../../../shared/automation';
-import { NO_BACKSCROLL, type BackscrollPage } from '../../../shared/ipc';
+import { NO_BACKSCROLL, type BackscrollText } from '../../../shared/ipc';
 import { NO_LOOP } from '../../../shared/loops';
 import { NO_PLAYERS } from '../../../shared/players';
 import { IDLE_QUEST_RUN } from '../../../shared/quests';
 import { EMPTY_ROOM_VERDICT } from '../../../shared/verdict';
 import { IDLE_WALK } from '../../../shared/walk';
-import { IDLE_CONNECTION, type ConnectionState } from '../../../shared/types';
+import { IDLE_CONNECTION, type ConnectionState, type TerminalMark } from '../../../shared/types';
+import { lineIdOf } from '../../../shared/stamps';
 import { attachSnapshot, type AttachSlot, type AttachSources } from '../attach';
+import { MarkBook } from '../MarkBook';
 
-const PAGE: BackscrollPage = { text: 'Obvious exits: north\r\n', older: 0 };
+const book = new MarkBook({ lines: 10 });
+const BANK = book.issue({ icon: 'bank', label: 'Bank of Godfrey' });
+book.painted([BANK]);
+const PAGE: BackscrollText = {
+  text: `${lineIdOf(BANK)}Bank of Godfrey\r\nObvious exits: north\r\n`,
+  older: 0
+};
 
 /** A loaded character whose backscroll page resolves when the test says so. */
 function loaded() {
-  let resolvePage: (page: BackscrollPage) => void = () => undefined;
+  let resolvePage: (page: BackscrollText) => void = () => undefined;
   let pageAsked: ConnectionState | null = null;
   const manager = {
     lines: [],
@@ -41,12 +49,13 @@ function loaded() {
         pageAsked = manager.state;
         return new Promise((resolve) => (resolvePage = resolve));
       }
-    }
+    },
+    marks: book
   };
   return {
     slot,
     manager,
-    resolve: (page: BackscrollPage) => resolvePage(page),
+    resolve: (page: BackscrollText) => resolvePage(page),
     phaseWhenAsked: () => pageAsked?.phase
   };
 }
@@ -79,11 +88,14 @@ describe('attachSnapshot', () => {
     expect(registered).toEqual(['rayzor']);
 
     char.manager.state = { ...char.manager.state, phase: 'connected' };
+    // A mark changed during the wait is the one handed over, not the one at the ask.
+    const now: TerminalMark = { icon: 'bank', label: 'The Bank of Godfrey' };
+    book.change([{ id: BANK, mark: now }]);
     char.resolve(PAGE);
 
     const snapshot = await answer;
     expect(snapshot.state.phase).toBe('connected');
-    expect(snapshot.backscroll).toBe(PAGE);
+    expect(snapshot.backscroll).toEqual({ ...PAGE, marks: [{ id: BANK, mark: now }] });
     expect(made).toEqual(['shops:rayzor', 'talk:rayzor']);
   });
 

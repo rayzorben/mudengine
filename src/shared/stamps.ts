@@ -8,13 +8,20 @@
  * client wrote about a decision of its own also names the decision's kind
  * after the time, for the console's gear (todo 119). xterm drops an OSC no
  * handler claims, so a console that does not read it shows nothing.
+ * A marked line carries its id the same way, in `LINE_OSC` (todo 143).
  * `mudengine-session` › *A status line's time rides in the painted text*.
  */
 import { asDecisionKind, type DecisionKind } from './decisionSettings';
-import type { StreamChunk } from './types';
+import type { LineId, StreamChunk } from './types';
 
 /** The OSC number. Unassigned by xterm and by the terminals this family targets. */
 export const STAMP_OSC = 7717;
+/** The OSC that opens a marked line with its id, beside `STAMP_OSC`. */
+export const LINE_OSC = 7718;
+const LINE_OPEN = `\x1b]${LINE_OSC};`;
+const LINE_STAMP = new RegExp(`\\x1b\\]${LINE_OSC};([0-9a-z]+\\.[0-9a-z]+)\\x07`, 'g');
+/** A line id: when its book was opened, then its count, both base 36 (`MarkBook`). */
+const LINE_ID = /^[0-9a-z]+\.[0-9a-z]+$/;
 
 const STAMP_OPEN = `\x1b]${STAMP_OSC};`;
 /** A time's payload: epoch ms, then the decision the row reports where it names one. */
@@ -31,6 +38,8 @@ export type RowTime = 'time' | 'clear';
 export interface TimedChunk extends StreamChunk {
   /** Ascending offsets into `text`. Absent on a chunk that times no row. */
   times?: ReadonlyArray<{ offset: number; put: RowTime; decision?: DecisionKind }>;
+  /** Ascending offsets of the marked lines' starts, with their ids. Absent on a chunk with none. */
+  lines?: ReadonlyArray<{ offset: number; id: LineId }>;
 }
 
 /** What a stamp says about its row: its time and the decision written on it, or that it was cleared. */
@@ -48,32 +57,43 @@ export function clearOf(): string {
 
 /**
  * The chunk as the console is sent it: each row time written in at its
- * offset as the chunk's `at` or a clear, and each mark moved past what went
- * in ahead of it. Where the times go is `TerminalFeed`'s choice (`RowTimes`).
+ * offset as the chunk's `at` or a clear, and each marked line's id at its
+ * start. Where the times go is `TerminalFeed`'s choice (`RowTimes`); what the
+ * lines are marked with is the host's to add (`MarkBook.painted`).
  */
 export function stampChunk(chunk: TimedChunk): StreamChunk {
-  const { times, ...rest } = chunk;
-  if (times === undefined || times.length === 0) return rest;
-  const written = times.map((time) =>
-    time.put === 'time' ? stampOf(chunk.at, time.decision) : clearOf()
-  );
+  const { times, lines, ...rest } = chunk;
+  const written = [
+    ...(lines ?? []).map(({ offset, id }) => ({ offset, text: lineIdOf(id) })),
+    ...(times ?? []).map((time) => ({
+      offset: time.offset,
+      text: time.put === 'time' ? stampOf(chunk.at, time.decision) : clearOf()
+    }))
+  ].sort((a, b) => a.offset - b.offset);
+  if (written.length === 0) return rest;
   let text = '';
   let from = 0;
-  times.forEach(({ offset }, index) => {
-    text += chunk.text.slice(from, offset) + written[index]!;
+  for (const { offset, text: put } of written) {
+    text += chunk.text.slice(from, offset) + put;
     from = offset;
-  });
-  text += chunk.text.slice(from);
-  const shift = (offset: number): number =>
-    times.reduce(
-      (moved, time, index) => (time.offset <= offset ? moved + written[index]!.length : moved),
-      offset
-    );
-  return {
-    ...rest,
-    text,
-    ...(rest.marks ? { marks: rest.marks.map((m) => ({ ...m, offset: shift(m.offset) })) } : {})
-  };
+  }
+  return { ...rest, text: text + chunk.text.slice(from) };
+}
+
+/** The sequence that opens a marked line with its id. */
+export function lineIdOf(id: LineId): string {
+  return `${LINE_OPEN}${id}\x07`;
+}
+
+/** The id a `LINE_OSC` payload names, or null when it is not one this client wrote. */
+export function lineIdAt(payload: string): LineId | null {
+  return LINE_ID.test(payload) ? payload : null;
+}
+
+/** Every line id in painted text, in order. */
+export function lineIdsIn(text: string): LineId[] {
+  if (!text.includes(LINE_OPEN)) return [];
+  return [...text.matchAll(LINE_STAMP)].map((found) => found[1]!);
 }
 
 /** The last time or clear in `text`, for a reader that drops the text but keeps the row's time. */
@@ -88,9 +108,10 @@ export function afterStamp(text: string): number {
   return end === -1 ? 0 : end + 1;
 }
 
-/** Painted text with every stamp taken out, for a reader that measures or matches it. */
+/** Painted text with every stamp and line id taken out, for a reader that measures or matches it. */
 export function unstamped(text: string): string {
-  return text.includes(STAMP_OPEN) ? text.replace(STAMP, '') : text;
+  const untimed = text.includes(STAMP_OPEN) ? text.replace(STAMP, '') : text;
+  return untimed.includes(LINE_OPEN) ? untimed.replace(LINE_STAMP, '') : untimed;
 }
 
 /** What an OSC payload says about its row, or null when it says nothing this client wrote. */

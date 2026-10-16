@@ -1,26 +1,34 @@
 import { describe, expect, it } from 'vitest';
 
-import { afterStamp, clearOf, lastStamp, stampAt, stampChunk, stampOf, unstamped } from '../stamps';
-import type { TerminalMark } from '../types';
-
-const mark: TerminalMark = { icon: 'shop', label: 'General Store' };
+import {
+  afterStamp,
+  clearOf,
+  lastStamp,
+  lineIdAt,
+  lineIdOf,
+  lineIdsIn,
+  stampAt,
+  stampChunk,
+  stampOf,
+  unstamped
+} from '../stamps';
 
 describe('a status line carries the time it reached the console', () => {
-  it('writes each row time in at its offset and moves each mark past it', () => {
+  it('writes each row time in at its offset, and each marked line its id', () => {
     const chunk = stampChunk({
       seq: 1,
       at: 1791418218773,
       text: 'Shop\r\n[HP=1]:',
-      marks: [{ offset: 0, mark }],
+      lines: [{ offset: 0, id: 'k1.1' }],
       times: [
         { offset: 0, put: 'clear' },
         { offset: 6, put: 'time' }
       ]
     });
     const stamp = stampOf(1791418218773);
-    expect(chunk.text).toBe(`${clearOf()}Shop\r\n${stamp}[HP=1]:`);
-    expect(chunk.text.slice(chunk.marks?.[0]?.offset)).toBe('Shop\r\n' + stamp + '[HP=1]:');
+    expect(chunk.text).toBe(`${lineIdOf('k1.1')}${clearOf()}Shop\r\n${stamp}[HP=1]:`);
     expect('times' in chunk).toBe(false);
+    expect('lines' in chunk).toBe(false);
   });
 
   it('leaves a chunk that times no row as it is', () => {
@@ -53,11 +61,9 @@ describe('a row about a decision names it after the time (todo 119)', () => {
       seq: 1,
       at: 9,
       text: '[HP=1]:wear shield',
-      marks: [{ offset: 7, mark }],
       times: [{ offset: 0, put: 'time', decision: 'found-gear-wear' }]
     });
     expect(chunk.text).toBe(`${stampOf(9, 'found-gear-wear')}[HP=1]:wear shield`);
-    expect(chunk.marks?.[0]?.offset).toBe(stampOf(9, 'found-gear-wear').length + 7);
     expect(stampAt('9;found-gear-wear')).toEqual({ at: 9, decision: 'found-gear-wear' });
     expect(unstamped(chunk.text)).toBe('[HP=1]:wear shield');
     expect(afterStamp(chunk.text)).toBe(stampOf(9, 'found-gear-wear').length);
@@ -65,5 +71,21 @@ describe('a row about a decision names it after the time (todo 119)', () => {
 
   it('refuses a kind this build does not know', () => {
     expect(stampAt('9;no-such-thing')).toBeNull();
+  });
+});
+
+describe('a marked line carries its id (todo 143)', () => {
+  it('round-trips the id, and is taken out for a reader that measures the text', () => {
+    const text = `Town\r\n${lineIdOf('k1.a')}Bank of Godfrey\r\n${lineIdOf('k1.b')}Sewer Grate\r\n`;
+    expect(lineIdsIn(text)).toEqual(['k1.a', 'k1.b']);
+    expect(lineIdsIn('Town\r\n')).toEqual([]);
+    expect(unstamped(`${stampOf(5)}${text}`)).toBe('Town\r\nBank of Godfrey\r\nSewer Grate\r\n');
+  });
+
+  it('reads back only an id this client writes', () => {
+    expect(lineIdAt('k1.a')).toBe('k1.a');
+    expect(lineIdAt('k1')).toBeNull();
+    expect(lineIdAt('K1.a')).toBeNull();
+    expect(lineIdAt('')).toBeNull();
   });
 });

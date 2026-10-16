@@ -20,7 +20,7 @@ import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 
 export interface ReadBackConsoleProps {
-  api: Pick<IpcApi, 'backscrollPage'>;
+  api: Pick<IpcApi, 'backscrollPage' | 'onMarks'>;
   session: SessionId;
   /** The line to open on, or null to open at the last line (a search). */
   place: Place | null;
@@ -86,6 +86,15 @@ function ReadBackConsole({
       onGone();
     },
     [onGone]
+  );
+
+  // A line it holds marked anew: the room left loses its buttons here too (todo 143).
+  useEffect(
+    () =>
+      api.onMarks(({ session: from, payload }) => {
+        if (from === session) handleRef.current?.marks(payload);
+      }),
+    [api, session]
   );
 
   // The first page is asked for once, at mount; the hold only grows after.

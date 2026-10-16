@@ -1741,6 +1741,12 @@ const TUNING_DEFAULTS = {
      * three are facts a character cannot do to itself and have no threshold.
      */
     resetExpDropShare: 0.3,
+    /**
+     * How many times the mark book's size `marks.jsonl` may grow to before it
+     * is written whole again (todo 143): each change is appended, so a long
+     * session would otherwise grow the record without bound.
+     */
+    marksWholeAt: 4,
     /** Negotiation records the diagnostics pane can look back over. */
     telnetLogLimit: 500,
     /** Framed lines retained; the terminal keeps the real backscroll. */

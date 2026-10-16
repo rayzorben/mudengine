@@ -240,8 +240,10 @@ export interface InlineGlyph {
 
 export interface TerminalMark {
   /**
-   * The glyph in the margin before the line, which indents it two cells.
-   * Absent on a line the client drew, whose glyphs sit inside it (`inline`).
+   * The glyph for the kind of place, drawn after the line's text and before
+   * its buttons, so the line keeps the server's cells (todo 143). Absent on
+   * a line the client drew, whose glyphs sit inside it (`inline`), and on a
+   * room that offers commands but is no kind of place.
    */
   icon?: MarkIcon;
   /** The tooltip, and what a screen reader gets. */
@@ -251,7 +253,7 @@ export interface TerminalMark {
    *
    * The same decoration layer as the glyph and for the same reason — a button
    * inside the grid would move everything the server laid out beside it — so
-   * these sit *after* the last cell of the name rather than indenting it.
+   * these sit *after* the last cell of the name and its glyph.
    *
    * Absent on a line that recognises a place but offers nothing to do in it,
    * which is most of them: an action exists only where the realm data or the
@@ -340,10 +342,24 @@ export interface StreamChunk {
    */
   text: string;
   /**
-   * Lines in `text` worth decorating, by the offset the line starts at.
-   * Absent on a chunk with nothing to mark, which is nearly all of them.
+   * The marks of the lines in `text` that carry one, by the line id written
+   * into the text (`lineIdOf`). Absent on a chunk with nothing to mark, which
+   * is nearly all of them.
    */
-  marks?: Array<{ offset: number; mark: TerminalMark }>;
+  marks?: MarkChange[];
+}
+
+/**
+ * A marked line's id, carried in the painted text at the start of the line
+ * (`LINE_OSC`), so a mark can be changed after the line is on screen and found
+ * again on every redraw. Unique within a character's backscroll.
+ */
+export type LineId = string;
+
+/** What a line is marked with now; null takes its mark off. */
+export interface MarkChange {
+  id: LineId;
+  mark: TerminalMark | null;
 }
 
 /**

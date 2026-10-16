@@ -642,7 +642,7 @@ const server = net.createServer((socket) => {
         Buffer.from(`\x1b[0;37mmarker-for-connection-${index}\x1b[0m\r\n`, 'latin1'),
         /*
          * A bank's name, alone, as its own line. Every room the realm calls
-         * this is a bank, so the console draws a gold glyph before it. No
+         * this is a bank, so the console draws a gold glyph after it. No
          * `Obvious exits:` follows, so the room never completes and the
          * character stays where it is. Last but one, so the row is still in
          * the viewport when the glyph is looked for -- a decoration exists in
@@ -1491,7 +1491,7 @@ check(focus === 'terminal', 'focus returns to the terminal after connecting', fo
 
 /*
  * The console decorates a place it recognised: the bank's name arrived as a
- * bare line and the glyph before it is an xterm decoration — an element over
+ * bare line and the glyph after it is an xterm decoration — an element over
  * the row, not a character in it. Gold, and labelled with the bank's name.
  */
 {
@@ -1512,7 +1512,7 @@ check(focus === 'terminal', 'focus returns to the terminal after connecting', fo
     "a bank's name in the console carries the bank glyph",
     String(mark)
   );
-  await capture('smoke-bank.png', 'the bank glyph before a room name');
+  await capture('smoke-bank.png', 'the bank glyph after a room name');
 
   /*
    * The buttons after the name, measured rather than eyeballed.
@@ -1538,8 +1538,8 @@ check(focus === 'terminal', 'focus returns to the terminal after connecting', fo
       /*
        * The cell is measured from the glyph the console already painted,
        * never a constant: the terminal font is configurable and the pane is
-       * resizable. The place glyph's own decoration is exactly MARK_INDENT
-       * (two cells) wide, so it is the ruler that is always on screen.
+       * resizable. The place glyph's own decoration is exactly two cells
+       * (GLYPH_CELLS) wide, so it is the ruler that is always on screen.
        */
       const glyph = document.querySelector('.terminal-mark[data-mark]');
       const cell = glyph ? glyph.getBoundingClientRect().width / 2 : 0;
@@ -1567,8 +1567,8 @@ check(focus === 'terminal', 'focus returns to the terminal after connecting', fo
       geometry
     );
     /*
-     * `Bank of Godfrey` is 15 painted cells behind a 2-cell indent, so the
-     * buttons belong at roughly column 18 — nowhere near the column 30 the
+     * `Bank of Godfrey` is 15 painted cells, then a cell, the 2-cell glyph and
+     * a cell, so the buttons belong at about column 19, nowhere near the 30 the
      * byte count produced. Measured in cells against the console's own left
      * edge; no pixel constant, per the layout rule.
      */
@@ -2388,6 +2388,95 @@ await evaluate(
   `document.querySelector('.settings button[aria-label=${JSON.stringify(copy('settings.dialog.closeAria'))}]')?.click()`
 );
 check(await gone('.settings'), 'and it closes');
+
+/*
+ * A room's glyph and buttons after the line is on screen (todo 143). Both are
+ * state main holds by the line's id, written into the painted text, so a
+ * console written again from main's record draws them again, and the buttons
+ * come off the line once the character is in another room.
+ */
+{
+  /** Runs the palette's timestamps toggle: turning the times on rewrites the console's page. */
+  const toggleTimes = async () => {
+    await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
+    await paletteReady();
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.palette input');
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+        set.call(el, 'timestamp');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await shown('.palette li[data-command="timestamps"]');
+    await evaluate(
+      `(document.querySelector('.palette li[data-command="timestamps"]').click(), true)`
+    );
+    await gone('.palette');
+  };
+  const bankRow = () =>
+    evaluate(`
+      JSON.stringify({
+        glyph: !!document.querySelector('.terminal-mark[data-mark="bank"]'),
+        buttons: document.querySelectorAll('.terminal-action').length,
+        times: document.querySelectorAll('.terminal-stamp').length
+      })
+    `);
+  // The bank's name again, at the foot of the console, so its row is on screen throughout.
+  await hostSays(
+    () =>
+      liveSockets[0]?.write(
+        Buffer.from(
+          '\x1b[1;36mBank of Godfrey\x1b[0m\r\n\x1b[1;32m[HP=98/MA=50]:\x1b[0m ',
+          'latin1'
+        )
+      ),
+    /^Bank of Godfrey$/,
+    { prompt: true }
+  );
+  // The positive control: the line has its buttons before anything is written again.
+  const drawn = await readUntil(bankRow, (row) => {
+    const { glyph, buttons } = JSON.parse(row);
+    return glyph && buttons > 0;
+  });
+  check(
+    /"glyph":true/.test(drawn) && !/"buttons":0/.test(drawn),
+    "a bank's name printed again carries its glyph and buttons",
+    drawn
+  );
+  const timesWereOn = await evaluate(`document.querySelectorAll('.terminal-stamp').length > 0`);
+  if (timesWereOn) await toggleTimes();
+  await toggleTimes();
+  // The refill is what draws the times on the lines already held, so their arrival says it ran.
+  const refilled = await readUntil(bankRow, (row) => {
+    const { glyph, buttons, times } = JSON.parse(row);
+    return times > 0 && glyph && buttons > 0;
+  });
+  check(
+    /"glyph":true/.test(refilled) && !/"buttons":0/.test(refilled) && !/"times":0/.test(refilled),
+    "the bank's glyph and buttons come back when the console is written again",
+    refilled
+  );
+  await toggleTimes();
+  if (timesWereOn) await toggleTimes();
+
+  // A step into another room: its name line, then the prompt.
+  await hostSays(
+    () =>
+      liveSockets[0]?.write(
+        Buffer.from('\x1b[1;36mSmoke Lane\x1b[0m\r\n\x1b[1;32m[HP=98/MA=50]:\x1b[0m ', 'latin1')
+      ),
+    /^Smoke Lane$/,
+    { prompt: true }
+  );
+  const left = await readUntil(bankRow, (row) => JSON.parse(row).buttons === 0);
+  check(
+    /"glyph":true/.test(left) && /"buttons":0/.test(left),
+    "the bank's line keeps its glyph and loses its buttons once the character is elsewhere",
+    left
+  );
+}
 
 /*
  * The map is drawn from the realm data, so it only appears once the client has

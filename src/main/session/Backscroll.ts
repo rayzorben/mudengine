@@ -11,7 +11,7 @@
  */
 import fs from 'node:fs';
 
-import type { BackscrollPage } from '../../shared/ipc';
+import type { BackscrollText } from '../../shared/ipc';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -118,7 +118,7 @@ export class Backscroll {
    * it covers is fixed when it is called, so a page asked for at attach holds
    * exactly what was painted before it; only closed segments are read later.
    */
-  page(lines: number): Promise<BackscrollPage> {
+  page(lines: number): Promise<BackscrollText> {
     const memory = this.chunks.map((chunk) => chunk.text).join('');
     const want = Math.max(0, Math.trunc(lines));
     if (this.opening === null) {
@@ -140,7 +140,7 @@ export class Backscroll {
    * when the answer arrives, wiping the lines that reached it in the meantime,
    * which a page fixed at the call does not have.
    */
-  async latest(lines: number): Promise<BackscrollPage> {
+  async latest(lines: number): Promise<BackscrollText> {
     const since: string[] = [];
     this.reading.add(since);
     try {
@@ -394,7 +394,7 @@ export class Backscroll {
     memory: string,
     memoryLines: number,
     closed: Closed[]
-  ): Promise<BackscrollPage> {
+  ): Promise<BackscrollText> {
     const retained = Math.min(
       this.limit,
       memoryLines + closed.reduce((sum, each) => sum + each.lines, 0)

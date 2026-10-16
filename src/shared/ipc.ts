@@ -118,6 +118,7 @@ import type {
   ConnectionState,
   ConnectionTarget,
   LostEnter,
+  MarkChange,
   StreamChunk,
   StreamLine,
   TelnetEvent,
@@ -267,13 +268,18 @@ export interface NoticeDecision {
  * console is sent `tuning.view.consoleLiveLines` when it attaches and keeps up
  * to `consolePageLines`; the copy of the backscroll asks for more at its top.
  */
-export interface BackscrollPage {
+export interface BackscrollText {
   text: string;
   older: number;
 }
 
+/** A page as a window is handed it: with the marks of the lines in its text (todo 143). */
+export interface BackscrollPage extends BackscrollText {
+  marks: MarkChange[];
+}
+
 /** A character with nothing retained, or one main does not have. */
-export const NO_BACKSCROLL: Readonly<BackscrollPage> = { text: '', older: 0 };
+export const NO_BACKSCROLL: Readonly<BackscrollPage> = { text: '', older: 0, marks: [] };
 
 /**
  * Everything a window needs to start drawing a session it has just attached to.
@@ -1151,6 +1157,8 @@ export const Invoke = {
 export const Push = {
   /** A decoded chunk of server output. */
   data: 'session:data',
+  /** Lines already painted, marked anew: a room's buttons once it is placed, and gone once left. */
+  marks: 'session:marks',
   /** Full connection state after any transition. */
   state: 'session:state',
   /** A Telnet negotiation exchange, for the diagnostics pane. */
@@ -1770,6 +1778,7 @@ export interface IpcApi {
   askRemote(session: SessionId, who: string, name: RemoteName): Promise<boolean>;
 
   onData(handler: (message: Addressed<StreamChunk>) => void): () => void;
+  onMarks(handler: (message: Addressed<MarkChange[]>) => void): () => void;
   onState(handler: (message: Addressed<ConnectionState>) => void): () => void;
   onTelnet(handler: (message: Addressed<TelnetEvent>) => void): () => void;
   onLine(handler: (message: Addressed<StreamLine>) => void): () => void;
@@ -1809,6 +1818,7 @@ export interface IpcApi {
  */
 export const PUSH_METHODS = [
   'onData',
+  'onMarks',
   'onState',
   'onTelnet',
   'onLine',

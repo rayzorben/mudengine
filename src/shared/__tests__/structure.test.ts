@@ -62,7 +62,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the trainers' delegation, out to the place desk with the nearest of each kind (todo 70).
   // Lowered by the destination hook's comment, one line as only asked walks are recent (todo 28).
   // Lowered by the rest and poison comments, condensed as the fight signs came (todo 131).
-  'src/main/session/SessionManager.ts': 3381,
+  // Lowered by the realm's word for its data, out whole (`RealmWordWatch`), as the marks' book came (todo 143).
+  'src/main/session/SessionManager.ts': 3355,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
@@ -94,7 +95,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the comments before the step, condensed as the disarm came (`walk/Disarm.ts`, todo 53).
   'src/main/automation/Walker.ts': 1925,
   // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
-  'src/renderer/src/components/SettingsScreen.tsx': 1214,
+  // Lowered by `sameJson`, read from `@shared/values` with the error helper (todo 143).
+  'src/renderer/src/components/SettingsScreen.tsx': 1213,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the

@@ -20,7 +20,6 @@ import {
   record,
   redo,
   replace,
-  sameJson,
   targetOf,
   undo,
   type History
@@ -45,7 +44,7 @@ import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import type { Loop, ScopedLoop } from '@shared/loops';
 import type { SessionId, SettingsSnapshot } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/config';
-import { errorMessage } from '@shared/values';
+import { errorMessage, sameJson } from '@shared/values';
 import { NO_SHEET, type LiveSheet } from '../lib/liveSheet';
 import { doorFocus, doorTarget, type SettingsDoor } from '../lib/settingPlaces';
 

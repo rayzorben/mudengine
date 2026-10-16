@@ -217,6 +217,21 @@ function SessionTerminal({
     };
   }, [api, session, onChunk]);
 
+  /*
+   * Its lines marked anew, in order with its output. A hidden page's are
+   * drawn on the lines it holds; the redraw when it is shown brings the rest.
+   */
+  useEffect(
+    () =>
+      api.onMarks(({ session: from, payload }) => {
+        if (from !== session) return;
+        const handle = handleRef.current;
+        if (handle && attached.current) handle.marks(payload);
+        else pending.current.push((to) => to.marks(payload));
+      }),
+    [api, session]
+  );
+
   /**
    * Attach on mount, detach on unmount.
    *
@@ -260,7 +275,7 @@ function SessionTerminal({
         takeBack = restores.add({
           shown: () => shownRef.current,
           run: (done) => {
-            handle.restore(snapshot.backscroll.text, done);
+            handle.restore(snapshot.backscroll, done);
             release();
           }
         });

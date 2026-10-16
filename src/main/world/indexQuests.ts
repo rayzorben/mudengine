@@ -86,6 +86,7 @@ import {
   type Textblock
 } from './navigation/textblock';
 import { number, text } from './values';
+import { sameJson } from '../../shared/values';
 
 /** What the caller already has, so nothing here re-reads a table for a name. */
 export interface QuestNaming {
@@ -908,7 +909,7 @@ function stepsInBlock(
     // A block that states the identical line twice states one route; two
     // spellings of one act are two phrases reaching one step.
     for (const route of routes) {
-      if (!held.routes.some((seen) => same(seen, route))) held.routes.push(route);
+      if (!held.routes.some((seen) => sameJson(seen, route))) held.routes.push(route);
     }
     if (phrase.length > 0 && !held.phrases.includes(phrase)) held.phrases.push(phrase);
     if (script.delay !== undefined && script.delay > (held.delay ?? 0)) held.delay = script.delay;
@@ -946,21 +947,23 @@ function shareRoutes(routes: BlockWay[]): BlockWay & { ways?: BlockWay[] } {
   if (routes.length === 1) return first;
 
   const shared: BlockWay = {
-    needs: first.needs.filter((need) => routes.every((r) => r.needs.some((s) => same(s, need)))),
+    needs: first.needs.filter((need) =>
+      routes.every((r) => r.needs.some((s) => sameJson(s, need)))
+    ),
     takes: first.takes.filter((item) => routes.every((r) => r.takes.includes(item))),
-    gives: first.gives.filter((give) => routes.every((r) => r.gives.some((s) => same(s, give))))
+    gives: first.gives.filter((give) => routes.every((r) => r.gives.some((s) => sameJson(s, give))))
   };
   const rest = routes.map((route) => ({
-    needs: route.needs.filter((need) => !shared.needs.some((s) => same(s, need))),
+    needs: route.needs.filter((need) => !shared.needs.some((s) => sameJson(s, need))),
     takes: route.takes.filter((item) => !shared.takes.includes(item)),
-    gives: route.gives.filter((give) => !shared.gives.some((s) => same(s, give)))
+    gives: route.gives.filter((give) => !shared.gives.some((s) => sameJson(s, give)))
   }));
   const bare = (way: BlockWay): boolean =>
     way.needs.length === 0 && way.takes.length === 0 && way.gives.length === 0;
   if (rest.some(bare)) return shared;
 
   const ways: BlockWay[] = [];
-  for (const way of rest) if (!ways.some((seen) => same(seen, way))) ways.push(way);
+  for (const way of rest) if (!ways.some((seen) => sameJson(seen, way))) ways.push(way);
   if (ways.length > 1) return { ...shared, ways };
   // One surviving route is not a choice, so it folds back into the step —
   // *added* to what is shared, never spread over it. Unreachable as things
@@ -984,10 +987,6 @@ function nameWay(way: BlockWay, names: GateNames): QuestWay {
     takes: way.takes.map((item) => ({ id: item, ...maybe('name', names.item(item)) })),
     gives: way.gives.map((reward) => namedReward(reward, names))
   };
-}
-
-function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** `{ key: value }` when there is one, and nothing at all when there is not. */

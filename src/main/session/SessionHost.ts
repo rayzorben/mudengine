@@ -21,11 +21,15 @@
  * immutable afterwards, and the per-session state pathfinding needs is passed
  * per query rather than held per graph.
  */
+import path from 'node:path';
+
 import { t } from '../app/i18n';
 import { errorMessage } from '../../shared/values';
 import type { Loop } from '../../shared/loops';
 import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
 import { Backscroll } from './Backscroll';
+import { MarkBook } from './MarkBook';
+import { MARKS_FILE } from './markFile';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
@@ -82,6 +86,8 @@ export interface SessionSlot {
   readonly manager: SessionManager;
   /** What a terminal needs to catch up when it attaches. See `Backscroll`. */
   readonly backscroll: Backscroll;
+  /** What each marked line in the backscroll is marked with now (todo 143). See `MarkBook`. */
+  readonly marks: MarkBook;
   /**
    * Dialling this character back when a connection is *lost*. See `Reconnect`.
    *
@@ -477,6 +483,14 @@ export class SessionHost {
       this.options.toDebugging(Push.debug, { session: id, payload: record })
     );
 
+    // Beside the backscroll segments its line ids are written into, and bounded by them.
+    const marks = new MarkBook({
+      lines: config.terminal.scrollback,
+      file: path.join(this.options.backscrollFor(id), MARKS_FILE),
+      changed: (changes) => this.options.toAttached(Push.marks, { session: id, payload: changes }),
+      onProblem: (message) => this.options.notice({ session: id, message })
+    });
+
     // Where what each room says is written down, opened once for the session.
     const descriptions = this.options.descriptionsFor?.(id);
     const manager = new SessionManager(
@@ -504,7 +518,9 @@ export class SessionHost {
          * and must be what it would have painted.
          */
         data: (chunk) => {
-          const painted = stampChunk(chunk);
+          // The marks as they stand now: a change made before the chunk rides in it.
+          const lines = marks.painted(chunk.lines?.map((line) => line.id) ?? []);
+          const painted = { ...stampChunk(chunk), ...(lines.length > 0 ? { marks: lines } : {}) };
           slot.backscroll.write(painted.text);
           this.options.toAttached(Push.data, { session: id, payload: painted });
         },
@@ -641,6 +657,7 @@ export class SessionHost {
         finds: this.options.findsFor?.(id),
         shops: this.options.shopsFor?.(id),
         lastRoom: this.options.lastRoomFor?.(id),
+        marks,
         sentences: this.options.sentences?.(),
         simulator: this.options.simulator,
         words: () => this.options.wordsFor(id),
@@ -658,6 +675,7 @@ export class SessionHost {
         after: this.options.backscrollSplit,
         onProblem: (message) => this.options.notice({ session: id, message })
       }),
+      marks,
       reconnect,
       lowLives,
       log: null,
@@ -891,6 +909,7 @@ export class SessionHost {
       slot.manager.configure(config.automation, config.connection.login, config.ui.rewrites);
       slot.manager.configureInternal(this.options.internal());
       slot.backscroll.setLimit(config.terminal.scrollback);
+      slot.marks.setLimit(config.terminal.scrollback);
     }
   }
 
@@ -924,6 +943,7 @@ export class SessionHost {
     // Synchronous, unlike the two above: what this loses at quit is the last
     // lines the console will show at the next launch, not a record's tail.
     slot.backscroll.close();
+    slot.marks.close();
     this.slots.delete(id);
     this.options.removed?.(id);
     this.options.publishRoster();
