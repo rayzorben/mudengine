@@ -9,6 +9,7 @@ import { Name, Reward } from './QuestName';
 import QuestTile from './QuestTile';
 import { useCardSize } from '../hooks/useCardSize';
 import { useRemembered, useRememberedRanks } from '../hooks/useRemembered';
+import { useQuestReach } from '../hooks/useQuestReach';
 import { useRunPress } from '../hooks/useRunPress';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
@@ -30,9 +31,11 @@ import {
   routesOf,
   itemsBrought,
   shelfOrder,
+  soonerAhead,
   stepDone,
   stepsDone,
   QUEST_GROUPS,
+  type LoadQuestReach,
   type QuestAhead,
   type QuestPays,
   type PlanSnag,
@@ -152,6 +155,12 @@ export interface QuestCardProps extends CardChrome {
    * readings exactly as the track does. Null on a surface that cannot bind it.
    */
   loadPlan?: ((block: number, marked: number | null) => Promise<QuestPlan | null>) | null;
+  /**
+   * Asks main for the level wall on the way to each quest's next reward
+   * (todo 132), which no script states. Null on a surface that cannot bind it,
+   * where the book shelves by the scripts' own gates alone.
+   */
+  loadReach?: LoadQuestReach | null;
   /**
    * Runs the plan to one step (todo 102), and stops it. Addressed like the
    * plan, and null on a surface that cannot bind one. `runPlan` answers the
@@ -724,6 +733,7 @@ function QuestCard({
   loadQuests,
   loadErrand,
   loadPlan,
+  loadReach,
   runPlan,
   stopRun,
   run,
@@ -769,6 +779,17 @@ function QuestCard({
   const hidden = useRemembered(session, 'quests-hidden', ids);
   /** How far the *player says* they have got in each quest. Never inferred. */
   const ranks = useRememberedRanks(session, 'quests-rank', ids);
+  /** What the way to each quest's next reward wants, which the scripts do not say. */
+  const reach = useQuestReach({
+    load: loadReach,
+    ids,
+    marked: ranks.get,
+    level: characterLevel ?? null,
+    counters: counters ?? null,
+    said: said ?? null,
+    placed: here !== null && here !== undefined,
+    realmAt
+  });
   /** Whether the hidden ones are being shown, so they can be brought back. */
   const [showHidden, setShowHidden] = useState(false);
   /** Which quest is opened out into its track. One at a time. */
@@ -831,7 +852,8 @@ function QuestCard({
        */
       const progress = progressOf(quest);
       const bars = questBars(quest, who, progress);
-      const ahead = questAhead(quest, who, progress);
+      // The sooner of the scripts' wait and the way's (todo 132).
+      const ahead = soonerAhead(questAhead(quest, who, progress, taken), reach[quest.id] ?? null);
       return {
         quest,
         side: questSide(quest),
@@ -858,7 +880,18 @@ function QuestCard({
         { ...b.progress, group: b.group, exp: b.pays.exp, ahead: b.ahead }
       )
     );
-  }, [quests, taken, hidden, counters, said, ranks, characterClass, characterRace, characterLevel]);
+  }, [
+    quests,
+    taken,
+    reach,
+    hidden,
+    counters,
+    said,
+    ranks,
+    characterClass,
+    characterRace,
+    characterLevel
+  ]);
 
   /*
    * A hidden quest is *gone*, not greyed — that is what hiding is for. The way

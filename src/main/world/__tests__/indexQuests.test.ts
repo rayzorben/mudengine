@@ -464,3 +464,103 @@ describe('a counter that is only another quest’s bookkeeping', () => {
     expect(from.get(684)).toEqual([{ k: 'room', at: '3/668', say: ['search'] }]);
   });
 });
+
+describe('a quest step a roll table pays', () => {
+  /*
+   * DarkbaneQuest as gmud.zip and pmud.zip write it (todo 132): the Ghost of
+   * Justice Darkbane's `return` links to block 1809, whose class lines gate on
+   * level 50 and the holy item and then roll 1810, which pays the counter on
+   * its top line. The orc warlord greets with 1810 itself. Read without the
+   * rolling line, the step was open to a level 13 character and asked of the
+   * orc warlord.
+   */
+  const DARKBANE = {
+    Monsters: [
+      {
+        Number: 849,
+        Name: 'Ghost of Justice Darkbane',
+        GreetTXT: 9317,
+        'Summoned By': 'Room 17/1746'
+      },
+      { Number: 724, Name: 'orc warlord', GreetTXT: 1810, 'Summoned By': 'Room 15/183' }
+    ],
+    TBInfo: [
+      { Number: 9317, Action: 'return:9615', LinkTo: 0 },
+      { Number: 9615, Action: '\u0000', LinkTo: 1809 },
+      {
+        Number: 1809,
+        Action: [
+          'class 1:minlevel 50 3020:goodaligned -51 3020:failability 205 3667:checkitem 1655 3020:takeitem 1655:random 1810',
+          'class 3:minlevel 50 3020:goodaligned -51 3020:failability 205 3667:checkitem 1655 3020:takeitem 1655:random 1810',
+          'class 2:message 3020'
+        ].join('\n'),
+        LinkTo: 0
+      },
+      {
+        Number: 1810,
+        Action: '75:giveitem 1448:message 3039\n100:giveitem 1449:giveability 205 1:message 3039',
+        LinkTo: 0
+      }
+    ]
+  };
+
+  const step = () =>
+    indexQuests(fake(DARKBANE), naming).find((quest) => quest.id === 205)?.steps[0];
+
+  it('asks the one who rolls it, with the words that reach the roll', () => {
+    expect(step()?.who).toBe('Ghost of Justice Darkbane');
+    expect(step()?.room).toBe('17/1746');
+    expect(step()?.say).toEqual(['return']);
+  });
+
+  it('carries the rolling line’s gates and takes, each class line a route', () => {
+    const found = step();
+    expect(found?.needs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'level', min: 50 })])
+    );
+    expect(found?.takes.map((item) => item.id)).toEqual([1655]);
+    expect(found?.ways?.map((way) => way.needs.map((gate) => gate.kind))).toEqual([
+      ['class'],
+      ['class']
+    ]);
+  });
+
+  it('never reads a roll’s threshold as a phrase', () => {
+    expect(step()?.say).not.toContain('100');
+  });
+
+  it('keeps the plain route of a roll table also reached without a roll', () => {
+    const [ghost, warlord] = DARKBANE.Monsters;
+    const both = {
+      Monsters: [{ ...ghost!, GreetTXT: 9320 }, warlord!],
+      TBInfo: [
+        ...DARKBANE.TBInfo,
+        { Number: 9320, Action: 'return:9615\nfree:9318', LinkTo: 0 },
+        { Number: 9318, Action: 'free:1810', LinkTo: 0 }
+      ]
+    };
+    const found = indexQuests(fake(both), naming).find((quest) => quest.id === 205)?.steps[0];
+    // One route asks nothing, so the rolls' extra gates are not conditions.
+    expect(found?.needs.some((gate) => gate.kind === 'level')).toBe(false);
+  });
+
+  it('carries a roll’s gates on to the block the rolled table links to', () => {
+    // 1809 rolls 1812, whose line links on to 1810: the step is still behind level 50.
+    const linked = {
+      Monsters: [DARKBANE.Monsters[0]!],
+      TBInfo: [
+        ...DARKBANE.TBInfo.map((row) =>
+          row.Number === 1809
+            ? { ...row, Action: row.Action.replaceAll('random 1810', 'random 1812') }
+            : row
+        ),
+        { Number: 1812, Action: '\u0000', LinkTo: 1810 }
+      ]
+    };
+    const found = indexQuests(fake(linked), naming).find((quest) => quest.id === 205)?.steps[0];
+    expect(found?.who).toBe('Ghost of Justice Darkbane');
+    expect(found?.needs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'level', min: 50 })])
+    );
+  });
+});

@@ -34,6 +34,7 @@ import type { MapLoader } from '@shared/map';
 import type { Discovery } from '@shared/memory';
 import { movementOf } from '@shared/movement';
 import { playerKey } from '@shared/players';
+import type { LoadQuestReach } from '@shared/quests';
 import type { RemoteName } from '@shared/remotes';
 import { dialWaits, type TerminalSize } from '@shared/types';
 import type { RoomId } from '@shared/world';
@@ -113,6 +114,8 @@ export interface CardContext {
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
   /** The plan to reach one step, from where this character stands — addressed, like the errand. */
   loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
+  /** The level wall on the way to each quest's next reward (todo 132), addressed like the plan. */
+  loadReach: LoadQuestReach;
   /** Run that plan (todo 102), and stop it. Addressed like the plan. */
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
@@ -215,6 +218,7 @@ export interface AddressedActions {
   loadQuests(): ReturnType<IpcApi['questBook']>;
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
   loadPlan(block: number, marked: number | null): ReturnType<IpcApi['questPlan']>;
+  loadReach: LoadQuestReach;
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
@@ -255,6 +259,7 @@ export type CardApi = Pick<
   | 'questBook'
   | 'questErrand'
   | 'questPlan'
+  | 'questReach'
   | 'questRun'
   | 'questStop'
   | 'huntingGrounds'
@@ -436,6 +441,7 @@ export function useCardContext({
         loadQuests: () => api.questBook(sid),
         loadErrand: (block) => api.questErrand(sid, block),
         loadPlan: (block, marked) => api.questPlan(sid, block, marked),
+        loadReach: (marks) => api.questReach(sid, marks),
         runPlan: (block, marked) => api.questRun(sid, block, marked),
         stopRun: () => void api.questStop(sid),
         loadHunting: (measure) => api.huntingGrounds(sid, measure),
@@ -585,6 +591,7 @@ export function useCardContext({
         loadQuests: bound.loadQuests,
         loadErrand: bound.loadErrand,
         loadPlan: bound.loadPlan,
+        loadReach: bound.loadReach,
         runPlan: bound.runPlan,
         stopRun: bound.stopRun,
         loadHunting: bound.loadHunting,

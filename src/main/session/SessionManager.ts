@@ -1599,7 +1599,7 @@ export class SessionManager {
     });
     this.questDesk = questDesk({
       ...{ world: () => this.world, errands: this.errands, runner: this.questRunner },
-      state: () => this.tracker.current
+      ...{ state: () => this.tracker.current, watched: () => this.questWatch.watched }
     });
     this.extensions = sessionExtensions({
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },

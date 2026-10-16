@@ -2037,6 +2037,13 @@ const TUNING_DEFAULTS = {
      */
     keptSweeps: 512,
     /**
+     * How many level walls are routed past on the way to one step
+     * (`questReach.ts`, todo 132): each wall met raises the level to it and
+     * the step is routed again. MerchantCaptain's crate lies past a 40 and
+     * a 60.
+     */
+    questReachTries: 3,
+    /**
      * What a room-script teleport costs over an ordinary step, so the router
      * prefers plain corridors unless the portal genuinely shortens the way —
      * usually across maps, which is what most of them are for.

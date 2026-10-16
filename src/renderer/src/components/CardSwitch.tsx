@@ -404,6 +404,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           */
           loadErrand={ctx.loadErrand}
           loadPlan={ctx.loadPlan}
+          loadReach={ctx.loadReach}
           /*
             And the run of that plan (todo 102): pressed on the card, carried
             by main, drawn from the progress main pushes for this character.

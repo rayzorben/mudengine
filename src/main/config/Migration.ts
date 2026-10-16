@@ -8227,6 +8227,8 @@ function theTuningBlockGainedKeys(
     // The Map card fetches by window and zooms out to a floor (todo 130, 2026-10-15).
     for (const key of ['mapWindowMargin', 'mapRoomPixelsFloor', 'mapUnmeasuredReach'] as const)
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
+    // The level walls the quest book climbs on the way to a step (todo 132, 2026-10-14).
+    addKey('world', 'questReachTries', DEFAULT_INTERNAL.tuning.world.questReachTries);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
