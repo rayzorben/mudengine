@@ -104,7 +104,8 @@ import type { LoopJoin, MovementStart, WalkStart } from '../shared/movement';
 import { areaLimits, type AreaSearchPreview } from '../shared/areaSearch';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
-import { localMap, type LairLevel } from './world/localMap';
+import { decorate, pageMapsOf, type LairLevel } from './world/localMap';
+import { MapPlacements } from './world/MapPlacements';
 import { GameMaps } from './world/GameMaps';
 import { loadThemePack, type ThemePack } from './world/themePack';
 import { asGameMapAsk, EMPTY_GAME_MAP } from '../shared/gameMap';
@@ -163,7 +164,7 @@ import { extensionOn } from '../shared/extensionSwitches';
 import { readExtensionSwitches } from './config/extensionSwitches';
 import { loadExtensions, pageFile, type LoadedExtension } from './extensions/ExtensionLoader';
 import { prowessSheetOf } from '../shared/verdict';
-import { EMPTY_MAP, type LocalMap } from '../shared/map';
+import { asMapWindow, EMPTY_MAP } from '../shared/map';
 import {
   asRoomIds,
   asRoomReference,
@@ -305,6 +306,8 @@ let workspace: Workspace | null = null;
  */
 const windows = new WindowRegistry();
 let host: SessionHost | null = null;
+/* The Map card's placement per session, so a pan decorates without placing again. */
+const mapPlacements = new MapPlacements();
 /** The extensions found in the home at startup (todo 84). */
 let extensions: readonly LoadedExtension[] = [];
 /** Installed and switched off in the options file, so never loaded (todo 118). */
@@ -1598,6 +1601,7 @@ function createHost(): SessionHost {
     realmTold: (_id, realm, word) => worldBook?.learn(realmName(realm), word),
     // Not a domain concern: see `keepSignalsWorking`.
     onConnected: keepSignalsWorking,
+    removed: (id) => mapPlacements.forget(id),
     // Per window: which characters have tabs where is the one roster question
     // that differs between them.
     publishRoster: publishRosters,
@@ -1948,8 +1952,9 @@ function registerIpc(): void {
   const drafts = new Map<SessionId, LoopDraftCache>();
 
   /*
-   * A route in the Map card's pages, cut by the widest map the card can
-   * fetch, so every page draws whole.
+   * A route in the Map card's pages, cut on the same flat placement every map
+   * draws, so every page draws whole. A sheet's floors are decorated for
+   * their crop only.
    */
   const pagesFor = (
     session: SessionId,
@@ -1957,14 +1962,12 @@ function registerIpc(): void {
     route: Route,
     start: RoomId
   ): RoutePage[] => {
-    const radius = tuning().view.mapRadiusMax;
-    const draw = (centre: RoomId): LocalMap =>
-      localMap(world, centre, radius, lairLevelOf(session));
+    const maps = pageMapsOf(world, lairLevelOf(session));
     const packing = {
       stretches: tuning().world.routePageStretches,
       steps: tuning().world.routePageSteps
     };
-    return pagesOf(route, start, draw, packing);
+    return pagesOf(route, start, maps, packing);
   };
 
   handle(Invoke.routeTo, async (_caller, session: SessionId, map: number, room: number) => {
@@ -2695,23 +2698,14 @@ function registerIpc(): void {
   });
   handle(
     Invoke.localMap,
-    (_caller, session: SessionId, map: number, room: number, radius?: unknown) => {
+    (_caller, session: SessionId, map: number, room: number, asked: unknown) => {
       const world = worldFor(session);
-      if (!world || world.size === 0) return EMPTY_MAP;
-      /*
-       * Parsed, not trusted. The card measures its own box and asks for the
-       * radius it can show, and that number arrives here as a payload like any
-       * other — the search is breadth-first and exponential in it, so a window
-       * asking for a radius of four hundred would walk the realm on the main
-       * process's own thread. Bounded to the same range the card clamps to;
-       * anything else is `undefined`, which takes `DEFAULT_RADIUS`.
-       */
-      const { mapRadiusMin, mapRadiusMax } = tuning().view;
-      const asked =
-        typeof radius === 'number' && Number.isInteger(radius)
-          ? Math.max(mapRadiusMin, Math.min(mapRadiusMax, radius))
-          : undefined;
-      return localMap(world, roomId(map, room), asked, lairLevelOf(session));
+      const window = asMapWindow(asked);
+      if (!world || world.size === 0 || window === null) return EMPTY_MAP;
+      const placement = mapPlacements.of(session, world, roomId(map, room));
+      return placement === null
+        ? EMPTY_MAP
+        : decorate(world, placement, window, lairLevelOf(session));
     }
   );
   handle(Invoke.gameMap, (_caller, session: SessionId, ask: unknown) => {

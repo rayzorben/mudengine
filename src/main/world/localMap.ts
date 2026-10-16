@@ -1,37 +1,30 @@
 /**
- * Laying out the rooms around the character.
+ * The rooms around the character as the Map card draws them.
  *
- * Breadth-first from where they are standing, following horizontal exits and
- * assigning each room a grid cell. Nearest rooms are placed first, which is what
- * makes the result stable: the square next to you is always the room next to
- * you, however the search later folds back on itself.
- *
- * Two decisions worth stating, because both are places a map can start lying:
- *
- * - **Up and down leave the plane and are not placed.** A map that put them on
- *   it would draw two different rooms in one square and call it a floor plan.
- *   Rooms with a vertical exit are *marked* instead.
- * - **A taken cell is not overwritten.** A MUD is not Euclidean: two exits can
- *   lead to the same place and a corridor can bend back over itself. The room
- *   that got there first — the nearer one — keeps the square, and the count of
- *   what could not be placed is reported rather than hidden.
+ * The geometry is `flatPlacement.ts`: the whole flat region from the centre,
+ * nearest room first, a taken square never overwritten. Up and down leave the
+ * plane and are not placed; a room with a vertical exit is marked instead.
+ * This module decorates the placed rooms (doors, shops, the ways off the
+ * plane, a lair's odds), and only those inside the asked window, since the
+ * decoration is what costs (todo 130).
  */
 import {
+  EMPTY_MAP,
+  inWindow,
   type LocalMap,
   type MapAway,
   type MapCell,
   type MapObstacle,
+  type MapWindow,
   type Vertical
 } from '../../shared/map';
+import type { PageMaps } from '../../shared/routeLegs';
 import type { SurvivalLevel } from '../../shared/survival';
 import { roomId, type Direction, type RoomId, type WorldRoom } from '../../shared/world';
 import { describeObstacle, leverOpening } from './obstacle';
-import { offPlaneWays, planeSteps } from './planeSteps';
+import { offPlaneWays, type PlaneGraph } from './planeSteps';
 import type { WorldGraph } from './WorldGraph';
-import { tuning } from '../app/tuning';
-
-/** Rooms out from the centre. Beyond this a rail-sized card cannot show it. */
-export const DEFAULT_RADIUS = 5;
+import { placeFlat, type FlatPlacement } from './flatPlacement';
 
 /**
  * Which way a room leaves the plane.
@@ -62,6 +55,25 @@ export type MapCellGraph = Pick<
   'byId' | 'beyond' | 'shop' | 'portalsFrom' | 'leversFor' | 'item' | 'landingCount'
 >;
 
+/**
+ * A room's cell with only what the realm row states: its name, exits and
+ * kind. What the route preview cuts its pages by (`plainMapOf`), where
+ * nothing is drawn.
+ */
+function plainCellOf(room: WorldRoom, gx: number, gy: number): MapCell {
+  const directions = room.exits.map((exit) => exit.direction);
+  return {
+    id: roomId(room.map, room.room),
+    name: room.name,
+    gx,
+    gy,
+    exits: directions,
+    vertical: verticalOf(directions),
+    shop: room.shop !== undefined,
+    lair: room.lair !== undefined
+  };
+}
+
 export function mapCellOf(
   graph: MapCellGraph,
   room: WorldRoom,
@@ -69,16 +81,7 @@ export function mapCellOf(
   gy: number,
   lairLevel: LairLevel = () => null
 ): MapCell {
-  const cell: MapCell = {
-    id: roomId(room.map, room.room),
-    name: room.name,
-    gx,
-    gy,
-    exits: room.exits.map((exit) => exit.direction),
-    vertical: verticalOf(room.exits.map((exit) => exit.direction)),
-    shop: room.shop !== undefined,
-    lair: room.lair !== undefined
-  };
+  const cell = plainCellOf(room, gx, gy);
   const place = room.shop === undefined ? undefined : graph.shop(room.shop)?.kind;
   if (place !== undefined) cell.place = place;
   const odds = room.lair === undefined ? null : lairLevel(room);
@@ -141,61 +144,57 @@ export function mapCellOf(
   return cell;
 }
 
-export function localMap(
-  graph: WorldGraph,
-  centre: RoomId,
-  radius = DEFAULT_RADIUS,
+/** The placement's cells inside `window`, decorated. */
+export function decorate(
+  graph: MapCellGraph,
+  placement: FlatPlacement,
+  window: MapWindow,
   lairLevel: LairLevel = () => null
 ): LocalMap {
-  const start = graph.byId(centre);
-  if (!start) return { centre: null, cells: [], dropped: 0 };
-
-  const placed = new Map<string, MapCell>();
-  const seen = new Set<RoomId>([centre]);
-  let dropped = 0;
-
-  const cellOf = (gx: number, gy: number): string => `${gx},${gy}`;
-
-  const push = (room: WorldRoom, gx: number, gy: number): void => {
-    placed.set(cellOf(gx, gy), mapCellOf(graph, room, gx, gy, lairLevel));
-  };
-
-  push(start, 0, 0);
-
-  // Breadth-first, so distance from the centre decides who owns a square.
-  let frontier: Array<{ room: WorldRoom; gx: number; gy: number }> = [
-    { room: start, gx: 0, gy: 0 }
-  ];
-
-  for (let depth = 0; depth < radius && frontier.length > 0; depth += 1) {
-    const next: typeof frontier = [];
-
-    for (const { room, gx, gy } of frontier) {
-      for (const { dx, dy, to: id, destination } of planeSteps(graph, room)) {
-        if (seen.has(id)) continue;
-
-        const nx = gx + dx;
-        const ny = gy + dy;
-        if (placed.has(cellOf(nx, ny))) {
-          // Someone nearer already owns this square. The link is still real,
-          // and still drawn from this room's exit list.
-          dropped += 1;
-          seen.add(id);
-          continue;
-        }
-        if (placed.size >= tuning().world.mapCells) {
-          dropped += 1;
-          continue;
-        }
-
-        seen.add(id);
-        push(destination, nx, ny);
-        next.push({ room: destination, gx: nx, gy: ny });
-      }
-    }
-
-    frontier = next;
+  const cells: MapCell[] = [];
+  for (const { room, gx, gy } of placement.rooms) {
+    if (!inWindow(window, gx, gy)) continue;
+    cells.push(mapCellOf(graph, room, gx, gy, lairLevel));
   }
+  return {
+    centre: placement.centre,
+    cells,
+    dropped: placement.dropped,
+    placed: placement.rooms.length,
+    extent: placement.extent
+  };
+}
 
-  return { centre, cells: [...placed.values()], dropped };
+/** Every placed room with only its plain cell: geometry, for cutting route pages. */
+function plainMapOf(placement: FlatPlacement): LocalMap {
+  return {
+    centre: placement.centre,
+    cells: placement.rooms.map(({ room, gx, gy }) => plainCellOf(room, gx, gy)),
+    dropped: placement.dropped,
+    placed: placement.rooms.length,
+    extent: placement.extent
+  };
+}
+
+/**
+ * The maps a route's paging reads (`pagesOf`): each centre placed once for
+ * the paging, its plain cells for the cut, and a sheet's floor decorated for
+ * its crop only.
+ */
+export function pageMapsOf(graph: MapCellGraph & PlaneGraph, lairLevel: LairLevel): PageMaps {
+  const placed = new Map<RoomId, FlatPlacement | null>();
+  const placementOf = (centre: RoomId): FlatPlacement | null => {
+    if (!placed.has(centre)) placed.set(centre, placeFlat(graph, centre));
+    return placed.get(centre) ?? null;
+  };
+  return {
+    placed: (centre) => {
+      const placement = placementOf(centre);
+      return placement === null ? EMPTY_MAP : plainMapOf(placement);
+    },
+    window: (centre, window) => {
+      const placement = placementOf(centre);
+      return placement === null ? EMPTY_MAP : decorate(graph, placement, window, lairLevel);
+    }
+  };
 }

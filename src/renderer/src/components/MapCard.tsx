@@ -10,7 +10,13 @@ import { useWalkPages } from '../hooks/useWalkPages';
 import { t } from '../lib/i18n';
 import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
-import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@shared/map';
+import {
+  DEFAULT_MAP_DENSITY,
+  EMPTY_MAP,
+  roomPixelsFor,
+  type LocalMap,
+  type MapLoader
+} from '@shared/map';
 import type { CharacterState } from '@shared/character';
 import type { FoundRoom } from '@shared/destinations';
 import type { LoopProgress } from '@shared/loops';
@@ -22,14 +28,11 @@ import { roomsWithFinds, type Find } from '@shared/finds';
 export interface MapCardProps extends CardChrome {
   character: CharacterState;
   /**
-   * The neighbourhood around a room, out to `radius` rooms.
-   *
-   * The radius is the view's, measured from its own laid-out box and the zoom
-   * it is at — see `radiusForView`. It used to be main's default of five
-   * whatever the card was drawn in, so a floating map dragged bigger drew the
-   * same rooms larger.
+   * The flat map around a room, decorated inside the window the view asks
+   * for, measured from its own laid-out box and the zoom it is at (see
+   * `windowForView`).
    */
-  load(map: number, room: number, radius: number): Promise<LocalMap>;
+  load: MapLoader;
   /** Rooms by name or `map/room`, for the finder. */
   search(query: string): Promise<FoundRoom[]>;
   /** The preview route between two rooms. See `useRoutePreview`. */
@@ -243,20 +246,18 @@ function MapCard({
     const cells = new Map(
       leg.sheet.floors.flatMap((floor) => floor.map.cells).map((cell) => [cell.id, cell])
     );
-    return { ...EMPTY_MAP, cells: [...cells.values()] };
+    return { ...EMPTY_MAP, cells: [...cells.values()], placed: cells.size };
   }, [leg, map]);
   const count =
     shown.dropped > 0 ? (
       <span className="chip warn" title={t('cards.map.badgeTooltipDropped')}>
         {t('cards.map.badgeFoldedCount', {
-          roomCount: shown.cells.length,
+          roomCount: shown.placed,
           droppedCount: shown.dropped
         })}
       </span>
     ) : (
-      <span className="chip off">
-        {t('cards.map.badgeRoomCount', { roomCount: shown.cells.length })}
-      </span>
+      <span className="chip off">{t('cards.map.badgeRoomCount', { roomCount: shown.placed })}</span>
     );
   const badge =
     here === null ? (

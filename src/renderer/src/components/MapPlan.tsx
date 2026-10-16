@@ -39,7 +39,7 @@ import {
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { viewBoxFor, type Box, type MapView } from '../lib/mapView';
+import { viewBoxFor, type Box, type MapDetail, type MapView } from '../lib/mapView';
 import {
   layoutMap,
   NO_TRAIL,
@@ -48,7 +48,8 @@ import {
   type MapAway,
   type MapDrawing,
   type MapNode,
-  type MapTrail
+  type MapTrail,
+  type RoomKind
 } from '@shared/map';
 import type { SurvivalLevel } from '@shared/survival';
 import type { RoomId } from '@shared/world';
@@ -177,12 +178,12 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function shape(node: MapNode) {
+function shape(node: MapNode, kind: RoomKind = node.kind) {
   // The room's radius, read once per shape rather than six times.
   const r = tuning().mapRoomRadius;
-  if (node.kind === 'shop') return <circle className="map-shape" cx={node.x} cy={node.y} r={r} />;
+  if (kind === 'shop') return <circle className="map-shape" cx={node.x} cy={node.y} r={r} />;
   /* A bank: the shop's circle with a `$` in it, in gold — where the money is. */
-  if (node.kind === 'bank') {
+  if (kind === 'bank') {
     return (
       <>
         <circle className="map-shape" cx={node.x} cy={node.y} r={r + 0.4} />
@@ -192,7 +193,7 @@ function shape(node: MapNode) {
       </>
     );
   }
-  if (node.kind === 'lair') {
+  if (kind === 'lair') {
     const points = [
       `${node.x},${node.y - r - 0.6}`,
       `${node.x + r + 0.6},${node.y}`,
@@ -237,6 +238,11 @@ export interface MapPlanProps {
    * measures the box and holds the view, and nothing else draws this.
    */
   viewport: { view: MapView; box: Box };
+  /**
+   * Every mark, or plain shapes below the slider's dense end (`detailAt`,
+   * todo 130): the `you` ring and the route are drawn at every zoom.
+   */
+  detail: MapDetail;
   /**
    * What the loud ring is marking, in words.
    *
@@ -350,6 +356,7 @@ const ORIGIN = { x: 0, y: 0 } as const;
 function MapPlan({
   map,
   viewport,
+  detail,
   focus = 'here',
   you = null,
   onChoose,
@@ -420,6 +427,7 @@ function MapPlan({
       viewBox={viewBox}
     >
       <Picture
+        detail={detail}
         drawing={drawing}
         focus={focus}
         marks={marks}
@@ -442,6 +450,7 @@ function MapPlan({
  * reconcile two hundred rooms and their corridors.
  */
 export const Picture = memo(function Picture({
+  detail = 'full',
   drawing,
   focus,
   found,
@@ -454,6 +463,8 @@ export const Picture = memo(function Picture({
   trail,
   you
 }: {
+  /** `plain` leaves out every mark but the `you` ring, the route and the builder's rings. */
+  detail?: MapDetail;
   drawing: MapDrawing;
   focus: 'here' | 'destination' | 'centre';
   /** Rooms the realm's find log names. A `Set`, asked once per drawn room. */
@@ -475,20 +486,21 @@ export const Picture = memo(function Picture({
    */
   const dwell = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(dwell.current), []);
+  const plain = detail === 'plain';
   return (
     <>
       {/* Corridors first, so a room always sits on top of its own links. */}
       <g className="map-links">
         {drawing.links.map((link, index) => (
           <line
-            data-kind={link.obstacle?.kind}
+            data-kind={plain ? undefined : link.obstacle?.kind}
             key={index}
             x1={link.x1}
             x2={link.x2}
             y1={link.y1}
             y2={link.y2}
           >
-            {link.obstacle && <title>{link.obstacle.detail}</title>}
+            {!plain && link.obstacle && <title>{link.obstacle.detail}</title>}
           </line>
         ))}
       </g>
@@ -535,65 +547,69 @@ export const Picture = memo(function Picture({
         small to point at.
       */}
       <g className="map-reach">
-        {drawing.links
-          .filter((link) => link.obstacle)
-          .map((link, index) => (
-            <line key={index} x1={link.x1} x2={link.x2} y1={link.y1} y2={link.y2}>
-              <title>{link.obstacle!.detail}</title>
-            </line>
-          ))}
+        {!plain &&
+          drawing.links
+            .filter((link) => link.obstacle)
+            .map((link, index) => (
+              <line key={index} x1={link.x1} x2={link.x2} y1={link.y1} y2={link.y2}>
+                <title>{link.obstacle!.detail}</title>
+              </line>
+            ))}
       </g>
 
       <g className="map-blocks">
-        {drawing.links
-          .filter((link) => link.obstacle)
-          .map((link, index) => {
-            const mx = (link.x1 + link.x2) / 2;
-            const my = (link.y1 + link.y2) / 2;
-            /*
-             * A trap is not a bar. A bar says *shut*, and a trap is not shut:
-             * the route walks straight through it and takes the hit, which is
-             * the one obstacle on this map the character cannot open, pay or
-             * search for. So it is its own shape — the hazard triangle,
-             * upright whichever way the corridor runs, because it is a glyph
-             * rather than a gate across the passage. It was a bar in a second
-             * hue for as long as the map existed, and §6 says hue alone may
-             * not carry a condition: the legend had no entry for it and a red
-             * bar beside an amber one read as a door of another kind.
-             */
-            if (link.obstacle!.kind === 'trap') {
+        {!plain &&
+          drawing.links
+            .filter((link) => link.obstacle)
+            .map((link, index) => {
+              const mx = (link.x1 + link.x2) / 2;
+              const my = (link.y1 + link.y2) / 2;
+              /*
+               * A trap is not a bar. A bar says *shut*, and a trap is not shut:
+               * the route walks straight through it and takes the hit, which is
+               * the one obstacle on this map the character cannot open, pay or
+               * search for. So it is its own shape — the hazard triangle,
+               * upright whichever way the corridor runs, because it is a glyph
+               * rather than a gate across the passage. It was a bar in a second
+               * hue for as long as the map existed, and §6 says hue alone may
+               * not carry a condition: the legend had no entry for it and a red
+               * bar beside an amber one read as a door of another kind.
+               */
+              if (link.obstacle!.kind === 'trap') {
+                return (
+                  <polygon
+                    className="map-trap"
+                    data-kind="trap"
+                    key={index}
+                    points={trapPoints(mx, my)}
+                  >
+                    <title>{link.obstacle!.detail}</title>
+                  </polygon>
+                );
+              }
+              // Across the corridor, so it reads as a bar in the way rather
+              // than a mark beside it.
+              const along = Math.atan2(link.y2 - link.y1, link.x2 - link.x1);
+              const nx = Math.cos(along + Math.PI / 2) * 2.1;
+              const ny = Math.sin(along + Math.PI / 2) * 2.1;
               return (
-                <polygon
-                  className="map-trap"
-                  data-kind="trap"
+                <line
+                  data-kind={link.obstacle!.kind}
                   key={index}
-                  points={trapPoints(mx, my)}
+                  x1={mx - nx}
+                  x2={mx + nx}
+                  y1={my - ny}
+                  y2={my + ny}
                 >
                   <title>{link.obstacle!.detail}</title>
-                </polygon>
+                </line>
               );
-            }
-            // Across the corridor, so it reads as a bar in the way rather
-            // than a mark beside it.
-            const along = Math.atan2(link.y2 - link.y1, link.x2 - link.x1);
-            const nx = Math.cos(along + Math.PI / 2) * 2.1;
-            const ny = Math.sin(along + Math.PI / 2) * 2.1;
-            return (
-              <line
-                data-kind={link.obstacle!.kind}
-                key={index}
-                x1={mx - nx}
-                x2={mx + nx}
-                y1={my - ny}
-                y2={my + ny}
-              >
-                <title>{link.obstacle!.detail}</title>
-              </line>
-            );
-          })}
+            })}
       </g>
 
       {drawing.nodes.map((node) => {
+        // Plain: one shape for every room, with only the room stood in told apart.
+        const kind: RoomKind = plain ? (node.here ? 'here' : 'room') : node.kind;
         const pick = onChoose;
         const peekHere = onPeek;
         /*
@@ -684,8 +700,8 @@ export const Picture = memo(function Picture({
           <g
             aria-label={choose === undefined ? undefined : node.name}
             className="map-room"
-            data-kind={node.kind}
-            data-odds={node.kind === 'lair' ? node.odds : undefined}
+            data-kind={kind}
+            data-odds={kind === 'lair' ? node.odds : undefined}
             data-room={node.id}
             key={node.id}
             {...control}
@@ -723,7 +739,7 @@ export const Picture = memo(function Picture({
              * character is standing in — all of which are about *now*, where
              * this is about what the realm has been hiding.
              */}
-            {found.has(node.id) && (
+            {!plain && found.has(node.id) && (
               <circle
                 className="map-find"
                 cx={node.x + tuning().mapRoomRadius}
@@ -732,7 +748,7 @@ export const Picture = memo(function Picture({
               />
             )}
             {/* Protected in the realm data (todo 87): the corner opposite a find. */}
-            {node.safe === true && (
+            {!plain && node.safe === true && (
               <circle
                 className="map-safe"
                 cx={node.x - tuning().mapRoomRadius}
@@ -801,7 +817,7 @@ export const Picture = memo(function Picture({
                 strokeWidth={MARKS.you.stroke}
               />
             )}
-            {shape(node)}
+            {shape(node, kind)}
           </g>
         );
       })}
@@ -814,7 +830,8 @@ export const Picture = memo(function Picture({
        * because *up* is not an answer and *up to Rocky Ledge* is. Drawn after
        * every room so a control is never under a neighbour's shape.
        */}
-      {onLook !== undefined &&
+      {!plain &&
+        onLook !== undefined &&
         drawing.nodes.flatMap((node) =>
           (node.away ?? []).map((away, index) =>
             away.kind === 'teleport' && onTeleport === undefined ? null : (
@@ -959,7 +976,10 @@ function TeleportGlyph({ size, x, y }: { size: number; x: number; y: number }) {
  * card's height as the character walked, and every control below it moved
  * under the pointer — which is the whole reason the map card is a fixed box.
  */
-export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
+export function MapLegend({
+  builder = false,
+  plain = false
+}: { builder?: boolean; plain?: boolean } = {}) {
   const lairKeys: Array<{ odds: SurvivalLevel | undefined; label: string }> = [
     { odds: 'safe', label: t('cards.map.legendLairSafe') },
     { odds: 'risky', label: t('cards.map.legendLairRisky') },
@@ -974,6 +994,11 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
           <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
         </svg>
         {t('cards.map.legendYou')}
+      </span>
+      {/* Always laid out, shown only zoomed out past the dense end, so the
+          legend keeps its height as the wheel crosses it (todo 130). */}
+      <span data-kind="plain" data-shown={plain ? 'true' : 'false'}>
+        {t('cards.map.legendPlain')}
       </span>
       {/*
         The route and the lap, listed like every other symbol whether or not

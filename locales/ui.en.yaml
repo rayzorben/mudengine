@@ -2700,6 +2700,8 @@ cards:
     legendLairDeadly: lair, not survivable
     legendLook: look up/down
     legendPick: clicked
+    # Zoomed out past the density slider's dense end: rooms are drawn plain.
+    legendPlain: marks hidden at this zoom
     legendRoute: route
     legendFind: found by searching
     legendSafe: safe room

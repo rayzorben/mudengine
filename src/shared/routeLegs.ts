@@ -7,12 +7,19 @@
  * portal, a typed exit such as `go manhole`, or a step onto another map
  * number. Each of those ends a leg, and the step that ends it is the jump the
  * pager names between two pages. A leg the map cannot draw whole around its
- * first room (it runs past the fetch, or folds onto rooms already placed) is
- * cut again where the line would stop (`pagesOf`). Pure, so the cuts can be
+ * first room (it folds onto a square a nearer room already holds) is cut
+ * again where the line would stop (`pagesOf`). Pure, so the cuts can be
  * asserted without a DOM. See `mudengine-ui` › `parts/map.md` › *The route
  * preview*.
  */
-import { corridorBetween, corridorsOf, layoutMap, STEP, type LocalMap } from './map';
+import {
+  corridorBetween,
+  corridorsOf,
+  layoutMap,
+  STEP,
+  type LocalMap,
+  type MapWindow
+} from './map';
 import { asRoomReference, type RoomId, type Route, type RouteStep } from './world';
 
 export interface RouteLeg {
@@ -143,6 +150,17 @@ export interface PagePacking {
   steps: number;
 }
 
+/**
+ * The maps the paging reads, answered by main (todo 130): the whole flat
+ * placement round a room with plain cells, which the pages are cut on, and
+ * the same placement's cells inside a window, decorated, which a sheet's
+ * floor is drawn from.
+ */
+export interface PageMaps {
+  placed(centre: RoomId): LocalMap;
+  window(centre: RoomId, window: MapWindow): LocalMap;
+}
+
 /** A map as the paging reads it: which rooms it places and which steps it draws. */
 interface Drawn {
   map: LocalMap;
@@ -212,23 +230,32 @@ function joinOf(step: RouteStep | null): { kind: JoinKind; step: RouteStep | nul
 const FLOOR_MARGIN = 1;
 
 /**
- * The part of a map around `rooms`: their bounding box and a ring past it.
- * The ways up and down are dropped, since the sheet draws them as its joins.
+ * The part of the map round `centre` around `rooms`: their bounding box and
+ * a ring past it, decorated for that crop only. The ways up and down are
+ * dropped, since the sheet draws them as its joins.
  */
-function cropped(map: LocalMap, rooms: ReadonlySet<RoomId>, centre: RoomId | null): LocalMap {
-  const on = map.cells.filter((cell) => rooms.has(cell.id));
+function cropped(
+  maps: PageMaps,
+  placed: LocalMap,
+  rooms: ReadonlySet<RoomId>,
+  centre: RoomId,
+  shownCentre: RoomId | null
+): LocalMap {
+  const on = placed.cells.filter((cell) => rooms.has(cell.id));
   const xs = on.map((cell) => cell.gx);
   const ys = on.map((cell) => cell.gy);
-  const [left, right] = [Math.min(...xs) - FLOOR_MARGIN, Math.max(...xs) + FLOOR_MARGIN];
-  const [top, bottom] = [Math.min(...ys) - FLOOR_MARGIN, Math.max(...ys) + FLOOR_MARGIN];
-  const cells = map.cells
-    .filter((cell) => cell.gx >= left && cell.gx <= right && cell.gy >= top && cell.gy <= bottom)
-    .map((cell) => {
-      const copy = { ...cell };
-      delete copy.away;
-      return copy;
-    });
-  return { centre, cells, dropped: 0 };
+  const crop = {
+    minX: Math.min(...xs) - FLOOR_MARGIN,
+    maxX: Math.max(...xs) + FLOOR_MARGIN,
+    minY: Math.min(...ys) - FLOOR_MARGIN,
+    maxY: Math.max(...ys) + FLOOR_MARGIN
+  };
+  const cells = maps.window(centre, crop).cells.map((cell) => {
+    const copy = { ...cell };
+    delete copy.away;
+    return copy;
+  });
+  return { centre: shownCentre, cells, dropped: 0, placed: cells.length, extent: crop };
 }
 
 /**
@@ -237,7 +264,11 @@ function cropped(map: LocalMap, rooms: ReadonlySet<RoomId>, centre: RoomId | nul
  * it was on); otherwise it opens a floor, one level up or down for a way up
  * or down, the same level for any other jump.
  */
-function sheetOf(pieces: readonly RouteLeg[], drawn: (centre: RoomId) => Drawn): RoutePage {
+function sheetOf(
+  pieces: readonly RouteLeg[],
+  drawn: (centre: RoomId) => Drawn,
+  maps: PageMaps
+): RoutePage {
   const floors: Array<{ centre: RoomId; level: number; rooms: Set<RoomId> }> = [];
   const stretches: RouteStretch[] = [];
   let level = 0;
@@ -272,7 +303,13 @@ function sheetOf(pieces: readonly RouteLeg[], drawn: (centre: RoomId) => Drawn):
     entry: first.entry,
     sheet: {
       floors: floors.map((floor, index) => ({
-        map: cropped(drawn(floor.centre).map, floor.rooms, index === 0 ? floor.centre : null),
+        map: cropped(
+          maps,
+          drawn(floor.centre).map,
+          floor.rooms,
+          floor.centre,
+          index === 0 ? floor.centre : null
+        ),
         level: floor.level
       })),
       stretches
@@ -281,8 +318,8 @@ function sheetOf(pieces: readonly RouteLeg[], drawn: (centre: RoomId) => Drawn):
 }
 
 /**
- * The route's pages. Each leg is cut where the map drawn around a piece's
- * first room stops drawing the line (`draw`), and then consecutive pieces are
+ * The route's pages. Each leg is cut where the flat placement round a
+ * piece's first room stops drawing the line (`maps.placed`), and then consecutive pieces are
  * gathered while they walk `packing.steps` flat steps or fewer between them,
  * up to `packing.stretches` to a page, so a way down five times or two short
  * walks either side of a manhole read as one page. A piece longer than the
@@ -291,16 +328,16 @@ function sheetOf(pieces: readonly RouteLeg[], drawn: (centre: RoomId) => Drawn):
 export function pagesOf(
   route: Route,
   from: RoomId,
-  draw: (centre: RoomId) => LocalMap,
+  maps: PageMaps,
   packing: PagePacking
 ): RoutePage[] {
-  const drawn = drawnBy(draw);
+  const drawn = drawnBy((centre) => maps.placed(centre));
   const pages: RoutePage[] = [];
   let group: RouteLeg[] = [];
   let walked = 0;
   const flush = (): void => {
     if (group.length === 1) pages.push({ ...group[0]!, sheet: null });
-    if (group.length > 1) pages.push(sheetOf(group, drawn));
+    if (group.length > 1) pages.push(sheetOf(group, drawn, maps));
     group = [];
     walked = 0;
   };

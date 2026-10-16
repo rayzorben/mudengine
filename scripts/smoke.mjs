@@ -2600,6 +2600,40 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
 }
 {
   /*
+   * Zoomed out, the map draws more of the realm (todo 130): the flat region
+   * is placed whole and the window asks main for the cells it now shows. Four
+   * notches out from the middle (past the fetched rectangle's margin), waited
+   * on until the count rises, then four back in to the width the run had.
+   */
+  const rooms = () => evaluate(`document.querySelectorAll('.map-card .map-plan .map-room').length`);
+  const before = await mapWindow();
+  const shown = await rooms();
+  let claimed = true;
+  for (let notch = 0; notch < 4; notch += 1) {
+    claimed = (await wheelOver(0.5, 0.5, 100)) !== null && claimed;
+  }
+  const wider = await waitFor(async () => {
+    const count = await rooms();
+    return count > shown ? count : null;
+  });
+  check(
+    claimed && shown > 0 && wider !== null,
+    'zoomed out, the map fetches and draws more rooms',
+    JSON.stringify({ shown, wider })
+  );
+  for (let notch = 0; notch < 4; notch += 1) await wheelOver(0.5, 0.5, -100);
+  const back = await readUntil(
+    () => mapWindow(),
+    (back) => before !== null && back !== null && Math.abs(back.v[2] - before.v[2]) < 0.05
+  );
+  check(
+    before !== null && back !== null && Math.abs(back.v[2] - before.v[2]) < 0.05,
+    'and zoomed back in to the width it started at',
+    JSON.stringify({ before: before?.v, back: back?.v })
+  );
+}
+{
+  /*
    * The drag, sideways towards the rooms: the eye can only be taken as far as
    * the drawing goes, so the expected shift is the hand's distance in map
    * units capped at the furthest room in that direction -- which is the
@@ -6303,7 +6337,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      */
     const shopRoom = await evaluate(`
       (async () => {
-        const map = await window.mudengine.localMap('${SESSION}', 1, 2141, 1);
+        const map = await window.mudengine.localMap('${SESSION}', 1, 2141, { minX: -1, maxX: 1, minY: -1, maxY: 1 });
         const cell = map.cells.find((entry) => entry.id === '1/2141');
         if (!cell) return null;
         return {
@@ -6484,7 +6518,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
        */
       const scripted = await evaluate(`
         (async () => {
-          const map = await window.mudengine.localMap('${SESSION}', 3, 613, 1);
+          const map = await window.mudengine.localMap('${SESSION}', 3, 613, { minX: -1, maxX: 1, minY: -1, maxY: 1 });
           const cell = map.cells.find((entry) => entry.id === '3/613');
           if (!cell) return null;
           /*
@@ -14112,7 +14146,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         const character = await window.mudengine.getCharacter('${SESSION}');
         const here = character.room;
         if (here.map === null || here.number === null) return JSON.stringify(null);
-        const map = await window.mudengine.localMap('${SESSION}', here.map, here.number, 2);
+        const map = await window.mudengine.localMap('${SESSION}', here.map, here.number, { minX: -2, maxX: 2, minY: -2, maxY: 2 });
         const centre = map.cells.find((cell) => cell.id === map.centre);
         if (!centre) return JSON.stringify(null);
         const step = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0], ne: [1, -1], nw: [-1, -1], se: [1, 1], sw: [-1, 1] };

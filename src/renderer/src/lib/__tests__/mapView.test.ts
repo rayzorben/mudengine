@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   densityFor,
+  detailAt,
   dragged,
   extentOf,
   fittedTo,
-  radiusForView,
+  stillCovers,
   viewBoxFor,
   wheelFactor,
+  windowForView,
   within,
   zoomedAt,
-  zoomFloor,
   type MapView
 } from '../mapView';
 import { MAP_CELL } from '@shared/map';
@@ -125,57 +126,92 @@ describe('staying inside the drawing', () => {
   });
 });
 
-describe('the drawing’s extent', () => {
-  it('is measured from the centre room, in map units', () => {
-    expect(
-      extentOf([
-        { gx: 0, gy: 0 },
-        { gx: -2, gy: 1 },
-        { gx: 3, gy: -4 }
-      ])
-    ).toEqual({ minX: -20, maxX: 30, minY: -40, maxY: 10 });
+describe('the region’s extent', () => {
+  it('is the region’s cells in map units', () => {
+    expect(extentOf({ minX: -2, maxX: 3, minY: -4, maxY: 1 })).toEqual({
+      minX: -20,
+      maxX: 30,
+      minY: -40,
+      maxY: 10
+    });
   });
 
-  it('is nothing for no rooms', () => {
-    expect(extentOf([])).toEqual({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+  /* Todo 130: the pan reaches rooms main has not sent yet, as far as the region goes. */
+  it('lets the pan reach a room past the fetched cells but inside the region', () => {
+    const region = extentOf({ minX: -40, maxX: 40, minY: -5, maxY: 5 });
+    const view = { perRoom: 20, pan: { x: 35 * MAP_CELL, y: 0 } };
+    expect(within(view, region)).toBe(view);
+    expect(within({ perRoom: 20, pan: { x: 60 * MAP_CELL, y: 0 } }, region).pan.x).toBe(
+      40 * MAP_CELL
+    );
   });
 });
 
-describe('how far to fetch', () => {
+describe('what to fetch', () => {
   it('covers the window, with half a cell to spare', () => {
     // 400px at 20px a room is 20 rooms across, ten each side of the centre.
-    expect(radiusForView(centredView(20), box, 2, 12)).toBe(11);
+    expect(windowForView(centredView(20), box, 0, 2)).toEqual({
+      minX: -11,
+      maxX: 11,
+      minY: -6,
+      maxY: 6
+    });
   });
 
-  it('reaches further as the eye is panned away', () => {
-    expect(radiusForView({ perRoom: 40, pan: { x: 30, y: 0 } }, box, 2, 12)).toBe(9);
-    expect(radiusForView(centredView(40), box, 2, 12)).toBe(6);
+  it('adds the margin as a share of the window each way', () => {
+    expect(windowForView(centredView(20), box, 0.5, 2)).toEqual({
+      minX: -21,
+      maxX: 21,
+      minY: -11,
+      maxY: 11
+    });
   });
 
-  it('is the floor for a box not yet measured', () => {
-    expect(radiusForView(centredView(20), { width: 0, height: 0 }, 2, 12)).toBe(2);
+  it('follows the pan', () => {
+    expect(windowForView({ perRoom: 40, pan: { x: 30, y: 0 } }, box, 0, 2)).toEqual({
+      minX: -3,
+      maxX: 9,
+      minY: -3,
+      maxY: 3
+    });
   });
 
-  it('is clamped to the bounds', () => {
-    expect(radiusForView(centredView(10), { width: 2000, height: 2000 }, 2, 12)).toBe(12);
-    expect(radiusForView(centredView(40), { width: 40, height: 40 }, 2, 12)).toBe(2);
+  it('asks for a few rooms round the centre for a box not yet measured', () => {
+    expect(windowForView(centredView(20), { width: 0, height: 0 }, 0.5, 2)).toEqual({
+      minX: -2,
+      maxX: 2,
+      minY: -2,
+      maxY: 2
+    });
   });
 });
 
-describe('the smallest a room may be drawn', () => {
-  it('is the slider’s dense end on a rail-sized box', () => {
-    // 254px across, twenty-five rooms fetched at most: ten pixels each.
-    expect(zoomFloor({ width: 254, height: 200 }, 10, 12)).toBeCloseTo(10.16);
-    expect(zoomFloor({ width: 200, height: 200 }, 10, 12)).toBe(10);
+describe('when to fetch again', () => {
+  const fetched = { minX: -21, maxX: 21, minY: -11, maxY: 11 };
+  const visibleAt = (x: number) => ({ minX: x - 11, maxX: x + 11, minY: -6, maxY: 6 });
+
+  it('keeps the rectangle while the window’s middle is in its inner half', () => {
+    expect(stillCovers(fetched, visibleAt(0), null)).toBe(true);
+    expect(stillCovers(fetched, visibleAt(10), null)).toBe(true);
   });
 
-  it('rises with the box, so the widest fetch always spans the longer side', () => {
-    expect(zoomFloor({ width: 640, height: 400 }, 10, 12)).toBeCloseTo(25.6);
-    expect(zoomFloor({ width: 400, height: 640 }, 10, 12)).toBeCloseTo(25.6);
+  it('asks again once the window leaves the inner half or the rectangle', () => {
+    expect(stillCovers(fetched, { minX: 1, maxX: 21, minY: -6, maxY: 6 }, null)).toBe(false);
+    expect(stillCovers(fetched, visibleAt(11), null)).toBe(false);
   });
 
-  it('is the dense end for a box not yet measured', () => {
-    expect(zoomFloor({ width: 0, height: 0 }, 10, 12)).toBe(10);
+  it('never asks again once the rectangle holds the whole region', () => {
+    const region = { minX: -5, maxX: 5, minY: -2, maxY: 2 };
+    expect(stillCovers(fetched, visibleAt(30), region)).toBe(true);
+  });
+});
+
+describe('how much a room shows', () => {
+  it('is plain below the dense end and full at it', () => {
+    expect(detailAt(9.9, 10)).toBe('plain');
+    expect(detailAt(5, 10)).toBe('plain');
+    expect(detailAt(10, 10)).toBe('full');
+    expect(detailAt(40, 10)).toBe('full');
   });
 });
 

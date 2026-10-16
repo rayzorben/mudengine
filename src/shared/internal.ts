@@ -2000,8 +2000,12 @@ const TUNING_DEFAULTS = {
      * behind, which makes going back free and was unbounded until this.
      */
     keepRealms: 8,
-    /** Ceiling on placed rooms, so a dense area cannot produce a vast grid. */
-    mapCells: 200,
+    /**
+     * A safety ceiling on the rooms one flat placement holds, counted in the
+     * map's `dropped` if reached (todo 130). The map places the whole flat
+     * region; the largest measured is 6,488 rooms (Paradigm).
+     */
+    mapCells: 20_000,
     /**
      * How the Map card's route preview gathers stretches onto one page: up to
      * `routePageStretches` of them, while they walk `routePageSteps` flat
@@ -2619,29 +2623,23 @@ const TUNING_DEFAULTS = {
     /** Room radius on the map, and the margin that keeps one in the viewBox. */
     mapRoomRadius: 3,
     /**
-     * How far out the local map walks, as the bounds a *measured* radius is
-     * clamped into.
-     *
-     * The view asks for the radius its window can show — `radiusForView`:
-     * what the window reaches from the centre room at its zoom and pan,
-     * measured from the laid-out box, plus half a cell — rather than always
-     * asking for five, which is what it did until 2026-08-31: a map dragged
-     * twice as tall drew the same six rooms twice as large, because the
-     * viewBox scaled the picture and nothing ever fetched more of it.
-     *
-     * The floor is what a rail card can show and the ceiling is what stops a
-     * full-screen float walking the whole realm — the breadth-first search is
-     * exponential in the radius, and `world.mapCells` alone bounds the
-     * *result* rather than the work. The ceiling is also the smallest a room
-     * may be drawn: a window wider than the widest fetch would show blank
-     * space, so `zoomFloor` stops the wheel where the fetch spans the box.
-     *
-     * Under `view` rather than `world` because it is a fact about how big the
-     * card is, which is the renderer's to know: `world` is what the realm is,
-     * and only main reads it.
+     * How far past the window the Map card asks for rooms, as a share of the
+     * window's size each way (todo 130). Main sends only the cells in the
+     * asked rectangle, and the view asks again once it leaves the rectangle's
+     * inner half, so a pan has rooms under it before the next answer lands.
      */
-    mapRadiusMin: 2,
-    mapRadiusMax: 12,
+    mapWindowMargin: 0.5,
+    /**
+     * The smallest a room may be drawn when the wheel zooms out, in pixels
+     * (user, 2026-10-14). Below `mapRoomPixelsDense` a room is its plain
+     * shape with no marks; the `you` ring and the route line are still drawn.
+     */
+    mapRoomPixelsFloor: 5,
+    /**
+     * The cells each way a map asks for before its box is measured, so the
+     * first paint has the rooms round the centre.
+     */
+    mapUnmeasuredReach: 2,
     /**
      * How far the game view's map window reaches each way from where it looks,
      * in cells (todo 140): main sends the square, and the renderer asks again
@@ -2670,14 +2668,11 @@ const TUNING_DEFAULTS = {
      * ends are chosen so a **rail-sized** card (its picture is about 200px on
      * the short side) spans 5×5 rooms at the sparse end and 20×20 at the dense
      * one, which is what the request asked for. The middle lands at 25 against
-     * the 34 it replaces, and with the floor moving too a railed map goes from
-     * 7×7 to 9×9 for somebody who never opens the slider — a step, not a
-     * redesign, and the control to put it back is on the card. A float is
-     * bigger and shows more at every setting, which is the behaviour the
-     * measured radius already had.
-     *
-     * `mapRadiusMin` went 3 → 2 with them: 5×5 is a radius of two, and the old
-     * floor would have quietly refused the sparse end of the slider.
+     * the 34 it replaces, and a railed map goes from 7×7 to 9×9 for somebody
+     * who never opens the slider: a step, not a redesign, and the control to
+     * put it back is on the card. A float is bigger and shows more at every
+     * setting. The wheel may go past the dense end, down to
+     * `mapRoomPixelsFloor`.
      */
     mapRoomPixelsSparse: 40,
     mapRoomPixelsDense: 10,
