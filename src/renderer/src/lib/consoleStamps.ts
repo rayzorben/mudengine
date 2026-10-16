@@ -6,8 +6,8 @@
  * notice writes it on its first row. A later stamp on the row replaces it; a
  * clear (text over the erased prompt row) takes both off. The gear takes the
  * rightmost two cells, the time sits left of it, and text reaching either
- * hides it. Nothing is registered for an undecided row while the times are
- * off: a marker costs xterm a listener per trimmed line and a decoration a
+ * hides it; one blank cell sits between the time and the gear. Nothing is
+ * registered for an undecided row while the times are off: a marker costs xterm a listener per trimmed line and a decoration a
  * visit per frame. `mudengine-session` › *A status line's time rides in the painted text*.
  */
 import type { IDecoration, IMarker, Terminal } from '@xterm/xterm';
@@ -17,9 +17,18 @@ import { GLYPH_CELLS } from '@shared/template';
 import { clockOf } from '@shared/values';
 import { gearOn, type GearDress } from './consoleGear';
 
-/** Cells the time takes, `HH:MM:SS`, and the blank one kept before it. */
+/** Cells the time takes, `HH:MM:SS`, and the blank one kept on each side of it. */
 const STAMP_CELLS = 8;
 const STAMP_GAP = 1;
+
+/**
+ * Cells between the right edge and the time: none on a plain row, and the
+ * gear's cells plus one blank cell on a decided row, so the time's last digit
+ * does not run into the gear (todo 156).
+ */
+export function timeInset(hasGear: boolean): number {
+  return hasGear ? GLYPH_CELLS + STAMP_GAP : 0;
+}
 
 interface Row {
   marker: IMarker;
@@ -78,7 +87,7 @@ export function drawStamps(term: Terminal, gear: GearDress): ConsoleStamps {
     last = row;
     marker.onDispose(() => drop(row));
     if (stamp.decision !== null) row.gear = gearOn(term, marker, stamp.decision, gear);
-    if (shown) row.time = timeOn(row, stamp.at, row.gear === null ? 0 : GLYPH_CELLS);
+    if (shown) row.time = timeOn(row, stamp.at, timeInset(row.gear !== null));
     return true;
   });
 

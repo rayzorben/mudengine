@@ -13320,9 +13320,10 @@ tr:hover .row-action.worn,
 
 /*
  * The gear on a line about a decision the client made (todo 119): the two
- * rightmost cells, the time beside it moved two cells left by xterm's own
- * `right`. `right: 0` for the reason `.terminal-stamp` states. A row whose
- * text reaches it hides it, as it hides the time.
+ * rightmost cells, the time beside it moved the gear's two cells and one more
+ * left by xterm's own `right` (`timeInset`, todo 156). `right: 0` for the
+ * reason `.terminal-stamp` states. A row whose text reaches it hides it, as it
+ * hides the time.
  */
 .terminal-decision {
   right: 0;
