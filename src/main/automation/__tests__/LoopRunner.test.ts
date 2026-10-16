@@ -1059,6 +1059,18 @@ describe('holding while hurt', () => {
     expect(walked).toEqual(['Arena', 'Road']);
   });
 
+  /* Todo 148: Auto-Rest off walks the lap on hurt; the test above is the positive control. */
+  it('never pauses with Auto-Rest off', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelow: 0.6, autoRest: false });
+    runner.start(loop, hurt(100));
+    runner.onWalkEnded(true, null, hurt(55));
+    runner.onCharacter(hurt(55));
+    vi.advanceTimersByTime(2_100);
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
   it('never pauses when told 0', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});

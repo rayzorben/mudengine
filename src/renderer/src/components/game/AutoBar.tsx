@@ -2,8 +2,8 @@
  * The game view's Auto switches and its Run and Rest steppers (todo 140),
  * under the player bar on the right. A switch flips the character's own file
  * as the toolbar's does; a stepper moves a threshold five points at a time.
- * Run's own name is the `retreat` switch: the figure dims while running is
- * off, and is moved whether or not it is.
+ * Run's own name is the `retreat` switch and Rest's the `autoRest` one: the
+ * figure dims while its switch is off, and is moved whether or not it is.
  */
 import { memo } from 'react';
 
@@ -39,7 +39,8 @@ function Stepper({
   value,
   onThreshold,
   on,
-  onToggle
+  onToggle,
+  title
 }: {
   which: HudThreshold;
   label: string;
@@ -48,6 +49,8 @@ function Stepper({
   /** Whether the threshold acts, where a switch decides it; undefined where none does. */
   on?: boolean | null;
   onToggle?(): void;
+  /** What the name's press does, said where a switch decides it. */
+  title?: string;
 }) {
   const move = (by: number) => {
     if (value !== null)
@@ -64,7 +67,7 @@ function Stepper({
           className="gv-stepper-name"
           disabled={on === null}
           onClick={onToggle}
-          title={on === true ? t('game.auto.runOn') : t('game.auto.runOff')}
+          title={title}
           type="button"
         >
           {label}
@@ -114,12 +117,16 @@ function AutoBar({ switches, runBelow, restBelow, onSwitch, onThreshold }: AutoB
         on={switches === null ? null : switches.retreat}
         onThreshold={onThreshold}
         onToggle={() => switches !== null && onSwitch('retreat', !switches.retreat)}
+        title={switches?.retreat === true ? t('game.auto.runOn') : t('game.auto.runOff')}
         value={runBelow}
         which="run"
       />
       <Stepper
         label={t('game.auto.rest')}
+        on={switches === null ? null : switches.autoRest}
         onThreshold={onThreshold}
+        onToggle={() => switches !== null && onSwitch('autoRest', !switches.autoRest)}
+        title={switches?.autoRest === true ? t('game.auto.restOn') : t('game.auto.restOff')}
         value={restBelow}
         which="rest"
       />

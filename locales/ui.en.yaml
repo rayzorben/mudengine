@@ -399,6 +399,9 @@ notices:
     resistGear:
       many: 'Wear Resist Gear was added, on, to {count} files: {fileList}'
       one: 'Wear Resist Gear was added, on, to {fileList}'
+    autoRest:
+      many: 'Auto-Rest was added, on, to {count} files: {fileList}'
+      one: 'Auto-Rest was added, on, to {fileList}'
     restSpell:
       many: 'Cast Before Resting was added, empty, to {count} files: {fileList}'
       one: 'Cast Before Resting was added, empty, to {fileList}'
@@ -557,6 +560,8 @@ notices:
       re-equips what the client last saw in each worn slot. Press it first after a death.
     runBetweenRoundsPinned: A Run Between Rounds switch was added to the end of your toolbar. When
       it is on, Run it times a step into a lair to the combat rounds.
+    autoRestSwitchPinned: An Auto-Rest switch was added to your toolbar, next to Auto-Bless. When it
+      is off, a walk or a loop goes on when hurt instead of stopping to rest.
     blessSwitchPinned: An Auto-Bless switch was added to your toolbar, next to Retaliate. When it is
       off, your bless spells are not cast until you turn it back on.
     loopsRenamed:
@@ -1052,6 +1057,8 @@ game:
     raise: Raise {name}
     runOff: Running is off; press to turn it on
     runOn: Running is on; press to turn it off
+    restOff: Auto-rest is off; walks and loops go on when hurt. Press to turn it on
+    restOn: Auto-rest is on; walks and loops stop to rest when hurt. Press to turn it off
   bar:
     unknownName: Name unknown
     hp: HP
@@ -1393,6 +1400,7 @@ toolbar:
   autoDeposit: Auto-Deposit (Bank Coins)
   automation: Auto (On/Off)
   autoBless: Auto-Bless (Bless Spells)
+  autoRest: Auto-Rest (Resting)
   bashDoors: Auto-Bash Doors
   combat: Auto-Combat
   connect: Connect
@@ -6031,6 +6039,16 @@ automation:
     summonedBy: '{mob}, summoned when {summoner} dies'
     stoppedGotIt: you have {item}
     whyLeftRealm: the realm was left
+  # Auto-Rest put back on after the player turned it off -- `AutoRestBack` (todo 148).
+  autoRest:
+    onForWalk: 'Auto-rest back on for this walk: it stops to rest when hurt.'
+    onForWalkRefused: "Auto-rest could not be turned back on in the character's file; this walk does not stop to rest."
+    onForLoop: 'Auto-rest back on for this loop: it stops to rest when hurt.'
+    onForLoopRefused: "Auto-rest could not be turned back on in the character's file; this loop does not stop to rest."
+    onArrived: 'Arrived: auto-rest back on.'
+    onArrivedRefused: "Arrived, but auto-rest could not be turned back on in the character's file."
+    onConnected: 'Auto-rest back on.'
+    onConnectedRefused: "Auto-rest could not be turned back on in the character's file."
   # Keeping a room's ward up off a carried item -- `Wards` (todo 105).
   wards:
     reason: 'using {item} for {spell} against {hazard}'

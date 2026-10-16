@@ -38,6 +38,7 @@ export const AUTOMATION_SWITCHES = {
   combat: ['combat', 'enabled'],
   retaliate: ['combat', 'retaliate'],
   autoBless: ['spells', 'autoBless'],
+  autoRest: ['health', 'autoRest'],
   retreat: ['safety', 'retreat', 'enabled'],
   fleeGoto: ['safety', 'fleeGoto', 'enabled'],
   hangUp: ['safety', 'hangUp', 'enabled'],

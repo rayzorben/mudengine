@@ -1218,6 +1218,13 @@ export interface BankingConfig {
  */
 export interface HealthConfig {
   /**
+   * Whether a route, a lap or a follower's `@wait` stands still to rest under
+   * the floors below (todo 148, the toolbar's Auto-Rest). Off, the character
+   * walks on hurt; standing still, it still rests. Put back on at the start of
+   * a walk or a loop, on arriving and on connecting (`AutoRestBack`).
+   */
+  autoRest: boolean;
+  /**
    * Rest when health falls below this fraction of maximum. 0 never rests.
    *
    * MegaMUD's *Rest if below*, and a fraction like every other threshold here
@@ -2601,6 +2608,7 @@ export const DEFAULT_CONFIG: AppConfig = {
        * unasked is only ever whether a lap the *player started* keeps marching
        * while its character is hurt.
        */
+      autoRest: true,
       restBelow: 0.35,
       restTo: 0.7,
       restNextDoor: true,
@@ -3571,6 +3579,7 @@ function normalizeHealth(value: unknown): HealthConfig {
   const restBelow = fraction(raw['restBelow'], d.restBelow);
   const restBelowMana = fraction(raw['restBelowMana'], d.restBelowMana);
   return {
+    autoRest: bool(raw['autoRest'], d.autoRest),
     restBelow,
     /*
      * Clamped up to `restBelow` rather than accepted as stated, exactly as
@@ -4158,7 +4167,7 @@ export function holdsForVital(
  * Whether this character's own walk stands still for health or for mana
  * (todo 831): under the vital's floor to stop, and once `held`, under its line
  * to stay. The one test a route (`Holds`), a lap (`LoopRunner`) and a
- * follower's `@wait` (`Remotes`) share.
+ * follower's `@wait` (`Remotes`) share. With `autoRest` off none holds.
  */
 export function stillFor(
   vital: 'health' | 'mana',
@@ -4167,6 +4176,7 @@ export function stillFor(
   held: boolean,
   marginWhenUncapped: number
 ): boolean {
+  if (!health.autoRest) return false;
   return vital === 'health'
     ? holdsForVital(
         vitals.hp,

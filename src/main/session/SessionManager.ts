@@ -3036,7 +3036,7 @@ export class SessionManager {
        * first (noted above), is found empty. `took-over` is the step out;
        * `rest-here` is a lair with no safe neighbour, said once.
        */
-      const away = this.restAway.consider(state, this.recovery.wouldRest(state));
+      const away = this.restAway.consider(state, this.recovery.wouldRest(state) && this.mayRest());
       if (away !== 'took-over' && this.mayRest()) this.restNow(state);
     }
   }
@@ -3158,7 +3158,7 @@ export class SessionManager {
     this.heal.onCharacter(state);
     this.potions.onCharacter(state);
     this.cures.onCharacter(state);
-    const away = this.restAway.consider(state, this.recovery.wouldRest(state));
+    const away = this.restAway.consider(state, this.recovery.wouldRest(state) && this.mayRest());
     if (away !== 'took-over' && this.mayRest()) this.restNow(state);
   }
 

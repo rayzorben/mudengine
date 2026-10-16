@@ -3979,6 +3979,31 @@ describe('walking while hurt', () => {
     walk.dispose();
   });
 
+  /* Todo 148: Auto-Rest off walks a hurt character on; the hold above is the positive control. */
+  it('walks on hurt with Auto-Rest off, and lets a held walk go when it is turned off', async () => {
+    const health = { ...config.health, restBelow: 0.5, autoRest: false };
+    const off = new Walker({ ...config, health }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => hurt(0.3)
+    });
+    expect(off.start(ROUTE, hurt(0.3))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    expect(off.progress.hold).toBeNull();
+    off.dispose();
+    sent.length = 0;
+    const { walk } = walkerAt(0.5);
+    expect(walk.start(ROUTE, hurt(0.3))).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(walk.progress.hold).toBe('health');
+    expect(sent).toEqual([]);
+    walk.configure({ ...config, health: { ...config.health, restBelow: 0.5, autoRest: false } });
+    await vi.advanceTimersByTimeAsync(tuning().walk.holdMs + 50);
+    expect(walk.progress.hold).toBeNull();
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
   /*
    * Under a timed spell the way in cast (todo 104), standing still is
    * drowning: the health hold waits at the mouth and never inside, so the

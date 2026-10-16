@@ -268,7 +268,9 @@ describe('the "stand up at" health thresholds', () => {
       // And by `statedTheRestSpell`, empty.
       restSpell: '',
       // And by `statedTheNewAutomation`, at the default.
-      useWards: true
+      useWards: true,
+      // And by `statedAutoRest`, on (todo 148).
+      autoRest: true
     });
   });
 
@@ -2279,6 +2281,7 @@ toolbar:
       'retaliate',
       // And the bless switch beside retaliate (`pinTheBlessSwitch`).
       'autoBless',
+      'autoRest',
       'loot',
       'loop:open',
       // The three transport keys this row shipped with are one button now, and
@@ -2326,6 +2329,7 @@ toolbar:
     // none of its neighbours here either, and runs last, so it takes the front.
     expect(pinned()).toEqual([
       'autoBless',
+      'autoRest',
       'loop:open',
       'connect',
       'gear:restore',
@@ -2645,6 +2649,7 @@ tuning:
       'combat',
       // Beside combat, the nearest of its shipped neighbours on this row.
       'autoBless',
+      'autoRest',
       'move:toggle',
       'move:back',
       'loop:open',
@@ -2704,6 +2709,7 @@ describe('the gear button on an existing toolbar', () => {
       'gear:restore',
       'automation',
       'autoBless',
+      'autoRest',
       'loop:open',
       'move:back',
       'runBetweenRounds'
@@ -2734,6 +2740,7 @@ describe('the gear button on an existing toolbar', () => {
       'loop:open',
       'combat',
       'autoBless',
+      'autoRest',
       'move:back',
       'runBetweenRounds'
     ]);
@@ -2779,6 +2786,7 @@ describe('the bless switch on an existing toolbar', () => {
       'combat',
       'retaliate',
       'autoBless',
+      'autoRest',
       'loot',
       'loop:open',
       'move:toggle',
@@ -4571,7 +4579,8 @@ describe('the loop pause pair folded into the resting pair', () => {
       useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
-      restSpell: ''
+      restSpell: '',
+      autoRest: true
     });
   });
 
@@ -4599,7 +4608,8 @@ describe('the loop pause pair folded into the resting pair', () => {
       useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
-      restSpell: ''
+      restSpell: '',
+      autoRest: true
     });
   });
 
@@ -4620,7 +4630,8 @@ describe('the loop pause pair folded into the resting pair', () => {
       useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
-      restSpell: ''
+      restSpell: '',
+      autoRest: true
     });
   });
 
@@ -4643,7 +4654,8 @@ describe('the loop pause pair folded into the resting pair', () => {
       useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
-      restSpell: ''
+      restSpell: '',
+      autoRest: true
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(
@@ -8672,5 +8684,78 @@ describe('a switch per installed extension is stated (todo 118)', () => {
     migrate();
     expect(optionsOf()['extensions']).toEqual({ planner: false });
     expect(notesOf(said, 'notices.migration.extensionSwitches')).toHaveLength(0);
+  });
+});
+
+// Auto-Rest (todo 148): the key after useWards, and the switch on the toolbar.
+describe('auto-rest is stated and pinned', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const pinned = (): string[] =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { toolbar: { pinned: string[] } }).toolbar
+      .pinned;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-auto-rest-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes it on after useWards with its paragraph, once, and leaves an off one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      "automation:\n  health:\n    # The user's own note.\n    restBelow: 0.35\n    useWards: true\n",
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  health:\n    autoRest: false\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const health = (parse(text).automation as Record<string, Record<string, unknown>>)['health']!;
+    const keys = Object.keys(health);
+    expect(keys[keys.indexOf('useWards') + 1]).toBe('autoRest');
+    expect(health['autoRest']).toBe(true);
+    expect(text).toContain("The user's own note.");
+    expect(text).toContain("# Auto-Rest, the toolbar's switch");
+    expect(fs.readFileSync(soul, 'utf8')).toContain('autoRest: false');
+    expect(
+      notesOf(said, 'notices.migration.autoRest.one', 'notices.migration.autoRest.many')
+    ).toHaveLength(1);
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(
+      notesOf(said, 'notices.migration.autoRest.one', 'notices.migration.autoRest.many')
+    ).toHaveLength(0);
+  });
+
+  it('pins the switch after Auto-Bless, once', () => {
+    fs.writeFileSync(
+      home.internal,
+      'toolbar:\n  pinned:\n    - connect\n    - autoBless\n    - loot\n',
+      'utf8'
+    );
+    migrate();
+    const row = pinned();
+    expect(row[row.indexOf('autoBless') + 1]).toBe('autoRest');
+    expect(notesOf(said, 'notices.migration.autoRestSwitchPinned')).toHaveLength(1);
+    said.length = 0;
+    migrate();
+    expect(pinned().filter((id) => id === 'autoRest')).toHaveLength(1);
+    expect(notesOf(said, 'notices.migration.autoRestSwitchPinned')).toHaveLength(0);
   });
 });
