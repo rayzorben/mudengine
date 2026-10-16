@@ -2780,10 +2780,12 @@ cards:
       directionForward: forward
       directionLabel: Direction
       endedLabel: Ended
+      expectedLabel: Expected Exp Rate
       lapsLabel: Laps Completed
       madeLabel: Exp Gained
       meterLabel: '{stop}/{stops} · {stopName}'
       pickerLabel: Select Path / Loop
+      rateLabel: Exp Rate
       runningForLabel: Running for
       statusFighting: fighting
       statusRetreated: recovering
@@ -6032,6 +6034,15 @@ automation:
     refusalNothingReachable: Nothing within reach is worth hunting.
     refusalNotReached: 'Did not reach {room}: {why}'
     started: Hunting {loopName}, for about {rate} exp an hour.
+    expected: '{loopName} should pay {rate} exp an hour ({from}). {mob} takes about {rounds} rounds
+      to kill and hits for {damage} a round.'
+    expectedFrom:
+      measured: what it paid at this level
+      nearby: what it paid a level or two away
+      paced: the formula at this realm's pace
+      formula: the formula
+    measured: '{loopName} has paid {rate} exp an hour over {minutes} minutes, against {expected}
+      expected.'
     # An extension steering the hunt (todo 84).
     steeredAway: an extension chose another spot
     reordered: an extension changed this spot's loop

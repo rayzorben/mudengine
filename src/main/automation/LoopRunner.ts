@@ -39,9 +39,11 @@
 import {
   dueStop,
   NO_LOOP,
+  expRateSince,
   retimed,
   splitStop,
   type Loop,
+  type LoopExpected,
   type LoopProgress,
   type LoopStatus
 } from '../../shared/loops';
@@ -342,6 +344,8 @@ export class LoopRunner implements SessionModule {
   /** When this run started, and what the character's experience read then. */
   private startedAt: number | null = null;
   private expAtStart: number | null = null;
+  /** What the hunt that started this run expected of it (`expect`), cleared by the next start. */
+  private expected: LoopExpected | null = null;
   /**
    * When this run first stood on the loop since the player last pressed Start
    * or play, or null while it is still walking out to it. See `beginLap`.
@@ -429,8 +433,18 @@ export class LoopRunner implements SessionModule {
       expAtStart: this.expAtStart,
       reached: this.lapBegunAt !== null,
       forward: this.forward,
-      bounce: this.loop?.bounce ?? false
+      bounce: this.loop?.bounce ?? false,
+      expected: this.expected,
+      rateFrom: this.rateSince,
+      rateGraceMs: expRateGraceMs(this.walk)
     };
+  }
+
+  /** The hunt's expectation for the run it started, shown with the run (todo 127). */
+  expect(expected: LoopExpected | null): void {
+    if (this.status === 'idle') return;
+    this.expected = expected;
+    this.publish();
   }
 
   /**
@@ -488,6 +502,7 @@ export class LoopRunner implements SessionModule {
     // numbers the client had, never a difference from zero.
     this.expAtStart = state.progress.exp;
     this.anchorRate(state);
+    this.expected = null;
     // From the stop stood in: starting at the top of the list would walk the
     // character back past everything it is standing next to.
     this.index = this.joining(loop).stop;
@@ -600,13 +615,13 @@ export class LoopRunner implements SessionModule {
   private rateUnderFloor(state: CharacterState): number | null {
     const floor = this.walk.minExpPerHour;
     if (floor <= 0 || this.status !== 'running') return null;
-    const anchor = this.rateSince;
-    const exp = state.progress.exp;
-    if (anchor === null || exp === null) return null;
-    const elapsed = this.now() - anchor.at;
-    if (elapsed < expRateGraceMs(this.walk)) return null;
-    const rate = ((exp - anchor.exp) * 3_600_000) / elapsed;
-    return rate < floor ? rate : null;
+    const rate = expRateSince(
+      this.rateSince,
+      state.progress.exp,
+      this.now(),
+      expRateGraceMs(this.walk)
+    )?.perHour;
+    return rate !== undefined && rate < floor ? rate : null;
   }
 
   /**
@@ -654,6 +669,7 @@ export class LoopRunner implements SessionModule {
     this.lapBegunAt = null;
     this.expAtStart = null;
     this.rateSince = null;
+    this.expected = null;
     this.publish();
   }
 

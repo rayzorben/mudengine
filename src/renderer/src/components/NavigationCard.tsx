@@ -4,7 +4,9 @@ import BentoCard, { type CardAction, type CardChrome, type CardTab } from './Ben
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { CharacterState } from '@shared/character';
-import { loopIsResting, type LoopProgress } from '@shared/loops';
+import { expRateSince, loopIsResting, type LoopProgress } from '@shared/loops';
+import { expectedFromWords } from '@shared/hunting';
+import { rate } from '../lib/rates';
 import { movementOf, navigationFace } from '@shared/movement';
 import {
   isAfflictionHold,
@@ -150,6 +152,10 @@ function NavigationCard({
     loop.expAtStart !== null && character.progress.exp !== null && running
       ? character.progress.exp - loop.expAtStart
       : null;
+  // What the run pays an hour, beside what the hunt expected of it (todo 127).
+  const measured = running
+    ? (expRateSince(loop.rateFrom, character.progress.exp, now, loop.rateGraceMs)?.perHour ?? null)
+    : null;
 
   /*
    * A room the character is not in is a control, not text: the destination
@@ -451,6 +457,20 @@ function NavigationCard({
           <>
             <dt>{t('cards.navigation.loop.madeLabel')}</dt>
             <dd>{made === null ? '—' : made.toLocaleString()}</dd>
+          </>
+        )}
+
+        {running && loop.expected !== null && (
+          <>
+            <dt>{t('cards.navigation.loop.expectedLabel')}</dt>
+            <dd title={expectedFromWords(loop.expected.from, t)}>{rate(loop.expected.perHour)}</dd>
+          </>
+        )}
+
+        {running && (
+          <>
+            <dt>{t('cards.navigation.loop.rateLabel')}</dt>
+            <dd>{rate(measured)}</dd>
           </>
         )}
 

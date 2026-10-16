@@ -31,6 +31,7 @@ import path from 'node:path';
 import { CAPTURE_SUFFIX, slug, stamp } from './filename';
 import { errorMessage } from '../../shared/values';
 import type { ConnectionTarget, LostEnter, StreamLine } from '../../shared/types';
+import type { DecisionKind } from '../../shared/decisionSettings';
 
 export interface SessionCaptureOptions {
   directory: string;
@@ -140,9 +141,13 @@ export class SessionCapture {
     this.record({ k: 'out', s: command, src: source });
   }
 
-  /** What the client said in the console: a refusal, a fallback, a trip set off. */
-  notice(message: string): void {
-    this.record({ k: 'notice', s: message });
+  /**
+   * What the client said in the console: a refusal, a fallback, a trip set
+   * off. `d` is the decision it was said for, so a script reads the hunt's
+   * expected and measured rates back without matching wording (todo 127).
+   */
+  notice(message: string, decision?: DecisionKind): void {
+    this.record({ k: 'notice', s: message, ...(decision === undefined ? {} : { d: decision }) });
   }
 
   /**

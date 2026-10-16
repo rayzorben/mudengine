@@ -4,6 +4,7 @@ import {
   atSpeed,
   type MeasuredRate,
   withMeasured,
+  loopExpected,
   spotRate,
   cashFloor,
   addFiller,
@@ -1047,6 +1048,23 @@ describe('what hunting measured', () => {
     expect(spots[1]!.estimate.measured).toBeUndefined();
   });
 
+  // Todo 127: what a run's expected rate rests on.
+  it('says an expected rate is measured, paced, or the formula', () => {
+    const { spots } = withMeasured(
+      [spot('bear', 8_000, 8_000), spot('thug', 4_000, 4_000)],
+      new Map([['bear', rate(48_000)]]),
+      use
+    );
+    expect(loopExpected(spots[0]!)).toMatchObject({ perHour: 48_000, from: 'measured' });
+    expect(loopExpected(spots[1]!)).toMatchObject({ perHour: 24_000, from: 'paced' });
+    expect(loopExpected(spot('wolf', 3_000, 3_000))).toMatchObject({
+      perHour: 3_000,
+      from: 'formula',
+      mob: null
+    });
+    expect(loopExpected(spot('none', null, null))).toBeNull();
+  });
+
   it('ignores a measurement at another level, too short, or too old', () => {
     for (const stale of [
       rate(48_000, { level: 4 }),
@@ -1077,6 +1095,8 @@ describe('what hunting measured', () => {
     expect(spots[1]!.estimate.expPerHour).toBe(13_000);
     expect(spots[0]!.estimate.measured).toBeUndefined();
     expect(spots[0]!.estimate.modelPerHour).toBe(9_000);
+    // Its own rate a level away, which the run's expectation says (todo 127).
+    expect(loopExpected(spots[0]!)?.from).toBe('nearby');
     // Nothing measured at level 5: the pace is the levels beside it.
     expect(pace).toBeCloseTo((3 + 0.65) / 2);
   });

@@ -11,7 +11,7 @@
 import { median } from './median';
 import type { MeasuredOutput, MeasuredTiming } from './fights';
 import type { UiLookup } from './i18n';
-import type { Loop, LoopStop } from './loops';
+import type { ExpectedFrom, Loop, LoopExpected, LoopStop } from './loops';
 import type { MobAffliction } from './menace';
 import type { CharacterState } from './character';
 import type { RealmFamily } from './realm';
@@ -301,6 +301,11 @@ export interface SpotEstimate {
    * `withMeasured` has run.
    */
   modelPerHour?: number | null;
+  /**
+   * What scaled `expPerHour` off the model, where something did: this spot's
+   * own rate at a nearby level, or the realm's pace (`withMeasured`, todo 127).
+   */
+  scaledBy?: 'nearby' | 'pace';
   /**
    * What hunting it actually paid this character at this level, where a hunt
    * there lasted long enough to say, and when (todo 70). A measured rate
@@ -1565,6 +1570,33 @@ export interface MeasuredUse {
 }
 
 /**
+ * What a run of this spot is expected to pay, and what that rests on (todo
+ * 127): the rate paid here at this level where one is held, else this spot's
+ * own rate at a nearby level, else the model at the realm's pace, else the
+ * model. Null where the survey has no rate.
+ */
+export function loopExpected(spot: HuntingSpot): LoopExpected | null {
+  const { measured, scaledBy, roundsPerKill } = spot.estimate;
+  const perHour = spotRate(spot);
+  if (perHour === null) return null;
+  const from = measured
+    ? 'measured'
+    : scaledBy === 'nearby'
+      ? 'nearby'
+      : scaledBy === 'pace'
+        ? 'paced'
+        : 'formula';
+  const mob = spot.mobs[0] ?? null;
+  return {
+    perHour,
+    from,
+    mob: mob?.name ?? null,
+    roundsPerKill,
+    perRound: mob?.perRound ?? null
+  };
+}
+
+/**
  * The survey with what was measured (todo 70): a spot hunted at this level
  * carries its measured rate; a spot hunted within `levelsAcross` levels is
  * scaled by its own ratio of measured to the model's figure; every other
@@ -1621,8 +1653,10 @@ export function withMeasured(
     pace,
     spots: spots.map((spot) => {
       const rate = rates.get(spot.key);
+      // A label from an earlier pass is this pass's to set again.
+      const { scaledBy: _earlier, ...estimate } = spot.estimate;
       const modelled = {
-        ...spot.estimate,
+        ...estimate,
         modelPerHour: spot.estimate.modelPerHour ?? spot.estimate.expPerHour
       };
       if (valid(rate)) {
@@ -1634,11 +1668,14 @@ export function withMeasured(
           }
         };
       }
-      const scaled = by(carried(rate) ?? pace);
+      const nearby = carried(rate);
+      const scaled = by(nearby ?? pace);
+      const scaledBy = nearby !== null ? 'nearby' : pace !== null ? 'pace' : undefined;
       return {
         ...spot,
         estimate: {
           ...modelled,
+          ...(scaledBy === undefined ? {} : { scaledBy }),
           expPerHour: scaled(spot.estimate.expPerHour),
           ceilingPerHour: scaled(spot.estimate.ceilingPerHour),
           copperPerHour: scaled(spot.estimate.copperPerHour)
@@ -1685,6 +1722,22 @@ export function primaryMob(spot: HuntingSpot): string {
     if (mob.experience !== null && (best?.experience ?? -1) < mob.experience) best = mob;
   }
   return best?.name ?? '';
+}
+
+/** What an expected rate rests on, in words, for the log and the Navigation card. */
+export function expectedFromWords(from: ExpectedFrom, t: UiLookup): string {
+  switch (from) {
+    case 'measured':
+      return t('automation.hunt.expectedFrom.measured');
+    case 'nearby':
+      return t('automation.hunt.expectedFrom.nearby');
+    case 'paced':
+      return t('automation.hunt.expectedFrom.paced');
+    case 'formula':
+      return t('automation.hunt.expectedFrom.formula');
+    default:
+      return from satisfies never;
+  }
 }
 
 /**

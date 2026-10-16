@@ -15,7 +15,7 @@ import {
   type HuntingSpot,
   type SpotEstimate
 } from '../../../shared/hunting';
-import { retimed, type Loop } from '../../../shared/loops';
+import { retimed, type Loop, type LoopExpected } from '../../../shared/loops';
 import type { Route } from '../../../shared/world';
 import { noticeLog, type NoticeLog } from './noticeLog';
 
@@ -41,6 +41,7 @@ function ready(over: Partial<CharacterState> = {}): CharacterState {
 const estimate = (expPerHour: number | null): SpotEstimate =>
   ({
     expPerHour,
+    roundsPerKill: null,
     deadly: false,
     costly: false,
     trivial: false,
@@ -108,6 +109,8 @@ let clock: number;
 let noted: Array<{ key: string; perHour: number }>;
 /** The laps whose monsters the hunt asked combat to fight, null for none, in order. */
 let fought: string[][];
+/** What the hunt handed each run it started, in order. */
+let expectations: Array<LoopExpected | null>;
 
 function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationConfig> = {}) {
   const planner: HuntPlanner = {
@@ -118,6 +121,7 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
     },
     routeTo: () => ROUTE,
     noteRate: (key, rate) => void noted.push({ key, perHour: rate.perHour }),
+    expectLoop: (expected) => void expectations.push(expected),
     walk: (route, run) => {
       walked.push(route);
       runs.push(run);
@@ -175,6 +179,7 @@ beforeEach(() => {
   stops = [];
   noted = [];
   fought = [];
+  expectations = [];
   clock = 1_000_000;
   answer = advice([spot('lair:a', 12_000)]);
 });
@@ -195,7 +200,8 @@ describe('going hunting on its own', () => {
     expect(started).toHaveLength(1);
     expect(started[0]!.name).toContain('Graveyard');
     expect(decisions.at(-1)).toMatchObject({ action: 'hunt', acted: true });
-    expect(log.kinds).toEqual(['hunt-move', 'hunt-move']);
+    // Going, started, and the expected rate (todo 127).
+    expect(log.kinds).toEqual(['hunt-move', 'hunt-move', 'hunt-move']);
   });
 
   /* The loop is built from the survey, never filed: a lair that stops being
@@ -366,6 +372,51 @@ describe('going hunting on its own', () => {
     auto.onCharacter(withKilla);
     auto.onCharacter(withKilla);
     expect(notices.filter((line) => line.includes('Killa'))).toHaveLength(1);
+  });
+
+  /*
+   * Todo 127: the run carries what the hunt expected of it, said at the start
+   * and again only when a survey prices the spot differently.
+   */
+  it('hands the run its expected rate once, and again when the survey moves it', () => {
+    const auto = hunting();
+    expect(expectations).toEqual([
+      {
+        perHour: 12_000,
+        from: 'formula',
+        mob: 'fierce zombie',
+        roundsPerKill: null,
+        perRound: null
+      }
+    ]);
+    const said = notices.length;
+    // The same figure on the next survey says nothing.
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 9_000 } }));
+    expect(expectations).toHaveLength(1);
+    // A survey that prices it at 20,000 says so and hands the run the new figure.
+    answer = advice([spot('lair:a', 20_000)]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 17_000 } }));
+    expect(expectations.at(-1)?.perHour).toBe(20_000);
+    expect(expectations).toHaveLength(2);
+    expect(notices.length).toBeGreaterThan(said);
+  });
+
+  it('says the measured rate beside the expected one once a stay is long enough', () => {
+    const auto = hunting();
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_500 } }));
+    const line = t('automation.hunt.measured', {
+      loopName: started[0]!.name,
+      rate: '2,000',
+      minutes: 15,
+      expected: '12,000'
+    });
+    expect(notices.filter((said) => said === line)).toHaveLength(1);
+    clock += 60_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_600 } }));
+    expect(notices.filter((said) => said === line)).toHaveLength(1);
   });
 
   /* A party member is the arrangement, not the problem. */
