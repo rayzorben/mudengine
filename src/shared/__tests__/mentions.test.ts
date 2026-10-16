@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { domainOf, type Block, type BlockType } from '../blocks';
+import { telepathNotice } from '../characterNotices';
 import { mentionNotice, mentions, mentionSpans } from '../mentions';
 import { raisable, STARTER_ALERTS, wanted, alertQuiet } from '../notifications';
 
@@ -56,6 +57,15 @@ describe('mentions', () => {
     expect(mentions(call, 'Wait')).toBe(false);
     // The positive control: the same name, called out in a sentence.
     expect(mentions(gossip('Celyn', 'hold on @wait'), 'Wait')).toBe(true);
+  });
+
+  it('takes a reply in braces for a remote, though it names this character', () => {
+    const reply = said('conversation-telepath', 'Rand telepaths: {Party: @Rayzor}', {
+      player: 'Rand',
+      message: '{Party: @Rayzor}'
+    });
+    expect(mentions(reply, 'Rayzor')).toBe(false);
+    expect(mentions(gossip('Rand', 'party: @Rayzor'), 'Rayzor')).toBe(true);
   });
 
   it('matches nothing before the name is known, and nothing on a receipt', () => {
@@ -117,7 +127,7 @@ describe('mentionNotice', () => {
     expect(mentionNotice(tele, 'Festus', withTelepath)).toBeNull();
   });
 
-  it('raises a telepath opening on @name, which the telepath row skips', () => {
+  it('raises a telepath opening on @name once, from the telepath row', () => {
     const tele = said('conversation-telepath', 'Rayzor telepaths: @festus you there?', {
       player: 'Rayzor',
       message: '@festus you there?'
@@ -126,6 +136,8 @@ describe('mentionNotice', () => {
       ...STARTER_ALERTS,
       { ...STARTER_ALERTS.find((rule) => rule.on === 'mentioned')!, on: 'telepath' as const }
     ];
-    expect(mentionNotice(tele, 'Festus', withTelepath)).not.toBeNull();
+    // `@festus` is no remote (todo 138), so the telepath row has it and the mention steps aside.
+    expect(telepathNotice(tele, withTelepath)).not.toBeNull();
+    expect(mentionNotice(tele, 'Festus', withTelepath)).toBeNull();
   });
 });

@@ -75,6 +75,8 @@ describe('a telepath to this character (todo 80)', () => {
       text: 'Soul telepaths: hi there'
     });
     expect(telepathNotice(telepath('@health'), [row])).toBeNull();
+    expect(telepathNotice(telepath('{ok}'), [row])).toBeNull();
+    expect(telepathNotice(telepath('{HP=600/600,MA=10/20}'), [row])).toBeNull();
   });
 
   it('stays on the Talk card with no telepath row', () => {

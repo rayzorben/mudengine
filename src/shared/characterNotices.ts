@@ -8,6 +8,7 @@ import type { CharacterState } from './character';
 import { experienceOf } from './experience';
 import type { UiLookup } from './i18n';
 import { rowAsks, type AlertRule, type Notice } from './notifications';
+import { isRemoteTalk } from './remotes';
 
 /**
  * The highest level the experience pays for past the one held, or null when
@@ -46,9 +47,10 @@ export function levelReadyNotices(
 }
 
 /**
- * A player's telepath to this character, in the server's words. Never an `@`
- * command, which is one client asking another and arrives every few seconds
- * in a party, and never the receipt for one this character sent.
+ * A player's telepath to this character, in the server's words. Never remote
+ * traffic (an `@` command or a reply in braces, `isRemoteTalk`), which is one
+ * client talking to another and arrives every few seconds in a party, and
+ * never the receipt for one this character sent.
  *
  * Only while an enabled row names `telepath`, the same gate as `namedNotices`:
  * conversation belongs on the Talk card, and `wanted` shows a notice no row
@@ -58,7 +60,7 @@ export function telepathNotice(block: Block, rules: readonly AlertRule[]): Notic
   if (block.type !== 'conversation-telepath') return null;
   if (!rowAsks(rules, 'telepath')) return null;
   const message = block.groups['message'];
-  if (message === undefined || message.trimStart().startsWith('@')) return null;
+  if (message === undefined || isRemoteTalk(message)) return null;
   return {
     id: `tele${block.seq}`,
     at: block.at,

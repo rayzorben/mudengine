@@ -3585,6 +3585,8 @@ cards:
         condensed: Condensed
         condensedAligned: Condensed, aligned
         original: Original
+      # Off: `@wait (can't move)`, `{ok}` and the other remotes stay in the terminal only.
+      remotes: Show remotes and their replies.
       stampFormat: Date and time format
       stamps: Show the date and time.
   self:

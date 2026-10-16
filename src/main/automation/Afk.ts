@@ -15,8 +15,8 @@
  *
  * An incoming telepath (`<Name> telepaths: <message>`), and only that. The
  * receipt for one this character *sent* has no message and is not a question.
- * An `@` command is `Remotes`' business and is answered there or refused there;
- * answering it here as well would put two replies on the wire for one line.
+ * Remote traffic (`isRemoteTalk`) is `Remotes`' business, and a reply in braces
+ * such as another client's `{AFK}` asks nothing, so neither is answered here.
  * Never this character's own name. **Once per sender per
  * `tuning.afk.replyEveryMs`**, because a person who telepaths twice in a minute
  * has been answered once, and a reply per line is a client arguing with them.
@@ -35,6 +35,7 @@ import type { CharacterState } from '../../shared/character';
 import type { AfkConfig } from '../../shared/config';
 import type { SessionModule } from './Module';
 import type { NoticeSink } from '../../shared/decisionSettings';
+import { isRemoteTalk } from '../../shared/remotes';
 
 export interface AfkEvents {
   notice?: NoticeSink;
@@ -75,8 +76,8 @@ export class Afk implements SessionModule {
     const message = block.groups['message'];
     // The receipt for a telepath this character sent carries no message.
     if (!from || message === undefined) return;
-    // `Remotes` answers or refuses these; two replies for one line is arguing.
-    if (message.trim().startsWith('@')) return;
+    // `Remotes` answers or refuses a call, and a reply in braces asks nothing.
+    if (isRemoteTalk(message)) return;
     const own = state.name?.toLowerCase() ?? null;
     if (own !== null && from.toLowerCase() === own) return;
     if (!this.away) return;

@@ -28,6 +28,7 @@ import {
   DEFAULT_TALK_LAYOUT,
   DEFAULT_TALK_STAMP,
   formatTalkStamp,
+  saidOf,
   talkChannel,
   TALK_CHANNELS,
   TALK_PRESENCE_TYPES,
@@ -37,6 +38,7 @@ import {
 } from '@shared/talk';
 import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
+import { isRemoteTalk } from '@shared/remotes';
 import { isOwnName, type PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
 import { mentions, mentionSpans } from '@shared/mentions';
@@ -410,27 +412,23 @@ const TalkLine = memo(function TalkLine(props: TalkLineProps) {
             is written by other players on a MUD.
           */}
           <span className="said">
-            {withMentions(
-              message.groups['sent'] ?? message.groups['message'] ?? message.text,
-              self,
-              mentioned,
-              (run) =>
-                linkify(run).map((part, at) =>
-                  part.href === undefined ? (
-                    part.text
-                  ) : (
-                    <a
-                      href={part.href}
-                      key={`${at}-${part.href}`}
-                      // `_blank` goes through main's window-open handler, which
-                      // refuses the app frame and refuses any scheme but http.
-                      rel="noreferrer noopener"
-                      target="_blank"
-                    >
-                      {part.text}
-                    </a>
-                  )
+            {withMentions(saidOf(message) ?? message.text, self, mentioned, (run) =>
+              linkify(run).map((part, at) =>
+                part.href === undefined ? (
+                  part.text
+                ) : (
+                  <a
+                    href={part.href}
+                    key={`${at}-${part.href}`}
+                    // `_blank` goes through main's window-open handler, which
+                    // refuses the app frame and refuses any scheme but http.
+                    rel="noreferrer noopener"
+                    target="_blank"
+                  >
+                    {part.text}
+                  </a>
                 )
+              )
             )}
           </span>
         </>
@@ -815,6 +813,18 @@ function ConversationCard({
   const layout: TalkLayout = settings?.talkLayout ?? DEFAULT_TALK_LAYOUT;
   const channels = settings?.talkChannels ?? false;
   /*
+   * Remote traffic (`@wait (can't move)`, `{ok}` and the rest) is left out
+   * unless the gear says to draw it (todo 138). It is still in the terminal and
+   * in `talk/<id>.jsonl`; this is only what the card draws. A receipt's words
+   * are in `sent`, so this client's own `/Rand {ok}` goes with the rest.
+   */
+  const showRemotes = settings?.talkRemotes ?? false;
+  const talked = useMemo(
+    () =>
+      showRemotes ? messages : messages.filter((message) => !isRemoteTalk(saidOf(message) ?? '')),
+    [messages, showRemotes]
+  );
+  /*
    * Which channel the composer is pointed at, remembered like the filters and
    * for the same reason: having to choose it again on every launch is the
    * client asking after being told. Gossip is the default because it is the one
@@ -920,16 +930,16 @@ function ConversationCard({
    * stream is always offered; a channel earns its pill by having spoken.
    */
   const anyMention = useMemo(
-    () => messages.some((message) => mentions(message, self)),
-    [messages, self]
+    () => talked.some((message) => mentions(message, self)),
+    [talked, self]
   );
   const faces = useMemo(
     () =>
       FACES.filter(
         (face) =>
-          face.types === null || messages.some((message) => face.types!.includes(message.type))
+          face.types === null || talked.some((message) => face.types!.includes(message.type))
       ),
-    [messages]
+    [talked]
   );
 
   /*
@@ -953,7 +963,7 @@ function ConversationCard({
 
   const shown = useMemo(
     () =>
-      messages.filter(
+      talked.filter(
         (message) =>
           (onlyMentions
             ? mentions(message, self)
@@ -961,10 +971,10 @@ function ConversationCard({
           matches(query, [
             CHANNELS[message.type] ?? message.type,
             message.groups['player'] ?? t('cards.map.legendYou'),
-            message.groups['sent'] ?? message.groups['message'] ?? message.text
+            saidOf(message) ?? message.text
           ])
       ),
-    [messages, showing, query, onlyMentions, self]
+    [talked, showing, query, onlyMentions, self]
   );
 
   /*

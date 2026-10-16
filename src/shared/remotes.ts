@@ -520,17 +520,46 @@ export interface RemoteCall {
  * part of the vocabulary and a realm's version may word it differently.
  */
 export function parseRemoteCall(message: string): RemoteCall | null {
-  const match = /^\s*@(?<word>[a-z-]+!?)(?:\s+(?<argument>.*\S))?\s*$/i.exec(message);
-  if (!match?.groups) return null;
-  const word = match.groups['word']!.toLowerCase();
-  const name = REMOTE_NAMES.find((candidate) => candidate === word);
-  if (name === undefined) return null;
-  const argument = match.groups['argument']?.trim() ?? null;
+  const call = remoteWord(message);
+  if (call === null) return null;
+  const match = /^(?:\s+(?<argument>.*\S))?\s*$/.exec(call.rest);
+  if (match === null) return null;
+  const argument = match.groups?.['argument']?.trim() ?? null;
   return {
-    name,
+    name: call.name,
     argument: argument === null || argument.length === 0 ? null : argument,
-    raw: word
+    raw: call.name
   };
+}
+
+/**
+ * The `@` word a message opens with, when it is one of `REMOTE_NAMES`, and
+ * what follows it. The one reader of a call's word, for `parseRemoteCall` and
+ * `isRemoteTalk` both.
+ */
+function remoteWord(message: string): { name: RemoteName; rest: string } | null {
+  const match = /^\s*@(?<word>[a-z-]+!?)(?<rest>.*)$/is.exec(message);
+  if (!match?.groups) return null;
+  const name = match.groups['word']!.toLowerCase();
+  return isRemoteName(name) ? { name, rest: match.groups['rest']! } : null;
+}
+
+/**
+ * Whether a chat message is remote traffic: an `@` command, or a reply in braces.
+ *
+ * Looser than `parseRemoteCall` and `parseRemoteReply` together. It decides
+ * what the Talk card draws, which notices are raised and whether `Afk` replies;
+ * what `Remotes` acts on is still the two parsers. MegaMUD tags its calls with
+ * `{L7}{P201}` straight after the word (`@health{L7}`, captures/081), and
+ * answers in shapes nothing here reads (`{no}`, `{Probe}`, `{12 copper}`).
+ * Anchored at the start like the call, so `wow ... @health` is somebody
+ * talking. A player who says only `{grin}` reads as a reply too; run over every
+ * talk line in captures/ (todo 138), it hid 183 of 628, none of them talk.
+ */
+export function isRemoteTalk(message: string): boolean {
+  const call = remoteWord(message);
+  if (call !== null) return /^(?:$|[\s{])/.test(call.rest);
+  return /^\s*(?:\{[^{}]*\}\s*)+$/.test(message);
 }
 
 /**
