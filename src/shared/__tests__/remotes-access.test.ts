@@ -46,7 +46,9 @@ describe('what one player may ask for', () => {
   });
 
   it('allows a remote on that player’s own list', () => {
-    const settings = access({ players: { soul: { allow: ['health'], deny: [] } } });
+    const settings = access({
+      players: { soul: { allow: ['health'], deny: [], autoInvite: false } }
+    });
     expect(judgeRemote('Soul', 'health', settings, stranger)).toEqual({
       allowed: true,
       because: 'player'
@@ -58,12 +60,16 @@ describe('what one player may ask for', () => {
      * The whole reason the grounds went. Under the old model `named` allowed
      * `@do` along with `@health`, and there was no way to say otherwise.
      */
-    const settings = access({ players: { soul: { allow: ['health'], deny: [] } } });
+    const settings = access({
+      players: { soul: { allow: ['health'], deny: [], autoInvite: false } }
+    });
     expect(judgeRemote('Soul', 'do', settings, stranger).allowed).toBe(false);
   });
 
   it('files a name without regard to case, because the server does not keep it', () => {
-    const settings = access({ players: { soul: { allow: ['health'], deny: [] } } });
+    const settings = access({
+      players: { soul: { allow: ['health'], deny: [], autoInvite: false } }
+    });
     expect(judgeRemote('SOUL', 'health', settings, stranger).allowed).toBe(true);
     expect(judgeRemote('  Soul  ', 'health', settings, stranger).allowed).toBe(true);
   });
@@ -166,7 +172,10 @@ describe('the party grants, and only to somebody who has joined it', () => {
      * A permission somebody else can hand out — and anybody can join a party —
      * must not be able to lift one made by name.
      */
-    const named = access({ party: ['exp'], players: { rend: { allow: [], deny: ['exp'] } } });
+    const named = access({
+      party: ['exp'],
+      players: { rend: { allow: [], deny: ['exp'], autoInvite: false } }
+    });
     expect(judgeRemote('Rend', 'exp', named, { inGang: null, inParty: true })).toEqual({
       allowed: false,
       because: 'denied'
@@ -199,7 +208,7 @@ describe('a deny is about one person and outranks everything', () => {
   it('beats the gang', () => {
     const settings = access({
       gang: ['health'],
-      players: { rend: { allow: [], deny: ['health'] } }
+      players: { rend: { allow: [], deny: ['health'], autoInvite: false } }
     });
     expect(judgeRemote('Rend', 'health', settings, inGang)).toEqual({
       allowed: false,
@@ -208,14 +217,16 @@ describe('a deny is about one person and outranks everything', () => {
   });
 
   it('beats an allow on the same player, so a name in both lists is refused', () => {
-    const settings = access({ players: { rend: { allow: ['do'], deny: ['do'] } } });
+    const settings = access({
+      players: { rend: { allow: ['do'], deny: ['do'], autoInvite: false } }
+    });
     expect(judgeRemote('Rend', 'do', settings, stranger).because).toBe('denied');
   });
 
   it('takes away only what it names', () => {
     const settings = access({
       gang: ['health', 'where'],
-      players: { rend: { allow: [], deny: ['health'] } }
+      players: { rend: { allow: [], deny: ['health'], autoInvite: false } }
     });
     expect(judgeRemote('Rend', 'where', settings, inGang).allowed).toBe(true);
   });
@@ -246,12 +257,14 @@ describe('reachability is a different question from permission', () => {
   it('is true for somebody named, and a deny does not subtract from it', () => {
     // Somebody with one remote allowed and one denied is still somebody this
     // character has a relationship with, and their attempts are worth seeing.
-    const settings = access({ players: { soul: { allow: ['health'], deny: ['do'] } } });
+    const settings = access({
+      players: { soul: { allow: ['health'], deny: ['do'], autoInvite: false } }
+    });
     expect(reachableBy('Soul', settings, stranger)).toBe(true);
   });
 
   it('is false for somebody who is only denied things', () => {
-    const settings = access({ players: { rend: { allow: [], deny: ['do'] } } });
+    const settings = access({ players: { rend: { allow: [], deny: ['do'], autoInvite: false } } });
     expect(reachableBy('Rend', settings, stranger)).toBe(false);
   });
 });
@@ -268,7 +281,9 @@ describe('the stance a form shows is the decision, not the verdict', () => {
   });
 
   it('reads what the player’s own entry says otherwise', () => {
-    const settings = access({ players: { soul: { allow: ['health'], deny: ['do'] } } });
+    const settings = access({
+      players: { soul: { allow: ['health'], deny: ['do'], autoInvite: false } }
+    });
     expect(stanceFor(settings, 'Soul', 'health')).toBe('allow');
     expect(stanceFor(settings, 'Soul', 'do')).toBe('deny');
     expect(stanceFor(settings, 'Soul', 'where')).toBe('unset');
@@ -337,6 +352,17 @@ describe('the two halves of the remote union move together', () => {
     expect(config.automation.remotes.gang).toEqual<RemoteName[]>(['health', 'where']);
   });
 
+  // Todo 851: absent reads as off, so a grant written before the key existed invites nobody.
+  it("reads a player's autoInvite, and absent as off", () => {
+    const config = normalizeConfig({
+      automation: {
+        remotes: { players: { Soul: { allow: [], autoInvite: true }, yang: { allow: ['health'] } } }
+      }
+    });
+    expect(config.automation.remotes.players['soul']?.autoInvite).toBe(true);
+    expect(config.automation.remotes.players['yang']?.autoInvite).toBe(false);
+  });
+
   it('reads a leading @ off, because that is how a person writes one', () => {
     const config = normalizeConfig({ automation: { remotes: { gang: ['@health'] } } });
     expect(config.automation.remotes.gang).toEqual(['health']);
@@ -369,14 +395,14 @@ describe('the two halves of the remote union move together', () => {
       automation: {
         remotes: {
           players: {
-            Soul: { allow: ['health'], deny: [] },
-            soul: { allow: ['where'], deny: ['do'] }
+            Soul: { allow: ['health'], deny: [], autoInvite: false },
+            soul: { allow: ['where'], deny: ['do'], autoInvite: false }
           }
         }
       }
     });
     expect(config.automation.remotes.players).toEqual({
-      soul: { allow: ['health', 'where'], deny: ['do'] }
+      soul: { allow: ['health', 'where'], deny: ['do'], autoInvite: false }
     });
   });
 

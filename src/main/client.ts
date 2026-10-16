@@ -1406,8 +1406,9 @@ function asGrant(value: unknown): RemoteGrant | null {
   const record = value as Record<string, unknown>;
   const allow = asRemoteNames(record['allow']);
   const deny = asRemoteNames(record['deny']);
-  if (allow === null || deny === null) return null;
-  return { allow, deny };
+  const autoInvite = record['autoInvite'];
+  if (allow === null || deny === null || typeof autoInvite !== 'boolean') return null;
+  return { allow, deny, autoInvite };
 }
 
 /** Every character on disk, and whether a session is open for it. */
@@ -2292,6 +2293,9 @@ function registerIpc(): void {
   });
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
+  });
+  handle(Invoke.walkOnWithoutParty, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.walkOnWithoutParty();
   });
   /*
    * Back: one room the way the character came. `confirmed` is read exactly as

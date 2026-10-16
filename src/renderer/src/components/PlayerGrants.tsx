@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { TextField } from './FormField';
+import { CheckField, TextField } from './FormField';
 import RemoteList from './RemoteList';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { ACTIONABLE_REMOTES, type RemoteGrant } from '@shared/remotes';
+import { ACTIONABLE_REMOTES, grantIsEmpty, NO_GRANT, type RemoteGrant } from '@shared/remotes';
 
 /**
  * The per-player half of `automation.remotes`, edited from a form.
@@ -41,7 +41,7 @@ export default function PlayerGrants({
     // An emptied grant is removed, exactly as `SettingsEditor` removes it from
     // the file: two places that disagreed about what "nothing" looks like would
     // leave a name in the form that vanished on the next load.
-    if (next.allow.length === 0 && next.deny.length === 0) delete rest[key];
+    if (grantIsEmpty(next)) delete rest[key];
     else rest[key] = next;
     onChange(rest);
   };
@@ -61,7 +61,7 @@ export default function PlayerGrants({
           setChosen(key);
           // Created empty and kept only once something is granted, so a name
           // typed by mistake leaves nothing behind.
-          if (!(key in grants)) onChange({ ...grants, [key]: { allow: [], deny: [] } });
+          if (!(key in grants)) onChange({ ...grants, [key]: NO_GRANT });
         }}
         placeholder={t('settings.remotes.addPlayerPlaceholder')}
         spellCheck={false}
@@ -93,7 +93,7 @@ export default function PlayerGrants({
             <button
               className="chip toggle"
               data-level="critical"
-              onClick={() => write(who, { allow: [], deny: [] })}
+              onClick={() => write(who, NO_GRANT)}
               onMouseDown={keepFocus}
               title={t('settings.remotes.removePlayerTitle', { name: who })}
               type="button"
@@ -101,12 +101,21 @@ export default function PlayerGrants({
               {t('settings.remotes.removePlayer')}
             </button>
           </h4>
+          <CheckField
+            checked={grant.autoInvite}
+            hint={t('settings.remotes.autoInviteHint')}
+            label={t('settings.remotes.autoInviteLabel')}
+            name="remotes-auto-invite"
+            onChange={(on) => write(who, { ...grant, autoInvite: on })}
+            setting="automation.remotes.players"
+          />
           <RemoteList
             allow={grant.allow}
             deny={grant.deny}
             mode="player"
             onSet={(remote, stance) =>
               write(who, {
+                ...grant,
                 allow:
                   stance === 'allow'
                     ? [...grant.allow, remote]
@@ -121,8 +130,8 @@ export default function PlayerGrants({
               write(
                 who,
                 stance === 'allow'
-                  ? { allow: [...ACTIONABLE_REMOTES], deny: [] }
-                  : { allow: [], deny: [] }
+                  ? { ...grant, allow: [...ACTIONABLE_REMOTES], deny: [] }
+                  : { ...grant, allow: [], deny: [] }
               )
             }
             subject={who}

@@ -68,7 +68,10 @@ const config: AutomationConfig = {
     // cases are about the answer, and the gate has its own block below.
     party: [],
     players: Object.fromEntries(
-      SPEAKERS.map((name) => [name.toLowerCase(), { allow: [...ACTIONABLE_REMOTES], deny: [] }])
+      SPEAKERS.map((name) => [
+        name.toLowerCase(),
+        { allow: [...ACTIONABLE_REMOTES], deny: [], autoInvite: false }
+      ])
     )
   },
   pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
@@ -715,7 +718,7 @@ describe('joining when invited', () => {
   });
 
   it('says a leader denied @join by name is denied', () => {
-    const players = { swampfox: { allow: [], deny: ['join' as const] } };
+    const players = { swampfox: { allow: [], deny: ['join' as const], autoInvite: false } };
     joining({ players }).onBlock(invited('Swampfox'), who());
     drain();
     expect(notices).toEqual([t('automation.remotes.autoJoinDenied', { from: 'Swampfox' })]);
@@ -807,7 +810,7 @@ describe('letting @kill, @hangup, @relog and @panic! through', () => {
       allowKillAndHangup,
       players: {
         ...config.remotes.players,
-        sirkilla: { allow: [...ACTIONABLE_REMOTES, ...standingFour], deny: [] }
+        sirkilla: { allow: [...ACTIONABLE_REMOTES, ...standingFour], deny: [], autoInvite: false }
       }
     };
     return new Remotes({ ...config, remotes }, queue, {
@@ -1276,7 +1279,11 @@ describe('the gate: who may ask, and for what', () => {
       players: Object.fromEntries(
         Object.entries(players).map(([name, entry]) => [
           name,
-          { allow: [...entry.allow] as never, deny: [...(entry.deny ?? [])] as never }
+          {
+            allow: [...entry.allow] as never,
+            deny: [...(entry.deny ?? [])] as never,
+            autoInvite: false
+          }
         ])
       )
     }
@@ -2637,7 +2644,10 @@ describe('the decision behind each line and command (todo 119)', () => {
       ...config,
       remotes: {
         ...config.remotes,
-        players: { ...config.remotes.players, yang: { allow: ['health'], deny: [] } }
+        players: {
+          ...config.remotes.players,
+          yang: { allow: ['health'], deny: [], autoInvite: false }
+        }
       }
     });
     const up = who({ vitals: { ...EMPTY_CHARACTER.vitals, hp: 600, hpMax: 600 } });

@@ -1708,6 +1708,12 @@ const TUNING_DEFAULTS = {
      */
     inviteAgainMs: 5_000,
     /**
+     * How long after inviting a player marked Invite When Seen they are not
+     * invited again on arriving (todo 851): a player stepping in and out, or
+     * hiding, is invited once. Chosen, not measured: no realm limits invites.
+     */
+    inviteSeenAgainMs: 60_000,
+    /**
      * How soon after a member's `@wait` or `@heal` sent `par` another may send
      * it again (todo 142). MegaMUD's own party clock (`ParPeriod=15`) is how
      * often it re-reads the party list in a fight.

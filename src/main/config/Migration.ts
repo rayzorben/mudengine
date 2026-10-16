@@ -8358,6 +8358,8 @@ function theTuningBlockGainedKeys(
     // How old each listing may get is `automation.asks` now (todo 118).
     // How often an invitation nobody has answered is followed up (todo 01, 2026-10-09).
     addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
+    // How soon a player marked Invite When Seen is invited again (todo 851, 2026-10-16).
+    addKey('remotes', 'inviteSeenAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteSeenAgainMs);
     // How often a member's @wait or @heal asks for the party listing (todo 142, 2026-10-15).
     addKey('remotes', 'parOnWordMs', DEFAULT_INTERNAL.tuning.remotes.parOnWordMs);
     // When the console's marks record is written whole again (todo 143, 2026-10-16).

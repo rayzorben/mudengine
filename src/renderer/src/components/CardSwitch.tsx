@@ -186,6 +186,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           onReverseLoop={ctx.reverseLoop}
           onStart={ctx.startMoving}
           onStop={ctx.stopMoving}
+          onWalkOn={ctx.walkOnWithoutParty}
           walk={view.walk}
         />
       );
