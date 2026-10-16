@@ -3,6 +3,7 @@ import { act } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CountInput } from '../SupplyControls';
+import { stockCeiling } from '@shared/supplies';
 import { mount } from '../../hooks/__tests__/mount';
 
 /*
@@ -64,5 +65,35 @@ describe('a supply count typed and not left', () => {
     });
     expect(input().props.value).toBe('4');
     expect(onCommit).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * A Max typed under its Min (todo 149): committed as typed, so the write can
+ * say it was raised, and shown at the Min the list will hold.
+ */
+describe('a supply count the list keeps higher', () => {
+  const probe = mount();
+  afterEach(() => probe.unmount());
+
+  it('is committed as typed and shown as the list keeps it', () => {
+    const onCommit = vi.fn();
+    probe.render(
+      createElement(CountInput, {
+        label: 'max',
+        onCommit,
+        value: 3,
+        shown: (max: number) => stockCeiling({ min: 3, max })
+      })
+    );
+    const input = () => probe.root().findByType('input');
+    act(() => {
+      input().props.onChange({ target: { value: '2' } });
+    });
+    act(() => {
+      input().props.onBlur();
+    });
+    expect(onCommit).toHaveBeenCalledWith(2);
+    expect(input().props.value).toBe('3');
   });
 });

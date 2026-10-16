@@ -74,14 +74,9 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loadWearer={ctx.loadWearer}
           profileName={ctx.profileName}
           session={ctx.session}
-          /*
-            Addressed at `sid` like the gang's list — and null on a pinned
-            float only for the *write*: the list is drawn from its own
-            character's summary, and a control that wrote the shown
-            character's file from another character's card would be the
-            failure every addressed field here exists to refuse.
-          */
-          supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
+          // Addressed at `sid` like the gang's list, so a pinned float's
+          // bin and fields write its own character's file (todo 149).
+          supplies={ctx.supplies}
           suppliesOn={ctx.toolbar.switches.supplies}
         />
       );

@@ -31,7 +31,7 @@ import type { CharacterState } from '@shared/character';
 import { type SupplyItem } from '@shared/packConfig';
 import type { SessionId } from '@shared/ipc';
 import { CAN_SEE_FROM, lightPhrase } from '@shared/light';
-import { carriedCount, type SupplyCounter } from '@shared/supplies';
+import { carriedCount, stockCeiling, type SupplyCounter } from '@shared/supplies';
 import { CountInput, type SupplyList } from './SupplyControls';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { useSupplyCounters } from '../hooks/useSupplyCounters';
@@ -43,8 +43,8 @@ export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'ret
   session: SessionId;
   /** The tab's own name for the character, for the title before the sheet has printed. */
   profileName: string;
-  /** This character's supplies list, and the write. Null on a pinned float. */
-  supplies: SupplyList | null;
+  /** This character's supplies list, and the write, addressed to `session`. */
+  supplies: SupplyList;
   /** Whether the auto-buy switch is on, so an idle list can say why. */
   suppliesOn: boolean;
 }
@@ -388,7 +388,7 @@ function SelfCard({
     />
   );
 
-  const rows = supplies?.items ?? [];
+  const rows = supplies.items;
   const { counters, failed } = useSupplyCounters(supplies, face === 'supplies');
   const columns: Column<SupplyItem>[] = [
     {
@@ -435,17 +435,14 @@ function SelfCard({
       label: t('cards.self.supplies.min'),
       numeric: true,
       value: (row) => row.min,
-      cell: (row) =>
-        supplies ? (
-          <CountInput
-            className="supply-cell"
-            label={t('cards.self.supplies.min')}
-            onCommit={(min) => editCount(supplies, row.name, { min })}
-            value={row.min}
-          />
-        ) : (
-          row.min
-        )
+      cell: (row) => (
+        <CountInput
+          className="supply-cell"
+          label={t('cards.self.supplies.min')}
+          onCommit={(min) => editCount(supplies, row.name, { min })}
+          value={row.min}
+        />
+      )
     },
     {
       id: 'max',
@@ -453,17 +450,15 @@ function SelfCard({
       label: t('cards.self.supplies.max'),
       numeric: true,
       value: (row) => row.max,
-      cell: (row) =>
-        supplies ? (
-          <CountInput
-            className="supply-cell"
-            label={t('cards.self.supplies.max')}
-            onCommit={(max) => editCount(supplies, row.name, { max })}
-            value={row.max}
-          />
-        ) : (
-          row.max
-        )
+      cell: (row) => (
+        <CountInput
+          className="supply-cell"
+          shown={(max) => stockCeiling({ min: row.min, max })}
+          label={t('cards.self.supplies.max')}
+          onCommit={(max) => editCount(supplies, row.name, { max })}
+          value={row.max}
+        />
+      )
     },
     {
       id: 'shop',
@@ -487,18 +482,17 @@ function SelfCard({
       unsearchable: true,
       unsortable: true,
       value: (row) => row.name,
-      cell: (row) =>
-        supplies ? (
-          <button
-            className="row-action"
-            onClick={() => supplies.edit(row.name, () => null)}
-            onMouseDown={keepFocus}
-            title={t('cards.self.supplies.removeTooltip', { item: row.name })}
-            type="button"
-          >
-            <Icon name="trash" />
-          </button>
-        ) : null
+      cell: (row) => (
+        <button
+          className="row-action"
+          onClick={() => supplies.edit(row.name, () => null)}
+          onMouseDown={keepFocus}
+          title={t('cards.self.supplies.removeTooltip', { item: row.name })}
+          type="button"
+        >
+          <Icon name="trash" />
+        </button>
+      )
     }
   ];
 

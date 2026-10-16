@@ -19,7 +19,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import Icon from './Icon';
 import { type SupplyItem } from '@shared/packConfig';
-import { supplyFor, type SupplyCounters } from '@shared/supplies';
+import { stockCeiling, supplyFor, type SupplyCounters } from '@shared/supplies';
 import type { ShopPlace } from '@shared/world';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -103,18 +103,24 @@ function parseCount(text: string, fallback: number): number {
  *
  * Closing the panel or turning the card's face takes the field away without a
  * blur, so a figure typed and not yet committed is committed then too.
+ *
+ * `shown` is what the list will hold for a figure typed (a Max is kept at its
+ * Min, `stockCeiling`): the figure is committed as typed, so the console notice
+ * names the raise, and the field shows what the list keeps (todo 149).
  */
 export function CountInput({
   label,
   name,
   className,
   value,
+  shown,
   onCommit
 }: {
   label: string;
   name?: string;
   className?: string;
   value: number;
+  shown?: (typed: number) => number;
   onCommit(value: number): void;
 }) {
   const [text, setText] = useState(String(value));
@@ -127,7 +133,7 @@ export function CountInput({
     if (!typed.current) return;
     typed.current = false;
     const next = parseCount(text, value);
-    setText(String(next));
+    setText(String(shown ? shown(next) : next));
     if (next !== value) onCommit(next);
   };
   const latest = useRef(commit);
@@ -166,17 +172,19 @@ function CountField({
   label,
   name,
   value,
+  shown,
   onCommit
 }: {
   label: string;
   name: string;
   value: number;
+  shown?: (typed: number) => number;
   onCommit(value: number): void;
 }) {
   return (
     <label className="supply-count">
       <span>{label}</span>
-      <CountInput label={label} name={name} onCommit={onCommit} value={value} />
+      <CountInput label={label} name={name} onCommit={onCommit} shown={shown} value={value} />
     </label>
   );
 }
@@ -219,6 +227,7 @@ export function SupplyControl({
           value={row?.min ?? 0}
         />
         <CountField
+          shown={(max) => stockCeiling({ min: row?.min ?? 0, max })}
           label={t('cards.self.supplies.max')}
           name={`supply-max-${name}`}
           onCommit={(max) => write({ max })}

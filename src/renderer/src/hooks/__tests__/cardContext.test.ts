@@ -10,6 +10,7 @@ import { EMPTY_VIEW, type SessionView } from '../useSessionViews';
 import { ZERO_METER } from '../useStreamPressure';
 import { useToolbarPins } from '../useToolbarPins';
 import { mount } from './mount';
+import { t } from '../../lib/i18n';
 import { type SupplyItem } from '@shared/packConfig';
 import type { SessionId } from '@shared/ipc';
 
@@ -197,6 +198,107 @@ describe('useCardContext', () => {
     const before = writes.length;
     list?.edit('torch', (row) => row && { ...row, max: 9 });
     expect(writes).toHaveLength(before);
+  });
+});
+
+/*
+ * Todo 149: the Self card's bin and count fields. A row removed stays removed
+ * across the push that answers the write, and a Max typed under Min is kept at
+ * Min and said.
+ */
+describe('the supplies bundle', () => {
+  type Contexts = ReturnType<typeof useCardContext>;
+
+  function Probe({
+    inputs,
+    out
+  }: {
+    inputs: CardContextInputs;
+    out: MutableRefObject<Contexts | null>;
+  }): null {
+    out.current = useCardContext(inputs);
+    return null;
+  }
+
+  const torch: SupplyItem = { name: 'torch', min: 3, max: 6, shop: 'General Store', at: null };
+  const rope: SupplyItem = { name: 'rope', min: 1, max: 2, shop: '', at: null };
+  const flask: SupplyItem = { name: 'flask', min: 1, max: 1, shop: '', at: null };
+
+  function draw(drawn: () => SupplyItem[]): {
+    out: MutableRefObject<Contexts | null>;
+    writes: SupplyItem[][];
+    to: SessionId[];
+    said: string[];
+    push(list: SupplyItem[]): void;
+  } {
+    const out: MutableRefObject<Contexts | null> = { current: null };
+    const writes: SupplyItem[][] = [];
+    const to: SessionId[] = [];
+    const said: string[] = [];
+    const api = new Proxy(
+      {},
+      {
+        get: (_, key) =>
+          key === 'setSupplies'
+            ? (sid: SessionId, items: SupplyItem[]) => {
+                to.push(sid);
+                writes.push(items);
+                return pending();
+              }
+            : pending
+      }
+    ) as CardContextInputs['api'];
+    const sayRefusal = () => (refused: string | null) => {
+      if (refused !== null) said.push(refused);
+    };
+    const inputs = (list: () => SupplyItem[]): CardContextInputs => ({
+      ...stable,
+      api,
+      sayRefusal,
+      nameIndexes: {},
+      suppliesFor: list
+    });
+    probe.render(createElement(Probe, { inputs: inputs(drawn), out }));
+    return {
+      out,
+      writes,
+      to,
+      said,
+      push: (list) => probe.render(createElement(Probe, { inputs: inputs(() => list), out }))
+    };
+  }
+
+  it('keeps a removed row removed after the push that answers it', () => {
+    const { out, writes, push } = draw(() => [torch, rope, flask]);
+    out.current?.suppliesBundle(SHOWN).edit('torch', () => null);
+    expect(writes.at(-1)).toEqual([rope, flask]);
+
+    push([rope, flask]);
+    out.current?.suppliesBundle(SHOWN).edit('rope', () => null);
+    expect(writes.at(-1)).toEqual([flask]);
+  });
+
+  it("writes a pinned float's list to its own character, not the shown one", () => {
+    const { out, to } = draw(() => [torch]);
+    const float = out.current?.contextFor(PINNED, EMPTY_VIEW, chrome);
+    float?.supplies.edit('torch', () => null);
+    out.current?.contextFor(SHOWN, EMPTY_VIEW, chrome).supplies.edit('torch', () => null);
+    expect(to).toEqual([PINNED, SHOWN]);
+  });
+
+  it('keeps a Max typed under Min at Min, and says so', () => {
+    const { out, writes, said } = draw(() => [torch]);
+    out.current?.suppliesBundle(SHOWN).edit('torch', (row) => row && { ...row, max: 2 });
+    expect(writes.at(-1)).toEqual([{ ...torch, max: 3 }]);
+    expect(said).toEqual([t('cards.self.supplies.maxRaised', { item: 'torch', min: 3 })]);
+  });
+
+  it('says nothing when the Max typed is at or over Min', () => {
+    const { out, writes, said } = draw(() => [torch]);
+    out.current?.suppliesBundle(SHOWN).edit('torch', (row) => row && { ...row, max: 3 });
+    // The positive control: the write went out.
+    expect(writes.at(-1)).toEqual([{ ...torch, max: 3 }]);
+    expect(said).toEqual([]);
   });
 });
 
