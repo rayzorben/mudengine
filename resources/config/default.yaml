@@ -1834,9 +1834,6 @@ automation:
     # Under `cashPerHour`, a spot's copper counts only while its exp an hour is
     # at least this share of the best spot's.
     cashExpShare: 0.5
-    # What a spot is worth while another player is working it. Exp divides
-    # among everybody who hit the kill, so a second player halves it.
-    contestedShare: 0.5
     # How far a loop that stopped for earning too little looks for a better
     # spot to name, in steps.
     betterSpotRadius: 80

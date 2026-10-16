@@ -178,19 +178,6 @@ export class AutoHunt implements SessionModule {
   /** See `steer`. */
   private steered: Steer = undefined;
   /**
-   * Lairs somebody else was seen working, and when.
-   *
-   * A price on a *candidate*, never on the lair being walked: experience
-   * divides among everybody who hit the kill (`Mob.cs:2270`), so a lair with a
-   * stranger in it is worth `hunting.contestedShare` of its estimate
-   * when it is being considered — and once a rate has been measured there, the
-   * measurement is the figure and no guess at the sharing is wanted.
-   *
-   * The moment is kept because the price expires: see `pricedRate` and
-   * `tuning.hunting.contestedForgetMs`.
-   */
-  private readonly contested = new Map<string, number>();
-  /**
    * What each lair actually paid against what the survey said it would —
    * `measured / expected`, kept per lair for this session.
    *
@@ -255,7 +242,6 @@ export class AutoHunt implements SessionModule {
     this.simulating = false;
     this.judgedFor = null;
     this.surveyedAt = 0;
-    this.contested.clear();
     /*
      * The corrections go too. They are about *this character at this lair*,
      * and a reset is a new session — which on this client is also how a
@@ -628,7 +614,7 @@ export class AutoHunt implements SessionModule {
    * predicted to pay.** The model is what the alternatives have; reality is
    * what this one has, and where the two disagree the measurement wins.
    * Before a rate can be measured the estimate stands in, priced as a
-   * candidate would be, which is where a contested lair is halved.
+   * candidate would be.
    */
   private moveOn(
     state: CharacterState,
@@ -719,7 +705,12 @@ export class AutoHunt implements SessionModule {
   }
 
   /**
-   * A stranger in the lair: price it as shared from now on, and re-anchor.
+   * A stranger in the lair: say so, and re-anchor the measurement.
+   *
+   * Experience divides among everybody hitting the monster when it dies
+   * (`Mob.cs:2270`), so what the lair pays from here is measured with them in
+   * it. The estimate is never discounted for them: how much they take depends
+   * on which kills they hit (todo 126).
    *
    * A person the roster does not put in this character's party, standing in
    * the room, or one the server said has claimed a monster here
@@ -730,7 +721,6 @@ export class AutoHunt implements SessionModule {
     if (this.phase.kind !== 'hunting') return;
     const stranger = companyIn(state);
     if (stranger === null) return;
-    this.contested.set(this.phase.key, this.now());
     if (this.phase.saidCompany) return;
     this.phase = { ...this.phase, saidCompany: true, from: anchor(state, this.now()) };
     this.events.notice?.(
@@ -775,31 +765,18 @@ export class AutoHunt implements SessionModule {
 
   /**
    * What a lair is worth to *this* client now: the survey's estimate, less
-   * what the last visit says the model is out by here, less the sharing where
-   * somebody else is working it. Null where the survey could not finish it.
+   * what the last visit says the model is out by here. Null where the survey
+   * could not finish it.
    */
   private priced(spot: HuntingSpot): number | null {
-    // A spot hunted at this level is priced on what it paid: no correction, and the sharing only
-    // where somebody was seen after it was measured, since the measurement holds any before.
+    // A spot hunted at this level is priced on what it paid, with no correction.
     const measured = spot.estimate.measured;
-    if (measured) return this.shared(spot.key, measured.perHour, measured.at);
+    if (measured) return measured.perHour;
     return this.pricedRate(spot.key, spot.estimate.expPerHour);
   }
 
-  /** A rate at the contested share while somebody else was seen working the lair lately. */
-  private shared(key: string, rate: number, after = 0): number {
-    const seen = this.contested.get(key);
-    const contested =
-      seen !== undefined && seen > after && this.now() - seen < tuning().hunting.contestedForgetMs;
-    return contested ? rate * this.config.contestedShare : rate;
-  }
-
   private pricedRate(key: string, rate: number | null): number | null {
-    if (rate === null) return null;
-    // A sighting has a shelf life: people leave, and a lair priced at half for
-    // ever on the strength of a passer-by is one this client never goes back
-    // to. See `tuning.hunting.contestedForgetMs`.
-    return this.shared(key, rate * (this.correction.get(key) ?? 1));
+    return rate === null ? null : rate * (this.correction.get(key) ?? 1);
   }
 
   /**

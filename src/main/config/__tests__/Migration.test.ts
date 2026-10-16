@@ -1541,6 +1541,36 @@ describe('owning the status line', () => {
     expect(notesOf(said, 'notices.migration.shelfStrikesLearned')).toEqual([]);
   });
 
+  it('takes the shared spot worth out of every file, and its clock out of the tuning', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  hunting:\n    moveMargin: 0.4\n    contestedShare: 0.5\n',
+      'utf8'
+    );
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(festus, 'name: Festus\nautomation:\n  hunting:\n    contestedShare: 0.3\n');
+    fs.writeFileSync(
+      home.internal,
+      'tuning:\n  hunting:\n    contestedShare: 0.5\n    contestedForgetMs: 1800000\n'
+    );
+    migrate();
+    expect(fs.readFileSync(home.internal, 'utf8')).not.toContain('contested');
+    const huntingOf = (file: string): Record<string, unknown> | undefined =>
+      (
+        parse(fs.readFileSync(file, 'utf8')) as {
+          automation?: { hunting?: Record<string, unknown> };
+        }
+      ).automation?.hunting;
+    expect(huntingOf(home.options)?.['contestedShare']).toBeUndefined();
+    expect(huntingOf(home.options)?.['moveMargin']).toBe(0.4);
+    expect(huntingOf(festus)?.['contestedShare']).toBeUndefined();
+    expect(notesOf(said, 'notices.migration.sharedSpotWorthWent')).toHaveLength(2);
+    said = [];
+    migrate();
+    expect(notesOf(said, 'notices.migration.sharedSpotWorthWent')).toEqual([]);
+  });
+
   it('leaves a file that already answered it alone, twice over', () => {
     fs.writeFileSync(home.options, 'automation:\n  statline:\n    control: true\n', 'utf8');
     migrate();
@@ -7930,10 +7960,9 @@ describe('the hunting, outgrown, supplies and other figures become settings (tod
     fs.writeFileSync(festus, 'name: Festus\nautomation:\n  hunting:\n    enabled: true\n', 'utf8');
     migrate();
     const { hunting, outgrown, drop, supplies, party, remotes } = automationOf(home.options);
-    expect(after(hunting!, 'cashPerHour', 6)).toEqual([
+    expect(after(hunting!, 'cashPerHour', 5)).toEqual([
       'moveMargin',
       'cashExpShare',
-      'contestedShare',
       'betterSpotRadius',
       'maxDamageShare',
       'trivialLevelMargin'

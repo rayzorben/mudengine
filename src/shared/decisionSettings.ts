@@ -504,7 +504,6 @@ export const DECISION_SETTINGS = {
     'automation.hunting.cashPerHour',
     'automation.hunting.moveMargin',
     'automation.hunting.cashExpShare',
-    'automation.hunting.contestedShare',
     'automation.hunting.maxDamageShare',
     'automation.hunting.trivialLevelMargin'
   ],
