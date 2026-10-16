@@ -72,7 +72,8 @@ import {
   type CoinMaxima
 } from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
-import type { ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
+import type { ItemEntity, ItemUseRules, MobEntity, NpcEntity } from '../../shared/entities';
+import { restrictionsOf } from '../../shared/gear';
 import { DENOMINATIONS, type AttributeSpans, type Denomination } from '../../shared/character';
 import type { SpellOption } from '../../shared/ipc';
 import type { RealmFamily } from '../../shared/realm';
@@ -1036,6 +1037,8 @@ export class Catalogue {
     const rows = this.itemRowsByName.get(name.toLowerCase());
     if (rows !== undefined && rows.length > 0) entity.ids = rows;
     this.fillFromRow(entity, known);
+    const variants = rows === undefined ? undefined : this.useVariants(rows);
+    if (variants !== undefined) entity.variants = variants;
     /*
      * A realm row with nothing observed against it — a shop's shelf, a drop
      * table — is `mdb` rather than `hybrid`. The distinction is what lets a
@@ -1088,24 +1091,34 @@ export class Catalogue {
     return entity;
   }
 
+  /**
+   * Who may use each row of a shared name, where the rows differ in it: the
+   * first row's figures would otherwise answer for a row that refuses this
+   * character (todo 146). Undefined where they agree or the name is one row's.
+   */
+  private useVariants(rows: readonly number[]): ItemUseRules[] | undefined {
+    if (rows.length < 2) return undefined;
+    const rules = rows.flatMap((id): ItemUseRules[] => {
+      const row = this.items.get(id);
+      return row === undefined ? [] : [useRulesOf(row)];
+    });
+    const first = JSON.stringify(restrictionsOf(rules[0] ?? {}));
+    const differ = rules.some((rule) => JSON.stringify(restrictionsOf(rule)) !== first);
+    return differ ? rules : undefined;
+  }
+
   /** What an item's realm row says, onto an entity being built. */
   private fillFromRow(entity: ItemEntity, known: WorldItem): void {
     if (known.price !== undefined) entity.price = known.price;
     if (known.encumbrance !== undefined) entity.encumbrance = known.encumbrance;
-    if (known.kind !== undefined) entity.kind = known.kind;
     if (known.worn !== undefined) entity.wornSlotCode = known.worn;
-    if (known.slot !== undefined) entity.realmSlot = known.slot;
+    Object.assign(entity, useRulesOf(known));
     if (known.weapon !== undefined) {
       // Joined here as a monster's fight spells are, so the round reads them off the hand.
       const hits = hitSpellsOf(known, (id) => this.spellById(id));
       entity.weapon = hits.length === 0 ? known.weapon : { ...known.weapon, hits };
     }
-    if (known.armour !== undefined) entity.armour = known.armour;
     if (known.uses !== undefined) entity.uses = known.uses;
-    if (known.abilities !== undefined) entity.abilities = known.abilities;
-    if (known.classes !== undefined) entity.classes = known.classes;
-    if (known.races !== undefined) entity.races = known.races;
-    if (known.minLevel !== undefined) entity.minLevel = known.minLevel;
     if (known.gettable !== undefined) entity.gettable = known.gettable;
     if (known.notDroppable !== undefined) entity.notDroppable = known.notDroppable;
     if (known.limit !== undefined) entity.limit = known.limit;
@@ -2098,6 +2111,29 @@ function readCoins(raw: unknown, version: number): CoinMaxima | undefined {
   };
   if (figures.length === 0 && version < COINS_SINCE) return undefined;
   return coinMaximaOf(at);
+}
+
+/**
+ * One item row's rules on who may use it, under the entity's names for them:
+ * the one mapping `fillFromRow` and the shared-name variants both read.
+ * Only the fields the row states.
+ */
+function useRulesOf(row: WorldItem): ItemUseRules {
+  const { slot, classes, races, minLevel, kind, weapon, armour, abilities } = row;
+  const rules: ItemUseRules = {
+    realmSlot: slot,
+    classes,
+    races,
+    minLevel,
+    kind,
+    weapon,
+    armour,
+    abilities
+  };
+  for (const key of Object.keys(rules) as (keyof ItemUseRules)[]) {
+    if (rules[key] === undefined) delete rules[key];
+  }
+  return rules;
 }
 
 /**

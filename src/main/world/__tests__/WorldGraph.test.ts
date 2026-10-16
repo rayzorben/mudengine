@@ -3929,7 +3929,10 @@ describe('where the realm puts an item', () => {
           { id: 1749, n: 'yellow bone portal', ngt: 1 },
           { id: 1807, n: 'yellow bone portal', ngt: 1 },
           { id: 907, n: 'wooden box', price: 150 },
-          { id: 1809, n: 'wooden box', ngt: 1, price: 1 }
+          { id: 1809, n: 'wooden box', ngt: 1, price: 1 },
+          // Paradigm's `ancient scroll`: one row `Magical`, the other not.
+          { id: 1007, n: 'ancient scroll', ab: [[28, 1]] },
+          { id: 1568, n: 'ancient scroll' }
         ]
       },
       42
@@ -3999,6 +4002,15 @@ describe('where the realm puts an item', () => {
     expect(here.ids).toEqual([907, 1809]);
     // Anywhere else, the name keeps its rows and says nothing about which.
     expect(graph.itemPlacedHere(box, graph.get(4, 1)!)).toBe(box);
+  });
+
+  it("carries each row's use rules where the rows of a name differ in them", () => {
+    const graph = world();
+    const scroll = graph.buildItemEntity('ancient scroll', {});
+    expect(scroll.variants).toEqual([{ abilities: [[28, 1]] }, {}]);
+    // The box's two rows differ in price and gettable, never in who may use them.
+    expect(graph.buildItemEntity('wooden box', {}).variants).toBeUndefined();
+    expect(graph.buildItemEntity('log raft', {}).variants).toBeUndefined();
   });
 
   /*

@@ -40,6 +40,9 @@ import { gatesWords } from '@shared/gateWords';
 import { DISPOSITION_WORD, type Standing } from '@shared/mobs';
 import { occupantAttacksOnSight } from '@shared/mobRules';
 import { countedLabel } from '@shared/items';
+import type { Wearer } from '@shared/gear';
+import { useWearer } from '../hooks/useWearer';
+import FloorItems from './FloorItems';
 
 export interface RoomCardProps extends CardChrome {
   character: CharacterState;
@@ -52,6 +55,8 @@ export interface RoomCardProps extends CardChrome {
    * line with figures. The element is passed so the answer can open beside it.
    */
   inspect?(name: string, anchor: HTMLElement): void;
+  /** Who this character is in the realm's rows, for the floor's use marks (`useWearer`). */
+  loadWearer?(): Promise<Wearer>;
   /**
    * Strikes one of the found ways out, because the player says it is wrong.
    *
@@ -142,9 +147,11 @@ function RoomCard({
   forgetFind,
   verdict,
   searchRooms,
+  loadWearer,
   ...chrome
 }: RoomCardProps) {
   const { room } = character;
+  const wearer = useWearer(character, loadWearer);
   const nickname = useRoomNickname(searchRooms, room.map, room.number);
   const located = room.map !== null && room.number !== null;
   /*
@@ -200,6 +207,7 @@ function RoomCard({
       shop={shop}
       spellHazard={spellHazard}
       verdict={verdict}
+      wearer={wearer}
     />
   );
   /*
@@ -533,8 +541,11 @@ function RoomBody({
   nickname,
   shop,
   spellHazard,
-  verdict
+  verdict,
+  wearer
 }: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict'> & {
+  /** Who this character is, for the floor's use marks. */
+  wearer: Wearer;
   /** MegaMUD's name for the room, or null (`useRoomNickname`). */
   nickname: RoomNickname | null;
   shop: WorldShop | null;
@@ -962,106 +973,24 @@ function RoomBody({
                   <dt title={t('cards.room.readout.hiddenTooltip')}>
                     {t('cards.room.readout.hiddenLabel')}
                   </dt>
-                  <dd className="floor">
-                    {/*
-                      The coins first, and they are the reason this row exists
-                      at all: a search that turns up only cash — `You notice 4
-                      copper farthings here.`, the line in the report — has no
-                      items in it, so a row gated on `hidden.length` alone drew
-                      nothing while the tooltip promised to say what the cash
-                      needed. They are not `ItemEntity`s and are not lookups:
-                      the realm has no row for a pile of coins.
-                    */}
-                    {hiddenCoins.length > 0 && (
-                      <span className="coins">
-                        {hiddenCoins}
-                        {room.hidden.length > 0 && ', '}
-                      </span>
-                    )}
-                    {room.hidden.map((item, index) => (
-                      <span key={`${item.name}-${index}`}>
-                        {inspect ? (
-                          <button
-                            className="lookup"
-                            onClick={(event) => inspect(item.name, event.currentTarget)}
-                            onMouseDown={keepFocus}
-                            title={t('cards.room.itemLookupTooltip')}
-                            type="button"
-                          >
-                            {countedLabel(item)}
-                          </button>
-                        ) : (
-                          countedLabel(item)
-                        )}
-                        {item.price !== undefined && <span className="price"> {item.price}</span>}
-                        {index < room.hidden.length - 1 && ', '}
-                      </span>
-                    ))}
-                  </dd>
+                  <FloorItems
+                    coins={hiddenCoins}
+                    inspect={inspect}
+                    items={room.hidden}
+                    wearer={wearer}
+                  />
                 </>
               )}
 
               {(room.items.length > 0 || floorCoins.length > 0) && (
                 <>
                   <dt>{t('cards.room.readout.itemsLabel')}</dt>
-                  <dd className="floor">
-                    {/*
-                      And the open floor's coins, for the same reason and to
-                      keep the two rows honest with each other: a card that
-                      showed cash a search found and not cash lying in plain
-                      sight would be inventing a distinction the floor does not
-                      have. `Room.cash` had been produced and read by nothing
-                      since it was split out of the item list.
-                    */}
-                    {floorCoins.length > 0 && (
-                      <span className="coins">
-                        {floorCoins}
-                        {room.items.length > 0 && ', '}
-                      </span>
-                    )}
-                    {room.items.map((item, index) => (
-                      <span key={`${item.name}-${index}`}>
-                        {inspect ? (
-                          <button
-                            className="lookup"
-                            onClick={(event) => inspect(item.name, event.currentTarget)}
-                            onMouseDown={keepFocus}
-                            title={t('cards.room.itemLookupTooltip')}
-                            type="button"
-                          >
-                            {countedLabel(item)}
-                          </button>
-                        ) : (
-                          countedLabel(item)
-                        )}
-                        {/*
-                      What the realm says it is worth, which is the question
-                      asked of something lying on the floor. Absent — not zero —
-                      for a name the realm cannot place, and for the many things
-                      it says are worth nothing.
-
-                      Off the entity now rather than out of a lookup table this
-                      card fetched over IPC: the price arrived with the room.
-
-                      Not for a thing the realm will not let anybody pick up:
-                      *worth taking* has no answer there, and since the realm's
-                      own furniture is named (format 42) that is most of what
-                      it puts in a room.
-                    */}
-                        {item.gettable === false ? (
-                          <>
-                            {' '}
-                            <span className="chip quiet" title={t('cards.room.fixedTitle')}>
-                              {t('cards.room.fixedChip')}
-                            </span>
-                          </>
-                        ) : (
-                          item.price !== undefined && <span className="price"> {item.price}</span>
-                        )}
-                        {index < room.items.length - 1 && ', '}
-                      </span>
-                    ))}
-                  </dd>
+                  <FloorItems
+                    coins={floorCoins}
+                    inspect={inspect}
+                    items={room.items}
+                    wearer={wearer}
+                  />
                 </>
               )}
             </dl>

@@ -108,7 +108,7 @@ function sellsKit(shop: WorldShop, kind: ItemKind, parts: KindParts): boolean {
   });
 }
 
-/** A block play never lifts: the class, the race, the kind of kit the class wears. */
+/** A block play never lifts: the class, the race, the kind of kit the class wears, a level passed. */
 function forever(block: EquipBlock | null): boolean {
   if (block === null) return false;
   switch (block.kind) {
@@ -119,6 +119,8 @@ function forever(block: EquipBlock | null): boolean {
     case 'race':
     case 'armour':
     case 'weapon':
+    case 'maxLevel':
+    case 'antiMagic':
       return true;
     default: {
       const never: never = block;

@@ -602,6 +602,19 @@ ui:
         entity: room
         enabled: false
         template: '{green}Obvious exits: {room.exitsWithHidden}{/green}'
+      # The floor, shown and searched: a tick on what this character may use,
+      # a cross on what its class, race, level or alignment rules out, and ?
+      # where that is not known yet.
+      - name: Floor
+        entity: floor
+        enabled: false
+        template: |
+          {cyan}{if searched}Your search revealed:{else}You notice:{/if}{/cyan} {brightYellow}{cash}{/brightYellow}
+          {table}
+          {for item in items}
+          {item.use} {cyan}{item}{/cyan}  {dim}{item.price}{/dim}  {yellow}{item.reason}{/yellow}
+          {/for}
+          {/table}
 
   # The diagnostics cards -- Session, Link, Traffic and Stream -- are not
   # configured here on purpose. They are a tool you reach for when something

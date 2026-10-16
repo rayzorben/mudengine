@@ -25,6 +25,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { ItemEntity } from '@shared/entities';
 import { equipVerdict, type Wearer } from '@shared/gear';
+import { canUse } from '@shared/canUse';
 import type { ScrollLesson } from '@shared/learning';
 import { readEffects } from '@shared/abilities';
 import {
@@ -54,7 +55,7 @@ import {
   type Segment
 } from '@shared/template';
 import type { TerminalPalette } from '@shared/themes';
-import { quotedInCopper } from '@shared/coins';
+import { addCoins, quotedInCopper } from '@shared/coins';
 
 export interface RewriteEditorProps {
   value: RewriteDesign;
@@ -76,7 +77,8 @@ export const ENTITY_WORD: Record<RewriteEntity, string> = {
   shop: t('settings.rewrites.entities.shop'),
   party: t('settings.rewrites.entities.party'),
   experience: t('settings.rewrites.entities.experience'),
-  room: t('settings.rewrites.entities.room')
+  room: t('settings.rewrites.entities.room'),
+  floor: t('settings.rewrites.entities.floor')
 };
 
 const KIND_WORD: Record<FieldSpec['kind'], string> = {
@@ -708,6 +710,7 @@ const SAMPLE_WEARER: Wearer = {
   alignment: null,
   weaponType: null,
   armourType: null,
+  antiMagic: false,
   classNames: { 1: 'Warrior', 2: 'Mystic' },
   raceNames: { 1: 'Human' }
 };
@@ -919,6 +922,26 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
           hidden: ['s']
         }
       };
+    case 'floor': {
+      /*
+       * One the sample may use, one its class may not, and one the realm has
+       * no row for, so each of the three marks previews.
+       */
+      const items = [SAMPLE_PACK[3]!, SAMPLE_PACK[2]!, sampleItem('bone charm', {})];
+      return {
+        entity,
+        figures,
+        floor: {
+          items: items.map((item) => ({
+            item,
+            verdict: canUse(item, SAMPLE_WEARER, t),
+            effects: sampleEffects(item)
+          })),
+          cash: addCoins(null, 'gold', 13),
+          searched: false
+        }
+      };
+    }
   }
 }
 

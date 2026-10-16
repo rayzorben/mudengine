@@ -341,6 +341,12 @@ export const MIN_LEVEL_ABILITY = 135;
 /** `MaxLevel` — the highest level a thing may be used at; a spell above it is not learned. */
 export const MAX_LEVEL_ABILITY = 136;
 
+/** `Magical` — a thing a class with `AntiMagic` may not use (`ItemType.CanPlayerUseItem`). */
+export const MAGICAL_ABILITY = 28;
+
+/** `AntiMagic` — on the Witchunter's class row: refuses it anything `Magical`. */
+export const ANTI_MAGIC_ABILITY = 51;
+
 /**
  * `ConfuseMsg` — the `Messages` row a confusing spell prints when it throws a
  * command away (`ActionFigure.CheckConfusion`). The row's first line is the
