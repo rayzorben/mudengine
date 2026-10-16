@@ -58,6 +58,8 @@ import type {
 } from '@shared/drafts';
 import type { Loop } from '@shared/loops';
 import type { ProfileEditable, SettingsSnapshot } from '@shared/ipc';
+import { normalizeAliases } from '@shared/aliases';
+import { normalizeKeys } from '@shared/keys';
 import type { StreamEncoding } from '@shared/types';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { RemoteGrant, RemoteName } from '@shared/remotes';
@@ -72,7 +74,7 @@ import type {
 import type { DrainField, DrainFieldsProps } from '../components/DrainFields';
 import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
 import { sameJson } from './history';
-import type { StatedPair } from '@shared/pairs';
+import { pairsRecord, type StatedPair } from '@shared/pairs';
 
 /**
  * Whether a realm's `database` walks something other than the world the
@@ -395,6 +397,10 @@ export interface CharacterFields {
   lookAtPlayers: boolean;
   /** Its own `automation.aliases`, as written; Global's are added to them. */
   aliases: StatedPair[];
+  /** Its own `keys:`, as written; Global's are added to them (todo 134). */
+  keys: StatedPair[];
+  /** What it inherits as it loads, read only, for a loop through Global's macros. */
+  macroBase: ProfileEditable['macroBase'];
   /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
   statlineControl: boolean;
   /** What the client asks the realm on its own (`automation.asks`). */
@@ -696,6 +702,8 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     remoteKillAndHangup: entry.remotes.allowKillAndHangup,
     lookAtPlayers: entry.talk.lookAtPlayers,
     aliases: entry.aliases.map((pair) => ({ ...pair })),
+    keys: entry.keys.map((pair) => ({ ...pair })),
+    macroBase: entry.macroBase,
     statlineControl: entry.statline.control,
     asks: { ...entry.asks },
     rewrites: entry.rewrites
@@ -974,6 +982,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     statline: { control: form.statlineControl },
     asks: form.asks,
     aliases: form.aliases,
+    keys: form.keys,
     rewrites: form.rewrites
   };
 }
@@ -1263,6 +1272,14 @@ export function emptyForm(
     lookAtPlayers: talk.lookAtPlayers,
     // None of its own: Global's reach it through the overlay.
     aliases: [],
+    keys: [],
+    macroBase:
+      defaults === null
+        ? { keys: DEFAULT_CONFIG.keys, aliases: DEFAULT_CONFIG.automation.aliases }
+        : {
+            keys: normalizeKeys(pairsRecord(defaults.keys)),
+            aliases: normalizeAliases(pairsRecord(defaults.automation.aliases))
+          },
     statlineControl: statline.control,
     asks: { ...(defaults?.automation.asks ?? DEFAULT_CONFIG.automation.asks) },
     rewrites

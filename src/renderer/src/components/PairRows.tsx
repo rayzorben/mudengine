@@ -2,7 +2,8 @@
  * The rows of a block written as a name to a line (todo 74): the aliases on
  * the character and Global pages and the keys on the MudEngine page. Each row
  * is a name, its line and a remove button, with the reason under it when the
- * client does not load it. Each list draws its own name control.
+ * client does not load it. Each list draws its own name control. The line
+ * is a box of one command a line, written to the file as a list (todo 134).
  */
 import type { ReactNode } from 'react';
 
@@ -25,8 +26,11 @@ export interface PairRowsProps {
 
 export default function PairRows(props: PairRowsProps) {
   const { pairs, onChange } = props;
-  const edit = (index: number, change: Partial<StatedPair>): void =>
-    onChange(pairs.map((pair, at) => (at === index ? { ...pair, ...change } : pair)));
+  const rename = (index: number, name: string): void =>
+    onChange(pairs.map((pair, at) => (at === index ? { ...pair, name } : pair)));
+  // Typed over, a kept value is a line again.
+  const retype = (index: number, text: string): void =>
+    onChange(pairs.map((pair, at) => (at === index ? { name: pair.name, text } : pair)));
   return (
     <>
       {pairs.length > 0 && (
@@ -36,14 +40,17 @@ export default function PairRows(props: PairRowsProps) {
             return (
               // Keyed by position, as the login rows are: a row is edited in place.
               <li data-refused={refused !== null} key={index}>
-                {props.nameControl(pair, index, (name) => edit(index, { name }))}
+                {props.nameControl(pair, index, (name) => rename(index, name))}
                 <span aria-hidden="true" className="arrow">
                   →
                 </span>
-                <input
+                <textarea
                   aria-label={props.lineAria(index)}
-                  onChange={(event) => edit(index, { text: event.target.value })}
+                  className="pair-lines"
+                  onChange={(event) => retype(index, event.target.value)}
                   placeholder={props.linePlaceholder}
+                  rows={Math.max(1, pair.text.split('\n').length)}
+                  spellCheck={false}
                   value={pair.text}
                 />
                 <button

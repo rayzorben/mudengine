@@ -89,6 +89,8 @@ import type { InvokeChoice } from './invoke';
 import type { BlessingChoiceView } from './blessingchoice';
 import type { ThemePreference } from './themes';
 import type { StatedPair } from './pairs';
+import type { KeyBindings } from './keys';
+import type { Aliases } from './aliases';
 import type { ProfileAccent } from './profiles';
 import type { LocateWord } from './locate';
 import type { LowLivesAnswer } from './lives';
@@ -404,6 +406,8 @@ export interface ProfileSummary {
   restTo: number;
   /** `automation.health.restBelow`, resolved, for the game view's Rest stepper. */
   restBelow: number;
+  /** The keys bound to a macro, its own over the options file's, for the key handler (todo 134). */
+  keys: KeyBindings;
   /**
    * `automation.safety.retreat.belowHealth`, resolved, for the game view's Run
    * stepper; whether the character runs at all is the `retreat` switch.
@@ -561,6 +565,10 @@ export interface ProfileEditable {
   asks: ProfileDraft['asks'];
   /** Its own `automation.aliases`, as written; Global's are added to them, not shown here. */
   aliases: StatedPair[];
+  /** Its own `keys:`, as written; Global's are added to them, not shown here (todo 134). */
+  keys: StatedPair[];
+  /** The keys and aliases it inherits as they load, for finding a loop through them (todo 134). */
+  macroBase: { keys: KeyBindings; aliases: Aliases };
   /** The status line and listings this player designed for this character. Resolved, like the rest. */
   rewrites: RewritesUiConfig;
   /**

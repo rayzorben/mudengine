@@ -96,6 +96,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   statline: { ...DEFAULT_CONFIG.automation.statline },
   asks: { ...DEFAULT_CONFIG.automation.asks },
   aliases: [],
+  keys: [],
   rewrites: structuredClone(DEFAULT_CONFIG.ui.rewrites),
   ...over
 });
@@ -371,6 +372,63 @@ describe('keeping an extension’s settings (todo 84)', () => {
     const refused = editor.setAutomationValues('vaelor', [[['combat', 'invented'], 1]]);
     expect(refused.ok).toBe(false);
     expect(read('vaelor')['automation']).toEqual({ combat: { attack: 'kic' } });
+  });
+});
+
+describe('the alias command’s write (todo 134)', () => {
+  const profile = (text: string): void => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, 'utf8');
+  };
+
+  it('adds one entry and leaves the others and the comments', () => {
+    profile('server: GreaterMUD (local)\nautomation:\n  # mine\n  aliases:\n    kk: pu kobold\n');
+    expect(editor.setAlias('vaelor', 'doit', 'ne;recover corpse;sw')).toEqual({ ok: true });
+    expect(read('vaelor')['automation']).toEqual({
+      aliases: { kk: 'pu kobold', doit: 'ne;recover corpse;sw' }
+    });
+    expect(fs.readFileSync(home.profile('vaelor').file, 'utf8')).toContain('# mine');
+    // Idempotent: the same write leaves the same file.
+    const once = fs.readFileSync(home.profile('vaelor').file, 'utf8');
+    editor.setAlias('vaelor', 'doit', 'ne;recover corpse;sw');
+    expect(fs.readFileSync(home.profile('vaelor').file, 'utf8')).toBe(once);
+  });
+
+  it('removes its own word, and writes a Global word empty', () => {
+    fs.writeFileSync(configPath, `${OPTIONS}automation:\n  aliases:\n    dg: dig grave\n`, 'utf8');
+    profile('server: GreaterMUD (local)\nautomation:\n  aliases:\n    kk: pu kobold\n');
+    expect(editor.setAlias('vaelor', 'kk', null)).toEqual({ ok: true });
+    expect(editor.setAlias('vaelor', 'dg', null)).toEqual({ ok: true });
+    expect(read('vaelor')['automation']).toEqual({ aliases: { dg: '' } });
+    expect(editor.ownAliases('vaelor')).toEqual([{ name: 'dg', text: '' }]);
+  });
+
+  it('writes nothing for an alias that loops through a Global key', () => {
+    fs.writeFileSync(configPath, `${OPTIONS}keys:\n  F2: '{doit}'\n`, 'utf8');
+    profile('server: GreaterMUD (local)\n');
+    expect(editor.setAlias('vaelor', 'doit', 'l;{f2}').ok).toBe(false);
+    expect(read('vaelor')['automation']).toBeUndefined();
+    // Positive control: the same word without the call is written.
+    expect(editor.setAlias('vaelor', 'doit', 'l').ok).toBe(true);
+  });
+
+  it('writes nothing for a word that would not load', () => {
+    profile('server: GreaterMUD (local)\n');
+    expect(editor.setAlias('vaelor', 'alias', 'x').ok).toBe(false);
+    expect(editor.setAlias('vaelor', 'l', 'look').ok).toBe(false);
+    expect(read('vaelor')['automation']).toBeUndefined();
+    // Positive control: a word that loads is written.
+    expect(editor.setAlias('vaelor', 'dg', 'dig grave').ok).toBe(true);
+  });
+});
+
+describe('a character’s own keys (todo 134)', () => {
+  it('writes them as a list and reads them back as its own', () => {
+    editor.saveProfile('vaelor', draft({ keys: [{ name: 'F2', text: 'n\ns' }] }));
+    expect(read('vaelor')['keys']).toEqual({ F2: ['n', 's'] });
+    const entry = editor.snapshot().characters.find((one) => one.id === 'vaelor');
+    expect(entry?.keys).toEqual([{ name: 'F2', text: 'n\ns' }]);
   });
 });
 

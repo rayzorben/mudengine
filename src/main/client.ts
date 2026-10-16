@@ -250,6 +250,8 @@ let config: ConfigStore | null = null;
 /** The client's own settings, beside the options file. See `shared/internal.ts`. */
 let internal: InternalStore | null = null;
 let profiles: ProfileStore | null = null;
+/** What a file states and the client does not load, said once per change (todo 74, 134). */
+const refusedMacros = new RefusedEntries();
 /** The servers on disk: `servers/<id>/server.yaml`. See `ServerStore`. */
 let servers: ServerStore | null = null;
 /** The loops on disk, at all three scopes. See `LoopStore`. */
@@ -1193,8 +1195,6 @@ function createConfig(): ConfigStore {
     template: configTemplate()
   });
 
-  // An alias or a key the file states and the client does not load (todo 74).
-  const refused = new RefusedEntries();
   store.on('change', (snapshot) => {
     push(Push.config, snapshot);
     /*
@@ -1215,10 +1215,10 @@ function createConfig(): ConfigStore {
      * changed.
      */
     if (snapshot.error) notice(t('app.config.reloadFailed', { error: snapshot.error }));
-    for (const message of refused.fresh(store.source)) notice(message);
+    for (const message of refusedMacros.fresh(store.source)) notice(message);
   });
 
-  for (const message of refused.fresh(store.source)) notice(message);
+  for (const message of refusedMacros.fresh(store.source)) notice(message);
   store.watch();
   return store;
 }
@@ -1373,7 +1373,8 @@ function profileSummaries(): ProfileSummary[] {
     restTo: profile.config.automation.health.restTo,
     restBelow: profile.config.automation.health.restBelow,
     runBelow: profile.config.automation.safety.retreat.belowHealth,
-    supplies: profile.config.automation.supplies
+    supplies: profile.config.automation.supplies,
+    keys: profile.config.keys
   }));
 }
 
@@ -1489,6 +1490,11 @@ function createProfiles(): ProfileStore {
         serverId === undefined ? [] : (loops?.forServer(serverId) ?? []),
         loops?.forProfile(id) ?? []
       );
+    },
+    // A key or an alias of its own that does not load, or one that loops through Global's.
+    resolved: (id, raw, profile) => {
+      const base = config?.source ?? {};
+      for (const message of refusedMacros.freshFor(id, profile.name, raw, base)) notice(message);
     }
   });
 
@@ -1560,6 +1566,12 @@ function createHost(): SessionHost {
     // The same write the toolbar's press makes, so the toggle shows it.
     flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
     reread: () => profiles?.refresh(),
+    // The `alias` command's read and write, the character's own file only (todo 134).
+    ownAliases: (id) => new SettingsEditor({ home }).ownAliases(id),
+    writeAlias: (id, word, line) => {
+      const result = new SettingsEditor({ home }).setAlias(id, word, line);
+      return result.ok ? null : result.error;
+    },
     loopShelf: () => loopCatalogue().all(),
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,

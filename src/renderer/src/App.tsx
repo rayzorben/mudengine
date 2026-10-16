@@ -701,7 +701,7 @@ export default function App() {
     reset
   });
   // The keys bound to a line, MegaMUD's macros, for the character on screen (todo 74).
-  useBoundKeys(api, activeRef, config.keys);
+  useBoundKeys(api, activeRef, session, profiles, config.keys);
 
   /*
    * The alerts worth saying outside the window, and a row's sound (todo 80),

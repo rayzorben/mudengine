@@ -4,12 +4,9 @@
  * `equip` read it as an item's name (`GetCommand.cs`, `EquipCommand.cs`), so
  * nothing the server does is shadowed. Pure, so the Talk box's line and the
  * terminal's are read by the same rules. Closed: a new one is a member here
- * and a case in `session/clientCommands.ts`.
+ * and a case in `session/clientCommands.ts`. A macro step is one of these
+ * (`macroSteps.ts`); `alias` takes words after it and is `aliasCommand.ts`.
  */
-
-import { expandAlias, type Aliases } from './aliases';
-import { parseMacro, placeholdersIn, type MacroStep } from './macro';
-import { channelPrefix } from './talk';
 
 export type ClientCommand = 'get-all' | 'equip-all';
 
@@ -42,36 +39,4 @@ export const AS_TYPED = '\\';
 export function asTyped(line: string): string | null {
   const start = line.trimStart();
   return start.startsWith(AS_TYPED) ? start.slice(AS_TYPED.length) : null;
-}
-
-/** Whether main runs one command itself: a client command or a placeholder, never speech. */
-function runsItself(line: string): boolean {
-  const whole = line.trim();
-  if (channelPrefix(whole) !== null) return false;
-  return clientCommandOf(whole) !== null || placeholdersIn(whole).length > 0;
-}
-
-/**
- * The steps main runs a Talk-box line as, or null where it goes out as typed:
- * a line of several (`parseMacro`), a client command, or one step with a
- * placeholder. Speech on a channel and a line marked `AS_TYPED` are never any
- * of them.
- */
-export function stepsOf(line: string): MacroStep[] | null {
-  if (asTyped(line) !== null) return null;
-  const several = parseMacro(line);
-  if (several !== null) return several;
-  return runsItself(line) ? [{ command: line.trim(), times: 1 }] : null;
-}
-
-/**
- * Whether a line the server already holds, typed in the terminal, is taken
- * back at Enter and read by main: one command main runs itself, a line that
- * opens on one of the player's aliases (todo 74), or one marked `AS_TYPED`
- * whose mark has to come off. A `;` line typed there goes out as typed, as it
- * always has.
- */
-export function caughtInTerminal(line: string, aliases: Aliases): boolean {
-  const bare = asTyped(line) ?? line;
-  return runsItself(bare) || expandAlias(bare, aliases) !== null;
 }

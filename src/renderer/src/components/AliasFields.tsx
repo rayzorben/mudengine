@@ -14,10 +14,13 @@ export interface AliasFieldsProps {
   onChange(aliases: StatedPair[]): void;
   /** On a character's page, where these add to Global's. */
   character?: boolean;
+  /** The words that reach themselves through the macros they call (`loopingMacros`). */
+  looping?: ReadonlySet<string>;
 }
 
-export default function AliasFields({ aliases, onChange, character = false }: AliasFieldsProps) {
-  const refusals = aliasRowRefusals(aliases);
+export default function AliasFields(props: AliasFieldsProps) {
+  const { aliases, onChange, character = false, looping } = props;
+  const refusals = aliasRowRefusals(aliases, looping);
   const refusal = (index: number): string | null => {
     const why = refusals[index] ?? null;
     if (why === null) return null;

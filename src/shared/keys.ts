@@ -1,8 +1,9 @@
 /**
- * Keys the player binds to a line, MegaMUD's macros (todo 74): `keys:` in the
- * options file maps a chord to a line, sent the way a Talk-box line is, so a
- * key bound to an alias or to a `;` line paces like any macro. Global only:
- * the keys belong to the person at the keyboard.
+ * Keys the player binds to a line, MegaMUD's macros (todo 74): `keys:` maps
+ * a chord to a macro (`macroSteps.ts`), sent the way a Talk-box line is, so a
+ * key bound to an alias or to a `;` line paces like any macro. A character's
+ * file adds its own over the options file's, key by key, and an empty line
+ * drops one (todo 134), as aliases are layered.
  *
  * A chord names the physical key (`KeyboardEvent.code`), so Numpad 8 walks
  * north with NumLock on or off and the top-row 8 still types an 8. The
@@ -11,6 +12,7 @@
  */
 
 import type { UiLookup } from './i18n';
+import { lineFault, macroRefusalText, type MacroRefusal } from './macroSteps';
 import { statedPairs, type StatedPair } from './pairs';
 
 /** One chord: modifiers and the physical key. `mod` is Ctrl, or Cmd on macOS. */
@@ -128,6 +130,14 @@ const TAKEN: ReadonlySet<string> = new Set([
 /** The keys a bare press of which may be bound: the keypad and the function row. */
 const BARE_OK = /^(?:Numpad(?:\d|Decimal|Add|Subtract|Multiply|Divide)|F\d{1,2})$/;
 
+/** Whether `word` names a key a bare press of which may be bound (`f2`, `numpad8`), in any case. */
+export function isBareKeyName(word: string): boolean {
+  const chord = parseChord(word);
+  return (
+    chord !== null && BARE_OK.test(chord.code) && word.toLowerCase() === chord.code.toLowerCase()
+  );
+}
+
 /** A physical key's name: `Numpad8`, `KeyK`, `F5`, `Comma`. */
 const CODE = /^[A-Z][A-Za-z0-9]*$/;
 
@@ -145,6 +155,12 @@ export function parseChord(text: string): Chord | null {
     chord[flag] = true;
   }
   return chord;
+}
+
+/** The name a key is filed under (`f2` is `F2`), or null where it names no key. */
+export function keyName(text: string): string | null {
+  const chord = parseChord(text);
+  return chord === null ? null : chordName(chord);
 }
 
 /** How a chord is written in the file and shown on the page. */
@@ -170,7 +186,14 @@ export function chordOfEvent(event: {
 }
 
 /** Why an entry in `keys:` does not load. Closed; the page and the load notice word each. */
-export type KeyRefusal = 'chord' | 'empty' | 'twice' | 'client' | 'typing';
+export type KeyRefusal =
+  | 'chord'
+  | 'empty'
+  | 'twice'
+  | 'client'
+  | 'typing'
+  /** Refused for a reason a key and an alias share. */
+  | MacroRefusal;
 
 /** One entry of the file that does not load. */
 export interface RefusedKey {
@@ -191,6 +214,10 @@ export function keyRefusalText(refusal: KeyRefusal, t: UiLookup): string {
       return t('settings.keys.refusal.client');
     case 'typing':
       return t('settings.keys.refusal.typing');
+    case 'shape':
+    case 'line':
+    case 'loops':
+      return macroRefusalText(refusal, t);
     default: {
       const never: never = refusal;
       return never;
@@ -208,9 +235,13 @@ function chordRefusal(chord: Chord): KeyRefusal | null {
 
 /**
  * Why each row does not load, in order, null for one that does. Two rows on
- * one chord (`Numpad8` and `numpad8`) are a clash: neither loads.
+ * one chord (`Numpad8` and `numpad8`) are a clash: neither loads. `looping`
+ * holds the chords that reach themselves (`loopingMacros`).
  */
-export function keyRowRefusals(pairs: readonly StatedPair[]): Array<KeyRefusal | null> {
+export function keyRowRefusals(
+  pairs: readonly StatedPair[],
+  looping: ReadonlySet<string> = new Set()
+): Array<KeyRefusal | null> {
   const chords = pairs.map((pair) => parseChord(pair.name));
   const count = new Map<string, number>();
   for (const chord of chords) {
@@ -219,38 +250,45 @@ export function keyRowRefusals(pairs: readonly StatedPair[]): Array<KeyRefusal |
   return pairs.map((pair, index) => {
     const chord = chords[index] ?? null;
     if (chord === null) return 'chord';
+    if (pair.shape === true) return 'shape';
     if (pair.text.trim().length === 0) return 'empty';
     if ((count.get(chordName(chord)) ?? 0) > 1) return 'twice';
-    return chordRefusal(chord);
+    const own = chordRefusal(chord);
+    if (own !== null) return own;
+    if (lineFault(pair.text) !== null) return 'line';
+    return looping.has(chordName(chord)) ? 'loops' : null;
   });
 }
 
 /** What a `keys:` block loads, and every entry it refuses with why. */
-export function readKeys(raw: unknown): { bindings: KeyBindings; refused: RefusedKey[] } {
+export function readKeys(
+  raw: unknown,
+  looping: ReadonlySet<string> = new Set()
+): { bindings: KeyBindings; refused: RefusedKey[] } {
   const pairs = statedPairs(raw);
-  const refusals = keyRowRefusals(pairs);
+  const refusals = keyRowRefusals(pairs, looping);
   const bindings: Record<string, string> = {};
   const refused: RefusedKey[] = [];
   pairs.forEach(({ name, text }, index) => {
     const refusal = refusals[index] ?? null;
-    const chord = parseChord(name);
+    const key = keyName(name);
     if (refusal !== null) refused.push({ name, refusal });
-    else if (chord !== null) bindings[chordName(chord)] = text.trim();
+    else if (key !== null) bindings[key] = text.trim();
   });
   return { bindings, refused };
 }
 
 /** A file with no `keys:` block has MegaMUD's; one that states the block has what it says. */
-function orMegamud(raw: unknown): unknown {
+export function keyBlock(raw: unknown): unknown {
   return raw === undefined ? MEGAMUD_KEYS : raw;
 }
 
 /** The bindings that load; anything not a map is none. See `readKeys`. */
-export function normalizeKeys(raw: unknown): KeyBindings {
-  return readKeys(orMegamud(raw)).bindings;
+export function normalizeKeys(raw: unknown, looping: ReadonlySet<string> = new Set()): KeyBindings {
+  return readKeys(keyBlock(raw), looping).bindings;
 }
 
 /** The rows a `keys:` block states, as written; MegaMUD's set where the file has no block. */
 export function statedKeys(raw: unknown): StatedPair[] {
-  return statedPairs(orMegamud(raw));
+  return statedPairs(keyBlock(raw));
 }

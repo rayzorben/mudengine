@@ -6,11 +6,13 @@
  */
 import type { GearTripProgress } from '../../shared/gearTrip';
 import type { StandDown } from '../automation/LoginAutomator';
+import type { AliasFile } from './aliasAnswers';
 import type { AutomationSnapshot } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { CharacterState, RealmFamily as RealmWord } from '../../shared/character';
 import type { AutomationSwitch } from '../../shared/config';
+import type { KeyBindings } from '../../shared/keys';
 import type { Find } from '../../shared/finds';
 import type { Shelf } from '../../shared/shops';
 import type { Loop, LoopProgress } from '../../shared/loops';
@@ -182,6 +184,10 @@ export interface SessionSink {
    * it's write lands before the first room. Whether it was written.
    */
   switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
+  /** The keys this character binds, its own over the options file's, for a macro's `{f2}` (todo 134). */
+  keys?(): KeyBindings;
+  /** This character's own file, where `alias` writes (todo 134). */
+  aliasFile?(): AliasFile | null;
   /** The shipped loops, which `@loop` reaches after the character's own (todo 32). */
   loopShelf?(): readonly Loop[];
 }

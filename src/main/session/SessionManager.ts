@@ -5,7 +5,7 @@
  */
 import { CommandQueue, type Intent } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
-import { Walker } from '../automation/Walker';
+import { Walker, cannotSneakHere } from '../automation/Walker';
 import { splitOntoChannel } from '../../shared/talk';
 import {
   CLASS_STEALTH_ABILITY,
@@ -127,7 +127,9 @@ import { areaSearchTrip, gearRecoveryTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
-import { droppedNotice, queueMacro } from './macros';
+import { droppedNotice } from './macros';
+import { MacroRunner } from './MacroRunner';
+import { roomNamed, walkTo } from './roomWalk';
 import { takeBackAtEnter } from './takeBack';
 import { sessionExtensions, type ExtensionDeps } from './extensionWiring';
 import type { SessionExtensions } from '../extensions/SessionExtensions';
@@ -343,8 +345,8 @@ export class SessionManager {
   /** A monster row overruling the realm's disposition, said once (todo 818). */
   private readonly rowOverrides: RowOverrides;
   private readonly fleeGoto: FleeGoto;
-  /** Talk-box lines queued this session, so each one's commands can be named together. */
-  private macros = 0;
+  /** The macro running, waiting at a `{goto}` or a `{sneak}` (todo 134). */
+  private readonly macros: MacroRunner;
   /** What the realm menu said a hang-up costs on the realm chosen (todo 01), and its name (todo 34). */
   private readonly realmMenu = new RealmMenu((realm) => this.sink.realmChosen?.(realm));
   /** Nothing automated on a character lying mortally wounded. See `Grounded`. */
@@ -761,7 +763,7 @@ export class SessionManager {
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
-        const later = [this.hostTrips, this.areaSearch, this.hunt, this.questRunner];
+        const later = [this.hostTrips, this.areaSearch, this.hunt, this.questRunner, this.macros];
         for (const each of [...trips, ...later])
           each.onWalkEnded(arrived, reason, this.tracker.current);
       },
@@ -1588,6 +1590,24 @@ export class SessionManager {
       sink
     );
     this.grounded = new Grounded(this.publisher, sink);
+    this.macros = new MacroRunner({
+      send: (data) => this.send(data),
+      queue: this.queue,
+      connected: () => this.client.connected,
+      notice,
+      published: () => this.publisher.publishAutomation(),
+      state: () => this.tracker.current,
+      mob: (state) => this.combat.pick(state),
+      automation: () => this.automationConfig,
+      keys: () => sink.keys?.() ?? {},
+      aliasFile: () => sink.aliasFile?.() ?? null,
+      movesPending: moveInFlight,
+      sneakBlocked: cannotSneakHere,
+      roomNamed: (request) => roomNamed(request, this.errands),
+      // The player's own route, as the palette's Go to walks it.
+      walkTo: (at) => walkTo(at, this.errands, (way) => this.travel.walkForPlayer(way)),
+      routeOwed: () => this.travel.owesRoute
+    });
     this.statHold = new StatScreenHold(this.queue, this.publisher, sink, () => this.dropTyped());
     this.gearDesk = gearDesk({
       ...{ tracker: this.tracker, errands: this.errands, world: () => this.world },
@@ -1714,6 +1734,7 @@ export class SessionManager {
       { module: this.safety },
       { module: this.fleeGoto },
       { module: this.locating },
+      { module: this.macros },
       { module: this.travel },
       { module: this.errands }
     ];
@@ -2195,19 +2216,9 @@ export class SessionManager {
     this.tracker.noteTyping(this.outbound.length > 0);
   }
 
-  /** A talk-box line that stands for several commands, queued one by one. See `queueMacro`. */
+  /** A talk-box line, a key's or an alias: a macro, run step by step. See `MacroRunner`. */
   sendMacro(line: string): void {
-    queueMacro(line, {
-      send: (data) => this.send(data),
-      queue: this.queue,
-      connected: () => this.client.connected,
-      notice: (message, decision) => this.sink.notice(message, decision),
-      published: () => this.publisher.publishAutomation(),
-      batch: () => (this.macros += 1),
-      state: () => this.tracker.current,
-      mob: (state) => this.combat.pick(state),
-      automation: () => this.automationConfig
-    });
+    this.macros.run(line);
   }
 
   /**
@@ -2215,6 +2226,7 @@ export class SessionManager {
    * death: the rest of a path walked from a temple is a walk nobody asked for.
    */
   dropTyped(died = false): void {
+    this.macros.drop();
     const count = this.queue.cancel((intent) => intent.typed === true);
     if (count === 0) return;
     // The box's count is read off the snapshot, and nothing else may move soon.
@@ -2633,24 +2645,11 @@ export class SessionManager {
     this.realmMenu.onBlock(block);
     this.login.onBlock(block);
     /*
-     * An unrecognised command is not refused by this server — it is *said out
-     * loud*. Captured live: `exits`, `time`, `stats` and `gold` all came back
-     * as `You say "..."`.
-     *
-     * That fact is worth having and it is **not printed here**. It used to be
-     * echoed into the stream as a notice, one line under the line it was about
-     * — the server had already said the words, in the room, in full, and the
-     * client repeated them back with a frame around them. `command-not-
-     * understood` is `warning` in `NOTABLE`, so the Alerts card raises it,
-     * keeps it, and lets it be gone back to; a notice in the console says the
-     * same thing louder, in the one place the design forbids chrome, and
-     * scrolls away regardless.
-     *
-     * One thing *is* acted on, and it is the automation's own word rather
-     * than the player's: a realm with no locate command has just said so, in
-     * front of everybody in the room. Asking again would say it again. Told
-     * out loud once, because a client that quietly stops asking where it is
-     * looks exactly like one that has stopped needing to.
+     * An unrecognised command is *said out loud* by this server (`exits`,
+     * `time` came back as `You say "..."`). The Alerts card keeps it; the
+     * console is not told twice. Only the automation's own word is acted on:
+     * a realm with no locate command has just said so in front of the room,
+     * so it is not asked again, and that is said once.
      */
     if (block.type === 'command-not-understood')
       this.vocabulary.noteWordMissing(block.groups['message']);
@@ -2692,6 +2691,7 @@ export class SessionManager {
     this.noticeRealmMismatch(block);
     this.rules.onBlock(block);
     this.walker.onBlock(block);
+    this.macros.onBlock(block);
     this.wards.onBlock(block, this.tracker.current);
     /*
      * A `rm` used to go out on every `*Combat Off*` while a loop ran, on the

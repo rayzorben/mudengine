@@ -119,7 +119,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the copy-from comment, condensed as the laid settings' mark came (todo 118).
   // Lowered by the figure rows drawn through `ChoiceFields`, held whole on the form (todo 118).
   // Lowered by the Retreat fieldset, out whole, and Avoiding, shared with the Global page (todo 119).
-  'src/renderer/src/components/CharacterForm.tsx': 1273
+  // Lowered by the character's aliases and keys, out together (`MacroSections`, todo 134).
+  'src/renderer/src/components/CharacterForm.tsx': 1269
 };
 
 /**

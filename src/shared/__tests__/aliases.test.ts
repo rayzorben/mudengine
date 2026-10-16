@@ -42,7 +42,9 @@ describe('the aliases a file states', () => {
     expect(aliasRefusal('l', 'look')).toBe('command');
     expect(aliasRefusal('gos', 'say hi')).toBe('command');
     expect(aliasRefusal('kk', 'pu kobold')).toBeNull();
-    expect(normalizeAliases({ l: 'look', kk: '', n: 'x', ok: ['x'] })).toEqual({});
+    expect(normalizeAliases({ l: 'look', kk: '', n: 'x', ok: { a: 'x' } })).toEqual({});
+    // A list is a macro, one command a line (todo 134).
+    expect(normalizeAliases({ ok: ['x', 'y'] })).toEqual({ ok: 'x\ny' });
     // YAML reads `ok: 3` as a number; it is the line 3.
     expect(normalizeAliases({ ok: 3 })).toEqual({ ok: '3' });
   });

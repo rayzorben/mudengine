@@ -7967,12 +7967,38 @@ button.quest-tile-name:hover:not(:disabled) {
  */
 .settings-pairs li {
   flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .settings-pairs .pair-refusal {
   flex: 1 0 100%;
   color: color-mix(in srgb, var(--danger) 85%, var(--text-hi));
   font-size: 0.88em;
+}
+
+/*
+ * A macro's line, one command a line (todo 134): drawn as the settings
+ * fields are, growing a row per command rather than scrolling.
+ */
+.settings-pairs textarea.pair-lines {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--control-h);
+  resize: none;
+  background: color-mix(in srgb, var(--ink-line) 40%, transparent);
+  border: 1px solid transparent;
+  border-radius: calc(var(--r-card) - 6px);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: inherit;
+  line-height: 1.4;
+  padding: 6px 9px;
+}
+
+.settings-pairs textarea.pair-lines:focus {
+  background: color-mix(in srgb, var(--ink-line) 60%, transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  outline: none;
 }
 
 /* The recorded key, as wide as an alias's word and in the data face. */

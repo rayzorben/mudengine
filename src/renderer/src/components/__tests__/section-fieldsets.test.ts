@@ -35,14 +35,18 @@ function drawn(source: string): string[] {
  * `…Fieldset`, `…Sections`, `…Switches`), since those draw fieldsets for both
  * forms (`PartyFields`, todo 831; `HangUpFieldset`, todo 118).
  */
-function composed(file: string): string {
+function composed(file: string, seen = new Set<string>()): string {
+  seen.add(file);
   const source = read(file);
   const local = [
     ...source.matchAll(
       /^import \w+(?:, \{[^}]*\})? from '\.\/(\w+(?:Fields|Fieldset|Sections|Switches))';$/gm
     )
-  ].map((hit) => `${hit[1]!}.tsx`);
-  return [source, ...local.map(read)].join('\n');
+  ]
+    .map((hit) => `${hit[1]!}.tsx`)
+    .filter((name) => !seen.has(name));
+  // Followed down, since a section can be drawn by a section it composes (`MacroSections`, todo 134).
+  return [source, ...local.map((name) => composed(name, seen))].join('\n');
 }
 
 // The form, the file its rail table is in, and the fieldsets that are not jump targets.

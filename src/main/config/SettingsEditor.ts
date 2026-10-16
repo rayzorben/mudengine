@@ -42,7 +42,8 @@ import type { ProfileEditable, SettingsSnapshot, SpellOption } from '../../share
 import type { CureGates } from '../../shared/spellcraft';
 import type { ConnectionTarget } from '../../shared/types';
 import { errorMessage, isRecord } from '../../shared/values';
-import { pairsRecord, statedPairs } from '../../shared/pairs';
+import { pairsRecord, statedPairs, type StatedPair } from '../../shared/pairs';
+import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases';
 import { statedKeys } from '../../shared/keys';
 
 /**
@@ -440,11 +441,14 @@ export class SettingsEditor {
         ) {
           writeSupplies(document, draft.supplies);
         }
-        // Its own aliases, added to Global's by the overlay, so never a copy of them.
+        // Its own aliases and keys, added to Global's by the overlay, so never a copy of them.
         const aliases = pairsRecord(draft.aliases);
         if (document.hasIn(['automation', 'aliases']) || Object.keys(aliases).length > 0) {
           document.setIn(['automation', 'aliases'], aliases);
         }
+        const keys = pairsRecord(draft.keys);
+        if (document.hasIn(['keys']) || Object.keys(keys).length > 0)
+          document.setIn(['keys'], keys);
 
         /*
          * The designs are a list, and a list is replaced by an overlay, never
@@ -659,6 +663,61 @@ export class SettingsEditor {
     return editYaml(file, {
       mutate: (document) => {
         for (const [path, value] of writes) document.setIn(['automation', ...path], value);
+      }
+    });
+  }
+
+  /**
+   * This character's own `automation.aliases`, as its file writes them (todo
+   * 134): what `alias` marks as the character's rather than Global's.
+   */
+  ownAliases(id: string): StatedPair[] {
+    const file = this.profilePath(id);
+    try {
+      const raw: unknown = parse(fs.readFileSync(file, 'utf8'));
+      const automation = isRecord(raw) && isRecord(raw['automation']) ? raw['automation'] : {};
+      return statedPairs(automation['aliases']);
+    } catch (error) {
+      throw new Error(`could not read ${file}: ${errorMessage(error)}`, { cause: error });
+    }
+  }
+
+  /**
+   * Sets or removes one alias in a character's own file, the `alias`
+   * command's write (todo 134). Narrow for `setAutomationSwitch`'s reason.
+   * Removing a word the options file states writes it empty, which drops
+   * Global's for this character; a word the character alone has goes. A word
+   * that would not load is refused and nothing is written. Idempotent.
+   */
+  setAlias(id: string, word: string, line: string | null): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const spelled = aliasWord(word);
+    const why = line === null ? null : aliasRefusal(spelled, line);
+    if (why !== null) return { ok: false, error: aliasRefusalText(why, t) };
+    const options = this.readOptions();
+    const automation =
+      isRecord(options) && isRecord(options['automation']) ? options['automation'] : {};
+    const global = statedPairs(automation['aliases']).some(
+      (pair) => aliasWord(pair.name) === spelled && pair.text.trim().length > 0
+    );
+    const at = ['automation', 'aliases', spelled];
+    return editYaml(file, {
+      mutate: (document) => {
+        if (line !== null) document.setIn(at, line.trim());
+        else if (global) document.setIn(at, '');
+        else document.deleteIn(at);
+      },
+      // Read back as the client reads it: an alias that loops through a key or another alias loads as nothing.
+      verify: (value) => {
+        const resolved = resolveProfile(id, value, this.baseSource());
+        if (resolved.error !== undefined) return resolved.error;
+        const loaded = Object.hasOwn(resolved.profile.config.automation.aliases, spelled);
+        return line === null || loaded
+          ? null
+          : t('errors.settings.aliasNotLoaded', { word: spelled });
       }
     });
   }
@@ -1343,6 +1402,8 @@ export class SettingsEditor {
         aliases: statedPairs(
           isRecord(record['automation']) ? record['automation']['aliases'] : null
         ),
+        keys: statedPairs(record['keys']),
+        macroBase: { keys: config.keys, aliases: config.automation.aliases },
         rewrites: effective?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites,
         /*
          * This character's *own* loops, from its own directory — not the
@@ -1554,6 +1615,8 @@ function blank(id: string): ProfileEditable {
     statline: DEFAULT_CONFIG.automation.statline,
     asks: DEFAULT_CONFIG.automation.asks,
     aliases: [],
+    keys: [],
+    macroBase: { keys: DEFAULT_CONFIG.keys, aliases: DEFAULT_CONFIG.automation.aliases },
     rewrites: DEFAULT_CONFIG.ui.rewrites,
     loops: [],
     inherited: [],

@@ -182,6 +182,50 @@ export type GuardField =
    */
   | 'light';
 
+/**
+ * Every field a guard may name.
+ *
+ * **This is one half of a pair and both halves have to move together.** The
+ * other is `readField` in `RuleEngine`. A field added to the `GuardField` union
+ * and to the reader but not to this list is a field the type system accepts and
+ * the *parser* refuses — so a rule using it fails to load, silently, and the
+ * documented example in `default.yaml` does not work. That is exactly what
+ * happened to `target`, `attackers`, `players`, `hostiles` and `hangUpClean`
+ * when they were added.
+ *
+ * Ordered as the field union is, so the two read alongside each other.
+ */
+export const GUARD_FIELDS: readonly GuardField[] = [
+  'hp.percent',
+  'hp',
+  'mana.percent',
+  'mana',
+  'level',
+  'inCombat',
+  'resting',
+  'meditating',
+  'occupants',
+  'threats',
+  'mobs',
+  'players',
+  'hostiles',
+  'hangUpClean',
+  'target',
+  'attackers',
+  'partySize',
+  'stealth',
+  'wealth',
+  'phase',
+  'realm',
+  'shopHere',
+  'lairHere',
+  'undeadHere',
+  'toughestHere',
+  'deathSpellHere',
+  'dark',
+  'light'
+];
+
 export type Comparison = '<' | '<=' | '>' | '>=' | '==' | '!=';
 
 export interface Guard {

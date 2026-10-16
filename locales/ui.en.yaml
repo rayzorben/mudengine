@@ -25,6 +25,8 @@ app:
     templateReconcileFailed: 'Options file not changed: {error}'
     refusedAlias: 'The alias {name} in your options file is not loaded: {reason}.'
     refusedKey: 'The key {name} in your options file is not loaded: {reason}.'
+    refusedCharacterAlias: "{character}'s alias {name} is not loaded: {reason}."
+    refusedCharacterKey: "{character}'s key {name} is not loaded: {reason}."
   debug:
     globalOwner: the Global settings
     noSession: There is no session to write a report for.
@@ -3936,11 +3938,20 @@ settings:
       empty: it sends nothing
       command: the realm already has this command
       twice: the word is set twice, so neither loads
-  # Keys, `keys:` (todo 74): MegaMUD's macros, a key that sends a line.
+      client: the client reads this word in braces itself
+      key: it is the name of a key, which {f2} runs
+  # Macros, `keys:` (todo 74, 134): MegaMUD's macros, a key that runs one command a line.
   keys:
-    legend: Keys
-    note: A key sends its line the way the Talk box does, so it can be an alias or several
-      commands. MegaMUD's keypad keys come set; the keypad works with NumLock on or off.
+    legend: Macros
+    note: A key runs its macro, one command a line, the way the Talk box sends a line. MegaMUD's
+      keypad keys come set; the keypad works with NumLock on or off.
+    language: "A line in braces is the client's: {goto 1/297} walks there and {sneak} sneaks,
+      each waiting before the next line; {f2} or {doit} runs that key or alias. Inside a line,
+      {mob}, {target}, {leader}, {telepath}, {item} and any rule field like {hp} are filled in
+      when it goes out. A backslash sends a line as typed."
+    characterNote: These add to the keys on the MudEngine settings page, where every character's
+      keys are. A key with an empty macro drops that one for this character.
+    dropsGlobal: An empty macro drops the MudEngine settings page's key for this character
     press: Press a key…
     pressAria: 'Key {number}: press to change'
     lineAria: 'Key {number}: line'
@@ -3953,6 +3964,13 @@ settings:
       twice: it is set twice, so neither loads
       client: the client already uses it
       typing: it types into the line
+  # Why a key or an alias does not load, the same for both (todo 134).
+  macros:
+    refusal:
+      shape: it is neither a line nor a list of lines
+      line: a line has a name in braces that is no value; a macro or an action goes on a line of
+        its own
+      loops: it runs itself, through the macros it calls
   # The extensions installed in the home, each with its switch (todo 118).
   extensions:
     legend: Extensions
@@ -4191,7 +4209,7 @@ settings:
         hand-typed login.
     tabs:
       appearance: Appearance
-      keys: Keys
+      keys: Macros
       records: Records
       extensions: Extensions
   combat:
@@ -5501,6 +5519,9 @@ settings:
 errors:
   settings:
     characterNotFound: No character called {id}.
+    aliasNotLoaded:
+      'The alias {word} would not load: it runs itself, through the macros it calls, or is
+      set twice.'
     unknownSettings: 'These are not settings this client has, so nothing was written: {paths}.'
     duplicateRealmName: There is already a realm called {name}.
     globalAddressMismatch: the address did not survive being saved
@@ -5606,14 +5627,43 @@ session:
     held: 'Not sending that line: {reason}.'
     offline: 'Not sending that line: this character is not connected.'
     reason: 'From the talk box: {line}'
-    tooMany: 'Not sending that line: it contains {count} commands, and one line can contain at most
-      {limit}.'
+    tooMany: 'Not sending that line: it comes to more than {limit} commands, the most one line can
+      contain.'
     restHeld: 'Not sending the rest of that line, from {command} on: {reason}.'
     restRefused: 'Not sending the rest of that line, from {command} on: the command queue would not
       accept it.'
-    unknownPlaceholder: 'Not sending that line: the client has nothing to fill in for {name}.'
+    inside: 'Not sending that line: {name} is not a value, and a macro or an action goes on a line
+      of its own.'
+    noRoom: 'Not sending that line: {goto} needs a room.'
+    missing: 'Not sending that line: this character has no key or alias {name}.'
+    loops: 'Not sending that line: it runs itself ({chain}).'
+    replaced: 'Dropped the rest of {line}: another macro started.'
+    droppedRest: 'Dropped the rest of {line}.'
+    walkStopped: 'Dropped the rest of that macro: the walk to {room} stopped ({reason}).'
+    walkEnded: 'Dropped the rest of that macro: the walk to {room} stopped.'
+    walkElsewhere: 'Dropped the rest of that macro: the walk to {room} ended somewhere else.'
+    sneakUnanswered: 'Dropped the rest of that macro: nothing answered the sn.'
+    gotoNone: 'Dropped the rest of that macro: no room matches {request}.'
+    gotoSeveral: 'Dropped the rest of that macro: {request} matches {addresses}; name one.'
+    gotoRefused: 'Dropped the rest of that macro: no walk to {request} ({reason}).'
+    cannotSneak: 'Dropped the rest of that macro: you cannot sneak here.'
+    notSneaking: 'Dropped the rest of that macro: you are not sneaking.'
     noMob: 'Stopped that line at {command}: there is nothing here auto-combat would attack.'
     noValue: 'Stopped that line at {command}: the client does not know {name} yet.'
+  # `alias` and `unalias` typed in the game (todo 134).
+  alias:
+    listed: 'Aliases ({count}):'
+    own: '{word}: {line}'
+    global: '{word}: {line} (Global)'
+    none: No aliases are set.
+    unknown: There is no alias {word}.
+    set: '{word} is now {line}.'
+    removed: '{word} removed.'
+    refused: 'Not setting {word}: {reason}.'
+    usage: 'Type unalias and the word, like unalias dg.'
+    noFile: This character's file cannot be written from here; use the settings screen.
+    notWritten: 'Could not write {word}: {error}'
+    unreadable: "This character's file could not be read, so its own aliases are not marked: {error}"
   clientCommand:
     getAllEmpty: Nothing is listed on the floor to get.
     getAllCapped: 'Getting the first {max} of the {total} items listed on the floor.'

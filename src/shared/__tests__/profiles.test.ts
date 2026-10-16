@@ -481,3 +481,31 @@ describe('who says what the realm calls its coins', () => {
     ).toEqual({ runic: 'krabby patty', gold: 'doubloon' });
   });
 });
+
+// Todo 134: keys per character, layered as aliases are.
+describe('a character’s keys', () => {
+  const server = { server: 'GreaterMUD (local)' };
+
+  it('win over Global’s key by key, and an empty one drops Global’s', () => {
+    const global = { ...base, keys: { F1: 'n', F2: 'rest', F3: 'l' } };
+    const keys = resolve({ ...server, keys: { F2: 'cast heal', F3: '' } }, global).config.keys;
+    expect(keys).toEqual({ F1: 'n', F2: 'cast heal' });
+  });
+
+  it('lay over Global’s by the name each loads as, however it is spelled', () => {
+    const global = { ...base, keys: { F2: 'rest' }, automation: { aliases: { KK: 'pu kobold' } } };
+    const profile = resolve(
+      { ...server, keys: { f2: 'cast heal' }, automation: { aliases: { kk: 'pu rat' } } },
+      global
+    );
+    expect(profile.config.keys).toEqual({ F2: 'cast heal' });
+    expect(profile.config.automation.aliases).toEqual({ kk: 'pu rat' });
+  });
+
+  it('add to MegaMUD’s where the options file states none', () => {
+    const keys = resolve({ ...server, keys: { F2: 'cast heal' } }).config.keys;
+    expect(keys).toEqual({ ...DEFAULT_CONFIG.keys, F2: 'cast heal' });
+    // Positive control: a character stating none has the options file's.
+    expect(resolve(server).config.keys).toEqual(DEFAULT_CONFIG.keys);
+  });
+});

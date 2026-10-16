@@ -707,6 +707,8 @@ export interface ProfileDraft {
    * a save keeps them. A character's are its own, added to Global's.
    */
   aliases: StatedPair[];
+  /** Its own `keys:` as the file writes them, added to Global's key by key (todo 134). */
+  keys: StatedPair[];
   /** `ui.rewrites` — the status line and listings this player designed for this character. */
   rewrites: RewritesUiConfig;
 }
@@ -1339,6 +1341,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     // Read as the file reads it: a missing figure is the shipped one, never 0.
     asks: normalizeAsks(value['asks']),
     aliases: asStatedPairs(value['aliases']),
+    keys: asStatedPairs(value['keys']),
     rewrites: normalizeRewrites(value['rewrites'])
   };
 }

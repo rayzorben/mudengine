@@ -59,7 +59,7 @@ import LoopSection, { type LoopShelf } from './LoopSection';
 import PlayerGrants from './PlayerGrants';
 import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
-import AliasFields from './AliasFields';
+import MacroSections from './MacroSections';
 import TrainStatFields from './TrainStatFields';
 import RewritesDesigner from './RewriteDesigner';
 
@@ -1050,11 +1050,7 @@ export default function CharacterForm({
             />
           </fieldset>
 
-          <AliasFields
-            aliases={form.aliases}
-            character
-            onChange={(aliases) => patch({ aliases })}
-          />
+          <MacroSections form={form} patch={patch} />
           <fieldset className="settings-menus" data-fieldset="talk-pvp">
             <legend>{t('settings.health.pvpLegend')}</legend>
             <CheckField

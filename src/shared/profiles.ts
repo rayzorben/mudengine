@@ -34,6 +34,8 @@ import { type SafetyConfig } from './safety';
 import { mergeMobRules, normalizeMobRules, type MobRule } from './mobRules';
 import { asCoinNames, type CoinNames } from './coins';
 import { asLowLives } from './lives';
+import { keyBlock } from './keys';
+import { withMacroNames } from './macroBook';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import type { ConnectionTarget } from './types';
 import { int, isRecord, str } from './values';
@@ -451,8 +453,10 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
     // logging — is the overlay. The connection block is assembled from the
     // fields above rather than taken from the file, so a profile cannot state
     // a host in two places and disagree with itself.
-    withoutProfileKeys(raw),
+    withoutProfileKeys(withMacroNames(raw)),
     {
+      // Over the options file's keys as they load, MegaMUD's where it states none (todo 134).
+      ...(isRecord(raw['keys']) ? { keys: macroBlocks(raw, baseSource).keys } : {}),
       connection: {
         host: target.host,
         port: target.port,
@@ -501,7 +505,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       config: withRealmSafety(
         withRealmSafety(
           withRealmMobRules(
-            normalizeConfig(overlay(baseSource, patch)),
+            normalizeConfig(overlay(withMacroNames(baseSource), patch)),
             base.automation.combat.mobRules,
             server.mobRules,
             raw
@@ -517,6 +521,29 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
         ownFleeGotoCommand(raw)
       )
     }
+  };
+}
+
+/**
+ * A character's `keys:` and `automation.aliases` laid over the options
+ * file's, as `resolveProfile` lays them (todo 134): by the name each loads
+ * as, a character's keys over MegaMUD's where the options file states none.
+ */
+export function macroBlocks(
+  raw: unknown,
+  baseSource: unknown
+): { keys: unknown; aliases: unknown } {
+  const own = withMacroNames(raw);
+  const base = withMacroNames(baseSource);
+  const ownFile = isRecord(own) ? own : {};
+  const baseFile = isRecord(base) ? base : {};
+  const aliasesOf = (file: Record<string, unknown>): unknown =>
+    isRecord(file['automation']) ? file['automation']['aliases'] : undefined;
+  return {
+    keys: isRecord(ownFile['keys'])
+      ? overlay(keyBlock(baseFile['keys']), ownFile['keys'])
+      : baseFile['keys'],
+    aliases: overlay(aliasesOf(baseFile), aliasesOf(ownFile))
   };
 }
 
