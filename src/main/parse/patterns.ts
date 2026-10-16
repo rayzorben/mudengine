@@ -2344,6 +2344,9 @@ export interface BatchRule {
  *
  * The **first** is somebody travelling — class, mana, health, status flag and
  * rank, all read out under `party-roster` below.
+ * Each figure is padded to three columns (`[M:{0,3}%]`, GreaterMUD
+ * `PartyCommand.cs:63`; MajorMUD's `[K:  2%]` in the corpus), so a member
+ * under 10% prints `[M:  5%]`.
  *
  * The **second** is somebody *invited who has not accepted*, captured live
  * (2026-08-28) with the invitee standing a room away:
@@ -2360,7 +2363,7 @@ export interface BatchRule {
  * an absent field is usually a shape the server printed differently.
  */
 const PARTY_ROWS: RegExp[] = [
-  /^\s*(?<name>[A-Z][\w'-]*)(?: (?<last>[A-Z][\w'-]*))?\s*\((?<class>[\w ]+)\)\s*(?:\[(?<manaType>M|K):\s?(?<mana>\d+)%\]\s*)?\[H:\s?(?<health>\d+)%\]\s*(?<flag>[A-Za-z])?\s*-\s*(?<rank>\w+)\s*$/,
+  /^\s*(?<name>[A-Z][\w'-]*)(?: (?<last>[A-Z][\w'-]*))?\s*\((?<class>[\w ]+)\)\s*(?:\[(?<manaType>M|K):\s*(?<mana>\d+)%\]\s*)?\[H:\s*(?<health>\d+)%\]\s*(?<flag>[A-Za-z])?\s*-\s*(?<rank>\w+)\s*$/,
   /^\s*(?<name>[A-Z][\w'-]*)(?: (?<last>[A-Z][\w'-]*))?\s*\((?<class>[\w ]+)\)\s*\[(?<invited>Invited)\]\s*$/
 ];
 
@@ -2766,9 +2769,10 @@ export const BATCH_RULES: BatchRule[] = [
      *
      * MajorMUD's listing is the same record with three differences, all seen in
      * 55 of 214 captures (docs/capture-analysis.md §5): a surname (`Slayer
-     * OfSouls` — the only place a second name appears anywhere), a space after
-     * the colon (`[M: 81%]`), `K:` for a mystic's kai and a third rank
-     * (`Midrank`). And the rows wrap, which is what `assemble` is for.
+     * OfSouls` — the only place a second name appears anywhere), `K:` for a
+     * mystic's kai and a third rank (`Midrank`). And the rows wrap, which is
+     * what `assemble` is for. The spaces after the colon are the figure's
+     * padding on both families (`PARTY_ROWS`).
      *
      * **A status flag sits between the health and the dash**, and it is what a
      * resting party member looks like:

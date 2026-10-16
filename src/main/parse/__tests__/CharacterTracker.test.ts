@@ -3234,6 +3234,30 @@ describe('the party this character travels with', () => {
     expect(soul?.activity).toEqual({ state: 'resting' });
   });
 
+  /*
+   * A member under 10% prints `[M:  5%]`, padded to three columns. Unread, the
+   * listing fell to one row, the party emptied, and Brackle's `@health` answer
+   * found no member to land on exactly when he was lowest (wire, 2026-10-14).
+   */
+  it('keeps a member whose figure is under 10%, and puts his answer on his row', () => {
+    const { tracker, feed } = feeder();
+    const listing = (kai: string): void => {
+      feed('The following people are in your travel party:');
+      feed('  Festus Ival                   (Paladin)    [M: 63%] [H:100%]R - Frontrank');
+      feed(`  Brackle                       (Mystic)     [M:${kai}%] [H: 90%]R - Frontrank`);
+      feed('[HP=516/516,MA=62/98 (Resting)]:');
+    };
+    feed('[HP=516/516,MA=62/98 (Resting)]:');
+    listing(' 11');
+    expect(tracker.current.party.members).toHaveLength(2);
+    listing('  5');
+    expect(tracker.current.party.members.map((m) => m.name)).toEqual(['Festus', 'Brackle']);
+    expect(tracker.current.party.members[1]?.mana).toBeCloseTo(0.05);
+    feed('Brackle telepaths: {HP=105/693,KAI=3/51}');
+    const brackle = tracker.current.party.members[1];
+    expect(brackle?.vitals).toMatchObject({ hp: 105, hpMax: 693, mana: 3, manaMax: 51 });
+  });
+
   /* A letter nothing has established keeps its letter and claims nothing. */
   it('keeps a flag it cannot name rather than expanding it', () => {
     const { tracker, feed } = feeder();
