@@ -34,7 +34,12 @@ import { LoopCatalogue } from './config/LoopCatalogue';
 import { ShippedList } from './config/ShippedList';
 import { NicknameShelf, type RoomNicknames } from './world/RoomNicknames';
 import { findRooms } from './world/roomSearch';
-import { asRoomNicknames, type RoomNickname } from '../shared/roomNicknames';
+import {
+  asRoomNicknames,
+  refusedEntryName,
+  roomNameFaultText,
+  type RoomNickname
+} from '../shared/roomNicknames';
 import { migrateHome } from './config/Migration';
 import { CHARACTER_RECORDS, homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
@@ -258,8 +263,8 @@ let config: ConfigStore | null = null;
 /** The client's own settings, beside the options file. See `shared/internal.ts`. */
 let internal: InternalStore | null = null;
 let profiles: ProfileStore | null = null;
-/** What a file states and the client does not load, said once per change (todo 74, 134). */
-const refusedMacros = new RefusedEntries();
+/** What a file states and the client does not load, said once per change (todo 74, 134, 153). */
+const refusedEntries = new RefusedEntries();
 /** The servers on disk: `servers/<id>/server.yaml`. See `ServerStore`. */
 let servers: ServerStore | null = null;
 /** The loops on disk, at all three scopes. See `LoopStore`. */
@@ -1087,7 +1092,7 @@ function loopCatalogue(): LoopCatalogue {
   return catalogue;
 }
 
-/** MegaMUD's room names: the shipped list, read once, and its fit per world. See `RoomNicknames`. */
+/** Room names: MegaMUD's list, read once, the player's in front, fitted per world (`RoomNicknames`). */
 let nicknameList: ShippedList<RoomNickname> | null = null;
 let nicknames: NicknameShelf | null = null;
 
@@ -1096,18 +1101,32 @@ function shippedNicknames(): readonly RoomNickname[] {
     path.join(resourcesDir(), 'rooms', 'megamud.yaml'),
     'rooms',
     (value) =>
-      asRoomNicknames(value, (code) =>
-        announce('world', t('notices.world.nicknameRepeated', { code }))
+      asRoomNicknames(value, (refusal) =>
+        announce(
+          'world',
+          t('notices.world.nicknameRefused', {
+            code: refusedEntryName(refusal),
+            reason: roomNameFaultText(refusal.fault, t)
+          })
+        )
       )
   );
   return nicknameList.all();
 }
 
 function nicknamesOf(world: WorldGraph): RoomNicknames {
-  nicknames ??= new NicknameShelf(shippedNicknames, (kept, shipped) =>
-    kept === 0
-      ? announce('world', t('notices.world.nicknamesNone', { shipped }))
-      : announce('world', t('notices.world.nicknames', { kept, shipped }), 'log')
+  nicknames ??= new NicknameShelf(
+    { shipped: shippedNicknames, own: () => config?.config.rooms ?? DEFAULT_CONFIG.rooms },
+    {
+      fitted: (kept, shipped) =>
+        kept === 0
+          ? announce('world', t('notices.world.nicknamesNone', { shipped }))
+          : announce('world', t('notices.world.nicknames', { kept, shipped }), 'log'),
+      unfit: (codes) =>
+        announce('world', t('notices.world.ownRoomsUnfit', { codes: codes.join(', ') })),
+      overrides: (codes) =>
+        announce('world', t('notices.world.ownRoomsOverride', { codes: codes.join(', ') }))
+    }
   );
   return nicknames.of(world);
 }
@@ -1248,10 +1267,10 @@ function createConfig(): ConfigStore {
      * changed.
      */
     if (snapshot.error) notice(t('app.config.reloadFailed', { error: snapshot.error }));
-    for (const message of refusedMacros.fresh(store.source)) notice(message);
+    for (const message of refusedEntries.fresh(store.source)) notice(message);
   });
 
-  for (const message of refusedMacros.fresh(store.source)) notice(message);
+  for (const message of refusedEntries.fresh(store.source)) notice(message);
   store.watch();
   return store;
 }
@@ -1527,7 +1546,7 @@ function createProfiles(): ProfileStore {
     // A key or an alias of its own that does not load, or one that loops through Global's.
     resolved: (id, raw, profile) => {
       const base = config?.source ?? {};
-      for (const message of refusedMacros.freshFor(id, profile.name, raw, base)) notice(message);
+      for (const message of refusedEntries.freshFor(id, profile.name, raw, base)) notice(message);
     }
   });
 

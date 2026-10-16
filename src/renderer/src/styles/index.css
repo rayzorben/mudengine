@@ -7977,6 +7977,18 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
+ * The player's room names (todo 153): the names on one line and the marks on
+ * the next, each the row's full width, the level fields two digits wide.
+ */
+.settings-room-names .blessing-line {
+  flex: 1 0 100%;
+}
+
+.settings-room-names input.level {
+  flex: 0 0 5ch;
+}
+
+/*
  * A macro's line, one command a line (todo 134): drawn as the settings
  * fields are, growing a row per command rather than scrolling.
  */

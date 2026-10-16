@@ -25,6 +25,7 @@ import GearSetList from './GearSetList';
 import OffRoundFields from './OffRoundFields';
 import GearSwitches from './GearSwitches';
 import PotionList from './PotionList';
+import RoomNameList from './RoomNameList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import SettingsSection from './SettingsSection';
 import { GAME_DOCKS, isGameDock } from '@shared/gameMap';
@@ -237,6 +238,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
     { id: 'movement-routing', label: t('settings.movement.routingLegend') },
+    { id: 'movement-rooms', label: t('settings.rooms.legend') },
     { id: 'movement-carry', label: t('settings.movement.carryLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
@@ -1602,6 +1604,16 @@ export default function GlobalSettings({
               namePrefix="global-"
               onChoice={moveChoice}
             />
+
+            <fieldset className="settings-menus" data-fieldset="movement-rooms">
+              <legend>{t('settings.rooms.legend')}</legend>
+              <p className="settings-note">{t('settings.rooms.note')}</p>
+              <RoomNameList
+                namePrefix="global"
+                onChange={(rooms) => onChange({ ...draft, rooms })}
+                rows={draft.rooms}
+              />
+            </fieldset>
 
             <fieldset className="settings-menus" data-fieldset="movement-carry">
               <legend>{t('settings.movement.carryLegend')}</legend>

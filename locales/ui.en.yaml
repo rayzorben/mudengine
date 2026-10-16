@@ -25,6 +25,7 @@ app:
     templateReconcileFailed: 'Options file not changed: {error}'
     refusedAlias: 'The alias {name} in your options file is not loaded: {reason}.'
     refusedKey: 'The key {name} in your options file is not loaded: {reason}.'
+    refusedRoomName: 'The room name {code} in your options file is not loaded: {reason}.'
     refusedCharacterAlias: "{character}'s alias {name} is not loaded: {reason}."
     refusedCharacterKey: "{character}'s key {name} is not loaded: {reason}."
   debug:
@@ -181,6 +182,8 @@ notices:
     unreadableSegment: '{file} could not be read: {error}. Its fights are left out.'
     unwritable: 'Fights could not be written to {dir}: {error}'
   migration:
+    roomNamesStated: '"rooms" was added to {file}, empty: your own room names, found by the room
+      search and @goto. Add them under Movement on the Global settings page.'
     fightsSegmented:
       one: '{file} was moved into {dir} as one file of up to {per} fights, {fights} fights in
         all. The old file is kept as {backup}.'
@@ -892,7 +895,11 @@ notices:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the world database {file}…
     nicknames: "MegaMUD's room names: {kept} of {shipped} fit this realm."
-    nicknameRepeated: MegaMUD's room code {code} is listed twice in the shipped room names; the first is kept.
+    nicknameRefused: "MegaMUD's room name {code} in the shipped list is not loaded: {reason}."
+    ownRoomsUnfit: 'Your room names {codes} are not used on this realm: it does not have that room
+      under that name.'
+    ownRoomsOverride: "Your room names {codes} are used on this realm in place of MegaMUD's codes
+      of the same name."
     nicknamesNone: None of MegaMUD's {shipped} room names fit this realm, so a search finds rooms by
       the realm's own names only.
     destinations:
@@ -3593,7 +3600,8 @@ cards:
     fetchThenWalkTooltip: The way that opens once you carry this, walked after fetching it.
     stopShort: Stop before entering
     stopShortTooltip: Walk as far as {roomName} and stop there
-    stopShortMegamud: MegaMUD stops before entering {nickname}, so this is on until you turn it off.
+    stopShortMegamud: The room names say to stop before entering {nickname}, so this is on until you
+      turn it off.
     stepSkipped: not walked
     alreadyBefore: You are already in the room before {roomName}.
     otherWayButton: Show it
@@ -4012,6 +4020,31 @@ map:
     trapped: Trapped
 # The settings screens. Labels of at most four words; hints of one sentence.
 settings:
+  # The player's own room names, `rooms:` (todo 153), in MegaMUD's goto list shape.
+  rooms:
+    legend: Room Names
+    note: Your own names for rooms, as MegaMUD's goto list has them. The room search, @goto and
+      {goto} find a room by its code or name, before MegaMUD's. A room is written as a loop stop
+      is, its name and map/room. For every character and realm. An entry is used only on a realm
+      that has that room under that name.
+    codeAria: 'Room name {number}: code'
+    nameAria: 'Room name {number}: name'
+    roomAria: 'Room name {number}: room'
+    minLevelAria: 'Room name {number}: lowest level'
+    maxLevelAria: 'Room name {number}: highest level'
+    codePlaceholder: GATE
+    namePlaceholder: The first gates
+    roomPlaceholder: Town Gates 1/1
+    stopBefore: Stop before entering
+    avoid: Avoid
+    levels: Levels
+    add: Add Room Name
+    removeAria: 'Remove room name {number}'
+    refusal:
+      code: the code is one to eight characters, with no spaces or colons
+      name: it has no name
+      room: the room is its name then map/room, like Town Gates 1/1
+      repeated: an earlier entry has this code
   # Aliases, `automation.aliases` (todo 74): a word that stands for a line.
   aliases:
     legend: Aliases

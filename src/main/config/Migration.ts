@@ -299,6 +299,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheAsks(home, note, options.template, carried);
   statedKillAndHangup(home, note, options.template);
   statedTheExtensionSwitches(home, note, options.template);
+  statedTheRoomNames(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -4623,7 +4624,7 @@ function statedTheTeleport(
 /**
  * A block the template states under `parent`, comments and all, into the
  * options file after `after` (or last), where the file states the parent and
- * not the block; whether it was written. `reconcileWithTemplate` reaches no
+ * not the block; whether it was written. A map or a list. `reconcileWithTemplate` reaches no
  * deeper than a top-level block.
  */
 function stateTemplateBlock(
@@ -4637,14 +4638,14 @@ function stateTemplateBlock(
   const shipped = isMap(source)
     ? source.items.find((item) => keyText(item as Pair) === key)
     : undefined;
-  if (shipped === undefined || !isMap(shipped.value)) return false;
+  if (shipped === undefined || !(isMap(shipped.value) || isSeq(shipped.value))) return false;
 
   let stated = false;
   edit(home.options, (document) => {
     const block = document.getIn(parent, true);
     if (!isMap(block) || block.has(key)) return false;
     const pair = document.createPair(key, null) as Pair;
-    pair.value = (shipped.value as YAMLMap).clone();
+    pair.value = (shipped.value as YAMLMap | YAMLSeq).clone();
     const comment = isScalar(shipped.key) ? shipped.key.commentBefore : undefined;
     if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
     const at = block.items.findIndex((item) => keyText(item as Pair) === after);
@@ -5223,6 +5224,23 @@ function statedTheExtensionSwitches(
 ): void {
   if (stateTemplateBlock(home, template, [], 'extensions', 'keys')) {
     note(t('notices.migration.extensionSwitches', { file: home.options }));
+  }
+}
+
+/**
+ * The top-level `rooms:` list (todo 153), the player's own room names, into
+ * the options file after `gameView:` with the template's paragraph. It ships
+ * empty, so the room search finds what it found before. Only the options
+ * file: the list is for every character. Idempotent: a list already there is
+ * left alone.
+ */
+function statedTheRoomNames(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (stateTemplateBlock(home, template, [], 'rooms', 'gameView')) {
+    note(t('notices.migration.roomNamesStated', { file: home.options }));
   }
 }
 

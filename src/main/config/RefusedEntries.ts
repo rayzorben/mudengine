@@ -3,13 +3,20 @@
  * said when the file is read (todo 74): an alias the realm's own word
  * shadows, a key the client already uses, two entries on one key, a list
  * that is not lines, or a macro that reaches itself, a character's through
- * Global's too (todo 134). Said once per change of what is refused, so the
+ * Global's too (todo 134), and a room name of the options file's `rooms:`
+ * list (todo 153). Said once per change of what is refused, so the
  * twice-a-second reload of an unchanged file says nothing again.
  */
 import { aliasRefusalText, refusedAliases } from '../../shared/aliases';
 import { keyRefusalText, readKeys } from '../../shared/keys';
 import { macroBlocks } from '../../shared/profiles';
 import { loopingIn } from '../../shared/macroBook';
+import {
+  asRoomNicknames,
+  refusedEntryName,
+  roomNameFaultText,
+  type RoomNameRefusal
+} from '../../shared/roomNicknames';
 import { isRecord } from '../../shared/values';
 import { t } from '../app/i18n';
 
@@ -22,12 +29,20 @@ export class RefusedEntries {
     const file = isRecord(source) ? source : {};
     const automation = isRecord(file['automation']) ? file['automation'] : {};
     const looping = loopingIn(file['keys'], automation['aliases']);
+    const rooms: RoomNameRefusal[] = [];
+    asRoomNicknames(file['rooms'], (refusal) => rooms.push(refusal));
     return this.once('', [
       ...refusedAliases(automation['aliases'], looping).map(({ name, refusal }) =>
         t('app.config.refusedAlias', { name, reason: aliasRefusalText(refusal, t) })
       ),
       ...readKeys(file['keys'], looping).refused.map(({ name, refusal }) =>
         t('app.config.refusedKey', { name, reason: keyRefusalText(refusal, t) })
+      ),
+      ...rooms.map((refusal) =>
+        t('app.config.refusedRoomName', {
+          code: refusedEntryName(refusal),
+          reason: roomNameFaultText(refusal.fault, t)
+        })
       )
     ]);
   }
