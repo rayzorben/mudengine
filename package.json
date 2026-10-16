@@ -58,6 +58,7 @@
     "soak": "node --import ./scripts/lib/register.mjs scripts/soak.mjs",
     "soak:report": "node scripts/soak-report.mjs",
     "harm:report": "node --import ./scripts/lib/register.mjs scripts/harm-report.mjs",
+    "play:report": "node scripts/play-report.mjs",
     "probe:naws": "node --import ./scripts/lib/register.mjs scripts/naws-probe.mjs",
     "probe:pacing": "node --import ./scripts/lib/register.mjs scripts/pacing-probe.mjs",
     "probe:room": "node --import ./scripts/lib/register.mjs scripts/room-probe.mjs",

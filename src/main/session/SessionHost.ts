@@ -594,7 +594,7 @@ export class SessionHost {
         notice: (message, decision) => {
           debug.notice(message);
           // In the capture too: a refusal said only on screen left nothing to read afterwards.
-          this.slots.get(id)?.capture?.notice(message);
+          this.slots.get(id)?.capture?.notice(message, decision);
           this.options.notice(noticeOf(id, message, decision));
         },
         learned: (discoveries) =>

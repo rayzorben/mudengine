@@ -1293,6 +1293,26 @@ describe('the loop card’s controls', () => {
     second.start(loop, known);
     expect(second.progress.expAtStart).toBe(4_200);
   });
+
+  // Todo 127: the hunt's expectation rides on the run it started, and not on the next.
+  it('shows what the hunt expected of the run until the next start', () => {
+    const { planner: p } = planner();
+    const runner = new LoopRunner(p, {}, () => 1_000_000);
+    const expected = {
+      perHour: 12_000,
+      from: 'formula' as const,
+      mob: 'orc',
+      roundsPerKill: 2,
+      perRound: 5
+    };
+    runner.expect(expected);
+    expect(runner.progress.expected).toBeNull();
+    runner.start(loop, state());
+    runner.expect(expected);
+    expect(runner.progress.expected).toEqual(expected);
+    runner.start(loop, state());
+    expect(runner.progress.expected).toBeNull();
+  });
 });
 
 /*

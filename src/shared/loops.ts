@@ -31,6 +31,7 @@
 import { fileSlug } from './files';
 import { asRoomReference, type RoomId, type RoomReference } from './world';
 import type { AfflictionHold } from './walk';
+import { ratePerHour } from './tally';
 
 /** The longest a stop's `linger` may be, in seconds. */
 export const LINGER_MAX_SECONDS = 600;
@@ -738,6 +739,47 @@ export interface LoopProgress {
   /** Which way round a bounce loop is being walked. Always true otherwise. */
   forward: boolean;
   bounce: boolean;
+  /** What the hunt that started this run expected it to pay (todo 127); null for any other run. */
+  expected: LoopExpected | null;
+  /**
+   * Where the run's exp rate is measured from: the start, or the last stop or
+   * escape that set it going again (`LoopRunner.rateSince`). Null while unread.
+   */
+  rateFrom: { at: number; exp: number } | null;
+  /** How long after `rateFrom` the rate is first said (`walk.expRateGraceMinutes`). */
+  rateGraceMs: number;
+}
+
+/**
+ * Where an expected exp rate came from: paid here at this level, paid here a
+ * level or two away, the model at the realm's pace, or the model.
+ */
+export type ExpectedFrom = 'measured' | 'nearby' | 'paced' | 'formula';
+
+/** The survey's figures for a run the hunt started, for the log and the Navigation card. */
+export interface LoopExpected {
+  perHour: number;
+  from: ExpectedFrom;
+  /** The spot's first monster, which the figures below are its. */
+  mob: string | null;
+  roundsPerKill: number | null;
+  /** Hit points a round the monster costs (`Menace.perRound`). */
+  perRound: number | null;
+}
+
+/**
+ * Exp an hour since `from`, or null until `graceMs` has passed or while
+ * either figure is unread: the first minutes of a run are the walk out.
+ */
+export function expRateSince(
+  from: { at: number; exp: number } | null,
+  exp: number | null,
+  now: number,
+  graceMs: number
+): { perHour: number; minutes: number } | null {
+  if (from === null || exp === null) return null;
+  const perHour = ratePerHour(exp - from.exp, now - from.at, graceMs);
+  return perHour === null ? null : { perHour, minutes: (now - from.at) / 60_000 };
 }
 
 export const NO_LOOP: LoopProgress = {
@@ -755,5 +797,8 @@ export const NO_LOOP: LoopProgress = {
   expAtStart: null,
   reached: false,
   forward: true,
-  bounce: false
+  bounce: false,
+  expected: null,
+  rateFrom: null,
+  rateGraceMs: 0
 };

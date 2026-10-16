@@ -30,7 +30,9 @@ import { expRateGraceMs } from '../../shared/walkChoices';
 import {
   cashTier,
   floorFor,
+  expectedFromWords,
   huntLoop,
+  loopExpected,
   shortOfCash,
   type HuntingAdvice,
   type HuntingRoom,
@@ -39,7 +41,7 @@ import {
   type HuntWait,
   type MeasuredRate
 } from '../../shared/hunting';
-import type { Loop } from '../../shared/loops';
+import { expRateSince, type Loop, type LoopExpected } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
 import type { SessionModule } from './Module';
 
@@ -82,6 +84,8 @@ export interface HuntPlanner {
   noteRate(key: string, rate: MeasuredRate): void;
   /** The spot's monsters, fought while it is hunted (`AutoCombat.huntFor`); empty when the hunt ends. */
   fightFor(names: readonly string[]): void;
+  /** What the run this started is expected to pay, shown with it (`LoopRunner.expect`, todo 127). */
+  expectLoop(expected: LoopExpected | null): void;
 }
 
 export interface HuntEvents {
@@ -137,6 +141,10 @@ type Phase =
       from: { at: number; exp: number } | null;
       /** Whether the company sentence has been said for this stay. */
       saidCompany: boolean;
+      /** The expectation last said and handed to the run (todo 127). */
+      saidExpected: LoopExpected | null;
+      /** Whether the measured rate has been said beside it for this stay. */
+      saidMeasured: boolean;
       /** The filler lairs the lap was started with (todo 72). */
       filler: number;
     };
@@ -535,10 +543,9 @@ export class AutoHunt implements SessionModule {
    * checked here in the order it can be known:
    *
    * 1. **Somebody else is working the lair.** Experience divides among
-   *    everybody who hit the kill, so a stranger halves what the lair pays —
-   *    and the fights the client will not open are theirs. Said once, and the
-   *    measurement is re-anchored so the rate reported from here is the rate
-   *    *with them in it*.
+   *    everybody hitting the monster when it dies, and the fights the client
+   *    will not open are theirs. Said once, and the measurement is re-anchored
+   *    so the rate reported from here is the rate *with them in it*.
    * 2. **The character changed.** A level or the kit moves every figure in
    *    the model, so a settled answer is re-opened.
    * 3. **What it actually pays.** Measured against what the survey predicted
@@ -569,6 +576,8 @@ export class AutoHunt implements SessionModule {
         share: killShare(state)
       });
     }
+    if (measured !== null && measured.minutes >= tuning().hunting.measuredMinutesLeast)
+      this.sayMeasured(measured);
 
     /*
      * An order is the extension's plan and is never moved off here. What it
@@ -602,6 +611,8 @@ export class AutoHunt implements SessionModule {
     const advice = this.planner.survey(this.config.radius > 0 ? this.config.radius : null);
     if (advice.refusal !== null) return;
     const walking = this.phase;
+    const fresh = advice.spots.find((spot) => spot.key === walking.spot.key);
+    if (fresh !== undefined) this.sayExpected(fresh);
     const here = measured?.perHour ?? this.pricedRate(walking.key, expected);
     if (this.moveOn(state, advice, walking, here)) return;
     this.fill(state, advice, walking);
@@ -742,11 +753,48 @@ export class AutoHunt implements SessionModule {
       this.phase = { ...this.phase, from: { at: this.now(), exp } };
       return null;
     }
-    const elapsed = this.now() - from.at;
     // The low-experience stop's own grace: the first minutes of any lap are
     // the walk to the first lair.
-    if (elapsed < expRateGraceMs(this.walkConfig)) return null;
-    return { perHour: ((exp - from.exp) * 3_600_000) / elapsed, minutes: elapsed / 60_000 };
+    return expRateSince(from, exp, this.now(), expRateGraceMs(this.walkConfig));
+  }
+
+  /**
+   * The run's expected rate and what it rests on, in the log and on the run
+   * (todo 127): at the start, and again when a survey prices the spot
+   * differently. The same figures are said once.
+   */
+  private sayExpected(spot: HuntingSpot): void {
+    if (this.phase.kind !== 'hunting') return;
+    const expected = loopExpected(spot);
+    if (expected === null || sameExpected(expected, this.phase.saidExpected)) return;
+    this.phase = { ...this.phase, saidExpected: expected };
+    this.planner.expectLoop(expected);
+    this.events.notice?.(
+      t('automation.hunt.expected', {
+        loopName: this.phase.name,
+        rate: rateOf(expected.perHour),
+        from: expectedFromWords(expected.from, t),
+        mob: expected.mob ?? '?',
+        rounds: expected.roundsPerKill === null ? '?' : expected.roundsPerKill.toFixed(1),
+        damage: expected.perRound === null ? '?' : Math.round(expected.perRound)
+      }),
+      'hunt-move'
+    );
+  }
+
+  /** The measured rate beside the expected one, once a stay is long enough to say (todo 127). */
+  private sayMeasured(measured: { perHour: number; minutes: number }): void {
+    if (this.phase.kind !== 'hunting' || this.phase.saidMeasured) return;
+    this.phase = { ...this.phase, saidMeasured: true };
+    this.events.notice?.(
+      t('automation.hunt.measured', {
+        loopName: this.phase.name,
+        rate: rateOf(measured.perHour),
+        minutes: Math.round(measured.minutes),
+        expected: rateOf(this.phase.saidExpected?.perHour ?? this.phase.expected)
+      }),
+      'hunt-move'
+    );
   }
 
   /** What the estimate was made for: change either and it is asked again. */
@@ -957,10 +1005,13 @@ export class AutoHunt implements SessionModule {
       copper: target.copper,
       from: anchor(state, this.now()),
       saidCompany: false,
+      saidExpected: null,
+      saidMeasured: false,
       filler: spot.filler.length
     };
     const rate = rateOf(target.expected);
     this.events.notice?.(t('automation.hunt.started', { loopName: loop.name, rate }), 'hunt-move');
+    this.sayExpected(spot);
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
@@ -1012,6 +1063,18 @@ function anchor(state: CharacterState, at: number): { at: number; exp: number } 
 function clampCorrection(ratio: number): number {
   if (!Number.isFinite(ratio) || ratio <= 0) return 1;
   return Math.min(4, Math.max(0.25, ratio));
+}
+
+/** The same figures, to three figures of exp an hour and a tenth of a round: a resurvey's noise is not news. */
+function sameExpected(a: LoopExpected, b: LoopExpected | null): boolean {
+  return (
+    b !== null &&
+    a.from === b.from &&
+    a.mob === b.mob &&
+    a.perHour.toPrecision(3) === b.perHour.toPrecision(3) &&
+    a.roundsPerKill?.toFixed(1) === b.roundsPerKill?.toFixed(1) &&
+    Math.round(a.perRound ?? -1) === Math.round(b.perRound ?? -1)
+  );
 }
 
 /** The estimate's own figure, as the card prints it. `?` for an unknown one. */

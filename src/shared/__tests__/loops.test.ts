@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   asLoops,
   dueStop,
+  expRateSince,
   loopCategory,
   matchLoop,
   matchLoopIn,
@@ -15,6 +16,23 @@ import {
   UNCATEGORISED,
   type Loop
 } from '../loops';
+
+describe("a run's exp rate", () => {
+  it('says nothing inside the grace or while a figure is unread', () => {
+    const from = { at: 0, exp: 1_000 };
+    expect(expRateSince(from, 2_000, 600_000, 900_000)).toBeNull();
+    expect(expRateSince(null, 2_000, 3_600_000, 0)).toBeNull();
+    expect(expRateSince(from, null, 3_600_000, 0)).toBeNull();
+    expect(expRateSince(from, 1_000, 0, 0)).toBeNull();
+  });
+
+  it('is the exp made an hour past the grace', () => {
+    expect(expRateSince({ at: 0, exp: 1_000 }, 2_500, 1_800_000, 900_000)).toEqual({
+      perHour: 3_000,
+      minutes: 30
+    });
+  });
+});
 
 describe('reading a loop out of the options file', () => {
   it('takes a bare list of room names', () => {
