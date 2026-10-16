@@ -3866,6 +3866,15 @@ export function newDemands(before: Route, after: Route): string[] {
 }
 
 /**
+ * *Stop before entering*: the way with its last step dropped, the rest of the
+ * plan (its walls and hazards included) kept, so an item the destination's
+ * door wants is still read off it.
+ */
+export function stoppedBefore(route: Route): Route {
+  return { ...route, steps: route.steps.slice(0, -1) };
+}
+
+/**
  * A loop or route being built by hand on the map, planned as far as it goes.
  *
  * The builder's picks are rooms clicked in order; every pair is planned by

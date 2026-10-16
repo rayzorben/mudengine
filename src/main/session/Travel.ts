@@ -54,6 +54,7 @@ import {
   OPPOSITE,
   roomAddress,
   roomId,
+  stoppedBefore,
   type Direction,
   type RoomId,
   type Route,
@@ -1941,8 +1942,12 @@ export class Travel implements SessionModule {
    * `run` is *Run it* (todo 06): the same press with auto-combat turned off
    * first and left off. A redrawn plan carries nothing; the next press says it
    * again.
+   *
+   * `stopBefore` is *Stop before entering* (todo 157): `route` ends in the room
+   * before it. The redraw is planned to `stopBefore` and walked one short, and
+   * a plan handed back is whole, for the panel's toggle to trim once.
    */
-  walkPlan(route: Route, run = false): WalkStart {
+  walkPlan(route: Route, run = false, stopBefore: RoomId | null = null): WalkStart {
     const unchosen = this.unchosen(route);
     if (unchosen !== null) return { refused: unchosen };
     const here = roomAddress(this.tracker.current.room);
@@ -1954,7 +1959,7 @@ export class Travel implements SessionModule {
      */
     if (here === null || start === null || here === start) return this.started(route, run);
 
-    const destination = route.steps[route.steps.length - 1]!.to;
+    const destination = stopBefore ?? route.steps[route.steps.length - 1]!.to;
     // Drawn for a reader, like the plan it replaces: the panel shows this one,
     // and a plan without its walls and hazards would compare as asking less.
     const plan = this.errands.planFromHere(
@@ -1965,7 +1970,8 @@ export class Travel implements SessionModule {
     );
     if (typeof plan === 'string') return { refused: plan };
     if (plan.blocked) return { refused: plan.reason ?? t('automation.walk.refusalNoRoute') };
-    if (plan.steps.length === 0) return { refused: t('automation.walk.alreadyThere') };
+    const walked = stopBefore === null ? plan : stoppedBefore(plan);
+    if (walked.steps.length === 0) return { refused: t('automation.walk.alreadyThere') };
 
     const wandered = this.stepsBetween(start, here);
     /*
@@ -1974,7 +1980,7 @@ export class Travel implements SessionModule {
      * shows both again.
      */
     const demands = [
-      ...newDemands(route, plan),
+      ...newDemands(route, walked),
       ...(plan.keptOut?.words ?? []).map((word) => t('session.walk.keptOutDemand', { word }))
     ];
     if (demands.length > 0 || wandered === null || wandered > tuning().walk.replanDriftSteps) {
@@ -1984,11 +1990,11 @@ export class Travel implements SessionModule {
     // are not the steps that were read, however small the difference.
     this.session.notice(
       t('session.walk.replanned', {
-        destination: plan.steps[plan.steps.length - 1]!.name,
-        steps: plan.steps.length
+        destination: walked.steps[walked.steps.length - 1]!.name,
+        steps: walked.steps.length
       })
     );
-    return this.started(plan, run);
+    return this.started(walked, run);
   }
 
   /** `walkRoute`'s answer as the press's union. */

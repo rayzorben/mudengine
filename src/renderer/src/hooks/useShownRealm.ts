@@ -37,7 +37,8 @@ export function useShownRealm({ api, session }: ShownRealmInputs) {
     [api, session]
   );
   const walkRoute = useCallback(
-    (route: Route, run: boolean) => api.walkRoute(session, route, run),
+    (route: Route, run: boolean, stopBefore: RoomId | null) =>
+      api.walkRoute(session, route, run, stopBefore),
     [api, session]
   );
   /** *Collect it first*, from the route panel, for every item the way names (todo 07). */

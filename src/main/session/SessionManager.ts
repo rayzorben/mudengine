@@ -3238,8 +3238,8 @@ export class SessionManager {
   }
 
   /** The press on the plan the panel is showing. See `Travel.walkPlan`. */
-  walkPlan(route: Route, run = false): WalkStart {
-    return this.travel.walkPlan(route, run);
+  walkPlan(route: Route, run = false, stopBefore: RoomId | null = null): WalkStart {
+    return this.travel.walkPlan(route, run, stopBefore);
   }
 
   /** A route the player asked for, the supply list consulted first. See `Travel.walkRoute`. */

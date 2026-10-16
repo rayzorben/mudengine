@@ -175,7 +175,8 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     routeTo: (session, map, room) => invoke(Invoke.routeTo, session, map, room),
     routeBetween: (session, from, to) => invoke(Invoke.routeBetween, session, from, to),
     walkPages: (session) => invoke(Invoke.walkPages, session),
-    walkRoute: (session, route, run) => invoke(Invoke.walkRoute, session, route, run),
+    walkRoute: (session, route, run, stopBefore) =>
+      invoke(Invoke.walkRoute, session, route, run, stopBefore),
     startMoving: (session, loop, confirmed) => invoke(Invoke.startMoving, session, loop, confirmed),
     collectThenWalk: (session, items, route, run) =>
       invoke(Invoke.collectThenWalk, session, items, route, run),
