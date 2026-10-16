@@ -160,6 +160,9 @@ notices:
     workerFailed: 'Fight odds now take longer to work out, and the terminal can lag while they do
       ({error}).'
   desktopAlerts:
+    held:
+      gap: 'No desktop notification, the same alert went out in the last {seconds} seconds: {text}'
+      newer: 'No desktop notification, a newer alert went out in its place: {text}'
     refused: Desktop notifications are on, but this system blocks them. Nothing will show outside
       the window until they are allowed.
     title: '{name}'

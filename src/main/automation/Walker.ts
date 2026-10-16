@@ -401,7 +401,8 @@ export class Walker implements SessionModule {
       // A hold only means anything while the walk is still running: a stopped
       // walk that reported one would be drawn as recovering rather than ended.
       hold: this.holding,
-      pace: paceOf(this.config)
+      pace: paceOf(this.config),
+      stoppedShort: this.route?.stopsBefore !== undefined
     };
   }
 
@@ -638,8 +639,7 @@ export class Walker implements SessionModule {
     const errand = this.levers.begin(route.steps.at(-1)?.to); // taken back after a fight
     // No step of this walk is on the wire any more, whatever was when it ended.
     this.stepSent = false;
-    // After the refusals, so a walk that was declined does not leave the next
-    // one — which may be a plain one — inheriting this one's silence.
+    // After the refusals, so a declined walk does not pass its silence on to the next.
     this.quiet = quiet;
     this.asked = asked;
     this.resumeAfterLoss = resumeAfterLoss;
@@ -1491,7 +1491,7 @@ export class Walker implements SessionModule {
     this.cancelQueued();
     ahead?.();
     this.walked += this.index;
-    this.route = route;
+    this.route = { ...route, stopsBefore: this.route?.stopsBefore }; // the journey's (todo 157)
     this.index = 0;
     this.carryOn(state);
   }

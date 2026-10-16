@@ -27,6 +27,7 @@ import { occupantAttacksOnSight } from './mobRules';
 import type { Block, BlockType } from './blocks';
 import type { UiLookup } from './i18n';
 import type { WalkProgress } from './walk';
+import { roomId, type RoomId } from './world';
 import type { ConnectionState } from './types';
 
 /**
@@ -143,6 +144,26 @@ export interface Notice {
    * the level the ranking gave it.
    */
   event?: AlertEvent;
+  /**
+   * What this notice is about, where one event covers several things: the
+   * room an arrival reached. A row's quiet time and the desktop gap rest per
+   * thing (`restsOn`), so arriving somewhere else is news (todo 157).
+   */
+  about?: RoomId;
+  /**
+   * An arrival at the room before a destination the player chose to stop
+   * short of (*Stop before entering*, todo 157). It raises while the window
+   * is in front, since it is the walk the player set off to wait at.
+   */
+  stoppedShort?: true;
+}
+
+/**
+ * The part of a rest key that says what a notice is about (`Notice.about`):
+ * empty for a notice about nothing in particular, so its event rests whole.
+ */
+export function restsOn(notice: Notice): string {
+  return notice.about === undefined ? '' : `@${notice.about}`;
 }
 
 /**
@@ -184,14 +205,14 @@ export function raisable(notice: Notice, rules: readonly AlertRule[] = []): Desk
 /**
  * Whether this notice may be raised while the window has the focus.
  *
- * The row's own answer, and nothing else. Its own function because the hook
- * asks it at a different moment from {@link raisable} — the focus is checked
- * before the fresh notices are even walked — and the two questions are
- * genuinely separate.
+ * The row's own answer, except for an arrival the player stopped short to
+ * wait at (`Notice.stoppedShort`), which the row's `notify` alone decides.
+ * Its own function because it is a separate question from {@link raisable},
+ * asked only while the window is in front (`lib/desktopPick.ts`).
  */
 export function raisableWhileFocused(notice: Notice, rules: readonly AlertRule[] = []): boolean {
   const rule = ruleFor(rules, notice);
-  return rule !== null && rule.notify && rule.whileFocused;
+  return rule !== null && rule.notify && (rule.whileFocused || notice.stoppedShort === true);
 }
 
 /**
@@ -973,7 +994,7 @@ export function wanted(
       // Quiet since it last fired (todo 03). Checked after the claim, so a
       // row that is resting still keeps the row below it from claiming --
       // the debounce silences an event, it does not hand it on.
-      if (quiet !== undefined && resting(quiet, rule, notice.at)) continue;
+      if (quiet !== undefined && resting(quiet, rule, notice)) continue;
       kept.push(rule.level === null ? notice : { ...notice, severity: rule.level });
       continue;
     }
@@ -1019,19 +1040,20 @@ function keyOfRule(rule: AlertRule): string {
 /**
  * Whether this row is still resting, and marks it fired when it is not.
  *
- * `at` is the notice's own moment rather than `Date.now()`: the notices of one
+ * The notice's own moment (`at`) is used rather than `Date.now()`: the notices of one
  * flush share a moment, so two occurrences arriving together are one firing
  * and not two — which is the case the debounce exists for.
  */
-function resting(quiet: AlertQuiet, rule: AlertRule, at: number): boolean {
+function resting(quiet: AlertQuiet, rule: AlertRule, notice: Notice): boolean {
   const seconds = Math.max(0, rule.quietSeconds);
   // Off means every occurrence, so nothing is remembered either: a clock
   // nobody reads would still grow an entry per row.
   if (seconds <= 0) return false;
-  const key = keyOfRule(rule);
+  // Per thing as well as per row: an arrival somewhere else is a new fact.
+  const key = `${keyOfRule(rule)}${restsOn(notice)}`;
   const last = quiet.get(key);
-  if (last !== undefined && at - last < seconds * 1000) return true;
-  quiet.set(key, at);
+  if (last !== undefined && notice.at - last < seconds * 1000) return true;
+  quiet.set(key, notice.at);
   return false;
 }
 
@@ -1296,11 +1318,22 @@ export function walkNotices(
     after.destination === null
       ? t('cards.alerts.walk.arrivedSomewhere')
       : t('cards.alerts.walk.arrived', { destination: after.destination });
-  return [arrivalNotice(`walk${at}`, at, text)];
+  const room = after.destinationRoom;
+  return [
+    arrivalNotice(`walk${at}`, at, text, {
+      ...(room === null ? {} : { about: roomId(room.map, room.room) }),
+      ...(after.stoppedShort ? { stoppedShort: true } : {})
+    })
+  ];
 }
 
 /** An arrival, however it was reached: the one shape the Arrived row claims. */
-export function arrivalNotice(id: string, at: number, text: string): Notice {
+export function arrivalNotice(
+  id: string,
+  at: number,
+  text: string,
+  where: Pick<Notice, 'about' | 'stoppedShort'> = {}
+): Notice {
   return {
     id,
     at,
@@ -1308,7 +1341,8 @@ export function arrivalNotice(id: string, at: number, text: string): Notice {
     channel: 'movement',
     desktop: 'arrived',
     event: 'arrived',
-    text
+    text,
+    ...where
   };
 }
 

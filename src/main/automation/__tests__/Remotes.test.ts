@@ -370,7 +370,8 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
         ahead: [],
         reason: null,
         hold: null,
-        pace: 'walking'
+        pace: 'walking',
+        stoppedShort: false
       },
       loop: { ...NO_LOOP, status: 'running', name: 'Rats', stop: 2, stops: 4, laps: 1 },
       stopped: null

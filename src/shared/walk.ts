@@ -132,6 +132,12 @@ export interface WalkProgress {
   hold: WalkHold;
   /** Walking with auto-combat on, running with it off (todo 129), as the switch stands now. */
   pace: Pace;
+  /**
+   * The route ends in the room before a destination the player chose to stop
+   * short of (*Stop before entering*, todo 157), so its arrival is where they
+   * set off to wait. False for an idle walker.
+   */
+  stoppedShort: boolean;
 }
 
 /**
@@ -318,7 +324,8 @@ export const IDLE_WALK: WalkProgress = {
   ahead: [],
   reason: null,
   hold: null,
-  pace: 'walking'
+  pace: 'walking',
+  stoppedShort: false
 };
 
 /**

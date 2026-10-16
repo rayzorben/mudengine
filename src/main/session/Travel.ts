@@ -783,7 +783,11 @@ export class Travel implements SessionModule {
      * to cross is not walked unwatched: the way round is, where there
      * is one (todo 806).
      */
-    const plan = drawn.keptOut === undefined ? drawn : drawn.keptOut.round;
+    const round = drawn.keptOut === undefined ? drawn : drawn.keptOut.round;
+    // Still one short of where the press stopped before (todo 157): `owed` is
+    // the room before already, so the plan only carries the fact on.
+    const plan =
+      route.stopsBefore === undefined ? round : { ...round, stopsBefore: route.stopsBefore };
     if (plan.blocked) return plan.reason ?? t('automation.walk.refusalNoRoute');
     // Said rather than passed over in silence: a lap that ended on the
     // owed room itself is a journey nobody has to walk, and *nothing
@@ -1943,11 +1947,12 @@ export class Travel implements SessionModule {
    * first and left off. A redrawn plan carries nothing; the next press says it
    * again.
    *
-   * `stopBefore` is *Stop before entering* (todo 157): `route` ends in the room
-   * before it. The redraw is planned to `stopBefore` and walked one short, and
+   * `route.stopsBefore` is *Stop before entering* (todo 157): `route` ends in
+   * the room before it. The redraw is planned to it and walked one short, and
    * a plan handed back is whole, for the panel's toggle to trim once.
    */
-  walkPlan(route: Route, run = false, stopBefore: RoomId | null = null): WalkStart {
+  walkPlan(route: Route, run = false): WalkStart {
+    const stopBefore = route.stopsBefore ?? null;
     const unchosen = this.unchosen(route);
     if (unchosen !== null) return { refused: unchosen };
     const here = roomAddress(this.tracker.current.room);

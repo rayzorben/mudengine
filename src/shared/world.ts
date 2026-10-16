@@ -3611,6 +3611,12 @@ export interface Route {
    */
   arrival?: RoomNickname;
   /**
+   * *Stop before entering* (todo 157): the destination this way ends one room
+   * short of, set only by {@link stoppedBefore}. Main redraws a stale plan to
+   * it, and the walk publishes `WalkProgress.stoppedShort` from it.
+   */
+  stopsBefore?: RoomId;
+  /**
    * The chance of coming through alive, each way of walking it (todo 23):
    * `run` with combat off, every lair passed at the walk's pace
    * (`runRiskOf`); `walk` fighting every lair whose monsters attack on
@@ -3871,7 +3877,9 @@ export function newDemands(before: Route, after: Route): string[] {
  * door wants is still read off it.
  */
 export function stoppedBefore(route: Route): Route {
-  return { ...route, steps: route.steps.slice(0, -1) };
+  const last = route.steps.at(-1);
+  if (last === undefined) return route;
+  return { ...route, steps: route.steps.slice(0, -1), stopsBefore: last.to };
 }
 
 /**
@@ -3967,6 +3975,11 @@ export function asRoute(value: unknown): Route | null {
     if (typeof entry.command !== 'string' || entry.command.length === 0) return null;
     if (typeof entry.from !== 'string' || typeof entry.to !== 'string') return null;
     if (typeof entry.name !== 'string') return null;
+  }
+  // The room a *Stop before entering* walk stops short of: absent, or a room.
+  if (candidate.stopsBefore !== undefined) {
+    const before: unknown = candidate.stopsBefore;
+    if (typeof before !== 'string' || asRoomReference(before) === null) return null;
   }
 
   return candidate as Route;

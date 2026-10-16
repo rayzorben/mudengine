@@ -176,6 +176,21 @@ describe('what is worth saying outside the window', () => {
   });
 
   /*
+   * Todo 157: an arrival the player stopped short to wait at raises while the
+   * window is in front, on a row that otherwise waits for it to be behind.
+   * The row's own `notify` still decides.
+   */
+  it('raises a stop-short arrival while the window is in front', () => {
+    const arrival = alert({ desktop: 'arrived', event: 'arrived' });
+    const rules = [rule({ on: 'arrived', notify: true })];
+    expect(raisableWhileFocused(arrival, rules)).toBe(false);
+    expect(raisableWhileFocused({ ...arrival, stoppedShort: true }, rules)).toBe(true);
+    expect(
+      raisableWhileFocused({ ...arrival, stoppedShort: true }, [rule({ on: 'arrived' })])
+    ).toBe(false);
+  });
+
+  /*
    * The one way the notification differs from the card: an unclaimed notice is
    * still *shown* at the level the ranking gave it, and raises nothing. Being
    * interrupted away from the keyboard is asked for, never inherited -- and
@@ -214,6 +229,23 @@ describe('a route reaching where it was going', () => {
    */
   it('says nothing about a walk nobody asked for', () => {
     expect(walkNotices(IDLE_WALK, { ...arrived, asked: false }, 8, t)).toHaveLength(0);
+  });
+
+  /*
+   * Todo 157: a *Stop before entering* walk reaching the room before raises
+   * the same one arrival, marked as the stop the player chose, and about the
+   * room it reached. The plain arrival beside it is the control.
+   */
+  it('raises one arrival for a walk that stopped short, marked so', () => {
+    const at = { ...arrived, destination: 'Tunnel', destinationRoom: { map: 7, room: 1523 } };
+    const plain = walkNotices(IDLE_WALK, at, 9, t);
+    expect(plain).toHaveLength(1);
+    expect(plain[0]!.stoppedShort).toBeUndefined();
+    expect(plain[0]!.about).toBe('7/1523');
+
+    const short = walkNotices(IDLE_WALK, { ...at, stoppedShort: true }, 10, t);
+    expect(short).toHaveLength(1);
+    expect(short[0]!).toMatchObject({ event: 'arrived', stoppedShort: true, about: '7/1523' });
   });
 });
 
@@ -1092,6 +1124,28 @@ describe('the quiet time after a row fires', () => {
     const rules = [rule({ on: 'died' }), rule({ on: 'died', level: 'critical' })];
     expect(wanted({ rules }, [said(0)], quiet)).toHaveLength(1);
     expect(wanted({ rules }, [said(1_000)], quiet)).toEqual([]);
+  });
+
+  /*
+   * Todo 157: an arrival somewhere else is a new fact, so walking to an area
+   * and pressing a stop-short walk soon after is still said. The same room
+   * twice inside the quiet time is the control.
+   */
+  it('rests an arrival per room it reached', () => {
+    const quiet = alertQuiet();
+    const rules = [rule({ on: 'arrived' })];
+    const arrival = (at: number, about: string): Notice => ({
+      id: `a${at}`,
+      at,
+      severity: 'info',
+      channel: 'movement',
+      event: 'arrived',
+      about,
+      text: 'Arrived'
+    });
+    expect(wanted({ rules }, [arrival(0, '7/1500')], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [arrival(5_000, '7/1523')], quiet)).toHaveLength(1);
+    expect(wanted({ rules }, [arrival(9_000, '7/1523')], quiet)).toHaveLength(0);
   });
 
   /* No clock handed in is the old behaviour exactly, which keeps every other

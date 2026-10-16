@@ -2134,7 +2134,7 @@ function registerIpc(): void {
    */
   handle(
     Invoke.walkRoute,
-    (_caller, session: SessionId, payload: unknown, run: unknown, before: unknown): WalkStart => {
+    (_caller, session: SessionId, payload: unknown, run: unknown): WalkStart => {
       const slot = host?.get(session);
       if (!slot) return { refused: t('app.session.notConnected') };
       /*
@@ -2145,9 +2145,6 @@ function registerIpc(): void {
        */
       const route = asRoute(payload);
       if (!route) return { refused: t('app.route.invalidPayload') };
-      // Absent is a walk into the destination; anything else must be a room.
-      const stopBefore = before === undefined || before === null ? [] : asRoomIds([before], 1);
-      if (stopBefore === null) return { refused: t('app.route.invalidPayload') };
       /*
        * Through the manager rather than straight at the walker: a route the
        * player asked for is one of the two moments the supply list is consulted,
@@ -2155,7 +2152,7 @@ function registerIpc(): void {
        * route that can have gone stale while somebody read it, so it goes
        * through `walkPlan`, which redraws it rather than refusing. See both.
        */
-      return slot.manager.walkPlan(route, run === true, stopBefore[0] ?? null);
+      return slot.manager.walkPlan(route, run === true);
     }
   );
   /*
