@@ -337,6 +337,48 @@ describe.runIf(available)('resolveRoom', () => {
   });
 });
 
+/*
+ * Todo 139: a party through the vortex layers. 3/740 Black Wasteland prints
+ * `n, se`, and its `d` is `Text: go vortex`, which the server never prints;
+ * 3/784 Darkwood Forest reaches it only by its room command `go vortex`; seven
+ * other Black Wasteland rooms are exactly `n, se`.
+ */
+describe.runIf(available)('the exits the server prints', () => {
+  const at = (result: { room: WorldRoom | null }): string | null =>
+    result.room && roomId(result.room.map, result.room.room);
+
+  it('places 3/740 one room command from 3/784, with no direction walked', () => {
+    const result = resolveRoom(graph!, {
+      name: 'Black Wasteland',
+      exits: ['n', 'se'],
+      previous: '3/784'
+    });
+    expect(result.method).toBe('neighbour');
+    expect(at(result)).toBe('3/740');
+  });
+
+  it('keeps 3/740 among the rooms the name and printed exits fit, and picks none', () => {
+    const result = resolveRoom(graph!, { name: 'Black Wasteland', exits: ['n', 'se'] });
+    expect(result.room).toBeNull();
+    const ids = result.candidates.map((room) => roomId(room.map, room.room));
+    expect(ids).toContain('3/740');
+    expect(ids).toHaveLength(8);
+  });
+
+  it('places a room with a hidden exit by its exits, the hidden one shut or open', () => {
+    // 1/31 Docks: `s, e` and a hidden `d`, one of six Docks.
+    expect(at(resolveRoom(graph!, { name: 'Docks', exits: ['s', 'e'] }))).toBe('1/31');
+    expect(at(resolveRoom(graph!, { name: 'Docks', exits: ['s', 'e', 'd'] }))).toBe('1/31');
+  });
+
+  it('never fits a printed exit to a text exit', () => {
+    // No Black Wasteland prints `n, se, d`: the name's rooms come back unweighed.
+    const result = resolveRoom(graph!, { name: 'Black Wasteland', exits: ['n', 'se', 'd'] });
+    expect(result.method).toBe('none');
+    expect(result.room).toBeNull();
+  });
+});
+
 describe.runIf(available)('resolveFromCoordinates', () => {
   it('is certain, because the game said so', () => {
     const result = resolveFromCoordinates(graph!, 1, 297);

@@ -712,6 +712,8 @@ notices:
     sharedSpotWorthWent: The "Shared Spot Worth %" setting was removed from {file}. Exp is split
       with everyone hitting a monster when it dies, so a lair with another player in it is rated on
       what it pays.
+    unplacedExitsUnmarked: 'In {file}, the exits design no longer adds "?" to the line: where
+      the client does not know which room it is, the game''s own line is shown instead.'
     shelfStrikesLearned: The shipped shop design in {file} now strikes out a scroll whose spell
       you already have.
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
@@ -1718,7 +1720,6 @@ rewrites:
     exits: Exits
     exitsWithHidden: Exits with hidden
     hidden: Hidden
-    known: Known
   # One sentence per figure, read by the designer's sidebar; keyed by the
   # figure's own name, shared wherever that name is offered.
   # The heading over each list's own figures in the designer's sidebar: what
@@ -1824,9 +1825,7 @@ rewrites:
     exits: The exits as the game printed them, doors included.
     exitsWithHidden: The exits with the world database's hidden exits added in the game's own
       order, each marked hidden.
-    hidden: The hidden exits the game did not print, or ? where the client is unsure which room
-      this is.
-    known: Whether the client knows which room this is, so the hidden exits can be found.
+    hidden: The hidden exits the game did not print.
     fullName: Both names, as the stats show them.
     race: The race, as the stats show it.
     hp: Health, in the health colors.

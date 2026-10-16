@@ -122,12 +122,23 @@ export interface Resolution {
 
 const NONE: Resolution = { room: null, method: 'none', candidates: [], confidence: 0 };
 
-/** Compares two exit sets regardless of order. */
-function sameExits(a: readonly Direction[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  const left = [...a].sort();
-  const right = [...b].sort();
-  return left.every((value, index) => value === right[index]);
+/**
+ * Whether the printed exits fit a room: every printed exit is one the server
+ * can print, and every exit it always prints was printed. `Room.GetObviousExits`
+ * lists an exit when `IsVisible`: a `TextExit` never is, a `HiddenExit` only
+ * while open (`curStep == 0`), every other kind always. An equality over all
+ * the realm's exits never placed 3/740, printed `n, se`, whose `d` is
+ * `Text: go vortex` (todo 139). `cannotBe` (`parse/room.ts`) is the looser
+ * one-sided test a move guard asks.
+ */
+function fitsExits(printed: readonly Direction[], room: WorldRoom): boolean {
+  const said = new Set<string>(printed);
+  const printable = room.exits.filter((exit) => exit.requirement?.kind !== 'text');
+  const can = new Set<string>(printable.map((exit) => exit.direction));
+  return (
+    printed.every((direction) => can.has(direction)) &&
+    printable.every((exit) => exit.requirement?.kind === 'hidden' || said.has(exit.direction))
+  );
 }
 
 /**
@@ -223,11 +234,7 @@ export function narrowByName(graph: ResolveGraph, input: NameInput): Narrowed {
 
 export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolution {
   const { method, rooms } = narrowByName(graph, input);
-  const printed = (room: WorldRoom): boolean =>
-    sameExits(
-      input.exits,
-      room.exits.map((exit) => exit.direction)
-    );
+  const printed = (room: WorldRoom): boolean => fitsExits(input.exits, room);
 
   switch (method) {
     case 'scattered': {
@@ -276,10 +283,8 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
   }
 
   /*
-   * Several rooms share the name, so match on the exit signature. Note this
-   * compares against the *realm data's* exits, which include exits the game
-   * does not list as obvious — hidden ones — so an exact match is evidence but
-   * its absence is not proof.
+   * Several rooms share the name, so match on the exit signature, with the
+   * realm's hidden exits optional (`fitsExits`).
    */
   const bySignature = rooms.filter(printed);
   if (bySignature.length === 1) {
@@ -308,8 +313,9 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
  *
  * Itself as well as its neighbours, because the thing that moved the character
  * may have moved it back, and a room that is genuinely where it already was is
- * the answer rather than a case to fall through on. De-duplicated: two exits
- * of one room can lead to the same place.
+ * the answer rather than a case to fall through on. A room command that moves
+ * (`go vortex` in 3/784 to 3/740) is a step as an exit is, typed by hand or by
+ * the walk. De-duplicated: two exits of one room can lead to the same place.
  */
 function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[] {
   const origin = graph.byId(from);
@@ -328,6 +334,9 @@ function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[
 
   consider(origin);
   for (const exit of origin.exits) consider(graph.get(exit.map, exit.room));
+  for (const command of origin.commands ?? []) {
+    if (command.to !== undefined) consider(graph.byId(command.to));
+  }
   return found;
 }
 
