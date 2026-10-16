@@ -74,6 +74,23 @@ describe('what a room’s spell does to whoever stands in it', () => {
     expect(hazard.unread).toBe(false);
   });
 
+  /*
+   * `failroomitem` checks the room's floor (`TextBlockPart.cs:998`), not the
+   * pack: `rock check` drops the outcropping it looks for itself. A gate on
+   * the room, so the cast behind it is priced and nothing is offered to carry.
+   */
+  it('reads an item on the floor as a gate, not as something to carry', () => {
+    const hazard = resolveHazard(
+      1,
+      spells({
+        1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] },
+        2: { abilities: [[HAZARD_ABILITY.damage, 0]], power: [10, 20] }
+      }),
+      blocks({ 10: 'failroomitem 9:cast 2' })
+    );
+    expect(hazard).toMatchObject({ damage: 15, avoidedBy: [], unread: false });
+  });
+
   // `random` reads its first argument as the block (`TextBlockPart.cs:903`).
   it('follows a random branch to the block behind it', () => {
     const table = spells({

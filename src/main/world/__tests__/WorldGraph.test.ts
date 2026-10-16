@@ -6889,6 +6889,40 @@ describe('what a room does to whoever stands in it prices the way through it', (
   });
 
   /*
+   * `failitem 185`, the manhole, opens the plateau's room script: the server
+   * checks the pack, and nothing puts the town's manhole in one, so the route
+   * offered to collect it first (todo 135).
+   */
+  describe('an item nobody can hold stops nothing', () => {
+    const across = (manhole: Record<string, unknown>) => {
+      const graph = makeWorld(
+        bothWays(3),
+        { items: [manhole], spells: [{ id: 753, n: 'river damage', hz: { d: 15, av: [185] } }] },
+        30
+      );
+      const route = graph.route(roomId(1, 1), roomId(1, 4), {
+        hazard: hazardFor(graph, 100_000, [])
+      });
+      return { hazard: graph.hazardOf(graph.get(1, 2)!), route };
+    };
+
+    it('is no stopper, and the route asks for nothing to carry', () => {
+      const { hazard, route } = across({ id: 185, n: 'manhole', ngt: 1 });
+      expect(hazard).toMatchObject({ damage: 15 });
+      expect(hazard?.avoidedBy).toBeUndefined();
+      // The river is still crossed and still named, with nothing to carry.
+      expect(route.hazards?.map((crossed) => crossed.needs)).toEqual([[]]);
+      expect(itemsWanted(route)).toEqual([]);
+    });
+
+    it('while a not-gettable item a monster drops still is', () => {
+      const { hazard, route } = across({ id: 185, n: 'manhole', ngt: 1, mobs: ['sewer rat'] });
+      expect(hazard?.avoidedBy).toEqual([185]);
+      expect(itemsWanted(route)).toEqual([{ id: 185, name: 'manhole' }]);
+    });
+  });
+
+  /*
    * *There is no other way* used to be asserted off the price of a single
    * search: the router walls a deadly room rather than pruning it, so such a
    * room is an expensive option the cheapest route happened to include. This

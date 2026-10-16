@@ -1439,7 +1439,7 @@ export class Catalogue {
        * *this spell harms nobody standing in the room* — the answer every
        * realm gave until now, and the one this exists to correct.
        */
-      const hazard = readHazard(record['hz']);
+      const hazard = readHazard(record['hz'], (item) => this.holdable(item));
       if (hazard !== null) spell.hazard = hazard;
       const script = asScriptLines(record['st']);
       if (script !== null) spell.script = script;
@@ -2303,13 +2303,16 @@ function readPair(value: unknown): [number, number] | null {
  * realm converted before this existed, which reads as *no hazard* — the answer
  * the client gave for every room until now.
  */
-function readHazard(value: unknown): SpellHazard | null {
+function readHazard(value: unknown, holdable: (item: number) => boolean): SpellHazard | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const hazard: SpellHazard = {};
   const damage = Number(record['d']);
   if (Number.isFinite(damage) && damage > 0) hazard.damage = damage;
-  const avoidedBy = readIdList(record['av']);
+  // Only an item somebody can hold stops it: the server's `failitem` checks the
+  // pack, and nothing puts the manhole (`failitem 185`) in one. See
+  // `mudengine-world` › *What stops a room's spell is an item somebody can hold*.
+  const avoidedBy = readIdList(record['av']).filter(holdable);
   if (avoidedBy.length > 0) hazard.avoidedBy = avoidedBy;
   const avoidedBySpell = readIdList(record['sp']);
   if (avoidedBySpell.length > 0) hazard.avoidedBySpell = avoidedBySpell;

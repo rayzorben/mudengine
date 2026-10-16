@@ -283,12 +283,13 @@ export function resolveHazard(
       walkLine: for (const step of stepsRun(line, use)) {
         switch (step.verb) {
           case 'failitem':
-          case 'failroomitem':
             /*
              * *Stop if they have this.* The raft on the Silver River: the
              * script goes no further, so the cast at the end of it never
              * happens. This is the client's whole answer to "unless of course
-             * you have the item".
+             * you have the item". `failroomitem` is not this: it checks the
+             * room's floor (`TextBlockPart.cs:998`), and `rock check` drops
+             * the outcropping it looks for itself, so it is a gate (todo 135).
              */
             if (step.item <= 0) unread = true;
             else if (!avoidedBy.includes(step.item)) avoidedBy.push(step.item);
