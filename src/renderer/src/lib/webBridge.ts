@@ -275,6 +275,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     questErrand: (session, block) => invoke(Invoke.questErrand, session, block),
     questPlan: (session, block, marked) => invoke(Invoke.questPlan, session, block, marked),
     questRun: (session, block, marked) => invoke(Invoke.questRun, session, block, marked),
+    questReach: (session, marks) => invoke(Invoke.questReach, session, marks),
     gearChoices: (session) => invoke(Invoke.gearChoices, session),
     gearBlessItems: (session) => invoke(Invoke.gearBlessItems, session),
     gearPlan: (session, picks) => invoke(Invoke.gearPlan, session, picks),

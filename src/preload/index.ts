@@ -132,6 +132,7 @@ const api: WireApi = {
   questPlan: (session, block, marked) =>
     ipcRenderer.invoke(Invoke.questPlan, session, block, marked),
   questRun: (session, block, marked) => ipcRenderer.invoke(Invoke.questRun, session, block, marked),
+  questReach: (session, marks) => ipcRenderer.invoke(Invoke.questReach, session, marks),
   gearChoices: (session) => ipcRenderer.invoke(Invoke.gearChoices, session),
   gearBlessItems: (session) => ipcRenderer.invoke(Invoke.gearBlessItems, session),
   gearPlan: (session, picks) => ipcRenderer.invoke(Invoke.gearPlan, session, picks),

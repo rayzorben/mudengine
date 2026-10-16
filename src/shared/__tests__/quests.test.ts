@@ -8,6 +8,8 @@ import {
   planAct,
   planSpan,
   questAhead,
+  soonerAhead,
+  asQuestMarks,
   questBars,
   questGroup,
   questItemsTaken,
@@ -386,6 +388,7 @@ describe('which shelf a quest is on', () => {
  * character was shown Rune under Open beside its level 75 step.
  */
 describe('a step ahead that wants more levels', () => {
+  const NONE_TAKEN: ReadonlySet<number> = new Set();
   const START = { rank: null, held: false };
   const at = (level: number): QuestDoer => ({
     className: 'Paladin',
@@ -405,7 +408,7 @@ describe('a step ahead that wants more levels', () => {
 
   it('puts GoodQuest at level 1 under later, and the character can start it', () => {
     expect(questBars(good, at(1), START)).toEqual([]);
-    expect(questAhead(good, at(1), START)).toEqual({ rank: 4, level: 10 });
+    expect(questAhead(good, at(1), START, NONE_TAKEN)).toEqual({ rank: 4, level: 10 });
   });
 
   it('puts Rune under later at level 30', () => {
@@ -417,23 +420,58 @@ describe('a step ahead that wants more levels', () => {
         asked({ block: 4318, from: 1, to: 2, needs: [{ kind: 'level', min: 75 }] })
       ]
     };
-    const ahead = questAhead(rune, at(30), START);
+    const ahead = questAhead(rune, at(30), START, NONE_TAKEN);
     expect(ahead).toEqual({ rank: 2, level: 75 });
     expect(questGroup(0, 2, questBars(rune, at(30), START), ahead)).toBe('later');
   });
 
   it('leaves a quest open when every step is at or below the character', () => {
-    const ahead = questAhead(good, at(30), START);
+    const ahead = questAhead(good, at(30), START, NONE_TAKEN);
     expect(ahead).toBeNull();
     expect(questGroup(0, 4, questBars(good, at(30), START), ahead)).toBe('open');
   });
 
   it('asks only about the ranks the character has not reached', () => {
-    expect(questAhead(good, at(1), { rank: 4, held: true })).toBeNull();
+    expect(questAhead(good, at(1), { rank: 4, held: true }, NONE_TAKEN)).toBeNull();
+  });
+
+  // GoodQuest as the realm writes it past rank 4: rank 5 hands over the box
+  // rank 6 takes back, rank 6 pays 150k exp, rank 7 wants level 20.
+  const paid = quest([
+    ...good.steps,
+    asked({ block: 5, from: 4, to: 5, gives: [{ kind: 'item', id: 622 }] }),
+    asked({
+      block: 6,
+      from: 5,
+      to: 6,
+      takes: [{ id: 622 }],
+      gives: [{ kind: 'exp', amount: 150000 }]
+    }),
+    asked({ block: 7, from: 6, to: 7, needs: [{ kind: 'level', min: 20 }] })
+  ]);
+
+  it('leaves GoodQuest open at level 13, when rank 6 pays before rank 7 wants level 20', () => {
+    expect(questAhead(paid, at(13), START, new Set([622]))).toBeNull();
+  });
+
+  it('reads an item a later step takes back as no pay, and looks past it', () => {
+    const boxOnly = quest([
+      ...good.steps,
+      asked({ block: 5, from: 4, to: 5, gives: [{ kind: 'item', id: 622 }] }),
+      asked({ block: 7, from: 5, to: 6, takes: [{ id: 622 }], needs: [{ kind: 'level', min: 20 }] })
+    ]);
+    expect(questAhead(boxOnly, at(13), START, new Set([622]))).toEqual({ rank: 6, level: 20 });
+  });
+
+  it('asks the next span once the paying rank is behind the character', () => {
+    expect(questAhead(paid, at(13), { rank: 6, held: true }, new Set([622]))).toBeNull();
+    expect(questBars(paid, at(13), { rank: 6, held: true })).toEqual([
+      { kind: 'level', level: 20 }
+    ]);
   });
 
   it('says nothing for a character whose level is not known', () => {
-    expect(questAhead(good, { ...at(1), level: null }, START)).toBeNull();
+    expect(questAhead(good, { ...at(1), level: null }, START, NONE_TAKEN)).toBeNull();
   });
 });
 
@@ -830,5 +868,28 @@ describe('a step that rolls', () => {
   it('names the roll, and none for a step without one', () => {
     expect(stepRoll(rolling)).toEqual({ stat: 'intellect', value: 30 });
     expect(stepRoll({ ...rolling, needs: [] })).toBeNull();
+  });
+});
+
+describe('the sooner of the scripts’ wait and the way’s', () => {
+  it('takes the earlier rank, and the higher level at one rank', () => {
+    expect(soonerAhead({ rank: 7, level: 20 }, { rank: 11, level: 20 })).toEqual({
+      rank: 7,
+      level: 20
+    });
+    expect(soonerAhead({ rank: 4, level: 10 }, { rank: 4, level: 40 })).toEqual({
+      rank: 4,
+      level: 40
+    });
+    expect(soonerAhead(null, { rank: 2, level: 40 })).toEqual({ rank: 2, level: 40 });
+    expect(soonerAhead(null, null)).toBeNull();
+  });
+});
+
+describe('the card’s marks off the wire', () => {
+  it('keeps whole ranks keyed by counter id and drops the rest', () => {
+    expect(asQuestMarks({ 126: 6, 134: 2.5, x: 1, 211: '3' })).toEqual({ 126: 6 });
+    expect(asQuestMarks(null)).toEqual({});
+    expect(asQuestMarks([1, 2])).toEqual({});
   });
 });

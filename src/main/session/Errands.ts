@@ -454,6 +454,15 @@ export class Errands implements SessionModule {
     return wearerOf(this.tracker.current, this.world ?? null);
   }
 
+  /**
+   * The engine's walk between two rooms for a traveller already made, or null
+   * while worldless: `routeBetween`'s, and the quest book's level walls at a
+   * level the character has not reached (`QuestReach`, todo 132).
+   */
+  legAs(from: RoomId, to: RoomId, traveller: Traveller, options: RouteOptions = {}): Route | null {
+    return this.navigation.leg(from, to, traveller, options);
+  }
+
   /** The plan from where the character stands to a room, keys and fights included, or null while unplaced. */
   planTo(to: RoomId): Plan | null {
     return this.navigation.planTo(to);
@@ -3129,8 +3138,7 @@ export class Errands implements SessionModule {
     kind: WalkKind,
     options: RouteOptions = {}
   ): Route | string {
-    const traveller = this.travellerFor(kind, this.tracker.current);
-    const way = this.navigation.leg(from, to, traveller, options);
+    const way = this.legAs(from, to, this.travellerFor(kind, this.tracker.current), options);
     if (way === null) return t('session.loop.noRealmData');
     // A route planned to be read carries each way's chance for its buttons (todo 23).
     const parts = options.alternatives === true ? this.runParts(this.tracker.current) : null;

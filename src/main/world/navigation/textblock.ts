@@ -509,6 +509,14 @@ export function rollOf(line: TbLine): number | null {
 }
 
 /**
+ * Whether a block is a roll table: every line leads with a threshold, so it is
+ * meant for a `random` and no line of it is a phrase anybody says.
+ */
+export function isRollTable(block: Pick<Textblock, 'lines'>): boolean {
+  return block.lines.length > 0 && block.lines.every((line) => rollOf(line) !== null);
+}
+
+/**
  * Whether a phrase is a step's argument rather than something a person says:
  * one holding a digit (a roll table's lines read as phrases are not 180 things
  * to type), except words ending in a number of their own that are not a verb

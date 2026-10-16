@@ -38,6 +38,8 @@ import type { GearChoices } from './upgrades';
 import type {
   Quest,
   QuestErrand,
+  QuestMarks,
+  QuestReachAnswer,
   QuestPlan,
   QuestRunProgress,
   QuestWatched,
@@ -1031,6 +1033,8 @@ export const Invoke = {
   questErrand: 'world:quest-errand',
   /** The steps still to do to reach one quest step, from where the character stands. */
   questPlan: 'world:quest-plan',
+  /** Per quest, the first rank up to its next reward whose way wants more levels (todo 132). */
+  questReach: 'world:quest-reach',
   /**
    * Run the plan to one step (todo 102): the card's *Run it*. Answers the
    * refusal for the press, or null once it is under way. See
@@ -1571,6 +1575,13 @@ export interface IpcApi {
    * readings exactly as the card does. Null for a block no quest holds.
    */
   questPlan(session: SessionId, block: number, marked: number | null): Promise<QuestPlan | null>;
+  /**
+   * Per quest the next step leaves open, the first rank up to its next reward
+   * whose way the navigation engine finds behind a level wall, keyed by the
+   * quest's counter. `marks` are the ranks the player has said, as for the
+   * plan. Null while no realm is loaded or the character cannot be placed.
+   */
+  questReach(session: SessionId, marks: QuestMarks): Promise<QuestReachAnswer | null>;
   /** Run the plan to one step. The refusal for the press, or null once under way. */
   questRun(session: SessionId, block: number, marked: number | null): Promise<string | null>;
   /** Stop the run, and everything it started. */

@@ -76,10 +76,12 @@ import { itemsInScripts } from './roomScript';
 import type { Gate } from '../../shared/gates';
 import { gateNames, nameGate, type GateNames } from './navigation/stepGates';
 import {
+  isRollTable,
   itemOf,
   keywordTable,
   phraseOf,
   readTextblocks,
+  rollOf,
   type TbLine,
   type Textblock
 } from './navigation/textblock';
@@ -153,6 +155,15 @@ export type Owner =
 export interface Reached {
   owner: Owner | null;
   words: string[];
+  /**
+   * The gates and takes of each line that rolls this block with `random`
+   * (todo 132). A roll table states only what the roll pays: DarkbaneQuest's
+   * class, level 50, alignment and holy item are on the line in block 1809
+   * that rolls 1810, and the step read without them was open to everybody.
+   */
+  rolledBy?: Array<Pick<BlockWay, 'needs' | 'takes'>>;
+  /** Also reached without a roll, so the block's own lines are a route of their own. */
+  plain?: true;
 }
 
 /**
@@ -558,7 +569,13 @@ export function indexQuests(
 
   for (const [id, block] of blocks) {
     const found = reached.get(id);
-    const merged = stepsInBlock(block.lines, counters);
+    // A block also reached without a roll keeps that plain route beside the rolls.
+    const rollers = found?.rolledBy ?? [];
+    const merged = stepsInBlock(
+      block.lines,
+      counters,
+      found?.plain === true && rollers.length > 0 ? [{ needs: [], takes: [] }, ...rollers] : rollers
+    );
     for (const step of merged) {
       const owner = found?.owner ?? null;
       const built: QuestStep = {
@@ -661,7 +678,12 @@ function traverse(
   spells: QuestNaming['spells']
 ): Map<number, Reached> {
   const reached = new Map<number, Reached>();
-  const queue: Array<{ id: number; owner: Reached['owner']; words: string[] }> = [];
+  const queue: Array<{
+    id: number;
+    owner: Reached['owner'];
+    words: string[];
+    roller?: Pick<BlockWay, 'needs' | 'takes'>;
+  }> = [];
 
   const roomOf = (value: string): string | undefined => {
     const at = /Room\s+(\d+)\s*\/\s*(\d+)/i.exec(value);
@@ -675,7 +697,10 @@ function traverse(
     if (who.length === 0) continue;
     const where = maybe('room', roomOf(text(row['Summoned By'])));
     const greet = number(row['GreetTXT']);
-    if (greet !== null && greet > 0) {
+    // A roll table is a `random`'s, and its thresholds are nobody's words: the
+    // orc warlord's greeting is block 1810, which the Ghost of Justice
+    // Darkbane's `return` rolls (todo 132, open question 2).
+    if (greet !== null && greet > 0 && !isRollTable(blocks.get(greet) ?? { lines: [] })) {
       queue.push({ id: greet, owner: { kind: 'npc', who, ...where }, words: [] });
     }
     /*
@@ -721,18 +746,45 @@ function traverse(
     const held = reached.get(next.id);
     if (held !== undefined) {
       for (const word of next.words) if (!held.words.includes(word)) held.words.push(word);
+      if (next.roller !== undefined) (held.rolledBy ??= []).push(next.roller);
+      else held.plain = true;
       continue;
     }
-    reached.set(next.id, { owner: next.owner, words: [...next.words] });
+    reached.set(next.id, {
+      owner: next.owner,
+      words: [...next.words],
+      ...(next.roller === undefined ? { plain: true as const } : { rolledBy: [next.roller] })
+    });
 
+    // What a roll passed holds for every block the rolled one leads on to.
+    const rolled = next.roller === undefined ? {} : { roller: next.roller };
     if (block.linkTo !== null && block.linkTo > 0) {
-      queue.push({ id: block.linkTo, owner: next.owner, words: next.words });
+      queue.push({ id: block.linkTo, owner: next.owner, words: next.words, ...rolled });
     }
     for (const [target, words] of keywordTable(block)) {
       // The words that reach a step are the ones said *at* it, not the ones
       // said to get to the menu above it — so they replace rather than
       // accumulate down the chain.
-      queue.push({ id: target, owner: next.owner, words });
+      queue.push({ id: target, owner: next.owner, words, ...rolled });
+    }
+    // A `random` hands the roll table the words and the owner that reached
+    // this line, and the gates the line passed before it rolled, after the
+    // gates of the roll that reached this block (9889 → 9890 → 9891). A line
+    // may roll several times (spell 466's block 879 rolls ten), each a hop.
+    for (const line of block.lines) {
+      line.steps.forEach((roll, at) => {
+        if (roll.verb !== 'random') return;
+        const { needs, takes } = readQuestScript(line.steps.slice(0, at));
+        queue.push({
+          id: roll.block,
+          owner: next.owner,
+          words: next.words,
+          roller: {
+            needs: [...(next.roller?.needs ?? []), ...needs],
+            takes: [...(next.roller?.takes ?? []), ...takes]
+          }
+        });
+      });
     }
   }
   return reached;
@@ -802,7 +854,11 @@ interface BlockStep extends BlockWay {
  * A block that advances nothing yields nothing, which is the great majority:
  * most blocks are dialogue.
  */
-function stepsInBlock(lines: readonly TbLine[], counters: Set<number>): BlockStep[] {
+function stepsInBlock(
+  lines: readonly TbLine[],
+  counters: Set<number>,
+  rolledBy: ReadonlyArray<Pick<BlockWay, 'needs' | 'takes'>> = []
+): BlockStep[] {
   const merged = new Map<
     string,
     {
@@ -826,18 +882,22 @@ function stepsInBlock(lines: readonly TbLine[], counters: Set<number>): BlockSte
     const from = gate?.atMost ?? gate?.atLeast;
 
     const key = `${grant.id}/${grant.value}/${from ?? ''}`;
-    const route: BlockWay = {
-      needs: [...script.needs],
-      takes: [...script.takes],
-      gives: [...script.gives]
-    };
-    // The line's own phrase, which is what a room's script answers to.
-    const phrase = phraseOf(line) ?? '';
+    // One route per line that rolls this block, each carrying what it passed.
+    const routes: BlockWay[] = (rolledBy.length > 0 ? rolledBy : [{ needs: [], takes: [] }]).map(
+      (roller) => ({
+        needs: [...roller.needs, ...script.needs],
+        takes: [...roller.takes, ...script.takes],
+        gives: [...script.gives]
+      })
+    );
+    // The line's own phrase, which is what a room's script answers to; a
+    // roll's threshold is nobody's.
+    const phrase = rollOf(line) === null ? (phraseOf(line) ?? '') : '';
     const held = merged.get(key);
     if (held === undefined) {
       merged.set(key, {
         counter: grant.id,
-        routes: [route],
+        routes,
         phrases: phrase.length > 0 ? [phrase] : [],
         ...maybe('from', from),
         ...maybe('to', grant.value),
@@ -847,7 +907,9 @@ function stepsInBlock(lines: readonly TbLine[], counters: Set<number>): BlockSte
     }
     // A block that states the identical line twice states one route; two
     // spellings of one act are two phrases reaching one step.
-    if (!held.routes.some((seen) => same(seen, route))) held.routes.push(route);
+    for (const route of routes) {
+      if (!held.routes.some((seen) => same(seen, route))) held.routes.push(route);
+    }
     if (phrase.length > 0 && !held.phrases.includes(phrase)) held.phrases.push(phrase);
     if (script.delay !== undefined && script.delay > (held.delay ?? 0)) held.delay = script.delay;
   }

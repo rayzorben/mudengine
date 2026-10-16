@@ -1006,7 +1006,7 @@ export function questBars(quest: Quest, who: QuestDoer, standing: QuestStanding)
 }
 
 /** One rank still ahead of a character, as the steps the client can name an act for. */
-interface RankAhead {
+export interface RankAhead {
   rank: number;
   acts: QuestStep[];
 }
@@ -1052,26 +1052,96 @@ export interface QuestAhead {
 }
 
 /**
- * The first rank after the next one whose level gate this character is under.
+ * Whether a rank pays this character something kept: `questPays`' rule
+ * (`keptReward`) over the step's own rewards and the reader's own route.
+ */
+function rankPays(
+  quest: Quest,
+  acts: readonly QuestStep[],
+  klass: string | null,
+  taken: ReadonlySet<number>
+): boolean {
+  return acts.some((step) =>
+    [step, ...(step.ways ?? []).filter((way) => ownWay(way, klass))]
+      .flatMap((way) => way.gives)
+      .some((reward) => keptReward(quest, reward, taken))
+  );
+}
+
+/**
+ * The ranks still ahead, up to and including the first that pays something
+ * kept; every rank where none does. What a gate past that rank asks is the
+ * track's to state, never a reason to wait (todo 132). `QuestReach` in main
+ * routes to the same steps, so the script's gates and the way's are asked of
+ * one span.
+ */
+export function ranksToPay(
+  quest: Quest,
+  standing: QuestStanding,
+  klass: string | null,
+  taken: ReadonlySet<number>
+): RankAhead[] {
+  const ahead = ranksAhead(quest, standing);
+  const pays = ahead.findIndex(({ acts }) => rankPays(quest, acts, klass, taken));
+  return pays === -1 ? ahead : ahead.slice(0, pays + 1);
+}
+
+/**
+ * The first rank after the next one, up to the next that pays, whose level
+ * gate this character is under.
  *
  * `questBars` asks about the next step, so a quest whose first rank asks
  * nothing went under Open beside `75` in the level column: Rune and Volums
- * Quest for a level 30 character (todo 38). This is the same question asked
- * of every rank after it, taking the softest route through each, and only the
- * level: a class or race gate further on is the track's to state.
+ * Quest for a level 30 character (todo 38). Asked of every later rank, it
+ * shelved GoodQuest as Later for a level 13 character over rank 7's level 20,
+ * when rank 6 pays 150k exp at level 10 (todo 132). So it stops at the rank
+ * that pays, takes the softest route through each, and asks only the level:
+ * a class or race gate further on is the track's to state.
  */
 export function questAhead(
   quest: Quest,
   who: QuestDoer,
-  standing: QuestStanding
+  standing: QuestStanding,
+  taken: ReadonlySet<number>
 ): QuestAhead | null {
-  for (const { rank, acts } of ranksAhead(quest, standing).slice(1)) {
+  for (const { rank, acts } of ranksToPay(quest, standing, who.className, taken).slice(1)) {
     if (acts.length === 0) continue;
     for (const bar of rankBars(acts, who, quest.id)) {
       if (bar.kind === 'level') return { rank, level: bar.level };
     }
   }
   return null;
+}
+
+/** The ranks the player has said, keyed by each quest's counter id. */
+export type QuestMarks = Readonly<Record<number, number>>;
+
+/** Per quest, the first rank up to its next reward whose way wants more levels (todo 132). */
+export type QuestReachAnswer = Record<number, QuestAhead>;
+
+/** The quest book's ask for those walls: null while nothing can be routed. */
+export type LoadQuestReach = (marks: QuestMarks) => Promise<QuestReachAnswer | null>;
+
+/**
+ * The card's marks off the wire: each key a quest's counter id and each value
+ * a whole rank. Anything else is dropped, never guessed into a rank.
+ */
+export function asQuestMarks(value: unknown): Record<number, number> {
+  const marks: Record<number, number> = {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return marks;
+  for (const [key, rank] of Object.entries(value)) {
+    const id = Number(key);
+    if (Number.isInteger(id) && typeof rank === 'number' && Number.isInteger(rank))
+      marks[id] = rank;
+  }
+  return marks;
+}
+
+/** The sooner of two waits: the script's (`questAhead`) and the way's (`QuestReach`). */
+export function soonerAhead(a: QuestAhead | null, b: QuestAhead | null): QuestAhead | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return b.rank < a.rank || (b.rank === a.rank && b.level > a.level) ? b : a;
 }
 
 /** Whether the sheet has named this character's class: a blank is nobody's. */
@@ -1121,6 +1191,16 @@ export function questItemsTaken(quests: readonly Quest[]): Set<number> {
   return new Set(questItemTakers(quests).keys());
 }
 
+/**
+ * Whether a reward is the character's to keep: an item some step takes back
+ * is not, and nor is the quest's own counter unless the server acts on it.
+ */
+function keptReward(quest: Quest, reward: QuestReward, taken: ReadonlySet<number>): boolean {
+  if (reward.kind === 'item') return !taken.has(reward.id);
+  if (reward.kind === 'ability' && reward.id === quest.id) return SKILL_ABILITIES.has(quest.id);
+  return true;
+}
+
 /** What a quest pays this character: the experience, and everything else. */
 export interface QuestPays {
   exp: number;
@@ -1160,10 +1240,7 @@ export function questPays(
         exp += reward.amount;
         continue;
       }
-      if (reward.kind === 'item' && taken.has(reward.id)) continue;
-      if (reward.kind === 'ability' && reward.id === quest.id && !SKILL_ABILITIES.has(quest.id)) {
-        continue;
-      }
+      if (!keptReward(quest, reward, taken)) continue;
       const key = reward.kind === 'ability' ? `ability/${reward.id}` : JSON.stringify(reward);
       if (seen.has(key)) continue;
       seen.add(key);

@@ -53,6 +53,7 @@ import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
 import { asPlaceKind } from '../shared/places';
+import { asQuestMarks } from '../shared/quests';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import type { ItemRarity } from '../shared/rarity';
 import {
@@ -2654,6 +2655,11 @@ function registerIpc(): void {
     if (typeof block !== 'number' || !Number.isInteger(block)) return null;
     const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
     return host?.get(session)?.manager?.questDesk.plan(block, rank) ?? null;
+  });
+  handle(Invoke.questReach, (_caller, session: SessionId, marks: unknown) => {
+    // Parsed like the plan's mark: a rank the player said, per quest id, and
+    // nothing else reaches the routes it pays for.
+    return host?.get(session)?.manager?.questDesk.reach(asQuestMarks(marks)) ?? null;
   });
   handle(Invoke.questRun, (_caller, session: SessionId, block: unknown, marked: unknown) => {
     if (typeof block !== 'number' || !Number.isInteger(block)) {
