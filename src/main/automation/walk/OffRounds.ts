@@ -16,8 +16,9 @@ import { tuning } from '../../app/tuning';
 import { fightIsRunning, monstersHere, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { MovementConfig } from '../../../shared/config';
+import { stepGoesNow } from '../../../shared/roundTiming';
 import type { RouteStep } from '../../../shared/world';
-import { RoundClock } from '../RoundClock';
+import type { RoundClock } from '../RoundClock';
 import type { StepTimes } from './StepTimes';
 import type { WalkerEvents } from './ports';
 
@@ -35,8 +36,7 @@ export function offRoundHoldMs(
   marginMs: number
 ): number {
   const left = nextRound - now;
-  if (left > 2 * stepMs + marginMs || periodMs - left <= marginMs) return 0;
-  return left;
+  return stepGoesNow(left, periodMs, stepMs, marginMs) ? 0 : left;
 }
 
 /** A fight, or a monster in the room: a wait here is a free round. */
@@ -62,7 +62,6 @@ function untimed(why: Untimed): string {
 }
 
 export class OffRounds {
-  private readonly rounds: RoundClock;
   /** Whether the walk now going is a run. */
   private running = false;
   /** Which of the timing's answers was last said this walk, so each is said once. */
@@ -70,13 +69,13 @@ export class OffRounds {
   /** The round a held step waits for, so a late timer sends it rather than waiting another. */
   private awaited: number | null = null;
 
+  /** `steps` and `rounds` are the walk's own (`WalkTimes`), which the game view's ring reads too. */
   constructor(
     private readonly steps: StepTimes,
-    private readonly events: Pick<WalkerEvents, 'notice' | 'realmSpeed'>,
+    private readonly rounds: RoundClock,
+    private readonly events: Pick<WalkerEvents, 'notice'>,
     private readonly now: () => number = () => Date.now()
-  ) {
-    this.rounds = new RoundClock(() => events.realmSpeed?.() ?? 1);
-  }
+  ) {}
 
   onBlock(block: Block): void {
     this.rounds.onBlock(block);

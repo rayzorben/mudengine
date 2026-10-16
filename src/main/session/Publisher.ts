@@ -14,6 +14,7 @@ import { tuning } from '../app/tuning';
 import type { Attendance } from '../automation/Attendance';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { RuleEngine } from '../automation/RuleEngine';
+import { roundTimingAt, type WalkTimesRead } from '../automation/walk/WalkTimes';
 import type { TelnetClient } from '../net/TelnetClient';
 import type { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
@@ -39,6 +40,8 @@ export interface PublisherParts {
   readonly rules: Pick<RuleEngine, 'firings'>;
   readonly client: Pick<TelnetClient, 'negotiated'>;
   readonly attendance: Pick<Attendance, 'away'>;
+  /** The walk's clocks, for the ring round the room (`roundTimingAt`). */
+  readonly times: WalkTimesRead;
 }
 
 /** What the session that built this answers for it. */
@@ -62,6 +65,7 @@ export class Publisher {
   private readonly rules: PublisherParts['rules'];
   private readonly client: PublisherParts['client'];
   private readonly attendance: PublisherParts['attendance'];
+  private readonly times: PublisherParts['times'];
   private current: ConnectionState = IDLE_CONNECTION;
   /**
    * What was done, or refused, to keep this character alive.
@@ -126,6 +130,7 @@ export class Publisher {
     this.rules = parts.rules;
     this.client = parts.client;
     this.attendance = parts.attendance;
+    this.times = parts.times;
   }
 
   /** The connection as last published. */
@@ -206,7 +211,8 @@ export class Publisher {
       engagements: [...this.engageLog].reverse(),
       extensions: this.session.extensions().views(),
       laid: [...this.session.extensions().laid],
-      away: this.attendance.away
+      away: this.attendance.away,
+      rounds: roundTimingAt(this.times, Date.now())
     };
   }
 

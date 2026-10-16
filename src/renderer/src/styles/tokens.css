@@ -228,6 +228,9 @@
   --game-temple: #d8b4fe;
   --game-tavern: #fb923c;
   --game-trainer: #818cf8;
+  /* The ring round the arena (todo 154): the off-round a step goes in, the rest it waits out. */
+  --game-off-round: var(--game-heal);
+  --game-round: var(--game-hp);
   --game-blur: blur(14px) saturate(1.2);
   --dur-game-dock: 320ms;
   --dur-game-fill: 250ms;

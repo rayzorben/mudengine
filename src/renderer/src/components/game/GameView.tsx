@@ -36,6 +36,7 @@ import { roomsWithFinds } from '@shared/finds';
 import { isFoundWay } from '@shared/memory';
 import type { GameViewState } from '../../hooks/useGameView';
 import { useGameMap } from '../../hooks/useGameMap';
+import { useRoundAnchor } from '../../hooks/useRoundAnchor';
 import type { SessionView } from '../../hooks/useSessionViews';
 import { candidatesOf } from '../../lib/gameArena';
 import {
@@ -108,6 +109,8 @@ function GameView({
   const [detached, setDetached] = useState(false);
   const map = useGameMap(api, session, character.room.map, character.room.number, detached);
   const canvas = useRef<WorldCanvasHandle>(null);
+  const going = character.combat.engaged || view.walk.status === 'walking';
+  const rounds = useRoundAnchor(view.automation.rounds, going);
   const [picked, setPicked] = useState<string | null>(null);
   const [sheet, setSheet] = useState(false);
   const [fired, setFired] = useState<{ key: string; at: number } | null>(null);
@@ -367,6 +370,7 @@ function GameView({
         picked={picked}
         players={players}
         ref={canvas}
+        rounds={rounds}
         session={session}
         stops={stops}
         trail={view.walk.path}

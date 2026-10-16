@@ -1051,6 +1051,8 @@ game:
     hostile: attacks on sight
     healthKnown: health from what the server said
     healthUnknown: health unknown
+    rounds: 'A round every {round}s · a step goes in the first {offRound}s after it'
+    roundsNoSteps: 'A round every {round}s · no step measured yet'
   auto:
     label: Auto
     all: 'On'

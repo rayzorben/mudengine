@@ -83,8 +83,9 @@ import { PartyHands } from './walk/PartyHands';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { RoomCommands, scriptGated } from './walk/RoomCommands';
-import { StepTimes } from './walk/StepTimes';
+import type { StepTimes } from './walk/StepTimes';
 import { OffRounds } from './walk/OffRounds';
+import { walkTimes, type WalkTimesRead } from './walk/WalkTimes';
 import { FoughtPath } from './walk/FoughtPath';
 import { walkStarted } from './walk/startWords';
 
@@ -170,13 +171,12 @@ export class Walker implements SessionModule {
    */
   private askedWhereAt: number | null = null;
   /**
-   * How long this realm takes to answer a move (`walk/StepTimes.ts`). The
-   * nudge deadline is built from it: Paradigm answers a move in a median
-   * 1,239 ms (festus, 2026-09-02, 22 town steps), so a flat second was late on
-   * every step and the bare Enter it sent reprinted every room. Kept per
-   * connection.
+   * Step lengths and the rounds' beat per connection (`walk/WalkTimes.ts`), `times` read-only for
+   * the ring. Paradigm answers a move in a median 1,239 ms: a flat-second nudge reprinted rooms.
    */
-  private readonly stepTimes = new StepTimes();
+  private readonly clocks = walkTimes(() => this.events.realmSpeed?.() ?? 1);
+  readonly times: WalkTimesRead = this.clocks;
+  private readonly stepTimes: StepTimes = this.clocks.steps;
   private readonly fought = new FoughtPath();
   private readonly offRounds: OffRounds; // a run's steps out of an empty room, timed to the rounds
   /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
@@ -253,7 +253,7 @@ export class Walker implements SessionModule {
     this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere, inFlight, this.clock);
     this.hands = new PartyHands(events, inFlight, this.clock);
     this.disarm = new DisarmBeforeStep(queue, events, inFlight, this.clock, this.hands);
-    this.offRounds = new OffRounds(this.stepTimes, events);
+    this.offRounds = new OffRounds(this.stepTimes, this.clocks.rounds, events);
     this.holds = new Holds(
       config,
       events,

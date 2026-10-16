@@ -36,6 +36,7 @@ import {
   type ArenaToken
 } from '../../lib/gameArena';
 import { blowOf } from '../../lib/gameBlows';
+import type { RoundAnchor } from '../../lib/gameRounds';
 import { placeTone } from '../../lib/gameIcons';
 import { t } from '../../lib/i18n';
 import type { GameMap } from '../../hooks/useGameMap';
@@ -46,6 +47,7 @@ import {
   drawExits,
   drawFloor,
   drawTokens,
+  EXIT_RADIUS,
   FLIGHT_MS,
   standings,
   type Disc,
@@ -72,6 +74,7 @@ import {
 import { drawPeek, PEEK_SIZE } from './drawPeek';
 import { drawStairs, type StairSpot } from './drawStairs';
 import FloorStrip from './FloorStrip';
+import RoundRing, { RING_EXTENT, RING_STROKE_PX } from './RoundRing';
 
 export interface WorldCanvasHandle {
   zoom(by: number): void;
@@ -92,6 +95,8 @@ export interface WorldCanvasProps {
   found: readonly FoundWay[];
   players: Scene['players'];
   picked: string | null;
+  /** The room's beat, drawn as the ring round the arena (todo 154); null for no ring. */
+  rounds: RoundAnchor | null;
   onFoe(name: string): void;
   onExit(direction: Direction): void;
   onWalk(cell: GameCell): void;
@@ -140,6 +145,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(
     null
   );
+  const ring = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<Hover>(null);
   const hoverRef = useRef<Hover>(null);
   hoverRef.current = hover;
@@ -277,6 +283,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       }
       const hovered = hoverRef.current?.kind === 'exit' ? hoverRef.current.direction : null;
       exits.current = drawExits(ctx, pal, d, rim, hovered);
+      placeRing(ring.current, d);
       const at = standings(d, list);
       const { live, struck } = drawFlights(ctx, pal, flights.current, at, now);
       flights.current = live;
@@ -314,7 +321,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     if (frame.current === null) frame.current = window.requestAnimationFrame(draw);
   }, [draw]);
 
-  // Anything the picture is made of moved.
+  // Anything the picture is made of moved, or the ring was just shown and needs placing.
   useEffect(redraw, [redraw, props, tokens, arenaExits, hover, peek]);
 
   useEffect(
@@ -521,11 +528,26 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
         onWheel={onWheel}
         ref={canvas}
       />
+      <RoundRing anchor={props.rounds} ref={ring} />
       {hover !== null && hover.kind !== 'stair' && (
         <MapTip hover={hover} map={map} pal={palette.current} />
       )}
     </>
   );
+}
+
+/**
+ * The ring's radius past the arena's rim, px: the compass exits' discs are centred on the rim, so
+ * the ring's stroke sits half its width outside them. Up and down sit further out and are crossed.
+ */
+const RING_GAP_PX = EXIT_RADIUS + RING_STROKE_PX;
+
+function placeRing(element: SVGSVGElement | null, disc: Disc): void {
+  if (element === null) return;
+  const half = (disc.r + RING_GAP_PX) * RING_EXTENT;
+  element.style.width = `${2 * half}px`;
+  element.style.height = `${2 * half}px`;
+  element.style.transform = `translate(${disc.x - half}px, ${disc.y - half}px)`;
 }
 
 /** What the pointer is over, said beside it. */

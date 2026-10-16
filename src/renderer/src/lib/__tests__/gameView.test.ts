@@ -13,6 +13,7 @@ import {
   type GameCommands
 } from '../gameCommands';
 import { dockGeometry, DOCK_MIN_COLUMNS, DOCK_PADDING } from '../gameDock';
+import { anchorOf, intoRound, RESYNC_MS } from '../gameRounds';
 import { feedOf, forYou, unreadFor } from '../gameTalk';
 
 const mob = (name: string, hostile = false): RoomOccupant =>
@@ -350,5 +351,50 @@ describe("the game view's console", () => {
 
   it('gives a window too narrow for 80 columns all it has', () => {
     expect(dockGeometry('left', 600, 800, cell).console.width).toBe(600 - 32);
+  });
+});
+
+describe('the ring round the arena', () => {
+  const timing = { periodMs: 5000, nextInMs: 1200, offRoundMs: 2022 };
+
+  it('puts the round on this window clock', () => {
+    expect(anchorOf(null, timing, 10_000)).toEqual({
+      roundAt: 11_200,
+      periodMs: 5000,
+      offRoundMs: 2022
+    });
+  });
+
+  it('keeps the beat it holds when a push restates it a little late', () => {
+    const held = anchorOf(null, timing, 10_000);
+    // The same beat, told 3 s later and delivered 40 ms late: a round on from 11,200 is 16,200.
+    expect(anchorOf(held, { ...timing, nextInMs: 3200 - 40 }, 13_000)).toBe(held);
+  });
+
+  it('keeps the beat it holds when a refit moves the period by a few ms', () => {
+    const held = anchorOf(null, timing, 10_000);
+    expect(anchorOf(held, { ...timing, periodMs: 5004 }, 10_000)).toBe(held);
+    expect(anchorOf(held, { ...timing, periodMs: 5000 + RESYNC_MS }, 10_000)).not.toBe(held);
+  });
+
+  it('takes a new beat when the round moved', () => {
+    const held = anchorOf(null, timing, 10_000);
+    expect(anchorOf(held, { ...timing, nextInMs: 600 }, 10_000)?.roundAt).toBe(10_600);
+  });
+
+  it('takes the new off-round when a step was timed', () => {
+    const held = anchorOf(null, { ...timing, offRoundMs: null }, 10_000);
+    expect(anchorOf(held, timing, 10_000)?.offRoundMs).toBe(2022);
+  });
+
+  it('is gone when the rounds are no longer known', () => {
+    expect(anchorOf(anchorOf(null, timing, 0), null, 0)).toBeNull();
+  });
+
+  it('counts into the round from 0 at the round', () => {
+    const anchor = anchorOf(null, timing, 10_000)!;
+    expect(intoRound(anchor, 11_200)).toBe(0);
+    expect(intoRound(anchor, 11_000)).toBe(4800);
+    expect(intoRound(anchor, 17_700)).toBe(1500);
   });
 });
