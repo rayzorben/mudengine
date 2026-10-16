@@ -719,6 +719,9 @@ notices:
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
       exits in it, as "south (hidden)". A design for it, off, was added to the designs in {file};
       turn it on under Rewrites.'
+    floorDesigned: 'The "You notice ... here." line can now be redrawn with a mark on each item
+      saying whether this character may use it. A design for it, off, was added to the designs in
+      {file}; turn it on under Rewrites.'
     lightWaitStated: 'When a walk enters a room too dark to see, it now waits for Auto-Light to
       light a torch and look again, instead of stopping because it cannot tell where the character
       is. "tuning.walk.lightWaitMs" was added to your tuning file: how long it waits before giving
@@ -1675,6 +1678,7 @@ rewrites:
     cost: Copper
     afford: Afford
     usable: Usable
+    use: Use
     learned: Learned
     note: Note
     class: Class
@@ -1757,7 +1761,7 @@ rewrites:
     equipped: The list's own note on an item in use, such as (Head).
     worn: Whether it is in use.
     wearable: Whether this character may put it on.
-    reason: Why this character may not put it on, where they may not.
+    reason: Why this character may not put it on or use it, or why that is not known.
     price: The item's base price in copper, from the world data.
     charges: Uses left, where the list gave them.
     action: What you can do with it, as controls two cells wide.
@@ -1838,6 +1842,9 @@ rewrites:
     exitsWithHidden: The exits with the world database's hidden exits added in the game's own
       order, each marked hidden.
     hidden: The hidden exits the game did not print.
+    use: A tick where this character may use it, a cross where not, ? where that is not known.
+    cash: The coins on the floor, such as 13 gold.
+    searched: Set when the line answers a search.
     fullName: Both names, as the stats show them.
     race: The race, as the stats show it.
     hp: Health, in the health colors.
@@ -1865,6 +1872,10 @@ rewrites:
       alignment: wrong alignment
   room:
     hiddenExit: '{exit} (hidden)'
+  floor:
+    notInRealm: The world database has no item by this name
+    sharedName: Several items share this name and they differ in who may use them
+    unreadCharacter: Not known until the stats have shown this character's class, race and level
   party:
     invited: invited
     resting: resting
@@ -2635,6 +2646,8 @@ cards:
       byClass: 'Only {classList} may use this'
       byClassUnnamed: This character's class may not use this
       byLevel: 'Needs level {needed}; this character is {have}'
+      byMaxLevel: 'Only up to level {most}; this character is {have}'
+      byAntiMagic: Magical, and this class may not use magic items
       byRace: 'Only {raceList} may use this'
       byRaceUnnamed: This character's race may not use this
     inUseStatus: Equipped / Worn
@@ -3240,6 +3253,7 @@ cards:
     fixedChip: fixed
     fixedTitle: The game will not let anyone pick this up
     itemLookupTooltip: What the world data says about it
+    usableTitle: This character may use it
     light:
       deadReckoning: guessed room
       remembered: as last seen, before it went dark
@@ -5434,6 +5448,7 @@ settings:
       party: the party
       experience: the experience line
       room: the exits line
+      floor: the items on the floor
     bandsLegend: Vital Colors
     bandsNote: On every line the client draws, a health or mana number is colored by its share of
       maximum; the first band whose minimum it reaches wins. With no bands, the line keeps its own

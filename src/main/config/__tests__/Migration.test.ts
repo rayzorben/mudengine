@@ -1444,7 +1444,8 @@ describe('owning the status line', () => {
         ['shop', false],
         ['party', false],
         ['experience', true],
-        ['room', false]
+        ['room', false],
+        ['floor', false]
       ]);
       expect(rewrites.designs[0]?.['template']).toBe('HP {hp}> ');
       expect(rewrites.designs[1]?.['template']).toBe(
@@ -1479,7 +1480,7 @@ describe('owning the status line', () => {
     expect(notesOf(said, 'notices.migration.rewritesListed')).toEqual([]);
   });
 
-  it('adds the exits design, off, to a list of designs without one, and only once', () => {
+  it('adds the exits and floor designs, off, to a list of designs without them, and only once', () => {
     const designs = (file: string): Record<string, unknown>[] =>
       (parse(fs.readFileSync(file, 'utf8')) as { ui: { rewrites: { designs: [] } } }).ui.rewrites
         .designs;
@@ -1495,15 +1496,26 @@ describe('owning the status line', () => {
     ].join('\n');
     fs.writeFileSync(home.options, withoutExits, 'utf8');
     migrate();
-    expect(designs(home.options).map((design) => design['entity'])).toEqual(['inventory', 'room']);
-    expect(designs(home.options)[1]).toEqual(
-      DEFAULT_CONFIG.ui.rewrites.designs.find((design) => design.entity === 'room')
-    );
+    expect(designs(home.options).map((design) => design['entity'])).toEqual([
+      'inventory',
+      'room',
+      'floor'
+    ]);
+    for (const [at, entity] of [
+      [1, 'room'],
+      [2, 'floor']
+    ] as const) {
+      expect(designs(home.options)[at]).toEqual(
+        DEFAULT_CONFIG.ui.rewrites.designs.find((design) => design.entity === entity)
+      );
+    }
     expect(notesOf(said, 'notices.migration.exitsDesigned')).toHaveLength(1);
+    expect(notesOf(said, 'notices.migration.floorDesigned')).toHaveLength(1);
     said = [];
     migrate();
-    expect(designs(home.options)).toHaveLength(2);
+    expect(designs(home.options)).toHaveLength(3);
     expect(notesOf(said, 'notices.migration.exitsDesigned')).toEqual([]);
+    expect(notesOf(said, 'notices.migration.floorDesigned')).toEqual([]);
   });
 
   it('takes the unplaced-room mark out of every exits design, and only once', () => {

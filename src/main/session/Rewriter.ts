@@ -21,6 +21,7 @@ import { sameItem } from '../../shared/items';
 import { quotedInCopper } from '../../shared/coins';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { equipVerdict, type Wearer } from '../../shared/gear';
+import { canUse } from '../../shared/canUse';
 import { readEffects } from '../../shared/abilities';
 import { scrollLesson, taughtBy, type Learner, type ScrollLesson } from '../../shared/learning';
 import type { WorldSpell } from '../../shared/world';
@@ -45,7 +46,13 @@ import { figuresOf, type StatlineFigures } from '../../shared/statline';
 import type { Drawn } from '../../shared/template';
 import type { TerminalMark } from '../../shared/types';
 import { t } from '../app/i18n';
-import { itemList, parseCarriedEntries, parseCoinEntry, parseKeyEntries } from '../parse/inventory';
+import {
+  floorEntries,
+  itemList,
+  parseCarriedEntries,
+  parseCoinEntry,
+  parseKeyEntries
+} from '../parse/inventory';
 import { cannotBe, parseExit, printedExitWords } from '../parse/room';
 import type { WorldGraph } from '../world/WorldGraph';
 import { learnerIn } from '../world/learning';
@@ -354,6 +361,23 @@ export class Rewriter {
           .filter((exit) => exit.requirement?.kind === 'hidden' && !shown.has(exit.direction))
           .map((exit) => exit.direction);
         return { entity, figures, room: { printed: said, exits, hidden } };
+      }
+      case 'floor': {
+        const world = context.world;
+        const { entries, cash } = floorEntries(g['items']);
+        const items = entries.map((entry) => {
+          const observed = entry.count === undefined ? {} : { count: entry.count };
+          const item = world
+            ? world.buildItemEntity(entry.name, observed)
+            : wireItem(entry.name, observed);
+          return {
+            item,
+            verdict: canUse(item, context.wearer, t),
+            effects: this.effectsOf(item, context)
+          };
+        });
+        const searched = block.type === 'room-hidden-items';
+        return { entity, figures, floor: { items, cash, searched } };
       }
     }
   }

@@ -14,10 +14,10 @@
  * second copy of "which of these can be worn" would have the card offering a
  * button main then refuses.
  */
-import { abilityValues } from './abilities';
+import { abilityValues, carriesAbility, MAGICAL_ABILITY, MAX_LEVEL_ABILITY } from './abilities';
 import { alignmentBand, type Alignment } from './alignment';
 import type { CarriedItem } from './character';
-import { wornCopy, type ItemEntity } from './entities';
+import { wornCopy, type ItemEntity, type ItemUseRules } from './entities';
 import type { UiLookup } from './i18n';
 import {
   ARMOUR_TYPE,
@@ -324,6 +324,8 @@ export type EquipBlock =
   | { kind: 'class'; allowed: readonly number[] }
   | { kind: 'race'; allowed: readonly number[] }
   | { kind: 'level'; needs: number; has: number }
+  | { kind: 'maxLevel'; most: number; has: number }
+  | { kind: 'antiMagic' }
   | { kind: 'armour'; heaviest: number; is: number }
   | { kind: 'weapon'; is: number };
 
@@ -351,6 +353,12 @@ export interface Wearer {
   /** The class row's `WeaponType` and `ArmourType` codes (format 48). */
   weaponType: number | null;
   armourType: number | null;
+  /**
+   * The class row carries `AntiMagic` (a Witchunter): the server refuses it
+   * anything with `Magical` above zero (`ItemType.CanPlayerUseItem`). Null
+   * where the class is unread.
+   */
+  antiMagic: boolean | null;
   /**
    * The realm's class and race tables as `{ id: name }`, so a refusal can be
    * read.
@@ -382,6 +390,7 @@ export const UNKNOWN_WEARER: Wearer = {
   alignment: null,
   weaponType: null,
   armourType: null,
+  antiMagic: null,
   classNames: {},
   raceNames: {}
 };
@@ -478,6 +487,25 @@ function names(list: readonly number[], id: number | null): boolean | null {
   return id === null ? null : list.includes(id);
 }
 
+/** One ability's values summed, as the server reads a row (`ItemType.CanPlayerUseItem`). */
+function sumOf(abilities: ReadonlyArray<readonly [number, number]>, id: number): number {
+  return abilityValues(abilities, id).reduce((total, value) => total + value, 0);
+}
+
+/** `Magical` summing above zero: what a class with `AntiMagic` may not use (`ItemType.cs:260`). */
+export function isMagical(abilities: ReadonlyArray<readonly [number, number]>): boolean {
+  return sumOf(abilities, MAGICAL_ABILITY) > 0;
+}
+
+/**
+ * The highest level the thing may be used at, or null where the row has no
+ * `MaxLevel`. The server refuses whenever the sum is under the level, so a
+ * stated 0 refuses everybody (`ItemType.cs:274`).
+ */
+export function maxLevelOf(abilities: ReadonlyArray<readonly [number, number]>): number | null {
+  return carriesAbility(abilities, MAX_LEVEL_ABILITY) ? sumOf(abilities, MAX_LEVEL_ABILITY) : null;
+}
+
 /**
  * What the realm says stops this character wearing this item — or `null`.
  *
@@ -507,6 +535,16 @@ export function equipBlock(item: EquipRestrictions, wearer: Wearer): EquipBlock 
   const abilities = item.abilities ?? [];
   if (wearer.alignment !== null && alignmentRefuses(abilities, wearer.alignment)) {
     return { kind: 'alignment', has: wearer.alignment };
+  }
+  /*
+   * The server's other two ability gates, read in the same loop: `Magical`
+   * against a class with `AntiMagic`, and `MaxLevel`. Census in todo 146:
+   * 954 of Paradigm's rows are `Magical`, one MajorMUD row has `MaxLevel`.
+   */
+  if (wearer.antiMagic === true && isMagical(abilities)) return { kind: 'antiMagic' };
+  const most = maxLevelOf(abilities);
+  if (most !== null && wearer.level !== null && wearer.level > most) {
+    return { kind: 'maxLevel', most, has: wearer.level };
   }
 
   /*
@@ -629,6 +667,10 @@ export function blockReason(
     }
     case 'level':
       return t('cards.inventory.blocked.byLevel', { needed: blocked.needs, have: blocked.has });
+    case 'maxLevel':
+      return t('cards.inventory.blocked.byMaxLevel', { most: blocked.most, have: blocked.has });
+    case 'antiMagic':
+      return t('cards.inventory.blocked.byAntiMagic');
     case 'armour':
       return t('cards.inventory.blocked.byArmour', {
         heaviest: ARMOUR_TYPE[blocked.heaviest] ?? String(blocked.heaviest),
@@ -660,8 +702,8 @@ export interface EquipVerdict {
   command: string | null;
 }
 
-/** What the realm says of a carried item that `equipBlock` reads. */
-export function restrictionsOf(item: ItemEntity): EquipRestrictions {
+/** What the realm says of a carried item, or of one of its name's rows, that `equipBlock` reads. */
+export function restrictionsOf(item: ItemUseRules): EquipRestrictions {
   return {
     ...(item.realmSlot === undefined ? {} : { slot: item.realmSlot }),
     ...(item.classes === undefined ? {} : { classes: item.classes }),

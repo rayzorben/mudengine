@@ -106,6 +106,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           session={ctx.session}
           forget={ctx.forget}
           inspect={ctx.inspect}
+          loadWearer={ctx.loadWearer}
           learned={view.learned}
           finds={view.finds}
           // Null on a character not shown: the route panel belongs to the one

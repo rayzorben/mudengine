@@ -14,9 +14,10 @@ import type { Denomination } from './character';
 import { DENOMINATIONS } from './character';
 import { copperSpread } from './coins';
 import { loadPercent } from './load';
-import { entityNumber, type ItemEntity } from './entities';
+import { entityNumber, type CurrencyEntity, type ItemEntity } from './entities';
 import type { ReadEffect } from './abilities';
 import type { EquipVerdict } from './gear';
+import type { UseVerdict } from './canUse';
 import type { LearnRefusal, ScrollLesson } from './learning';
 import type { UiLookup } from './i18n';
 import { countedLabel, ITEM_KIND_WORD } from './items';
@@ -45,7 +46,8 @@ export const REWRITE_ENTITIES = [
   'shop',
   'party',
   'experience',
-  'room'
+  'room',
+  'floor'
 ] as const;
 export type RewriteEntity = (typeof REWRITE_ENTITIES)[number];
 
@@ -225,6 +227,17 @@ const SOLD_FIELDS: readonly FieldSpec[] = [
   ...REALM_ITEM_FIELDS
 ];
 
+/** One thing on the floor: the listing's name and count, the mark, and the realm's row. */
+const FLOOR_FIELDS: readonly FieldSpec[] = [
+  text('item'),
+  text('name'),
+  number('count'),
+  text('use'),
+  text('reason'),
+  number('price'),
+  ...REALM_ITEM_FIELDS
+];
+
 export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
   statline: { entity: 'statline', blocks: [], oneLine: true, fields: [], self: 'top' },
   inventory: {
@@ -316,6 +329,14 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
     oneLine: false,
     self: 'me',
     fields: [record('room', [text('exits'), text('exitsWithHidden'), text('hidden')])]
+  },
+  floor: {
+    entity: 'floor',
+    // `room-hidden-items` is the same sentence answering a bare `search`.
+    blocks: ['room-items', 'room-hidden-items'],
+    oneLine: false,
+    self: 'me',
+    fields: [list('items', FLOOR_FIELDS, 'item'), number('count'), text('cash'), flag('searched')]
   }
 };
 
@@ -441,6 +462,20 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     entity: 'room',
     enabled: false,
     template: '{green}Obvious exits: {room.exitsWithHidden}{/green}'
+  },
+  {
+    // The table, one item per row, puts the reason beside the cross (user, 2026-10-15).
+    name: 'Floor',
+    entity: 'floor',
+    enabled: false,
+    template: [
+      '{cyan}{if searched}Your search revealed:{else}You notice:{/if}{/cyan} {brightYellow}{cash}{/brightYellow}',
+      '{table}',
+      '{for item in items}',
+      '{item.use} {cyan}{item}{/cyan}  {dim}{item.price}{/dim}  {yellow}{item.reason}{/yellow}',
+      '{/for}',
+      '{/table}'
+    ].join('\n')
   }
 ];
 
@@ -596,6 +631,22 @@ export interface RoomFacts {
   hidden: readonly Direction[];
 }
 
+/** One thing on the floor with the verdict main reached about using it. */
+export interface FloorRow {
+  item: ItemEntity;
+  verdict: UseVerdict;
+  /** What the realm says it does, read by main. See `InventoryRow.effects`. */
+  effects: ReadEffects;
+}
+
+export interface FloorFacts {
+  items: readonly FloorRow[];
+  /** The listing's coins, or null where it named none. */
+  cash: CurrencyEntity | null;
+  /** The answer to a bare `search`, rather than what the room showed. */
+  searched: boolean;
+}
+
 /** What main gathered for one drawing, by entity; the character's figures come with every one. */
 export type RewriteFacts =
   | { entity: 'statline'; figures: StatlineFigures }
@@ -604,7 +655,8 @@ export type RewriteFacts =
   | { entity: 'shop'; figures: StatlineFigures; rows: readonly ShopRow[] }
   | { entity: 'party'; figures: StatlineFigures; rows: readonly PartyRow[] }
   | { entity: 'experience'; figures: StatlineFigures; gain: ExperienceFacts }
-  | { entity: 'room'; figures: StatlineFigures; room: RoomFacts };
+  | { entity: 'room'; figures: StatlineFigures; room: RoomFacts }
+  | { entity: 'floor'; figures: StatlineFigures; floor: FloorFacts };
 
 /* ───────────────────────────────────────────────────────── the scopes */
 
@@ -866,8 +918,11 @@ export function whoScope(rows: readonly WhoRow[]): Row {
   };
 }
 
+/** The console's one-cell marks: a tick, a cross, and a `?` for unknown. */
+const MARK = { tick: '✓', cross: '✗', unknown: '?' } as const;
+
 /** The Afford column's marks (todo 770): a tick or a cross, one cell each. */
-const AFFORD_MARK = { yes: '✓', no: '✗' } as const;
+const AFFORD_MARK = { yes: MARK.tick, no: MARK.cross } as const;
 
 /** The Afford cell: a tick within the purse, a red cross past it, blank where either is unknown. */
 function affordCell(short: boolean | null): Figure {
@@ -1023,6 +1078,45 @@ export function roomScope(room: RoomFacts, t: UiLookup): Row {
   };
 }
 
+/** The floor mark, one cell like the shop's Afford: a tick, a red cross, a dim `?`; the Room card draws the same. */
+export const USE_MARK = { usable: MARK.tick, blocked: MARK.cross, unknown: MARK.unknown } as const;
+
+function useCell(verdict: UseVerdict): Figure {
+  switch (verdict.state) {
+    case 'usable':
+      return { text: USE_MARK.usable, colour: 'brightGreen' };
+    case 'blocked':
+      return { text: USE_MARK.blocked, colour: 'brightRed' };
+    case 'unknown':
+      return { text: USE_MARK.unknown, colour: 'brightBlack' };
+    default: {
+      const never: never = verdict.state;
+      return never;
+    }
+  }
+}
+
+export function floorScope(floor: FloorFacts, t: UiLookup): Row {
+  const counted: Partial<Record<Denomination, number>> = {};
+  for (const which of DENOMINATIONS) {
+    if (floor.cash !== null && floor.cash[which] > 0) counted[which] = floor.cash[which];
+  }
+  return {
+    items: floor.items.map(({ item, verdict, effects }) => ({
+      item: countedLabel(item),
+      name: item.name,
+      count: item.count ?? 1,
+      use: useCell(verdict),
+      reason: verdict.label,
+      price: fact(item.price),
+      ...realmFields(item, item.realmSlot ?? null, effects)
+    })),
+    count: floor.items.length,
+    cash: floor.cash === null ? '' : wealthLong(floor.cash.totalCopper, t, counted),
+    searched: floor.searched
+  };
+}
+
 /** Everything a design for this entity may name, the character's figures included. */
 export function scopeOf(facts: RewriteFacts, bands: VitalBands, t: UiLookup): Scope {
   const me = characterScope(facts.figures, bands, t);
@@ -1041,6 +1135,8 @@ export function scopeOf(facts: RewriteFacts, bands: VitalBands, t: UiLookup): Sc
       return { ...experienceScope(facts.gain), me };
     case 'room':
       return { ...roomScope(facts.room, t), me };
+    case 'floor':
+      return { ...floorScope(facts.floor, t), me };
   }
 }
 

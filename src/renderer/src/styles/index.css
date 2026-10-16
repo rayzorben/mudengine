@@ -13250,6 +13250,27 @@ tr:hover .row-action.worn,
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Whether this character may use a thing on the floor (todo 146): the same
+ * three marks the console's Floor rewrite draws, a tick, a cross and a `?`.
+ * Tonal, as condition reporting is everywhere in the chrome.
+ */
+.room-card .floor .use-mark {
+  font-family: var(--font-mono);
+}
+
+.room-card .floor .use-mark[data-use='usable'] {
+  color: color-mix(in srgb, var(--ok) 80%, var(--text-lo-quiet));
+}
+
+.room-card .floor .use-mark[data-use='blocked'] {
+  color: color-mix(in srgb, var(--danger) 80%, var(--text-lo-quiet));
+}
+
+.room-card .floor .use-mark[data-use='unknown'] {
+  color: var(--text-lo-quiet);
+}
+
 /* ======================================================= console marks */
 
 /*

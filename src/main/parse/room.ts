@@ -30,7 +30,6 @@ import {
   type ExitEntity,
   type ItemEntity
 } from '../../shared/entities';
-import { countedName } from '../../shared/items';
 import type { Discovery } from '../../shared/memory';
 import { classifyOccupant, type MobFacts } from '../../shared/mobs';
 import { playerEntity, playerKey, type PlayerRegistry } from '../../shared/players';
@@ -43,7 +42,7 @@ import { namedStoppers } from '../world/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
 import { RoomDraft } from './draft';
 import { isPortalClaim, MOVE_COMMANDS, type Expectations } from './expectations';
-import { itemList, list, parseCoinEntry } from './inventory';
+import { floorEntries, list } from './inventory';
 import { leavesRoom } from './departs';
 import { ladderInput, promisedRoom, spendsPromise } from './nameLine';
 import { confirmedBy } from './lastRoom';
@@ -1421,17 +1420,10 @@ export class RoomTracker {
     items: ItemEntity[];
     cash: CurrencyEntity | null;
   } {
-    const items: ItemEntity[] = [];
-    let cash: CurrencyEntity | null = null;
-    for (const entry of itemList(text)) {
-      const coin = parseCoinEntry(entry);
-      if (coin !== null) {
-        cash = addCoins(cash, coin.denomination, coin.count);
-        continue;
-      }
-      const { count, name } = countedName(entry);
-      items.push(this.sources.itemEntity(name, count > 1 ? { count } : {}));
-    }
+    const { entries, cash } = floorEntries(text);
+    const items = entries.map((entry) =>
+      this.sources.itemEntity(entry.name, entry.count === undefined ? {} : { count: entry.count })
+    );
     return { items, cash };
   }
 }

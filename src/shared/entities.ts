@@ -164,6 +164,12 @@ export interface ItemEntity {
    * `WorldGraph.itemPlacedHere`). Every figure below is that row's then.
    */
   row?: { id: number };
+  /**
+   * Who may use each row sharing the name, where the rows differ in it and no
+   * room has settled which one this is (`row`). Absent where they agree: the
+   * figures below then answer for all of them. Todo 146.
+   */
+  variants?: readonly ItemUseRules[];
   /** Base cost in copper, before a shop's markup. */
   price?: number;
   encumbrance?: number;
@@ -200,6 +206,12 @@ export interface ItemEntity {
   shops?: string[];
   droppedBy?: string[];
 }
+
+/** What one realm row says about who may use the thing (`ItemType.CanPlayerUseItem`). */
+export type ItemUseRules = Pick<
+  ItemEntity,
+  'realmSlot' | 'classes' | 'races' | 'minLevel' | 'kind' | 'weapon' | 'armour' | 'abilities'
+>;
 
 /**
  * A monster, wherever it is: in the room, in a fight, or in a lair's roster.

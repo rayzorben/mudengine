@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
 
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
@@ -8,7 +8,8 @@ import type { Facet } from './ListTools';
 import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { entityNumber } from '@shared/entities';
-import { equipVerdict, UNKNOWN_WEARER, type GearAction, type Wearer } from '@shared/gear';
+import { equipVerdict, type GearAction, type Wearer } from '@shared/gear';
+import { useWearer } from '../hooks/useWearer';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
@@ -283,23 +284,9 @@ export function InventoryBody({
 }: InventoryBodyProps) {
   const { items, keys, wealth, coins, encumbrance, encumbranceMax } = character.inventory;
   const stash = stashRooms(character.stash);
-  /**
-   * Who the realm thinks this character is.
-   *
-   * `UNKNOWN_WEARER` until asked, and unknown never refuses — a pack greyed
-   * out because a stat sheet has not printed yet would hide wearable kit
-   * behind a reason the client cannot state.
-   */
-  const [wearer, setWearer] = useState<Wearer>(UNKNOWN_WEARER);
+  // Unknown never refuses: a pack greyed out before the stats print would hide wearable kit.
+  const wearer = useWearer(character, loadWearer);
 
-  /*
-   * Asked again when the *names* change, not when the listing object does.
-   *
-   * The tracker rebuilds `inventory.items` on every equip and every slot
-   * change, and none of those change what an item weighs. Keying on the joined
-   * names is what keeps a fight — where items go in and out of use — from
-   * asking the realm the same question once a round.
-   */
   /*
    * What the realm knows about each item is **on the item**.
    *
@@ -311,36 +298,6 @@ export function InventoryBody({
    * appearing a tick later.
    */
 
-  /*
-   * Asked when the *facts that decide it* move, not on every character push.
-   *
-   * Race, class and level arrive together off the stat sheet and change a
-   * handful of times in a session; the character object is replaced on every
-   * status line. Keying on the three words is what keeps this from asking main
-   * the same question several times a second in a fight.
-   */
-  const identity = `${character.race ?? ''}\u0000${character.className ?? ''}\u0000${character.progress.level ?? ''}\u0000${character.progress.strength ?? ''}`;
-  useEffect(() => {
-    if (!loadWearer) {
-      setWearer(UNKNOWN_WEARER);
-      return;
-    }
-    let live = true;
-    void loadWearer()
-      .then((found) => {
-        if (live) setWearer(found);
-      })
-      .catch((error: unknown) => {
-        // Unknown, loudly — and unknown is the answer that refuses nothing.
-        if (live) {
-          console.error('wearer lookup failed', error);
-          setWearer(UNKNOWN_WEARER);
-        }
-      });
-    return () => {
-      live = false;
-    };
-  }, [loadWearer, identity]);
   const seen = items.length > 0 || keys.length > 0 || wealth !== null || encumbrance !== null;
 
   // Computed once per render: the copy guard, the copy line and the readout's

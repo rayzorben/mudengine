@@ -295,6 +295,7 @@ describe('who the realm lets wear a thing', () => {
     alignment: null,
     weaponType: null,
     armourType: null,
+    antiMagic: false,
     classNames: { 3: 'Paladin', 4: 'Cleric', 5: 'Priest', 6: 'Missionary', 15: 'Mystic' },
     raceNames: { 4: 'Halfling', 5: 'Elf' }
   };
@@ -643,6 +644,51 @@ describe('what else the server checks before an item goes on', () => {
     expect(equipBlock(blade, { ...mage, alignment: 'Criminal' })?.kind).toBe('alignment');
     // FIEND's band (210–1000) straddles 250: unknown, so not refused.
     expect(equipBlock(blade, { ...mage, alignment: 'FIEND' })).toBeNull();
+  });
+
+  it('refuses anything Magical to a class with AntiMagic, and nothing while the class is unread', () => {
+    // `scroll of illuminate` carries `Magical 1`; the Witchunter's class row `AntiMagic`.
+    const scroll: EquipRestrictions = { abilities: [[28, 1]] };
+    expect(equipBlock(scroll, { ...mage, antiMagic: true })).toEqual({ kind: 'antiMagic' });
+    expect(equipBlock(scroll, { ...mage, antiMagic: false })).toBeNull();
+    expect(equipBlock(scroll, { ...mage, antiMagic: null })).toBeNull();
+  });
+
+  it('refuses past MaxLevel, at it allows', () => {
+    const staff: EquipRestrictions = { slot: 'Weapon Hand', abilities: [[136, 20]] };
+    expect(equipBlock(staff, mage)).toBeNull();
+    expect(equipBlock(staff, { ...mage, level: 21 })).toEqual({
+      kind: 'maxLevel',
+      most: 20,
+      has: 21
+    });
+  });
+
+  // The server reads each ability's sum and refuses under the level, so a stated 0 refuses everybody.
+  it('reads MaxLevel and Magical as the sum of the row, as the server does', () => {
+    expect(equipBlock({ abilities: [[136, 0]] }, mage)?.kind).toBe('maxLevel');
+    expect(
+      equipBlock(
+        {
+          abilities: [
+            [136, 10],
+            [136, 15]
+          ]
+        },
+        { ...mage, level: 21 }
+      )
+    ).toBeNull();
+    expect(
+      equipBlock(
+        {
+          abilities: [
+            [28, 1],
+            [28, -1]
+          ]
+        },
+        { ...mage, antiMagic: true }
+      )
+    ).toBeNull();
   });
 
   it('refuses nothing on alignment while the roster has not said', () => {

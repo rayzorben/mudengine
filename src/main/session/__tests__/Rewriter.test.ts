@@ -12,6 +12,7 @@ import {
   roomId,
   type Direction,
   type WorldClass,
+  type WorldItem,
   type WorldRoom,
   type WorldSpell
 } from '../../../shared/world';
@@ -212,5 +213,61 @@ describe('a scroll on the shelf', () => {
     expect(draw(shelf('healing scroll'), { ...cleric, spellbook: null })).toEqual([
       'healing scroll|?|'
     ]);
+  });
+});
+
+describe('the floor', () => {
+  /** Paradigm's `small glass flask`: Druid and Bard only, no slot. A warrior read off `st`. */
+  const FLASK: WorldItem = { id: 828, name: 'small glass flask', classes: [7, 8], kind: 'drink' };
+  const world: RewriteWorld = {
+    ...WORLD,
+    buildItemEntity: (name, observed) =>
+      name === FLASK.name
+        ? {
+            ...wireItem(name, observed),
+            source: 'mdb',
+            id: FLASK.id,
+            ids: [FLASK.id],
+            classes: FLASK.classes
+          }
+        : wireItem(name, observed)
+  };
+  const warrior = { ...UNKNOWN_WEARER, classId: 1, raceId: 1, level: 10, antiMagic: false };
+
+  function floor(type: 'room-items' | 'room-hidden-items', items: string): string | null {
+    const rewriter = new Rewriter();
+    rewriter.configure({
+      ...DEFAULT_CONFIG.ui.rewrites,
+      designs: [
+        {
+          name: '',
+          entity: 'floor',
+          enabled: true,
+          template: '{if searched}S {/if}{cash}|{for item in items}{item.use}{item};{/for}'
+        }
+      ]
+    });
+    const block: Block = {
+      seq: 1,
+      at: AT,
+      type,
+      domain: 'room',
+      groups: { items },
+      text: `You notice ${items} here.`,
+      terminator: 'newline',
+      confidence: 1
+    };
+    const chunk = rewriter.render(block, { state: EMPTY_CHARACTER, world, wearer: warrior });
+    return chunk === null ? null : stripAnsi(chunk.text).trimEnd();
+  }
+
+  it('marks what the class rules out, and leaves a name the realm lacks unknown', () => {
+    expect(floor('room-items', '13 gold crowns, small glass flask, 2 bone charm')).toBe(
+      `13 ${t('rewrites.coins.gold')}|✗small glass flask;?2 bone charm;`
+    );
+  });
+
+  it('draws a search answer with the same design, flagged as searched', () => {
+    expect(floor('room-hidden-items', 'small glass flask')).toBe('S |✗small glass flask;');
   });
 });

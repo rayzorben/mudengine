@@ -6,6 +6,7 @@
  */
 import { ownAlignment, type CharacterState } from '../../shared/character';
 import type { Wearer } from '../../shared/gear';
+import { ANTI_MAGIC_ABILITY, carriesAbility } from '../../shared/abilities';
 import type { WorldGraph } from './WorldGraph';
 
 /** What of the realm the join reads. */
@@ -25,6 +26,7 @@ export function wearerOf(
     alignment: ownAlignment(state),
     weaponType: row?.weaponType ?? null,
     armourType: row?.armourType ?? null,
+    antiMagic: row ? carriesAbility(row.abilities, ANTI_MAGIC_ABILITY) : null,
     classNames: world?.namedClasses() ?? {},
     raceNames: world?.namedRaces() ?? {}
   };

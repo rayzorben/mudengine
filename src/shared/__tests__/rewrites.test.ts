@@ -865,6 +865,11 @@ describe('the catalogue and the dictionary', () => {
         entity: 'room',
         figures: FIGURES,
         room: { printed: 'north', exits: [{ word: 'north', direction: 'n' }], hidden: [] }
+      },
+      floor: {
+        entity: 'floor',
+        figures: FIGURES,
+        floor: { items: [], cash: null, searched: false }
       }
     };
     for (const shippedDesign of DEFAULT_REWRITES) {

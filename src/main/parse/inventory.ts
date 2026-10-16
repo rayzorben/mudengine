@@ -27,8 +27,9 @@
  */
 import type { CarriedItem, CharacterState, Coins, Denomination } from '../../shared/character';
 import { coinNamed, DENOMINATIONS } from '../../shared/character';
-import { wireItem, type ItemEntity } from '../../shared/entities';
+import { wireItem, type CurrencyEntity, type ItemEntity } from '../../shared/entities';
 import { bareName, countedName, sameItem } from '../../shared/items';
+import { addCoins } from '../../shared/coins';
 
 /**
  * The entries of a listing of **things**, which this server separates with
@@ -544,4 +545,34 @@ function lessOf(floor: readonly ItemEntity[], item: string, count: number): Item
   if (left <= 0) items.splice(index, 1);
   else items[index] = { ...there, count: left };
   return items;
+}
+
+/** One thing a floor listing names: the bare name and how many, absent meaning one. */
+export interface FloorEntry {
+  name: string;
+  count?: number;
+}
+
+/**
+ * A `You notice ... here.` listing split into its things and its coins: the
+ * one reading the room's state (`room.ts`) and the console's rewrite of the
+ * line (`Rewriter`) both make. The server prints a count with the bare name
+ * (`16 orange potion`, `ItemStack.GetItemStackName`).
+ */
+export function floorEntries(text: string | undefined): {
+  entries: FloorEntry[];
+  cash: CurrencyEntity | null;
+} {
+  const entries: FloorEntry[] = [];
+  let cash: CurrencyEntity | null = null;
+  for (const entry of itemList(text)) {
+    const coin = parseCoinEntry(entry);
+    if (coin !== null) {
+      cash = addCoins(cash, coin.denomination, coin.count);
+      continue;
+    }
+    const { count, name } = countedName(entry);
+    entries.push(count > 1 ? { name, count } : { name });
+  }
+  return { entries, cash };
 }
