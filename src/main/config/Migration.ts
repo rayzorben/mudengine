@@ -313,6 +313,7 @@ function migrateAll(options: MigrationOptions): void {
   theSightingNamesItsMap(home, note);
   theDebugTraceGrew(home, note);
   theShelfStrikesLearned(home, note);
+  theSharedSpotWorthWent(home, note);
 }
 
 /**
@@ -792,6 +793,26 @@ function theShelfStrikesLearned(home: Home, note: (message: string) => void): vo
       return moved;
     });
     if (moved) note(t('notices.migration.shelfStrikesLearned', { file }));
+  }
+}
+
+/**
+ * *Shared Spot Worth %* is retired (todo 126, 2026-10-15): experience divides
+ * among everybody hitting the monster when it dies, so another player costs
+ * only the kills they hit, and what a lair pays with them in it is measured.
+ * Taken out of every file that states it, an emptied `hunting:` with it, since
+ * nothing reads it any more and no screen shows it.
+ */
+function theSharedSpotWorthWent(home: Home, note: (message: string) => void): void {
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const hunting = document.getIn(HUNTING_BLOCK, true);
+      if (!isMap(hunting) || !hunting.has('contestedShare')) return false;
+      hunting.delete('contestedShare');
+      if (hunting.items.length === 0) document.deleteIn(HUNTING_BLOCK);
+      note(t('notices.migration.sharedSpotWorthWent', { file }));
+      return true;
+    });
   }
 }
 
@@ -4983,7 +5004,6 @@ function statedTheCarryChoices(
     ...promoted(HUNTING_BLOCK, hunting, 'cashPerHour', [
       'moveMargin',
       'cashExpShare',
-      'contestedShare',
       'betterSpotRadius',
       'maxDamageShare',
       'trivialLevelMargin'
@@ -5488,7 +5508,6 @@ const PROMOTIONS: readonly Promotion[] = [
     [
       'moveMargin',
       'cashExpShare',
-      'contestedShare',
       'betterSpotRadius',
       'maxDamageShare',
       'trivialLevelMargin'
@@ -8283,6 +8302,10 @@ function theTuningBlockGainedKeys(
      */
     dropKey('world', 'keyFetchTrips');
     dropKey('world', 'approachRooms');
+    // Retired with the shared lair's discount (todo 126, 2026-10-15): another player costs only
+    // the kills they hit, which the measured rate already holds.
+    dropKey('hunting', 'contestedForgetMs');
+    dropKey('hunting', 'contestedShare');
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);

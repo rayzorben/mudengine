@@ -43,14 +43,6 @@ function rows(): ReadonlyArray<ChoiceRow<keyof HuntChoices>> {
       share: true
     },
     {
-      field: 'contestedShare',
-      name: 'hunt-contested',
-      setting: 'automation.hunting.contestedShare',
-      label: t('settings.hunting.contestedShare'),
-      hint: t('settings.hunting.contestedShareHint'),
-      share: true
-    },
-    {
       field: 'betterSpotRadius',
       name: 'hunt-better-radius',
       setting: 'automation.hunting.betterSpotRadius',

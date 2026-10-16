@@ -932,18 +932,7 @@ const TUNING_DEFAULTS = {
      * is left out until its fight is run, which a settings change starts
      * again from the top: 18 s for Soul on Paradigm, from its planner's run log (2026-10-01).
      */
-    simulatingMs: 5000,
-    /**
-     * How long a lair stays priced as somebody else's after they were seen in
-     * it.
-     *
-     * A sighting is a fact with a shelf life: people leave. Without a clock a
-     * stranger walking through once would price that lair at half for the rest
-     * of the session, which is a lair the client never goes back to on the
-     * strength of a passer-by. Long enough that somebody working a lair is
-     * still working it, short enough that a passer-by is forgotten.
-     */
-    contestedForgetMs: 1_800_000
+    simulatingMs: 5000
   },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {

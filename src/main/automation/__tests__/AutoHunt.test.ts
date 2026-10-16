@@ -350,8 +350,8 @@ describe('going hunting on its own', () => {
   }
 
   /*
-   * Experience divides among everybody who hit the kill, so a stranger halves
-   * what the lair pays. Said once, not once per status line.
+   * Experience divides among everybody hitting the monster when it dies, so a
+   * stranger is said, once, not once per status line.
    */
   it('says so once when somebody else is working the lair', () => {
     const auto = hunting();

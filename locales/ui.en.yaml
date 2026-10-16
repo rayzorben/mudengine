@@ -704,6 +704,9 @@ notices:
       those realms starts without them: {records}.'
     themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
       now uses {to}, the nearest one left.'
+    sharedSpotWorthWent: The "Shared Spot Worth %" setting was removed from {file}. Exp is split
+      with everyone hitting a monster when it dies, so a lair with another player in it is rated on
+      what it pays.
     shelfStrikesLearned: The shipped shop design in {file} now strikes out a scroll whose spell
       you already have.
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
@@ -4589,9 +4592,6 @@ settings:
     cashExpShare: Cash Spot Exp Floor %
     cashExpShareHint: Under a cash floor, a spot's copper counts only while its exp an hour is at
       least this share of the best spot's.
-    contestedShare: Shared Spot Worth %
-    contestedShareHint: What a spot is worth while another player is working it, since exp divides
-      among everyone who hit the kill.
     betterSpotRadius: Better Spot Within (steps)
     betterSpotRadiusHint: How far a loop that stopped for earning too little exp looks for a better
       spot to name.
@@ -6016,8 +6016,8 @@ automation:
     becauseRate: 'the best lair within reach pays about {rate} an hour'
     becauseFilled: the lair waits on its regen, and lairs nearby fill the wait
     becauseSwitch: automatic hunting is on
-    company: '{who} is hunting this lair too, so it pays half as much. {loopName} is rated that way
-      from now on.'
+    company: '{who} is hunting this lair too. Exp is split with everyone hitting a monster when it
+      dies, so what {loopName} pays is measured again from now.'
     going: 'Going hunting: {room}, {steps} steps away, about {rate} exp an hour.'
     goingFar: 'Going hunting: {room}, {steps} steps away, which is a long trip, for about {rate} exp
       an hour.'
