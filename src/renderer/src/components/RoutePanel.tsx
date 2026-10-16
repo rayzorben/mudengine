@@ -26,6 +26,7 @@ import {
   lairsAlong,
   needsAlong,
   roomId,
+  stoppedBefore,
   trapsAlong,
   type Direction,
   type RoomId,
@@ -160,8 +161,9 @@ export interface RoutePanelProps {
    * again** — the character moved between the drawing and the press, and the
    * way from where it now stands comes back to be read and pressed again.
    * `run` is *Run it*: auto-combat turned off first, and left off (todo 06).
+   * `stopBefore` is the destination of a *Stop before entering* press.
    */
-  onWalk(route: Route, run: boolean): Promise<WalkStart>;
+  onWalk(route: Route, run: boolean, stopBefore: RoomId | null): Promise<WalkStart>;
   /**
    * Collects what the way needs first, then walks it (todo 07).
    *
@@ -731,14 +733,21 @@ export default function RoutePanel({
        * route. Only reachable this way: every other caller passes a prefix,
        * which is not `shown`.
        */
-      const trimmed = stopping && plan === shown ? plan.steps.slice(0, -1) : null;
-      if (trimmed !== null && trimmed.length === 0) {
+      const trimmed = stopping && plan === shown ? stoppedBefore(plan) : null;
+      if (trimmed !== null && trimmed.steps.length === 0) {
         setRefused(t('cards.route.alreadyBefore', { roomName: plan.steps[0]!.name }));
         return;
       }
+      /*
+       * The room it stops before goes with the press, so a plan main redraws
+       * from where the character has wandered to is drawn to the destination
+       * and comes back whole: the toggle, still on, trims it once on the next
+       * press. Drawn to the room before, it stopped two short (todo 157).
+       */
+      const stopBefore = trimmed === null ? null : plan.steps[plan.steps.length - 1]!.to;
       // And the kept-out choice taken off: it has been made, and main walks
       // no route still carrying one (todo 806).
-      const walked: Route = chosenWay(trimmed === null ? plan : { ...plan, steps: trimmed });
+      const walked: Route = chosenWay(trimmed ?? plan);
       /*
        * The errand answers in the older shape: it walks to a shop and plans the
        * way on from there itself, so a plan handed to it cannot be stale and
@@ -748,7 +757,7 @@ export default function RoutePanel({
       // it ends in, so the ticks and the press compose as they do for a walk.
       const started: Promise<WalkStart> =
         needed.length === 0
-          ? onWalk(walked, run)
+          ? onWalk(walked, run, stopBefore)
           : onCollectThenWalk(needed, walked, run).then((reason) =>
               reason === null ? { started: true } : { refused: reason }
             );

@@ -35,7 +35,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
-import type { Route } from '../../../shared/world';
+import { roomId, stoppedBefore, type Route } from '../../../shared/world';
 import type { ExtensionSessionHost } from '../../extensions/api';
 import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
@@ -7506,6 +7506,39 @@ describe('starting and stopping a movement', () => {
     const redrawn = (answer as { replanned: { route: Route } }).replanned.route;
     expect(manager!.walkPlan(redrawn)).toEqual({ started: true });
     expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 10 });
+  });
+
+  /*
+   * Todo 157: *Stop before entering* hands in the way one short and the room
+   * it stops before. A redraw is drawn to that room, and handed back whole for
+   * the panel's toggle to trim once; drawn to the room before, the next press
+   * trimmed it again and stopped two short.
+   */
+  it('redraws a stop-short plan to its destination and hands it back whole', async () => {
+    const { socket, world } = await atTheNorthEnd();
+    const short = stoppedBefore(world.route('1/40', '1/30'));
+    await standIn(socket, 20);
+
+    const answer = manager!.walkPlan(short, false, roomId(1, 30));
+    expect('replanned' in answer).toBe(true);
+    const redrawn = (answer as { replanned: { route: Route } }).replanned.route;
+    expect(redrawn.steps.at(-1)?.to).toBe('1/30');
+    expect(manager!.walker.progress.status).toBe('idle');
+
+    // The panel's next press: trimmed once, and walked to Room 31.
+    expect(manager!.walkPlan(stoppedBefore(redrawn), false, roomId(1, 30))).toEqual({
+      started: true
+    });
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 9 });
+  });
+
+  it('walks a stop-short plan redrawn quietly to the room before', async () => {
+    const { socket, world } = await atTheNorthEnd();
+    await standIn(socket, 35);
+    const short = stoppedBefore(world.route('1/40', '1/30'));
+    expect(manager!.walkPlan(short, false, roomId(1, 30))).toEqual({ started: true });
+    // Room 35 to Room 31: four steps, not the five into Room 30.
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 4 });
   });
 
   /*
