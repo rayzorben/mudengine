@@ -1017,6 +1017,11 @@ export const RULES: Rule[] = [
    * captures/, 18 rows of this shape in messages.csv).
    */
   { type: 'user-takes-damage', pattern: /^You are (?<kind>[^"]+?) for (?<damage>\d+) damage!$/ },
+  // `Your life is drained for 6 damage!` (captures/030, 092, 159), once read as a blow by `Your`.
+  {
+    type: 'user-takes-damage',
+    pattern: /^Your life is (?<kind>drained) for (?<damage>\d+) damage!$/
+  },
   /*
    * Who hit whom, for a blow that landed. Three frames and one anchor.
    *
@@ -1077,6 +1082,23 @@ export const RULES: Rule[] = [
     type: 'mob-hits',
     pattern: /^(?<line>[a-z][^"]*?\b(?:you|your body)\b[^"]*?) for (?<damage>\d+) damage!/,
     named: true
+  },
+  {
+    /*
+     * A drain on somebody named first: `HellSpawn's life is drained for 8
+     * damage!` (captures/082, 157, 159), `Bloody Executioner's life is drained
+     * for 4 damage!` (082), and the energy drain `HellSpawn is drained of 40
+     * life!` (159, 055). The catch-all read the possessive as the attacker and
+     * the realm's message table the second as a sentence; a member's bar
+     * takes either off (todo 142).
+     */
+    type: 'user-hits',
+    pattern:
+      /^(?<target>[A-Z][\w'-]*(?: [A-Z][\w'-]*)*)'s life is drained for (?<damage>\d+) damage!$/
+  },
+  {
+    type: 'user-hits',
+    pattern: /^(?<target>[A-Z][\w'-]*) is drained of (?<damage>\d+) life!$/
   },
   {
     /*

@@ -1283,6 +1283,12 @@ tuning:
     # listing still prints them [Invited].
     inviteAgainMs: 5000
 
+    # How soon after a party member's @wait or @heal sends par another may
+    # send it again, while the party list shows their bar fuller than they
+    # say it is. MegaMUD re-reads the party list every 15s in a fight
+    # (ParPeriod).
+    parOnWordMs: 15000
+
     # The longest line the server keeps: GreaterMUD appends a typed character
     # only while the line is under 255 (TGSModule.cs:299). A @loop or @goto
     # answer listing several matches is cut to fit, on the whole /<name> {...}

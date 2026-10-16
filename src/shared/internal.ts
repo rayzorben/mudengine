@@ -1701,6 +1701,12 @@ const TUNING_DEFAULTS = {
      */
     inviteAgainMs: 5_000,
     /**
+     * How soon after a member's `@wait` or `@heal` sent `par` another may send
+     * it again (todo 142). MegaMUD's own party clock (`ParPeriod=15`) is how
+     * often it re-reads the party list in a fight.
+     */
+    parOnWordMs: 15_000,
+    /**
      * The longest line the server keeps: its `TGSModule` appends a typed
      * character only while the line is under 255 and drops the rest
      * (GreaterMUD source, `TGSModule.cs:299`). A `@loop` or `@goto` answer

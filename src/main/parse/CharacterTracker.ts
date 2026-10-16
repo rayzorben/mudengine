@@ -122,7 +122,6 @@ import {
   withLeft,
   withNoGang,
   withoutPlayer,
-  withPartyListing,
   withRank,
   withResting,
   withRoster
@@ -1608,7 +1607,7 @@ export class CharacterTracker {
       /* The party roster: a listing, and the one view of another character's health. */
       case 'party-roster':
       case 'party-alone':
-        return withPartyListing(s, rows, block.type === 'party-alone');
+        return this.company.partyListing(s, rows, block.type === 'party-alone');
 
       /* What is said: read here only for another client answering `@health` or `@stats`. */
       case 'conversation-telepath':

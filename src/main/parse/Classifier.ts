@@ -58,6 +58,11 @@ const CAPITALISED_FIRST_WORD = /^([A-Z][\w'-]*)\s/;
 const ARTICLE = /^(?:The|A|An)$/;
 const GRAMMAR_TARGET = /^(?:critically )?\w+ (?:the )?(?<target>[A-Za-z][\w' -]*)$/;
 const POSSESSIVE_LED = /^(?:a|an|your|his|her|its|their) /i;
+/**
+ * The weapon after the victim: `The mummy smashes Towser with its arm`,
+ * `The greater hellion kicks Steel with a clawed foot` (captures/).
+ */
+const WEAPON_CLAUSE = / with (?:its|his|her|their|a|an) [^]+$/;
 const CONNECTIVE = / (?:at|with|upon|on|into|through|from|and) /i;
 
 /** SGR foreground codes present in a raw line, in order of appearance. */
@@ -958,7 +963,10 @@ export class Classifier {
         rest = middle.slice(word[0].length);
       }
     }
-    const named = this.names ? nameAtEnd(rest, this.names) : null;
+    const armed = rest.replace(WEAPON_CLAUSE, '');
+    const named = this.names
+      ? (nameAtEnd(rest, this.names) ?? (armed === rest ? null : nameAtEnd(armed, this.names)))
+      : null;
     if (named !== null) groups['target'] = named;
     else if (rule.nameFallback) {
       const byGrammar = targetByGrammar(rest);

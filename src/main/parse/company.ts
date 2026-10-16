@@ -16,6 +16,7 @@ import {
   allOffline,
   NO_PLAYERS,
   observe,
+  recordOf,
   toFacts,
   type PlayerFacts,
   type PlayerRegistry,
@@ -31,6 +32,7 @@ import {
   withGangLeft,
   withGangListing,
   withLookedAt,
+  withPartyListing,
   withRemoteVitals,
   type PresenceFold
 } from './presence';
@@ -353,6 +355,20 @@ export class Company {
     return (
       this.fold(withRemoteVitals(s, this.registry, name, message, at)) ??
       withMemberSheet(s, name, message)
+    );
+  }
+
+  /** The party listing (`withPartyListing`), a member with no figures seeded from the registry. */
+  partyListing(
+    s: CharacterState,
+    rows: Array<Record<string, string>> | undefined,
+    alone: boolean
+  ): CharacterState | null {
+    return withPartyListing(
+      s,
+      rows,
+      alone,
+      (name) => recordOf(this.registry, name)?.vitals ?? null
     );
   }
 

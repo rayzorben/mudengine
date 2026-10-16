@@ -105,14 +105,16 @@ describe('reading another client’s reply', () => {
       hp: 600,
       hpMax: 600,
       mana: null,
-      manaMax: null
+      manaMax: null,
+      resting: false
     });
     expect(parseRemoteReply('{HP=4434/4434,MA=516/516}')).toEqual({
       kind: 'vitals',
       hp: 4434,
       hpMax: 4434,
       mana: 516,
-      manaMax: 516
+      manaMax: 516,
+      resting: false
     });
     expect(parseRemoteReply('{ok}')).toEqual({ kind: 'ok' });
   });
@@ -124,8 +126,29 @@ describe('reading another client’s reply', () => {
       hp: 62,
       hpMax: 62,
       mana: 4,
-      manaMax: 10
+      manaMax: 10,
+      resting: false
     });
+  });
+
+  /* Brackle's MegaMUD 2.1, 2026-10-14 (todo 142); the other words are its format strings. */
+  it('keeps the figures when MegaMUD appends what the character is doing', () => {
+    expect(parseRemoteReply('{HP=105/693,KAI=3/51, Resting}')).toEqual({
+      kind: 'vitals',
+      hp: 105,
+      hpMax: 693,
+      mana: 3,
+      manaMax: 51,
+      resting: true
+    });
+    expect(parseRemoteReply('{HP=50/600, Poisoned, Cant move}')).toMatchObject({
+      hp: 50,
+      hpMax: 600,
+      resting: false
+    });
+    expect(parseRemoteReply('{HP=50/600, Resting, Poisoned}')).toMatchObject({ resting: true });
+    expect(parseRemoteReply('{HP=50/600, Poisoned, Resting}')).toMatchObject({ resting: true });
+    expect(parseRemoteReply('{HP=50/600, Dancing}')).toBeNull();
   });
 
   it('reads nothing out of ordinary chat', () => {
@@ -161,7 +184,8 @@ describe('answering with this character’s own numbers', () => {
       hp: 62,
       hpMax: 62,
       mana: 4,
-      manaMax: 10
+      manaMax: 10,
+      resting: false
     });
   });
 });

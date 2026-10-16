@@ -646,6 +646,8 @@ export type RemoteReply =
       hpMax: number;
       mana: number | null;
       manaMax: number | null;
+      /** MegaMUD's `, Resting` after the figures; false says only that it was not printed. */
+      resting: boolean;
     }
   | { kind: 'ok' }
   /**
@@ -678,8 +680,14 @@ export type RemoteReply =
   /** `{STR=60,…,CHA=40,LVL=12,TRA=40,PIC=35}`: a member's `@stats` (`formatStats`). */
   | { kind: 'stats'; sheet: MemberSheet };
 
+/**
+ * The words MegaMUD 2.1 may append to its `@health` answer, each after `, `
+ * (its format strings, `megamud.exe`; `{HP=105/693,KAI=3/51, Resting}` on the
+ * wire, Brackle 2026-10-14). Only `Resting` is read; the rest are let through
+ * so the figures before them are kept.
+ */
 const VITALS =
-  /^\{\s*(?:HP|H)\s*=\s*(?<hp>\d+)\s*\/\s*(?<hpMax>\d+)(?:\s*,\s*(?:MA|KAI|M|K)\s*=\s*(?<mana>\d+)\s*\/\s*(?<manaMax>\d+))?\s*\}$/i;
+  /^\{\s*(?:HP|H)\s*=\s*(?<hp>\d+)\s*\/\s*(?<hpMax>\d+)(?:\s*,\s*(?:MA|KAI|M|K)\s*=\s*(?<mana>\d+)\s*\/\s*(?<manaMax>\d+))?(?<states>(?:\s*,\s*(?:Resting|Lost|Blind|Confused|Poisoned|Diseased|Losing HPs|Cant move|Cant attack))*)\s*\}$/i;
 
 /**
  * `{1/2150 Town Gates}`, and `{1/2150}` for a room nothing has named.
@@ -750,7 +758,9 @@ export function parseRemoteReply(message: string): RemoteReply | null {
     hp: Number(match.groups['hp']),
     hpMax: Number(match.groups['hpMax']),
     mana: mana === undefined ? null : Number(mana),
-    manaMax: manaMax === undefined ? null : Number(manaMax)
+    manaMax: manaMax === undefined ? null : Number(manaMax),
+    // The tail as matched: a group inside the repetition would keep only its last word.
+    resting: /(?:^|,)\s*Resting\b/i.test(match.groups['states'] ?? '')
   };
 }
 

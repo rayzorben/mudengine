@@ -14,7 +14,7 @@ import { parseExit } from '../room';
 import { Classifier } from '../Classifier';
 import { actsOf, applyAct, readLine } from '../lineActs';
 import type { StreamLine } from '../../../shared/types';
-import type { AbilitySums } from '../../../shared/character';
+import type { AbilitySums, PartyMember } from '../../../shared/character';
 import {
   learn,
   learnSlot,
@@ -3256,6 +3256,35 @@ describe('the party this character travels with', () => {
     feed('Brackle telepaths: {HP=105/693,KAI=3/51}');
     const brackle = tracker.current.party.members[1];
     expect(brackle?.vitals).toMatchObject({ hp: 105, hpMax: 693, mana: 3, manaMax: 51 });
+  });
+
+  /*
+   * Todo 142, the same evening: Brackle's MegaMUD appends `, Resting`, and
+   * after he rejoined his row had no figures while the registry still held
+   * his maximum, so the listing's share is laid over it.
+   */
+  it("reads a resting member's answer, and seeds a rejoin from his last maximum", () => {
+    const { tracker, feed } = feeder();
+    const listing = (health: string): void => {
+      feed('The following people are in your travel party:');
+      feed('  Festus Ival                   (Paladin)    [M: 63%] [H:100%]  - Frontrank');
+      feed(`  Brackle                       (Mystic)     [M:  5%] [H:${health}%]  - Frontrank`);
+      feed('[HP=516/516,MA=62/98]:');
+    };
+    feed('[HP=516/516,MA=62/98]:');
+    listing('100');
+    feed('Brackle telepaths: {HP=105/693,KAI=3/51, Resting}');
+    let brackle = tracker.current.party.members[1];
+    expect(brackle?.vitals).toMatchObject({ hp: 105, hpMax: 693 });
+    expect(brackle?.activity).toEqual({ state: 'resting' });
+    feed('Brackle is no longer following you.');
+    feed('Brackle started to follow you.');
+    const rejoined = (): PartyMember | undefined =>
+      tracker.current.party.members.find((m) => m.name === 'Brackle');
+    expect(rejoined()?.vitals).toBeNull();
+    listing(' 31');
+    brackle = rejoined();
+    expect(brackle?.vitals).toMatchObject({ hp: 215, hpMax: 693 });
   });
 
   /* A letter nothing has established keeps its letter and claims nothing. */

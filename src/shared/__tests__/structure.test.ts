@@ -72,7 +72,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).
-  'src/main/parse/CharacterTracker.ts': 2520,
+  // Lowered by the party listing, folded by `Company` with the registry it seeds from (todo 142).
+  'src/main/parse/CharacterTracker.ts': 2519,
   // Lowered by handing the settings screen its api whole (todo 03).
   // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
   // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).
