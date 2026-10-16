@@ -8,14 +8,16 @@
  *
  * Four rules hold it to what it is for. It raises only what one of the
  * player's own alert rows claimed and marked `notify`; it raises nothing while
- * the window has the focus unless that row says otherwise, because whatever it
- * would say is already on screen and a notification for that is why people
- * turn notifications off; it raises
+ * the window has the focus unless that row says otherwise (or the arrival is
+ * one the player stopped short to wait at), because whatever it would say is
+ * already on screen and a notification for that is why people turn
+ * notifications off; it raises
  * **one** per character per flush, the newest, because four monsters arriving
  * is one thing that happened and four notifications is a stack somebody has to
  * dismiss; and each kind then rests for `tuning.desktopAlertGapMs` before it
- * may speak again about that character, because being attacked is a fresh line
- * several times a round.
+ * may speak again about that character and that thing (`Notice.about`),
+ * because being attacked is a fresh line several times a round. An arrival the
+ * gap or a newer alert held back is said in the console (`lib/desktopPick.ts`).
  *
  * Reading the log rather than the raising: notices are folded into each
  * character's view inside a state updater, which React may run twice, and a
@@ -26,17 +28,11 @@
 import { useEffect, useRef } from 'react';
 
 import { t } from '../lib/i18n';
+import { pickDesktopAlert, type DesktopHold } from '../lib/desktopPick';
 import { freshNotices } from '../lib/freshNotices';
 import { tuning } from '../lib/tuning';
 import type { AutomationSnapshot } from '@shared/automation';
-import {
-  heldTillAway,
-  raisable,
-  raisableWhileFocused,
-  type AlertRule,
-  type DesktopAlert,
-  type Notice
-} from '@shared/notifications';
+import type { AlertRule, Notice } from '@shared/notifications';
 import type { SessionId } from '@shared/ipc';
 
 /**
@@ -64,8 +60,29 @@ export interface DesktopAlertsOptions {
   rules: readonly AlertRule[];
   /** Bring this window forward, then show the character the notice was about. */
   onOpen(session: SessionId): void;
-  /** Somewhere to say that nothing can be raised at all. Called at most once. */
-  onRefused(message: string): void;
+  /**
+   * Somewhere to say a thing in the console: that nothing can be raised at all
+   * (no character, at most once), or in that character's console why an
+   * arrival was not raised (todo 157).
+   */
+  say(message: string, session?: SessionId): void;
+}
+
+/** The sentence for each rule that holds a notification back. */
+function heldSentence(why: DesktopHold, text: string): string {
+  switch (why) {
+    case 'gap':
+      return t('notices.desktopAlerts.held.gap', {
+        text,
+        seconds: Math.round(tuning().desktopAlertGapMs / 1000)
+      });
+    case 'newer':
+      return t('notices.desktopAlerts.held.newer', { text });
+    default: {
+      const never: never = why;
+      return never;
+    }
+  }
 }
 
 /**
@@ -87,12 +104,7 @@ function outOfSight(): boolean {
   return document.visibilityState !== 'visible' || !document.hasFocus();
 }
 
-export function useDesktopAlerts({
-  subjects,
-  rules,
-  onOpen,
-  onRefused
-}: DesktopAlertsOptions): void {
+export function useDesktopAlerts({ subjects, rules, onOpen, say }: DesktopAlertsOptions): void {
   /* The newest notice already accounted for, per character. */
   const seen = useRef(new Map<SessionId, string>());
   /* When each kind last spoke for each character, keyed `session:kind`. */
@@ -122,7 +134,7 @@ export function useDesktopAlerts({
       // setting that does nothing.
       if (!said.current) {
         said.current = true;
-        onRefused(t('notices.desktopAlerts.unavailable'));
+        say(t('notices.desktopAlerts.unavailable'));
       }
       return;
     }
@@ -134,7 +146,7 @@ export function useDesktopAlerts({
       standing.current = 'refused';
       if (!said.current) {
         said.current = true;
-        onRefused(t('notices.desktopAlerts.refused'));
+        say(t('notices.desktopAlerts.refused'));
       }
       return;
     }
@@ -143,9 +155,9 @@ export function useDesktopAlerts({
       standing.current = answer === 'granted' ? 'ready' : 'refused';
       if (answer === 'granted' || said.current) return;
       said.current = true;
-      onRefused(t('notices.desktopAlerts.refused'));
+      say(t('notices.desktopAlerts.refused'));
     });
-  }, [anyNotifies, onRefused]);
+  }, [anyNotifies, say]);
 
   useEffect(() => {
     const marks = seen.current;
@@ -155,42 +167,38 @@ export function useDesktopAlerts({
       if (fresh === null) continue;
       if (standing.current !== 'ready') continue;
       /*
-       * *Not while I am looking*, unless a row the player wrote says otherwise
-       * for one of these notices. Checked against the fresh ones rather than as
-       * a flat gate, because a single row asking to be told while the window is
-       * in front must not be silenced on behalf of all the rest.
-       */
-      const focusOk =
-        outOfSight() || subject.notices.some((notice) => raisableWhileFocused(notice, rules));
-      if (!focusOk) continue;
-
-      /*
        * Only what arrived since the last look, newest first, and only the
-       * first of those whose kind is past its floor. The rest are in the card,
-       * which is where a list belongs.
+       * first of those that no rule holds (`pickDesktopAlert`). The rest are
+       * in the card, which is where a list belongs.
        *
-       * The floor is per **kind**, not per character: being attacked is a
-       * fresh line several times a round, and without one an evening away
-       * leaves a notification centre with hundreds of entries in it — but a
-       * floor on the whole character would let a burst of blows swallow the
-       * notice that the character then died.
+       * The floor is per **kind** and the thing it is about, not per
+       * character: being attacked is a fresh line several times a round, and
+       * without one an evening away leaves a notification centre with
+       * hundreds of entries in it, but a floor on the whole character would
+       * let a burst of blows swallow the notice that the character then died.
        */
       const now = Date.now();
-      const gap = tuning().desktopAlertGapMs;
-      let raise: Notice | undefined;
-      let kind: DesktopAlert | undefined;
-      for (const notice of [...fresh].reverse()) {
-        const named = raisable(notice, rules);
-        // And the focus rule for *this* notice, not for the batch.
-        if (named !== null && !outOfSight() && !raisableWhileFocused(notice, rules)) continue;
-        if (named === null || heldTillAway(notice, rules, subject.automation.away)) continue;
-        if (now - (rested.current.get(`${id}:${named}`) ?? -Infinity) < gap) continue;
-        raise = notice;
-        kind = named;
-        break;
+      const pick = pickDesktopAlert(fresh, rules, {
+        inFront: !outOfSight(),
+        away: subject.automation.away,
+        now,
+        gapMs: tuning().desktopAlertGapMs,
+        spokeAt: (rests) => rested.current.get(`${id}:${rests}`)
+      });
+      /*
+       * An arrival the gap or a newer alert held back is said in that
+       * character's console, with the rule that held it, so a walk that ended
+       * without a notification is not a mystery (todo 157). Arrivals only:
+       * the gap holding a blow every round is its whole job, and a line per
+       * blow is the noise it stops. The window in front is the row's own
+       * `whileFocused`, so it is not said.
+       */
+      for (const { notice, kind, why } of pick.held) {
+        if (kind === 'arrived') say(heldSentence(why, notice.text), id);
       }
-      if (raise === undefined || kind === undefined) continue;
-      rested.current.set(`${id}:${kind}`, now);
+      if (pick.raise === null) continue;
+      const raise = pick.raise.notice;
+      rested.current.set(`${id}:${pick.raise.rests}`, now);
 
       const { name } = subject.character;
       const title =
@@ -214,10 +222,10 @@ export function useDesktopAlerts({
         standing.current = 'refused';
         if (said.current) continue;
         said.current = true;
-        onRefused(t('notices.desktopAlerts.unavailable'));
+        say(t('notices.desktopAlerts.unavailable'));
       }
     }
-  }, [subjects, rules, onRefused]);
+  }, [subjects, rules, say]);
 
   /*
    * Nothing this window raised outlives it. A reload leaves notifications on

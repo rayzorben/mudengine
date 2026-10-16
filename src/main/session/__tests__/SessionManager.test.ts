@@ -35,7 +35,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
-import { roomId, stoppedBefore, type Route } from '../../../shared/world';
+import { stoppedBefore, type Route } from '../../../shared/world';
 import type { ExtensionSessionHost } from '../../extensions/api';
 import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
@@ -7482,7 +7482,11 @@ describe('starting and stopping a movement', () => {
     // and the way on from here asks for nothing the old way did not.
     await standIn(socket, 35);
     expect(manager!.walkPlan(plan)).toEqual({ started: true });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 5 });
+    expect(manager!.walker.progress).toMatchObject({
+      status: 'walking',
+      total: 5,
+      stoppedShort: false
+    });
     // Said out loud: the steps walked are not the steps that were read.
     expect(notices.some(composes('session.walk.replanned'))).toBe(true);
   });
@@ -7519,26 +7523,35 @@ describe('starting and stopping a movement', () => {
     const short = stoppedBefore(world.route('1/40', '1/30'));
     await standIn(socket, 20);
 
-    const answer = manager!.walkPlan(short, false, roomId(1, 30));
+    const answer = manager!.walkPlan(short);
     expect('replanned' in answer).toBe(true);
     const redrawn = (answer as { replanned: { route: Route } }).replanned.route;
     expect(redrawn.steps.at(-1)?.to).toBe('1/30');
     expect(manager!.walker.progress.status).toBe('idle');
 
     // The panel's next press: trimmed once, and walked to Room 31.
-    expect(manager!.walkPlan(stoppedBefore(redrawn), false, roomId(1, 30))).toEqual({
+    expect(manager!.walkPlan(stoppedBefore(redrawn))).toEqual({
       started: true
     });
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 9 });
+    // And the walk says it stops short, for its arrival's notification.
+    expect(manager!.walker.progress).toMatchObject({
+      status: 'walking',
+      total: 9,
+      stoppedShort: true
+    });
   });
 
   it('walks a stop-short plan redrawn quietly to the room before', async () => {
     const { socket, world } = await atTheNorthEnd();
     await standIn(socket, 35);
     const short = stoppedBefore(world.route('1/40', '1/30'));
-    expect(manager!.walkPlan(short, false, roomId(1, 30))).toEqual({ started: true });
+    expect(manager!.walkPlan(short)).toEqual({ started: true });
     // Room 35 to Room 31: four steps, not the five into Room 30.
-    expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 4 });
+    expect(manager!.walker.progress).toMatchObject({
+      status: 'walking',
+      total: 4,
+      stoppedShort: true
+    });
   });
 
   /*

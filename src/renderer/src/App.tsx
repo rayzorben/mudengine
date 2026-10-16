@@ -722,7 +722,7 @@ export default function App() {
     // outside the window: a row marked `notify`, and its own `whileFocused`.
     rules: config.ui.alerts.rules,
     onOpen: openAlerted,
-    onRefused: sayOnScreen
+    say: sayOnScreen
   });
   useAlertSounds({ subjects: views, rules: config.ui.alerts.rules });
 

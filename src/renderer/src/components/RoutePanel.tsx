@@ -161,9 +161,9 @@ export interface RoutePanelProps {
    * again** — the character moved between the drawing and the press, and the
    * way from where it now stands comes back to be read and pressed again.
    * `run` is *Run it*: auto-combat turned off first, and left off (todo 06).
-   * `stopBefore` is the destination of a *Stop before entering* press.
+   * A *Stop before entering* press names its destination (`stopsBefore`).
    */
-  onWalk(route: Route, run: boolean, stopBefore: RoomId | null): Promise<WalkStart>;
+  onWalk(route: Route, run: boolean): Promise<WalkStart>;
   /**
    * Collects what the way needs first, then walks it (todo 07).
    *
@@ -739,12 +739,12 @@ export default function RoutePanel({
         return;
       }
       /*
-       * The room it stops before goes with the press, so a plan main redraws
-       * from where the character has wandered to is drawn to the destination
-       * and comes back whole: the toggle, still on, trims it once on the next
-       * press. Drawn to the room before, it stopped two short (todo 157).
+       * The room it stops before goes with the press (`stopsBefore`), so a
+       * plan main redraws from where the character has wandered to is drawn
+       * to the destination and comes back whole: the toggle, still on, trims
+       * it once on the next press. Drawn to the room before, it stopped two
+       * short (todo 157).
        */
-      const stopBefore = trimmed === null ? null : plan.steps[plan.steps.length - 1]!.to;
       // And the kept-out choice taken off: it has been made, and main walks
       // no route still carrying one (todo 806).
       const walked: Route = chosenWay(trimmed ?? plan);
@@ -757,7 +757,7 @@ export default function RoutePanel({
       // it ends in, so the ticks and the press compose as they do for a walk.
       const started: Promise<WalkStart> =
         needed.length === 0
-          ? onWalk(walked, run, stopBefore)
+          ? onWalk(walked, run)
           : onCollectThenWalk(needed, walked, run).then((reason) =>
               reason === null ? { started: true } : { refused: reason }
             );

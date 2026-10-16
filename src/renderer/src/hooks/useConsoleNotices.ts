@@ -3,8 +3,8 @@
  * window is delivered there, and what waited is released whenever a console
  * registers or leaves, the tabs change, or another character is shown.
  *
- * Returns a function that prints a notice about the client in the console on
- * screen.
+ * Returns a function that prints a notice in a character's console, or, with
+ * no character, one about the client in the console on screen.
  */
 import { useCallback, useEffect, useState } from 'react';
 
@@ -21,7 +21,7 @@ export function useConsoleNotices(
   tabs: readonly SessionSummary[],
   /** Moves when a console registers or leaves. */
   consolesMoved: number
-): (message: string) => void {
+): (message: string, session?: SessionId) => void {
   const [held] = useState(heldNotices);
 
   useEffect(
@@ -38,8 +38,8 @@ export function useConsoleNotices(
   }, [consoles, held, shown, tabs, consolesMoved]);
 
   return useCallback(
-    (message: string) =>
-      held.deliver({ session: null, message }, consoles.current, shownRef.current),
+    (message: string, session?: SessionId) =>
+      held.deliver({ session: session ?? null, message }, consoles.current, shownRef.current),
     [consoles, shownRef, held]
   );
 }

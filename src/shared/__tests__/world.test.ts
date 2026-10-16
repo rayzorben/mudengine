@@ -31,6 +31,10 @@ describe('asRoute', () => {
     expect(asRoute(good)).toEqual(good);
   });
 
+  it('accepts a route that stops before a room', () => {
+    expect(asRoute({ ...good, stopsBefore: '1/3' })).not.toBeNull();
+  });
+
   it('accepts a blocked route with no steps', () => {
     expect(asRoute({ blocked: true, cost: 0, steps: [], reason: 'nope' })).not.toBeNull();
   });
@@ -62,7 +66,11 @@ describe('asRoute', () => {
       { blocked: false, cost: 1, steps: [{ from: 1, to: 2, name: 'x', command: 'n' }] }
     ],
     ['a cost that is not finite', { blocked: false, cost: Number.NaN, steps: [] }],
-    ['a blocked flag that is not a boolean', { blocked: 'yes', cost: 0, steps: [] }]
+    ['a blocked flag that is not a boolean', { blocked: 'yes', cost: 0, steps: [] }],
+    [
+      'a stop-before room that is not a room',
+      { blocked: false, cost: 0, steps: [], stopsBefore: 'x' }
+    ]
   ];
 
   for (const [what, payload] of rejected) {

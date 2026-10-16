@@ -54,7 +54,7 @@ describe('the route panel stopping before a boss room', () => {
     ...(arrival === null ? {} : { arrival })
   });
 
-  type Walk = (route: Route, run: boolean, stopBefore: RoomId | null) => Promise<WalkStart>;
+  type Walk = (route: Route, run: boolean) => Promise<WalkStart>;
 
   async function drawn(
     arrival: RoomNickname | null,
@@ -137,7 +137,7 @@ describe('the route panel stopping before a room on a redrawn plan', () => {
   const lair = { map: 7, room: 1524, name: 'Cave', exits: [] } as unknown as WorldRoom;
 
   it('walks the redrawn plan to the room before the destination, not two short', async () => {
-    const presses: Array<{ steps: number; to?: RoomId; stopBefore: RoomId | null }> = [];
+    const presses: Array<{ steps: number; to?: RoomId; stopsBefore?: RoomId }> = [];
     const answers: WalkStart[] = [
       { replanned: { route: way(1520), wandered: 20, demands: [] } },
       { started: true }
@@ -149,8 +149,12 @@ describe('the route panel stopping before a room on a redrawn plan', () => {
         onClose: () => undefined,
         onSearch: () => Promise.resolve([]),
         onRoute: () => planned,
-        onWalk: (route: Route, _run: boolean, stopBefore: RoomId | null) => {
-          presses.push({ steps: route.steps.length, to: route.steps.at(-1)?.to, stopBefore });
+        onWalk: (route: Route) => {
+          presses.push({
+            steps: route.steps.length,
+            to: route.steps.at(-1)?.to,
+            stopsBefore: route.stopsBefore
+          });
           return Promise.resolve(answers[presses.length - 1]!);
         },
         onCollectThenWalk: () => Promise.resolve(null),
@@ -182,11 +186,11 @@ describe('the route panel stopping before a room on a redrawn plan', () => {
 
     // The first press: one short, and the destination sent with it.
     await press();
-    expect(presses).toEqual([{ steps: 1, to: '7/1523', stopBefore: '7/1524' }]);
+    expect(presses).toEqual([{ steps: 1, to: '7/1523', stopsBefore: '7/1524' }]);
     // The redrawn plan is on screen with the toggle still on; pressed, it is
     // trimmed once.
     expect(toggle().props['aria-pressed']).toBe(true);
     await press();
-    expect(presses[1]).toEqual({ steps: 3, to: '7/1523', stopBefore: '7/1524' });
+    expect(presses[1]).toEqual({ steps: 3, to: '7/1523', stopsBefore: '7/1524' });
   });
 });
