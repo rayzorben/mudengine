@@ -3665,6 +3665,17 @@ export interface Route {
    */
   another?: Route;
   /**
+   * The most direct way, where the plan is longer than it by more than
+   * `tuning.world.directLonger` in moves (todo 145): the fewest moves the
+   * character can walk, doors, keys and level gates judged as for the plan,
+   * the `movement.keepOutOf` words allowed, the lair, run and spell prices left
+   * out and no item spent. Its steps carry their `keptOut`, lair and danger
+   * flags, so the panel shows what it walks through. Absent where it is the
+   * plan's own steps or an alternative's already carried, and on any route
+   * not planned for a reader.
+   */
+  direct?: Route;
+  /**
    * The way through doors this character holds no key for, planned by the
    * navigation engine with each key fetched in order (todo 805): on a walk
    * refused for keys, and on a route planned for a reader where fetching

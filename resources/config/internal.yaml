@@ -1653,6 +1653,10 @@ tuning:
     # shorter is the same way with a corner cut.
     alternativeMinSteps: 10
 
+    # How much longer than the fewest moves a route may be before the route
+    # panel offers the most direct way beside it. 0.2 is 20% longer, in moves.
+    directLonger: 0.2
+
     # The most a walk to a door's lever in another room and back may cost before
     # the door is a wall again. The Grand Stair door's lever walk prices at about 57.
     leverDetourCost: 500

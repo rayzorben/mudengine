@@ -8318,6 +8318,8 @@ function theTuningBlockGainedKeys(
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
     // The level walls the quest book climbs on the way to a step (todo 132, 2026-10-14).
     addKey('world', 'questReachTries', DEFAULT_INTERNAL.tuning.world.questReachTries);
+    // When the route panel offers the most direct way (todo 145, 2026-10-16).
+    addKey('world', 'directLonger', DEFAULT_INTERNAL.tuning.world.directLonger);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
