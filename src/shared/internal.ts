@@ -1985,6 +1985,13 @@ const TUNING_DEFAULTS = {
      * every destination it matches, above the realm's own answer.
      */
     destinationsShown: 5,
+    /** Rooms MegaMUD's room names add to a search, after the recent ones (todo 144). */
+    nicknamesShown: 25,
+    /**
+     * How long after the window opens MegaMUD's room names are read, so the
+     * first room search does not pay for it (a 60ms parse cold, 2026-10-16).
+     */
+    nicknamesReadAfterMs: 3_000,
     /** Loops started by name offered on the console's right-click menu (todo 28). */
     recentLoopsShown: 5,
     /** Loops started by name one character's record keeps, newest first. */

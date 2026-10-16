@@ -174,6 +174,7 @@ import {
   type BuyingPlace,
   type Requirement,
   type RoomId,
+  type RoomReference,
   type Route,
   type TrainerChoice,
   type WorldRoom,
@@ -329,6 +330,8 @@ export interface ErrandsSession {
   askAbilities(state: CharacterState): void;
   /** The carried weapon the gear sets wear for a backstab, or null (`EquipmentManager.backstabWeapon`). */
   backstabWeapon(): CarriedItem | null;
+  /** The room a MegaMUD code names on this realm (`RoomNicknames`), or null. */
+  roomCoded(code: string): RoomReference | null;
   notice: NoticeSink;
 }
 
@@ -2756,6 +2759,11 @@ export class Errands implements SessionModule {
   /** Every room a stop could be, by its address or its name. See `matchStop`. */
   matchStop(stop: Parameters<Errands['findStop']>[0]): RoomMatch {
     return matchStop(stop, (name) => this.world?.findByName(name) ?? []);
+  }
+
+  /** The room a MegaMUD code names on this realm, or null. See `roomNamed`. */
+  roomCoded(code: string): RoomReference | null {
+    return this.session.roomCoded(code);
   }
 
   /** A loop's stop as a room, or null where `findStop` cannot settle it. */

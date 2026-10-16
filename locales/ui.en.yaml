@@ -880,6 +880,10 @@ notices:
   world:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the world database {file}…
+    nicknames: "MegaMUD's room names: {kept} of {shipped} fit this realm."
+    nicknameRepeated: MegaMUD's room code {code} is listed twice in the shipped room names; the first is kept.
+    nicknamesNone: None of MegaMUD's {shipped} room names fit this realm, so a search finds rooms by
+      the realm's own names only.
     destinations:
       readError: 'could not read {file}: {message}'
       writeError: 'could not write {file}: {message}'
@@ -3515,6 +3519,7 @@ cards:
     fetchThenWalkTooltip: The way that opens once you carry this, walked after fetching it.
     stopShort: Stop before entering
     stopShortTooltip: Walk as far as {roomName} and stop there
+    stopShortMegamud: MegaMUD stops before entering {nickname}, so this is on until you turn it off.
     stepSkipped: not walked
     alreadyBefore: You are already in the room before {roomName}.
     otherWayButton: Show it
@@ -7392,6 +7397,15 @@ rooms:
   groups:
     others: Rooms
     recent: Recent
+  # MegaMUD's name for a room, from its goto list, before the realm's own.
+  megamud:
+    avoid: avoid
+    label: '{nickname} · {roomName}'
+    levelFrom: 'level {min}+'
+    levelRange: 'levels {min}-{max}'
+    levelTo: 'up to level {max}'
+    marked: '{text} · {mark}'
+    stopBefore: stop before entering
   visited:
     days: '{days}d {hours}h ago'
     hint: '{roomReference} · {agoText}'

@@ -70,6 +70,7 @@ function moves(fake: Fake, own: Loop[] = [], shelf: Loop[] = []): RemoteMoves {
   };
   const rooms: RemoteRooms = {
     matchStop: (stop) => (stop.at === null ? { kind: 'none' } : { kind: 'one', at: stop.at }),
+    roomCoded: () => null,
     planFromHere: () => 'unplaced',
     stepsThrough: (list) => (fake.through.push([...list]), 3 * list.length)
   };

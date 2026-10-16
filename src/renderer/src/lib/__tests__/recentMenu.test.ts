@@ -33,7 +33,14 @@ function deps(): RecentMenuDeps & { walked: ReturnType<typeof vi.fn> } {
   };
 }
 
-const BANK = { map: 1, room: 2, name: 'Bank of Godfrey', exits: [], visitedAt: 1_000 };
+const BANK = {
+  map: 1,
+  room: 2,
+  name: 'Bank of Godfrey',
+  exits: [],
+  visitedAt: 1_000,
+  nickname: null
+};
 
 describe('the recent rows on the console menu', () => {
   it('offers nothing when nothing is recent', () => {

@@ -539,6 +539,7 @@ export class SessionManager {
         odds: () => this.odds,
         askAbilities: (state) => this.routines.askAbilities(state),
         backstabWeapon: () => this.gear.backstabWeapon(this.tracker.current),
+        roomCoded: (code) => sink.roomCoded?.(code) ?? null,
         notice
       }
     );
@@ -750,8 +751,7 @@ export class SessionManager {
       }
     });
 
-    // What the light, the errands and the travel tell the session:
-    // a line for the console, and a decision for the safety trace.
+    // What the light, errands and travel tell the session: a console line, a safety decision.
     const moveInFlight = (): boolean => this.tracker.pendingMoves > 0;
     const reports = {
       notice,

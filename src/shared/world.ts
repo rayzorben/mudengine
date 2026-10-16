@@ -18,6 +18,7 @@ import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
 import type { AlignmentCost, MobAvoid, MobDisposition } from './mobs';
 import type { Verdict } from './verdict';
+import type { RoomNickname } from './roomNicknames';
 import type { RowPeace } from './mobRules';
 import type { Denomination } from './character';
 import type { CoinMaxima } from './coins';
@@ -3603,6 +3604,12 @@ export interface Route {
    * (`RouteOptions.alternatives`): a loop's leg pays for no second search.
    */
   otherWay?: Route;
+  /**
+   * MegaMUD's name for the room this route ends in (todo 144), on the route
+   * panel's plan (`Invoke.routeTo`) only: its *Stop before entering room* is
+   * what the panel's toggle starts at.
+   */
+  arrival?: RoomNickname;
   /**
    * The chance of coming through alive, each way of walking it (todo 23):
    * `run` with combat off, every lair passed at the walk's pace

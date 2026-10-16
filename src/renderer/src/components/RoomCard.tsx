@@ -9,6 +9,10 @@ import { exitsUnseen, lightNote } from '../lib/room';
 import Icon from './Icon';
 import RowPeaceChip from './RowPeaceChip';
 import { avoidNote } from '../lib/avoid';
+import { nicknameMarks } from '../lib/nicknames';
+import { useRoomNickname } from '../hooks/useRoomNickname';
+import type { FoundRoom } from '@shared/destinations';
+import type { RoomNickname } from '@shared/roomNicknames';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText } from './LairList';
@@ -101,6 +105,8 @@ export interface RoomCardProps extends CardChrome {
    * three of its four inputs move without the room moving. See `asksHere`.
    */
   asks: readonly RoomAsk[];
+  /** The room search, asked for MegaMUD's name for this room (todo 144); absent, none is shown. */
+  searchRooms?(query: string): Promise<FoundRoom[]>;
 }
 
 /** Compass order, so exits always read in the same sequence regardless of the
@@ -135,9 +141,11 @@ function RoomCard({
   goToRoom,
   forgetFind,
   verdict,
+  searchRooms,
   ...chrome
 }: RoomCardProps) {
   const { room } = character;
+  const nickname = useRoomNickname(searchRooms, room.map, room.number);
   const located = room.map !== null && room.number !== null;
   /*
    * The ways out of *this* room the realm data does not have.
@@ -188,6 +196,7 @@ function RoomCard({
       asks={asks}
       character={character}
       inspect={inspect}
+      nickname={nickname}
       shop={shop}
       spellHazard={spellHazard}
       verdict={verdict}
@@ -521,10 +530,13 @@ function RoomBody({
   asks,
   character,
   inspect,
+  nickname,
   shop,
   spellHazard,
   verdict
 }: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict'> & {
+  /** MegaMUD's name for the room, or null (`useRoomNickname`). */
+  nickname: RoomNickname | null;
   shop: WorldShop | null;
   /** The room spell's hazard at this character's level (`hazardAtLevel`). */
   spellHazard: SpellHazard | undefined;
@@ -564,6 +576,17 @@ function RoomBody({
       ) : (
         <>
           {room.name !== null && <div className="room-name">{room.name}</div>}
+          {/* MegaMUD's name and what its goto list records: marks, deciding nothing. */}
+          {nickname !== null && (
+            <div className="chip-row" data-megamud={nickname.code}>
+              <span className="chip info">{nickname.name}</span>
+              {nicknameMarks(nickname).map((mark) => (
+                <span className="chip quiet" key={mark}>
+                  {mark}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/*
             The light, in the server's words, and what the client did about a

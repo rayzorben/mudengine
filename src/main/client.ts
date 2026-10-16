@@ -31,6 +31,10 @@ import {
 } from './config/SettingsEditor';
 import { routeFiles } from './config/HeldFiles';
 import { LoopCatalogue } from './config/LoopCatalogue';
+import { ShippedList } from './config/ShippedList';
+import { NicknameShelf, type RoomNicknames } from './world/RoomNicknames';
+import { findRooms } from './world/roomSearch';
+import { asRoomNicknames, type RoomNickname } from '../shared/roomNicknames';
 import { migrateHome } from './config/Migration';
 import { CHARACTER_RECORDS, homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
@@ -173,7 +177,6 @@ import { prowessSheetOf } from '../shared/verdict';
 import { asMapWindow, EMPTY_MAP } from '../shared/map';
 import {
   asRoomIds,
-  asRoomReference,
   asRoute,
   COLLECT_ITEMS_MAX,
   EMPTY_LOOP_DRAFT,
@@ -1084,6 +1087,31 @@ function loopCatalogue(): LoopCatalogue {
   return catalogue;
 }
 
+/** MegaMUD's room names: the shipped list, read once, and its fit per world. See `RoomNicknames`. */
+let nicknameList: ShippedList<RoomNickname> | null = null;
+let nicknames: NicknameShelf | null = null;
+
+function shippedNicknames(): readonly RoomNickname[] {
+  nicknameList ??= new ShippedList(
+    path.join(resourcesDir(), 'rooms', 'megamud.yaml'),
+    'rooms',
+    (value) =>
+      asRoomNicknames(value, (code) =>
+        announce('world', t('notices.world.nicknameRepeated', { code }))
+      )
+  );
+  return nicknameList.all();
+}
+
+function nicknamesOf(world: WorldGraph): RoomNicknames {
+  nicknames ??= new NicknameShelf(shippedNicknames, (kept, shipped) =>
+    kept === 0
+      ? announce('world', t('notices.world.nicknamesNone', { shipped }))
+      : announce('world', t('notices.world.nicknames', { kept, shipped }), 'log')
+  );
+  return nicknames.of(world);
+}
+
 /** The character with this id, if a profile file defines one. */
 function profileFor(id: SessionId): Profile | undefined {
   return profiles?.profiles.find((profile) => profile.id === id);
@@ -1597,6 +1625,12 @@ function createHost(): SessionHost {
       return result.ok ? null : result.error;
     },
     loopShelf: () => loopCatalogue().all(),
+    roomCoded: (id, code) => {
+      const world = worldFor(id);
+      return world === undefined
+        ? null
+        : (nicknamesOf(world).byCode(code)?.nickname.room.at ?? null);
+    },
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,
@@ -2025,7 +2059,9 @@ function registerIpc(): void {
     const route = manager.leg(roomId(here.map, here.number), roomId(map, room), {
       alternatives: true
     });
-    return typeof route === 'string' ? unrouted(route) : route;
+    if (typeof route === 'string') return unrouted(route);
+    const arrival = nicknamesOf(world).nameOf(roomId(map, room));
+    return arrival === null ? route : { ...route, arrival };
   });
 
   /*
@@ -2580,74 +2616,14 @@ function registerIpc(): void {
   handle(Invoke.searchRooms, (_caller, session: SessionId, query: string) => {
     const world = worldFor(session);
     if (!world) return [];
-    /*
-     * Two numbers identify a room outright, so they never go to the name search.
-     *
-     * The realm keys every room on `map/room` and the Room card's badge shows
-     * that pair -- and typing what it showed found nothing, because this field
-     * was a substring query over room *names*. A reference is answered by the
-     * index instead, which means exactly one room or none: the candidate ladder
-     * name search needs cannot apply to a key that is already unique.
-     *
-     * Deliberately no fallback to a name search when the room is not there. A
-     * reference that misses is a room the realm does not have, and running a
-     * name query for "1/99999" afterwards would fail a second time and blame
-     * the wrong thing.
-     */
-    const reference = asRoomReference(query);
-    if (reference !== null) {
-      const room = world.get(reference.map, reference.room);
-      return room === undefined ? [] : [{ ...room, visitedAt: null }];
-    }
-
-    /*
-     * Where this character's realm has been walked to, first.
-     *
-     * `searchByName` is a substring match over 55,806 rooms, capped at 25, in
-     * the world file's own build order — so `forest` answers with whichever
-     * forests the file happens to list first, and the one the player means is
-     * usually not among them. It is almost always somewhere they have been
-     * before, and the client knows which those are because it planned the
-     * route. So the recent matches go on top, newest first.
-     *
-     * They are *added* to the realm's answer rather than replacing part of it:
-     * a room already recorded is dropped from the realm rows below rather than
-     * listed twice, and the realm's own count is unchanged, so putting the
-     * shortcut on top never costs a result somebody could have had.
-     *
-     * Every visited match, so of 35 `Darkwood Forest`s the ones walked to come
-     * first; with nothing typed, the latest few and no realm rows (user,
-     * 2026-10-10).
-     */
-    const blank = query.trim().length === 0;
-    const recent = destinationsFor(session).matching(
-      query,
-      blank ? tuning().records.destinationsShown : Number.POSITIVE_INFINITY
-    );
-    const seen = new Set(recent.map((entry) => entry.id));
-    const found = (blank ? [] : world.searchByName(query))
-      .map((room) => ({ ...room, visitedAt: null }))
-      .filter((room) => !seen.has(roomId(room.map, room.room)));
-
-    return [
-      ...recent.flatMap((entry) => {
-        /*
-         * Resolved against the realm rather than drawn from the record.
-         *
-         * The record holds a name from whenever the walk happened, and the
-         * realm underneath it can be swapped — `world.database` is a
-         * per-character setting. A row whose id the realm no longer has is
-         * dropped rather than offered: clicking it would plan a route to a
-         * room that does not exist, which is the confidently wrong answer this
-         * project refuses everywhere else. It stays in the file, because the
-         * realm may be swapped back.
-         */
-        const reference = asRoomReference(entry.id);
-        const room = reference === null ? undefined : world.get(reference.map, reference.room);
-        return room === undefined ? [] : [{ ...room, visitedAt: entry.at }];
-      }),
-      ...found
-    ];
+    const { destinationsShown, nicknamesShown } = tuning().records;
+    return findRooms(query, {
+      world,
+      nicknames: nicknamesOf(world),
+      recent: (typed, limit) => destinationsFor(session).matching(typed, limit),
+      recentShown: destinationsShown,
+      nicknameRows: nicknamesShown
+    });
   });
   handle(Invoke.worldInfo, (_caller, session: SessionId) => {
     const world = worldFor(session);
@@ -3762,6 +3738,8 @@ function build(): void {
     record,
     logDirectory
   });
+  // Once the window is up, so the first room search does not pay for the parse.
+  setTimeout(shippedNicknames, tuning().records.nicknamesReadAfterMs).unref();
 }
 
 /** Where the flight recorders keep what stalled: `stalls/` under the log directory. */

@@ -4,11 +4,11 @@ import { t } from '../i18n';
 import { paletteFind, realmRows, roomRows, type PaletteFindDeps } from '../paletteFind';
 import type { PopoverAnchor } from '../popover';
 import { tuning } from '../tuning';
-import type { Visited } from '@shared/destinations';
+import type { FoundRoom } from '@shared/destinations';
 import type { SessionId } from '@shared/ipc';
 import type { WalkStart } from '@shared/movement';
 import type { NearPlace } from '@shared/places';
-import { NO_LOOKUP, roomId, type Route, type WorldLookup, type WorldRoom } from '@shared/world';
+import { NO_LOOKUP, roomId, type Route, type WorldLookup } from '@shared/world';
 
 const HERO = 'hero' as SessionId;
 
@@ -17,7 +17,8 @@ const room = (map: number, number: number, name: string, visitedAt: number | nul
   room: number,
   name,
   exits: [],
-  visitedAt
+  visitedAt,
+  nickname: null
 });
 
 /** A plan of one step, or none, and whether it is blocked. */
@@ -40,7 +41,7 @@ const NOTHING: WorldLookup = NO_LOOKUP;
 /** The four bridge calls the rows make, each answering as main does. */
 function deps(
   answers: {
-    rooms?: Array<WorldRoom & Visited>;
+    rooms?: FoundRoom[];
     lookup?: WorldLookup;
     plan?: Route | Error;
     walk?: WalkStart;

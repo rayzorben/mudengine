@@ -19,6 +19,7 @@ import { entryNumber, entryWord, flattenLookup } from './reference';
 import { tuning } from './tuning';
 import { nearestRows } from './nearestRows';
 import { foundRoomHint } from './visited';
+import { nicknamedLabel, withMarks } from './nicknames';
 import { walkTo } from './walkTo';
 import { wasVisited, type FoundRoom } from '@shared/destinations';
 import { entityNumber } from '@shared/entities';
@@ -69,7 +70,7 @@ function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
     id: `goto:${roomId(room.map, room.room)}`,
     icon: 'route' as const,
     transient: true,
-    label: t('palette.navigate.gotoLabel', { roomName: room.name }),
+    label: t('palette.navigate.gotoLabel', { roomName: nicknamedLabel(room) }),
     /*
      * A room already walked to says so, and says when.
      *
@@ -79,7 +80,7 @@ function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
      * it is how two rooms of the same name are told apart, and dropping it
      * for the very rows most likely to be duplicates would be backwards.
      */
-    hint: foundRoomHint(room, now),
+    hint: withMarks(foundRoomHint(room, now), room.nickname),
     run: () => walkTo(room, deps)
   };
 }

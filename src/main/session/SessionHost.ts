@@ -26,6 +26,7 @@ import path from 'node:path';
 import { t } from '../app/i18n';
 import { errorMessage } from '../../shared/values';
 import type { Loop } from '../../shared/loops';
+import type { RoomReference } from '../../shared/world';
 import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
 import { Backscroll } from './Backscroll';
 import { MarkBook } from './MarkBook';
@@ -151,6 +152,8 @@ export interface SessionHostOptions {
   writeAlias?(id: SessionId, word: string, line: string | null): string | null;
   /** The shipped loops, read once (`LoopCatalogue`). */
   loopShelf?(): readonly Loop[];
+  /** The room a MegaMUD code names on this character's realm (`RoomNicknames`), or null. */
+  roomCoded?(id: SessionId, code: string): RoomReference | null;
   /**
    * What is known about the monsters and attack spells on *this character's* realm.
    *
@@ -583,6 +586,7 @@ export class SessionHost {
         keys: () => this.options.configFor(id).keys,
         aliasFile: () => this.aliasFile(id),
         loopShelf: () => this.options.loopShelf?.() ?? [],
+        roomCoded: (code) => this.options.roomCoded?.(id, code) ?? null,
         realmTold: (word) => {
           // The realm this connection actually plays, bound at the dial; a word
           // with no realm is a word about nowhere.
