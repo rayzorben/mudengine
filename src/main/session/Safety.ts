@@ -40,7 +40,7 @@ const GANG: DecisionKind = 'pvp-gang';
 /** What the two decisions read, and the one escape they hand on. */
 export interface SafetyParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
-  readonly hangUp: Pick<HangUpWatch, 'assess' | 'clean' | 'monsterNear'>;
+  readonly hangUp: Pick<HangUpWatch, 'assess' | 'threatened' | 'monsterNear'>;
   readonly realmMenu: Pick<RealmMenu, 'penalty' | 'noteCommand'>;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly travel: Pick<Travel, 'runFromPlayer' | 'escapeUnanswered' | 'landings'>;
@@ -298,8 +298,8 @@ export class Safety implements SessionModule {
    * Every MegaMUD-era client offers "disconnect when health is low". On this
    * server family an unclean disconnect costs a percentage of **maximum** HP —
    * fatal at low health, and recorded as `DisconnectPenalty` — or drops random
-   * items, and the five conditions that make it unclean are precisely the ones
-   * that co-occur with wanting to press it. See docs/greatermud/combat.md.
+   * items, where a player is fighting the character or fought it in the last
+   * five minutes (`HangUpWatch`). See docs/greatermud/combat.md.
    *
    * So the default is off, and switched on the default is to refuse while the
    * client can see a reason. Refusing is *said out loud* rather than done
@@ -338,16 +338,16 @@ export class Safety implements SessionModule {
       stanceHere(state.room.occupants, this.automationConfig.combat.mobRules, 'hangup')
     );
     /*
-     * Naked after a death with nobody at the keyboard, somewhere a hang-up
-     * would be charged for a monster or a player: MegaMUD's `HangupNaked`,
-     * under its own switch, Auto-Hangup off included (todos 79, 118). In a charged realm
-     * the room that makes it dangerous is the room that makes it charged, so
-     * it goes there only while health covers the charge the realm menu
-     * stated (`nakedPaysTheCharge`); a naked character has no items to lose.
+     * Naked after a death with nobody at the keyboard, somewhere a monster or
+     * a player would attack: MegaMUD's `HangupNaked`, under its own switch,
+     * Auto-Hangup off included (todos 79, 118). Where a player makes the
+     * hangup charged, it goes only while health covers the charge the realm
+     * menu stated (`nakedPaysTheCharge`); a naked character has no items to lose.
      */
     if (safety.whenNaked && this.nakedAndAway(state)) {
       const why = t('session.safety.whyNaked');
-      const paid = this.nakedPaysTheCharge(state, why);
+      const charged = this.refusedHere(state) !== null;
+      const paid = charged ? this.nakedPaysTheCharge(state, why) : null;
       if (paid === null) this.hangUpOrRefuse(state, why, 'hang-up-naked');
       else this.hangUpNow(why, paid, 'hang-up-naked');
       return;
@@ -442,10 +442,10 @@ export class Safety implements SessionModule {
   }
 
   /**
-   * Naked after a death, nobody at the keyboard, and something here a
-   * hang-up would be charged for (`HangUpWatch.clean`: a fight, a monster
-   * that attacks on sight or one it cannot place, a player's blow inside
-   * five minutes). An unread pack is not naked.
+   * Naked after a death, nobody at the keyboard, and something here that
+   * would attack (`HangUpWatch.threatened`: a fight, a monster that attacks
+   * on sight or one it cannot place, a player's blow inside five minutes).
+   * An unread pack is not naked.
    */
   private nakedAndAway(state: CharacterState): boolean {
     return (
@@ -454,7 +454,7 @@ export class Safety implements SessionModule {
       // The walk back for the kit goes into the room that killed it (todo 79).
       !this.recoverGear.busy &&
       !this.recoverGear.deciding(state) &&
-      !this.hangUp.clean(state, Date.now())
+      this.hangUp.threatened(state, Date.now())
     );
   }
 

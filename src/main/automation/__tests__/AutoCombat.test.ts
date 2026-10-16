@@ -2936,7 +2936,11 @@ describe('an attack spell opens the fight', () => {
 
     const launch = () => new RealmLore({ file, saveDelayMs: 0 });
     /** One connection, standing in `room`, and the unit that opened there. */
-    const connect = (lore: RealmLore, room: CharacterState = standing()): AutoCombat => {
+    const connect = (
+      lore: RealmLore,
+      room: CharacterState = standing(),
+      spellbook = book
+    ): AutoCombat => {
       sent = [];
       const auto = make(
         fights(),
@@ -2946,7 +2950,7 @@ describe('an attack spell opens the fight', () => {
         undefined,
         lore.forRealm('greatermud', undefined, PLAYED)
       );
-      auto.onCharacter({ ...room, spellbook: book });
+      auto.onCharacter({ ...room, spellbook });
       drain();
       return auto;
     };
@@ -3016,6 +3020,105 @@ describe('an attack spell opens the fight', () => {
       lore.flush();
       connect(launch());
       expect(sent).toEqual(['harm tall kobold thief']);
+    });
+
+    /*
+     * Todo 131, capture 2026-10-14_20-41-09_rayzor t=634508-635572: the
+     * player's `turn grave` typed a room early, the room listed the monster,
+     * and the line that answered the turn was blamed on the client's harm.
+     */
+    const turnBook = [...book, { name: 'turn undead', short: 'turn', level: 1, cost: 2 }];
+    const kept = (lore: RealmLore): boolean =>
+      lore.forRealm('greatermud', undefined, PLAYED).hasNoEffect('harm', 'tall kobold thief');
+
+    it("sends nothing over the player's cast typed a room early, and blames it on nothing of its own", () => {
+      const lore = launch();
+      sent = [];
+      const auto = make(
+        fights(),
+        true,
+        caster(),
+        undefined,
+        undefined,
+        lore.forRealm('greatermud', undefined, PLAYED)
+      );
+      auto.onCharacter({ ...state({ vitals: vitals(40) }), spellbook: turnBook });
+      auto.noteUserCommand('turn tall');
+      auto.onCharacter({ ...standing(), spellbook: turnBook });
+      drain();
+      expect(sent).toEqual([]);
+      expect(refusals()).toContain(
+        `tall kobold thief — ${t('automation.combat.refusedPlayerCast', { spell: 'turn' })}`
+      );
+      auto.onBlock(block('spell-ineffective', { target: 'tall kobold thief' }));
+      expect(kept(lore)).toBe(false);
+      // Answered, the fight opens with harm, not the attack verb.
+      auto.onCharacter({ ...standing(), spellbook: turnBook });
+      drain();
+      expect(sent).toEqual(['harm tall kobold thief']);
+    });
+
+    it("opens once the player's cast fizzles", () => {
+      const lore = launch();
+      sent = [];
+      const auto = make(
+        fights(),
+        true,
+        caster(),
+        undefined,
+        undefined,
+        lore.forRealm('greatermud', undefined, PLAYED)
+      );
+      auto.onCharacter({ ...state({ vitals: vitals(40) }), spellbook: turnBook });
+      auto.noteUserCommand('turn tall');
+      auto.onCharacter({ ...standing(), spellbook: turnBook });
+      drain();
+      expect(sent).toEqual([]);
+      auto.onBlock(block('spell-failed', { spell: 'turn undead' }));
+      auto.onCharacter({ ...standing(), spellbook: turnBook });
+      drain();
+      expect(sent).toEqual(['harm tall kobold thief']);
+    });
+
+    it('keeps neither spell when both were waiting for the answer, and says so', () => {
+      const lore = launch();
+      const auto = connect(lore, standing(), turnBook);
+      expect(sent).toEqual(['harm tall kobold thief']);
+      auto.noteUserCommand('turn tall');
+      auto.onBlock(block('spell-ineffective', { target: 'tall kobold thief' }));
+      expect(notices).toContain(
+        t('automation.combat.spellNoEffectEither', { spells: 'harm and turn' })
+      );
+      expect(notices).not.toContain(
+        t('automation.combat.spellNoEffectKept', { spell: 'harm', target: 'tall kobold thief' })
+      );
+      lore.flush();
+      expect(kept(launch())).toBe(false);
+      // Positive control: a lone harm answered the same way is kept (`learnHarm`).
+      learnHarm();
+      expect(kept(launch())).toBe(true);
+    });
+
+    it("forgets a kept refusal when any cast of the spell lands, the player's unrecorded", () => {
+      learnHarm();
+      const lore = launch();
+      const auto = connect(lore);
+      expect(sent).toEqual(['a tall kobold thief']);
+      auto.onBlock(
+        block('user-hits', {
+          attacker: 'You',
+          line: 'cast harm at tall kobold thief',
+          target: 'tall kobold thief',
+          damage: '21'
+        })
+      );
+      expect(notices).toContain(
+        t('automation.combat.spellNoEffectForgotten', {
+          spell: 'harm',
+          target: 'tall kobold thief'
+        })
+      );
+      expect(kept(lore)).toBe(false);
     });
   });
 

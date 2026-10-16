@@ -29,6 +29,7 @@ import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { NoEffectBook, readNoEffectRow, type NoEffectRow } from './NoEffectBook';
 import { readRoundTally, RoundsBook } from './RoundsBook';
+import { LORE_REPAIRS, type LoreDocument } from './loreRepairs';
 import { t } from '../app/i18n';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
@@ -128,6 +129,8 @@ interface LoreFile {
   castRounds?: Record<string, Record<string, RoundTally>>;
   /** The same for swings, by `swingKey` (todo 123). */
   swingRounds?: Record<string, Record<string, RoundTally>>;
+  /** The `LORE_REPAIRS` ids already run on this file, so none runs twice (todo 131). */
+  repaired?: string[];
 }
 
 /** What one realm paid for a solo kill of one monster, and when it last said so. */
@@ -182,6 +185,11 @@ export class RealmLore {
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
+  /**
+   * The repairs this file has had: the file's own list once read, and every
+   * step until then, since a file written from nothing has nothing to repair.
+   */
+  private repaired = new Set(LORE_REPAIRS.map((step) => step.id));
 
   constructor(private readonly options: RealmLoreOptions) {}
 
@@ -750,7 +758,9 @@ export class RealmLore {
 
     this.suspended = false;
 
-    const file = parsed as Partial<LoreFile>;
+    const file = this.repair(
+      typeof parsed === 'object' && parsed !== null ? (parsed as LoreDocument) : {}
+    ) as Partial<LoreFile>;
     for (const [realm, table] of readTables(file.realms, (name, value) => {
       const entry = readEntry(value);
       return entry ? [mobKey(name), entry] : null;
@@ -824,6 +834,28 @@ export class RealmLore {
     }
   }
 
+  /**
+   * The file with each `LORE_REPAIRS` step it has not had run, in order,
+   * before any table is read. Each removal is said with its count, and the
+   * ids are written back with the next save, so none runs twice.
+   */
+  private repair(parsed: LoreDocument): LoreDocument {
+    const done = parsed['repaired'];
+    this.repaired = new Set(
+      Array.isArray(done) ? done.filter((id): id is string => typeof id === 'string') : []
+    );
+    let file = parsed;
+    for (const step of LORE_REPAIRS) {
+      if (this.repaired.has(step.id)) continue;
+      const result = step.apply(file);
+      file = result.file;
+      this.repaired.add(step.id);
+      this.schedule();
+      if (result.removed > 0) this.options.notify?.(step.why(result.removed));
+    }
+    return file;
+  }
+
   /** True once the file was found unparseable; nothing is written over it. */
   private suspended = false;
 
@@ -888,7 +920,8 @@ export class RealmLore {
             ...(Object.keys(spawns).length > 0 ? { spawns } : {}),
             ...(Object.keys(killExp).length > 0 ? { killExp } : {}),
             ...(Object.keys(castRounds).length > 0 ? { castRounds } : {}),
-            ...(Object.keys(swingRounds).length > 0 ? { swingRounds } : {})
+            ...(Object.keys(swingRounds).length > 0 ? { swingRounds } : {}),
+            ...(this.repaired.size > 0 ? { repaired: [...this.repaired] } : {})
           } satisfies LoreFile,
           null,
           2

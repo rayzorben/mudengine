@@ -61,7 +61,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the Drop notice's wording, out to `macros.ts`, and the paste comment (todo 83).
   // Lowered by the trainers' delegation, out to the place desk with the nearest of each kind (todo 70).
   // Lowered by the destination hook's comment, one line as only asked walks are recent (todo 28).
-  'src/main/session/SessionManager.ts': 3382,
+  // Lowered by the rest and poison comments, condensed as the fight signs came (todo 131).
+  'src/main/session/SessionManager.ts': 3381,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

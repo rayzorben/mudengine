@@ -61,10 +61,7 @@ export interface InvokeSources extends BlessingRealm {
   charges: Pick<ChargeLedger, 'usesLeft' | 'lookOnce' | 'used'>;
   /** One hand or two, as `Errands.gearHandsOf` reads it, or null. */
   handsOf: HandsOf;
-  /**
-   * A fight running or asked for, on the state at the send
-   * (`fightIsRunning || AutoCombat.quarry`, as `AutoSearch.fightHere`).
-   */
+  /** A fight running, asked for or still swinging, on the state at the send (`fightHere`). */
   fightHere(): boolean;
 }
 

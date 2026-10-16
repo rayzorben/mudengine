@@ -18,7 +18,7 @@ import {
 } from '../automation/GearRecovery';
 import { StashFetch, type StashFetchEvents } from '../automation/StashFetch';
 import { t } from '../app/i18n';
-import { fightIsRunning } from '../../shared/character';
+import { fightHere, type FightSigns } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { WorldGraph } from '../world/WorldGraph';
 import { planArea } from './areaPlan';
@@ -32,6 +32,8 @@ export interface CollectModules extends LegModules {
   vocabulary: Pick<Vocabulary, 'coins'>;
   combat: Pick<AutoCombat, 'quarry' | 'willFight'>;
   loot: Pick<AutoLoot, 'taking'>;
+  /** A fight the state stopped showing (`fightHere`). */
+  signs: FightSigns;
   errands: LegModules['errands'] & Pick<Errands, 'tripReach' | 'monstersIn'>;
   world: Pick<WorldGraph, 'byId'> | undefined;
   travel: Pick<Travel, 'escaping'>;
@@ -49,8 +51,8 @@ function collectPlanner(
   parts: CollectParts
 ): RecoveryPlanner & LegPlanner & { fighting(): boolean } {
   const fighting = (): boolean => {
-    const { tracker, combat } = parts.modules();
-    return fightIsRunning(tracker.current) || combat.quarry(tracker.current);
+    const { tracker, signs } = parts.modules();
+    return fightHere(tracker.current, signs, Date.now());
   };
   return {
     ...legPlanner(parts.modules),

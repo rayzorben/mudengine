@@ -82,7 +82,7 @@ function build(
     tracker: { current: state },
     hangUp: {
       assess: () => assessment,
-      clean: () => assessment.clean,
+      threatened: () => !assessment.clean,
       monsterNear: (here, now) => watch.monsterNear(here, now)
     },
     realmMenu: {

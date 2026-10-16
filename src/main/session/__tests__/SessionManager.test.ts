@@ -1531,10 +1531,15 @@ describe('hanging up to escape', () => {
     'session.safety.hangUpRefused',
     'session.safety.hangUpSwitchedOff'
   ]);
-  const inCombat = (text: string | undefined): boolean =>
-    [t('automation.hangUp.reasonInCombat'), t('automation.hangUp.reasonMobEngaged')].some(
-      (reason) => text?.includes(reason) === true
-    );
+  // Only PvP charges a hangup (todo 131): Vaelor, a player on the roster, opens on the character.
+  const playerAttacks = async (socket: net.Socket): Promise<void> => {
+    socket.write('Vaelor just entered the Realm.\r\n');
+    await until(() => manager!.character.online.some((who) => who.name === 'Vaelor'));
+    socket.write('Vaelor moves to attack you!\r\n');
+    await until(() => manager!.character.combat.attackers.length > 0);
+  };
+  const inPvp = (text: string | undefined): boolean =>
+    text?.includes(t('automation.hangUp.reasonPvpNamed', { name: 'Vaelor', minutes: 5 })) === true;
 
   it('hangs up when health falls and nothing says it would be penalised', async () => {
     const { sink, notices } = collect();
@@ -1560,23 +1565,22 @@ describe('hanging up to escape', () => {
   });
 
   /*
-   * The whole point. A hangup in combat is penalised, and refusing is said out
+   * The whole point. A hangup in PvP is penalised, and refusing is said out
    * loud — somebody who turned this on is relying on it, and a safety feature
    * that silently declines is worse than one that was never offered.
    */
-  it('refuses in combat, and says why', async () => {
+  it('refuses while a player is fighting it, and says why', async () => {
     const { sink, notices } = collect();
     manager = build(sink, { automation: safety() });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
+    await playerAttacks(socket);
     socket.write('[HP=10]:\r\n');
 
     await until(() => notices.some(notHangingUp));
     const refusal = notices.find(notHangingUp) ?? '';
-    expect(inCombat(refusal)).toBe(true);
+    expect(inPvp(refusal)).toBe(true);
     // And it stays connected, which is the part that matters.
     expect(manager?.state.phase).toBe('connected');
   });
@@ -1593,22 +1597,15 @@ describe('hanging up to escape', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    /*
-     * The blow is what makes the hangup unclean, so it has to land before the
-     * status line that would otherwise trip it. `blows` and not `attackers`:
-     * a monster's attack text is realm data, so nothing in the line says where
-     * the name stops, and with no room block to name the occupants the roster
-     * of attackers stays empty. The blow was still counted.
-     */
-    await until(() => manager!.character.combat.blows > 0);
+    // The attack is what makes the hangup charged, so it lands before the status line.
+    await playerAttacks(socket);
     socket.write('[HP=10]:\r\n');
 
     await until(() => traces.some((trace) => trace.safety.length > 0));
     const decision = traces.at(-1)?.safety[0];
     expect(decision?.action).toBe('hang up');
     expect(decision?.acted).toBe(false);
-    expect(inCombat(decision?.refused)).toBe(true);
+    expect(inPvp(decision?.refused)).toBe(true);
     expect(decision?.because).toBe(t('session.safety.whyHealth', { percent: '10%' }));
   });
 
@@ -1629,8 +1626,7 @@ describe('hanging up to escape', () => {
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
+    await playerAttacks(socket);
     for (const hp of [12, 11, 10, 9, 8]) {
       socket.write(`[HP=${hp}]:\r\n`);
       await until(() => manager!.character.vitals.hp === hp);
@@ -1694,11 +1690,28 @@ describe('hanging up to escape', () => {
       notices.includes(t('session.safety.realmCharges', { realm: 'Paradigm PVP', percent: 25 }))
     );
     knowMaximum(socket);
-    socket.write('The orc rogue slashes you for 5 damage!\r\n');
-    await until(() => manager!.character.combat.blows > 0);
+    await playerAttacks(socket);
     socket.write('[HP=10]:\r\n');
     await until(() => notices.some(notHangingUp));
     expect(manager.state.phase).toBe('connected');
+  });
+
+  /* `PenalizeHangInMobCombat` is false at `GMUDServer.cs:120`: a monster charges nothing (todo 131). */
+  it('hangs up beside a monster on the realm the menu says charges', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: safety() });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    await chooseRealm(socket, '2');
+    await until(() =>
+      notices.includes(t('session.safety.realmCharges', { realm: 'Paradigm PVP', percent: 25 }))
+    );
+    knowMaximum(socket);
+    socket.write('The orc rogue slashes you for 5 damage!\r\n');
+    await until(() => manager!.character.combat.blows > 0);
+    socket.write('[HP=10]:\r\n');
+    await until(() => notices.some(hangingUp));
+    expect(notices.some(notHangingUp)).toBe(false);
   });
 
   it('hangs up on the realm the menu says charges nothing, whatever the setting says', async () => {

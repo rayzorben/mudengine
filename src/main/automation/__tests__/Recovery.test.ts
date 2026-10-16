@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
-import { Recovery, type RecoverySettings } from '../Recovery';
+import { fightIsHere, Recovery, type RecoverySettings } from '../Recovery';
+import { HangUpWatch, MOB_ENGAGED_MS } from '../HangUp';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, type CharacterState, type FightSigns } from '../../../shared/character';
 import type { MobRule } from '../../../shared/mobRules';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { MEDITATE_ABILITY } from '../../../shared/abilities';
@@ -1206,6 +1207,81 @@ describe('resting for a member under Manage Party Health', () => {
     drain();
     expect(sent).toEqual([]);
     managing.onCharacter(state({ hp: 100, hpMax: 100, ...leading(0.3) }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+});
+
+/*
+ * Todo 131, Rayzor 2026-10-12: a heal's `*Combat Off*` clears the flag, the
+ * attackers and the target together while the gravedigger goes on swinging,
+ * and `rest` went out after every heal.
+ */
+describe('no rest while a monster here is still swinging', () => {
+  const watch = (): HangUpWatch => new HangUpWatch();
+  const blow = (on: HangUpWatch): void =>
+    on.observe(
+      {
+        seq: 1,
+        at: Date.now(),
+        type: 'mob-hits',
+        domain: 'combat',
+        groups: { attacker: 'big gravedigger' },
+        text: '',
+        terminator: 'newline',
+        confidence: 1
+      },
+      []
+    );
+  const signsOf = (on: HangUpWatch): FightSigns => ({
+    monsterSwung: (now) => on.monsterSwung(now),
+    quarry: () => false
+  });
+  const low = { hp: 20, hpMax: 100 };
+  const resting = (on: HangUpWatch): Recovery =>
+    new Recovery(settings(health({ restBelow: 0.5 })), queue, { signs: signsOf(on) });
+  // What the heal's Off leaves: the flag down, nobody fighting, the monster still here.
+  const afterTheOff = (): CharacterState =>
+    state({ ...low, inCombat: false, combat: fighting(), room: withMob('big gravedigger') });
+
+  it('sends no rest after the Off while the blow is recent', () => {
+    const struck = watch();
+    blow(struck);
+    const recovery = resting(struck);
+    recovery.onCharacter(
+      state({
+        ...low,
+        inCombat: true,
+        combat: fighting({ attackers: ['big gravedigger'] }),
+        room: withMob('big gravedigger')
+      })
+    );
+    const off = afterTheOff();
+    // The Off has been applied: the state alone shows no fight.
+    expect(off.inCombat).toBe(false);
+    expect(fightIsHere(off)).toBe(false);
+    recovery.onCharacter(off);
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('rests on the same state with no blow, or once the blow is old (the controls)', () => {
+    resting(watch()).onCharacter(afterTheOff());
+    drain();
+    expect(sent).toEqual(['rest']);
+    sent = [];
+    const struck = watch();
+    blow(struck);
+    vi.advanceTimersByTime(MOB_ENGAGED_MS);
+    resting(struck).onCharacter(afterTheOff());
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('rests where the run got out: the blow is recent but nothing is here', () => {
+    const struck = watch();
+    blow(struck);
+    resting(struck).onCharacter(state({ ...low }));
     drain();
     expect(sent).toEqual(['rest']);
   });

@@ -689,6 +689,53 @@ describe('the spells a realm said have no effect on a monster', () => {
 });
 
 /*
+ * Todo 131: before the fix a refusal could be filed under the wrong spell, and
+ * nothing in the file says who cast. The repair drops every entry, once,
+ * says how many, and records that it ran.
+ */
+describe('the repairs a file is given once', () => {
+  const before = Date.UTC(2026, 9, 14);
+  const writeOld = (): void =>
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        v: 1,
+        realms: {},
+        noEffects: {
+          paradigm: { 'acid slime': { harm: before }, gravedigger: { harm: before } },
+          'gmud.zip': { 'acid slime': { harm: before } }
+        }
+      })
+    );
+
+  it('drops what the misread wrote, says so, and keeps a later lesson', () => {
+    writeOld();
+    const said: string[] = [];
+    const lore = store((message) => said.push(message));
+    const paradigm = lore.forRealm('paradigm', world, PLAYED);
+    expect(paradigm.hasNoEffect('harm', 'gravedigger')).toBe(false);
+    expect(lore.forRealm('gmud.zip', world, PLAYED).hasNoEffect('harm', 'acid slime')).toBe(false);
+    expect(said).toEqual([t('notices.world.lore.noEffectMisread.many', { count: 3 })]);
+    lore.flush();
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.repaired).toEqual(['no-effect-misread-2026-10']);
+    expect(written.noEffects ?? {}).toEqual({});
+
+    // Positive control: the step ran, and a second load leaves an entry of any age alone.
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...written, noEffects: { paradigm: { gravedigger: { harm: before } } } })
+    );
+    const again: string[] = [];
+    const reread = store((message) => again.push(message));
+    expect(reread.forRealm('paradigm', world, PLAYED).hasNoEffect('harm', 'gravedigger')).toBe(
+      true
+    );
+    expect(again).toEqual([]);
+  });
+});
+
+/*
  * Todo 70: what a realm pays for a kill is not the database's figure (Paradigm
  * paid 300 for a cave bear rated 100), so a solo kill's figure is kept per
  * realm, under the realm's own row name.

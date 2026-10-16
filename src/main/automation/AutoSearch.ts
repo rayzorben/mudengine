@@ -63,7 +63,7 @@
  */
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
-import { fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightHere, type CharacterState, type FightSigns } from '../../shared/character';
 import type { SearchConfig } from '../../shared/config';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -78,8 +78,8 @@ export interface SearchEvents {
    * true. `Walker` takes its own `stateNow` for the same reason.
    */
   stateNow(): CharacterState;
-  /** `AutoCombat.quarry`: asked rather than worked out, for `holdAt`'s reason. */
-  quarry(state: CharacterState): boolean;
+  /** `AutoCombat.quarry` and a monster's recent blow, for `fightHere` (`FightSigns`). */
+  signs: FightSigns;
   /**
    * Whether a move is outstanding (`CharacterTracker.pendingMoves`). The
    * server runs typed-ahead moves before anything sent now, so a search sent
@@ -136,9 +136,9 @@ export class AutoSearch implements SessionModule {
     private readonly events: SearchEvents
   ) {}
 
-  /** A fight running here, or one auto-combat is about to open. */
+  /** A fight running here, one auto-combat is about to open, or a monster here still swinging. */
   private fightHere(state: CharacterState): boolean {
-    return fightIsRunning(state) || this.events.quarry(state);
+    return fightHere(state, this.events.signs, Date.now());
   }
 
   /**

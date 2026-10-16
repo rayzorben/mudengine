@@ -1962,6 +1962,34 @@ export function monstersHere(state: CharacterState): boolean {
   return state.room.occupants.some((occupant) => occupant.kind !== 'player');
 }
 
+/** What says a fight is here when the state does not: asked of the session, never worked out. */
+export interface FightSigns {
+  /** A monster hit or swung at this character lately (`HangUpWatch.monsterSwung`). */
+  monsterSwung(now: number): boolean;
+  /** A monster auto-combat would open on here now (`AutoCombat.quarry`). */
+  quarry(state: CharacterState): boolean;
+}
+
+/** No signs wired: the state alone answers, as it did before todo 131. */
+export const NO_FIGHT_SIGNS: FightSigns = { monsterSwung: () => false, quarry: () => false };
+
+/**
+ * A fight the state has stopped showing: a monster still here that swung at
+ * the character lately, or one auto-combat is about to open on (todo 131).
+ * A heal's `*Combat Off*` clears the flag, the attackers and the target
+ * together while the monster goes on swinging, and an `aa` unanswered is
+ * not yet a fight on the state. The monster must still be here, so a run
+ * that got out reads as out.
+ */
+export function fightSigned(state: CharacterState, signs: FightSigns, now: number): boolean {
+  return (signs.monsterSwung(now) && monstersHere(state)) || signs.quarry(state);
+}
+
+/** `fightIsRunning`, or a fight only the signs show: the one test for a cast or a search. */
+export function fightHere(state: CharacterState, signs: FightSigns, now: number): boolean {
+  return fightIsRunning(state) || fightSigned(state, signs, now);
+}
+
 /**
  * The same arrival in the same room: the name alone is not enough, since the
  * desert is a thousand rooms called `Scorching Desert` (`Room.arrival`).

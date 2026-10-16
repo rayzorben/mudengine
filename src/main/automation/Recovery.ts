@@ -97,7 +97,13 @@
 import type { CommandQueue } from './CommandQueue';
 import { countThreats } from './RuleEngine';
 import { t } from '../app/i18n';
-import { leaderOf, type CharacterState } from '../../shared/character';
+import {
+  fightSigned,
+  leaderOf,
+  NO_FIGHT_SIGNS,
+  type CharacterState,
+  type FightSigns
+} from '../../shared/character';
 import {
   membersStill,
   type AutomationConfig,
@@ -300,8 +306,20 @@ export class Recovery implements SessionModule {
        * same band (`RestSpell`), since a cast stands a resting character up.
        */
       beforeRest?(state: CharacterState, restTo: number): void;
+      /** A fight the state stopped showing (`fightSigned`); omitted, the state alone. */
+      signs?: FightSigns;
     } = {}
   ) {}
+
+  /**
+   * `fightIsHere`, or a monster here still swinging after a heal's
+   * `*Combat Off*` cleared the state, or one auto-combat is about to open on
+   * (todo 131): Rayzor sent `rest` after every heal while being hit.
+   */
+  private fighting(state: CharacterState): boolean {
+    const signs = this.events.signs ?? NO_FIGHT_SIGNS;
+    return fightIsHere(state) || fightSigned(state, signs, Date.now());
+  }
 
   configure(settings: RecoverySettings): void {
     this.settings = settings;
@@ -396,7 +414,7 @@ export class Recovery implements SessionModule {
    */
   wouldRest(state: CharacterState): boolean {
     if (!this.enabled || state.phase !== 'in-game') return false;
-    if (fightIsHere(state) || this.refused.has('rest')) return false;
+    if (this.fighting(state) || this.refused.has('rest')) return false;
     const { hp, hpMax, mana, manaMax, resting } = state.vitals;
     if (this.needed !== null && hp !== null && hp < this.needed) return true;
     if (this.below(hp, hpMax, this.config.restBelow)) return true;
@@ -425,8 +443,8 @@ export class Recovery implements SessionModule {
     // A rest is broken by being attacked, so one sent while something is
     // actually swinging is a command spent to be told so — out of the same
     // budget the fight is being fought with. The flag alone is not that; see
-    // `fightIsHere`.
-    if (fightIsHere(state)) return;
+    // `fightIsHere` and `fighting`.
+    if (this.fighting(state)) return;
 
     /*
      * The poison sentence is said once per stretch of poison, so the memory of
