@@ -25,6 +25,17 @@ describe('the entries the options file states and does not load', () => {
     expect(refused.fresh({ ...file, keys: {} })).toHaveLength(1);
     expect(refused.fresh({})).toEqual([]);
   });
+
+  it("say a room name of the player's that is not loaded, and not one that is (todo 153)", () => {
+    const rooms = [
+      { code: 'GATE', name: 'Gates', room: 'Town Gates 1/1' },
+      { code: 'gate', name: 'Again', room: 'Town Gates 1/1' },
+      { code: 'HALF', name: 'Half typed' }
+    ];
+    const said = new RefusedEntries().fresh({ rooms });
+    expect(notesOf(said, 'app.config.refusedRoomName')).toHaveLength(2);
+    expect(said).toHaveLength(2);
+  });
 });
 
 // Todo 134: a character's own file, and a loop through Global's macros.

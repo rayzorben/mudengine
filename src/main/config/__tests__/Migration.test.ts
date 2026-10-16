@@ -8759,3 +8759,55 @@ describe('auto-rest is stated and pinned', () => {
     expect(notesOf(said, 'notices.migration.autoRestSwitchPinned')).toHaveLength(0);
   });
 });
+
+describe("the player's own room names are stated (todo 153)", () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const optionsOf = (): Record<string, unknown> =>
+    parse(fs.readFileSync(home.options, 'utf8')) as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rooms-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states the list empty after gameView, with its paragraph, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'gameView:\n  dock: bottom\nlogging:\n  enabled: true\n',
+      'utf8'
+    );
+    migrate();
+    const keys = Object.keys(optionsOf());
+    expect(keys[keys.indexOf('gameView') + 1]).toBe('rooms');
+    expect(optionsOf()['rooms']).toEqual([]);
+    expect(fs.readFileSync(home.options, 'utf8')).toMatch(/#.*\n(#.*\n)*rooms: \[\]/);
+    expect(notesOf(said, 'notices.migration.roomNamesStated')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(said).toEqual([]);
+  });
+
+  it('leaves a list the player already states as they wrote it', () => {
+    const own = "rooms:\n  - { code: 'GATE', name: 'Gates', room: 'Town Gates 1/1' }\n";
+    fs.writeFileSync(home.options, `gameView:\n  dock: bottom\n${own}`, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toContain(own);
+    expect(notesOf(said, 'notices.migration.roomNamesStated')).toHaveLength(0);
+  });
+});

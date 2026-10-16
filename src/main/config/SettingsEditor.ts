@@ -41,7 +41,8 @@ import type { GlobalDraft, ProfileDraft, ServerDraft } from '../../shared/drafts
 import type { ProfileEditable, SettingsSnapshot, SpellOption } from '../../shared/ipc';
 import type { CureGates } from '../../shared/spellcraft';
 import type { ConnectionTarget } from '../../shared/types';
-import { errorMessage, isRecord } from '../../shared/values';
+import { errorMessage, isRecord, sameJson } from '../../shared/values';
+import { statedRoomNames, writtenRoomNames } from '../../shared/roomNicknames';
 import { pairsRecord, statedPairs, type StatedPair } from '../../shared/pairs';
 import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases';
 import { statedKeys } from '../../shared/keys';
@@ -1080,6 +1081,7 @@ export class SettingsEditor {
         rewrites: structuredClone(config.ui.rewrites)
       },
       gameView: { ...config.gameView },
+      rooms: statedRoomNames(stated['rooms']),
       logging: {
         enabled: config.logging.enabled,
         directory: config.logging.directory,
@@ -1205,6 +1207,11 @@ export class SettingsEditor {
 
         set(['gameView', 'dock'], draft.gameView.dock);
         set(['gameView', 'opacity'], draft.gameView.opacity);
+        // Only when changed, so a hand-written list keeps its layout and comments.
+        const rooms = document.get('rooms', true);
+        const written = writtenRoomNames(draft.rooms);
+        const stated = writtenRoomNames(statedRoomNames(isSeq(rooms) ? rooms.toJSON() : null));
+        if (!sameJson(stated, written)) set(['rooms'], written);
         set(['logging', 'enabled'], draft.logging.enabled);
         set(['logging', 'directory'], draft.logging.directory);
         set(['logging', 'capture'], draft.logging.capture);

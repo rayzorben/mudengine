@@ -80,6 +80,7 @@ import {
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
 import { normalizeGameView, type GameViewConfig } from './gameViewConfig';
+import { statedRoomNames, type StatedRoomName } from './roomNicknames';
 import { asCoinNames, type CoinNames } from './coins';
 import { asGearWeights, type GearWeights } from './gearWeighing';
 import { asLowLives } from './lives';
@@ -273,6 +274,8 @@ export interface GlobalDraft {
   };
   /** The game view's console (todo 140): where it docks open, and how opaque it is. */
   gameView: GameViewConfig;
+  /** The player's own room names as the file states them, refused entries included (todo 153). */
+  rooms: StatedRoomName[];
   automation: {
     enabled: boolean;
     onEnterRealm: string[];
@@ -1444,6 +1447,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000)
     },
     gameView: normalizeGameView(value['gameView']),
+    rooms: statedRoomNames(value['rooms']),
     automation: {
       enabled: automation['enabled'] === true,
       onEnterRealm: words(automation['onEnterRealm'], 16),

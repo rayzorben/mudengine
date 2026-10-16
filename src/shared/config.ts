@@ -37,6 +37,7 @@ import { normalizeBlessings, type BlessingConfig } from './blessings';
 import { asEvents, type ScheduledEvent } from './events';
 import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
+import { asRoomNicknames, type RoomNickname } from './roomNicknames';
 import { asCoinNames, type CoinNames } from './coins';
 import { asGearWeights, DEFAULT_GEAR_WEIGHTS, type GearWeights } from './gearWeighing';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
@@ -2332,6 +2333,8 @@ export interface AppConfig {
   extensions: ExtensionSwitches;
   /** The game view's console, global only (todo 140). */
   gameView: GameViewConfig;
+  /** The player's own room names, in front of MegaMUD's shipped ones, global only (todo 153). */
+  rooms: RoomNickname[];
 }
 
 /**
@@ -2751,7 +2754,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   keys: MEGAMUD_KEYS,
   extensions: DEFAULT_EXTENSION_SWITCHES,
-  gameView: DEFAULT_GAME_VIEW
+  gameView: DEFAULT_GAME_VIEW,
+  rooms: []
 };
 
 // The toolbar's switches, by their paths under `automation` (moved out, todo 140).
@@ -2938,7 +2942,8 @@ export function normalizeConfig(input: unknown): AppConfig {
     automation: normalizeAutomation(raw['automation'], looping),
     keys: normalizeKeys(raw['keys'], looping),
     extensions: normalizeExtensionSwitches(raw['extensions']),
-    gameView: normalizeGameView(raw['gameView'])
+    gameView: normalizeGameView(raw['gameView']),
+    rooms: asRoomNicknames(raw['rooms'])
   };
 }
 

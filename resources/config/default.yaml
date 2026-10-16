@@ -2904,3 +2904,15 @@ extensions: {}
 gameView:
   dock: bottom
   opacity: 0.55
+
+# Your own room names, as MegaMUD's goto list has them: a code, a name, and the
+# realm's room as a loop stop names it (`Darkwood Forest 3/784`). The room
+# search, the command palette, @goto and {goto} find a room by these before
+# MegaMUD's own; a code here takes the place of MegaMUD's code of that name.
+# stopBefore, avoid, minLevel and maxLevel are optional and mean what they do
+# in MegaMUD; with hidden, MegaMUD's "Hide in goto list", the entry is found
+# by its code only. An entry is used on a realm only where that realm has the room at
+# that address under that name. For every character, so a character's file has
+# no say. Example:
+#   - { code: 'GATE', name: 'The first gates', room: 'Town Gates 1/1' }
+rooms: []
