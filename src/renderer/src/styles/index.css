@@ -5027,7 +5027,7 @@ button.quest-tile-name:hover:not(:disabled) {
 
 /*
  * A way out that leaves the plane, as a control: the chevron the room wears
- * on every other map, or the teleport's ring, on a hit target big enough to
+ * on every other map, or the teleport's vortex, on a hit target big enough to
  * point at. The marker's hue at rest — it is a way, like the corridor's
  * marker bar — and the accent under the pointer, which is what every other
  * map control does.

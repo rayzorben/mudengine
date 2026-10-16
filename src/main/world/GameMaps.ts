@@ -175,8 +175,12 @@ export class GameMaps {
         if (id === undefined) continue;
         const room = this.graph.byId(id)!;
         const to: GameCell['to'] = {};
+        const otherMap: NonNullable<GameCell['otherMap']> = {};
         // The ways the plane follows, so a cast that scatters draws no line.
-        for (const { exit, to: there } of planeSteps(this.graph, room)) to[exit.direction] = there;
+        for (const { exit, to: there, destination } of planeSteps(this.graph, room)) {
+          to[exit.direction] = there;
+          if (destination.map !== room.map) otherMap[exit.direction] = destination.map;
+        }
         for (const { way } of leapSteps(this.graph, room))
           if (way.kind !== 'teleport') to[way.exit.direction] = way.to;
         const icon = room.shop === undefined ? null : this.pack.iconOf(room.shop);
@@ -186,7 +190,8 @@ export class GameMaps {
           to,
           ...(icon === null ? {} : { icon }),
           ...(isDark(room) ? { dark: true as const } : {}),
-          ...(facts.named.has(id) ? { named: true as const } : {})
+          ...(facts.named.has(id) ? { named: true as const } : {}),
+          ...(Object.keys(otherMap).length === 0 ? {} : { otherMap })
         });
       }
     }

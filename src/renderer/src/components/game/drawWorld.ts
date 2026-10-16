@@ -10,6 +10,8 @@
 import { STEP } from '@shared/map';
 import {
   cellKey,
+  hasTeleport,
+  teleportsOf,
   type GameCell,
   type GameMapWindow,
   type MapArea,
@@ -24,6 +26,8 @@ import {
   placeTone,
   type PlaceTone
 } from '../../lib/gameIcons';
+import { t } from '../../lib/i18n';
+import { VORTEX_DOT, vortexArms } from '../../lib/vortex';
 
 /** The HUD's colours, read from the `--game-*` tokens. */
 export interface GamePalette {
@@ -78,6 +82,8 @@ export const PATHS = {
   lair: new Path2D(LAIR_PATH),
   player: new Path2D(PLAYER_PATH),
   drop: new Path2D(DROP_PATH),
+  // Stroked, unlike the others: the Map card's spiral in the 24-unit box.
+  vortex: new Path2D(vortexArms(12, 12, 9)),
   places: Object.fromEntries(
     Object.entries(PLACE_PATHS).map(([key, path]) => [key, new Path2D(path)])
   ) as Record<keyof typeof PLACE_PATHS, Path2D>
@@ -91,6 +97,9 @@ export interface Camera {
 }
 
 export const ZOOM = { min: 0.4, max: 2 } as const;
+
+/** How far a stub to a room off the window reaches, in cells. */
+const STUB = 0.42;
 
 /** One plane cell on screen, in px, at zoom 1: the prototype's spacing. */
 export const CELL_PX = 92;
@@ -214,7 +223,7 @@ function drawLinks(
     ctx.setLineDash(door ? [5, 5] : joined ? [] : far ? [6, 6] : [2, 5]);
     const end = other
       ? toScreen(view, other.gx, other.gy)
-      : { x: a.x + step!.dx * k * 0.42, y: a.y + step!.dy * k * 0.42 };
+      : { x: a.x + step!.dx * k * STUB, y: a.y + step!.dy * k * STUB };
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(end.x, end.y);
@@ -224,10 +233,50 @@ function drawLinks(
   for (const cell of scene.win.cells) {
     for (const [direction, to] of Object.entries(cell.to) as Array<[Direction, RoomId]>)
       link(cell, direction, to);
-    for (const way of cell.away ?? []) if (way.kind === 'teleport') link(cell, null, way.to);
+    for (const way of teleportsOf(cell)) link(cell, null, way.to);
   }
   ctx.setLineDash([]);
+  drawOtherMaps(ctx, view, scene, pal, alpha);
   ctx.globalAlpha = 1;
+}
+
+/**
+ * The map number past the stub of an exit onto another map (todo 147): the
+ * plane is one map's, so the stub alone read as a way to nowhere.
+ */
+function drawOtherMaps(
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  scene: Scene,
+  pal: GamePalette,
+  alpha: number
+): void {
+  const k = cellPx(view.cam);
+  ctx.save();
+  ctx.font = `600 10px ${pal.font}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  for (const cell of scene.win.cells) {
+    if (cell.otherMap === undefined) continue;
+    const a = toScreen(view, cell.gx, cell.gy);
+    if (!onScreen(view, a, k)) continue;
+    for (const [direction, map] of Object.entries(cell.otherMap) as Array<[Direction, number]>) {
+      const step = STEP[direction];
+      if (!step) continue;
+      // Just past the stub's end, so the number reads as where it goes.
+      const x = a.x + step.dx * k * (STUB + 0.16);
+      const y = a.y + step.dy * k * (STUB + 0.16);
+      const text = t('game.map.otherMapMark', { map });
+      ctx.globalAlpha = alpha * fadeOf(scene, cell);
+      ctx.strokeStyle = pal.ground;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = pal.muted;
+      ctx.fillText(text, x, y);
+    }
+  }
+  ctx.restore();
 }
 
 /** A line through rooms on the plane, joining only those that are placed. */
@@ -284,6 +333,29 @@ function lairBadge(ctx: CanvasRenderingContext2D, pal: GamePalette, x: number, y
   ctx.lineWidth = 1.2;
   ctx.stroke();
   icon(ctx, PATHS.lair, x, y, 10, pal.hp);
+}
+
+/** A room's teleport, on its top-left corner: the find dot has the bottom-left. */
+function vortexBadge(ctx: CanvasRenderingContext2D, pal: GamePalette, x: number, y: number): void {
+  ctx.fillStyle = hexA(pal.accent, 0.18);
+  ctx.beginPath();
+  ctx.arc(x, y, 7.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.save();
+  const k = 11 / 24;
+  ctx.translate(x - 5.5, y - 5.5);
+  ctx.scale(k, k);
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.stroke(PATHS.vortex);
+  ctx.fillStyle = pal.accent;
+  ctx.beginPath();
+  ctx.arc(12, 12, 9 * VORTEX_DOT, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 export function icon(
@@ -446,6 +518,7 @@ function drawTile(
     ctx.stroke();
     icon(ctx, PATHS.places[cell.icon], p.x, p.y, s * 0.62, colour);
     if (cell.lair) lairBadge(ctx, pal, p.x + s / 2, p.y - s / 2);
+    if (hasTeleport(cell)) vortexBadge(ctx, pal, p.x - s / 2, p.y - s / 2);
   } else {
     const s = tileSize(view.cam);
     roundRect(ctx, p.x - s / 2, p.y - s / 2, s, s, s * 0.28);
@@ -457,6 +530,7 @@ function drawTile(
     ctx.fillStyle = own.palette.edge;
     motif(ctx, own.motif, p.x, p.y, s);
     if (cell.lair) lairBadge(ctx, pal, p.x + s / 2, p.y - s / 2);
+    if (hasTeleport(cell)) vortexBadge(ctx, pal, p.x - s / 2, p.y - s / 2);
     if (cell.vertical !== null) {
       ctx.fillStyle = hexA(pal.text, 0.7);
       ctx.font = `600 10px ${pal.font}`;

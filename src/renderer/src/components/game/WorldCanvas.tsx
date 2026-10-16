@@ -23,7 +23,7 @@ import {
 } from 'react';
 
 import type { CharacterState } from '@shared/character';
-import { MOTIF_PALETTES, type GameCell, type MapArea } from '@shared/gameMap';
+import { MOTIF_PALETTES, teleportsOf, type GameCell, type MapArea } from '@shared/gameMap';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { Direction, RoomId } from '@shared/world';
 import {
@@ -473,6 +473,14 @@ function MapTip({
           </div>
         )}
         {hover.cell.lair && <div className="gv-tip-quiet">{t('game.arena.lair')}</div>}
+        {teleportsOf(hover.cell).map((way) => (
+          <div key={`${way.command}:${way.to}`}>
+            {t('game.map.teleport', { command: way.command, roomName: way.name })}
+          </div>
+        ))}
+        {Object.entries(hover.cell.otherMap ?? {}).map(([direction, other]) => (
+          <div key={direction}>{t('game.map.otherMap', { direction, map: other })}</div>
+        ))}
         <div className="gv-tip-act">{t('game.map.clickToWalk')}</div>
       </div>
     );

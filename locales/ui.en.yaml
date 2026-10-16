@@ -1112,6 +1112,11 @@ game:
     clickToGo: click to go
     clickToTarget: click to target
     clickToAttack: click to attack
+    # A room's teleport, one line each under its name in the pointer's tip.
+    teleport: '{command} to {roomName}'
+    # A compass exit onto another map number: in the tip, and beside its stub.
+    otherMap: '{direction} onto map {map}'
+    otherMapMark: 'map {map}'
     zoomIn: Zoom in
     zoomOut: Zoom out
     home: Back to you
@@ -2720,6 +2725,9 @@ cards:
       onward: 'Carries on at {roomName}'
     away:
       down: 'Look down, at {roomName}'
+      # A teleport on any map but the loop builder's: a press opens the route
+      # panel on the room it lands in.
+      teleportRoute: '{command}: plan a route to {roomName}'
       teleport: '{command}: add the teleport to {roomName}'
       up: 'Look up, at {roomName}'
     back: Back

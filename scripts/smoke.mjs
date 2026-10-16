@@ -6718,6 +6718,76 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           JSON.stringify({ said: said.slice(0, 160), want: scripted })
         );
         await capture('smoke-room-answers.png', 'the words a room answers');
+
+        /*
+         * **A teleport is a vortex on the Map card, and a press plans the way
+         * to where it lands** (todo 147; user, 2026-10-15: you can't look
+         * through a portal). The landing room is read off the realm data the
+         * card draws from, like the phrase above. The vortex appearing is the
+         * positive control for the press.
+         */
+        const portal = await evaluate(`
+          (async () => {
+            const map = await window.mudengine.localMap('${SESSION}', 3, 613, { minX: -1, maxX: 1, minY: -1, maxY: 1 });
+            const cell = map.cells.find((entry) => entry.id === '3/613');
+            const way = (cell?.away ?? []).find((entry) => entry.kind === 'teleport');
+            return way === undefined ? null : { to: way.to, name: way.name };
+          })()
+        `);
+        check(
+          portal !== null && !!portal.name,
+          'the room that answers a word has a teleport the map can draw',
+          JSON.stringify(portal)
+        );
+        if (portal?.name) {
+          const vortex = '.map-card .map-away[data-kind="teleport"][data-room="3/613"]';
+          const drawn = await readUntil(
+            () =>
+              evaluate(`
+                (() => {
+                  const ways = document.querySelectorAll(${JSON.stringify(vortex)});
+                  return {
+                    vortices: ways.length,
+                    keyed: !!document.querySelector('.map-card .map-legend [data-kind="teleport"]')
+                  };
+                })()
+              `),
+            (state) => state.vortices > 0,
+            200
+          );
+          check(
+            drawn?.vortices > 0,
+            'standing in it, the Map card draws the teleport as a vortex beside the room',
+            JSON.stringify(drawn)
+          );
+          check(drawn?.keyed === true, 'and the legend keys the vortex', JSON.stringify(drawn));
+          // No panel before the press, so the head polled below is the press's.
+          const noPanel = !(await evaluate(`!!document.querySelector('.route-panel')`));
+          check(noPanel, 'with no route panel open before the press');
+          if (drawn?.vortices > 0 && noPanel) {
+            await evaluate(`
+              (() => {
+                const way = document.querySelector(${JSON.stringify(vortex)});
+                way.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                return true;
+              })()
+            `);
+            const head = await readUntil(
+              () =>
+                evaluate(
+                  `document.querySelector('.route-panel .route-head strong')?.innerText.trim() ?? null`
+                ),
+              (text) => typeof text === 'string' && text.includes(portal.name),
+              200
+            );
+            check(
+              typeof head === 'string' && head.includes(portal.name),
+              'and pressing it opens the route panel on the room it lands in',
+              JSON.stringify({ head, want: portal })
+            );
+            check(await closeRoutePanel(), 'and the route panel closes again');
+          }
+        }
       }
 
       /*
