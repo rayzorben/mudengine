@@ -11,6 +11,7 @@ import {
   normalizeConfig,
   resolveTerminalFonts,
   resolveUiFonts,
+  stillFor,
   targetFromConfig,
   toCssFontStack,
   type AppConfig
@@ -1019,5 +1020,33 @@ describe('how a row says to fight its monster', () => {
     const rows = normalizeMobRules([{ mob: 'giant rat', treat: 'last' }]);
     expect(mobRuleFor(rows, 'The Giant Rat')?.treat).toBe('last');
     expect(mobRuleFor(rows, 'rat')).toBeUndefined();
+  });
+});
+
+/* Todo 148: Auto-Rest off, no journey stands still for a vital; on, the same figures hold. */
+describe('Auto-Rest and the journey holds', () => {
+  const health = { ...DEFAULT_CONFIG.automation.health, restBelow: 0.5, restBelowMana: 0.5 };
+  const vitals = { hp: 20, hpMax: 100, mana: 10, manaMax: 100 };
+
+  it('holds under the floors with it on', () => {
+    expect(stillFor('health', vitals, health, false, 0.1)).toBe(true);
+    expect(stillFor('mana', vitals, health, false, 0.1)).toBe(true);
+  });
+
+  it('holds nothing with it off, and lets a held one go', () => {
+    const off = { ...health, autoRest: false };
+    expect(stillFor('health', vitals, off, false, 0.1)).toBe(false);
+    expect(stillFor('health', vitals, off, true, 0.1)).toBe(false);
+    expect(stillFor('mana', vitals, off, true, 0.1)).toBe(false);
+  });
+
+  it('reads a missing or mistyped key as on', () => {
+    expect(normalizeConfig({}).automation.health.autoRest).toBe(true);
+    expect(
+      normalizeConfig({ automation: { health: { autoRest: 'no' } } }).automation.health.autoRest
+    ).toBe(true);
+    expect(
+      normalizeConfig({ automation: { health: { autoRest: false } } }).automation.health.autoRest
+    ).toBe(false);
   });
 });

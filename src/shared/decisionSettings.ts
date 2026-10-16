@@ -194,6 +194,7 @@ export const DECISION_SETTINGS = {
   'rest-away': ['automation.health.restNextDoor', 'automation.health.restNextDoorMinutes'],
   'rest-away-back': ['automation.health.restNextDoor'],
   'rest-spell': ['automation.health.restSpell'],
+  'auto-rest-back': ['automation.health.autoRest'],
   'heal-self': [
     'automation.spells.heal',
     'automation.spells.healBelow',
@@ -432,6 +433,7 @@ export const DECISION_SETTINGS = {
     'automation.combat.mobRules'
   ],
   'walk-rest-hold': [
+    'automation.health.autoRest',
     'automation.health.restBelow',
     'automation.health.restTo',
     'automation.health.restBelowMana',
@@ -482,6 +484,7 @@ export const DECISION_SETTINGS = {
   'loop-dwell': ['loop.linger'],
   'loop-skip-empty': ['loop.every'],
   'loop-vitals-hold': [
+    'automation.health.autoRest',
     'automation.health.restBelow',
     'automation.health.restTo',
     'automation.health.restBelowMana',
@@ -705,7 +708,9 @@ export const FIELDLESS_SETTINGS: Readonly<Partial<Record<GoverningPath, string>>
   'loop.stops': "a loop's file, drawn on the loop builder card, not a settings page (2026-10-14)",
   'loop.bounce': "a loop's file, drawn on the loop builder card, not a settings page (2026-10-14)",
   'loop.linger': "a loop's file, drawn on the loop builder card, not a settings page (2026-10-14)",
-  'loop.every': "a line in a loop's file only (2026-10-14)"
+  'loop.every': "a line in a loop's file only (2026-10-14)",
+  'automation.health.autoRest':
+    "the toolbar's switch, put back on at each walk, loop and connection (2026-10-16)"
 };
 
 /** The settings behind `kind` that a settings page draws a field for. */

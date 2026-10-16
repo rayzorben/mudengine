@@ -2923,6 +2923,9 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // Keeping the blessings up, on the row: the switch somebody flips for
       // one fight to keep the mana for healing, and back after.
       'autoBless',
+      // Stopping a walk or a loop to rest: off for the walk under way, back on
+      // at the next one.
+      'autoRest',
       'loot',
       /*
        * Searching every room, on the row rather than in the kebab.

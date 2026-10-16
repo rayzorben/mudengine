@@ -39,6 +39,8 @@ import type { AutomationConfig, AutomationSwitch } from '../../shared/config';
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
+import { AutoRestBack } from './AutoRestBack';
+import { switchedOn } from './switchedOn';
 import { PartyWait } from './PartyWait';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
 import type { CarriedRoute } from '../../shared/underway';
@@ -430,6 +432,8 @@ export class Travel implements SessionModule {
   private clearing: readonly string[] = [];
   /** Who the party waits for, and the one clock on it (todo 831). See `PartyWait`. */
   private readonly partyWait: PartyWait;
+  /** Auto-Rest put back on at each walk, loop, arrival and connection (todo 148). */
+  private readonly autoRest: AutoRestBack;
 
   constructor(
     parts: TravelParts,
@@ -459,6 +463,7 @@ export class Travel implements SessionModule {
       notice: (message, decision) => this.session.notice(message, decision),
       waitMinutes: () => this.automationConfig.party.waitMinutes
     });
+    this.autoRest = new AutoRestBack(session);
   }
 
   private get automationConfig(): AutomationConfig {
@@ -479,6 +484,7 @@ export class Travel implements SessionModule {
     this.escapeAwaiting = null;
     this.retreat = null;
     this.saidWaitingToBePlaced = false;
+    this.autoRest.backOn('connected');
   }
 
   /**
@@ -610,6 +616,7 @@ export class Travel implements SessionModule {
     }
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
+    if (arrived && this.walkAsked) this.autoRest.backOn('arrived');
     if (arrived && this.walkAsked) this.combatOnAfterRun(true);
     // Stopped short, auto-combat goes back on where the run turned it off: a run
     // stopped on a spent token left Festus taking a planar storm's arcs with it
@@ -1880,22 +1887,12 @@ export class Travel implements SessionModule {
    * switch off as it was.
    */
   switchedOnFor(walk: () => string | null): string | null {
-    if (this.session.config().enabled) return walk();
-    if (!this.session.switchAutomation('automation', true))
-      return t('session.walk.automationNotOn');
-    let refused: string | null;
-    try {
-      refused = walk();
-    } catch (error) {
-      this.session.switchAutomation('automation', false);
-      throw error;
-    }
-    if (refused !== null) {
-      this.session.switchAutomation('automation', false);
-      return refused;
-    }
-    this.session.notice(t('session.walk.automationOn'));
-    return null;
+    const go = (): string | null => this.autoRest.around('walk', walk);
+    if (this.session.config().enabled) return go();
+    const run = switchedOn((on) => this.session.switchAutomation('automation', on), go);
+    if (!run.written) return t('session.walk.automationNotOn');
+    if (run.answer === null) this.session.notice(t('session.walk.automationOn'));
+    return run.answer;
   }
 
   /**
@@ -2353,7 +2350,9 @@ export class Travel implements SessionModule {
     // lap has just replaced.
     this.journey = null;
     this.errandOwes = null;
-    const refused = this.loops.start(loop, this.tracker.current);
+    const refused = this.autoRest.around('loop', () =>
+      this.loops.start(loop, this.tracker.current)
+    );
     if (refused !== null) return { refused };
     this.light.beforeLap(loop, this.tracker.current);
     return { started: true };
@@ -2405,7 +2404,7 @@ export class Travel implements SessionModule {
         }
       }
     }
-    const refused = this.loops.resume(state);
+    const refused = this.autoRest.around('loop', () => this.loops.resume(state));
     if (refused !== null) return { refused };
     const lap = this.loops.place;
     if (lap !== null) this.light.beforeLap(lap.loop, state);

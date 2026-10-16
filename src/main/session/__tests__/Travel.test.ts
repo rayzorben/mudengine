@@ -134,11 +134,14 @@ function travel(
   const settings = overrides.settings ?? config;
   // The combat switch as the file holds it, and every write of it.
   const combat = { on: settings.combat.enabled, flips: [] as boolean[] };
+  // And Auto-Rest's (todo 148).
+  const rest = { on: settings.health.autoRest, flips: [] as boolean[] };
   const session: TravelSession = {
     config: () => ({
       ...settings,
       enabled: master.on,
-      combat: { ...settings.combat, enabled: combat.on }
+      combat: { ...settings.combat, enabled: combat.on },
+      health: { ...settings.health, autoRest: rest.on }
     }),
     movement:
       overrides.movement ??
@@ -157,6 +160,11 @@ function travel(
         if (master.writes) combat.on = on;
         return master.writes;
       }
+      if (name === 'autoRest') {
+        rest.flips.push(on);
+        if (master.writes) rest.on = on;
+        return master.writes;
+      }
       switched.push(on);
       if (master.writes) master.on = on;
       return master.writes;
@@ -170,7 +178,8 @@ function travel(
     notices,
     decisions,
     switched,
-    combat
+    combat,
+    rest
   };
 }
 
@@ -810,5 +819,104 @@ describe('which walks are recent destinations', () => {
     // Positive control: the leg did start.
     expect(parts.walker.start).toHaveBeenCalledTimes(1);
     expect(asked).toEqual([false]);
+  });
+});
+
+/*
+ * Auto-Rest turned off (todo 148) is put back on at the start of a walk or a
+ * loop, on arriving and on connecting (the user, 2026-10-15), as auto-combat is.
+ */
+describe('auto-rest put back on', () => {
+  const ROUTE = {
+    steps: [{ from: '1/1', to: '1/2' }],
+    cost: 1,
+    blocked: false
+  } as unknown as Route;
+  const restOff = { ...config, health: { ...config.health, autoRest: false } };
+
+  function made(settings: AutomationConfig, writes = true) {
+    const it = travel(beside(), 'stepping', false, { on: true, writes }, { settings });
+    it.parts.walker.start = vi.fn(() => {
+      it.travel.walkStarted();
+      return null;
+    });
+    it.parts.supplies.considerBeforeRoute = () => null;
+    it.parts.light.beforeRoute = () => false;
+    return it;
+  }
+
+  it('turns it on before a walk the player asked for, and says so', () => {
+    const { travel: moving, rest, notices, parts } = made(restOff);
+    parts.walker.start = vi.fn(() => {
+      // The first room is judged with it on.
+      expect(rest.on).toBe(true);
+      moving.walkStarted();
+      return null;
+    });
+    expect(moving.walkForPlayer(ROUTE)).toBeNull();
+    expect(rest.flips).toEqual([true]);
+    expect(notices).toContain(t('automation.autoRest.onForWalk'));
+  });
+
+  it('leaves it off when the walk is refused anyway', () => {
+    const { travel: moving, rest, notices, parts } = made(restOff);
+    parts.walker.start = vi.fn(() => 'no way');
+    expect(moving.walkForPlayer(ROUTE)).toBe('no way');
+    expect(rest.flips).toEqual([true, false]);
+    expect(rest.on).toBe(false);
+    expect(notices).not.toContain(t('automation.autoRest.onForWalk'));
+  });
+
+  it('writes nothing where it is already on', () => {
+    const { travel: moving, rest, parts } = made(config);
+    parts.loops.start = () => null;
+    expect(moving.walkForPlayer(ROUTE)).toBeNull();
+    moving.walkEnded(true);
+    moving.reset();
+    expect(moving.startLoop({ name: 'crypt', stops: [{ room: 'Crypt 1/3' }] })).toEqual({
+      started: true
+    });
+    expect(rest.flips).toEqual([]);
+  });
+
+  it('turns it on at the start of a loop', () => {
+    const { travel: looping, rest, notices, parts } = made(restOff);
+    parts.loops.start = () => null;
+    expect(looping.startLoop({ name: 'crypt', stops: [{ room: 'Crypt 1/3' }] })).toEqual({
+      started: true
+    });
+    expect(rest.on).toBe(true);
+    expect(notices).toContain(t('automation.autoRest.onForLoop'));
+  });
+
+  it('turns it on when the asked walk arrives, turned off on the way', () => {
+    const { travel: moving, rest, notices } = made(config);
+    expect(moving.walkForPlayer(ROUTE)).toBeNull();
+    // The player turns it off from the toolbar mid-walk.
+    rest.on = false;
+    moving.walkEnded(true);
+    expect(rest.flips).toEqual([true]);
+    expect(notices).toContain(t('automation.autoRest.onArrived'));
+  });
+
+  it('leaves it off when the walk stops short', () => {
+    const { travel: moving, rest } = made(config);
+    expect(moving.walkForPlayer(ROUTE)).toBeNull();
+    rest.on = false;
+    moving.walkEnded(false);
+    expect(rest.flips).toEqual([]);
+  });
+
+  it('turns it on at a connection', () => {
+    const { travel: moving, rest, notices } = made(restOff);
+    moving.reset();
+    expect(rest.on).toBe(true);
+    expect(notices).toContain(t('automation.autoRest.onConnected'));
+  });
+
+  it('says so when the file will not take it', () => {
+    const { travel: moving, notices } = made(restOff, false);
+    moving.reset();
+    expect(notices).toContain(t('automation.autoRest.onConnectedRefused'));
   });
 });

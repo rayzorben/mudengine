@@ -317,6 +317,8 @@ function migrateAll(options: MigrationOptions): void {
   theShelfStrikesLearned(home, note);
   theSharedSpotWorthWent(home, note);
   theUnplacedExitsLostTheirMark(home, note);
+  statedAutoRest(home, note, options.template);
+  pinTheAutoRestSwitch(home, note);
 }
 
 /**
@@ -4854,6 +4856,47 @@ function statedTheRestSpell(
       ? t('notices.migration.restSpell.one', params)
       : t('notices.migration.restSpell.many', params)
   );
+}
+
+/**
+ * `automation.health.autoRest` (todo 148) into every file that states
+ * `health:` without it, on as the template ships it, after `useWards` and
+ * with the template's paragraph. Idempotent: a key stays added whatever the
+ * toolbar writes into it later.
+ */
+function statedAutoRest(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    HEALTH_BLOCK,
+    'autoRest',
+    DEFAULT_CONFIG.automation.health.autoRest,
+    'useWards',
+    templateComments(template, 'automation').get('automation.health.autoRest')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.autoRest.one', params)
+      : t('notices.migration.autoRest.many', params)
+  );
+}
+
+/**
+ * The Auto-Rest switch onto the toolbar, after Auto-Bless (todo 148), or after
+ * the nearest switch that precedes it on a curated row, else the front.
+ * `pinTheBlessSwitch`'s shape and its caveat.
+ */
+function pinTheAutoRestSwitch(home: Home, note: (message: string) => void): void {
+  const beside = (ids: ReadonlyArray<string | null>): number =>
+    (['autoBless', 'retaliate', 'combat', 'automation']
+      .map((id) => ids.indexOf(id))
+      .find((at) => at >= 0) ?? -1) + 1;
+  if (pinOnToolbar(home, 'autoRest', beside)) note(t('notices.migration.autoRestSwitchPinned'));
 }
 
 /**

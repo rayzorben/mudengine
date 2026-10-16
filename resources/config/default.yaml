@@ -1653,6 +1653,13 @@ automation:
     # stated duration.
     useWards: true
 
+    # Auto-Rest, the toolbar's switch: whether a route, a loop or a follower's
+    # @wait stops to rest under restBelow or restBelowMana. Off, the character
+    # walks on hurt, and run and hang-up still act; standing still, it rests as
+    # usual. Turned off, it comes back on at the start of the next walk or loop,
+    # on arriving, and on connecting.
+    autoRest: true
+
   # Going to collect the level, and spending the points it awards.
   #
   # In this game you do not level by earning the experience: you earn it, then

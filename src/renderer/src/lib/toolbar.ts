@@ -74,6 +74,8 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   combat: 'sword',
   retaliate: 'shield',
   autoBless: 'sparkle',
+  // The bed a rest is taken in; the moon is resting with the leader.
+  autoRest: 'bed',
   retreat: 'run',
   // Skip: the teleport jumps past the walk the retreat would have taken.
   fleeGoto: 'skip',
@@ -135,6 +137,8 @@ export function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.retaliate');
     case 'autoBless':
       return t('toolbar.autoBless');
+    case 'autoRest':
+      return t('toolbar.autoRest');
     case 'retreat':
       return t('toolbar.retreat');
     case 'fleeGoto':
