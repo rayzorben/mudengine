@@ -214,10 +214,15 @@ export class RemoteMoves {
           return FAILED;
         }
         const room = { who: from, ...walk, address: roomId(match.at.map, match.at.room) };
+        const running = this.session.walker.progress.pace === 'running';
         this.notice(
           replacing === null
-            ? t('session.remotes.gotoWalking', room)
-            : t('session.remotes.gotoReplaced', { ...room, was: replacing }),
+            ? running
+              ? t('session.remotes.gotoRunning', room)
+              : t('session.remotes.gotoWalking', room)
+            : running
+              ? t('session.remotes.gotoReplacedRunning', { ...room, was: replacing })
+              : t('session.remotes.gotoReplaced', { ...room, was: replacing }),
           'remote-moves'
         );
         return OK;
@@ -285,12 +290,11 @@ export class RemoteMoves {
       );
       return false;
     }
+    const coming = { who: from, stepCount: walk.stepCount, address: roomId(at.map, at.room) };
     this.notice(
-      t('session.remotes.comebackWalking', {
-        who: from,
-        stepCount: walk.stepCount,
-        address: roomId(at.map, at.room)
-      }),
+      this.session.walker.progress.pace === 'running'
+        ? t('session.remotes.comebackRunning', coming)
+        : t('session.remotes.comebackWalking', coming),
       'remote-moves'
     );
     return true;

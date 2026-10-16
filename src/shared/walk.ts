@@ -7,7 +7,7 @@
  */
 import type { Requirement, RoomId, RouteStep } from './world';
 import { isBlinding, type Afflictions, type CharacterState, type Vitals } from './character';
-import type { MovementConfig } from './config';
+import type { AutomationConfig, MovementConfig } from './config';
 
 /**
  * What a walk is for, which decides how each of its legs is planned (todo 19):
@@ -130,6 +130,20 @@ export interface WalkProgress {
    * line per monster on a twenty-step journey is the chrome talking over it.
    */
   hold: WalkHold;
+  /** Walking with auto-combat on, running with it off (todo 129), as the switch stands now. */
+  pace: Pace;
+}
+
+/**
+ * MegaMUD's two words for one movement, `Walking to %s` and `Running to %s`:
+ * running is moving with auto-combat off (todo 129), the master switch's off
+ * included, since nothing fights then either. `WalkProgress.pace` is this, and
+ * every place the client names a movement under way reads it from there.
+ */
+export type Pace = 'walking' | 'running';
+
+export function paceOf(automation: Pick<AutomationConfig, 'enabled' | 'combat'>): Pace {
+  return automation.enabled && automation.combat.enabled ? 'walking' : 'running';
 }
 
 /**
@@ -303,7 +317,8 @@ export const IDLE_WALK: WalkProgress = {
   path: [],
   ahead: [],
   reason: null,
-  hold: null
+  hold: null,
+  pace: 'walking'
 };
 
 /**

@@ -93,6 +93,7 @@ let log: string[];
 
 const planner = (over: Partial<GearTripPlanner> = {}): GearTripPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   current: () => current,
   routeTo: (room) => {
     log.push(`route:${room}`);

@@ -37,6 +37,7 @@ import {
 import { encumbranceAtLeast } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { RoomId, Route } from '../../shared/world';
+import type { Pace } from '../../shared/walk';
 
 export interface CashRunPlanner {
   here(): RoomId | null;
@@ -50,6 +51,8 @@ export interface CashRunPlanner {
   release(): void;
   routeTo(room: RoomId): Route | string;
   walk(route: Route): string | null;
+  /** Whether the leg is walked or run, as the combat switch stands (todo 129). */
+  pace(): Pace;
   moveInFlight(): boolean;
   escaping(): boolean;
   /** The tokens the character carries, as the realm states them. */
@@ -591,7 +594,11 @@ export class CashRun implements SessionModule {
     run.stage = 'walking';
     run.legs = 0;
     run.waiting = false;
-    this.events.notice?.(t('automation.cashRun.toBank', { bank: bank.name }));
+    this.events.notice?.(
+      this.planner.pace() === 'running'
+        ? t('automation.cashRun.toBankRunning', { bank: bank.name })
+        : t('automation.cashRun.toBank', { bank: bank.name })
+    );
     const state = this.planner.current();
     if (this.planner.here() === bank.room) {
       this.atBank(run, state);

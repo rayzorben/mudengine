@@ -14,6 +14,7 @@ import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import type { DecisionKind } from '../../shared/decisionSettings';
 import { carriedCount } from '../../shared/supplies';
+import type { Pace } from '../../shared/walk';
 import type { RoomId, Route } from '../../shared/world';
 
 export interface HandoverPlanner {
@@ -23,6 +24,8 @@ export interface HandoverPlanner {
   routeTo(room: RoomId): Route | string;
   /** Hands the route to the walker as a leg. Returns its refusal, or null. */
   walk(route: Route): string | null;
+  /** Whether the leg is walked or run, as the combat switch stands (todo 129). */
+  pace(): Pace;
 }
 
 /** Where, by which verb, which items, and the owner's words for each command sent. */
@@ -43,7 +46,9 @@ export interface HandoverAsk {
 }
 
 export type HandoverStart =
-  { kind: 'here' } | { kind: 'walking'; steps: number } | { kind: 'refused'; why: string };
+  | { kind: 'here' }
+  | { kind: 'walking'; steps: number; pace: Pace }
+  | { kind: 'refused'; why: string };
 
 export type HandoverEnd =
   /** The walk stopped short, or arrived somewhere else; `why` is the walk's reason. */
@@ -128,7 +133,7 @@ export class Handover {
     const refused = this.planner.walk(route);
     if (refused !== null) return { kind: 'refused', why: refused };
     this.phase = { kind: 'walking', ask };
-    return { kind: 'walking', steps: route.steps.length };
+    return { kind: 'walking', steps: route.steps.length, pace: this.planner.pace() };
   }
 
   /** The walker's report: this leg ended, or somebody else's walk did. */

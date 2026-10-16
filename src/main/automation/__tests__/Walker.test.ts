@@ -6,7 +6,7 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { Walker } from '../Walker';
 import type { WalkerEvents } from '../walk/ports';
-import type { WalkKind } from '../../../shared/walk';
+import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import {
   CONFIG as config,
   ROUTE,
@@ -197,6 +197,26 @@ describe('refusing to start', () => {
     expect(walker.start(ROUTE, at(1, 1, { inCombat: true }))).toBeNull();
     await vi.advanceTimersByTimeAsync(50);
     expect(sent).toEqual(['e']);
+  });
+
+  /* Todo 129: walking with auto-combat on, running with it off, as the switch stands. */
+  it('walks with auto-combat on and runs with it off, and the word follows the switch', () => {
+    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
+    const seen: WalkProgress[] = [];
+    const walk = new Walker(fights, queue, {
+      notice: (m) => notices.push(m),
+      progress: (p) => void seen.push(p)
+    });
+    walk.start(ROUTE, at(1, 1));
+    expect(notices).toEqual([
+      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+    ]);
+    expect(walk.progress.pace).toBe('walking');
+    walk.configure(config);
+    expect(seen.at(-1)?.pace).toBe('running');
+    walk.configure(fights);
+    expect(seen.at(-1)?.pace).toBe('walking');
+    walk.dispose();
   });
 
   /*
@@ -394,7 +414,7 @@ describe('starting from a rest', () => {
   it('says nothing about standing up', () => {
     walker.start(ROUTE, resting());
     expect(notices).toEqual([
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     ]);
   });
 
@@ -625,7 +645,7 @@ describe('one step at a time', () => {
     // for it, not to the walker.
     quiet.start(ROUTE, at(1, 1));
     expect(notices.at(-1)).toBe(
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     );
   });
 
@@ -3688,7 +3708,7 @@ describe('one step from a dark room', () => {
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
     expect(notices).toEqual([
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     ]);
   });
 
@@ -3702,7 +3722,7 @@ describe('one step from a dark room', () => {
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
     expect(notices).toEqual([
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     ]);
   });
 
@@ -3715,7 +3735,7 @@ describe('one step from a dark room', () => {
     vi.advanceTimersByTime(50);
     walker.onCharacter(at(1, 2));
     expect(notices).toEqual([
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     ]);
   });
 });
@@ -4018,7 +4038,7 @@ describe('walking while hurt', () => {
     walk.start(ROUTE, hurt(0.3));
     expect(walk.progress.hold).toBe('health');
     expect(notices).toEqual([
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     ]);
     walk.dispose();
   });
@@ -4089,7 +4109,7 @@ describe('walking while hurt', () => {
     expect(sent).toEqual(['e']);
     expect(walk.progress.hold).toBeNull();
     expect(notices).toEqual([
-      t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
+      t('automation.walk.startedRunning.many', { stepCount: 2, destination: 'Third Room' })
     ]);
     walk.dispose();
   });

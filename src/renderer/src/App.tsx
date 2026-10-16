@@ -77,6 +77,7 @@ import { useStreamPressure } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
 import { paletteCommands, paletteKeys, type PaletteDeps } from './lib/palette';
 import { paletteFind } from './lib/paletteFind';
+import { statusAction } from './lib/statusAction';
 import {
   AUTOMATION_SWITCH_NAMES,
   resolveTerminalFonts,
@@ -387,34 +388,7 @@ export default function App() {
 
   const { pressure, meter, record, reset } = useStreamPressure();
 
-  /**
-   * One line for what the engine is doing, newest concern first.
-   *
-   * A walk in progress outranks a queue depth: the walk is a plan someone
-   * started, the queue is bookkeeping. Nothing at all when nothing is
-   * happening — an always-present segment is chrome, not a state.
-   *
-   * "standing down" is deliberately **not** shown here any more. The typing
-   * hold made it true on every keystroke, so the bar announced the player's
-   * own fingers back at them — a state they already know, phrased as though
-   * the engine had decided something. What is queued *behind* the hold is
-   * engine state worth a segment; the hold itself is not.
-   */
-  const action = useMemo(() => {
-    if (walk.status === 'walking') {
-      const step = walk.step?.command ?? '';
-      const progress = t('statusRail.action.walking', { done: walk.done, total: walk.total });
-      return step ? `${progress} · ${step}` : progress;
-    }
-    const next = automation.queue.pending[0];
-    if (next) {
-      return t('statusRail.action.queued', {
-        depth: automation.queue.depth,
-        command: next.command
-      });
-    }
-    return null;
-  }, [walk, automation.queue]);
+  const action = useMemo(() => statusAction(walk, automation.queue), [walk, automation.queue]);
 
   const terminalFonts = useMemo(
     () => toCssFontStack(resolveTerminalFonts(config.terminal.font.family)),

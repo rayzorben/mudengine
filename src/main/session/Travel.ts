@@ -1808,14 +1808,20 @@ export class Travel implements SessionModule {
       return;
     }
     this.homeward = retreat.room;
+    const planned = { room: retreat.room, stepCount: route.steps.length };
+    const running = this.walker.progress.pace === 'running';
     this.session.notice(
-      t('session.safety.retreatPlanned', { room: retreat.room, stepCount: route.steps.length }),
+      running
+        ? t('session.safety.retreatPlannedRunning', planned)
+        : t('session.safety.retreatPlanned', planned),
       HOME
     );
     this.session.decided({
       at: now,
       action: 'retreat',
-      because: t('session.safety.retreatBecause', { room: retreat.room }),
+      because: running
+        ? t('session.safety.retreatBecauseRunning', { room: retreat.room })
+        : t('session.safety.retreatBecause', { room: retreat.room }),
       acted: true
     });
   }

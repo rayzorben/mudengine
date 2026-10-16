@@ -325,7 +325,11 @@ function attention(
         ? view.loop.hold
         : null;
   if (afflicted !== null) return { level: 'warn', label: afflictionMark(afflicted) };
-  if (view.walk.status === 'walking') return { level: 'info', label: t('tabs.tab.markWalking') };
+  if (view.walk.status === 'walking') {
+    const label =
+      view.walk.pace === 'running' ? t('tabs.tab.markRunning') : t('tabs.tab.markWalking');
+    return { level: 'info', label };
+  }
   if (view.loop.status === 'running') return { level: 'info', label: t('tabs.tab.markLooping') };
 
   if (view.walk.status === 'stopped' || view.loop.status === 'stopped') {
@@ -384,7 +388,10 @@ function afflictionMark(hold: AfflictionHold): string {
 function activity(view: RailView | undefined): string | null {
   if (!view) return null;
   if (view.walk.status === 'walking') {
-    return t('tabs.tab.activityWalking', { done: view.walk.done, total: view.walk.total });
+    const steps = { done: view.walk.done, total: view.walk.total };
+    return view.walk.pace === 'running'
+      ? t('tabs.tab.activityRunning', steps)
+      : t('tabs.tab.activityWalking', steps);
   }
   if (view.state.phase === 'connecting') return t('tabs.tab.activityConnecting');
   if (view.state.phase === 'closed') return t('tabs.tab.activityDisconnected');

@@ -157,12 +157,11 @@ export class StashFetch implements SessionModule {
       return started.why;
     }
     if (started.kind === 'walking') {
+      const going = { items: ask.items.join(', '), room: place, steps: started.steps };
       this.events.notice?.(
-        t('automation.stashFetch.going', {
-          items: ask.items.join(', '),
-          room: place,
-          steps: started.steps
-        }),
+        started.pace === 'running'
+          ? t('automation.stashFetch.goingRunning', going)
+          : t('automation.stashFetch.going', going),
         'stash-fetch'
       );
     }

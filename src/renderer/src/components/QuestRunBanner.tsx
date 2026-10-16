@@ -5,7 +5,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 import type { QuestRunPhase, QuestRunProgress } from '@shared/quests';
-import type { WalkProgress } from '@shared/walk';
+import type { Pace, WalkProgress } from '@shared/walk';
 
 /**
  * The run of a quest plan, over the top of this character's console.
@@ -31,7 +31,7 @@ export interface QuestRunBannerProps {
   onSettled(): void;
 }
 
-function phaseWord(phase: QuestRunPhase | null): string {
+function phaseWord(phase: QuestRunPhase | null, pace: Pace): string {
   switch (phase) {
     case 'held':
       return t('terminal.questRun.phase.held');
@@ -40,7 +40,9 @@ function phaseWord(phase: QuestRunPhase | null): string {
     case 'fetching':
       return t('terminal.questRun.phase.fetching');
     case 'walking':
-      return t('terminal.questRun.phase.walking');
+      return pace === 'running'
+        ? t('terminal.questRun.phase.running')
+        : t('terminal.questRun.phase.walking');
     case 'acting':
       return t('terminal.questRun.phase.acting');
     case 'confirming':
@@ -124,7 +126,7 @@ export default function QuestRunBanner({ run, walk, onStop, onSettled }: QuestRu
         <span className="quest-banner-state">
           {running ? (
             <>
-              <span className="chip info">{phaseWord(run.phase)}</span>
+              <span className="chip info">{phaseWord(run.phase, walk?.pace ?? 'walking')}</span>
               {run.detail !== null && <span className="quest-banner-detail">{run.detail}</span>}
             </>
           ) : (

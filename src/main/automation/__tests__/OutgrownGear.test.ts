@@ -83,6 +83,7 @@ let questFor: string | null;
 
 const planner = (): OutgrownPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   outgrown: () => found,
   ganghouse: () => house,
   counterFor: () => counter,

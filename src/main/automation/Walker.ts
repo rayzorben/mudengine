@@ -55,7 +55,7 @@
  */
 import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
-import { portalLeftUnseen } from '../../shared/walk';
+import { paceOf, portalLeftUnseen } from '../../shared/walk';
 import type { HandAnswer } from '../../shared/barrierHands';
 import {
   roomAddress,
@@ -86,6 +86,7 @@ import { RoomCommands, scriptGated } from './walk/RoomCommands';
 import { StepTimes } from './walk/StepTimes';
 import { OffRounds } from './walk/OffRounds';
 import { FoughtPath } from './walk/FoughtPath';
+import { walkStarted } from './walk/startWords';
 
 /**
  * The nudge's coalesce key — by intent, so a walk cannot queue two of them.
@@ -299,6 +300,7 @@ export class Walker implements SessionModule {
     this.config = config;
     this.holds.configure(config);
     this.barriers.configure(config);
+    this.publish(); // The pace follows the combat switch (todo 129).
   }
 
   /** Whether a route is being walked right now. */
@@ -398,7 +400,8 @@ export class Walker implements SessionModule {
       reason: this.reason,
       // A hold only means anything while the walk is still running: a stopped
       // walk that reported one would be drawn as recovering rather than ended.
-      hold: this.holding
+      hold: this.holding,
+      pace: paceOf(this.config)
     };
   }
 
@@ -698,11 +701,8 @@ export class Walker implements SessionModule {
     const arrival = route.steps.at(-1)!;
     const destination = arrival.name;
     if (!quiet) {
-      this.events.notice?.(
-        stepCount === 1
-          ? t('automation.walk.started.one', { stepCount, destination })
-          : t('automation.walk.started.many', { stepCount, destination })
-      );
+      const pace = paceOf(this.config);
+      this.events.notice?.(walkStarted(stepCount, destination, pace));
     }
     // After the refusals above, so a walk that was declined is not written down
     // as a place this character went: every `return` before this point is the

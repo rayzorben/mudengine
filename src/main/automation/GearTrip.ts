@@ -31,6 +31,7 @@ import {
   type GearTripStage
 } from '../../shared/gearTrip';
 import type { RoomId, Route } from '../../shared/world';
+import type { Pace } from '../../shared/walk';
 
 export interface GearTripPlanner extends TripPlanner {
   here(): RoomId | null;
@@ -39,6 +40,8 @@ export interface GearTripPlanner extends TripPlanner {
   routeTo(room: RoomId): Route | string;
   /** Hands the leg to the walker, timed to the rounds where `run`; its refusal, or null. */
   walk(route: Route, run: boolean): string | null;
+  /** Whether the leg is walked or run, as the combat switch stands (todo 129). */
+  pace(): Pace;
   /** An escape in flight, which outranks the trip once it is under way. */
   escaping(): boolean;
   /** *Run it*'s switch: true where auto-combat went off for the way, the refusal where it would not. */
@@ -88,7 +91,12 @@ export class GearTrip implements SessionModule {
   ) {
     this.handover = new Handover(
       queue,
-      { here: planner.here, routeTo: planner.routeTo, walk: (route) => planner.walk(route, false) },
+      {
+        here: planner.here,
+        routeTo: planner.routeTo,
+        walk: (route) => planner.walk(route, false),
+        pace: planner.pace
+      },
       { ended: (end) => this.bought(end) },
       now
     );
