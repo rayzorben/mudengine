@@ -717,3 +717,32 @@ describe('what a realm pays for a kill', () => {
     expect(lore.forRealm('gmud.sqlite', world, PLAYED).killExpFor('giant rat')).toBeNull();
   });
 });
+
+/*
+ * What a realm's rounds measured (todos 121, 123) is the realm played's: harm
+ * once a round on paramud where its energy buys two.
+ */
+describe("what a realm's rounds measured", () => {
+  it('persists per realm played, reads back, and counts only past the least rounds', () => {
+    const lore = store();
+    const realm = lore.forRealm('gmud.sqlite', world, PLAYED);
+    for (let i = 0; i < 29; i++) realm.observeRound('casts', 'harm', 1);
+    expect(realm.measuredRounds()).toBeNull();
+    realm.observeRound('casts', 'harm', 2);
+    realm.observeRound('swings', 'bash@3.402', 3);
+    expect(realm.measuredRounds()?.casts['harm']).toBeCloseTo(31 / 30, 6);
+    lore.flush();
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const played = playedKey('gmud.sqlite', PLAYED());
+    expect(saved.castRounds[played]).toEqual({ harm: { rounds: 30, count: 31 } });
+    expect(saved.swingRounds[played]).toEqual({ 'bash@3.402': { rounds: 1, count: 3 } });
+    const again = store().forRealm('gmud.sqlite', world, PLAYED);
+    expect(again.measuredRounds()).toEqual({ casts: { harm: 31 / 30 }, swings: {} });
+    // The control: another realm played on the same world file has measured nothing.
+    expect(
+      store()
+        .forRealm('gmud.sqlite', world, () => 'paramud:23')
+        .measuredRounds()
+    ).toBeNull();
+  });
+});

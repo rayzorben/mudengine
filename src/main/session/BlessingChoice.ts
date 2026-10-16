@@ -255,10 +255,10 @@ export class BlessingChoice
   ): BlessingCandidate[] {
     const level = bare.progress.level;
     if (level === null) return [];
-    const { combat, magery, crits, family } = this.errands.realmClass();
+    const { combat, magery, crits, rounds, family } = this.errands.realmClass();
     const pricing: CandidatePricing = {
       level,
-      sheet: prowessSheetOf(bare, { combat, magery, crits }),
+      sheet: prowessSheetOf(bare, { combat, magery, crits, rounds }),
       family,
       speed: this.errands.realmSpeed,
       learnedDuration: (spell) => this.session.learnedDuration(spell)

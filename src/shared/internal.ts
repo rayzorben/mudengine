@@ -860,6 +860,12 @@ const TUNING_DEFAULTS = {
      */
     measuredFightsMin: 30,
     /**
+     * How many rounds a spell's casts or an attack's swings at one stated
+     * figure need before what the realm did (`RoundCount`) outranks the
+     * formula and the sheet (todos 121, 123).
+     */
+    measuredRoundsMin: 30,
+    /**
      * And a room that could not take this share off an *unarmoured* character
      * — every blow landing, at full damage — is beneath this level and left
      * out too. The bar is read `automation.hunting.trivialLevelMargin` lower

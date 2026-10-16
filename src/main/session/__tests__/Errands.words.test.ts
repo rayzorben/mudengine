@@ -4,6 +4,7 @@ import { Errands, type ErrandsParts, type ErrandsSession } from '../Errands';
 import { ATTACK_ABILITY } from '../../../shared/abilities';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { NO_LORE } from '../../../shared/lore';
 
 const MYSTIC: CharacterState = {
   ...EMPTY_CHARACTER,
@@ -29,7 +30,12 @@ function errands(attack: string): Errands {
     sparedItems: () => new Set([185])
   };
   return new Errands(
-    { world, tracker: { current: MYSTIC }, fightRecord: {}, lore: {} } as unknown as ErrandsParts,
+    {
+      world,
+      tracker: { current: MYSTIC },
+      fightRecord: {},
+      lore: NO_LORE
+    } as unknown as ErrandsParts,
     { config: () => config, family: () => 'greatermud' } as unknown as ErrandsSession
   );
 }

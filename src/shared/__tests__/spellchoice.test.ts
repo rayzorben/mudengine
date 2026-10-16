@@ -10,7 +10,8 @@ import {
   thresholdHeal,
   type HealChoiceInput,
   type ThresholdHealInput,
-  type SpellChoiceInput
+  type SpellChoiceInput,
+  weighCast
 } from '../spellchoice';
 import { spellElementOf } from '../spellDamage';
 import type { ProwessSheet } from '../prowess';
@@ -635,5 +636,19 @@ describe('which heal AutoHeal casts', () => {
 
   it('casts the chosen heal', () => {
     expect(pickHeal(true, 5, choose).kind).toBe('chosen');
+  });
+});
+
+// Todo 121: harm at 500 energy is priced at two casts a round; paramud casts it once.
+describe("a cast's round at what the realm measured", () => {
+  const harm: WorldSpell = { ...REALM['magic missile']!, name: 'harm', energy: 500 };
+
+  it('prices the round at the measured casts, the formula where none is', () => {
+    const formula = weighCast(harm, input(), null, 10)!;
+    expect(formula.casts).toBe(2);
+    const sheet = { ...SHEET, measured: { casts: { harm: 1 }, swings: {} } };
+    const measured = weighCast(harm, input({ sheet }), null, 10)!;
+    expect(measured.casts).toBe(1);
+    expect(measured.expected * measured.casts).toBe((formula.expected * formula.casts) / 2);
   });
 });

@@ -29,6 +29,7 @@
  * Dependency-free: main learns and persists it, the renderer only reads what
  * reaches it inside `TargetHealth`.
  */
+import { NO_ROUNDS_KEPT, type RoundLore } from './rounds';
 import { NO_SPAWNS, type SpawnLore } from './spawns';
 import type { RoomId } from './world';
 
@@ -295,9 +296,10 @@ export const NO_ATTACK_SPELL_LORE: AttackSpellLore = { ...NO_INSTANT_SPELLS, ...
 /**
  * One realm's lore as a session is handed it: the monsters' half for the
  * parser, the spells' half for the fight, the rooms' refills for the hunting
- * survey, each consumer typed to its own.
+ * survey and the rounds' casts and swings for the arithmetic, each consumer
+ * typed to its own.
  */
-export type RealmLoreView = MobLore & AttackSpellLore & SpawnLore & KillExpLore;
+export type RealmLoreView = MobLore & AttackSpellLore & SpawnLore & KillExpLore & RoundLore;
 
 /** A lore that knows nothing and learns nothing. The zero-realm client. */
 export const NO_LORE: RealmLoreView = {
@@ -312,6 +314,7 @@ export const NO_LORE: RealmLoreView = {
   observeKillExp: () => {},
   ...NO_KILL_EXP,
   ...NO_ATTACK_SPELL_LORE,
+  ...NO_ROUNDS_KEPT,
   ...NO_SPAWNS
 };
 

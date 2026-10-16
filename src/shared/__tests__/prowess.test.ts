@@ -235,21 +235,31 @@ describe('a swing at a target', () => {
 
 describe('casts a round — Player.DoMagicRound', () => {
   it('spends the energy of each attempt out of a thousand, at most twenty', () => {
-    expect(castsARound({ energy: 500 })).toBe(2);
-    expect(castsARound({ energy: 333 })).toBe(3);
-    expect(castsARound({ energy: 1000 })).toBe(1);
-    expect(castsARound({ energy: 50 })).toBe(20);
-    expect(castsARound({ energy: 1 })).toBe(20);
+    expect(castsARound({ name: 'harm', energy: 500 })).toBe(2);
+    expect(castsARound({ name: 'harm', energy: 333 })).toBe(3);
+    expect(castsARound({ name: 'harm', energy: 1000 })).toBe(1);
+    expect(castsARound({ name: 'harm', energy: 50 })).toBe(20);
+    expect(castsARound({ name: 'harm', energy: 1 })).toBe(20);
   });
 
   it('reads a row stating no energy, or none at all, as one attempt', () => {
-    expect(castsARound({})).toBe(1);
-    expect(castsARound({ energy: 0 })).toBe(1);
+    expect(castsARound({ name: 'harm' })).toBe(1);
+    expect(castsARound({ name: 'harm', energy: 0 })).toBe(1);
   });
 
   it('charges every attempt its listed cost where the odds are unread', () => {
-    expect(manaARound({ energy: 500 }, 3, SHEET, 'majormud')).toBe(6);
-    expect(manaARound({ energy: 500 }, null, SHEET, 'greatermud')).toBeNull();
+    expect(manaARound({ name: 'harm', energy: 500 }, 3, SHEET, 'majormud')).toBe(6);
+    expect(manaARound({ name: 'harm', energy: 500 }, null, SHEET, 'greatermud')).toBeNull();
+  });
+
+  // Todo 121: Paradigm on paramud casts harm once a round where its 500 energy buys two.
+  it("takes what the realm's rounds measured over the energy, by the spell's name", () => {
+    const measured = { casts: { harm: 32 / 30 }, swings: {} };
+    expect(castsARound({ name: 'Harm', energy: 500 }, { measured })).toBeCloseTo(1.067, 3);
+    expect(castsARound({ name: 'magic missile', energy: 500 }, { measured })).toBe(2);
+    expect(castsARound({ name: 'harm', energy: 500 }, { measured: null })).toBe(2);
+    const mana = manaARound({ name: 'harm', energy: 500 }, 3, { ...SHEET, measured }, 'majormud');
+    expect(mana).toBeCloseTo(3.2, 6);
   });
 });
 
@@ -366,6 +376,24 @@ describe('what the server stated', () => {
   it('wins over the transcription, and says so', () => {
     expect(accuracy(STATED, SWORD, 'greatermud')).toEqual({ value: 105, from: 'stated' });
     expect(swingsPerRound(STATED, SWORD, 'greatermud')).toEqual({ value: 3.584, from: 'stated' });
+  });
+
+  // Todo 123: Festus's bash, stated 3.402, lands 3.06 a round on paramud.
+  it("takes the swings the realm's rounds measured at the stated figure, and says so", () => {
+    const measured = { casts: {}, swings: { 'attack@3.584': 3.1, 'bash@1.792': 1.5 } };
+    const sheet: ProwessSheet = { ...STATED, measured };
+    expect(swingsPerRound(sheet, SWORD, 'greatermud')).toEqual({ value: 3.1, from: 'measured' });
+    const target = { armourClass: 40, damageResist: 0, dodge: null, health: 100 };
+    expect(swing(sheet, SWORD, target, 'greatermud')?.swings).toEqual({
+      value: 3.1,
+      from: 'measured'
+    });
+    // A new sheet states another figure, which nothing has measured yet.
+    const other: ProwessSheet = {
+      ...sheet,
+      measured: { casts: {}, swings: { 'attack@3.400': 3 } }
+    };
+    expect(swingsPerRound(other, SWORD, 'greatermud')).toEqual({ value: 3.584, from: 'stated' });
   });
 
   /*

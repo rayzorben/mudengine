@@ -2865,10 +2865,10 @@ function registerIpc(): void {
     if (!world || !manager || typeof slot !== 'string') return null;
     const worn = wornOfWord(slot);
     if (worn === null) return null;
-    const { combat, magery, crits, family, verb } = manager.realmClass;
+    const { combat, magery, crits, rounds, family, verb } = manager.realmClass;
     return slotGear(worn, world, {
       wearer: wearerIn(session),
-      sheet: prowessSheetOf(manager.character, { combat, magery, crits }),
+      sheet: prowessSheetOf(manager.character, { combat, magery, crits, rounds }),
       family,
       attack: verb,
       weighing: weighingOf({ magery }, configFor(session).automation)

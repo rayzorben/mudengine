@@ -8216,6 +8216,8 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'speedTickParts', DEFAULT_INTERNAL.tuning.hunting.speedTickParts);
     // The debug window's unread lines, per realm (todo 73, 2026-10-11).
     addKey('session', 'unreadShapes', DEFAULT_INTERNAL.tuning.session.unreadShapes);
+    // The rounds a measured casts or swings a round needs (todos 121, 123, 2026-10-15).
+    addKey('hunting', 'measuredRoundsMin', DEFAULT_INTERNAL.tuning.hunting.measuredRoundsMin);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

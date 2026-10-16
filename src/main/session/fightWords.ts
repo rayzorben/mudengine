@@ -51,9 +51,9 @@ export interface FightWords {
 
 export function fightWords(parts: FightWordParts): FightWords {
   const options = (as: CharacterState, against: readonly string[] = []): AttackOption[] => {
-    const { combat, magery, crits, family } = parts.rows();
+    const { combat, magery, crits, rounds, family } = parts.rows();
     return attackOptions(
-      prowessSheetOf(as, { combat, magery, crits }),
+      prowessSheetOf(as, { combat, magery, crits, rounds }),
       wieldedWeapon(as.inventory.items),
       parts.capabilities().abilities,
       family,

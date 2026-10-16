@@ -27,7 +27,14 @@ import type { SpellsConfig } from '../../shared/config';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
-import { resolveSpell, sameSpell, spellCost, spellingsOf } from '../../shared/spellcraft';
+import {
+  castLine,
+  castNamed,
+  resolveSpell,
+  sameSpell,
+  spellCost,
+  spellingsOf
+} from '../../shared/spellcraft';
 import { spellKey } from '../../shared/spell-messages';
 import { spellReaches } from '../../shared/spellReach';
 import {
@@ -87,7 +94,7 @@ export function isCastResult(block: Block): boolean {
   return (
     block.type === 'user-hits' &&
     block.groups['attacker'] === 'You' &&
-    (block.groups['line'] ?? '').trim().toLowerCase().startsWith('cast ')
+    castLine(block.groups['line']) !== null
   );
 }
 
@@ -766,7 +773,7 @@ export class AttackSpells {
     passedOver: (spell: string) => boolean,
     only?: (spell: string) => boolean
   ): string | null {
-    const { combat, magery, crits, family } = this.realmClass();
+    const { combat, magery, crits, rounds, family } = this.realmClass();
     const excluded = new Set<string>();
     const noEffect = new Set<string>(this.ineffective);
     if (this.spells.attackCasts > 0) {
@@ -792,7 +799,7 @@ export class AttackSpells {
               state,
               book,
               this.realmSpell,
-              prowessSheetOf(state, { combat, magery, crits }),
+              prowessSheetOf(state, { combat, magery, crits, rounds }),
               family,
               noEffectOn,
               this.spells.killConfidence
@@ -972,9 +979,8 @@ export class AttackSpells {
    */
   private noteHit(block: Block, book: CharacterState['spellbook']): void {
     if (block.groups['attacker'] !== 'You') return;
-    const line = (block.groups['line'] ?? '').trim().toLowerCase();
     const names = (spell: string): string | undefined =>
-      spellingsOf(spell, book, this.realmSpell).find((name) => line.startsWith(`cast ${name} `));
+      castNamed(block.groups['line'], spellingsOf(spell, book, this.realmSpell));
     const awaited = this.awaiting === null ? undefined : names(this.awaiting.spell);
     const struck = awaited ?? (this.repeated === null ? undefined : names(this.repeated.spell));
     if (struck !== undefined) this.landed(struck, block.groups['target']);

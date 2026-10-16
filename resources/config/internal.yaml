@@ -696,6 +696,11 @@ tuning:
     maxLoopRooms: 8
     maxSpots: 24
     measuredFightsMin: 30
+    # How many rounds a spell's casts, or an attack's swings at one figure
+    # the sheet stated, are counted in before what the realm did outranks
+    # the formula and the sheet. A round counts once its target lived
+    # through it; for swings, not a fight's first.
+    measuredRoundsMin: 30
     trivialShare: 0.1
     clusterRadius: 30
     fillerRadius: 8
