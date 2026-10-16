@@ -14,6 +14,7 @@ import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
 import { exitGates, gateRequirement } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
+import { closedPlaces } from './closedPlaces';
 import { RealmJoins } from './RealmJoins';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
@@ -322,6 +323,12 @@ export interface Traveller {
    * planning a walk.
    */
   penalised?: ReadonlySet<string>;
+  /**
+   * Price every move this traveller can make at one, and every wall as no
+   * way: the fewest moves, for the most direct way (`Route.direct`, todo
+   * 145). Never set by a caller planning a walk.
+   */
+  countsMoves?: boolean;
 }
 
 /** What a caller wants beyond the plan itself. */
@@ -414,6 +421,12 @@ interface SearchResult {
    * Paradigm.
    */
   keysAhead: boolean;
+  /**
+   * Whether the pass pruned a move for a kept-out word: only then can the
+   * same search with the words allowed arrive where this one did not
+   * (`wordsAloneStop`).
+   */
+  wordsAhead: boolean;
 }
 
 /**
@@ -480,6 +493,25 @@ function plainWords(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()} `;
+}
+
+/** Whether two ways walk the same moves. */
+function sameSteps(a: Route, b: Route): boolean {
+  return (
+    a.steps.length === b.steps.length &&
+    a.steps.every(
+      (step, index) =>
+        step.from === b.steps[index]!.from &&
+        step.direction === b.steps[index]!.direction &&
+        step.to === b.steps[index]!.to
+    )
+  );
+}
+
+/** This traveller with every kept-out word allowed: still flagged on each step, pruning none. */
+function allowingEvery(traveller: Traveller): Traveller {
+  const words = traveller.keepOut?.words;
+  return words === undefined ? traveller : { ...traveller, keepOut: { words, allowed: words } };
 }
 
 /** The levers a walk to a door's levers pulls, and the walk's cost there and back. */
@@ -1186,6 +1218,8 @@ export class Router {
   private exitItems: readonly number[] | null = null;
   /** The rooms whose name says a kept-out word, per word — `roomsNamed`. */
   private namedRooms = new Map<string, ReadonlySet<WorldRoom>>();
+  /** The rooms every way into which crosses a kept-out word, per word — `closedBehind`. */
+  private closedRooms = new Map<string, ReadonlySet<RoomId>>();
   /** A traveller's kept-out words, prepared once per list — `keepOutOf`. */
   private keepOuts = new WeakMap<object, KeepOutWords>();
   /** An exit's script phrases in matchable form, per phrase list — `keptOut`. */
@@ -1471,20 +1505,12 @@ export class Router {
      * unwatched, the words prune.
      */
     if ((this.keepOutOf(traveller)?.pruning.length ?? 0) > 0) {
-      traveller = this.insideOf(traveller, [from, to]);
+      traveller = this.insideOf(traveller, [from], [to]);
       const pruning = this.keepOutOf(traveller)?.pruning ?? [];
       if (options.alternatives === true && pruning.length > 0) {
-        const words = traveller.keepOut!.words;
         // Through them, with its alternatives kept out: those are offered
         // without the two cards, so none of them may cross a word unasked.
-        const through = this.plan(
-          from,
-          to,
-          goal,
-          { ...traveller, keepOut: { words, allowed: words } },
-          options,
-          traveller
-        );
+        const through = this.plan(from, to, goal, allowingEvery(traveller), options, traveller);
         const crossed = [
           ...new Set(
             through.steps.flatMap((step) =>
@@ -1501,7 +1527,10 @@ export class Router {
         // moves: it is walked, with its own alternatives (the user, 2026-10-09).
         if (walkable(round) && round.steps.length <= through.steps.length)
           return this.plan(from, to, goal, traveller, options, traveller);
-        return { ...through, keptOut: { words: crossed, round } };
+        // The most direct way is not offered a second time as the way round.
+        const { direct, ...rest } = through;
+        const shown = direct !== undefined && !sameSteps(direct, round) ? { direct } : {};
+        return { ...rest, ...shown, keptOut: { words: crossed, round } };
       }
     }
     return this.plan(from, to, goal, traveller, options, traveller);
@@ -1568,10 +1597,21 @@ export class Router {
      * Costs nothing where the realm holds no such item, which is every realm
      * but these two and most pairs of rooms in both.
      */
-    const landed =
+    /*
+     * **A walk only the kept-out words stop is refused, naming the word**
+     * (todo 145): the item is a way past what the player keeps out of, and
+     * the default list promises that walk is refused out loud. From inside
+     * the Black Wasteland the token of Silvermere was planned as the route,
+     * 290 steps where the vortex 14 rooms away is 15.
+     */
+    const item =
       drawn === null && walkable.landingsAhead && this.landingsReach().has(to)
         ? this.search(from, to, goal, traveller, false, draws, true).found
         : null;
+    const landed =
+      item !== null && walkable.wordsAhead && this.wordsAloneStop(from, to, goal, traveller, draws)
+        ? null
+        : item;
     const found = drawn ?? landed;
     if (found) {
       const route = this.buildRoute(found.cameFrom, to, found.cost, traveller, draws);
@@ -1608,12 +1648,23 @@ export class Router {
       // See `Route.another`.
       const different =
         options.alternatives === true ? this.another(from, to, goal, route, others, draws) : null;
+      // And the fewest moves, where the plan is longer by `directLonger`. See `Route.direct`.
+      const direct =
+        options.alternatives === true
+          ? this.direct(from, to, goal, route, traveller, draws, [
+              other,
+              equipped,
+              invoked,
+              different
+            ])
+          : null;
       const planned: Route = {
         ...route,
         ...(other === null ? {} : { otherWay: other }),
         ...(equipped === null ? {} : { carrying: equipped }),
         ...(invoked === null ? {} : { viaItem: invoked }),
         ...(different === null ? {} : { another: different }),
+        ...(direct === null ? {} : { direct }),
         // A door it holds no key for, which the engine may plan a way through.
         ...(walkable.keysAhead ? { keysAhead: true as const } : {})
       };
@@ -1676,9 +1727,7 @@ export class Router {
      * its account names the word (`keptOut` blocks) rather than calling two
      * joined rooms unjoined; `blocksAlong` reads the words that prune.
      */
-    const words = traveller.keepOut?.words;
-    const explaining: Traveller =
-      words === undefined ? traveller : { ...traveller, keepOut: { words, allowed: words } };
+    const explaining = allowingEvery(traveller);
     const ignoring = this.search(
       from,
       to,
@@ -1976,6 +2025,50 @@ export class Router {
     return other.steps.some((step) => step.deadly === true) ? null : other;
   }
 
+  /**
+   * The fewest moves this character can walk to `to` — `Route.direct` (todo
+   * 145): doors, keys and level gates judged as for the plan, the kept-out
+   * words allowed and flagged, the lair, run and spell prices left out, no
+   * item spent and no draw taken (`countsMoves`). Offered when the plan is
+   * longer than it by more than `tuning.world.directLonger`, and not when it
+   * is the plan's own steps or an alternative's already carried. The search
+   * stops at the length that would not be offered, so a short plan costs
+   * little; priced and flagged again on the traveller as it stands.
+   */
+  private direct(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    route: Route,
+    traveller: Traveller,
+    draws: boolean,
+    carried: ReadonlyArray<Route | null>
+  ): Route | null {
+    if (draws) return null;
+    const longer = 1 + tuning().world.directLonger;
+    const most = route.steps.length / longer;
+    if (most < 1) return null;
+    const plain = allowingEvery(traveller);
+    const moves: Traveller = { ...plain, preferred: undefined, countsMoves: true };
+    const found = this.search(from, to, goal, moves, false, false, false, most).found;
+    if (found === null) return null;
+    const cost = this.costAlong(found.cameFrom, to, plain);
+    const other = this.buildRoute(found.cameFrom, to, cost, plain, false);
+    if (route.steps.length <= other.steps.length * longer) return null;
+    return [route, ...carried].some((way) => way !== null && sameSteps(way, other)) ? null : other;
+  }
+
+  /** Whether a walk this traveller's kept-out words prune would arrive with every word allowed. */
+  private wordsAloneStop(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    traveller: Traveller,
+    draws: boolean
+  ): boolean {
+    return this.search(from, to, goal, allowingEvery(traveller), false, draws).found !== null;
+  }
+
   /** A traveller's kept-out words, prepared once per list. See `Traveller.keepOut`. */
   private keepOutOf(traveller: Traveller): KeepOutWords | null {
     const keepOut = traveller.keepOut;
@@ -2019,20 +2112,8 @@ export class Router {
   ): string | null {
     const prepared = this.keepOutOf(traveller);
     if (prepared === null) return null;
-    const commands = exit.requirement?.commands;
-    let phrases: readonly string[] | undefined;
-    if (commands !== undefined) {
-      phrases = this.plainPhrases.get(commands);
-      if (phrases === undefined) {
-        phrases = commands.map(plainWords);
-        this.plainPhrases.set(commands, phrases);
-      }
-    }
     const find = (words: KeepOutWords['all']): string | null => {
-      for (const { word, plain } of words) {
-        if (this.roomsNamed(plain).has(into)) return word;
-        if (phrases?.some((phrase) => phrase.includes(plain)) === true) return word;
-      }
+      for (const { word, plain } of words) if (this.crosses(plain, exit, into)) return word;
       return null;
     };
     // A word that still prunes first, so a step crossing two says the one
@@ -2041,20 +2122,61 @@ export class Router {
     return pruned !== null || !every ? pruned : find(prepared.all);
   }
 
+  /** Whether this move crosses a kept-out word: into a room named by it, or by a phrase saying it. */
+  private crosses(plain: string, exit: WorldExit | PortalExit, into: WorldRoom | null): boolean {
+    if (into !== null && this.roomsNamed(plain).has(into)) return true;
+    const commands = exit.requirement?.commands;
+    if (commands === undefined) return false;
+    let phrases = this.plainPhrases.get(commands);
+    if (phrases === undefined) {
+      phrases = commands.map(plainWords);
+      this.plainPhrases.set(commands, phrases);
+    }
+    return phrases.some((phrase) => phrase.includes(plain));
+  }
+
+  /**
+   * The rooms every way into which crosses this word (`closedPlaces`), built
+   * once per word over `movesFrom`: the Black Wasteland for `vortex`.
+   */
+  private closedBehind(plain: string): ReadonlySet<RoomId> {
+    let found = this.closedRooms.get(plain);
+    if (found !== undefined) return found;
+    found = closedPlaces({
+      rooms: () => this.rooms.keys(),
+      next: (id) =>
+        this.movesFrom(id).map(({ exit, to }) => ({
+          to,
+          crosses: this.crosses(plain, exit, this.rooms.get(to) ?? null)
+        })),
+      landings: () => this.landedRooms()
+    });
+    this.closedRooms.set(plain, found);
+    return found;
+  }
+
   /**
    * This traveller allowed whatever these rooms are inside: a walk that
-   * starts or ends in a place kept out of may cross it, since the character
-   * is there or asked to go.
+   * starts or ends in a place named by a word kept out of may cross it, since
+   * the character is there or asked to go, and so may a walk that starts in
+   * a place every way into crosses the word (todo 145). A walk that ends in
+   * one is still asked about, since walking in is what the word keeps out.
    */
-  private insideOf(traveller: Traveller, rooms: readonly RoomId[]): Traveller {
+  private insideOf(
+    traveller: Traveller,
+    starts: readonly RoomId[],
+    ends: readonly RoomId[] = []
+  ): Traveller {
     const prepared = this.keepOutOf(traveller);
     if (prepared === null || prepared.pruning.length === 0) return traveller;
-    const places = rooms.flatMap((id) => {
+    const places = [...starts, ...ends].flatMap((id) => {
       const room = this.rooms.get(id);
       return room === undefined ? [] : [room];
     });
-    const inside = prepared.pruning.filter(({ plain }) =>
-      places.some((room) => this.roomsNamed(plain).has(room))
+    const inside = prepared.pruning.filter(
+      ({ plain }) =>
+        places.some((room) => this.roomsNamed(plain).has(room)) ||
+        starts.some((id) => this.closedBehind(plain).has(id))
     );
     if (inside.length === 0) return traveller;
     const keepOut = traveller.keepOut!;
@@ -2292,7 +2414,7 @@ export class Router {
      */
     priceWalls = false
   ): Map<RoomId, number> {
-    traveller = this.insideOf(traveller, [...seeds.keys()]);
+    traveller = this.insideOf(traveller, [], [...seeds.keys()]);
     const best = new Map<RoomId, number>(seeds);
     const open = new MinHeap<RoomId>();
     for (const [id, cost] of seeds) open.push(cost, id);
@@ -2665,6 +2787,11 @@ export class Router {
         ? (this.leverPrice(from, exit.direction, exit.requirement?.actionsNeeded, traveller) ??
           walled)
         : walled;
+    // Sizes first: these keys are strings built per edge, and the sets are nearly always empty.
+    const refusedHere =
+      (traveller.refused?.size ?? 0) > 0 && traveller.refused!.has(edgeKey(from, exit.direction));
+    if (traveller.countsMoves === true)
+      return refusedHere || penalty >= tuning().world.wallCost ? null : 1;
 
     // A portal costs its penalty over a plain step, so the router prefers
     // ordinary corridors unless the teleport genuinely shortens the way.
@@ -2673,11 +2800,7 @@ export class Router {
       : exit.direction === 'portal'
         ? tuning().world.portalPenalty
         : 0;
-    // Sizes first: these keys are strings built per edge, and the sets are nearly always empty.
-    const wall =
-      (traveller.refused?.size ?? 0) > 0 && traveller.refused!.has(edgeKey(from, exit.direction))
-        ? 100_000
-        : 0;
+    const wall = refusedHere ? 100_000 : 0;
     // The whole step — the door's price and the portal's with it — is
     // discounted along a saved route: the player chose that door. A refusal is
     // not, because the server said no this session.
@@ -2766,6 +2889,7 @@ export class Router {
     const open = new MinHeap<RoomId>();
     let drawsAhead = false;
     let keysAhead = false;
+    let wordsAhead = false;
     open.push(heuristic(this.rooms.get(from)!), from);
 
     /*
@@ -2814,7 +2938,8 @@ export class Router {
           found: { cameFrom, cost: best.get(to) ?? 0 },
           drawsAhead,
           landingsAhead: false,
-          keysAhead
+          keysAhead,
+          wordsAhead
         };
       }
 
@@ -2873,7 +2998,10 @@ export class Router {
         if (traveller.avoidEdges?.has(`${currentId}|${exit.direction}`) === true) continue;
 
         const price = this.stepCost(currentId, exit, next, traveller, openGates, discount);
-        if (price === null) continue;
+        if (price === null) {
+          wordsAhead ||= this.keptOut(traveller, exit, next) !== null;
+          continue;
+        }
         const tentative = currentCost + price;
         if (tentative >= (best.get(nextId) ?? Infinity)) continue;
 
@@ -2888,7 +3016,8 @@ export class Router {
       landingsAhead: this.index
         .itemLandings()
         .some((exit) => !best.has(roomId(exit.map, exit.room))),
-      keysAhead
+      keysAhead,
+      wordsAhead
     };
   }
 
@@ -3554,25 +3683,37 @@ export class Router {
   }
 
   /**
-   * The realm's moves with every gate open (`RealmJoins`): the exits and
-   * portals as `search` follows them, a draw as each room its range holds,
+   * Every move from a room with every gate open: the exits and portals as
+   * `search` follows them, a draw as each room its range holds. What
+   * `RealmJoins` and `closedPlaces` read the realm by.
+   */
+  private movesFrom(id: RoomId): Array<{ exit: WorldExit | PortalExit; to: RoomId }> {
+    const room = this.rooms.get(id);
+    if (room === undefined) return [];
+    const draws = this.scatterDoors();
+    return [...room.exits, ...this.portalsFrom(id)].flatMap((exit) => {
+      const landing = exit.requirement?.landing;
+      if (exit.requirement?.spellEffect !== 'scatters') return [{ exit, to: this.beyond(exit) }];
+      const rooms = landing === undefined ? [] : (draws.get(landing.spell)?.rooms ?? []);
+      return rooms.map((to) => ({ exit, to }));
+    });
+  }
+
+  /** The rooms an item used anywhere puts the character in. */
+  private landedRooms(): RoomId[] {
+    return this.index.itemLandings().map((exit) => roomId(exit.map, exit.room));
+  }
+
+  /**
+   * The realm's moves with every gate open (`RealmJoins`, over `movesFrom`)
    * and the item landings. A superset of every search, so a no is final.
    */
   private joins(): RealmJoins {
     if (this.realmJoins !== null) return this.realmJoins;
-    const draws = this.scatterDoors();
     this.realmJoins = new RealmJoins({
       rooms: () => this.rooms.keys(),
-      next: (id) => {
-        const room = this.rooms.get(id);
-        if (room === undefined) return [];
-        return [...room.exits, ...this.portalsFrom(id)].flatMap((exit) => {
-          const landing = exit.requirement?.landing;
-          if (exit.requirement?.spellEffect !== 'scatters') return [this.beyond(exit)];
-          return landing === undefined ? [] : (draws.get(landing.spell)?.rooms ?? []);
-        });
-      },
-      landings: () => this.index.itemLandings().map((exit) => roomId(exit.map, exit.room))
+      next: (id) => this.movesFrom(id).map(({ to }) => to),
+      landings: () => this.landedRooms()
     });
     return this.realmJoins;
   }

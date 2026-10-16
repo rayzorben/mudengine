@@ -19,6 +19,7 @@ import { CLIENT_KEYS } from '@shared/keys';
 import {
   asRoomReference,
   chosenWay,
+  crossedWords,
   describeBlock,
   DIRECTION_NAME,
   itemsWanted,
@@ -43,7 +44,7 @@ import type { RoomNickname } from '@shared/roomNicknames';
 import { nicknamedLabel, nicknameMarks } from '../lib/nicknames';
 
 /** Which of the plan's routes is on screen — see `chosen`. */
-type Way = 'plan' | 'round' | 'carrying' | 'viaItem' | 'another' | 'keyed' | 'keptOut';
+type Way = 'plan' | 'round' | 'carrying' | 'viaItem' | 'another' | 'direct' | 'keyed' | 'keptOut';
 
 /**
  * What walking a way is expected to cost, in words, for the two ways a kept-out
@@ -110,6 +111,18 @@ function roundWay(route: Route): Route | null {
   const round = route.keptOut?.round;
   if (round === undefined) return null;
   return round.blocked ? (round.unlocks ?? null) : round;
+}
+
+/** The ways main planned beside the plan, any of which may be on screen. */
+function alternativesOf(route: Route): ReadonlyArray<Route | undefined> {
+  return [
+    route.otherWay,
+    route.carrying,
+    route.viaItem,
+    route.another,
+    route.direct,
+    route.unlocks
+  ];
 }
 
 /** Every item's name, for the one sentence that names what is fetched. */
@@ -457,11 +470,13 @@ export default function RoutePanel({
             ? (route.viaItem ?? route)
             : chosen === 'another'
               ? (route.another ?? route)
-              : chosen === 'keyed'
-                ? (route.unlocks ?? route)
-                : chosen === 'keptOut'
-                  ? (roundWay(route) ?? route)
-                  : route;
+              : chosen === 'direct'
+                ? (route.direct ?? route)
+                : chosen === 'keyed'
+                  ? (route.unlocks ?? route)
+                  : chosen === 'keptOut'
+                    ? (roundWay(route) ?? route)
+                    : route;
   /** The loop whose leg is on screen, if one is: its press starts the loop. */
   const forLoop = joining !== null && shown === joining.route ? joining : null;
   /**
@@ -1187,11 +1202,13 @@ export default function RoutePanel({
                             ? t('cards.route.showing.viaItem')
                             : chosen === 'another'
                               ? t('cards.route.showing.another')
-                              : chosen === 'keyed'
-                                ? t('cards.route.showing.keyed')
-                                : chosen === 'keptOut'
-                                  ? t('cards.route.showing.keptOut')
-                                  : t('cards.route.showing.carrying')}
+                              : chosen === 'direct'
+                                ? t('cards.route.showing.direct')
+                                : chosen === 'keyed'
+                                  ? t('cards.route.showing.keyed')
+                                  : chosen === 'keptOut'
+                                    ? t('cards.route.showing.keptOut')
+                                    : t('cards.route.showing.carrying')}
                       </span>
                     )}
                     {/* The traps, counted at the head of the list where the
@@ -1272,13 +1289,7 @@ export default function RoutePanel({
                       const deadly = lairs.deadly;
                       const avoided =
                         deadly !== null &&
-                        [
-                          route.otherWay,
-                          route.carrying,
-                          route.viaItem,
-                          route.another,
-                          route.unlocks
-                        ].some(
+                        alternativesOf(route).some(
                           (other) =>
                             other !== undefined &&
                             other !== shown &&
@@ -1520,13 +1531,7 @@ export default function RoutePanel({
                         ))}
                       </ul>
                       {shown === route &&
-                        ![
-                          route.otherWay,
-                          route.carrying,
-                          route.viaItem,
-                          route.another,
-                          route.unlocks
-                        ].some(
+                        !alternativesOf(route).some(
                           (other) => other !== undefined && avoidsWalls(other, route.walls!)
                         ) && <span>{t('cards.route.noOtherWay')}</span>}
                     </div>
@@ -1654,6 +1659,22 @@ export default function RoutePanel({
                         })
                       });
                     }
+                    // And the fewest moves, where the plan is longer by more than
+                    // `directLonger`, naming what it crosses that the player keeps out of.
+                    if (route.direct !== undefined && chosen !== 'direct') {
+                      const words = crossedWords(route.direct);
+                      const stepCount = route.direct.steps.length;
+                      items.push({
+                        key: 'direct',
+                        sentence:
+                          words.length === 0
+                            ? t('cards.route.alternative.direct', { stepCount })
+                            : t('cards.route.alternative.directThrough', {
+                                stepCount,
+                                wordList: words.join(', ')
+                              })
+                      });
+                    }
                     /*
                      * And through the door, once what opens it is fetched,
                      * named with what is fetched: its steps are the plan's
@@ -1686,7 +1707,7 @@ export default function RoutePanel({
                         {offering && (
                           <ul>
                             {items.map((item) => (
-                              <li key={item.key}>
+                              <li data-way={item.key} key={item.key}>
                                 <span>{item.sentence}</span>
                                 <button
                                   className="quiet"

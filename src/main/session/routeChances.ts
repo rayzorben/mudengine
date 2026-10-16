@@ -57,6 +57,7 @@ const ALTERNATIVES: Record<Alternative, true> = {
   carrying: true,
   viaItem: true,
   another: true,
+  direct: true,
   unlocks: true
 };
 
