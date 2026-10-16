@@ -20,7 +20,7 @@
  * extent's corner, and a pan stated from there would jump every time a fetch
  * placed a room further west.
  */
-import { MAP_CELL } from '@shared/map';
+import { MAP_CELL, type MapWindow } from '@shared/map';
 
 export interface MapView {
   /** Pixels one room cell gets: the zoom. */
@@ -50,9 +50,8 @@ export interface ViewBox {
 }
 
 /**
- * How far the drawing extends from the centre room, in map units — the pan
- * is kept inside this, so the eye can be taken to the edge of what was
- * fetched and no further into the dark.
+ * How far the flat region extends from the centre room, in map units: the
+ * pan is kept inside this.
  */
 export interface Extent {
   minX: number;
@@ -79,23 +78,14 @@ function measured(box: Box): boolean {
 }
 
 /**
- * The smallest a room may be drawn in a box of this size: the zoom at which
- * the widest neighbourhood main will fetch (`mapRadiusMax` each way) exactly
- * spans the box's longer side.
- *
- * Below it the window asks for more rooms than can be fetched and shows
- * blank space around what was — which the fitted picture never could, because
- * it scaled whatever arrived to fill the box, and which a window at the
- * density slider's dense end would in any float larger than a rail card: ten
- * pixels a room across six hundred is sixty rooms, and the fetch stops at
- * twenty-five. So *densest* is this or the slider's end, whichever is the
- * larger room; on a rail card they are the same number. The floor for a box
- * not yet measured, so nothing decides on a size that is not there.
+ * How a map draws its rooms at this zoom (todo 130): `full` with every mark,
+ * or `plain` below the density slider's dense end, where a room is its plain
+ * shape and only the `you` ring and the route line are drawn over it.
  */
-export function zoomFloor(box: Box, dense: number, radiusMax: number): number {
-  if (!measured(box)) return dense;
-  const cells = 2 * Math.max(0, radiusMax) + 1;
-  return Math.max(dense, Math.max(box.width, box.height) / cells);
+export type MapDetail = 'full' | 'plain';
+
+export function detailAt(perRoom: number, dense: number): MapDetail {
+  return perRoom < dense ? 'plain' : 'full';
 }
 
 /**
@@ -178,9 +168,9 @@ export function dragged(start: MapView, dx: number, dy: number): MapView {
 }
 
 /**
- * The view with its pan kept inside the drawing, so the window's centre never
- * leaves the rooms that were fetched. It can be taken *to* the edge — which
- * is what asks the next fetch for more — and no further.
+ * The view with its pan kept inside the flat region (`LocalMap.extent`), so
+ * the window's centre can be taken to the furthest room the map places, and
+ * no further into the dark, whether or not those rooms have arrived yet.
  */
 export function within(view: MapView, extent: Extent): MapView {
   const x = Math.max(extent.minX, Math.min(extent.maxX, view.pan.x));
@@ -190,50 +180,73 @@ export function within(view: MapView, extent: Extent): MapView {
 }
 
 /**
- * How far out to fetch so the window is covered: the furthest point the
- * window reaches from the centre room, in cells, plus the half cell a room
- * centred just outside the edge still pokes into it. Clamped to the same
- * bounds main clamps to, and the floor for a box not yet measured — a map
- * that fetched nothing while it was being laid out would flash empty on every
- * mount.
- *
- * The *larger* side, where the fitted picture's radius took the smaller: a
- * fit was constrained by the side that decided legibility, and a window shows
- * exactly what each side can hold.
+ * The cells to ask main for: the window's rectangle round the centre room at
+ * this zoom and pan, plus `margin` of the window's size each way, plus the
+ * half cell a room centred just outside the edge still pokes in (todo 130).
+ * A box not yet measured asks for `unmeasured` cells each way, since a map
+ * that fetched nothing would flash empty on every mount.
  */
-export function radiusForView(view: MapView, box: Box, min: number, max: number): number {
-  if (!measured(box) || !Number.isFinite(view.perRoom) || view.perRoom <= 0) return min;
+export function windowForView(
+  view: MapView,
+  box: Box,
+  margin: number,
+  unmeasured: number
+): MapWindow {
+  if (!measured(box) || !Number.isFinite(view.perRoom) || view.perRoom <= 0) {
+    const reach = Number.isFinite(unmeasured) ? Math.max(0, Math.round(unmeasured)) : 0;
+    return { minX: -reach, maxX: reach, minY: -reach, maxY: reach };
+  }
   const upp = unitsPerPixel(view.perRoom);
-  const reachX = Math.abs(view.pan.x) + (box.width * upp) / 2;
-  const reachY = Math.abs(view.pan.y) + (box.height * upp) / 2;
-  const cells = Math.ceil(Math.max(reachX, reachY) / MAP_CELL + 0.5);
-  return Math.max(min, Math.min(max, cells));
+  // A margin that is not a number would make every edge one, and the view ask on every render.
+  const grow = 1 + 2 * (Number.isFinite(margin) ? Math.max(0, margin) : 0);
+  const reachX = ((box.width * upp) / 2 / MAP_CELL) * grow + 0.5;
+  const reachY = ((box.height * upp) / 2 / MAP_CELL) * grow + 0.5;
+  const x = view.pan.x / MAP_CELL;
+  const y = view.pan.y / MAP_CELL;
+  return {
+    minX: Math.floor(x - reachX),
+    maxX: Math.ceil(x + reachX),
+    minY: Math.floor(y - reachY),
+    maxY: Math.ceil(y + reachY)
+  };
 }
 
 /**
- * How far the placed rooms extend from the centre room, in map units.
- *
- * Off the cells' own grid positions rather than the drawing: `localMap`
- * places the centre at `(0, 0)` and everything else relative to it, which is
- * exactly the frame the pan is stated in. Nothing placed is no extent, and a
- * pan kept inside it is no pan.
+ * Whether the rectangle already fetched still serves the window: it holds
+ * the whole region, or it holds the window and the window's middle is still
+ * in its inner half. A pan inside that half asks for nothing.
  */
-export function extentOf(cells: ReadonlyArray<{ gx: number; gy: number }>): Extent {
-  let minX = 0;
-  let maxX = 0;
-  let minY = 0;
-  let maxY = 0;
-  for (const cell of cells) {
-    if (cell.gx < minX) minX = cell.gx;
-    if (cell.gx > maxX) maxX = cell.gx;
-    if (cell.gy < minY) minY = cell.gy;
-    if (cell.gy > maxY) maxY = cell.gy;
-  }
+export function stillCovers(
+  fetched: MapWindow,
+  visible: MapWindow,
+  region: MapWindow | null
+): boolean {
+  const holds = (outer: MapWindow, inner: MapWindow): boolean =>
+    inner.minX >= outer.minX &&
+    inner.maxX <= outer.maxX &&
+    inner.minY >= outer.minY &&
+    inner.maxY <= outer.maxY;
+  if (region !== null && holds(fetched, region)) return true;
+  if (!holds(fetched, visible)) return false;
+  const quarterX = (fetched.maxX - fetched.minX) / 4;
+  const quarterY = (fetched.maxY - fetched.minY) / 4;
+  const x = (visible.minX + visible.maxX) / 2;
+  const y = (visible.minY + visible.maxY) / 2;
+  return (
+    x >= fetched.minX + quarterX &&
+    x <= fetched.maxX - quarterX &&
+    y >= fetched.minY + quarterY &&
+    y <= fetched.maxY - quarterY
+  );
+}
+
+/** A region in cells (`LocalMap.extent`) in the map units the pan is stated in. */
+export function extentOf(region: MapWindow): Extent {
   return {
-    minX: minX * MAP_CELL,
-    maxX: maxX * MAP_CELL,
-    minY: minY * MAP_CELL,
-    maxY: maxY * MAP_CELL
+    minX: region.minX * MAP_CELL,
+    maxX: region.maxX * MAP_CELL,
+    minY: region.minY * MAP_CELL,
+    maxY: region.maxY * MAP_CELL
   };
 }
 
@@ -252,7 +265,7 @@ export function densityFor(perRoom: number, sparse: number, dense: number): numb
  * The view that shows every placed room of `rooms` at once: the pan on the
  * middle of their box and the largest zoom that holds it, with half a cell
  * round the edge so a room at the rim is drawn whole. Clamped to `bounds`,
- * so a leg wider than the widest fetch is shown as far out as the map goes.
+ * so a leg wider than the box at the floor is shown as far out as the map goes.
  * Null when the box is not measured or none of the rooms is placed.
  */
 export function fittedTo(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { legsOf, pageWalking, pagesOf } from '../routeLegs';
-import type { LocalMap, MapCell } from '../map';
+import { legsOf, pageWalking, pagesOf, type PageMaps } from '../routeLegs';
+import { inWindow, NO_EXTENT, type LocalMap, type MapCell } from '../map';
 import type { Route, RouteStep } from '../world';
 
 const step = (from: string, to: string, over: Partial<RouteStep> = {}): RouteStep => ({
@@ -78,8 +78,23 @@ const row = (centre: string): LocalMap => {
     shop: false,
     lair: false
   }));
-  return { centre, cells, dropped: 0 };
+  return {
+    centre,
+    cells,
+    dropped: 0,
+    placed: cells.length,
+    extent: { minX: 0, maxX: 2, minY: 0, maxY: 0 }
+  };
 };
+
+/* The paging's maps over one drawing per centre: the window is its cells inside it. */
+const mapsOf = (draw: (centre: string) => LocalMap): PageMaps => ({
+  placed: draw,
+  window: (centre, area) => {
+    const map = draw(centre);
+    return { ...map, cells: map.cells.filter((cell) => inWindow(area, cell.gx, cell.gy)) };
+  }
+});
 
 /* Every stretch on a page of its own, as the paging was before packing. */
 const ALONE = { stretches: 1, steps: 0 };
@@ -89,7 +104,7 @@ describe('paging a leg the map cannot draw whole', () => {
   const east = [1, 2, 3, 4, 5, 6].map((room) => step(`1/${room}`, `1/${room + 1}`));
 
   it('starts the next page on the last room the line reached', () => {
-    const pages = pagesOf(route(east), '1/1', row, ALONE);
+    const pages = pagesOf(route(east), '1/1', mapsOf(row), ALONE);
     expect(pages.map((page) => page.rooms)).toEqual([
       ['1/1', '1/2', '1/3'],
       ['1/3', '1/4', '1/5'],
@@ -101,7 +116,7 @@ describe('paging a leg the map cannot draw whole', () => {
 
   it('keeps the jump on the page that ends the leg, and the entry on the one that starts it', () => {
     const up = step('1/3', '2/1', { direction: 'u', command: 'u' });
-    const pages = pagesOf(route([...east.slice(0, 2), up]), '1/1', row, ALONE);
+    const pages = pagesOf(route([...east.slice(0, 2), up]), '1/1', mapsOf(row), ALONE);
     expect(pages[0]?.jump).toBe(up);
     expect(pages[1]?.entry).toBe(up);
   });
@@ -110,7 +125,7 @@ describe('paging a leg the map cannot draw whole', () => {
     const pages = pagesOf(
       route(east.slice(0, 2)),
       '1/1',
-      () => ({ centre: null, cells: [], dropped: 0 }),
+      mapsOf(() => ({ centre: null, cells: [], dropped: 0, placed: 0, extent: NO_EXTENT })),
       ALONE
     );
     expect(pages.map((page) => page.rooms)).toEqual([
@@ -120,13 +135,64 @@ describe('paging a leg the map cannot draw whole', () => {
   });
 });
 
+/* Todo 130: a flat corridor as the unbounded placement draws it, every room in a row. */
+const corridor =
+  (length: number) =>
+  (centre: string): LocalMap => {
+    const first = Number(centre.split('/')[1]);
+    const cells: MapCell[] = Array.from(
+      { length: Math.max(1, length - first + 1) },
+      (_, offset) => ({
+        id: `1/${first + offset}`,
+        name: `1/${first + offset}`,
+        gx: offset,
+        gy: 0,
+        exits: ['e', 'w'],
+        vertical: null,
+        shop: false,
+        lair: false
+      })
+    );
+    return {
+      centre,
+      cells,
+      dropped: 0,
+      placed: cells.length,
+      extent: { minX: 0, maxX: cells.length - 1, minY: 0, maxY: 0 }
+    };
+  };
+
+describe('paging on the unbounded placement', () => {
+  it('keeps a flat leg of 40 steps on one page', () => {
+    const east = Array.from({ length: 40 }, (_, i) => step(`1/${i + 1}`, `1/${i + 2}`));
+    const pages = pagesOf(route(east), '1/1', mapsOf(corridor(41)), ALONE);
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.rooms).toHaveLength(41);
+  });
+
+  it('decorates a floor for its crop only', () => {
+    const asked: Array<{ minX: number; maxX: number }> = [];
+    const draw = corridor(41);
+    const maps: PageMaps = {
+      placed: draw,
+      window: (centre, area) => {
+        asked.push({ minX: area.minX, maxX: area.maxX });
+        return mapsOf(draw).window(centre, area);
+      }
+    };
+    const down = step('1/2', '1/99', { direction: 'd', command: 'd' });
+    pagesOf(route([step('1/1', '1/2'), down]), '1/1', maps, PACKED);
+    expect(asked[0]).toEqual({ minX: -1, maxX: 2 });
+  });
+});
+
 describe('gathering short stretches onto one page', () => {
   const down = (from: string, to: string): RouteStep =>
     step(from, to, { direction: 'd', command: 'd' });
 
   it('stacks a way down taken over and over as floors of one page', () => {
     const steps = [down('1/1', '1/10'), down('1/10', '1/20'), down('1/20', '1/30')];
-    const pages = pagesOf(route(steps), '1/1', row, PACKED);
+    const pages = pagesOf(route(steps), '1/1', mapsOf(row), PACKED);
     expect(pages).toHaveLength(1);
     const sheet = pages[0]?.sheet;
     expect(sheet?.floors.map((floor) => floor.level)).toEqual([0, -1, -2, -3]);
@@ -142,7 +208,12 @@ describe('gathering short stretches onto one page', () => {
 
   it('puts a stretch back on a floor the page already drew', () => {
     const up = step('1/2', '1/50', { direction: 'u', command: 'u' });
-    const pages = pagesOf(route([step('1/1', '1/2'), up, down('1/50', '1/3')]), '1/1', row, PACKED);
+    const pages = pagesOf(
+      route([step('1/1', '1/2'), up, down('1/50', '1/3')]),
+      '1/1',
+      mapsOf(row),
+      PACKED
+    );
     const sheet = pages[0]?.sheet;
     expect(sheet?.floors.map((floor) => floor.level)).toEqual([0, 1]);
     expect(sheet?.stretches.map((stretch) => stretch.floor)).toEqual([0, 1, 0]);
@@ -153,7 +224,7 @@ describe('gathering short stretches onto one page', () => {
     const pages = pagesOf(
       route([step('1/1', '1/2'), step('1/2', '1/3'), manhole, step('1/40', '1/41')]),
       '1/1',
-      row,
+      mapsOf(row),
       { stretches: 6, steps: 1 }
     );
     expect(pages.map((page) => page.rooms)).toEqual([
@@ -165,7 +236,7 @@ describe('gathering short stretches onto one page', () => {
 
   it('names the room a cut carries on from once', () => {
     const east = [1, 2, 3, 4].map((room) => step(`1/${room}`, `1/${room + 1}`));
-    const pages = pagesOf(route(east), '1/1', row, PACKED);
+    const pages = pagesOf(route(east), '1/1', mapsOf(row), PACKED);
     expect(pages).toHaveLength(1);
     expect(pages[0]?.rooms).toEqual(['1/1', '1/2', '1/3', '1/4', '1/5']);
     expect(pages[0]?.sheet?.stretches.map((stretch) => stretch.join?.kind ?? null)).toEqual([
@@ -177,9 +248,15 @@ describe('gathering short stretches onto one page', () => {
   it('crops each floor to its stretches and drops the ways off it', () => {
     const wide = (centre: string): LocalMap => {
       const cells = row(centre).cells.map((cell) => ({ ...cell, away: [] }));
-      return { centre, cells: [...cells, { ...cells[0]!, id: '1/99', gx: 9 }], dropped: 0 };
+      return {
+        centre,
+        cells: [...cells, { ...cells[0]!, id: '1/99', gx: 9 }],
+        dropped: 0,
+        placed: cells.length + 1,
+        extent: { minX: 0, maxX: 9, minY: 0, maxY: 0 }
+      };
     };
-    const pages = pagesOf(route([down('1/1', '1/10')]), '1/1', wide, PACKED);
+    const pages = pagesOf(route([down('1/1', '1/10')]), '1/1', mapsOf(wide), PACKED);
     const cells = pages[0]?.sheet?.floors[0]?.map.cells ?? [];
     expect(cells.map((cell) => cell.id)).toEqual(['1/1', '1/2']);
     expect(cells.some((cell) => cell.away !== undefined)).toBe(false);

@@ -138,8 +138,8 @@ const api: WireApi = {
   gearTrip: (session, picks, run) => ipcRenderer.invoke(Invoke.gearTrip, session, picks, run),
   gearStop: (session) => ipcRenderer.invoke(Invoke.gearStop, session),
   questStop: (session) => ipcRenderer.invoke(Invoke.questStop, session),
-  localMap: (session, map, room, radius) =>
-    ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
+  localMap: (session, map, room, area) =>
+    ipcRenderer.invoke(Invoke.localMap, session, map, room, area),
   gameMap: (session, ask) => ipcRenderer.invoke(Invoke.gameMap, session, ask),
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
   slotGear: (session, slot) => ipcRenderer.invoke(Invoke.slotGear, session, slot),

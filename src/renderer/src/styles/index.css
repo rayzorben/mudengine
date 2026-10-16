@@ -3183,6 +3183,11 @@ kbd {
   gap: 4px;
 }
 
+/* Held in the layout when hidden, so the legend's height never changes with the zoom. */
+.map-legend [data-kind='plain'][data-shown='false'] {
+  visibility: hidden;
+}
+
 .map-legend .key {
   height: 12px;
   width: 12px;

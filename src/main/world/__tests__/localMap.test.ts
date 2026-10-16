@@ -4,13 +4,44 @@ import path from 'node:path';
 
 import { WorldGraph } from '../WorldGraph';
 import { worldOf } from './realmFile';
-import { localMap } from '../localMap';
-import { layoutMap } from '../../../shared/map';
+import { decorate, type LairLevel } from '../localMap';
+import { placeFlat } from '../flatPlacement';
+import { EMPTY_MAP, layoutMap, type LocalMap, type MapWindow } from '../../../shared/map';
 import { phrase } from '../../app/copyMatch';
+
+/** The map round `centre` as `Invoke.localMap` answers it: placed, then decorated inside `window`. */
+function localMap(
+  graph: WorldGraph,
+  centre: string,
+  window: MapWindow | null = null,
+  lairLevel?: LairLevel
+): LocalMap {
+  const placement = placeFlat(graph, centre);
+  return placement === null
+    ? EMPTY_MAP
+    : decorate(graph, placement, window ?? placement.extent, lairLevel);
+}
 
 /** Where the map put a room, or undefined if it did not place it. */
 const at = (map: ReturnType<typeof localMap>, id: string) =>
   map.cells.find((cell) => cell.id === id);
+
+/** A square window `reach` cells each way from the centre. */
+const square = (reach: number): MapWindow => ({
+  minX: -reach,
+  maxX: reach,
+  minY: -reach,
+  maxY: reach
+});
+
+/** A corridor of `length` rooms running east from 1/1. */
+const corridorOf = (length: number) =>
+  Array.from({ length }, (_, i) => ({
+    m: 1,
+    r: i + 1,
+    n: `Room ${i + 1}`,
+    x: i + 1 < length ? { e: { m: 1, r: i + 2 } } : {}
+  }));
 
 describe('laying out a local map', () => {
   it('puts the character at the origin', () => {
@@ -104,16 +135,35 @@ describe('laying out a local map', () => {
     expect(map.dropped).toBe(1);
   });
 
-  it('stops at the radius', () => {
-    const corridor = Array.from({ length: 12 }, (_, i) => ({
-      m: 1,
-      r: i + 1,
-      n: `Room ${i + 1}`,
-      x: i + 1 < 12 ? { e: { m: 1, r: i + 2 } } : {}
-    }));
-    const map = localMap(worldOf(corridor), '1/1', 3);
-    expect(map.cells).toHaveLength(4); // the centre plus three steps
-    expect(at(map, '1/5')).toBeUndefined();
+  /* Todo 130: the 12-step limit drew 13 of these 40 rooms. */
+  it('places a whole corridor, with no step limit', () => {
+    const map = localMap(worldOf(corridorOf(40)), '1/1');
+    expect(map.cells).toHaveLength(40);
+    expect(at(map, '1/40')).toMatchObject({ gx: 39, gy: 0 });
+    expect(map.extent).toEqual({ minX: 0, maxX: 39, minY: 0, maxY: 0 });
+  });
+
+  it('sends only the cells inside the window, and the whole region as the extent', () => {
+    const map = localMap(worldOf(corridorOf(40)), '1/1', { minX: 10, maxX: 14, minY: -1, maxY: 1 });
+    expect(map.cells.map((cell) => cell.gx)).toEqual([10, 11, 12, 13, 14]);
+    expect(map.placed).toBe(40);
+    expect(map.extent).toEqual({ minX: 0, maxX: 39, minY: 0, maxY: 0 });
+  });
+
+  it('decorates only the rooms inside the window', () => {
+    const asked: string[] = [];
+    const graph = worldOf(corridorOf(6).map((room) => ({ ...room, lair: '(Max 2): 781,' })));
+    localMap(graph, '1/1', square(2), (room) => {
+      asked.push(room.name);
+      return null;
+    });
+    expect(asked).toEqual(['Room 1', 'Room 2', 'Room 3']);
+  });
+
+  it('counts the rooms past the ceiling as dropped', () => {
+    const placement = placeFlat(worldOf(corridorOf(10)), '1/1', 4);
+    expect(placement?.rooms).toHaveLength(4);
+    expect(placement?.dropped).toBe(1);
   });
 
   it('returns nothing for a room the realm does not have', () => {
@@ -142,7 +192,7 @@ describe('laying out a local map', () => {
       { m: 1, r: 3, n: 'Pit', x: { e: { m: 1, r: 1 } }, lair: '(Max 1): 782,' }
     ]);
     const asked: string[] = [];
-    const map = localMap(graph, '1/1', undefined, (room) => {
+    const map = localMap(graph, '1/1', null, (room) => {
       asked.push(room.name);
       return room.name === 'Den' ? 'deadly' : null;
     });
@@ -161,10 +211,10 @@ describe('against the shipped realm data', () => {
     // The layout and the drawing are separate, and this is the one place they
     // meet real data: a stray character here means a glyph or a link was drawn
     // that nothing defines.
-    const drawing = layoutMap(localMap(realm!, '1/2147', 4));
+    const drawing = layoutMap(localMap(realm!, '1/2147', square(4)));
     expect(drawing.nodes.filter((node) => node.here)).toHaveLength(1);
     // Every room the layout placed is findable in the picture.
-    expect(drawing.nodes).toHaveLength(localMap(realm!, '1/2147', 4).cells.length);
+    expect(drawing.nodes).toHaveLength(localMap(realm!, '1/2147', square(4)).cells.length);
     // And every link joins two rooms it is actually showing.
     const points = new Set(drawing.nodes.map((node) => `${node.x},${node.y}`));
     for (const link of drawing.links) {
@@ -176,7 +226,7 @@ describe('against the shipped realm data', () => {
   it.runIf(realm !== null && realm.size > 0)('maps the streets around Newhaven', () => {
     // The Adventurer's Guild, where a fresh character starts. A synthetic graph
     // proves the algorithm; this proves it survives real exits.
-    const map = localMap(realm!, '1/2147', 4);
+    const map = localMap(realm!, '1/2147', square(4));
     expect(map.centre).toBe('1/2147');
     expect(map.cells.length).toBeGreaterThan(3);
     expect(at(map, '1/2147')).toMatchObject({ gx: 0, gy: 0 });
@@ -194,7 +244,7 @@ describe('against the shipped realm data', () => {
        * into something a player can act on. A key number is not actionable;
        * "jail key, dropped by Sheriff Lionheart" is.
        */
-      const map = localMap(realm!, '1/42', 1);
+      const map = localMap(realm!, '1/42', square(1));
       const cell = map.cells.find((entry) => entry.id === '1/42');
       const door = cell?.blocked?.['s'];
 
@@ -217,7 +267,7 @@ describe('against the shipped realm data', () => {
   );
 
   it.runIf(realm !== null && realm.size > 0)('reads a door with no key as a door', () => {
-    const map = localMap(realm!, '1/297', 1);
+    const map = localMap(realm!, '1/297', square(1));
     const vault = map.cells.find((entry) => entry.id === '1/297')?.blocked?.['w'];
     expect(vault?.kind).toBe('door');
     expect(vault?.detail).toMatch(phrase('map.obstacle.pickOrBash'));
@@ -228,7 +278,7 @@ describe('against the shipped realm data', () => {
     () => {
       // `Text:` exits are commands, not obstacles — the way through is to say
       // the words, and the map should show them rather than a bare wall.
-      const map = localMap(realm!, '1/1', 3);
+      const map = localMap(realm!, '1/1', square(3));
       const spoken = map.cells
         .flatMap((cell) => Object.values(cell.blocked ?? {}))
         .find((block) => block.kind === 'text');

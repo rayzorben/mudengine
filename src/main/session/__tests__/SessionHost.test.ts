@@ -244,6 +244,18 @@ describe('SessionHost', () => {
     expect(written).toContain('today\r\n');
   });
 
+  /* Todo 130: what main keeps per session outside the slot is released at every removal. */
+  it('says when a session leaves, whichever path removes it', async () => {
+    const removed: string[] = [];
+    host = new SessionHost({ ...options, removed: (id) => removed.push(id) });
+    await host.connect('thorn', target());
+    await until(() => accepted.length === 1);
+    host.remove('thorn');
+    expect(removed).toEqual(['thorn']);
+    host.remove('thorn');
+    expect(removed).toEqual(['thorn']);
+  });
+
   it('gives each session its own output, and never the other one', async () => {
     await host!.connect('thorn', target());
     await host!.connect('mara', target());

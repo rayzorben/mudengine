@@ -31,28 +31,23 @@
  *   fitted picture cannot zoom about a point, because there is nothing to
  *   pan. The zoom is the card's to hold (the Map card keeps it as its density
  *   setting; the builder opens at the densest end), so it arrives as a prop.
- * - **It stops zooming out where the fetch stops** (`zoomFloor`). Main will
- *   walk `mapRadiusMax` rooms each way and no further, and a window wider
- *   than that at the zoom asked for would show blank space around the rooms
- *   it has. So the smallest a room is drawn is whichever is larger: the
- *   slider's dense end, or the size at which the widest fetch spans the box.
- *   On a rail card they are the same number; in a large float *densest* is
- *   as dense as can be filled.
+ * - **The wheel zooms out to `mapRoomPixelsFloor`** (5 px, user,
+ *   2026-10-14), past the slider's dense end. Below the dense end the
+ *   picture is `plain` (`detailAt`): plain shapes, the `you` ring and the
+ *   route line, and the legend says the marks are hidden.
  * - **A drag on nothing pans.** A room and a way out keep their clicks; the
  *   background between them takes the hand. Told apart at the press by what
  *   was pressed, not by movement afterwards: a drag that began on a room and
  *   suppressed its click on the way would be a room that sometimes does not
  *   pick, and `dragSlop` is what separates a click on nothing from a pan.
- * - **The window decides the fetch, and the pan is kept on the drawing.** The
- *   radius asked for is whatever the window reaches from the centre room
- *   (`radiusForView`), so panning towards an edge fetches past it; the pan
- *   itself stops at the edge of what was fetched (`within`) — applied to the
- *   view that is *drawn*, not only at the gesture, because a fetch can shrink
- *   the drawing under a standing pan: the radius is a path length and the
- *   reach a straight line, so a room a winding corridor put in the last
- *   fetch can be beyond the next one. Rooms keep their places across a wider
- *   fetch — breadth-first placement is a prefix of itself — so a fetch never
- *   moves what is on screen.
+ * - **The window decides the fetch, and the pan is kept on the region**
+ *   (todo 130). Main places the whole flat region and sends the cells of
+ *   the rectangle asked for (`windowForView`: the window plus
+ *   `mapWindowMargin` each way), with the region's extent; a pan or zoom
+ *   asks again only once the window leaves that rectangle's inner half
+ *   (`stillCovers`). The pan stops at the region's edge (`within`), applied
+ *   to the view that is drawn. Rooms keep their places across fetches round
+ *   one centre, since the placement is the same.
  * - **A new centre is a new view.** Every pick, every step the character
  *   takes and every room found recentre the picture and drop the pan, because
  *   the centre changing is the card saying *look here*. The zoom stays.
@@ -86,27 +81,34 @@ import MapPlan, { MapLegend, type MapPlanProps } from './MapPlan';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
+  detailAt,
   dragged,
   extentOf,
   fittedTo,
   NO_PAN,
-  radiusForView,
+  stillCovers,
   wheelFactor,
+  windowForView,
   within,
   zoomedAt,
-  zoomFloor,
   type Box,
   type MapView as View
 } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
-import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
+import {
+  EMPTY_MAP,
+  type LocalMap,
+  type MapAway,
+  type MapLoader,
+  type MapWindow
+} from '@shared/map';
 import { errorMessage } from '@shared/values';
 import { asRoomReference, type RoomId } from '@shared/world';
 
-export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport' | 'onLook'> {
+export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport' | 'onLook' | 'detail'> {
   /** The room the neighbourhood is fetched around. Null draws `empty`. */
   centre: RoomId | null;
-  load(map: number, room: number, radius: number): Promise<LocalMap>;
+  load: MapLoader;
   /** Pixels one room gets. Held by the card — see the header. */
   zoom: number;
   /**
@@ -218,11 +220,17 @@ function MapView({
     (next: View['pan']) => setPanned({ centre, home, pan: next }),
     [centre, home]
   );
-  const extent = useMemo(() => extentOf(map.cells), [map]);
-  const { mapRadiusMin, mapRadiusMax, mapRoomPixelsDense, mapRoomPixelsSparse } = tuning();
+  const extent = useMemo(() => extentOf(map.extent), [map]);
+  const {
+    mapRoomPixelsFloor,
+    mapRoomPixelsDense,
+    mapRoomPixelsSparse,
+    mapWindowMargin,
+    mapUnmeasuredReach
+  } = tuning();
   const bounds = useMemo(
-    () => ({ min: zoomFloor(size, mapRoomPixelsDense, mapRadiusMax), max: mapRoomPixelsSparse }),
-    [size, mapRoomPixelsDense, mapRadiusMax, mapRoomPixelsSparse]
+    () => ({ min: mapRoomPixelsFloor, max: mapRoomPixelsSparse }),
+    [mapRoomPixelsFloor, mapRoomPixelsSparse]
   );
   /* What is drawn: the zoom inside its bounds, the pan inside the drawing. */
   const view = useMemo<View>(
@@ -230,6 +238,7 @@ function MapView({
     [bounds, zoom, pan, extent]
   );
   const viewport = useMemo(() => ({ view, box: size }), [view, size]);
+  const detail = detailAt(view.perRoom, mapRoomPixelsDense);
   const [panning, setPanning] = useState(false);
 
   /*
@@ -257,19 +266,28 @@ function MapView({
   }, []);
 
   /*
-   * A fit the hand has not taken over fetches at the widest radius, the one
-   * main paged the route by (`pagesOf`), so the first answer places the
-   * whole page exactly as the paging saw it.
+   * The rectangle asked for, keyed on its centre: kept while it still serves
+   * the window (`stillCovers`), so a pan inside its inner half asks for
+   * nothing, and replaced with the window plus its margin once it does not.
+   */
+  const [asked, setAsked] = useState<{ centre: RoomId | null; window: MapWindow } | null>(null);
+  const visible = windowForView(view, size, 0, mapUnmeasuredReach);
+  const region = map.centre === centre ? map.extent : null;
+  if (asked === null || asked.centre !== centre || !stillCovers(asked.window, visible, region)) {
+    setAsked({ centre, window: windowForView(view, size, mapWindowMargin, mapUnmeasuredReach) });
+  }
+  const area = asked !== null && asked.centre === centre ? asked.window : null;
+
+  /*
+   * A fit the hand has not taken over widens with each answer: the window
+   * it zooms out to asks for more of the page's rooms, until all of them
+   * placed are in view.
    */
   const [touchedFit, setTouchedFit] = useState<ReadonlySet<RoomId> | null>(null);
   const fitting = fit !== null && touchedFit !== fit;
   const fitRef = useRef(fit);
   fitRef.current = fit;
   const touch = useCallback((): void => setTouchedFit(fitRef.current), []);
-  const radius = Math.max(
-    radiusForView(view, size, mapRadiusMin, mapRadiusMax),
-    fitting ? mapRadiusMax : 0
-  );
 
   /*
    * The fit, stated from the neighbourhood drawn around this centre only: a
@@ -308,8 +326,9 @@ function MapView({
       loaded.current?.(EMPTY_MAP);
       return;
     }
+    if (area === null) return;
     let live = true;
-    void load(reference.map, reference.room, radius)
+    void load(reference.map, reference.room, area)
       .then((next) => {
         // The centre can change while this is in flight; a late answer must
         // not paint a map of somewhere the eye has already left.
@@ -329,7 +348,7 @@ function MapView({
     return () => {
       live = false;
     };
-  }, [centre, load, name, radius]);
+  }, [centre, load, name, area]);
 
   /*
    * The wheel, read off refs: the listener is registered once, and what it
@@ -445,6 +464,7 @@ function MapView({
         {drawn ? (
           <MapPlan
             {...picture}
+            detail={detail}
             /* Away from the surface's centre, its loud ring stays on the room
                it marked: the character, or the route's destination. */
             focus={looking ? 'centre' : picture.focus}
@@ -472,7 +492,7 @@ function MapView({
       {/* The builder's own keys where the builder's own marks are, which is
           the one thing the legend asks of the surface — and it asks the
           picture's props rather than the surface, so the two cannot disagree. */}
-      <MapLegend builder={picture.marks !== undefined} />
+      <MapLegend builder={picture.marks !== undefined} plain={drawn && detail === 'plain'} />
     </div>
   );
 }

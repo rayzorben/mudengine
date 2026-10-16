@@ -76,7 +76,7 @@ import type { FoundRoom } from '@shared/destinations';
 import { LOOP_LIMITS } from '@shared/drafts';
 import { roomsWithFinds, type Find } from '@shared/finds';
 import { LINGER_MAX_SECONDS, type Loop, type LoopScope } from '@shared/loops';
-import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
+import { EMPTY_MAP, type LocalMap, type MapAway, type MapLoader } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import {
   describeBlock,
@@ -118,7 +118,7 @@ export interface LoopBuilderCardProps extends CardChrome {
   /** The realm it plays on, for the other chip; empty when unknown, and the chip is then not drawn. */
   realmName: string;
   search(query: string): Promise<FoundRoom[]>;
-  loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  loadMap: MapLoader;
   /**
    * The rooms this realm's find log names, marked with a dot — the Map card's
    * own prop, taken in the same shape and drawn for the reason it is drawn

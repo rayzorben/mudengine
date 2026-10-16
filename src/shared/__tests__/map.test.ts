@@ -4,6 +4,7 @@ import {
   DEFAULT_MAP_DENSITY,
   layoutMap,
   MAP_CELL,
+  NO_EXTENT,
   roomPixelsFor,
   trailOf,
   type LocalMap,
@@ -15,6 +16,8 @@ function cells(...entries: Array<[string, number, number, string[]]>): LocalMap 
   return {
     centre: entries[0]?.[0] ?? null,
     dropped: 0,
+    placed: entries.length,
+    extent: NO_EXTENT,
     cells: entries.map(([id, gx, gy, exits]) => ({
       id,
       name: id,

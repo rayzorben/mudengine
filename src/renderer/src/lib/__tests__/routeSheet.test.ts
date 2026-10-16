@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutSheet } from '../routeSheet';
-import type { LocalMap, MapCell } from '@shared/map';
+import { NO_EXTENT, type LocalMap, type MapCell } from '@shared/map';
 import type { JoinKind, RouteSheet } from '@shared/routeLegs';
 import type { RouteStep } from '@shared/world';
 
@@ -17,7 +17,7 @@ const cell = (id: string, gx: number, gy = 0): MapCell => ({
 });
 
 const floor = (level: number, ...cells: MapCell[]): { map: LocalMap; level: number } => ({
-  map: { centre: null, cells, dropped: 0 },
+  map: { centre: null, cells, dropped: 0, placed: cells.length, extent: NO_EXTENT },
   level
 });
 

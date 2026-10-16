@@ -3028,12 +3028,7 @@ describe('the map density pair in an existing tuning file', () => {
      */
     const keys = Object.keys(view());
     expect(keys).not.toContain('mapRoomPixels');
-    expect(keys.slice(0, 4)).toEqual([
-      'mapRadiusMin',
-      'mapRadiusMax',
-      'mapRoomPixelsSparse',
-      'mapRoomPixelsDense'
-    ]);
+    expect(keys.slice(0, 2)).toEqual(['mapRoomPixelsSparse', 'mapRoomPixelsDense']);
     expect(view()['mapRoomPixelsSparse']).toBe(40);
     expect(view()['mapRoomPixelsDense']).toBe(10);
   });
@@ -3050,20 +3045,30 @@ describe('the map density pair in an existing tuning file', () => {
     expect(notesOf(said, 'notices.migration.mapDensityStated')).toHaveLength(1);
   });
 
-  it('lowers the floor that would refuse the sparse end', () => {
+  /* Todo 130: every map places the whole flat region and asks for the window it shows. */
+  it('drops the radius bounds and states the window margin and the zoom floor', () => {
     migrate();
-    expect(view()['mapRadiusMin']).toBe(2);
+    const keys = Object.keys(view());
+    expect(keys).not.toContain('mapRadiusMin');
+    expect(keys).not.toContain('mapRadiusMax');
+    expect(view()['mapWindowMargin']).toBe(0.5);
+    expect(view()['mapRoomPixelsFloor']).toBe(5);
+    expect(view()['mapUnmeasuredReach']).toBe(2);
   });
 
-  /* A floor somebody tuned themselves is their answer, not this one's. */
-  it('leaves a floor that is not the old default alone', () => {
-    fs.writeFileSync(
-      home.internal,
-      'tuning:\n  view:\n    mapRadiusMin: 5\n    mapRoomPixels: 34\n',
-      'utf8'
-    );
+  it('raises the shipped room cap to the safety ceiling, and leaves a chosen one', () => {
+    const world = (): Record<string, number> =>
+      (
+        parse(fs.readFileSync(home.internal, 'utf8')) as {
+          tuning: { world: Record<string, number> };
+        }
+      ).tuning.world;
+    fs.writeFileSync(home.internal, 'tuning:\n  world:\n    mapCells: 200\n', 'utf8');
     migrate();
-    expect(view()['mapRadiusMin']).toBe(5);
+    expect(world()['mapCells']).toBe(20_000);
+    fs.writeFileSync(home.internal, 'tuning:\n  world:\n    mapCells: 900\n', 'utf8');
+    migrate();
+    expect(world()['mapCells']).toBe(900);
   });
 
   it('does nothing on a second run', () => {

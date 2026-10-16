@@ -98,17 +98,68 @@ export interface LocalMap {
   centre: RoomId | null;
   cells: MapCell[];
   /**
-   * Rooms reached but not placed, because the cell was already taken.
+   * Rooms reached but not placed: the cell was already taken, or the region
+   * passed `world.mapCells`. Counted over the whole region.
    *
    * A MUD is not Euclidean: two exits can lead to the same place, and a corridor
-   * can bend back over itself. Reporting the count is honest — the map is a
-   * projection, and saying how much it could not show beats drawing a confident
-   * picture that is wrong.
+   * can bend back over itself. The map is a projection, and the card says how
+   * much it could not show.
    */
   dropped: number;
+  /**
+   * Rooms placed in the whole flat region, whether or not they are in
+   * `cells`: what the card counts, on the same footing as `dropped`.
+   */
+  placed: number;
+  /**
+   * How far the whole flat region reaches from the centre, in cells, whether
+   * or not its rooms are in `cells`: the answer carries only the asked window
+   * (`MapWindow`), and the pan and the fit need to know how far the map goes
+   * before they have those rooms.
+   */
+  extent: MapWindow;
 }
 
-export const EMPTY_MAP: LocalMap = { centre: null, cells: [], dropped: 0 };
+/**
+ * A rectangle of the flat map in cells from the centre room, edges included:
+ * what a window asks main to decorate and send (todo 130).
+ */
+export interface MapWindow {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/** The centre room's own cell, which is all an empty map reaches. */
+export const NO_EXTENT: MapWindow = Object.freeze({ minX: 0, maxX: 0, minY: 0, maxY: 0 });
+
+export const EMPTY_MAP: LocalMap = {
+  centre: null,
+  cells: [],
+  dropped: 0,
+  placed: 0,
+  extent: NO_EXTENT
+};
+
+/** A window off the wire: whole cells, each minimum at or under its maximum, or null. */
+export function asMapWindow(value: unknown): MapWindow | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { minX, maxX, minY, maxY } = value as Record<string, unknown>;
+  const whole = [minX, maxX, minY, maxY].every((edge) => Number.isSafeInteger(edge));
+  if (!whole) return null;
+  const window = { minX, maxX, minY, maxY } as MapWindow;
+  if (window.minX > window.maxX || window.minY > window.maxY) return null;
+  return window;
+}
+
+/** How a surface asks for the map round a room, decorated inside `area` (`IpcApi.localMap`). */
+export type MapLoader = (map: number, room: number, area: MapWindow) => Promise<LocalMap>;
+
+/** Whether a cell lies inside a window, edges included. */
+export function inWindow(window: MapWindow, gx: number, gy: number): boolean {
+  return gx >= window.minX && gx <= window.maxX && gy >= window.minY && gy <= window.maxY;
+}
 
 /** How a direction moves the pen, in cells. */
 export const STEP: Record<Direction, { dx: number; dy: number } | null> = {
@@ -152,9 +203,8 @@ export const MAP_CELL = 10;
  * A fraction rather than a room count, because what the slider actually
  * chooses is *how small a room may be drawn* — the count still comes from the
  * card's own measured box, so a map dragged twice as big still shows more of
- * the realm at every setting. See `roomPixelsFor`, and `zoomFloor` in the
- * renderer for the one case the dense end is not honoured: a window so large
- * that the widest fetch could not fill it.
+ * the realm at every setting. See `roomPixelsFor`; the wheel may go past the
+ * dense end, down to `view.mapRoomPixelsFloor`.
  */
 export const DEFAULT_MAP_DENSITY = 0.79;
 
@@ -175,7 +225,7 @@ export const DEFAULT_MAP_DENSITY = 0.79;
  * Pure and here rather than beside the card, for `layoutMap`'s reason: it is
  * a function of the layout with edge cases worth testing, and the suite runs
  * with no DOM. How many rooms then fit is the window's question
- * (`radiusForView`, in the renderer), measured from the laid-out box.
+ * (`windowForView`, in the renderer), measured from the laid-out box.
  */
 export function roomPixelsFor(density: number, sparse: number, dense: number): number {
   const at = Number.isFinite(density) ? Math.max(0, Math.min(1, density)) : DEFAULT_MAP_DENSITY;

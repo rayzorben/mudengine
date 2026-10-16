@@ -16,7 +16,7 @@
  */
 import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
-import type { LocalMap } from './map';
+import type { LocalMap, MapWindow } from './map';
 import type { GameMapAsk, GameMapWindow } from './gameMap';
 import type { HudThreshold } from './gameViewConfig';
 import type { RoutePages, WalkPages } from './routeLegs';
@@ -1594,7 +1594,11 @@ export interface IpcApi {
   /** Walk (or `run`) the trip, planned again from here. The refusal, or null once under way. */
   gearTrip(session: SessionId, picks: readonly GearPick[], run: boolean): Promise<string | null>;
   gearStop(session: SessionId): Promise<void>;
-  localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
+  /**
+   * The flat map round a room, decorated inside `window` (cells from that
+   * room), with the whole region's extent. An unreadable window is no map.
+   */
+  localMap(session: SessionId, map: number, room: number, window: MapWindow): Promise<LocalMap>;
   /** A square of a map's plane around a room or a point, with its areas and labels. */
   gameMap(session: SessionId, ask: GameMapAsk): Promise<GameMapWindow>;
   /**

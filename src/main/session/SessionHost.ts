@@ -297,6 +297,12 @@ export interface SessionHostOptions {
    */
   onConnected?(): void;
   /**
+   * A session left the host, by an unload, its file going or quitting: what
+   * main keeps per session outside the slot (the Map card's placement) goes
+   * with it. Optional, for `onConnected`'s reason.
+   */
+  removed?(id: SessionId): void;
+  /**
    * Republishes the character roster.
    *
    * A callback rather than a `toAll(Push.sessions, …)` from here, because the
@@ -896,6 +902,7 @@ export class SessionHost {
     // lines the console will show at the next launch, not a record's tail.
     slot.backscroll.close();
     this.slots.delete(id);
+    this.options.removed?.(id);
     this.options.publishRoster();
   }
 

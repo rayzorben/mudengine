@@ -9,6 +9,7 @@
 import { useCallback } from 'react';
 
 import type { IpcApi, SessionId } from '@shared/ipc';
+import type { MapLoader } from '@shared/map';
 import { asRoomReference, type RoomId, type Route } from '@shared/world';
 
 export interface ShownRealmInputs {
@@ -46,13 +47,9 @@ export function useShownRealm({ api, session }: ShownRealmInputs) {
     [api, session]
   );
 
-  /*
-   * `radius` is optional and passed straight through: the Map card measures
-   * its own box and asks for what it can show, while the route panel — whose
-   * map is a fixed strip in a fixed panel — takes main's default.
-   */
-  const loadMap = useCallback(
-    (map: number, room: number, radius?: number) => api.localMap(session, map, room, radius),
+  /* The window is the view's own, measured from its laid-out box (`windowForView`). */
+  const loadMap = useCallback<MapLoader>(
+    (map, room, area) => api.localMap(session, map, room, area),
     [api, session]
   );
   /**

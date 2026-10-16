@@ -5907,11 +5907,6 @@ function statedTheRosterCap(home: Home, note: (message: string) => void): void {
  * slider mean whatever they had tuned the old single value to, with the dense
  * end shipped. That is two settings that no longer relate to each other, which
  * is worse than the pair the template ships. Said out loud for that reason.
- *
- * `mapRadiusMin` goes 3 -> 2 with them, and **only where it still states the
- * old default**: 5x5 rooms is a radius of two and the old floor would quietly
- * refuse the sparse end of the slider, but a floor somebody has tuned
- * themselves is their answer and not this one's.
  */
 function mapDensityHasTwoEnds(home: Home, note: (message: string) => void): void {
   let changed = false;
@@ -5945,14 +5940,6 @@ function mapDensityHasTwoEnds(home: Home, note: (message: string) => void): void
       touched = true;
     }
     if (first !== null && isScalar(first.key)) first.key.commentBefore = MAP_DENSITY_COMMENT;
-
-    // Only where it is still the figure this build is moving. A floor somebody
-    // tuned themselves is their answer.
-    const floor = block.get('mapRadiusMin');
-    if (floor === 3) {
-      block.set('mapRadiusMin', DEFAULT_INTERNAL.tuning.view.mapRadiusMin);
-      touched = true;
-    }
     changed = touched;
     return touched;
   });
@@ -8237,6 +8224,9 @@ function theTuningBlockGainedKeys(
     addKey('session', 'unreadShapes', DEFAULT_INTERNAL.tuning.session.unreadShapes);
     // The rounds a measured casts or swings a round needs (todos 121, 123, 2026-10-15).
     addKey('hunting', 'measuredRoundsMin', DEFAULT_INTERNAL.tuning.hunting.measuredRoundsMin);
+    // The Map card fetches by window and zooms out to a floor (todo 130, 2026-10-15).
+    for (const key of ['mapWindowMargin', 'mapRoomPixelsFloor', 'mapUnmeasuredReach'] as const)
+      addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -8279,6 +8269,8 @@ function theTuningBlockGainedKeys(
      * every 30s (`DoHPTick`, every second rest tick). A file still stating the
      * shipped 121 takes the player's tick, and the refill has its own key.
      */
+    // The room cap became a safety ceiling above the largest flat region (todo 130, 2026-10-15).
+    raiseKey('world', 'mapCells', 200, DEFAULT_INTERNAL.tuning.world.mapCells);
     raiseKey(
       'hunting',
       'passiveTickSeconds',
@@ -8306,6 +8298,10 @@ function theTuningBlockGainedKeys(
     // the kills they hit, which the measured rate already holds.
     dropKey('hunting', 'contestedForgetMs');
     dropKey('hunting', 'contestedShare');
+    // Retired with the map's step limit (todo 130, 2026-10-15): every map places the whole flat
+    // region and asks for the window it shows, so nothing keeps a radius.
+    dropKey('view', 'mapRadiusMin');
+    dropKey('view', 'mapRadiusMax');
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);

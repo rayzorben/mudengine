@@ -13,7 +13,7 @@ import RoomMatches from './RoomMatches';
 import { corridorTitle } from '../lib/corridor';
 import { healthShareWords } from '../lib/healthShare';
 import { t } from '../lib/i18n';
-import { type LocalMap } from '@shared/map';
+import { type MapLoader } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import { CLIENT_KEYS } from '@shared/keys';
 import {
@@ -183,10 +183,10 @@ export interface RoutePanelProps {
    * The same call the Map card makes, addressed at the same character —
    * `localMap` is a query about the realm, not about where anybody is
    * standing, so centring it on the destination is the whole change. The
-   * radius is the window's own, measured from its laid-out box, which is why
+   * window is the view's own, measured from its laid-out box, which is why
    * the fetch belongs to `MapView` and not to this panel.
    */
-  onLoadMap(map: number, room: number, radius: number): Promise<LocalMap>;
+  onLoadMap: MapLoader;
   /** The rooms this realm's find log names, marked with a dot. */
   finds: readonly RoomId[];
   /**
@@ -458,11 +458,10 @@ export default function RoutePanel({
   /**
    * How large a room is drawn in the picture of where the route ends.
    *
-   * Opened at the dense end and clamped up from there by the window itself
-   * (`zoomFloor`), which is the builder's rule: *as many rooms as this box can
-   * be filled with*. The strip under the head is short and wide, so that is a
-   * neighbourhood a few rooms deep and a long way across, and the wheel and
-   * the hand reach the rest.
+   * Opened at the dense end, which is the builder's rule: *as many rooms as
+   * this box holds with every mark drawn*. The strip under the head is short
+   * and wide, so that is a neighbourhood a few rooms deep and a long way
+   * across, and the wheel and the hand reach the rest.
    */
   const [zoom, setZoom] = useState(() => tuning().mapRoomPixelsDense);
   const inputRef = useRef<HTMLInputElement>(null);

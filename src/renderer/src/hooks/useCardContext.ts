@@ -30,6 +30,7 @@ import type { GearPick } from '@shared/gearTrip';
 import type { HuntingRoom } from '@shared/hunting';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
+import type { MapLoader } from '@shared/map';
 import type { Discovery } from '@shared/memory';
 import { movementOf } from '@shared/movement';
 import { playerKey } from '@shared/players';
@@ -74,7 +75,7 @@ export interface CardContext {
   forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   inspect(name: string, anchor: HTMLElement): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
-  loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
+  loadMap: MapLoader;
   /** Rooms by name or `map/room`, on this character's realm. */
   searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
   /** The Map card's preview route between two rooms, priced for this character. */
@@ -203,7 +204,7 @@ export interface AddressedActions {
   forgetFind(find: Pick<Find, 'room' | 'name'>): void;
   gear(action: GearAction, item?: string): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
-  loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
+  loadMap: MapLoader;
   /** Rooms by name or `map/room`, on this character's realm. */
   searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
   /** The Map card's preview route between two rooms, priced for this character. */
@@ -427,7 +428,7 @@ export function useCardContext({
         forgetFind: (find) => void api.forgetFind(sid, find),
         gear: (action, item) => void api.gear(sid, action, item),
         loadWearer: () => api.wearer(sid),
-        loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
+        loadMap: (map, room, area) => api.localMap(sid, map, room, area),
         searchRooms: (query) => api.searchRooms(sid, query),
         routeBetween: (from, to) => api.routeBetween(sid, from, to),
         walkPages: () => api.walkPages(sid),
