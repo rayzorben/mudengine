@@ -25,6 +25,7 @@ import {
   type PlanStep
 } from '../../shared/quests';
 import type { Quest, QuestErrand, QuestSource, QuestStep } from '../../shared/quests';
+import { asQuestOpenings } from '../../shared/questOpenings';
 import {
   asRoomReference,
   counterIn,
@@ -116,7 +117,8 @@ export class QuestPlanner {
       // A quest with no steps is a counter nothing advances, which is not a
       // quest anybody can do.
       if (!Number.isInteger(id) || name.length === 0 || steps.length === 0) continue;
-      quests.push({ id, name, steps });
+      const opens = asQuestOpenings(record['opens']);
+      quests.push({ id, name, steps, ...(opens.length === 0 ? {} : { opens }) });
     }
     return quests;
   }
@@ -149,9 +151,23 @@ export class QuestPlanner {
   quests(): readonly Quest[] {
     this.questsJoined ??= this.questBook.map((quest) => ({
       ...quest,
-      steps: quest.steps.map((step) => this.joinStep(step))
+      steps: quest.steps.map((step) => this.joinStep(step)),
+      ...(quest.opens === undefined
+        ? {}
+        : { opens: quest.opens.map((way) => ({ ...way, ...this.placeOf(way.room) })) })
     }));
     return this.questsJoined;
+  }
+
+  /**
+   * A room's own name, as `place`. A room the realm no longer has keeps its
+   * address and gains no name, rather than being dropped: the address is
+   * still what the realm said.
+   */
+  private placeOf(room: string): { place?: string } {
+    const at = asRoomReference(room);
+    const name = at === null ? undefined : this.rooms.get(roomId(at.map, at.room))?.name;
+    return name !== undefined && name.length > 0 ? { place: name } : {};
   }
 
   /**
@@ -162,14 +178,10 @@ export class QuestPlanner {
    * previous answer as the realm's.
    */
   private joinStep(step: QuestStep): QuestStep {
-    const joined: QuestStep = { ...step };
-    if (step.room !== undefined) {
-      const at = asRoomReference(step.room);
-      const name = at === null ? undefined : this.rooms.get(roomId(at.map, at.room))?.name;
-      // A room the realm no longer has keeps its address and gains no name,
-      // rather than being dropped: the address is still what the realm said.
-      if (name !== undefined && name.length > 0) joined.place = name;
-    }
+    const joined: QuestStep = {
+      ...step,
+      ...(step.room === undefined ? {} : this.placeOf(step.room))
+    };
     const sources: QuestSource[] = [];
     for (const [id, name] of this.itemsDemanded(step)) {
       const known = this.catalogue.item(id);

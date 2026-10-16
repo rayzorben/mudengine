@@ -55,6 +55,7 @@
  */
 import { SKILL_ABILITIES } from './abilities';
 import { abilityHeld, type Gate, type TbStat } from './gates';
+import { openAt, type QuestOpening } from './questOpenings';
 // Type-only, so no value cycle: see `module-cycle.test.ts`.
 import type { AbilitySums, Denomination } from './character';
 import type { ItemHandover } from './world';
@@ -541,6 +542,8 @@ export interface Quest {
   /** The realm's own name for that counter, where `abilities.ts` has one. */
   name: string;
   steps: QuestStep[];
+  /** The room commands and exits a rank of it lets through (format 71). Absent is none. */
+  opens?: QuestOpening[];
 }
 
 /** A step and each of its routes: what every route states, then what each adds. */
@@ -1049,23 +1052,33 @@ export function questNext(quest: Quest, standing: QuestStanding): QuestStep | nu
 export interface QuestAhead {
   rank: number;
   level: number;
+  /** True where the level is a way the rank opens as the reward, not a step's gate (todo 155). */
+  opens?: true;
 }
 
 /**
  * Whether a rank pays this character something kept: `questPays`' rule
- * (`keptReward`) over the step's own rewards and the reader's own route.
+ * (`keptReward`) over the step's own rewards and the reader's own route, or
+ * a way it opens that the quest counts as its reward (`opensAt`).
  */
 function rankPays(
   quest: Quest,
-  acts: readonly QuestStep[],
+  { rank, acts }: RankAhead,
+  from: number | null,
   klass: string | null,
   taken: ReadonlySet<number>
 ): boolean {
+  if (opensAt(quest, rank, from, taken).length > 0) return true;
   return acts.some((step) =>
     [step, ...(step.ways ?? []).filter((way) => ownWay(way, klass))]
       .flatMap((way) => way.gives)
       .some((reward) => keptReward(quest, reward, taken))
   );
+}
+
+/** The rank a standing has reached, or null where it holds none the realm counted. */
+function rankHeld(standing: QuestStanding): number | null {
+  return standing.held ? standing.rank : null;
 }
 
 /**
@@ -1082,13 +1095,15 @@ export function ranksToPay(
   taken: ReadonlySet<number>
 ): RankAhead[] {
   const ahead = ranksAhead(quest, standing);
-  const pays = ahead.findIndex(({ acts }) => rankPays(quest, acts, klass, taken));
+  const from = rankHeld(standing);
+  const pays = ahead.findIndex((rank) => rankPays(quest, rank, from, klass, taken));
   return pays === -1 ? ahead : ahead.slice(0, pays + 1);
 }
 
 /**
- * The first rank after the next one, up to the next that pays, whose level
- * gate this character is under.
+ * The first rank up to the next that pays whose level gate this character
+ * is under: a step's own gate past the next rank, or the level of a way the
+ * rank opens as the quest's reward, the next rank included (todo 155).
  *
  * `questBars` asks about the next step, so a quest whose first rank asks
  * nothing went under Open beside `75` in the level column: Rune and Volums
@@ -1096,7 +1111,8 @@ export function ranksToPay(
  * shelved GoodQuest as Later for a level 13 character over rank 7's level 20,
  * when rank 6 pays 150k exp at level 10 (todo 132). So it stops at the rank
  * that pays, takes the softest route through each, and asks only the level:
- * a class or race gate further on is the track's to state.
+ * a class or race gate further on is the track's to state. Where the rank and
+ * a way both wait, the higher level is the wait.
  */
 export function questAhead(
   quest: Quest,
@@ -1104,13 +1120,64 @@ export function questAhead(
   standing: QuestStanding,
   taken: ReadonlySet<number>
 ): QuestAhead | null {
-  for (const { rank, acts } of ranksToPay(quest, standing, who.className, taken).slice(1)) {
-    if (acts.length === 0) continue;
-    for (const bar of rankBars(acts, who, quest.id)) {
-      if (bar.kind === 'level') return { rank, level: bar.level };
-    }
+  const from = rankHeld(standing);
+  const span = ranksToPay(quest, standing, who.className, taken);
+  for (const [at, { rank, acts }] of span.entries()) {
+    // The next rank's own gates are `questBars`' to shut it with.
+    const script =
+      at === 0 || acts.length === 0
+        ? undefined
+        : rankBars(acts, who, quest.id).find((bar) => bar.kind === 'level');
+    const way = wayWall(opensAt(quest, rank, from, taken), who);
+    const step = script?.level ?? 0;
+    if (way > step) return { rank, level: way, opens: true };
+    if (step > 0) return { rank, level: step };
   }
   return null;
+}
+
+/**
+ * The level the ways a rank opens wait on, or 0 where they do not. They are
+ * alternatives, so the lowest counts, and one with no level gate of its own
+ * waits on nothing (todo 155). The step can be done before then; what it pays
+ * cannot be used, which is the Later shelf's meaning.
+ */
+function wayWall(ways: readonly QuestOpening[], who: QuestDoer): number {
+  if (ways.length === 0 || who.level === null) return 0;
+  const lowest = Math.min(...ways.map((way) => way.minLevel ?? 0));
+  return lowest > who.level ? lowest : 0;
+}
+
+/**
+ * The ways a quest counts as what it pays (todo 155): only for a quest no
+ * route of which pays anything kept, and only a way its last rank still goes
+ * through. MerchantCaptain's passage to Talkiran is one. DaoLordQuest's doors
+ * at ranks 2 and 4 are not, as it pays 5M exp at rank 11. The indexer leaves
+ * out the ways the quest's own steps go on to use, such as the crate
+ * MerchantCaptain sends you for, since a step takes it back
+ * (`withOpenings` in main).
+ */
+export function questOpens(quest: Quest, taken: ReadonlySet<number>): QuestOpening[] {
+  const ways = quest.opens ?? [];
+  if (ways.length === 0) return [];
+  const pays = quest.steps
+    .flatMap(routesOf)
+    .some((way) => way.gives.some((reward) => keptReward(quest, reward, taken)));
+  if (pays) return [];
+  const ranks = quest.steps.flatMap((step) => (step.to === undefined ? [] : [step.to]));
+  if (ranks.length === 0) return [];
+  const last = Math.max(...ranks);
+  return ways.filter((way) => openAt(way, last));
+}
+
+/** The ways the quest counts as its reward that this rank opens, being shut at `from`. */
+function opensAt(
+  quest: Quest,
+  rank: number,
+  from: number | null,
+  taken: ReadonlySet<number>
+): QuestOpening[] {
+  return questOpens(quest, taken).filter((way) => openAt(way, rank) && !openAt(way, from));
 }
 
 /** The ranks the player has said, keyed by each quest's counter id. */
@@ -1211,6 +1278,8 @@ export interface QuestPays {
    * figures above are then what every route pays, and the rest is unknown.
    */
   unread: boolean;
+  /** The ways it opens that count as its reward (`questOpens`): empty for most. */
+  opens: QuestOpening[];
 }
 
 /**
@@ -1247,7 +1316,7 @@ export function questPays(
       rewards.push(reward);
     }
   }
-  return { exp, rewards, unread };
+  return { exp, rewards, unread, opens: questOpens(quest, taken) };
 }
 
 /**

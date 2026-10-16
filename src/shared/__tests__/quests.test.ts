@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Gate } from '../gates';
+import type { QuestOpening } from '../questOpenings';
 import {
   asksHere,
   earlierHandover,
@@ -174,10 +175,16 @@ describe('what a quest asks and pays', () => {
     expect(questPays(chain, 'warrior', new Set())).toEqual({
       exp: 10,
       rewards: [],
-      unread: false
+      unread: false,
+      opens: []
     });
     // Unknown is never nothing: the class's own rewards are said to be unread.
-    expect(questPays(chain, null, new Set())).toEqual({ exp: 0, rewards: [], unread: true });
+    expect(questPays(chain, null, new Set())).toEqual({
+      exp: 0,
+      rewards: [],
+      unread: true,
+      opens: []
+    });
   });
 
   it('leaves out its own counter and an item a step takes back', () => {
@@ -472,6 +479,84 @@ describe('a step ahead that wants more levels', () => {
 
   it('says nothing for a character whose level is not known', () => {
     expect(questAhead(good, { ...at(1), level: null }, START, NONE_TAKEN)).toBeNull();
+  });
+
+  // MerchantCaptain on Paradigm: three ranks that pay nothing kept, and rank 3
+  // lets `secure passage to talkiran` at Blackwater Harbor, Wharf through at
+  // level 65 (todo 155).
+  const passage: QuestOpening = {
+    kind: 'command',
+    say: ['secure passage to talkiran'],
+    room: '14/759',
+    atLeast: 3,
+    minLevel: 65
+  };
+  const captain: Quest = {
+    id: 211,
+    name: 'MerchantCaptain',
+    steps: [
+      asked({ block: 5449, to: 1 }),
+      asked({ block: 5455, from: 1, to: 2, gives: [{ kind: 'item', id: 3731 }] }),
+      asked({ block: 5458, from: 2, to: 3, takes: [{ id: 3731 }] })
+    ],
+    opens: [passage]
+  };
+  const map = new Set([3731]);
+
+  it('puts MerchantCaptain under later until the passage’s level', () => {
+    const ahead = questAhead(captain, at(13), START, map);
+    expect(ahead).toEqual({ rank: 3, level: 65, opens: true });
+    expect(questGroup(0, 3, questBars(captain, at(13), START), ahead)).toBe('later');
+    expect(questAhead(captain, at(65), START, map)).toBeNull();
+  });
+
+  it('waits on the passage when the rank that opens it is the next', () => {
+    expect(questAhead(captain, at(13), { rank: 2, held: true }, map)).toEqual({
+      rank: 3,
+      level: 65,
+      opens: true
+    });
+    expect(questAhead(captain, at(13), { rank: 3, held: true }, map)).toBeNull();
+  });
+
+  it('counts the passage as what MerchantCaptain pays', () => {
+    expect(questPays(captain, 'Paladin', map).opens).toEqual([passage]);
+  });
+
+  it('counts no way for a quest that pays something kept', () => {
+    // DaoLordQuest's door at rank 2 is on its own way to rank 11's 5M exp.
+    const door: QuestOpening = {
+      kind: 'exit',
+      direction: 'e',
+      room: '12/1173',
+      atLeast: 2,
+      minLevel: 50
+    };
+    const paying: Quest = {
+      ...captain,
+      steps: [
+        ...captain.steps,
+        asked({ block: 9, from: 3, to: 4, gives: [{ kind: 'exp', amount: 1 }] })
+      ],
+      opens: [door]
+    };
+    expect(questPays(paying, 'Paladin', map).opens).toEqual([]);
+    expect(questAhead(paying, at(13), START, map)).toBeNull();
+  });
+
+  it('counts no way the last rank no longer goes through', () => {
+    const shut: Quest = { ...captain, opens: [{ ...passage, atLeast: 1, atMost: 2 }] };
+    expect(questPays(shut, 'Paladin', map).opens).toEqual([]);
+    expect(questAhead(shut, at(13), START, map)).toBeNull();
+  });
+
+  it('waits on nothing when another way the rank opens wants no level', () => {
+    const row: QuestOpening = { kind: 'command', say: ['row'], room: '14/759', atLeast: 3 };
+    const either: Quest = { ...captain, opens: [passage, row] };
+    // Positive control: the passage alone waits.
+    expect(questAhead(captain, at(13), START, map)).not.toBeNull();
+    expect(questAhead(either, at(13), START, map)).toBeNull();
+    expect(questAhead(captain, { ...at(13), level: null }, START, map)).toBeNull();
   });
 });
 

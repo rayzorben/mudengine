@@ -4,6 +4,7 @@
  * text, so the three say one thing (`mudengine-ui` › `parts/quests.md`).
  */
 import type { QuestBar, QuestReward, QuestSide, QuestStep } from '@shared/quests';
+import type { QuestOpening } from '@shared/questOpenings';
 import { t } from './i18n';
 
 /**
@@ -94,6 +95,21 @@ export function rewardWords(reward: QuestReward): string {
         : t('cards.quests.reward.lives.many', { count: reward.amount });
     case 'alignment':
       return t('cards.quests.reward.alignment', { amount: reward.amount });
+  }
+}
+
+/** A way a quest opens as its reward: what to type or which exit, and where (todo 155). */
+export function openingWords(way: QuestOpening): string {
+  const place = way.place ?? way.room;
+  switch (way.kind) {
+    case 'command':
+      return t('cards.quests.tile.opens.command', { say: way.say[0] ?? '', place });
+    case 'exit':
+      return t('cards.quests.tile.opens.exit', { direction: way.direction, place });
+    default: {
+      const never: never = way;
+      return never;
+    }
   }
 }
 

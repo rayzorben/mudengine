@@ -10,6 +10,7 @@ import {
   barWords,
   barsTitle,
   COMPACT,
+  openingWords,
   progressTitle,
   sideWords
 } from '../lib/questWords';
@@ -150,7 +151,9 @@ function QuestTile({
 
       {ahead !== null && (
         <p className="quest-tile-ahead">
-          {t('cards.quests.tile.ahead', { rank: ahead.rank, level: ahead.level })}
+          {ahead.opens === true
+            ? t('cards.quests.tile.aheadOpens', { level: ahead.level })
+            : t('cards.quests.tile.ahead', { rank: ahead.rank, level: ahead.level })}
           {off === null
             ? null
             : off === 1
@@ -204,12 +207,21 @@ function QuestTile({
             <Reward onName={onName} reward={reward} />
           </span>
         ))}
+        {pays.opens.map((way, at) => (
+          <span
+            className="chip quiet quest-tile-opens"
+            key={`opens-${at}`}
+            title={t('cards.quests.tile.opensTitle')}
+          >
+            {openingWords(way)}
+          </span>
+        ))}
         {pays.unread && (
           <span className="quest-tile-none" title={t('cards.quests.tile.unreadTitle')}>
             {t('cards.quests.tile.unread')}
           </span>
         )}
-        {pays.exp === 0 && pays.rewards.length === 0 && !pays.unread && (
+        {pays.exp === 0 && pays.rewards.length === 0 && pays.opens.length === 0 && !pays.unread && (
           <span className="quest-tile-none" title={t('cards.quests.tile.paysNothing')}>
             —
           </span>
