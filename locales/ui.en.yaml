@@ -3693,6 +3693,8 @@ cards:
       soldNowhere: The world data lists no shop for this.
       shopAt: '{shop}, {room}'
       removeTooltip: Stop keeping {item}
+      # A max typed under the min is kept at the min (todo 149).
+      maxRaised: 'Max for {item} raised to its min, {min}.'
       itemTooltip: Open the item, where the shop is chosen
       columnHave: Have
       packUnread: Your inventory has not been read yet; send 'i'.

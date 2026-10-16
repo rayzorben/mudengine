@@ -238,9 +238,19 @@ if (live) {
   fs.mkdirSync(path.join(HOME, 'profiles', SESSION), { recursive: true });
   fs.writeFileSync(
     path.join(HOME, 'profiles', SESSION, 'profile.yaml'),
-    ['name: Web Character', 'server: Web Realm', 'autoConnect: false', 'accent: amber', ''].join(
-      '\n'
-    ),
+    [
+      'name: Web Character',
+      'server: Web Realm',
+      'autoConnect: false',
+      'accent: amber',
+      // Two rows to keep, for the supplies write below (todo 149).
+      'automation:',
+      '  supplies:',
+      '    items:',
+      '      - { name: torch, min: 3, max: 6, shop: General Store }',
+      '      - { name: rope, min: 1, max: 2, shop: General Store }',
+      ''
+    ].join('\n'),
     'utf8'
   );
   console.log(`\nmudengine web smoke -- fake host on 127.0.0.1:${hostPort}\n`);
@@ -540,6 +550,45 @@ check(
   ).includes(`connect-src 'self' ws://127.0.0.1:${PORT}`),
   'and the policy names this host'
 );
+
+// ------------------------------------------------------ assert: supplies
+
+if (!live) {
+  /*
+   * The Self card's bin, over the tab's socket (todo 149): the whole list
+   * written without the torch, and the push that answers it carrying that
+   * list. Before todo 137 the push carried the list from before the write,
+   * and the next edit made from it put the torch back.
+   */
+  // The push goes out before the write's answer: the store emits its change
+  // synchronously inside the handler, and both go down the one ordered
+  // socket. A debounce on that emit would fail this check.
+  const pushed = await first.evaluate(`
+    (async () => {
+      let last = null;
+      const off = window.mudengine.onProfiles((list) => {
+        const own = list.find((entry) => entry.id === ${JSON.stringify(SESSION)});
+        last = own ? own.supplies.items.map((item) => item.name) : null;
+      });
+      const refused = await window.mudengine.setSupplies(${JSON.stringify(SESSION)}, [
+        { name: 'rope', min: 1, max: 2, shop: 'General Store', at: null }
+      ]);
+      off();
+      return refused ?? last;
+    })()
+  `);
+  check(
+    JSON.stringify(pushed) === JSON.stringify(['rope']),
+    'removing a supply pushes the list without it',
+    JSON.stringify(pushed)
+  );
+  const file = fs.readFileSync(path.join(HOME, 'profiles', SESSION, 'profile.yaml'), 'utf8');
+  check(
+    /rope/.test(file) && !/torch/.test(file),
+    "and the character's file holds the list written",
+    file.slice(file.indexOf('supplies'))
+  );
+}
 
 // ------------------------------------------------- assert: what is withheld
 

@@ -16,6 +16,7 @@ import type { BuilderApi } from './useLoopBuilder';
 import type { SessionView } from './useSessionViews';
 import { ZERO_METER, type Pressure, type StreamMeter } from './useStreamPressure';
 import type { PinnedToolbar } from './useToolbarPins';
+import { t } from '../lib/i18n';
 import type { LoopDestination } from '../lib/loops';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
@@ -24,7 +25,7 @@ import type { CharacterState } from '@shared/character';
 import { type AppConfig, type AutomationSwitches, type RemotesConfig } from '@shared/config';
 import { type SupplyItem } from '@shared/packConfig';
 import { canRestore, type GearAction } from '@shared/gear';
-import { supplyFor, withSupply } from '@shared/supplies';
+import { stockCeiling, supplyFor, withSupply } from '@shared/supplies';
 import type { Find } from '@shared/finds';
 import type { GearPick } from '@shared/gearTrip';
 import type { HuntingRoom } from '@shared/hunting';
@@ -527,6 +528,16 @@ export function useCardContext({
           const current = supplyFor(newest, name);
           const next = change(current);
           if (next === current) return;
+          // A Max typed under Min is kept at Min, and said (todo 149).
+          if (
+            next !== null &&
+            next.max !== (current?.max ?? 0) &&
+            stockCeiling(next) !== next.max
+          ) {
+            sayRefusalRef.current(sid)(
+              t('cards.self.supplies.maxRaised', { item: next.name, min: next.min })
+            );
+          }
           const list = withSupply(newest, name, next);
           if (entry) entry.written = list;
           save(list);

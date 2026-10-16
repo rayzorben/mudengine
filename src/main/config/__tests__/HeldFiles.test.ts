@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parse } from 'yaml';
 
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { UNCATEGORISED } from '../../../shared/loops';
@@ -233,5 +234,51 @@ describe('a store edit', () => {
       options.dispose();
       loops.dispose();
     }
+  });
+});
+
+/*
+ * Todo 149: the bin and the count fields on the Self card. Before todo 137 the
+ * handler pushed the list the store held before the write, and a second edit
+ * made from that list put the first one back.
+ */
+describe('a supplies write', () => {
+  /** Rayzor's torch as his file holds it: a block mapping, written by hand. */
+  const TORCH =
+    'automation:\n  supplies:\n    items:\n      - name: torch\n        min: 3\n        max: 6\n' +
+    '        shop: General Store\n        at:\n          map: 1\n          room: 334\n';
+  const supplies = (): unknown => store.profiles[0]?.config.automation.supplies.items;
+
+  beforeEach(() => {
+    fs.writeFileSync(file, BODY + TORCH);
+    store.reload();
+  });
+
+  it('has the changed torch and then the emptied list live in the change it emits', () => {
+    expect(supplies()).toEqual([
+      { name: 'torch', min: 3, max: 6, shop: 'General Store', at: { map: 1, room: 334 } }
+    ]);
+    const seen: unknown[] = [];
+    store.on('change', (snapshot) =>
+      seen.push(snapshot.profiles[0]?.config.automation.supplies.items)
+    );
+    const torch = {
+      name: 'torch',
+      min: 2,
+      max: 9,
+      shop: 'General Store',
+      at: { map: 1, room: 334 }
+    };
+
+    expect(editor().setSupplies('thorn', [torch])).toEqual({ ok: true });
+    expect(editor().setSupplies('thorn', [])).toEqual({ ok: true });
+
+    // The positive control first: both writes emitted a change.
+    expect(seen).toHaveLength(2);
+    expect(seen).toEqual([[torch], []]);
+    const written = parse(fs.readFileSync(file, 'utf8')) as {
+      automation: { supplies: { items: unknown } };
+    };
+    expect(written.automation.supplies.items).toEqual([]);
   });
 });

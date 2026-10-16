@@ -16,10 +16,10 @@ export interface SupplyCountersRead {
   failed: string | null;
 }
 
-export function useSupplyCounters(supplies: SupplyList | null, open: boolean): SupplyCountersRead {
+export function useSupplyCounters(supplies: SupplyList, open: boolean): SupplyCountersRead {
   const [read, setRead] = useState<SupplyCountersRead>({ counters: null, failed: null });
   useEffect(() => {
-    if (!open || supplies === null) return;
+    if (!open) return;
     let stale = false;
     void supplies.counters().then(
       (counters) => {
