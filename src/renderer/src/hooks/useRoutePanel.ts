@@ -30,7 +30,7 @@ export interface RoutePanelState {
   openToJoin(joining: LoopJoining): void;
   /** Opened cold, from the palette: neither a room nor a name is meant. */
   openCold(): void;
-  /** `Ctrl/Cmd G`: open with no destination, or close; a search seed is kept. */
+  /** `Ctrl/Cmd G`: open with no destination, or close. */
   toggleCold(): void;
 }
 
@@ -41,7 +41,12 @@ export function useRoutePanel(returnFocus: () => void): RoutePanelState {
   const [search, setSearch] = useState<string | null>(null);
   const [joining, setJoining] = useState<LoopJoining | null>(null);
 
-  const close = useCallback(() => setOpen(false), []);
+  // A name the panel was opened on is that opening's, so a close drops it
+  // and a later cold opening starts empty (todo 136).
+  const close = useCallback(() => {
+    setOpen(false);
+    setSearch(null);
+  }, []);
 
   /*
    * Route planning is a dialog that types, so it hands the caret back once it
@@ -78,6 +83,7 @@ export function useRoutePanel(returnFocus: () => void): RoutePanelState {
   const toggleCold = useCallback(() => {
     setDestination(null);
     setJoining(null);
+    setSearch(null);
     setOpen((was) => !was);
   }, []);
 

@@ -118,4 +118,30 @@ describe('the route panel while a route is planned', () => {
     await asked[1]!.settle(true);
     expect(shown()).toEqual([]);
   });
+
+  describe('its search field (todo 136)', () => {
+    const field = () =>
+      panel
+        .root()
+        .find(
+          (node) =>
+            node.type === 'input' && node.props['aria-label'] === t('cards.route.searchAria')
+        );
+    const drawn = (open: boolean, search: string | null): void =>
+      panel.render(createElement(RoutePanel, { ...props(null), open, search }));
+
+    it('is empty when it opens again after something was typed', () => {
+      drawn(true, null);
+      act(() => field().props.onChange({ target: { value: 'grave' } }));
+      expect(field().props.value).toBe('grave');
+      drawn(false, null);
+      drawn(true, null);
+      expect(field().props.value).toBe('');
+    });
+
+    it('holds the name it was opened on', () => {
+      drawn(true, 'grave');
+      expect(field().props.value).toBe('grave');
+    });
+  });
 });
