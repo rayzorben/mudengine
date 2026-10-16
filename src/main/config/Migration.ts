@@ -315,6 +315,7 @@ function migrateAll(options: MigrationOptions): void {
   theFilePollBecameAFallback(home, note, options.internalTemplate);
   theShelfStrikesLearned(home, note);
   theSharedSpotWorthWent(home, note);
+  theUnplacedExitsLostTheirMark(home, note);
 }
 
 /**
@@ -777,24 +778,77 @@ const SHELF_BEFORE_STRIKE = [
 ].join('\n');
 
 function theShelfStrikesLearned(home: Home, note: (message: string) => void): void {
+  rewriteDesignTemplates(home, note, {
+    entity: 'shop',
+    literal: true,
+    rewrite: (template) =>
+      template.trimEnd() === SHELF_BEFORE_STRIKE ? shippedDesign('shop').template : null,
+    said: (file) => t('notices.migration.shelfStrikesLearned', { file })
+  });
+}
+
+/** One way a migration rewrites the templates of the designs in every settings file. */
+interface DesignTemplateRewrite {
+  /** Only the designs for this entity; every design where absent. */
+  entity?: RewriteEntity;
+  /** Write the new template as a block literal. */
+  literal?: boolean;
+  /** The new template, or null to leave this one as it is. */
+  rewrite: (template: string) => string | null;
+  /** The notice for a file that changed. */
+  said: (file: string) => string;
+}
+
+/**
+ * Rewrites design templates in every settings file, one notice per file that
+ * changed. The walk the template migrations share: the designs list, each
+ * design's entity and its template as a string.
+ */
+function rewriteDesignTemplates(
+  home: Home,
+  note: (message: string) => void,
+  how: DesignTemplateRewrite
+): void {
   for (const file of everySettingsFile(home)) {
+    if (!fs.existsSync(file)) continue;
     let moved = false;
     edit(file, (document) => {
       const designs = document.getIn(['ui', 'rewrites', 'designs'], true);
       if (!isSeq(designs)) return false;
       for (const design of designs.items) {
-        if (!isMap(design) || design.get('entity') !== 'shop') continue;
+        if (!isMap(design)) continue;
+        if (how.entity !== undefined && design.get('entity') !== how.entity) continue;
         const template = design.get('template', true);
         if (!isScalar(template) || typeof template.value !== 'string') continue;
-        if (template.value.trimEnd() !== SHELF_BEFORE_STRIKE) continue;
-        template.value = shippedDesign('shop').template;
-        template.type = Scalar.BLOCK_LITERAL;
+        const next = how.rewrite(template.value);
+        if (next === null) continue;
+        template.value = next;
+        if (how.literal === true) template.type = Scalar.BLOCK_LITERAL;
         moved = true;
       }
       return moved;
     });
-    if (moved) note(t('notices.migration.shelfStrikesLearned', { file }));
+    if (moved) note(how.said(file));
   }
+}
+
+/**
+ * An exits line in a room the client has not placed is drawn as the game
+ * printed it (the user, 2026-10-15, todo 139), so `room.known` left the room's
+ * figures and the shipped design's ` ?` with it. Read now, the gone figure is
+ * empty and the mark would follow every line, so it comes out of every room
+ * design that carries it, shipped or copied. Idempotent: the mark is never
+ * written back.
+ */
+const UNPLACED_MARK = '{if not room.known} ?{/if}';
+
+function theUnplacedExitsLostTheirMark(home: Home, note: (message: string) => void): void {
+  rewriteDesignTemplates(home, note, {
+    entity: 'room',
+    rewrite: (template) =>
+      template.includes(UNPLACED_MARK) ? template.replaceAll(UNPLACED_MARK, '') : null,
+    said: (file) => t('notices.migration.unplacedExitsUnmarked', { file })
+  });
 }
 
 /**
@@ -5721,27 +5775,13 @@ function statedTheStepNudge(home: Home, note: (message: string) => void): void {
  * rewritten.
  */
 function theActionsBecameAFamily(home: Home, note: (message: string) => void): void {
-  const files = everySettingsFile(home);
-  for (const file of files) {
-    if (!fs.existsSync(file)) continue;
-    let changed = false;
-    edit(file, (document) => {
-      const designs = document.getIn(['ui', 'rewrites', 'designs'], true);
-      if (!isSeq(designs)) return false;
-      let touched = false;
-      for (const design of designs.items) {
-        if (!isMap(design)) continue;
-        const template = design.get('template', true);
-        if (!isScalar(template) || typeof template.value !== 'string') continue;
-        if (!template.value.includes('{action}')) continue;
-        template.value = template.value.replaceAll('{action}', '{action.toggleEquip}');
-        touched = true;
-      }
-      changed = touched;
-      return touched;
-    });
-    if (changed) note(t('notices.migration.actionsFamilied', { file }));
-  }
+  rewriteDesignTemplates(home, note, {
+    rewrite: (template) =>
+      template.includes('{action}')
+        ? template.replaceAll('{action}', '{action.toggleEquip}')
+        : null,
+    said: (file) => t('notices.migration.actionsFamilied', { file })
+  });
 }
 
 /**

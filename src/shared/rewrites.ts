@@ -315,9 +315,7 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
     blocks: ['room-exits'],
     oneLine: false,
     self: 'me',
-    fields: [
-      record('room', [text('exits'), text('exitsWithHidden'), text('hidden'), flag('known')])
-    ]
+    fields: [record('room', [text('exits'), text('exitsWithHidden'), text('hidden')])]
   }
 };
 
@@ -442,7 +440,7 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     name: 'Hidden exits',
     entity: 'room',
     enabled: false,
-    template: '{green}Obvious exits: {room.exitsWithHidden}{/green}{if not room.known} ?{/if}'
+    template: '{green}Obvious exits: {room.exitsWithHidden}{/green}'
   }
 ];
 
@@ -592,11 +590,10 @@ export interface RoomFacts {
   exits: readonly PrintedExit[];
   /**
    * The world database's hidden exits (`Hidden/…`) out of this room that the
-   * server did not print, or null where the client cannot say which room it
-   * is: a room it has not placed, or one placed somewhere these exits do not
-   * fit. Null is unknown, never none.
+   * server did not print. A room the client cannot place is never drawn
+   * (`Rewriter.gather`), so this is always the placed room's.
    */
-  hidden: readonly Direction[] | null;
+  hidden: readonly Direction[];
 }
 
 /** What main gathered for one drawing, by entity; the character's figures come with every one. */
@@ -997,11 +994,10 @@ export function experienceScope(gain: ExperienceFacts): Row {
  * server names a plain one, since it prints none of them.
  */
 export function roomScope(room: RoomFacts, t: UiLookup): Row {
-  const hidden = room.hidden ?? [];
   const all = inExitOrder(
     [
       ...room.exits.map((exit) => ({ ...exit, hidden: false })),
-      ...hidden.map((direction) => ({
+      ...room.hidden.map((direction) => ({
         word: DIRECTION_NAME[direction],
         direction,
         hidden: true
@@ -1013,20 +1009,16 @@ export function roomScope(room: RoomFacts, t: UiLookup): Row {
     room: {
       exits: room.printed,
       exitsWithHidden:
-        hidden.length === 0
+        room.hidden.length === 0
           ? room.printed
           : all
               .map((exit) =>
                 exit.hidden ? t('rewrites.room.hiddenExit', { exit: exit.word }) : exit.word
               )
               .join(', '),
-      hidden:
-        room.hidden === null
-          ? null
-          : inExitOrder(hidden, (direction) => direction)
-              .map((direction) => DIRECTION_NAME[direction])
-              .join(', '),
-      known: room.hidden !== null
+      hidden: inExitOrder(room.hidden, (direction) => direction)
+        .map((direction) => DIRECTION_NAME[direction])
+        .join(', ')
     }
   };
 }

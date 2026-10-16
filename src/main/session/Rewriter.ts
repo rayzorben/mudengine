@@ -344,14 +344,15 @@ export class Rewriter {
           word,
           direction: parseExit(word).direction
         }));
+        // A room the client has not placed is drawn as the game printed it
+        // (the user, 2026-10-15, todo 139): a mark of the client's own read as
+        // part of the server's line.
         const where = roomPrinted(block, exits, context);
+        if (where === null) return null;
         const shown = new Set(exits.map((exit) => exit.direction));
-        const hidden =
-          where === null
-            ? null
-            : where.exits
-                .filter((exit) => exit.requirement?.kind === 'hidden' && !shown.has(exit.direction))
-                .map((exit) => exit.direction);
+        const hidden = where.exits
+          .filter((exit) => exit.requirement?.kind === 'hidden' && !shown.has(exit.direction))
+          .map((exit) => exit.direction);
         return { entity, figures, room: { printed: said, exits, hidden } };
       }
     }

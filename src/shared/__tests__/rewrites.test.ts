@@ -681,16 +681,6 @@ describe('the other listings', () => {
     const none = renderRewrite(exitsLine, exits('None', ['d']), NO_BANDS, t);
     expect(none.map(plainOf)).toEqual([`None|${hiddenWord('down')}|down`]);
   });
-
-  it('draws the printed exits and ? for the hidden ones where the room is not known', () => {
-    const drawn = renderRewrite(
-      design('room', '{room.exitsWithHidden}|{room.hidden}|{if room.known}k{else}u{/if}'),
-      exits('north, south', null),
-      NO_BANDS,
-      t
-    );
-    expect(drawn.map(plainOf)).toEqual(['north, south|?|u']);
-  });
 });
 
 describe('the bytes the console is fed', () => {
@@ -874,7 +864,7 @@ describe('the catalogue and the dictionary', () => {
       room: {
         entity: 'room',
         figures: FIGURES,
-        room: { printed: 'north', exits: [{ word: 'north', direction: 'n' }], hidden: null }
+        room: { printed: 'north', exits: [{ word: 'north', direction: 'n' }], hidden: [] }
       }
     };
     for (const shippedDesign of DEFAULT_REWRITES) {

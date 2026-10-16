@@ -144,10 +144,12 @@ describe('the exits line', () => {
     expect(drawn(exitsBlock('None'), standing(vault, []))).toBe(`${hidden('south')}|south`);
   });
 
-  it('says ? where the room is not placed, or is not the one these exits were printed for', () => {
-    expect(drawn(exitsBlock('north, east'), standing(null, ['n', 'e']))).toBe('north, east|?');
+  it('leaves the line as printed where the room is not placed, or not the one printed for', () => {
+    // Positive control: the same line in the placed hall is drawn.
+    expect(drawn(exitsBlock('north, east'), standing(HALL, ['n', 'e']))).not.toBeNull();
+    expect(drawn(exitsBlock('north, east'), standing(null, ['n', 'e']))).toBeNull();
     // The tracker kept the hall: the line printed somewhere it did not place.
-    expect(drawn(exitsBlock('west'), standing(HALL, ['n', 'e']))).toBe('west|?');
+    expect(drawn(exitsBlock('west'), standing(HALL, ['n', 'e']))).toBeNull();
   });
 
   it('reads a look as the room that way, and its hidden exits', () => {

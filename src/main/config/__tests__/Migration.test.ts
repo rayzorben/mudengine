@@ -1506,6 +1506,35 @@ describe('owning the status line', () => {
     expect(notesOf(said, 'notices.migration.exitsDesigned')).toEqual([]);
   });
 
+  it('takes the unplaced-room mark out of every exits design, and only once', () => {
+    const designs = (file: string): Record<string, unknown>[] =>
+      (parse(fs.readFileSync(file, 'utf8')) as { ui: { rewrites: { designs: [] } } }).ui.rewrites
+        .designs;
+    const marked = [
+      'ui:',
+      '  rewrites:',
+      '    designs:',
+      '      - name: Hidden exits',
+      '        entity: room',
+      '        enabled: true',
+      "        template: '{green}Obvious exits: {room.exitsWithHidden}{/green}{if not room.known} ?{/if}'",
+      '      - name: Mine',
+      '        entity: room',
+      '        enabled: false',
+      "        template: '{room.exits}'",
+      ''
+    ].join('\n');
+    fs.writeFileSync(home.options, marked, 'utf8');
+    migrate();
+    const shipped = DEFAULT_CONFIG.ui.rewrites.designs.find((design) => design.entity === 'room');
+    expect(designs(home.options)[0]).toEqual({ ...shipped, enabled: true });
+    expect(designs(home.options)[1]?.['template']).toBe('{room.exits}');
+    expect(notesOf(said, 'notices.migration.unplacedExitsUnmarked')).toHaveLength(1);
+    said = [];
+    migrate();
+    expect(notesOf(said, 'notices.migration.unplacedExitsUnmarked')).toEqual([]);
+  });
+
   it('gives the shipped shop design the strike, and leaves a written one alone', () => {
     const designs = (file: string): Record<string, unknown>[] =>
       (parse(fs.readFileSync(file, 'utf8')) as { ui: { rewrites: { designs: [] } } }).ui.rewrites
