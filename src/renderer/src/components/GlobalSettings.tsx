@@ -45,6 +45,7 @@ import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
 import AliasFields from './AliasFields';
 import KeyFields from './KeyFields';
+import { useLoopingMacros } from '../hooks/useLoopingMacros';
 import ExtensionSwitches from './ExtensionSwitches';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
@@ -328,6 +329,8 @@ export default function GlobalSettings({
   const shows = (id: Section): boolean =>
     find.searching ? SECTIONS[scope].includes(id) : shown === id;
   const sectionOf = (id: Section) => ({ id, label: SECTION_LABEL[id], searching: find.searching });
+  // A key and an alias may call each other, so one that loops is found across the two (todo 134).
+  const looping = useLoopingMacros(draft.keys, draft.automation.aliases);
 
   /**
    * One block at a time, merged onto the draft.
@@ -2021,6 +2024,7 @@ export default function GlobalSettings({
           <SettingsSection {...sectionOf('talk')}>
             <AliasFields
               aliases={draft.automation.aliases}
+              looping={looping}
               onChange={(aliases) => automation({ aliases })}
             />
           </SettingsSection>
@@ -2067,7 +2071,11 @@ export default function GlobalSettings({
 
         {shows('keys') && (
           <SettingsSection {...sectionOf('keys')}>
-            <KeyFields keys={draft.keys} onChange={(keys) => onChange({ ...draft, keys })} />
+            <KeyFields
+              keys={draft.keys}
+              looping={looping}
+              onChange={(keys) => onChange({ ...draft, keys })}
+            />
           </SettingsSection>
         )}
 

@@ -1978,8 +1978,18 @@ export class Travel implements SessionModule {
 
   /** `walkRoute`'s answer as the press's union. */
   private started(route: Route, run: boolean): WalkStart {
-    const refused = this.switchedOnFor(() => this.walkRoute(route, run));
+    const refused = this.walkForPlayer(route, run);
     return refused === null ? { started: true } : { refused };
+  }
+
+  /** A route a person asked for, the master switch turned on for it: the refusal, or null. */
+  walkForPlayer(route: Route, run = false): string | null {
+    return this.switchedOnFor(() => this.walkRoute(route, run));
+  }
+
+  /** Whether a detour's walk owes the route it interrupted (`walkOnAfterErrand`). */
+  get owesRoute(): boolean {
+    return this.errandOwes !== null;
   }
 
   /**
@@ -2403,7 +2413,7 @@ export class Travel implements SessionModule {
     // Through `walkRoute`, so a resumed route is consulted against the supply
     // list exactly as the one the player drew was: being about to travel is
     // what makes the pack matter, and resuming is being about to travel.
-    const refused = this.switchedOnFor(() => this.walkRoute(plan));
+    const refused = this.walkForPlayer(plan);
     return refused === null ? { started: true } : { refused };
   }
 

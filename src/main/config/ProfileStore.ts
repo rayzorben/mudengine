@@ -62,6 +62,8 @@ export interface ProfileStoreOptions {
    * scopes are not.
    */
   loopsFor?: (id: string, serverName: string) => readonly Loop[];
+  /** Each character read, as its file states it and as it resolved, for what it refuses (todo 134). */
+  resolved?: (id: string, raw: unknown, profile: Profile) => void;
 }
 
 export declare interface ProfileStore {
@@ -234,6 +236,7 @@ export class ProfileStore extends EventEmitter {
           lent
         );
       }
+      this.options.resolved?.(id, raw, result.profile);
       profiles.push(result.profile);
     }
 

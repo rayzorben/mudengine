@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { GUARD_FIELDS, parseGuard } from '../../../shared/config';
+import { parseGuard } from '../../../shared/config';
+import { GUARD_FIELDS } from '../../../shared/rules';
 import { readField } from '../RuleEngine';
 import { EMPTY_CHARACTER } from '../../../shared/character';
 import type { CharacterState, RoomOccupant } from '../../../shared/character';
@@ -13,7 +14,7 @@ import { wireItem } from '../../../shared/entities';
  * together:
  *
  * 1. the `GuardField` type in `shared/rules.ts`, which is what a caller writes;
- * 2. `GUARD_FIELDS` in `shared/config.ts`, which is what `parseGuard` accepts;
+ * 2. `GUARD_FIELDS` in `shared/rules.ts`, which is what `parseGuard` accepts;
  * 3. the `case` labels in `readField`, which is what actually answers.
  *
  * A field in the type and the reader but not in the list type-checks, then

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { macroLength, parseMacro } from '../macro';
+import { macroLines, parseMacro } from '../macro';
 
 describe('a talk-box line of several commands', () => {
   it('splits on semicolons, spacing and empty pieces ignored', () => {
@@ -27,7 +27,7 @@ describe('a talk-box line of several commands', () => {
       { command: 's', times: 6 },
       { command: 'u', times: 3 }
     ]);
-    expect(macroLength(steps!)).toBe(15);
+    expect(steps!.reduce((sum, step) => sum + step.times, 0)).toBe(15);
     expect(parseMacro('2ne')).toEqual([{ command: 'ne', times: 2 }]);
     expect(parseMacro('1d')).toEqual([{ command: 'd', times: 1 }]);
   });
@@ -71,5 +71,19 @@ describe('a talk-box line of several commands', () => {
 
   it('has nothing to send for a line of separators', () => {
     expect(parseMacro(';;')).toBeNull();
+  });
+});
+
+// Todo 134: a macro's own text, a list's entries one a line.
+describe('a macro’s lines', () => {
+  it('reads a list one command an entry, never split on ;', () => {
+    expect(macroLines('gos gg ;)\n\n 2s ')).toEqual([
+      { command: 'gos gg ;)', times: 1 },
+      { command: 's', times: 2 }
+    ]);
+    // Positive control: one line is split as the Talk box splits it.
+    expect(macroLines('n;s')).toHaveLength(2);
+    expect(macroLines('look')).toEqual([{ command: 'look', times: 1 }]);
+    expect(macroLines('  ')).toEqual([]);
   });
 });

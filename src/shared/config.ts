@@ -78,7 +78,15 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
-import type { Comparison, Guard, GuardField, Rule, RuleAction, Trigger } from './rules';
+import {
+  GUARD_FIELDS,
+  type Comparison,
+  type Guard,
+  type GuardField,
+  type Rule,
+  type RuleAction,
+  type Trigger
+} from './rules';
 import {
   ALERT_SIDES,
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
@@ -93,6 +101,7 @@ import type { ConnectionTarget, StreamEncoding } from './types';
 import { normalizeMobRules, type MobRule } from './mobRules';
 import { normalizeAliases, type Aliases } from './aliases';
 import { MEGAMUD_KEYS, normalizeKeys, type KeyBindings } from './keys';
+import { loopingIn } from './macroBook';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
@@ -2310,7 +2319,7 @@ export interface AppConfig {
   ui: UiConfig;
   logging: LoggingConfig;
   automation: AutomationConfig;
-  /** Keys bound to a line, global only. See `shared/keys.ts`. */
+  /** Keys bound to a macro, a character's over Global's. See `shared/keys.ts`. */
   keys: KeyBindings;
   /** Each installed extension on or off, global only. See `shared/extensionSwitches.ts`. */
   extensions: ExtensionSwitches;
@@ -2871,6 +2880,9 @@ export function normalizeConfig(input: unknown): AppConfig {
   const connection = isRecord(raw['connection']) ? raw['connection'] : {};
   const terminal = isRecord(raw['terminal']) ? raw['terminal'] : {};
   const ui = isRecord(raw['ui']) ? raw['ui'] : {};
+  const automation = isRecord(raw['automation']) ? raw['automation'] : {};
+  // A key or an alias that reaches itself through the macros it calls loads neither (todo 134).
+  const looping = loopingIn(raw['keys'], automation['aliases']);
 
   return {
     connection: {
@@ -2915,8 +2927,8 @@ export function normalizeConfig(input: unknown): AppConfig {
       rewrites: normalizeRewrites(ui['rewrites'])
     },
     logging: normalizeLogging(raw['logging']),
-    automation: normalizeAutomation(raw['automation']),
-    keys: normalizeKeys(raw['keys']),
+    automation: normalizeAutomation(raw['automation'], looping),
+    keys: normalizeKeys(raw['keys'], looping),
     extensions: normalizeExtensionSwitches(raw['extensions']),
     gameView: normalizeGameView(raw['gameView'])
   };
@@ -3263,50 +3275,6 @@ function stringList(value: unknown, fallback: string[]): string[] {
   return Array.isArray(value) ? items : fallback;
 }
 
-/**
- * Every field a guard may name.
- *
- * **This is one half of a pair and both halves have to move together.** The
- * other is `readField` in `RuleEngine`. A field added to the `GuardField` union
- * and to the reader but not to this list is a field the type system accepts and
- * the *parser* refuses — so a rule using it fails to load, silently, and the
- * documented example in `default.yaml` does not work. That is exactly what
- * happened to `target`, `attackers`, `players`, `hostiles` and `hangUpClean`
- * when they were added.
- *
- * Ordered as the field union is, so the two read alongside each other.
- */
-export const GUARD_FIELDS: readonly GuardField[] = [
-  'hp.percent',
-  'hp',
-  'mana.percent',
-  'mana',
-  'level',
-  'inCombat',
-  'resting',
-  'meditating',
-  'occupants',
-  'threats',
-  'mobs',
-  'players',
-  'hostiles',
-  'hangUpClean',
-  'target',
-  'attackers',
-  'partySize',
-  'stealth',
-  'wealth',
-  'phase',
-  'realm',
-  'shopHere',
-  'lairHere',
-  'undeadHere',
-  'toughestHere',
-  'deathSpellHere',
-  'dark',
-  'light'
-];
-
 const COMPARISONS: readonly Comparison[] = ['<', '<=', '>', '>=', '==', '!='];
 
 /** Derived, not restated: a band added to `PRIORITY` is accepted here at once. */
@@ -3440,7 +3408,7 @@ export function normalizeRules(value: unknown): Rule[] {
   return rules;
 }
 
-function normalizeAutomation(value: unknown): AutomationConfig {
+function normalizeAutomation(value: unknown, looping: ReadonlySet<string>): AutomationConfig {
   const raw = isRecord(value) ? value : {};
   const idle = isRecord(raw['idle']) ? raw['idle'] : {};
   const pacing = isRecord(raw['pacing']) ? raw['pacing'] : {};
@@ -3506,7 +3474,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
         d.talk.lookAtPlayers
       )
     },
-    aliases: normalizeAliases(raw['aliases']),
+    aliases: normalizeAliases(raw['aliases'], looping),
     statline: {
       control: bool(
         isRecord(raw['statline']) ? raw['statline']['control'] : undefined,

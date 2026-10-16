@@ -324,12 +324,13 @@ function GameView({
   const candidates = useMemo(() => candidatesOf(character), [character]);
   const bound = useMemo(() => {
     const out: Partial<Record<Direction, string>> = {};
-    for (const [chord, line] of Object.entries(keys)) {
+    // The character's own keys over Global's (todo 134).
+    for (const [chord, line] of Object.entries(profile?.keys ?? keys)) {
       const direction = asDirection(line);
       if (direction !== null) out[direction] ??= chord;
     }
     return out;
-  }, [keys]);
+  }, [keys, profile]);
 
   return (
     <div

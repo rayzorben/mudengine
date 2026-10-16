@@ -14,19 +14,13 @@ import { t } from '../app/i18n';
 import { personStop } from '../automation/personStop';
 import type { RemoteEvents, StoppedByRemote } from '../automation/Remotes';
 import type { CarriedLap } from '../../shared/underway';
-import {
-  matchLoopIn,
-  readStop,
-  splitStop,
-  type Loop,
-  type LoopProgress,
-  type RoomMatch
-} from '../../shared/loops';
+import { matchLoopIn, splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import type { Movement, MovementKind, MovementStart } from '../../shared/movement';
 import type { MoveAnswer, PathReport } from '../../shared/remotes';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { WalkProgress } from '../../shared/walk';
 import { roomId, type RoomId, type RoomReference, type Route } from '../../shared/world';
+import { roomNamed, walkTo, type RoomFinder } from './roomWalk';
 
 /** The session's own doors a remote stop and resume go through. */
 export interface RemoteMovesSession {
@@ -47,9 +41,7 @@ export interface RemoteLoops {
 }
 
 /** Where a room is and the way there from here (`Errands`). */
-export interface RemoteRooms {
-  matchStop(stop: { name: string; at: RoomReference | null }): RoomMatch;
-  planFromHere(to: RoomId): Route | string;
+export interface RemoteRooms extends RoomFinder {
   /** The steps from here through `rooms` in order, or null where a leg cannot be planned. */
   stepsThrough(rooms: readonly RoomId[]): number | null;
 }
@@ -185,7 +177,7 @@ export class RemoteMoves {
   }
 
   private goTo(from: string, request: string): MoveAnswer {
-    const match = this.rooms.matchStop(readStop(request));
+    const match = roomNamed(request, this.rooms);
     switch (match.kind) {
       case 'none':
         this.notice(t('session.remotes.gotoNone', { who: from, request }), 'remote-moves');
@@ -300,19 +292,9 @@ export class RemoteMoves {
     return true;
   }
 
-  /**
-   * The player's own route to `at`, through `walkRoute` so a running lap is
-   * stopped for it and the supply list gets its say. The refusal, or the walk.
-   */
+  /** The player's own route to `at`. See `walkTo`. */
   private walkTo(at: RoomReference): { stepCount: number; room: string } | string {
-    const plan = this.rooms.planFromHere(roomId(at.map, at.room));
-    if (typeof plan === 'string') return plan;
-    const refused = this.session.walkRoute(plan);
-    if (refused !== null) return refused;
-    return {
-      stepCount: plan.steps.length,
-      room: plan.steps.at(-1)?.name ?? roomId(at.map, at.room)
-    };
+    return walkTo(at, this.rooms, (route) => this.session.walkRoute(route));
   }
 
   /** The name of the route or lap walking now, which a new start takes over from. */

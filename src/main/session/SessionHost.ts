@@ -74,6 +74,8 @@ import type { TalkSink } from './TalkLog';
 import { isTalkBlock } from '../../shared/talk';
 import { stampChunk, unstamped } from '../../shared/stamps';
 import { SessionDebug } from './SessionDebug';
+import type { AliasFile } from './aliasAnswers';
+import type { StatedPair } from '../../shared/pairs';
 
 export interface SessionSlot {
   readonly id: SessionId;
@@ -139,6 +141,10 @@ export interface SessionHostOptions {
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /** Read every character's file again now, rather than on the next poll. */
   reread?(): void;
+  /** This character's own aliases as its file writes them (todo 134). */
+  ownAliases?(id: SessionId): readonly StatedPair[];
+  /** Write one alias into a character's file, null removing it: the error, or null. */
+  writeAlias?(id: SessionId, word: string, line: string | null): string | null;
   /** The shipped loops, read once (`LoopCatalogue`). */
   loopShelf?(): readonly Loop[];
   /**
@@ -560,6 +566,8 @@ export class SessionHost {
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomationNow: (name, on) => this.switchNow(id, name, on),
+        keys: () => this.options.configFor(id).keys,
+        aliasFile: () => this.aliasFile(id),
         loopShelf: () => this.options.loopShelf?.() ?? [],
         realmTold: (word) => {
           // The realm this connection actually plays, bound at the dial; a word
@@ -749,6 +757,31 @@ export class SessionHost {
     slot.reconnect.cancel();
     await this.dial(slot, asked.target);
     return true;
+  }
+
+  /** A character's own aliases, written and read back now, as a switch is (`switchNow`). */
+  private aliasFile(id: SessionId): AliasFile | null {
+    const { ownAliases, writeAlias, reread } = this.options;
+    if (ownAliases === undefined || writeAlias === undefined || reread === undefined) return null;
+    return {
+      // Unreadable, the list is said without its marks, and why.
+      own: () => {
+        try {
+          return ownAliases(id);
+        } catch (error) {
+          this.options.notice({
+            session: id,
+            message: t('session.alias.unreadable', { error: errorMessage(error) })
+          });
+          return [];
+        }
+      },
+      write: (word, line) => {
+        const error = writeAlias(id, word, line);
+        if (error === null) reread();
+        return error;
+      }
+    };
   }
 
   /** One switch written into the character's file and read back now. Nothing is written that cannot be read back. */
