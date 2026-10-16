@@ -1,24 +1,9 @@
 /**
- * Once-only repairs of `mob-lore.json`, for what an earlier version wrote
- * wrong. `RealmLore` runs each step not yet run when it reads the file,
- * before anything reads a table, and keeps the ids run in the file
- * (`repaired`), so a step runs once and a later write cannot undo it. Each
- * removal is said with a count. The rule: `mudengine-config` › *A fix for
- * bad data ships its repair*.
+ * Once-only repairs of `mob-lore.json`, run by `RealmLore` as it reads the
+ * file (`fileRepairs.ts` has how a step runs once).
  */
 import { t } from '../app/i18n';
-
-/** The file as parsed: a step reads and rewrites only its own section. */
-export type LoreDocument = Readonly<Record<string, unknown>>;
-
-export interface LoreRepair {
-  /** Written into the file once run; never reused. */
-  readonly id: string;
-  /** What the notice says was removed, given the count. */
-  why(count: number): string;
-  /** The file with the repair made, and how many entries it removed. */
-  apply(file: LoreDocument): { file: LoreDocument; removed: number };
-}
+import type { FileRepair } from './fileRepairs';
 
 /**
  * Every `noEffects` entry, on every realm (todo 131). A file without this
@@ -30,7 +15,7 @@ export interface LoreRepair {
  * again. The world database cannot settle it: the file is read before any
  * is open, and a realm's immunity is what the database can be wrong about.
  */
-const noEffectMisread: LoreRepair = {
+const noEffectMisread: FileRepair = {
   id: 'no-effect-misread-2026-10',
   why: (count) =>
     count === 1
@@ -51,4 +36,4 @@ const noEffectMisread: LoreRepair = {
 };
 
 /** In the order they run. A new step goes at the end, with an id never used before. */
-export const LORE_REPAIRS: readonly LoreRepair[] = [noEffectMisread];
+export const LORE_REPAIRS: readonly FileRepair[] = [noEffectMisread];

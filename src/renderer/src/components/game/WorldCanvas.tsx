@@ -1,8 +1,10 @@
 /**
- * The game view's world (todo 140): the whole plane on a canvas behind the HUD,
- * with the room you stand in as the arena. The camera follows you until the
- * map is dragged; then the arena docks to the right with a thread back to the
- * room, a click on a room walks there, and Esc, ◎ or a move brings it back.
+ * The game view's world (todo 140): one floor of the plane on a canvas behind
+ * the HUD (todo 151), with the room you stand in as the arena. The camera
+ * follows you until the map is dragged, a stair's mark or the floor strip
+ * shows another floor; then the arena docks to the right with a thread back to
+ * the room, a click on a room walks there, and Esc, ◎ or a move brings it back.
+ * Pointing at a stair's mark opens its peek window.
  *
  * It draws only when something changed or an animation is running: a moving
  * camera, the arena docking, a blow in flight. Nothing runs on a clock, and a
@@ -37,6 +39,8 @@ import { blowOf } from '../../lib/gameBlows';
 import { placeTone } from '../../lib/gameIcons';
 import { t } from '../../lib/i18n';
 import type { GameMap } from '../../hooks/useGameMap';
+import { usePeek } from '../../hooks/usePeek';
+import { floorsReached, inBox, placePeek, type Box } from '../../lib/gameFloors';
 import {
   drawFlights,
   drawExits,
@@ -56,13 +60,18 @@ import {
   PATHS,
   readGamePalette,
   roomAt,
+  tileSize,
   toScreen,
   ZOOM,
   type Camera,
   type GamePalette,
+  type FoundWay,
   type Scene,
   type View
 } from './drawWorld';
+import { drawPeek, PEEK_SIZE } from './drawPeek';
+import { drawStairs, type StairSpot } from './drawStairs';
+import FloorStrip from './FloorStrip';
 
 export interface WorldCanvasHandle {
   zoom(by: number): void;
@@ -71,7 +80,7 @@ export interface WorldCanvasHandle {
 }
 
 export interface WorldCanvasProps {
-  api: Pick<IpcApi, 'onBlock'>;
+  api: Pick<IpcApi, 'onBlock' | 'gameMap'>;
   session: SessionId;
   character: CharacterState;
   map: GameMap;
@@ -80,7 +89,7 @@ export interface WorldCanvasProps {
   trail: readonly RoomId[];
   stops: ReadonlySet<RoomId>;
   finds: ReadonlySet<RoomId>;
-  found: ReadonlyArray<readonly [RoomId, RoomId]>;
+  found: readonly FoundWay[];
   players: Scene['players'];
   picked: string | null;
   onFoe(name: string): void;
@@ -93,6 +102,7 @@ type Hover =
   | { kind: 'room'; cell: GameCell; x: number; y: number }
   | { kind: 'exit'; direction: Direction; x: number; y: number }
   | { kind: 'foe'; token: ArenaToken; x: number; y: number }
+  | { kind: 'stair'; spot: StairSpot; x: number; y: number }
   | null;
 
 /** The arena's colours while the room is not known: the guess for a town, unnamed. */
@@ -120,6 +130,11 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   const size = useRef({ width: 0, height: 0, ratio: 1 });
   const flights = useRef<Flight[]>([]);
   const exits = useRef<ExitSpot[]>([]);
+  const stairs = useRef<StairSpot[]>([]);
+  /** Where the hovered stair's peek window was drawn, so the pointer can move onto it. */
+  const peekBox = useRef<Box | null>(null);
+  /** The room a stair or the strip showed, for the camera to go to once its window arrives. */
+  const focus = useRef<RoomId | null>(null);
   const frame = useRef<number | null>(null);
   const palette = useRef<GamePalette | null>(null);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(
@@ -128,6 +143,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   const [hover, setHover] = useState<Hover>(null);
   const hoverRef = useRef<Hover>(null);
   hoverRef.current = hover;
+  const peek = usePeek(api, session, hover?.kind === 'stair' ? hover.spot.stair.to : null);
 
   const tokens = useMemo(() => arenaTokensOf(character, props.picked), [character, props.picked]);
   const hereCell = here === null ? undefined : map.byId.get(here);
@@ -141,8 +157,8 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   );
 
   // Everything the frame reads, kept current without re-subscribing anything.
-  const latest = useRef({ props, tokens, arenaExits, hereCell });
-  latest.current = { props, tokens, arenaExits, hereCell };
+  const latest = useRef({ props, tokens, arenaExits, hereCell, peek });
+  latest.current = { props, tokens, arenaExits, hereCell, peek };
 
   const draw = useCallback((): void => {
     frame.current = null;
@@ -151,31 +167,43 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     if (!element || !ctx) return;
     const pal = (palette.current ??= readGamePalette(element));
     const { width, height, ratio } = size.current;
-    const { props: p, tokens: list, arenaExits: rim, hereCell: cell } = latest.current;
+    const { props: p, tokens: list, arenaExits: rim, hereCell: cell, peek: shown } = latest.current;
     const now = performance.now();
     let moving = false;
 
-    if (follow.current && cell) {
-      const dx = cell.gx - cam.current.x;
-      const dy = cell.gy - cam.current.y;
+    const target = follow.current
+      ? cell
+      : focus.current === null
+        ? undefined
+        : p.map.byId.get(focus.current);
+    if (target) {
+      const dx = target.gx - cam.current.x;
+      const dy = target.gy - cam.current.y;
       if (Math.abs(dx) > SETTLED || Math.abs(dy) > SETTLED) {
         cam.current.x += dx * EASE * 1.4;
         cam.current.y += dy * EASE * 1.4;
         moving = true;
       } else {
-        cam.current.x = cell.gx;
-        cam.current.y = cell.gy;
+        cam.current.x = target.gx;
+        cam.current.y = target.gy;
+        if (!follow.current) focus.current = null;
       }
     }
     const view: View = { width, height, cam: cam.current };
     const radius = arenaRadius(width, height);
-    // Lost, the arena stands in the middle of the screen: the fight is drawn wherever the room is.
+    const d = disc.current;
+    /*
+     * Lost, the arena stands in the middle of the screen: the fight is drawn
+     * wherever the room is. A known room outside the window (◎ after a long
+     * drag, todo 151) is not lost: the arena holds still until its square comes.
+     */
     const goal = !follow.current
       ? { x: width - radius * 0.82 - 44, y: height * 0.54, r: radius * 0.82, dock: 1 }
       : cell
         ? { ...toScreen(view, cell.gx, cell.gy), r: radius, dock: 0 }
-        : { x: width / 2, y: height / 2, r: radius, dock: 0 };
-    const d = disc.current;
+        : p.here === null || d.r === 0
+          ? { x: width / 2, y: height / 2, r: radius, dock: 0 }
+          : { x: d.x, y: d.y, r: d.r, dock: 0 };
     if (d.r === 0) Object.assign(d, goal);
     else
       for (const key of ['x', 'y', 'r', 'dock'] as const) {
@@ -203,6 +231,8 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     drawGround(ctx, view, pal);
     drawWorld(ctx, view, scene, pal, d);
+    const pointed = hoverRef.current?.kind === 'stair' ? hoverRef.current.spot : null;
+    stairs.current = drawStairs(ctx, view, scene, pal, pointed);
 
     {
       const area = (cell === undefined ? undefined : p.map.win.areas[cell.area]) ?? LOST_AREA;
@@ -262,6 +292,21 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       }
     }
     drawVignette(ctx, view, pal);
+    peekBox.current = null;
+    if (pointed !== null) {
+      const box = placePeek(
+        pointed,
+        pointed.stair.direction,
+        PEEK_SIZE,
+        tileSize(cam.current),
+        size.current,
+        d
+      );
+      if (box !== null) {
+        drawPeek(ctx, pal, pointed, box, shown, p.map.win.floor);
+        peekBox.current = box;
+      }
+    }
     if (moving) frame.current = window.requestAnimationFrame(draw);
   }, []);
 
@@ -270,7 +315,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   }, [draw]);
 
   // Anything the picture is made of moved.
-  useEffect(redraw, [redraw, props, tokens, arenaExits, hover]);
+  useEffect(redraw, [redraw, props, tokens, arenaExits, hover, peek]);
 
   useEffect(
     () => () => {
@@ -321,6 +366,18 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     [onDetached, redraw]
   );
 
+  const { show: showRoom } = map;
+  /** Shows the floor a stair or the strip reaches, around that room, detached as a drag is. */
+  const show = useCallback(
+    (room: RoomId) => {
+      focus.current = room;
+      setFollow(false);
+      setHover(null);
+      showRoom(room);
+    },
+    [setFollow, showRoom]
+  );
+
   useImperativeHandle(
     ref,
     () => ({
@@ -328,10 +385,23 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
         cam.current.z = Math.max(ZOOM.min, Math.min(ZOOM.max, cam.current.z * by));
         redraw();
       },
-      follow: () => setFollow(true)
+      follow: () => {
+        focus.current = null;
+        setFollow(true);
+      }
     }),
     [redraw, setFollow]
   );
+
+  // Nearest to where the window looks: its room, else its middle.
+  const shownWindow = map.win;
+  const floors = useMemo(() => {
+    const near = shownWindow.centre ?? {
+      gx: (shownWindow.box.x0 + shownWindow.box.x1) / 2,
+      gy: (shownWindow.box.y0 + shownWindow.box.y1) / 2
+    };
+    return floorsReached(shownWindow, near);
+  }, [shownWindow]);
 
   const viewNow = (): View => ({
     width: size.current.width,
@@ -340,23 +410,22 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   });
 
   const pick = (x: number, y: number): Hover => {
-    for (const spot of exits.current) {
-      const inBox =
-        x >= spot.box.x &&
-        x <= spot.box.x + spot.box.w &&
-        y >= spot.box.y &&
-        y <= spot.box.y + spot.box.h;
-      if (Math.hypot(spot.x - x, spot.y - y) < 17 || inBox)
+    for (const spot of exits.current)
+      if (Math.hypot(spot.x - x, spot.y - y) < 17 || inBox(spot.box, x, y))
         return { kind: 'exit', direction: spot.direction, x, y };
-    }
     const at = standings(disc.current, latest.current.tokens);
     for (const token of latest.current.tokens) {
       const spot = at.get(token.key);
       if (token.side === 'foe' && spot && Math.hypot(spot.x - x, spot.y - y) < 24)
         return { kind: 'foe', token, x, y };
     }
+    const held = hoverRef.current;
+    if (held?.kind === 'stair' && peekBox.current !== null && inBox(peekBox.current, x, y))
+      return held;
     const d = disc.current;
     if (Math.hypot(d.x - x, d.y - y) < d.r) return null;
+    for (const spot of stairs.current)
+      if (inBox(spot.area, x, y)) return { kind: 'stair', spot, x: spot.x, y: spot.y };
     const scene = { win: map.win, at: map.at, byId: map.byId } as Scene;
     const cell = roomAt(viewNow(), scene, x, y);
     return cell && cell.id !== here ? { kind: 'room', cell, x, y } : null;
@@ -383,6 +452,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       const dy = event.clientY - held.y;
       if (!held.moved && Math.hypot(dx, dy) > 6) {
         held.moved = true;
+        focus.current = null;
         setFollow(false);
       }
       if (held.moved) {
@@ -406,7 +476,11 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
           found.direction === hoverRef.current.direction) ||
         (found.kind === 'foe' &&
           hoverRef.current?.kind === 'foe' &&
-          found.token.key === hoverRef.current.token.key));
+          found.token.key === hoverRef.current.token.key) ||
+        (found.kind === 'stair' &&
+          hoverRef.current?.kind === 'stair' &&
+          found.spot.cell.id === hoverRef.current.spot.cell.id &&
+          found.spot.stair.direction === hoverRef.current.spot.stair.direction));
     if (!same) setHover(found);
   };
   const onPointerUp = (event: PointerEvent<HTMLCanvasElement>): void => {
@@ -418,7 +492,8 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     }
     const found = pick(event.clientX, event.clientY);
     const d = disc.current;
-    if (found?.kind === 'exit') props.onExit(found.direction);
+    if (found?.kind === 'stair') show(found.spot.stair.to);
+    else if (found?.kind === 'exit') props.onExit(found.direction);
     else if (found?.kind === 'foe') props.onFoe(found.token.name);
     else if (found?.kind === 'room') props.onWalk(found.cell);
     else if (!follow.current && Math.hypot(d.x - event.clientX, d.y - event.clientY) < d.r)
@@ -434,6 +509,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
 
   return (
     <>
+      <FloorStrip floors={floors} home={map.homeFloor} onShow={show} />
       <canvas
         aria-label={t('game.map.aria')}
         className="gv-world"
@@ -445,7 +521,9 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
         onWheel={onWheel}
         ref={canvas}
       />
-      {hover !== null && <MapTip hover={hover} map={map} pal={palette.current} />}
+      {hover !== null && hover.kind !== 'stair' && (
+        <MapTip hover={hover} map={map} pal={palette.current} />
+      )}
     </>
   );
 }
@@ -456,7 +534,7 @@ function MapTip({
   map,
   pal
 }: {
-  hover: NonNullable<Hover>;
+  hover: Exclude<Hover, null | { kind: 'stair' }>;
   map: GameMap;
   pal: GamePalette | null;
 }) {

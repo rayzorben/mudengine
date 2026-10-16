@@ -43,10 +43,32 @@ describe.runIf(fs.existsSync(world))('the game view map window', () => {
     expect(gates.cells.find((cell) => cell.id === '1/1')!.otherMap).toBeUndefined();
   });
 
+  it('marks a one-way exit at the room it leaves, and nothing at the room it enters', () => {
+    const window = maps.window({ kind: 'room', map: 1, room: 1393, half: 3 }, () => null);
+    const road = window.cells.find((cell) => cell.id === '1/1393')!;
+    const behind = window.cells.find((cell) => cell.id === '1/1638')!;
+    expect(behind.oneWay).toEqual(['e']);
+    expect(behind.to.e).toBe('1/1393');
+    expect(road.to.w).toBeUndefined();
+    expect(road.oneWay).toBeUndefined();
+  });
+
+  it("holds one floor: the room's own, with its stairs to the next", () => {
+    const window = maps.window({ kind: 'room', map: 8, room: 555, half: 3 }, () => null);
+    const stairs = window.cells.find((cell) => cell.id === '8/555')!;
+    expect(stairs.stairs).toEqual([
+      expect.objectContaining({ direction: 'u', to: '8/557', floors: 1, floor: window.floor! + 1 })
+    ]);
+    expect(window.cells.some((cell) => cell.id === '8/557')).toBe(false);
+    const above = maps.window({ kind: 'room', map: 8, room: 557, half: 3 }, () => null);
+    expect(above.floor).toBe(window.floor! + 1);
+    expect([above.centre!.gx, above.centre!.gy]).toEqual([window.centre!.gx, window.centre!.gy]);
+  });
+
   it('looks around a point once the map is dragged, with no centre room', () => {
     const at = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null).centre!;
     const window = maps.window(
-      { kind: 'point', map: 1, gx: at.gx + 3, gy: at.gy, half: 4 },
+      { kind: 'point', map: 1, floor: 0, gx: at.gx + 3, gy: at.gy, half: 4 },
       () => null
     );
     expect(window.centre).toBeNull();

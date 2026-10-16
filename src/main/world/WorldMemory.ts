@@ -5,6 +5,8 @@ import { discoveryKey, isDiscoveryReason, type Discovery } from '../../shared/me
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { runRepairs, type RepairDocument } from './fileRepairs';
+import { MEMORY_REPAIRS } from './memoryRepairs';
 
 interface MemoryFile {
   version: 1;
@@ -24,6 +26,8 @@ interface MemoryFile {
    * written as `Discovery[]`, which is what `write` puts here.
    */
   discoveries: unknown[];
+  /** The `memoryRepairs` ids already run on this file, so none runs twice (todo 151). */
+  repaired?: string[];
 }
 
 /**
@@ -47,6 +51,8 @@ export class WorldMemory {
   private readonly seen = new Set<string>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
+  /** The repairs this file has had; a file written from nothing has nothing to repair. */
+  private repaired: Set<string>;
 
   /**
    * @param file Where this character's memory lives.
@@ -54,12 +60,15 @@ export class WorldMemory {
    * @param onError Reported rather than thrown: failing to read a memory file
    *   must not stop a character connecting, and the failure is worth saying out
    *   loud because the alternative is a client that silently forgets.
+   * @param notify What a once-only repair removed, said with its count.
    */
   constructor(
     private readonly file: string,
     private readonly realm: string,
-    private readonly onError?: (message: string) => void
+    private readonly onError?: (message: string) => void,
+    private readonly notify?: (message: string) => void
   ) {
+    this.repaired = new Set(MEMORY_REPAIRS.map((step) => step.id));
     this.load();
   }
 
@@ -138,6 +147,14 @@ export class WorldMemory {
         return;
       }
       if (parsed.realm !== this.realm) return;
+      const { file, repaired, ran } = runRepairs(
+        parsed as unknown as RepairDocument,
+        MEMORY_REPAIRS,
+        this.notify
+      );
+      this.repaired = repaired;
+      if (ran) this.schedule();
+      const discoveries = (file as unknown as MemoryFile).discoveries;
 
       /*
        * Two different failures, and they want opposite answers.
@@ -159,7 +176,7 @@ export class WorldMemory {
        * session, which reads as a record that is not being saved.
        */
       const rows: Discovery[] = [];
-      for (const discovery of parsed.discoveries) {
+      for (const discovery of discoveries) {
         if (isUnnamedReason(discovery)) continue;
         if (!isDiscovery(discovery)) {
           this.onError?.(
@@ -204,7 +221,8 @@ export class WorldMemory {
     const payload: MemoryFile = {
       version: 1,
       realm: this.realm,
-      discoveries: this.discoveries
+      discoveries: this.discoveries,
+      repaired: [...this.repaired]
     };
     const temporary = `${this.file}.tmp`;
     try {

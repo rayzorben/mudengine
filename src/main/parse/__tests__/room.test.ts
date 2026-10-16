@@ -9,7 +9,7 @@ import {
   type Room,
   type Stealth
 } from '../../../shared/character';
-import { wireItem } from '../../../shared/entities';
+import { wireExit, wireItem } from '../../../shared/entities';
 import { NO_PLAYERS } from '../../../shared/players';
 import { Expectations, type CommandContext } from '../expectations';
 import { playerArrives, playerFoundHiding, RoomTracker, type RoomClaims } from '../room';
@@ -298,5 +298,35 @@ describe('a search finding a hidden player (todo 87)', () => {
     expect(out?.room.occupants).toEqual([
       expect.objectContaining({ name: 'Nusse', kind: 'player', hidden: true })
     ]);
+  });
+});
+
+/*
+ * Todo 151: a found way is written from the room the client believes it left,
+ * so a room whose printed exits that room cannot have is no room to write
+ * one from. The typed direction is left out of the test, so an exit a
+ * derivative added is still learned.
+ */
+describe('the room a found way is written from', () => {
+  // Hall's only way is south; Yard is somewhere no exit of Hall reaches.
+  const HALL = { m: 1, r: 1, n: 'Hall', x: { s: { m: 1, r: 3 } } };
+  const COURT = { m: 1, r: 3, n: 'Court', x: { n: { m: 1, r: 1 } } };
+  const YARD = { m: 1, r: 2, n: 'Yard', x: { w: { m: 1, r: 3 } } };
+  const step = (printed: readonly string[]): string[] => {
+    const { log, queue, room } = rig('seen', worldOf([HALL, COURT, YARD]));
+    queue.observeCommand('e', IN_GAME);
+    room.begin('Yard');
+    room.exits(at(1, 1, 'Hall', { exits: printed.map((one) => wireExit(one)) }), 'west', 5);
+    return log.filter((entry) => entry === 'discovery');
+  };
+
+  it('writes one from a room whose printed exits fit it (control)', () => {
+    expect(step(['s'])).toEqual(['discovery']);
+    // An `e` the room printed and the realm lacks is the derivative's new exit.
+    expect(step(['s', 'e'])).toEqual(['discovery']);
+  });
+
+  it('writes none from a room that printed an exit it lacks', () => {
+    expect(step(['n', 's', 'e', 'w'])).toEqual([]);
   });
 });

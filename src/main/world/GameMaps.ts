@@ -1,6 +1,7 @@
 /**
- * The game view's map window (todo 140): a square of one map's plane, with
- * each room's cell, area and icon, and the labels that fall in it.
+ * The game view's map window (todo 140): a square of one floor of one map's
+ * plane (todo 151), with each room's cell, area, icon, one-way exits and
+ * stairs, and the labels that fall in it.
  *
  * Areas come from the theme pack where it claims a room, else from the motif
  * the room's name suggests. Labels are worked out once per map: one per area
@@ -9,7 +10,6 @@
  * neighbouring room shares is labelled on its own, when the view is close.
  */
 import {
-  cellKey,
   EMPTY_GAME_MAP,
   guessMotif,
   MOTIF_PALETTES,
@@ -21,11 +21,11 @@ import {
   type MapLabelKind,
   type Motif
 } from '../../shared/gameMap';
-import { roomId, type RoomId, type WorldRoom } from '../../shared/world';
+import { roomId, type Direction, type RoomId, type WorldRoom } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import { mapCellOf, type LairLevel, type MapCellGraph } from './localMap';
 import { leapSteps, planeSteps } from './planeSteps';
-import { RealmLayouts, type PlaneLayout } from './realmLayout';
+import { floorCellKey, RealmLayouts, type PlaneLayout } from './realmLayout';
 import type { ThemePack } from './themePack';
 import type { WorldGraph } from './WorldGraph';
 
@@ -40,6 +40,7 @@ interface PlaneLabel {
   text: string;
   gx: number;
   gy: number;
+  z: number;
   area: AreaKey;
 }
 
@@ -50,6 +51,10 @@ interface PlaneFacts {
 }
 
 const isDark = (room: WorldRoom): boolean => (room.light ?? 0) < 0;
+
+/** Whether any exit of `room` leads to `id`: a compass exit without one is one-way. */
+const leadsTo = (graph: Pick<WorldGraph, 'beyond'>, room: WorldRoom, id: RoomId): boolean =>
+  room.exits.some((exit) => roomId(exit.map, exit.room) === id || graph.beyond(exit) === id);
 
 export class GameMaps {
   private readonly layouts: RealmLayouts;
@@ -124,8 +129,7 @@ export class GameMaps {
         labels.push({ kind: 'stretch', text: room.name, ...place(stretch), area });
       const landmark = this.pack.landmarkOf(room);
       if (landmark !== null) {
-        const at = plane.at.get(start)!;
-        labels.push({ kind: 'landmark', text: landmark, gx: at.gx, gy: at.gy, area });
+        labels.push({ kind: 'landmark', text: landmark, ...plane.at.get(start)!, area });
         named.delete(start);
       }
     }
@@ -140,6 +144,7 @@ export class GameMaps {
     let centre: GameMapWindow['centre'] = null;
     let cx: number;
     let cy: number;
+    let floor: number;
     if (ask.kind === 'room') {
       const id = roomId(ask.map, ask.room);
       const at = plane.at.get(id);
@@ -147,9 +152,11 @@ export class GameMaps {
       centre = { room: id, gx: at.gx, gy: at.gy };
       cx = at.gx;
       cy = at.gy;
+      floor = at.z;
     } else {
       cx = Math.round(ask.gx);
       cy = Math.round(ask.gy);
+      floor = ask.floor;
     }
     const box = { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half };
     const facts = this.factsOf(plane);
@@ -171,18 +178,21 @@ export class GameMaps {
     const cells: GameCell[] = [];
     for (let gy = box.y0; gy <= box.y1; gy += 1) {
       for (let gx = box.x0; gx <= box.x1; gx += 1) {
-        const id = plane.cells.get(cellKey(gx, gy));
+        const id = plane.cells.get(floorCellKey(floor, gx, gy));
         if (id === undefined) continue;
         const room = this.graph.byId(id)!;
         const to: GameCell['to'] = {};
         const otherMap: NonNullable<GameCell['otherMap']> = {};
+        const oneWay: Direction[] = [];
         // The ways the plane follows, so a cast that scatters draws no line.
         for (const { exit, to: there, destination } of planeSteps(this.graph, room)) {
           to[exit.direction] = there;
           if (destination.map !== room.map) otherMap[exit.direction] = destination.map;
+          else if (!leadsTo(this.graph, destination, id)) oneWay.push(exit.direction);
         }
-        for (const { way } of leapSteps(this.graph, room))
+        for (const way of leapSteps(this.graph, room))
           if (way.kind !== 'teleport') to[way.exit.direction] = way.to;
+        const stairs = plane.stairs.get(id);
         const icon = room.shop === undefined ? null : this.pack.iconOf(room.shop);
         cells.push({
           ...mapCellOf(this.graph, room, gx, gy, lairLevel),
@@ -191,15 +201,21 @@ export class GameMaps {
           ...(icon === null ? {} : { icon }),
           ...(isDark(room) ? { dark: true as const } : {}),
           ...(facts.named.has(id) ? { named: true as const } : {}),
-          ...(Object.keys(otherMap).length === 0 ? {} : { otherMap })
+          ...(Object.keys(otherMap).length === 0 ? {} : { otherMap }),
+          ...(oneWay.length === 0 ? {} : { oneWay }),
+          ...(stairs === undefined ? {} : { stairs: [...stairs] })
         });
       }
     }
     const inBox = (label: PlaneLabel) =>
-      label.gx >= box.x0 && label.gx <= box.x1 && label.gy >= box.y0 && label.gy <= box.y1;
+      label.z === floor &&
+      label.gx >= box.x0 &&
+      label.gx <= box.x1 &&
+      label.gy >= box.y0 &&
+      label.gy <= box.y1;
     const labels: MapLabel[] = facts.labels
       .filter(inBox)
       .map((label) => ({ ...label, area: areaIndex(label.area) }));
-    return { map: ask.map, centre, box, cells, areas, labels };
+    return { map: ask.map, floor, centre, box, cells, areas, labels };
   }
 }

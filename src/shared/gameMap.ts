@@ -1,8 +1,8 @@
 /**
  * The game view's world map (todo 140): what main sends the renderer to draw.
  *
- * Every room of a map sits on one plane, laid out once per map in main
- * (`world/realmLayout.ts`). Its look comes from the world's theme pack
+ * Every room of a map sits on a floor of its plane, laid out once per map in
+ * main (`world/realmLayout.ts`), and a window holds one floor. Its look comes from the world's theme pack
  * (`resources/world/<world>.theme.json`, written by an AI pass over the world
  * database), and a room the pack does not cover takes the motif its name
  * suggests (`guessMotif`). Reasons: `mudengine-world` › *The game view's map*.
@@ -79,7 +79,7 @@ export function isShopIcon(value: unknown): value is ShopIcon {
   return typeof value === 'string' && (SHOP_ICONS as readonly string[]).includes(value);
 }
 
-/** A plane cell's key, for looking a room up by where it sits. */
+/** A cell's key within one floor, for looking a room up by where it sits. */
 export const cellKey = (gx: number, gy: number): string => `${gx},${gy}`;
 
 /** Where the game view's console sits when it is open. Runtime list beside the type. */
@@ -111,7 +111,24 @@ export interface MapArea {
   named: boolean;
 }
 
-/** One room on the plane. `gx`/`gy` are the map's own plane coordinates, not the centre's. */
+/**
+ * Stairs out of a room (todo 151), drawn as a mark on its tile. A climb through
+ * floors of one room each is one stair: `floors` counts them and `to` is the
+ * room where the climb ends.
+ */
+export interface GameStair {
+  direction: 'u' | 'd';
+  to: RoomId;
+  /** The room's name, for the mark's window and an odd stair's own label. */
+  name: string;
+  /** The floor `to` is on; null when the stairs lead onto another map number. */
+  floor: number | null;
+  floors: number;
+  /** `to` is not on the floor the count of stairs says (up one, down another). */
+  odd?: true;
+}
+
+/** One room on a floor. `gx`/`gy` are the map's own plane coordinates, not the centre's. */
 export interface GameCell extends MapCell {
   /** Index into `GameMapWindow.areas`. */
   area: number;
@@ -132,6 +149,13 @@ export interface GameCell extends MapCell {
    * on it and the canvas names the map instead. Absent when there are none.
    */
   otherMap?: Partial<Record<Direction, number>>;
+  /**
+   * The compass exits whose room has no exit back to this one (todo 151),
+   * drawn as an arrow. Absent when there are none.
+   */
+  oneWay?: Direction[];
+  /** Its stairs, each to the room it reaches. Absent when there are none. */
+  stairs?: GameStair[];
 }
 
 /** A room's teleports (todo 147), which the canvas marks with a vortex. */
@@ -155,13 +179,18 @@ export interface MapLabel {
   area: number;
 }
 
-/** Where on the plane to look: around a room, or around a point once the map is dragged. */
+/**
+ * Where to look: around a room, on its floor, or around a point of one floor
+ * once the map is dragged.
+ */
 export type GameMapAsk =
   | { kind: 'room'; map: number; room: number; half: number }
-  | { kind: 'point'; map: number; gx: number; gy: number; half: number };
+  | { kind: 'point'; map: number; floor: number; gx: number; gy: number; half: number };
 
 export interface GameMapWindow {
   map: number | null;
+  /** The floor the window shows; null with no map. */
+  floor: number | null;
   /** The asked room's place on the plane; null when it was not asked or is not on it. */
   centre: { room: RoomId; gx: number; gy: number } | null;
   /** The square of the plane the window covers, inclusive. */
@@ -173,6 +202,7 @@ export interface GameMapWindow {
 
 export const EMPTY_GAME_MAP: GameMapWindow = {
   map: null,
+  floor: null,
   centre: null,
   box: { x0: 0, y0: 0, x1: -1, y1: -1 },
   cells: [],
@@ -265,7 +295,14 @@ export function asGameMapAsk(value: unknown): GameMapAsk | null {
   const half = ask.half as number;
   if (ask.kind === 'room' && isWhole(ask.room))
     return { kind: 'room', map, room: ask.room as number, half };
-  if (ask.kind === 'point' && isWhole(ask.gx) && isWhole(ask.gy))
-    return { kind: 'point', map, gx: ask.gx as number, gy: ask.gy as number, half };
+  if (ask.kind === 'point' && isWhole(ask.floor) && isWhole(ask.gx) && isWhole(ask.gy))
+    return {
+      kind: 'point',
+      map,
+      floor: ask.floor as number,
+      gx: ask.gx as number,
+      gy: ask.gy as number,
+      half
+    };
   return null;
 }

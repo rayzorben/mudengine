@@ -595,6 +595,7 @@ function realmMemoryFor(realm: string): WorldMemory {
   const store = new WorldMemory(
     home.state('memory', `realm-${realmKey(realm)}.json`),
     realm,
+    (message) => announce('memory', message),
     (message) => announce('memory', message)
   );
   realmMemories.set(realmKey(realm), store);
@@ -716,9 +717,8 @@ function memoryFor(id: SessionId): WorldMemory | undefined {
   const realm = world?.info.source;
   if (realm === undefined) return undefined;
 
-  const store = new WorldMemory(home.record('memory', id), realm, (message) =>
-    announce('memory', message, 'warn', id)
-  );
+  const say = (message: string): void => announce('memory', message, 'warn', id);
+  const store = new WorldMemory(home.record('memory', id), realm, say, say);
   memories.set(id, store);
   return store;
 }

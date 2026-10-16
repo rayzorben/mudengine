@@ -216,6 +216,10 @@
   --game-poison: #a3e635;
   --game-door: #f59e0b;
   --game-player: #7dd3fc;
+  /* Stairs' marks (todo 151), from the floor views prototype; warn is a stair
+   * to a floor the count does not expect. */
+  --game-stair: #8fb7ff;
+  --game-warn: #ff8a7a;
   --game-ink: #0b0d10;
   --game-shade: #000000;
   --game-white: #ffffff;

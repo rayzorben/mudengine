@@ -252,6 +252,12 @@ const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(
   '|'
 );
 
+/**
+ * A room's exit line. Exported so a typed line that is one (a selection of
+ * the screen pasted back, todo 151) is never taken for a way out.
+ */
+export const ROOM_EXITS = /^Obvious exits: (?<exits>[\w, ]+)/;
+
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
   { type: 'prompt-username', pattern: /^Please enter your username or "new":/ },
@@ -2188,7 +2194,7 @@ export const RULES: Rule[] = [
     pattern: /^Health:\s+(?<hp>\d+)\/(?<hpMax>\d+)\s+\[(?<percent>\d+)%\]/
   },
 
-  { type: 'room-exits', pattern: /^Obvious exits: (?<exits>[\w, ]+)/, expectColour: [32] },
+  { type: 'room-exits', pattern: ROOM_EXITS, expectColour: [32] },
   /*
    * Both sentences end where the server ends them — `Also here: {list}.`
    * (`Player.cs:2809`) and `You notice {list} here.` — and **a line that does

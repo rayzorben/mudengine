@@ -1,7 +1,8 @@
 /**
- * The game view's map, drawn on a canvas (todo 140): a plain grid in the eight
- * compass directions, each area in its own colours, with the route, the loop's
- * stops, finds, found ways, other players, and the current room brightest.
+ * The game view's map, drawn on a canvas (todo 140): one floor as a plain grid
+ * in the eight compass directions (todo 151), each area in its own colours,
+ * with the route, the loop's stops, finds, found ways, other players, and the
+ * current room brightest. Stairs are `drawStairs`, the peek window `drawPeek`.
  *
  * Drawn only when something changed or an animation runs (`WorldCanvas`); this
  * module holds no clock. Colours are the area's (theme pack) and the HUD's
@@ -11,13 +12,12 @@ import { STEP } from '@shared/map';
 import {
   cellKey,
   hasTeleport,
-  teleportsOf,
   type GameCell,
   type GameMapWindow,
   type MapArea,
   type MapLabel
 } from '@shared/gameMap';
-import { OPPOSITE, type Direction, type RoomId } from '@shared/world';
+import { asSpokenDirection, OPPOSITE, type Direction, type RoomId } from '@shared/world';
 import {
   DROP_PATH,
   LAIR_PATH,
@@ -43,6 +43,8 @@ export interface GamePalette {
   poison: string;
   door: string;
   player: string;
+  stair: string;
+  warn: string;
   ink: string;
   shade: string;
   places: Record<PlaceTone, string>;
@@ -65,6 +67,8 @@ export function readGamePalette(from: Element): GamePalette {
     poison: token('poison'),
     door: token('door'),
     player: token('player'),
+    stair: token('stair'),
+    warn: token('warn'),
     ink: token('ink'),
     shade: token('shade'),
     places: {
@@ -98,7 +102,7 @@ export interface Camera {
 
 export const ZOOM = { min: 0.4, max: 2 } as const;
 
-/** How far a stub to a room off the window reaches, in cells. */
+/** How far a stub reaches, in cells: an exit whose room is not the neighbour, or a found way. */
 const STUB = 0.42;
 
 /** One plane cell on screen, in px, at zoom 1: the prototype's spacing. */
@@ -115,12 +119,19 @@ export interface Scene {
   trail: readonly RoomId[];
   stops: ReadonlySet<RoomId>;
   finds: ReadonlySet<RoomId>;
-  /** Ways found by walking that the world database lacks. */
-  found: ReadonlyArray<readonly [RoomId, RoomId]>;
+  /** Ways found by walking that the world database lacks, with what was typed. */
+  found: readonly FoundWay[];
   /** Other players where they were last seen, with when. */
   players: ReadonlyArray<{ name: string; room: RoomId; at: number }>;
   hover: RoomId | null;
   now: number;
+}
+
+/** A way found by walking, as the map draws it. */
+export interface FoundWay {
+  from: RoomId;
+  to: RoomId | null;
+  command: string;
 }
 
 export interface View {
@@ -142,7 +153,7 @@ export function toScreen(view: View, gx: number, gy: number): { x: number; y: nu
   return { x: view.width / 2 + (gx - view.cam.x) * k, y: view.height / 2 + (gy - view.cam.y) * k };
 }
 
-const onScreen = (view: View, p: { x: number; y: number }, margin = 60): boolean =>
+export const onScreen = (view: View, p: { x: number; y: number }, margin = 60): boolean =>
   p.x > -margin && p.x < view.width + margin && p.y > -margin && p.y < view.height + margin;
 
 /** Rooms further from where the character stands fade, so the near ones read first. */
@@ -175,9 +186,11 @@ function area(scene: Scene, cell: GameCell): MapArea {
 }
 
 /**
- * The corridors: joined neighbours, doors, and a dashed line to a room the
- * grid set down elsewhere in the window (an island pushed out, the floor up
- * or down, a teleport's landing). A way to a room outside the window is a stub.
+ * The corridors of one floor (todo 151): a two-way pair of neighbours as one
+ * line, a one-way exit as a thinner arrow into the room it reaches, a door
+ * dashed, and a stub for an exit whose room is not the neighbour (an island
+ * pushed out, or outside the window). Never a line across the map: up and
+ * down are stairs' marks (`drawStairs`) and a teleport is its vortex.
  */
 function drawLinks(
   ctx: CanvasRenderingContext2D,
@@ -187,57 +200,83 @@ function drawLinks(
   alpha: number
 ): void {
   const k = cellPx(view.cam);
-  // A long line has two ends, either of which may be the one on screen.
-  const drawn = new Set<string>();
-  const link = (cell: GameCell, direction: Direction | null, to: RoomId): void => {
-    const a = toScreen(view, cell.gx, cell.gy);
-    const step = direction === null ? null : STEP[direction];
-    const neighbour = step
-      ? scene.at.get(cellKey(cell.gx + step.dx, cell.gy + step.dy))
-      : undefined;
-    const joined = neighbour?.id === to;
-    const far = joined || to === cell.id ? undefined : scene.byId.get(to);
-    if (far) {
-      if (!onScreen(view, a, k * 2) && !onScreen(view, toScreen(view, far.gx, far.gy), k * 2))
-        return;
-      const pair = to < cell.id ? `${to}|${cell.id}` : `${cell.id}|${to}`;
-      if (drawn.has(pair)) return;
-      drawn.add(pair);
-    } else {
-      // A way the plane cannot draw, to a room not in the window: the glyph says it.
-      if (!step || !onScreen(view, a, k * 2)) return;
-      // Each joined pair once: from the end with the smaller id, or the only end.
-      if (joined && neighbour!.id < cell.id && neighbour!.to[OPPOSITE[direction!]] === cell.id)
-        return;
-    }
-    const other = joined ? neighbour : far;
-    const mine = scene.here === cell.id || (other !== undefined && scene.here === other.id);
-    const door = direction !== null && cell.blocked?.[direction] !== undefined;
-    ctx.globalAlpha = alpha * (mine ? 1 : fadeOf(scene, cell)) * (far ? 0.6 : 1);
-    ctx.strokeStyle = door
-      ? pal.door
-      : mine
-        ? hexA(pal.text, 0.75)
-        : area(scene, cell).palette.path;
-    ctx.lineWidth = (mine ? 3 : far ? 1.5 : 2.5) * Math.min(1.2, view.cam.z);
-    ctx.setLineDash(door ? [5, 5] : joined ? [] : far ? [6, 6] : [2, 5]);
-    const end = other
-      ? toScreen(view, other.gx, other.gy)
-      : { x: a.x + step!.dx * k * STUB, y: a.y + step!.dy * k * STUB };
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-  };
   ctx.lineCap = 'round';
   for (const cell of scene.win.cells) {
-    for (const [direction, to] of Object.entries(cell.to) as Array<[Direction, RoomId]>)
-      link(cell, direction, to);
-    for (const way of teleportsOf(cell)) link(cell, null, way.to);
+    const a = toScreen(view, cell.gx, cell.gy);
+    if (!onScreen(view, a, k * 2)) continue;
+    for (const [direction, to] of Object.entries(cell.to) as Array<[Direction, RoomId]>) {
+      const step = STEP[direction];
+      if (!step || to === cell.id) continue;
+      const neighbour = scene.at.get(cellKey(cell.gx + step.dx, cell.gy + step.dy));
+      const joined = neighbour !== undefined && neighbour.id === to;
+      const oneWay = cell.oneWay?.includes(direction) === true;
+      // Each two-way pair once: from the end with the smaller id.
+      if (
+        joined &&
+        !oneWay &&
+        neighbour.id < cell.id &&
+        neighbour.to[OPPOSITE[direction]] === cell.id
+      )
+        continue;
+      const mine = scene.here === cell.id || (joined && scene.here === to);
+      const door = cell.blocked?.[direction] !== undefined;
+      const colour = door ? pal.door : mine ? hexA(pal.text, 0.75) : area(scene, cell).palette.path;
+      const width = (mine ? 3 : 2.5) * Math.min(1.2, view.cam.z);
+      ctx.globalAlpha = alpha * (mine ? 1 : fadeOf(scene, cell));
+      ctx.strokeStyle = colour;
+      ctx.fillStyle = colour;
+      if (!joined) {
+        ctx.lineWidth = width * 0.7;
+        ctx.setLineDash([2, 5]);
+        line(ctx, a, { x: a.x + step.dx * k * STUB, y: a.y + step.dy * k * STUB });
+        continue;
+      }
+      const b = toScreen(view, neighbour.gx, neighbour.gy);
+      ctx.setLineDash(door ? [5, 5] : []);
+      if (oneWay) {
+        ctx.lineWidth = width * 0.5;
+        arrow(ctx, a, b, ONE_WAY_REACH, Math.max(5, k * 0.11));
+      } else {
+        ctx.lineWidth = width;
+        line(ctx, a, b);
+      }
+    }
   }
   ctx.setLineDash([]);
   drawOtherMaps(ctx, view, scene, pal, alpha);
   ctx.globalAlpha = 1;
+}
+
+type Point = { x: number; y: number };
+
+function line(ctx: CanvasRenderingContext2D, a: Point, b: Point): void {
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+}
+
+/** How far along a one-way exit its arrowhead sits: past the middle, clear of the tile it reaches. */
+const ONE_WAY_REACH = 0.62;
+
+/** A line from `a` toward `b`, `reach` of the way, with a filled head at its end. */
+function arrow(
+  ctx: CanvasRenderingContext2D,
+  a: Point,
+  b: Point,
+  reach: number,
+  size: number
+): void {
+  const end = { x: a.x + (b.x - a.x) * reach, y: a.y + (b.y - a.y) * reach };
+  const angle = Math.atan2(b.y - a.y, b.x - a.x);
+  line(ctx, a, end);
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(end.x, end.y);
+  ctx.lineTo(end.x - size * Math.cos(angle - 0.5), end.y - size * Math.sin(angle - 0.5));
+  ctx.lineTo(end.x - size * Math.cos(angle + 0.5), end.y - size * Math.sin(angle + 0.5));
+  ctx.closePath();
+  ctx.fill();
 }
 
 /**
@@ -309,17 +348,58 @@ function drawTrail(
   pal: GamePalette
 ): void {
   ctx.lineCap = 'round';
-  for (const [from, to] of scene.found) {
-    ctx.strokeStyle = hexA(pal.heal, 0.7);
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 5]);
-    strokeThrough(ctx, view, scene, [from, to]);
-  }
+  drawFound(ctx, view, scene, pal);
   if (scene.trail.length > 1) {
     ctx.strokeStyle = pal.accent;
     ctx.lineWidth = 4;
     ctx.setLineDash([2, 9]);
     strokeThrough(ctx, view, scene, scene.trail);
+  }
+  ctx.setLineDash([]);
+}
+
+/**
+ * The ways found by walking (todo 151): a line where the two rooms are
+ * neighbours in the direction typed, else a stub from the room it leaves with
+ * what was typed. A record joined across the map drew five ways from
+ * Silvermere into Newhaven that nobody can walk.
+ */
+function drawFound(
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  scene: Scene,
+  pal: GamePalette
+): void {
+  const k = cellPx(view.cam);
+  const colour = hexA(pal.heal, 0.7);
+  ctx.strokeStyle = colour;
+  ctx.fillStyle = colour;
+  ctx.lineWidth = 2;
+  ctx.font = `600 10px ${pal.font}`;
+  ctx.textBaseline = 'middle';
+  for (const way of scene.found) {
+    const from = scene.byId.get(way.from);
+    if (!from) continue;
+    const a = toScreen(view, from.gx, from.gy);
+    if (!onScreen(view, a, k)) continue;
+    const direction = asSpokenDirection(way.command);
+    const step = direction === null ? undefined : STEP[direction];
+    const there = way.to === null ? undefined : scene.byId.get(way.to);
+    ctx.setLineDash([3, 5]);
+    if (step && there && there.gx === from.gx + step.dx && there.gy === from.gy + step.dy) {
+      line(ctx, a, toScreen(view, there.gx, there.gy));
+      continue;
+    }
+    // Up-left for a word that is no compass way: the marks hold the right edge.
+    const toward = step ?? { dx: -0.7, dy: -0.7 };
+    const end = { x: a.x + toward.dx * k * STUB, y: a.y + toward.dy * k * STUB };
+    line(ctx, a, end);
+    ctx.textAlign = toward.dx < 0 ? 'right' : toward.dx > 0 ? 'left' : 'center';
+    ctx.fillText(
+      way.command,
+      end.x + Math.sign(toward.dx) * 4,
+      end.y + (toward.dx === 0 ? Math.sign(toward.dy) * 8 : 0)
+    );
   }
   ctx.setLineDash([]);
 }
@@ -531,17 +611,6 @@ function drawTile(
     motif(ctx, own.motif, p.x, p.y, s);
     if (cell.lair) lairBadge(ctx, pal, p.x + s / 2, p.y - s / 2);
     if (hasTeleport(cell)) vortexBadge(ctx, pal, p.x - s / 2, p.y - s / 2);
-    if (cell.vertical !== null) {
-      ctx.fillStyle = hexA(pal.text, 0.7);
-      ctx.font = `600 10px ${pal.font}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(
-        cell.vertical === 'both' ? '⇅' : cell.vertical === 'up' ? '↑' : '↓',
-        p.x,
-        p.y + 1
-      );
-    }
   }
   const s = tileSize(view.cam);
   if (scene.stops.has(cell.id)) {

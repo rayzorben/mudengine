@@ -30,10 +30,10 @@ import {
   asRoomReference,
   roomAddress,
   type Direction,
-  type RoomId,
   type WorldRoom
 } from '@shared/world';
 import { roomsWithFinds } from '@shared/finds';
+import { isFoundWay } from '@shared/memory';
 import type { GameViewState } from '../../hooks/useGameView';
 import { useGameMap } from '../../hooks/useGameMap';
 import type { SessionView } from '../../hooks/useSessionViews';
@@ -105,11 +105,11 @@ function GameView({
 }: GameViewProps) {
   const { character } = view;
   const here = roomAddress(character.room);
-  const map = useGameMap(api, session, character.room.map, character.room.number);
+  const [detached, setDetached] = useState(false);
+  const map = useGameMap(api, session, character.room.map, character.room.number, detached);
   const canvas = useRef<WorldCanvasHandle>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [sheet, setSheet] = useState(false);
-  const [detached, setDetached] = useState(false);
   const [fired, setFired] = useState<{ key: string; at: number } | null>(null);
   const pending = useRef<{ first: Direction; timer: number } | null>(null);
   const [talking, setTalking] = useState(false);
@@ -305,11 +305,12 @@ function GameView({
 
   const stops = useMemo(() => new Set(view.loop.remainingStops), [view.loop.remainingStops]);
   const finds = useMemo(() => roomsWithFinds(view.finds), [view.finds]);
+  // The ways, not a shop's stock; each drawn where it is believable (`drawFound`).
   const found = useMemo(
     () =>
       view.learned
-        .filter((one): one is typeof one & { to: RoomId } => one.to !== null)
-        .map((one) => [one.from, one.to] as const),
+        .filter(isFoundWay)
+        .map((one) => ({ from: one.from, to: one.to, command: one.command })),
     [view.learned]
   );
   const players = useMemo(

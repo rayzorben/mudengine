@@ -30,6 +30,7 @@ import { commandOf, movementEffect, type RereadClaim } from '../../shared/comman
 import type { Block } from '../../shared/blocks';
 import { tuning } from '../app/tuning';
 import { answeringAfter, EchoSince } from './echo';
+import { ROOM_EXITS } from './patterns';
 
 /**
  * What the next room block is expected to be an answer to.
@@ -580,7 +581,8 @@ export class Expectations {
          */
         return false;
       }
-      const worth = context.inGame && effect === 'unknown';
+      // A pasted exit line goes out as a say; the room after it is not its answer.
+      const worth = context.inGame && effect === 'unknown' && !ROOM_EXITS.test(trimmed);
       const text = worth ? command.trim() : '';
       this.unmodelled = text.length > 0 ? text : null;
       return false;

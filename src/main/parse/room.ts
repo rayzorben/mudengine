@@ -695,9 +695,22 @@ export class RoomTracker {
      *
      * Nothing moved, so nowhere changed. Where we were is where we are.
      * Only a room that arrives *after a move* may honestly report that it
-     * does not know.
+     * does not know, or one whose printed exits the room held cannot have:
+     * an arrival nothing typed caused (a skiff, a summons) with its name
+     * line lost kept a Silvermere room under Newhaven's exits, and the next
+     * `e` was written down as a way from Silvermere (todo 151).
      */
-    if (!room.name && !movedSomehow && s.room.map !== null && s.room.number !== null) {
+    const held =
+      s.room.map !== null && s.room.number !== null
+        ? this.world?.byId(roomId(s.room.map, s.room.number))
+        : undefined;
+    if (
+      !room.name &&
+      !movedSomehow &&
+      s.room.map !== null &&
+      s.room.number !== null &&
+      (held === undefined || !cannotBe(held, exits))
+    ) {
       room.name = s.room.name;
       room.map = s.room.map;
       room.number = s.room.number;
@@ -1344,7 +1357,8 @@ export class RoomTracker {
    * character's permanent record, so it says nothing rather than something it
    * cannot stand behind:
    *
-   * - **Where we were has to be known.** An edge from nowhere is not an edge.
+   * - **Where we were has to be known.** An edge from nowhere is not an edge,
+   *   and neither is one from a room whose printed exits say it was elsewhere.
    * - **Something has to have been typed.** A room that arrives because
    *   somebody else opened a door is not a way *we* found.
    * - **A room the data has, reached by an edge the data has, is not news.**
@@ -1364,6 +1378,20 @@ export class RoomTracker {
     const from = roomId(was.map, was.number);
     const previous = this.world.byId(from);
     if (!previous) return;
+    /*
+     * The room left printed an exit the realm's room lacks, so the character
+     * was not where it was believed to be (todo 151: five ways east from
+     * Silvermere into Newhaven). The typed direction is left out of the test,
+     * so an exit a derivative added is still learned.
+     */
+    const typed = MOVE_COMMANDS[command.trim().toLowerCase()];
+    if (
+      cannotBe(
+        previous,
+        was.exits.filter((exit) => exit.direction !== typed)
+      )
+    )
+      return;
 
     const to = now.map !== null && now.number !== null ? roomId(now.map, now.number) : null;
 
