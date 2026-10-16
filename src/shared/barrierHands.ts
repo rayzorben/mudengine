@@ -13,6 +13,9 @@ import type { Requirement } from './world';
 /** What a member is asked to do at the way: `@disarm`, `@pick`, `@bash`. */
 export const BARRIER_JOBS = ['disarm', 'pick', 'bash'] as const;
 export type BarrierJob = (typeof BARRIER_JOBS)[number];
+/** The jobs at a trapped way, and at a locked door: each caller waits only on its own. */
+export const TRAP_JOBS: readonly BarrierJob[] = ['disarm'];
+export const DOOR_JOBS: readonly BarrierJob[] = ['pick', 'bash'];
 
 /**
  * A member's answer to being sent: `held` (their `{ok}` to `@disarm`,
@@ -21,6 +24,15 @@ export type BarrierJob = (typeof BARRIER_JOBS)[number];
  * whether the lock gave.
  */
 export type HandAnswer = 'held' | 'failed' | 'tried';
+
+/**
+ * A member sent at the way, until their answer (todo 133). `withdraw` ends
+ * this ask once the walk no longer waits on it, so a later `{ok}` or
+ * `{failed}` is not read as the job; it leaves a newer ask to them alone.
+ */
+export interface HandAsk {
+  withdraw(): void;
+}
 
 /** The command each job sends at the way, as `DisarmCommand.cs` and `PickCommand.cs` read it. */
 export function jobCommand(job: BarrierJob, direction: string): string {

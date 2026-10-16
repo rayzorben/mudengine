@@ -119,7 +119,12 @@ import { FOLLOW_UP, InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import { LeaderDoors } from './LeaderDoors';
 import { BarrierRemotes } from './BarrierRemotes';
-import { jobCommand, type BarrierJob, type HandAnswer } from '../../shared/barrierHands';
+import {
+  jobCommand,
+  type BarrierJob,
+  type HandAnswer,
+  type HandAsk
+} from '../../shared/barrierHands';
 import { SheetReports } from './SheetReports';
 import { STANDING, StandingRemotes, type StandingRemoteEvents } from './StandingRemotes';
 import { FollowerPacing } from './FollowerPacing';
@@ -685,16 +690,23 @@ export class Remotes implements SessionModule {
    * `@do pi` to anyone else, which needs them to have granted `do`. An `@do`
    * says nothing of the roll, so a disarm or a bash never goes that way: a
    * disarm taken as held walks the party into a live trap. The answer is
-   * handed back (`handAnswered`).
+   * handed back (`handAnswered`) unless the walk withdrew the ask first.
    */
-  askHand(who: string, job: BarrierJob, direction: Direction): boolean {
+  askHand(who: string, job: BarrierJob, direction: Direction): HandAsk | false {
     const ours = this.runsThisClient(who);
     if (!ours && job !== 'pick') return false;
     const taken = ours
       ? this.send(who, job, direction)
       : this.send(who, 'do', jobCommand(job, direction));
-    if (taken) this.handsAsked.set(playerKey(who), { viaDo: !ours });
-    return taken;
+    if (!taken) return false;
+    const key = playerKey(who);
+    const ask = { viaDo: !ours };
+    this.handsAsked.set(key, ask);
+    return {
+      withdraw: () => {
+        if (this.handsAsked.get(key) === ask) this.handsAsked.delete(key);
+      }
+    };
   }
 
   /** Whether `who` said with `@version` that they run this client. */

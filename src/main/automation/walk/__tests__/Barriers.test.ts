@@ -50,6 +50,72 @@ const skilled = (strength: number, picklocks: number): CharacterState => {
   return { ...state, progress: { ...state.progress, strength, picklocks } };
 };
 
+const PICKING = configWith({
+  movement: { openDoors: true, openTries: 1, pickLocks: true, pickTries: 1 }
+});
+const PICKING_TWICE = configWith({
+  movement: { openDoors: true, openTries: 1, pickLocks: true, pickTries: 2 }
+});
+const BASHING = configWith({
+  movement: { openDoors: true, openTries: 1, bashDoors: true, bashTries: 2 }
+});
+const BASHING_ONCE = configWith({
+  movement: { openDoors: true, openTries: 1, bashDoors: true, bashTries: 1 }
+});
+const RAND_PICK = {
+  who: 'Rand',
+  job: t('automation.walk.handJobPick'),
+  direction: 'east'
+};
+const RAND_BASH = { ...RAND_PICK, job: t('automation.walk.handJobBash') };
+
+/**
+ * Leading Rand at GATED's locked door, `own` this character's sheet and
+ * `sheet` the figures Rand's client answered: started, told the door is
+ * locked, and the ladder run once. `asked` is each `askHand`, `withdrawn`
+ * each ask withdrawn.
+ */
+function askingRand(
+  own: CharacterState,
+  sheet: { strength?: number; picklocks?: number },
+  config: ReturnType<typeof configWith>
+) {
+  const shut: CharacterState = {
+    ...own,
+    name: 'Rayzor',
+    room: { ...printing(1, [['e', 'closed door']]).room, occupants: [{ name: 'Rand' } as never] },
+    party: {
+      following: null,
+      members: [
+        {
+          name: 'Rand',
+          sheet: { strength: 10, level: 9, traps: null, picklocks: null, ...sheet }
+        } as never
+      ],
+      engaged: {},
+      threatened: {}
+    }
+  };
+  const asked: string[] = [];
+  const withdrawn: string[] = [];
+  const rig = walkerOn(
+    {
+      stateNow: () => shut,
+      askHand: (name, job, direction) => {
+        asked.push(`${name} ${job} ${direction}`);
+        return { withdraw: () => void withdrawn.push(name) };
+      }
+    },
+    config
+  );
+  rig.walker.onCharacter(shut);
+  rig.walker.start(GATED, shut);
+  vi.advanceTimersByTime(50);
+  rig.walker.onBlock(wire('open-failed', { barrier: 'door', reason: 'locked' }));
+  vi.advanceTimersByTime(200);
+  return { ...rig, asked, withdrawn };
+}
+
 describe('when Walker asks the ladder', () => {
   // Mutant: the search asked before the fight.
   it('answers a fight before searching for an exit the room has not printed', () => {
@@ -221,38 +287,97 @@ describe('what the ladder remembers, let go', () => {
 
   /* Todo 86: leading, the member with the better Picklocks is sent `@pick`, and the leader opens. */
   it('sends a member who picks better at a locked door, and opens on their {ok}', () => {
-    const shut: CharacterState = {
-      ...skilled(0, 0),
-      name: 'Rayzor',
-      room: { ...printing(1, [['e', 'closed door']]).room, occupants: [{ name: 'Rand' } as never] },
-      party: {
-        following: null,
-        members: [
-          { name: 'Rand', sheet: { strength: 10, level: 9, traps: null, picklocks: 90 } } as never
-        ],
-        engaged: {},
-        threatened: {}
-      }
-    };
-    const asked: string[] = [];
-    const { walker, sent } = walkerOn(
-      {
-        stateNow: () => shut,
-        askHand: (name, job, direction) => asked.push(`${name} ${job} ${direction}`) > 0
-      },
-      configWith({ movement: { openDoors: true, openTries: 1, pickLocks: true, pickTries: 1 } })
-    );
-    walker.onCharacter(shut);
-    walker.start(GATED, shut);
-    vi.advanceTimersByTime(50);
-    walker.onBlock(wire('open-failed', { barrier: 'door', reason: 'locked' }));
-    vi.advanceTimersByTime(200);
+    const { walker, sent, asked, notices } = askingRand(skilled(0, 0), { picklocks: 90 }, PICKING);
     expect(asked).toEqual(['Rand pick e']);
     expect(moves(sent)).not.toContain('pi e');
     sent.length = 0;
     walker.handAnswered('Rand', 'held');
     vi.advanceTimersByTime(200);
     expect(moves(sent).slice(0, 2)).toEqual(['open e', 'e']);
+    expect(notices).toContain(t('automation.walk.handHeld', RAND_PICK));
+  });
+
+  /* Todo 133: a stopped walk withdraws the member, so a later {ok} is no answer to it. */
+  it('withdraws the member when the walk stops, and reads no later {ok} as the pick', () => {
+    const { walker, sent, asked, withdrawn, notices } = askingRand(
+      skilled(0, 0),
+      { picklocks: 90 },
+      PICKING
+    );
+    expect(asked).toEqual(['Rand pick e']);
+    walker.stop('asked to');
+    expect(withdrawn).toEqual(['Rand']);
+    sent.length = 0;
+    walker.handAnswered('Rand', 'held');
+    vi.advanceTimersByTime(200);
+    // The positive control is the test above: the same answer, walking, is said and opens.
+    expect(notices).not.toContain(t('automation.walk.handHeld', RAND_PICK));
+    expect(moves(sent)).toEqual([]);
+  });
+
+  /* Todo 133: the member helps; this character does not stand waiting on them. */
+  it('bashes on its own tries while a member who bashes better is asked', () => {
+    const { walker, sent, asked, withdrawn, notices } = askingRand(
+      skilled(60, 0),
+      { strength: 120 },
+      BASHING
+    );
+    expect(asked).toEqual(['Rand bash e']);
+    expect(moves(sent)).toEqual(['open e', 'bas e']);
+    // Rand's {failed} while this character's bash is out moves nothing.
+    walker.handAnswered('Rand', 'failed');
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['open e', 'bas e']);
+    // This character's own failure still runs the ladder: its second try.
+    walker.onBlock(wire('bash-failed'));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['open e', 'bas e', 'bas e']);
+    expect(withdrawn).toEqual(['Rand']);
+    expect(notices).toContain(t('automation.walk.handFailed', RAND_BASH));
+  });
+
+  it('walks on when its own bash opens the door, and withdraws the member', () => {
+    const { walker, sent, withdrawn, notices } = askingRand(
+      skilled(60, 0),
+      { strength: 120 },
+      BASHING
+    );
+    expect(withdrawn).toEqual([]);
+    walker.onBlock(wire('door-changed', { barrier: 'door', state: 'open' }));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['open e', 'bas e', 'e']);
+    expect(withdrawn).toEqual(['Rand']);
+    walker.handAnswered('Rand', 'held');
+    expect(notices).not.toContain(t('automation.walk.handHeld', RAND_BASH));
+  });
+
+  /* Todo 133: the server tells only the picker whether the lock gave (`Door.cs:151`). */
+  it('opens the door to see when a member took the @do pick while its own pick was out', () => {
+    const { walker, sent } = askingRand(skilled(0, 60), { picklocks: 90 }, PICKING_TWICE);
+    expect(moves(sent)).toEqual(['open e', 'pi e']);
+    walker.handAnswered('Rand', 'tried');
+    expect(moves(sent)).toEqual(['open e', 'pi e']);
+    walker.onBlock(wire('skill-failed'));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent).slice(2, 4)).toEqual(['open e', 'e']);
+  });
+
+  // The positive control for the test above: with no `@do` taken, a failed pick picks again.
+  it('picks again on its own failed pick when no member took the @do', () => {
+    const { walker, sent } = askingRand(skilled(0, 60), { picklocks: 90 }, PICKING_TWICE);
+    walker.onBlock(wire('skill-failed'));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['open e', 'pi e', 'pi e']);
+  });
+
+  it('waits on the member once its own bash tries are spent', () => {
+    const { walker, sent } = askingRand(skilled(60, 0), { strength: 120 }, BASHING_ONCE);
+    walker.onBlock(wire('bash-failed'));
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['open e', 'bas e']);
+    walker.handAnswered('Rand', 'held');
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['open e', 'bas e', 'e']);
   });
 
   // Mutant: a new connection keeps the last one's locks.
@@ -334,7 +459,14 @@ describe('Barriers, put down', () => {
   /** The ladder alone, at a door east, recording what it asked of the walk. */
   const ladder = (
     config = CONFIG
-  ): { barriers: Barriers; dispatched: string[]; notices: string[]; clock: WalkClock } => {
+  ): {
+    barriers: Barriers;
+    dispatched: string[];
+    notices: string[];
+    clock: WalkClock;
+    dropped: () => number;
+  } => {
+    let drops = 0;
     const dispatched: string[] = [];
     const notices: string[] = [];
     const clock = new WalkClock();
@@ -373,10 +505,25 @@ describe('Barriers, put down', () => {
         blameable: () => true,
         forgetPulls: () => {}
       },
-      { best: () => null, ask: () => false, waitingAt: () => false, forget: () => {} }
+      {
+        best: () => null,
+        ask: () => false,
+        asking: () => false,
+        waitingAt: () => false,
+        forget: () => {},
+        drop: () => void (drops += 1)
+      }
     );
-    return { barriers, dispatched, notices, clock };
+    return { barriers, dispatched, notices, clock, dropped: () => drops };
   };
+
+  // Todo 133: a door behind the character withdraws the member asked at it.
+  it('drops the member asked at the door once it is passed', () => {
+    const { barriers, dropped } = ladder();
+    expect(dropped()).toBe(0);
+    barriers.passed();
+    expect(dropped()).toBe(1);
+  });
 
   // Mutant: reset keeps the rounds.
   it('gives the next door its rounds again', () => {
