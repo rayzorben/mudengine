@@ -13,7 +13,12 @@
 import type { CommandQueue } from '../CommandQueue';
 import type { CharacterState } from '../../../shared/character';
 import type { MovementConfig } from '../../../shared/config';
-import { jobCommand, walkersThrough, type HandAnswer } from '../../../shared/barrierHands';
+import {
+  TRAP_JOBS,
+  jobCommand,
+  walkersThrough,
+  type HandAnswer
+} from '../../../shared/barrierHands';
 import { disarmTries, disarmWorth } from '../../../shared/walk';
 import { asSpokenDirection, trapOn, type RouteStep } from '../../../shared/world';
 import { t } from '../../app/i18n';
@@ -76,7 +81,7 @@ export class DisarmBeforeStep {
       this.deadline(step);
       return true;
     }
-    if (this.hands.waitingAt(step)) return true;
+    if (this.hands.waitingAt(step, TRAP_JOBS)) return true;
     if (trapOn(step) === null || step.direction === 'portal') return false;
     // Auto-Disarm Traps off: the trap hold rests for the trap and the step walks in.
     if (!movement.disarmTraps) return false;
@@ -95,10 +100,11 @@ export class DisarmBeforeStep {
     }
     if (!hand.self) {
       const tries = disarmTries(hand.odds, movement.disarmDoubt);
+      // A failed disarm fires the trap at whoever tried, so this character waits on the member.
       if (
         this.hands.ask('disarm', step, hand, tries, (answer) => this.memberAnswered(step, answer))
       ) {
-        return true;
+        return this.hands.waitingAt(step, TRAP_JOBS);
       }
       // Nothing went to them; they count as asked, so the next hand is asked.
       return this.ask(state, movement);

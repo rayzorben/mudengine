@@ -5,16 +5,18 @@
  * `@pick` or `@bash` goes to a mudengine member and `@do …` to another
  * client, a pick only (`WalkerEvents.askHand`); the member's answer
  * (`HandAnswer`) comes back through `Walker.handAnswered`, and silence lapses
- * as a failure. Asked
- * by `DisarmBeforeStep` and `Barriers`, which keep their own tries for this
- * character. `mudengine-automation` › parts/remotes.md.
+ * as a failure once the step waits on it. Each ask ends once, answered,
+ * lapsed or dropped, and withdraws itself from the session then (todo 133).
+ * Asked by `DisarmBeforeStep` and `Barriers`, which keep their own tries for
+ * this character. `mudengine-automation` › parts/remotes.md.
  */
 import {
   candidatesHere,
   handsFor,
   unknownPickers,
   type BarrierJob,
-  type HandAnswer
+  type HandAnswer,
+  type HandAsk
 } from '../../../shared/barrierHands';
 import type { CharacterState } from '../../../shared/character';
 import { playerKey } from '../../../shared/players';
@@ -36,6 +38,9 @@ interface Out {
   job: BarrierJob;
   name: string;
   until: number;
+  asked: HandAsk;
+  /** Whether the step waits on the answer, so the lapse holds the walk's clock. */
+  waiting: boolean;
   then(answer: HandAnswer): void;
 }
 
@@ -79,9 +84,10 @@ export class PartyHands {
   }
 
   /**
-   * Sends the member at the way. True while the walk waits on the answer;
-   * false when nothing went, and the member counts as asked either way.
-   * `tries` is the member's bound, which sets how long its answer may take.
+   * Sends the member at the way. True when it went, false when nothing did,
+   * and the member counts as asked either way. The step waits on the answer
+   * only through `waitingAt`. `tries` is the member's bound, which sets how
+   * long its answer may take.
    */
   ask(
     job: BarrierJob,
@@ -93,10 +99,10 @@ export class PartyHands {
     this.askedAt(wayOf(step)).add(playerKey(hand.name));
     const words = this.words(job, step, hand.name);
     // A portal is no exit a member can be sent at; `best` names nobody there.
-    const sent =
+    const asked =
       step.direction !== 'portal' &&
       (this.events.askHand?.(hand.name, job, step.direction) ?? false);
-    if (!sent) {
+    if (asked === false) {
       this.events.notice?.(t('automation.walk.handUnsent', words));
       return false;
     }
@@ -107,14 +113,21 @@ export class PartyHands {
     );
     const { remotes, walk } = tuning();
     const until = this.now() + remotes.replyMs + Math.max(1, tries) * walk.disarmAnswerMs;
-    this.out = { step, job, name: hand.name, until, then };
-    this.arm();
+    this.drop();
+    this.out = { step, job, name: hand.name, until, asked, waiting: false, then };
     return true;
   }
 
-  /** Whether the step waits on a member's answer; the deadline is armed again (a hold cleared it). */
-  waitingAt(step: RouteStep): boolean {
-    if (this.out?.step !== step) return false;
+  /** Whether a member is asked at the step's way for one of `jobs`, their answer still to come. */
+  asking(step: RouteStep, jobs: readonly BarrierJob[]): boolean {
+    return this.out?.step === step && jobs.includes(this.out.job);
+  }
+
+  /** The step waits on that member's answer; the deadline is armed again (a hold cleared it). */
+  waitingAt(step: RouteStep, jobs: readonly BarrierJob[]): boolean {
+    const out = this.out;
+    if (out === null || !this.asking(step, jobs)) return false;
+    this.out = { ...out, waiting: true };
     this.arm();
     return true;
   }
@@ -134,9 +147,21 @@ export class PartyHands {
     if (this.tried.way === wayOf(step)) this.tried.names.clear();
   }
 
+  /**
+   * The walk no longer waits on the member: it stopped, the door opened, or
+   * the way is behind it. Their answer, when it comes, is no answer to the
+   * walk. The lapse, if armed, finds nothing out and does nothing.
+   */
+  drop(): void {
+    const out = this.out;
+    if (out === null) return;
+    this.out = null;
+    out.asked.withdraw();
+  }
+
   reset(): void {
     this.tried = { way: '', names: new Set<string>() };
-    this.out = null;
+    this.drop();
   }
 
   private askedAt(way: string): Set<string> {
@@ -149,7 +174,8 @@ export class PartyHands {
     if (out === null) return;
     this.clock.clear();
     this.clock.afterStep(Math.max(0, out.until - this.now()), () => {
-      if (this.out !== out || !this.inFlight.walking()) return;
+      if (this.out !== out) return;
+      if (!this.inFlight.walking()) return this.drop();
       this.events.notice?.(
         t('automation.walk.handLapsed', this.words(out.job, out.step, out.name))
       );
@@ -159,7 +185,10 @@ export class PartyHands {
 
   private settle(out: Out, answer: HandAnswer): void {
     this.out = null;
-    this.clock.clear();
+    out.asked.withdraw();
+    // When the step is not waiting on the member, the clock times this
+    // character's own try, so it is left armed.
+    if (out.waiting) this.clock.clear();
     out.then(answer);
   }
 

@@ -155,8 +155,10 @@ function unit(step = TRAPPED.steps[0]!) {
   const clock = { now: 0, queued: false };
   const events = {
     notice: (message: string) => void notices.push(message),
-    askHand: (name: string, job: string, direction: string) =>
-      asked.push(`${name} ${job} ${direction}`) > 0
+    askHand: (name: string, job: string, direction: string) => {
+      asked.push(`${name} ${job} ${direction}`);
+      return { withdraw: () => {} };
+    }
   };
   const walkClock = {
     afterStep: (_ms: number, then: () => void) => void timers.push(then),

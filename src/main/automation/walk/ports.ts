@@ -8,7 +8,7 @@
  */
 import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
-import type { BarrierJob } from '../../../shared/barrierHands';
+import type { BarrierJob, HandAsk } from '../../../shared/barrierHands';
 import type { Intent } from '../CommandQueue';
 import type { DecisionKind, NoticeSink } from '../../../shared/decisionSettings';
 import type {
@@ -148,9 +148,9 @@ export interface WalkerEvents {
    * Leading, sends a party member at the way ahead (`PartyHands`, todo 86):
    * `@disarm`, `@pick` or `@bash` to a mudengine member, `@do` with the
    * command to another client. False when nothing went. The answer comes back
-   * through `Walker.handAnswered`.
+   * through `Walker.handAnswered`; the ask ends there or at `withdraw`.
    */
-  askHand?(name: string, job: BarrierJob, direction: Direction): boolean;
+  askHand?(name: string, job: BarrierJob, direction: Direction): HandAsk | false;
   /**
    * Whether to hold the next step a moment: the room just confirmed holds
    * something worth stopping for (a loop's auto-combat answers this). The

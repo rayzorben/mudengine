@@ -758,8 +758,8 @@ export class Walker implements SessionModule {
     this.cancelQueued();
     this.status = 'stopped';
     this.reason = reason;
-    // Put by for a walk to the same journey only (`Levers.drop`).
-    this.levers.drop();
+    this.levers.drop(); // put by for a walk to the same journey only
+    this.hands.drop(); // a member asked at the way is asked no longer (todo 133)
     // The walk's silence or this stop's: a loop's leg ending is reported by the loop.
     if (!quiet && !this.quiet)
       this.events.notice?.(t('automation.walk.stopped', { reason }), decision);

@@ -1800,6 +1800,27 @@ describe('talking to another one of these clients', () => {
     expect(handed).toEqual(['Soul:failed']);
   });
 
+  /* Todo 133: the positive control is the test above, where the same {ok} is handed back. */
+  it('reads no {ok} as the job once the walk withdrew the ask', () => {
+    knowing('Soul', 'yes');
+    const ask = peers.askHand('Soul', 'bash', 'n');
+    drain();
+    expect(ask).not.toBe(false);
+    if (ask !== false) ask.withdraw();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{ok}'), who());
+    expect(handed).toEqual([]);
+  });
+
+  it('leaves a newer ask to the member when an older one is withdrawn', () => {
+    knowing('Soul', 'yes');
+    const first = peers.askHand('Soul', 'pick', 'n');
+    peers.askHand('Soul', 'bash', 'n');
+    drain();
+    if (first !== false) first.withdraw();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{ok}'), who());
+    expect(handed).toEqual(['Soul:held']);
+  });
+
   it('asks the plain question of somebody nothing has said anything about', () => {
     peers.ask('Soul', 'where', who());
     drain();

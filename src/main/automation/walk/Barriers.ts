@@ -43,7 +43,12 @@ import type { WalkClock } from './clock';
 import { wayOf, type OpenedKind, type WalkerEvents, type WalkInFlight } from './ports';
 import type { Holds } from './Holds';
 import type { Levers } from './Levers';
-import { jobCommand } from '../../../shared/barrierHands';
+import {
+  DOOR_JOBS,
+  jobCommand,
+  type BarrierJob,
+  type HandAnswer
+} from '../../../shared/barrierHands';
 import type { PartyHands } from './PartyHands';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 
@@ -188,6 +193,13 @@ export class Barriers {
    */
   private forcing: Forcing | null = null;
   /**
+   * The step whose door a member's `@do` pick was taken at while this
+   * character's own try was out (todo 133). The server tells only the picker
+   * whether the lock gave (`Door.cs:151`), so the door is opened to see
+   * before this character's next rung.
+   */
+  private memberTried: RouteStep | null = null;
+  /**
    * The two skills a barrier is graded against, from the last state seen.
    *
    * Kept here rather than asked for at the moment of the refusal because
@@ -210,7 +222,10 @@ export class Barriers {
     private readonly slot: Pick<Holds, 'current' | 'take'>,
     private readonly levers: BarrierLevers,
     /** Leading, the member sent at a lock this character is the worse hand for (todo 86). */
-    private readonly hands: Pick<PartyHands, 'best' | 'ask' | 'waitingAt' | 'forget'>
+    private readonly hands: Pick<
+      PartyHands,
+      'best' | 'ask' | 'asking' | 'waitingAt' | 'forget' | 'drop'
+    >
   ) {}
 
   configure(config: AutomationConfig): void {
@@ -237,6 +252,8 @@ export class Barriers {
   passed(): void {
     this.barrierRounds = 0;
     this.forgetLock();
+    // A member asked at that door is asked no longer (todo 133).
+    this.hands.drop();
   }
 
   /** A new connection: forget everything. */
@@ -770,6 +787,8 @@ export class Barriers {
 
   /** The door unlocked (opened first) or open: the lock is forgotten and the step goes again. */
   private throughAfter(step: RouteStep, now: 'unlocked' | 'open'): void {
+    this.hands.drop();
+    this.memberTried = null;
     this.forgetLock();
     this.lockedDoors.delete(wayOf(step));
     if (now === 'unlocked') {
@@ -789,13 +808,14 @@ export class Barriers {
   /**
    * Leading, a member with better odds at the lock than this character's own
    * is sent (`PartyHands`, todo 86): a pick first, a bash when nobody can
-   * pick. True while the walk waits on their answer; false when this
-   * character is the best hand left, or nobody is.
+   * pick. This character goes on forcing the door on its own tries while the
+   * member helps (todo 133), so the walk waits on their answer only once
+   * none is left. True while it waits; false when this character's own rung
+   * goes next, or nobody's does.
    */
   private sendHand(step: RouteStep): boolean {
-    if (this.hands.waitingAt(step)) return true;
     const state = this.events.stateNow?.();
-    if (state === undefined) return false;
+    if (state === undefined) return this.hands.waitingAt(step, DOOR_JOBS);
     const { movement } = this.config;
     const need = step.requirement;
     const stated = barrierStated(need);
@@ -819,23 +839,44 @@ export class Barriers {
           !meetsBarrier(need?.bashDifficulty, this.strength, bashMargin, stated)
       }
     ] as const;
+    const ownLeft = jobs.some(({ on, selfDone }) => on && !selfDone);
+    if (this.hands.asking(step, DOOR_JOBS))
+      return !ownLeft && this.hands.waitingAt(step, DOOR_JOBS);
     for (const { job, on, tries, selfDone } of jobs) {
       if (!on) continue;
       const hand = this.hands.best(job, step, state, selfDone);
       if (hand === null) continue;
       if (hand.self) return false;
-      const asked = this.hands.ask(job, step, hand, tries, (answer) => {
-        if (!this.walk.walking() || this.walk.step() !== step) return;
-        if (answer === 'failed') return this.forceAgainOrHold();
-        // Only a held answer started the door's close timer; an `@do` pick may not have.
-        if (answer === 'held') this.noteOpened(step, 'door', Date.now());
-        // A `tried` pick is opened to see: still locked, the ladder asks the next hand.
-        this.throughAfter(step, job === 'pick' ? 'unlocked' : 'open');
-      });
+      const then = (answer: HandAnswer): void => this.handAnswered(step, job, answer);
       // Nothing went to them; they count as asked, so the next hand is asked.
-      return asked || this.sendHand(step);
+      if (!this.hands.ask(job, step, hand, tries, then)) return this.sendHand(step);
+      return !ownLeft && this.hands.waitingAt(step, DOOR_JOBS);
     }
     return false;
+  }
+
+  /**
+   * A member's answer at the door. While this character's own try is on the
+   * wire, that try's answer runs the ladder: a `{failed}` only marks the
+   * member asked, and an `@do` taken opens the door to see once that try
+   * fails (`memberTried`). A held door is through either way.
+   */
+  private handAnswered(step: RouteStep, job: BarrierJob, answer: HandAnswer): void {
+    if (!this.walk.walking() || this.walk.step() !== step) return;
+    if (answer === 'tried' && this.forcing !== null) {
+      this.memberTried = step;
+      return;
+    }
+    if (answer === 'failed' && this.forcing !== null) return;
+    if (answer === 'failed') return this.forceAgainOrHold();
+    if (answer === 'held') {
+      // This character's own try at a door already open answers nothing.
+      this.forcing = null;
+      // Only a held answer started the door's close timer; an `@do` pick may not have.
+      this.noteOpened(step, 'door', Date.now());
+    }
+    // A `tried` pick is opened to see: still locked, the ladder asks the next hand.
+    this.throughAfter(step, job === 'pick' ? 'unlocked' : 'open');
   }
 
   /**
@@ -849,6 +890,8 @@ export class Barriers {
       this.stopRefused(step, undefined);
       return;
     }
+    // A member's `@do` pick may have unlocked it while this character's try was out.
+    if (this.memberTried === step) return this.throughAfter(step, 'unlocked');
     const barrier = t('automation.walk.fallbackBarrier');
     if (this.force(step, barrier)) return;
     this.holdAtBarrier(step, barrier);
@@ -1174,6 +1217,7 @@ export class Barriers {
     this.found = false;
     this.levers.forgetPulls();
     this.forcing = null;
+    this.memberTried = null;
   }
 
   /**
