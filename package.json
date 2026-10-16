@@ -19,7 +19,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "start": "electron-vite preview",
+    "start": "npm run build && electron-vite preview --skipBuild",
     "build": "npm run typecheck && electron-vite build",
     "build:world": "node --import ./scripts/lib/register.mjs scripts/build-world.mjs",
     "build:loops": "node --import ./scripts/lib/register.mjs scripts/build-loops.mjs",

@@ -1645,7 +1645,6 @@ export class Remotes implements SessionModule {
       case 'auto-light':
       case 'auto-cash':
       case 'auto-get':
-      case 'auto-sneak':
       case 'auto-hide':
       case 'auto-search':
       case 'divert':

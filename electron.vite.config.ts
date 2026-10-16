@@ -3,6 +3,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
 import { buildStamp } from './scripts/lib/build-stamp.mjs';
+import { bundleSizePlugin } from './scripts/lib/bundle-size.mjs';
 import { yamlPlugin } from './scripts/lib/yaml-module.mjs';
 
 const shared = resolve('src/shared');
@@ -72,51 +73,43 @@ const BUNDLED = ['yaml', 'mdb-reader'];
  * them, which would cost the thing that makes them worth having.
  */
 const stripComments = {
-  esbuild: { minifyIdentifiers: false, minifySyntax: false, legalComments: 'none' }
+  esbuild: {
+    minifyIdentifiers: false,
+    minifySyntax: false,
+    legalComments: 'none',
+    // A case clause the switch already has is dead code tsc does not report.
+    logOverride: { 'duplicate-case': 'error' }
+  }
 } as const;
 
 /**
- * The 500 kB chunk warning is a web-delivery heuristic, and the window is a
- * web target only some of the time.
+ * Each build's limit on its JavaScript, in kB as the build prints sizes,
+ * checked by `bundleSizePlugin` (Vite's own check skips main and preload).
  *
- * Vite's default exists because half a megabyte of JavaScript over a slow
- * network is a multi-second stall before anything renders. On the desktop
- * nothing crosses a network: the window is `loadFile()`d off the local disk
- * and main and preload are read by Electron's own loader. In web mode
- * (`MUDENGINE_WEB=1`, `src/main/host/WebHost.ts`) the same bundle *does*
- * cross one — once. Every asset is named by its content hash and served
- * `immutable`, so a tab pays the transfer on its first visit and never again
- * until the client is rebuilt; and the window uses the terminal, the rail and
- * the cards on its first frame regardless, so the two remedies the warning
- * suggests would still buy little — `manualChunks` splits a transfer paid
- * once into several paid once, and dynamic `import()` defers parse cost for
- * code the first frame needs anyway. Measured before it is decided: if a
- * first paint over a slow link ever proves too slow, splitting the map, the
- * settings screen and the quest book off the first frame is the change, and
- * this paragraph is where to say what it bought.
- *
- * The limit is raised to make the warning mean something, not to silence it.
- * One that fires on every build forever is one nobody reads, and build output
- * is where a genuine size regression shows up first — a dependency bundled by
- * accident, or the comment stripping above coming undone, which last time was
- * 1.4 MB of prose carrying a private hostname into every install. Main and the
- * window get about half again what they measure (887 kB and 1,558 kB on
- * 2026-09-07, the window having grown its web bridge), so ordinary growth is
- * quiet and a doubling still speaks up. Preload's is not scaled from its
- * 8 kB: it is the security boundary and has no business growing at all, so
- * 100 kB reads as *something is wrong here*.
+ * Main and the window get about half again what they measure (main 2,965 kB,
+ * `index.js` being 2,400 kB of it, and the window 2,391 kB on 2026-10-16, todo
+ * 150), so ordinary growth is quiet and a dependency bundled by accident, or
+ * the comment stripping above coming undone, puts the build over its limit. Preload is the
+ * security boundary and measures 15 kB, so 100 kB means something is wrong
+ * there. Desktop reads the window off the disk and web mode serves it
+ * `immutable`, so splitting heavy screens off the first frame is not worth
+ * its cost yet. The breakdown is in `mudengine-verify` › *Each build has a
+ * size limit*.
  */
-const CHUNK_LIMIT_KB = { main: 1400, preload: 100, renderer: 2000 } as const;
+const CHUNK_LIMIT_KB = { main: 4400, preload: 100, renderer: 3600 } as const;
 
 export default defineConfig({
   main: {
     ...stripComments,
     define: stamp,
-    plugins: [externalizeDepsPlugin({ exclude: BUNDLED }), yamlPlugin()],
+    plugins: [
+      externalizeDepsPlugin({ exclude: BUNDLED }),
+      yamlPlugin(),
+      bundleSizePlugin('main', CHUNK_LIMIT_KB.main)
+    ],
     resolve: { alias: { '@shared': shared, '@main': resolve('src/main') } },
     build: {
       minify: 'esbuild',
-      chunkSizeWarningLimit: CHUNK_LIMIT_KB.main,
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
@@ -128,11 +121,10 @@ export default defineConfig({
   },
   preload: {
     ...stripComments,
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), bundleSizePlugin('preload', CHUNK_LIMIT_KB.preload)],
     resolve: { alias: { '@shared': shared } },
     build: {
       minify: 'esbuild',
-      chunkSizeWarningLimit: CHUNK_LIMIT_KB.preload,
       rollupOptions: { input: { index: resolve('src/preload/index.ts') } }
     }
   },
@@ -140,11 +132,10 @@ export default defineConfig({
     ...stripComments,
     define: stamp,
     root: resolve('src/renderer'),
-    plugins: [react(), yamlPlugin()],
+    plugins: [react(), yamlPlugin(), bundleSizePlugin('renderer', CHUNK_LIMIT_KB.renderer)],
     resolve: { alias: { '@shared': shared, '@renderer': resolve('src/renderer/src') } },
     build: {
       minify: 'esbuild',
-      chunkSizeWarningLimit: CHUNK_LIMIT_KB.renderer,
       rollupOptions: { input: { index: resolve('src/renderer/index.html') } }
     }
   }

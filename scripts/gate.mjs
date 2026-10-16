@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
+import { SIZE_LIMIT_FAILS } from './lib/bundle-size.mjs';
+
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 process.chdir(ROOT);
 
@@ -471,6 +473,7 @@ if (NARROW) {
       [
         ...SRC.filter((c) => !isTest(c)),
         ...expand(['locales', 'resources/config', 'resources/servers']),
+        'scripts/lib/bundle-size.mjs',
         ...CONFIGS
       ]
     )
@@ -557,6 +560,8 @@ if (!plan.some((s) => s.run)) {
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+// A build over its size limit warns when run by hand and fails here.
+env[SIZE_LIMIT_FAILS] = '1';
 fs.mkdirSync(LOGS, { recursive: true });
 const took = [];
 const started = Date.now();
