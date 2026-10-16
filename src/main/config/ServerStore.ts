@@ -22,17 +22,19 @@
  * move its loops, and two servers whose names differ only in punctuation are
  * two directories rather than one file overwriting another.
  *
- * Watched by an owned poll, like everything else the user owns; see
- * `ConfigStore` for why it is not `fs.watch`.
+ * Held and watched like every file the user owns (`HeldFiles`, `Poller`): a
+ * realm saved on the screen is live before its file is written.
  */
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import path from 'node:path';
 import { parse } from 'yaml';
 
 import { asServer, type Server } from '../../shared/config';
-import type { Home } from '../app/home';
+import { SERVER_FILE, type Home } from '../app/home';
 import { t } from '../app/i18n';
 import { directoryNames } from './dirs';
+import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 
 /** One server and the directory it was read from. */
@@ -41,6 +43,9 @@ export interface StoredServer {
   id: string;
   server: Server;
 }
+
+/** The realms as a reader needs them: the settings editor's view of the live store. */
+export type ServerList = Pick<ServerStore, 'all' | 'idFor'>;
 
 export interface ServerStoreEvents {
   change: () => void;
@@ -58,6 +63,7 @@ export class ServerStore extends EventEmitter {
   private stored: StoredServer[] = [];
   private problems: string[] = [];
   private readonly poller: Poller;
+  private readonly held: HeldFiles;
 
   constructor(
     private readonly home: Home,
@@ -72,12 +78,24 @@ export class ServerStore extends EventEmitter {
           each: (id) => [{ kind: 'file', path: this.home.server(id).file }]
         }
       ],
-      reload: () => {
-        this.read();
+      reload: () => this.reload()
+    });
+    this.held = new HeldFiles(
+      this.poller,
+      (file) =>
+        path.basename(file) === SERVER_FILE &&
+        path.dirname(path.dirname(file)) === this.home.serversDir,
+      () => {
+        this.resolve();
         this.emit('change');
       }
-    });
-    this.read();
+    );
+    this.load();
+  }
+
+  /** The store's files, read and edited through what it holds (`HeldFiles`). */
+  get files(): OwnedFiles {
+    return this.held;
   }
 
   get all(): StoredServer[] {
@@ -115,21 +133,37 @@ export class ServerStore extends EventEmitter {
     this.removeAllListeners();
   }
 
-  /** Re-reads now, for a caller that has just written one. */
-  refresh(): void {
-    this.read();
+  /** Reads every realm's file from disk now: the watch's reload, and an import's. */
+  reload(): void {
+    this.load();
     this.emit('change');
   }
 
-  private read(): void {
-    const found: StoredServer[] = [];
-    this.problems = [];
-
+  private load(): void {
+    const texts = new Map<string, string>();
+    const unread: string[] = [];
     for (const id of this.ids()) {
       const file = this.home.server(id).file;
       if (!fs.existsSync(file)) continue;
       try {
-        const server = asServer(parse(fs.readFileSync(file, 'utf8')), id);
+        texts.set(file, fs.readFileSync(file, 'utf8'));
+      } catch (error) {
+        unread.push(this.readError(file, error));
+      }
+    }
+    this.held.replace(texts);
+    this.poller.settle();
+    this.resolve(unread);
+  }
+
+  /** The realms from the held texts, each problem said. */
+  private resolve(unread: readonly string[] = []): void {
+    const found: StoredServer[] = [];
+    this.problems = [...unread];
+
+    for (const { file, id } of this.held.byDirectory()) {
+      try {
+        const server = asServer(parse(this.held.read(file) ?? ''), id);
         if (!server) {
           // A server with no host is not a server. Reported rather than
           // defaulted, because a defaulted one is a character quietly dialling
@@ -139,18 +173,19 @@ export class ServerStore extends EventEmitter {
         }
         found.push({ id, server });
       } catch (error) {
-        this.problems.push(
-          t('notices.config.servers.readError', {
-            file,
-            message: error instanceof Error ? error.message : 'unknown error'
-          })
-        );
+        this.problems.push(this.readError(file, error));
       }
     }
 
     this.stored = found;
-    this.poller.settle();
     for (const problem of this.problems) this.onError?.(problem);
+  }
+
+  private readError(file: string, error: unknown): string {
+    return t('notices.config.servers.readError', {
+      file,
+      message: error instanceof Error ? error.message : 'unknown error'
+    });
   }
 
   private ids(): string[] {

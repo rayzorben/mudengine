@@ -615,7 +615,6 @@ describe('a character low on lives', () => {
         current = { ...current, automation: { ...current.automation, enabled: value } };
         return true;
       },
-      reread: () => {},
       ...over
     });
     return host;

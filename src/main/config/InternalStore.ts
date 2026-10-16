@@ -1,11 +1,11 @@
 /**
  * Loads, watches and republishes the internal settings file.
  *
- * The same shape as `ConfigStore` and for the same reasons — an owned
- * `setInterval` poll rather than `fs.watch`, because this repo lives in a
- * Dropbox tree and every atomic-save editor replaces the file rather than
- * writing into it; a bad edit keeps the last good values and reports; a
- * missing file is created from the bundled template. Its own class rather
+ * The same shape as `ConfigStore` and for the same reasons — watched through
+ * `Poller` (its directory, and the fallback poll); a bad edit keeps the last
+ * good values and reports; a missing file is created from the bundled
+ * template. Nothing in the client writes it while it runs, so it holds no
+ * text and takes no edits (`HeldFiles`). Its own class rather
  * than a generic one shared with the options store because the two files
  * have different lifecycles (the options file has an override, search paths,
  * profiles overlaid on its *source*) and a generic store would carry both

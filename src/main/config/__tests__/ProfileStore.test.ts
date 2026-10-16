@@ -4,13 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ProfileStore, type ProfileSnapshot } from '../ProfileStore';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { PROFILE_FILE } from '../../app/home';
+import { setTuning } from '../../app/tuning';
 
 let dir: string;
 let stores: ProfileStore[];
 let base: Record<string, unknown>;
 
 beforeEach(() => {
+  setTuning({
+    ...DEFAULT_INTERNAL.tuning,
+    files: { ...DEFAULT_INTERNAL.tuning.files, pollIntervalMs: 500 }
+  });
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-profiles-'));
   stores = [];
   base = {
@@ -19,6 +25,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setTuning(DEFAULT_INTERNAL.tuning);
   for (const store of stores) store.dispose();
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -50,11 +57,11 @@ function open(): ProfileStore {
 /**
  * Waits for the next `change`.
  *
- * The store polls a directory listing rather than subscribing to inotify — see
- * its header for why — so a reload is a poll interval plus a debounce away. The
- * generous timeout is the mechanism's cost, not flakiness.
+ * A reload is the directory watch's notification, or the fallback poll where
+ * none comes, plus a debounce. The suite polls every 500 ms, well inside the
+ * timeout, so a missed notification is slow rather than a failure.
  */
-function nextChange(store: ProfileStore, timeoutMs = 5000): Promise<ProfileSnapshot> {
+function nextChange(store: ProfileStore, timeoutMs = 4000): Promise<ProfileSnapshot> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('no change event')), timeoutMs);
     store.on('change', (snapshot) => {
@@ -194,7 +201,7 @@ describe('ProfileStore', () => {
 
     fs.chmodSync(dir, 0o000);
     try {
-      store.refresh();
+      store.reload();
       // Root can read it regardless; only assert where the mode actually bites.
       if (store.snapshot.errors.length > 0) {
         expect(store.snapshot.errors.join(' ')).toContain(dir);

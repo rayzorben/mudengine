@@ -202,6 +202,9 @@ notices:
         in {backup}.'
     debugTrace: The debug window now keeps the last 10,000 records instead of 4,000, about six
       minutes of a fight, so a bug report reaches further back. {file} was updated to match.
+    filePollFallback: The client now notices a change to its files as soon as the disk reports
+      it, and checks every 5 seconds instead of twice a second where the disk does not. {file}
+      was updated to match.
     talkHold: The Talk card now holds its place for 45 seconds after you scroll, instead of 15.
       {file} was updated to match.
     hunting: Auto-Hunt is now a setting, off by default. It was added to {file} with a comment

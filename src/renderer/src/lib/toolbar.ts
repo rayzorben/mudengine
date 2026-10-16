@@ -13,11 +13,11 @@ import { t } from './i18n';
  * Every button the toolbar can draw, and what each one is.
  *
  * Two kinds and no more. A **switch** is an `automation:` boolean in the
- * character's own file — pressing it writes the file, the store's poll brings
- * it back, and the button and the settings screen therefore cannot disagree
- * about what the character is doing. An **action** is a thing that happens
- * once and is remembered nowhere: dialling, and the loop's and walk's
- * transport.
+ * character's own file, held by the profile store — pressing it changes the
+ * store's value, which is pushed back at once and then written, so the button
+ * and the settings screen cannot disagree about what the character is doing.
+ * An **action** is a thing that happens once and is remembered nowhere:
+ * dialling, and the loop's and walk's transport.
  *
  * Both are drawn identically — a square glyph that is lit when the thing it
  * names is on — because on a toolbar the difference between "this is set" and

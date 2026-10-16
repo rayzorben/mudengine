@@ -312,6 +312,7 @@ function migrateAll(options: MigrationOptions): void {
   theRealmIsTheMenusChoice(home, note, options.worlds);
   theSightingNamesItsMap(home, note);
   theDebugTraceGrew(home, note);
+  theFilePollBecameAFallback(home, note, options.internalTemplate);
   theShelfStrikesLearned(home, note);
   theSharedSpotWorthWent(home, note);
 }
@@ -1052,6 +1053,47 @@ function theDebugTraceGrew(home: Home, note: (message: string) => void): void {
   });
   if (changed) note(t('notices.migration.debugTrace', { file: home.internal }));
 }
+
+/**
+ * `files.pollIntervalMs` 500 → 5,000 (todo 137, 2026-10-15): the stores watch
+ * each directory for a change notification now, and the poll is the fallback
+ * for a share that gives none. Only where it still says the old default, as
+ * `theDebugTraceGrew`; its old paragraph ("twice a second") becomes the
+ * template's where it is still the shipped one.
+ */
+function theFilePollBecameAFallback(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const shipped = templateOf(template)?.getIn(['tuning', 'files'], true);
+  const at = isMap(shipped)
+    ? shipped.items.findIndex((item) => keyText(item) === 'pollIntervalMs')
+    : -1;
+  const paragraph = isMap(shipped) && at !== -1 ? commentAbove(shipped, at) : undefined;
+  let changed = false;
+  edit(home.internal, (document) => {
+    const files = document.getIn(['tuning', 'files'], true);
+    if (!isMap(files)) return false;
+    const index = files.items.findIndex((item) => keyText(item) === 'pollIntervalMs');
+    const held = index === -1 ? undefined : files.items[index]!.value;
+    if (!isScalar(held) || Number(held.value) !== 500) return false;
+    held.value = DEFAULT_INTERNAL.tuning.files.pollIntervalMs;
+    const key = files.items[index]!.key as Scalar;
+    if (paragraph !== undefined) {
+      if (key.commentBefore === OLD_POLL_PARAGRAPH) key.commentBefore = paragraph;
+      else if (index === 0 && files.commentBefore === OLD_POLL_PARAGRAPH) {
+        files.commentBefore = paragraph;
+      }
+    }
+    changed = true;
+    return true;
+  });
+  if (changed) note(t('notices.migration.filePollFallback', { file: home.internal }));
+}
+
+/** What the template said above `files.pollIntervalMs` until todo 137. */
+const OLD_POLL_PARAGRAPH = ' One listing twice a second costs nothing.';
 
 /** The template's own words, so a migrated file reads like a shipped one. */
 const ACCOUNT_STEPS_COMMENT = ` The account. \`{user}\` and \`{password}\` send this character's own, from

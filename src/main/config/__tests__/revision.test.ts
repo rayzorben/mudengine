@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { revision, revisionNow, type Watched } from '../revision';
+import { revision, revisionNow, spell, type Watched } from '../revision';
 
 let dir: string;
 
@@ -44,35 +44,35 @@ describe('revision', () => {
     write('loops/notes.txt', 'not a loop\n');
     write('profiles/rayzor/profile.yaml', 'server: local\n');
     fs.mkdirSync(path.join(dir, 'profiles', '.sync'));
-    expect(await revision(tree())).toBe(revisionNow(tree()));
+    expect(spell(await revision(tree()))).toBe(spell(revisionNow(tree())));
   });
 
   it('reads nothing on disk as a state, the same either way', async () => {
-    const empty = revisionNow(tree());
-    expect(empty).toBe('gone|gone|gone');
-    expect(await revision(tree())).toBe(empty);
+    const empty = spell(revisionNow(tree()));
+    expect(empty).toBe('');
+    expect(spell(await revision(tree()))).toBe(empty);
   });
 
   it('moves when a file appears, changes or goes', async () => {
     write('profiles/rayzor/profile.yaml', 'server: local\n');
-    const before = await revision(tree());
+    const before = spell(await revision(tree()));
 
     write('profiles/festus/profile.yaml', 'server: local\n');
-    const added = await revision(tree());
+    const added = spell(await revision(tree()));
     expect(added).not.toBe(before);
 
     write('profiles/festus/profile.yaml', 'server: elsewhere\n');
-    const changed = await revision(tree());
+    const changed = spell(await revision(tree()));
     expect(changed).not.toBe(added);
 
     fs.rmSync(path.join(dir, 'profiles', 'festus'), { recursive: true });
-    expect(await revision(tree())).toBe(before);
+    expect(spell(await revision(tree()))).toBe(before);
   });
 
   it('ignores a file the filter refuses', async () => {
     write('loops/one.yaml', 'name: one\n');
-    const before = await revision(tree());
+    const before = spell(await revision(tree()));
     write('loops/one.yaml~', 'backup\n');
-    expect(await revision(tree())).toBe(before);
+    expect(spell(await revision(tree()))).toBe(before);
   });
 });
