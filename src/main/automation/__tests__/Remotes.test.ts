@@ -2024,7 +2024,8 @@ describe('@heal', () => {
     healer.onBlock(said('conversation-telepath', 'Yang', '@heal'), inParty(100, 'Yang'));
     drain();
     expect(wanted).toEqual(['Soul', 'Yang']);
-    expect(sent).toEqual([]);
+    // No answer to either; the one `par` is for their unlisted bars (todo 142, `ParOnWord`).
+    expect(sent).toEqual([config.onPartyChange || 'par']);
   });
 
   it('is granted to a party member by the shipped list', () => {
@@ -2508,6 +2509,16 @@ describe('party pacing', () => {
       wait('', { ...member('Soul', 0.6), activity: { state: 'unknown', flag: 'P' } as never })
     ).toEqual(['Soul:wait']);
     expect(wait('', member('Soul', 0.6), { manageParty: false })).toEqual(['Soul:wait']);
+  });
+
+  /* Todo 142: nine minutes down the Silver River on one listing, Brackle saying he was low. */
+  it('asks for the party listing when it walks on through a @wait', () => {
+    const leading = who({
+      party: { engaged: {}, threatened: {}, following: null, members: [member('Soul', 1)] }
+    });
+    make({}).onBlock(said('conversation-telepath', 'Soul', "@wait (HP's too low)"), leading);
+    drain();
+    expect(sent).toEqual([config.onPartyChange || 'par']);
   });
 
   it('refuses @party under Ignore @party If Following, and says so', () => {

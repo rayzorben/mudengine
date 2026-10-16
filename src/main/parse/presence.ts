@@ -22,7 +22,12 @@ import {
 } from '../../shared/character';
 import { asAlignment } from '../../shared/alignment';
 import { parseRemoteReply } from '../../shared/remotes';
-import { observe, type PlayerRegistry, type WornItem } from '../../shared/players';
+import {
+  observe,
+  type PlayerRegistry,
+  type PlayerVitals,
+  type WornItem
+} from '../../shared/players';
 import { figure } from '../../shared/values';
 import { listedVitals } from './memberBars';
 
@@ -34,6 +39,8 @@ export interface PresenceFold {
   state: CharacterState | null;
   players: PlayerRegistry;
 }
+
+const RESTING: PartyActivity = { state: 'resting' };
 
 /**
  * The who list's alignment column. A blank column is `Neutral`: GreaterMUD's
@@ -531,11 +538,13 @@ export function withoutPlayer(s: CharacterState, name: string | undefined): Char
  * invitation is out, which is the moment the player is watching for an
  * answer. The absolute figures another client answered with survive a listing:
  * a percentage does not contradict a pair of numbers, it is coarser than one.
+ * A member with none is seeded from `recall`, the registry (`listedVitals`).
  */
 export function withPartyListing(
   s: CharacterState,
   rows: Array<Record<string, string>> | undefined,
-  alone: boolean
+  alone: boolean,
+  recall: (name: string) => PlayerVitals | null = () => null
 ): CharacterState | null {
   const members = (rows ?? [])
     .map((row): PartyMember | null => {
@@ -553,7 +562,7 @@ export function withPartyListing(
         rank: rankOf(row['rank']),
         activity: partyActivity(row['flag']),
         invited: row['invited'] !== undefined,
-        vitals: listedVitals(held, health, mana),
+        vitals: listedVitals(held, health, mana, recall(name)),
         sheet: kept?.sheet ?? null
       };
     })
@@ -608,7 +617,9 @@ export function withRemoteVitals(
           mana:
             reply.mana !== null && reply.manaMax !== null && reply.manaMax > 0
               ? reply.mana / reply.manaMax
-              : held.mana
+              : held.mana,
+          // MegaMUD's `, Resting`; its absence says nothing, since this client never prints it.
+          activity: reply.resting && held.activity === null ? RESTING : held.activity
         }
       : held
   );
@@ -712,8 +723,7 @@ export function withResting(
   verb: string | undefined
 ): CharacterState | null {
   if (!player) return null;
-  const activity: PartyActivity =
-    verb === 'kneels to meditate' ? { state: 'meditating' } : { state: 'resting' };
+  const activity: PartyActivity = verb === 'kneels to meditate' ? { state: 'meditating' } : RESTING;
   if (!s.party.members.some((entry) => entry.name === player)) return null;
   return {
     ...s,

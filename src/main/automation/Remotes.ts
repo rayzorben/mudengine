@@ -128,6 +128,8 @@ import {
 import { SheetReports } from './SheetReports';
 import { STANDING, StandingRemotes, type StandingRemoteEvents } from './StandingRemotes';
 import { FollowerPacing } from './FollowerPacing';
+import { HealthAsks } from './HealthAsks';
+import { ParOnWord } from './ParOnWord';
 import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
@@ -433,6 +435,10 @@ export class Remotes implements SessionModule {
   /** Members sent at a trap or a lock by `askHand`, by key, until their answer: whether through `@do`. */
   private readonly handsAsked = new Map<string, { viaDo: boolean }>();
   private readonly pacing: FollowerPacing;
+  /** When a member is asked `@health`. See `HealthAsks`. */
+  private readonly healthAsks: HealthAsks;
+  /** `par` on a member's `@wait` or `@heal`. See `ParOnWord`. */
+  private readonly parOnWord: ParOnWord;
 
   constructor(
     private config: AutomationConfig,
@@ -468,6 +474,10 @@ export class Remotes implements SessionModule {
       tell: (leader, name, state, argument) =>
         void this.ask(leader, name, state, argument, 'follower-wait')
     });
+    this.healthAsks = new HealthAsks(config, (who, state) =>
+      this.ask(who, 'health', state, undefined, 'party-ask-health')
+    );
+    this.parOnWord = new ParOnWord(config, queue, notice);
   }
 
   configure(config: AutomationConfig): void {
@@ -478,6 +488,8 @@ export class Remotes implements SessionModule {
     this.leaderDoors.configure(config);
     this.hands.configure(config);
     this.pacing.configure(config);
+    this.healthAsks.configure(config);
+    this.parOnWord.configure(config);
   }
 
   /** A walk's step is about to be queued: a portal's `@party` goes ahead of it. */
@@ -512,6 +524,7 @@ export class Remotes implements SessionModule {
     this.hands.onBlock(block, state);
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
+    this.healthAsks.onBlock(block, state);
     if (block.type === 'party-joined') {
       this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
       return;
@@ -758,7 +771,7 @@ export class Remotes implements SessionModule {
   private askJoined(who: string | undefined, state: CharacterState): void {
     if (who === undefined) return;
     // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
-    if (this.config.party.askHealth) this.ask(who, 'health', state, undefined, 'party-ask-health');
+    this.healthAsks.joined(who, state);
     /*
      * And which client they run, once ever, because it decides the wording of
      * every question after this one. Any answer or lapse is kept realm-wide on
@@ -781,6 +794,7 @@ export class Remotes implements SessionModule {
     if (this.config.enabled && this.config.remotes.enabled) {
       this.sweep(Date.now());
       this.sheets.onCharacter(state);
+      this.healthAsks.onCharacter(state);
     }
     this.askForHeal(state);
     this.pacing.onCharacter(state);
@@ -965,6 +979,8 @@ export class Remotes implements SessionModule {
     this.hands.reset();
     this.sheets.reset();
     this.handsAsked.clear();
+    this.healthAsks.reset();
+    this.parOnWord.reset();
   }
 
   /** The regroup's and the invitation's clocks are what here outlive a call. */
@@ -1565,6 +1581,7 @@ export class Remotes implements SessionModule {
         // No reply either: the heal landing on the sender is the answer, and
         // captures/081 shows MegaMUD giving no other (`mend death`, nothing said).
         this.events.healRequested?.(from);
+        this.parOnWord.said(from, 'heal', state);
         return;
 
       case 'reset':
@@ -1592,6 +1609,8 @@ export class Remotes implements SessionModule {
         // Leading under `manageParty`, health and mana are held to this character's own settings.
         if (command.name === 'wait' && this.managesWait(from, command, state)) {
           this.events.notice?.(t('automation.remotes.managedWait', { from }), WAIT);
+          // The walk on is decided from the listed bar, so the listing is asked again (todo 142).
+          this.parOnWord.said(from, 'wait', state);
           return;
         }
         this.events.pace?.(from, command.name === 'ok');

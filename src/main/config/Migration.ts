@@ -8288,6 +8288,8 @@ function theTuningBlockGainedKeys(
     // How old each listing may get is `automation.asks` now (todo 118).
     // How often an invitation nobody has answered is followed up (todo 01, 2026-10-09).
     addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
+    // How often a member's @wait or @heal asks for the party listing (todo 142, 2026-10-15).
+    addKey('remotes', 'parOnWordMs', DEFAULT_INTERNAL.tuning.remotes.parOnWordMs);
     // The longest telepath a @loop or @goto answer is cut to (todo 32, 2026-10-10).
     addKey('remotes', 'telepathMax', DEFAULT_INTERNAL.tuning.remotes.telepathMax);
     // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).

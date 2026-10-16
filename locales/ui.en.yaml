@@ -6969,6 +6969,8 @@ automation:
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     managedWait: 'Walking on through @wait from {from}: Manage Party Health If Leading holds them to
       your own rest settings.'
+    parOnWord: 'Sent par: {from} said {word} and their bar may be out of date.'
+    parOnWordNotSent: 'Did not send par after {from} said {word}: the command queue did not take it.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
     dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
     ranEquipAll: '{from} sent @equip-all; putting your gear back on.'
