@@ -2204,6 +2204,27 @@ describe('the MajorMUD party listing', () => {
     expect(batch?.rows[1]).toMatchObject({ name: 'Soul', flag: 'R', rank: 'Frontrank' });
   });
 
+  /*
+   * The server pads each figure to three columns (`[M:{0,3}%]`), so a member
+   * under 10% prints two spaces after the colon. Unread, the listing of two fell
+   * to one row and the card went (Festus and Brackle, wire, 2026-10-14).
+   */
+  it('reads a figure under 10% the server pads with two spaces', () => {
+    const batch = feed([
+      'The following people are in your travel party:',
+      '  Festus Ival                   (Paladin)    [M: 63%] [H:100%]R - Frontrank',
+      '  Brackle                       (Mystic)     [M:  5%] [H: 90%]R - Frontrank',
+      '  Rend                          (Warrior)             [H:  7%]  - Backrank',
+      '  Daytona                       (Mystic)     [K:  2%] [H:100%]  - Midrank',
+      '[HP=516/516,MA=62/98 (Resting)]:'
+    ]);
+    expect(batch?.type).toBe('party-roster');
+    expect(batch?.rows.map((r) => r['name'])).toEqual(['Festus', 'Brackle', 'Rend', 'Daytona']);
+    expect(batch?.rows[1]).toMatchObject({ mana: '5', health: '90' });
+    expect(batch?.rows[2]).toMatchObject({ health: '7' });
+    expect(batch?.rows[3]).toMatchObject({ manaType: 'K', mana: '2' });
+  });
+
   // `P` on every member of a party mid-fight, twice in captures/039, with
   // nothing on the wire saying what it means. The letter is kept; the meaning
   // is not invented.
