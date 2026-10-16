@@ -40,6 +40,7 @@ let released: number;
 
 const planner = (over: Partial<SellTripPlanner> = {}): SellTripPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   routeTo: () => ROUTE,
   walk: () => null,
   counterIn: (room) => (room === STORE ? 'General Store' : null),

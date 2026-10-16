@@ -61,7 +61,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the Drop notice's wording, out to `macros.ts`, and the paste comment (todo 83).
   // Lowered by the trainers' delegation, out to the place desk with the nearest of each kind (todo 70).
   // Lowered by the destination hook's comment, one line as only asked walks are recent (todo 28).
-  'src/main/session/SessionManager.ts': 3391,
+  'src/main/session/SessionManager.ts': 3382,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
@@ -84,7 +84,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the window keys' chords, out to `CLIENT_KEYS` (todo 74).
   // Lowered by one `covered` for the Escape guards, as the help page came (todo 75).
   // Lowered by the console's buttons, run by the console that draws them (todo 28).
-  'src/renderer/src/App.tsx': 1538,
+  'src/renderer/src/App.tsx': 1512,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   // Lowered by the fight hold's comment, condensed as `FoughtPath` came (2026-10-10).

@@ -82,6 +82,7 @@ let walked: Route[];
 
 const planner = (over: Partial<RecoveryPlanner> = {}): RecoveryPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   routeTo: () => ROUTE,
   walk: (route) => {
     walked.push(route);

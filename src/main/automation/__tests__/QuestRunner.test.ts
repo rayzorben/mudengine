@@ -181,6 +181,7 @@ let clock: number;
 
 const planner = (over: Partial<QuestRunPlanner> = {}): QuestRunPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   printsCounters: () => true,
   routeTo: () => ROUTE,
   walk: (route) => {

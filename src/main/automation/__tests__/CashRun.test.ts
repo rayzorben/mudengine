@@ -100,6 +100,7 @@ let charges: ItemCharges;
 
 const planner = (over: Partial<CashRunPlanner> = {}): CashRunPlanner => ({
   here: () => here as never,
+  pace: () => 'walking',
   current: () => current,
   startLoop: (name) => {
     log.push(`loop:${name}`);

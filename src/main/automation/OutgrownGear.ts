@@ -238,14 +238,17 @@ export class OutgrownGear implements SessionModule {
       return;
     }
     if (started.kind === 'here') return;
+    const going = {
+      item: name,
+      verb: outgrownVerb(plan.way),
+      place: plan.place,
+      steps: started.steps,
+      worn: plan.item.worn
+    };
     this.events.notice?.(
-      t('automation.outgrown.going', {
-        item: name,
-        verb: outgrownVerb(plan.way),
-        place: plan.place,
-        steps: started.steps,
-        worn: plan.item.worn
-      }),
+      started.pace === 'running'
+        ? t('automation.outgrown.goingRunning', going)
+        : t('automation.outgrown.going', going),
       WAY
     );
     if (held) this.planner.hold();

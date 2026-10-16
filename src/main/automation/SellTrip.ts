@@ -119,8 +119,11 @@ export class SellTrip implements SessionModule {
       return this.refuse(ask.items, shop, started.why);
     }
     if (started.kind === 'walking') {
+      const going = { items: ask.items.join(', '), shop, steps: started.steps };
       this.events.notice?.(
-        t('automation.sellTrip.going', { items: ask.items.join(', '), shop, steps: started.steps }),
+        started.pace === 'running'
+          ? t('automation.sellTrip.goingRunning', going)
+          : t('automation.sellTrip.going', going),
         'sell-trip'
       );
     }

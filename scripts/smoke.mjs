@@ -1949,7 +1949,8 @@ const acting = await evaluate(`document.querySelector('.status-rail .acting')?.i
 check(
   acting === null ||
     copyRx('statusRail.action.queued').test(acting) ||
-    copyRx('statusRail.action.walking').test(acting),
+    copyRx('statusRail.action.walking').test(acting) ||
+    copyRx('statusRail.action.running').test(acting),
   'the rail says what automation is doing, or says nothing at all',
   JSON.stringify(acting)
 );

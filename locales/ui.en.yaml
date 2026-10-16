@@ -1325,6 +1325,7 @@ terminal:
       listing: Checking inventory
       fetching: Getting
       walking: Walking
+      running: Running
       acting: Acting
       confirming: Confirming
     done: Done
@@ -1396,6 +1397,7 @@ tabs:
     activityConnecting: connecting
     activityDisconnected: disconnected
     activityWalking: walking {done}/{total}
+    activityRunning: running {done}/{total}
     alertPlural: '{count} alerts'
     alertSingular: 1 alert
     # Lines with @name in them said while the tab was not in front (todo 29).
@@ -1433,12 +1435,14 @@ tabs:
     markRestingToFull: resting to full
     markStopped: stopped
     markWalking: walking
+    markRunning: running
     whoTooltip: '{characterName} ({realmName})'
 # The status rail under the console.
 statusRail:
   action:
     tooltip: What automation is doing
     walking: walking {done}/{total}
+    running: running {done}/{total}
     queued: queued {depth} · {command}
   chars:
     count: '{count} chars'
@@ -5685,9 +5689,11 @@ session:
     # {room} is in no monster's group, so the server lets nothing follow in.
     escapeUnfollowed: 'Running {direction} to {room}, a room no monster group reaches: {why}.'
     retreatBecause: Walking to the safe room ({room}) after running
+    retreatBecauseRunning: Running to the safe room ({room}) after running from the fight
     retreatDropped: 'Not walking to {room}: you were killed, and the game has moved you.'
     retreatGaveUp: 'Not walking to {room}: the fight never ended.'
     retreatPlanned: 'Walking to the safe room {room}: {stepCount} steps.'
+    retreatPlannedRunning: 'Running to the safe room {room}: {stepCount} steps.'
     retreatRefused: 'Could not walk to {room}: {reason}'
     retreatUnplaced: 'Not walking to {room}: the room could not be identified after the move.'
     # The last-ditch teleport (todo 813): {command} is the realm's own, literally.
@@ -5773,6 +5779,7 @@ session:
     peerPlaced: '{who} is in {room} ({address}).'
     peerPlacedUnnamed: a room they did not name
     comebackWalking: '{who} asked this character to come to {address}; walking {stepCount} steps.'
+    comebackRunning: '{who} asked this character to come to {address}; running {stepCount} steps.'
     comebackRefused: '{who} asked this character to come to them, and the route was refused:
       {reason}'
     stopNothing: '{who} sent @stop, and this character was not walking or looping. Nothing was sent
@@ -5789,7 +5796,10 @@ session:
     loopSeveral: '{who} sent @loop {request}, and {count} loops match: {names}. Nothing was started;
       sent them the names that fit in one telepath.'
     gotoWalking: '{who} sent @goto; walking {stepCount} steps to {room} ({address}).'
+    gotoRunning: '{who} sent @goto; running {stepCount} steps to {room} ({address}).'
     gotoReplaced: '{who} sent @goto; stopping {was} and walking {stepCount} steps to {room}
+      ({address}).'
+    gotoReplacedRunning: '{who} sent @goto; stopping {was} and running {stepCount} steps to {room}
       ({address}).'
     gotoRefused: '{who} sent @goto {request}, and the route was refused: {reason}'
     gotoNone: '{who} sent @goto {request}, and the world database has no room called that. Nothing
@@ -5941,6 +5951,7 @@ automation:
     refused: 'Quest run stopped: {why}'
     abandoned: 'Quest run stopped: {why}'
     going: 'Step {nth}: walking to {room} ({steps} steps).'
+    goingRunning: 'Step {nth}: running to {room} ({steps} steps).'
     buying: 'Step {nth}: buying {item} ×{count} at {shop}, {room}.'
     hunting: 'Step {nth}: hunting {mob} for {item}.'
     handover: 'Step {nth}: getting {item} — {command}.'
@@ -5956,6 +5967,7 @@ automation:
     reasonPackAfter: checking inventory after the quest step
     detailFetching: 'getting {item}'
     detailWalking: 'walking to {room}'
+    detailRunning: 'running to {room}'
     detailKilling: 'fighting {mob}'
     detailWaitingFor: 'at {who}'
     detailConfirming: reading the counter
@@ -6422,6 +6434,7 @@ automation:
   stashFetch:
     reasonSearch: searching for what was hidden here
     going: 'Walking to {room} for {items} ({steps} steps).'
+    goingRunning: 'Running to {room} for {items} ({steps} steps).'
     taking: 'Taking from the floor: {items}.'
     done: 'Picked up from the stash: {items}.'
     because: '{items} were hidden in {room}'
@@ -6441,6 +6454,7 @@ automation:
   sellTrip:
     reasonSelling: selling {item} at {shop}
     going: 'Walking to {shop} to sell {items} ({steps} steps).'
+    goingRunning: 'Running to {shop} to sell {items} ({steps} steps).'
     done: 'Sold at {shop}: {items}.'
     because: '{items} to sell at {shop}'
     refused: 'Not selling: {why}'
@@ -6484,6 +6498,7 @@ automation:
     reasonUse: 'using {token} to go to the bank'
     didNotTake: '{token} did not take the character anywhere'
     toBank: 'Walking to {bank}.'
+    toBankRunning: 'Running to {bank}.'
     toCounter: 'Selling {items} at {shop} on the way, for {copper} copper.'
     notSold: 'Not selling at {shop}: {why}'
     counterNotReached: 'Did not reach the shop ({why}); walking on to the bank.'
@@ -6685,6 +6700,7 @@ automation:
   outgrown:
     reason: '{item} is outgrown: {worn} is worn on {slot} instead'
     going: 'Walking to {place} to {verb} {item} ({steps} steps): {worn} is worn instead.'
+    goingRunning: 'Running to {place} to {verb} {item} ({steps} steps): {worn} is worn instead.'
     done: 'Sent {verb} {item}, and it is gone from your inventory: {worn} is worn instead.'
     refused: 'Could not {verb} {item}: {why}.'
     whyStopped: the walk stopped before it arrived
@@ -7177,6 +7193,9 @@ automation:
     started:
       many: Walking {stepCount} steps to {destination}.
       one: Walking {stepCount} step to {destination}.
+    startedRunning:
+      many: Running {stepCount} steps to {destination}.
+      one: Running {stepCount} step to {destination}.
     stopped: 'Walk stopped: {reason}'
     superseded: Dropped the walk to {destination}; something else is moving the character now.
     fallbackMove: the move

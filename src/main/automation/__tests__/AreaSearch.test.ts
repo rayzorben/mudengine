@@ -71,6 +71,7 @@ let taking: boolean;
 
 const planner = (over: Partial<AreaSearchPlanner> = {}): AreaSearchPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   routeAround: (room) => routeTo(here, room),
   fightsBack: () => true,
   walk: (route) => {

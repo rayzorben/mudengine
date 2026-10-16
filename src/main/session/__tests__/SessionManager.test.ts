@@ -3442,6 +3442,7 @@ describe('which way out', () => {
      */
     socket.write('*Combat Off*\r\n');
     await until(() => !manager!.character.inCombat);
+    expect(notices.some(composes('session.safety.retreatPlannedRunning'))).toBe(false);
     expect(notices.some(composes('session.safety.retreatPlanned'))).toBe(false);
     /*
      * The room that answers the step out, resolved the way the client resolves
@@ -3451,10 +3452,12 @@ describe('which way out', () => {
      * before the block and leave the reckoning starting from where it landed.
      */
     socket.write('Middle Road\r\nObvious exits: north, south\r\n');
-    await until(() => notices.some(composes('session.safety.retreatPlanned')));
+    await until(() => notices.some(composes('session.safety.retreatPlannedRunning')));
     // Two souths: the one that got out, and the one that walks home.
     await until(() => /\bs\r\n[\s\S]*\bs\r\n/.test(seen()));
-    expect(notices.some(composes('session.safety.retreatPlanned', { stepCount: 1 }))).toBe(true);
+    expect(notices.some(composes('session.safety.retreatPlannedRunning', { stepCount: 1 }))).toBe(
+      true
+    );
   });
 
   /*
@@ -4485,6 +4488,7 @@ describe('a death stops everything that was going somewhere', () => {
      */
     socket.write('Location:            1,2\r\nMiddle Road\r\nObvious exits: north, south\r\n');
     await until(() => manager!.character.room.number === 2);
+    expect(notices.some(composes('session.safety.retreatPlannedRunning'))).toBe(false);
     expect(notices.some(composes('session.safety.retreatPlanned'))).toBe(false);
     // The one step out went; nothing followed it.
     expect(seen().replace(/s\r\n/, '')).not.toMatch(/\b[nsew]\r\n/);
@@ -7813,7 +7817,7 @@ describe('starting and stopping a movement', () => {
       expect(manager!.walker.progress).toMatchObject({ destination: 'Room 36', total: 4 });
       await until(() => sent().includes('/Brackle {ok}'));
       expect(notices).toContain(
-        t('session.remotes.gotoWalking', {
+        t('session.remotes.gotoRunning', {
           who: 'Brackle',
           stepCount: 4,
           room: 'Room 36',
@@ -7836,7 +7840,7 @@ describe('starting and stopping a movement', () => {
       expect(manager!.loops.progress.status).toBe('stopped');
       expect(manager!.walker.progress.total).toBe(13);
       expect(notices).toContain(
-        t('session.remotes.gotoReplaced', {
+        t('session.remotes.gotoReplacedRunning', {
           who: 'Brackle',
           stepCount: 13,
           room: 'Town Gates',
@@ -7879,7 +7883,7 @@ describe('starting and stopping a movement', () => {
       await until(() => manager!.walker.progress.status === 'walking');
       await until(() => sent().includes('/Brackle {ok}'));
       expect(notices).toContain(
-        t('session.remotes.comebackWalking', { who: 'Brackle', stepCount: 2, address: '1/38' })
+        t('session.remotes.comebackRunning', { who: 'Brackle', stepCount: 2, address: '1/38' })
       );
     });
 

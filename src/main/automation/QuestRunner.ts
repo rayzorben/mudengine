@@ -50,6 +50,7 @@ import {
   type RoomId,
   type Route
 } from '../../shared/world';
+import type { Pace } from '../../shared/walk';
 import type { SessionModule } from './Module';
 import { stoppedByPerson } from './personStop';
 
@@ -97,6 +98,8 @@ export interface QuestRunPlanner {
   stopFighting(mob: string): void;
   /** Whether auto-combat is on: a kill step is fought only with the player's switch on. */
   combatOn(): boolean;
+  /** Whether a leg is walked or run (`WalkProgress.pace`, todo 129). */
+  pace(): Pace;
   /** Wards on for the run: the plan's supplies are bought to be used. */
   warding(on: boolean): void;
   /** A line this run sent at an asker or a room, so the book watches it. */
@@ -847,12 +850,11 @@ export class QuestRunner implements SessionModule {
       at: this.planner.here()
     };
     if (legs === 0) {
+      const going = { nth: run.at + 1, room: this.placeName(to), steps: route.steps.length };
       this.events.notice?.(
-        t('automation.quests.going', {
-          nth: run.at + 1,
-          room: this.placeName(to),
-          steps: route.steps.length
-        }),
+        this.planner.pace() === 'running'
+          ? t('automation.quests.goingRunning', going)
+          : t('automation.quests.going', going),
         'quest-run'
       );
     }
@@ -1411,7 +1413,9 @@ export class QuestRunner implements SessionModule {
         });
       case 'walking':
       case 'waiting':
-        return t('automation.quests.detailWalking', { room: this.placeName(phase.to) });
+        return this.planner.pace() === 'running'
+          ? t('automation.quests.detailRunning', { room: this.placeName(phase.to) })
+          : t('automation.quests.detailWalking', { room: this.placeName(phase.to) });
       case 'acting':
         return step?.act === null || step === undefined
           ? null

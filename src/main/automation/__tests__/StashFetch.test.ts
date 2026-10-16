@@ -59,6 +59,7 @@ let released: number;
 
 const planner = (over: Partial<StashFetchPlanner> = {}): StashFetchPlanner => ({
   here: () => here,
+  pace: () => 'walking',
   routeTo: () => ROUTE,
   walk: () => null,
   moveInFlight: () => false,

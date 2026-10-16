@@ -117,6 +117,7 @@ import { RemoteMoves } from './RemoteMoves';
 import { remoteHangUps } from './remoteHangUps';
 import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
+import { legPlanner } from './legPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
 import { questKeep } from './questKeep';
@@ -1026,9 +1027,8 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       {
-        here: () => roomAddress(this.tracker.current.room),
+        ...legPlanner(() => legs()),
         shopRoom: (item, passOver) => this.errands.shopRoom(item, passOver),
-        routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
         priceAt: (item, shop) => this.errands.priceAt(item.name, shop),
         weightAt: (item, shop) => this.errands.weightAt(item.name, shop),
         cashFrom: (need, then) => {
@@ -1051,11 +1051,8 @@ export class SessionManager {
             quiet: true,
             resumeAfterFight: false
           }),
-        moveInFlight,
         walkingTo: () => this.walker.remaining.at(-1)?.to ?? null,
         busy: () => this.travel.isRetreating() || this.travel.retreatArmed,
-        looping: () => this.loops.progress.status === 'running',
-        hold: () => this.loops.noteErrand(),
         release: releaseErrand
       },
       reports
@@ -1154,7 +1151,7 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       {
-        here: () => roomAddress(this.tracker.current.room),
+        ...legPlanner(() => legs()),
         /*
          * `abil` is GreaterMUD's alone, and the family is told by the banner
          * or by the listing having answered at all: a realm that has printed
@@ -1162,16 +1159,10 @@ export class SessionManager {
          */
         printsCounters: () =>
           this.vocabulary.family === 'greatermud' || this.tracker.current.abilities !== null,
-        routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
-        walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
         stopWalking: (reason) => {
           if (this.walker.walking && !this.travel.walkIsAsked) this.walker.stop(reason);
         },
-        moveInFlight,
-        walking: () => this.walker.walking,
         busy: () => this.travel.escaping,
-        looping: () => this.loops.progress.status === 'running',
-        hold: () => this.loops.noteErrand(),
         release: () => this.loops.noteErrandOver(),
         buy: (row) => this.supplies.fetch(row, this.tracker.current),
         buying: () => this.supplies.current !== null,

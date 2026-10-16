@@ -8,6 +8,7 @@
 import type { LoopRunner } from '../automation/LoopRunner';
 import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
+import type { Pace } from '../../shared/walk';
 import { roomAddress, type RoomId, type Route } from '../../shared/world';
 import type { Errands } from './Errands';
 import { ERRAND_LEG } from './Travel';
@@ -16,7 +17,7 @@ import { ERRAND_LEG } from './Travel';
 export interface LegModules {
   tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   errands: Pick<Errands, 'planFromHere'>;
-  walker: Pick<Walker, 'start' | 'walking'>;
+  walker: Pick<Walker, 'start' | 'walking' | 'progress'>;
   loops: Pick<LoopRunner, 'progress' | 'noteErrand'>;
 }
 
@@ -24,6 +25,7 @@ export interface LegPlanner {
   here(): RoomId | null;
   routeTo(room: RoomId): Route | string;
   walk(route: Route): string | null;
+  pace(): Pace;
   moveInFlight(): boolean;
   walking(): boolean;
   looping(): boolean;
@@ -35,6 +37,7 @@ export function legPlanner(m: () => LegModules): LegPlanner {
     here: () => roomAddress(m().tracker.current.room),
     routeTo: (room) => m().errands.planFromHere(room, {}, ERRAND_LEG.kind),
     walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
+    pace: () => m().walker.progress.pace,
     moveInFlight: () => m().tracker.pendingMoves > 0,
     walking: () => m().walker.walking,
     looping: () => m().loops.progress.status === 'running',
