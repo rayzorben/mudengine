@@ -8290,6 +8290,8 @@ function theTuningBlockGainedKeys(
     addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
     // How often a member's @wait or @heal asks for the party listing (todo 142, 2026-10-15).
     addKey('remotes', 'parOnWordMs', DEFAULT_INTERNAL.tuning.remotes.parOnWordMs);
+    // When the console's marks record is written whole again (todo 143, 2026-10-16).
+    addKey('session', 'marksWholeAt', DEFAULT_INTERNAL.tuning.session.marksWholeAt);
     // The longest telepath a @loop or @goto answer is cut to (todo 32, 2026-10-10).
     addKey('remotes', 'telepathMax', DEFAULT_INTERNAL.tuning.remotes.telepathMax);
     // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).

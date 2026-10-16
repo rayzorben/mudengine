@@ -27,6 +27,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Whether two plain values say the same thing, key order included: drafts, marks, quest ways. */
+export function sameJson<T>(a: T, b: T): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 /**
  * A non-empty string, trimmed, or the fallback.
  *

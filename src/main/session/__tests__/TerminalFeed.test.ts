@@ -7,14 +7,13 @@ import {
   PARTIAL_DELAY_MS,
   rawIndexOf,
   TerminalFeed,
-  type Emitted,
   type FeedSource,
   type LineFacts,
   type Painted
 } from '../TerminalFeed';
 import type { BatchBlock } from '../../parse/Classifier';
 import type { Block } from '../../../shared/blocks';
-import type { LineTerminator } from '../../../shared/types';
+import type { LineTerminator, TerminalMark } from '../../../shared/types';
 import { SGR_RESET } from '../../../shared/template';
 import { LineTokenizer, plainText } from '../../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
@@ -55,10 +54,10 @@ function typeOf(plain: string): BlockType | null {
 function harness(
   quiet: string[] = ['rm', 'l'],
   design?: FeedSource['design'],
-  rewriting?: Pick<FeedSource, 'rewrites' | 'rewrite'>,
+  rewriting?: Pick<FeedSource, 'rewrites' | 'rewrite' | 'marks'>,
   facts: (plain: string, type: BlockType | null) => LineFacts | undefined = () => undefined
 ) {
-  const released: Emitted[] = [];
+  const released: Painted[] = [];
   const tokenizer = new LineTokenizer();
   const feed = new TerminalFeed(
     {
@@ -618,7 +617,11 @@ describe('a listing the client draws itself', () => {
       };
       return { block, batchWas: was, batchNow: open, ...(closed ? { closed } : {}) };
     };
-    const h = harness(['rm'], undefined, { rewrites: wants, rewrite }, facts);
+    const marks = {
+      issue: (mark: TerminalMark): string => `drawn.${mark.label}`,
+      forget: () => {}
+    };
+    const h = harness(['rm'], undefined, { rewrites: wants, rewrite, marks }, facts);
     return h;
   }
   const drawPack: FeedSource['rewrite'] = (block) =>
@@ -636,7 +639,7 @@ describe('a listing the client draws itself', () => {
     expect(h.released).toEqual([]);
   });
 
-  it("keys the drawing's marks to where it lands in the chunk", () => {
+  it("gives the drawing's marked lines their ids where they land in the chunk", () => {
     const h = listing(drawPack);
     h.chunk('i\r\n' + HEADER + KEYS + LOAD + PROMPT);
     h.feed.take();
@@ -652,7 +655,7 @@ describe('a listing the client draws itself', () => {
     }
     const out = h.feed.take();
     expect(out.text.startsWith(DRAWN_PACK)).toBe(true);
-    expect(out.marks).toEqual([{ offset: 0, mark: { label: 'x', inline: [] } }]);
+    expect(out.lines).toEqual([{ offset: 0, id: 'drawn.x' }]);
   });
 
   it("paints the realm's lines, in order, where the design declines", () => {
@@ -720,13 +723,26 @@ describe('marks', () => {
   it('records where a marked line starts in the chunk', () => {
     const h = harness();
     h.feed.line('Town\r\n', 'newline', 'Town', 'room-name');
-    h.feed.line('General Store\r\n', 'newline', 'General Store', 'room-name', {
-      icon: 'shop',
-      label: 'a shop'
-    });
+    h.feed.line('General Store\r\n', 'newline', 'General Store', 'room-name', 'k1.1');
     const out = h.feed.take();
     expect(out.text).toBe('Town\r\nGeneral Store\r\n');
-    expect(out.marks).toEqual([{ offset: 6, mark: { icon: 'shop', label: 'a shop' } }]);
+    expect(out.lines).toEqual([{ offset: 6, id: 'k1.1' }]);
+  });
+
+  it('lets go of the id of a marked line it withholds, and keeps a painted one', () => {
+    const forgotten: string[] = [];
+    const h = harness(['rm'], undefined, {
+      marks: { issue: () => 'k1.0', forget: (id) => forgotten.push(id) }
+    });
+    h.feed.line('Bank\r\n', 'newline', 'Bank', 'room-name', 'k1.1');
+    expect(h.feed.take().lines).toEqual([{ offset: 0, id: 'k1.1' }]);
+    h.chunk(PROMPT);
+    h.flush();
+    h.feed.sent('rm', 'automation');
+    expect(h.chunk('rm\r\n')).toBe('');
+    h.feed.line('Bank\r\n', 'newline', 'Bank', 'room-name', 'k1.2');
+    expect(h.feed.take().lines).toEqual([]);
+    expect(forgotten).toEqual(['k1.2']);
   });
 });
 

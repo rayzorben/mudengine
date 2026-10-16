@@ -9,6 +9,7 @@ import {
   NO_BACKSCROLL,
   type AttachSnapshot,
   type BackscrollPage,
+  type BackscrollText,
   type SessionId
 } from '../../shared/ipc';
 import { EMPTY_CHARACTER } from '../../shared/character';
@@ -45,7 +46,9 @@ export interface AttachView {
 /** A loaded character as attach sees it. `SessionSlot` is one. */
 export interface AttachSlot {
   readonly manager: AttachView;
-  readonly backscroll: { page(lines: number): Promise<BackscrollPage> };
+  readonly backscroll: { page(lines: number): Promise<BackscrollText> };
+  /** The marks of the page's lines, read once it is in hand so none is older than a push (todo 143). */
+  readonly marks: { pageOf(page: BackscrollText): BackscrollPage };
 }
 
 /** Where attach looks a character up, and what it reads beside the session. */
@@ -68,7 +71,7 @@ export async function attachSnapshot(
 ): Promise<AttachSnapshot> {
   const attached = sources.find(session);
   if (attached) sources.register(session);
-  const backscroll = (await attached?.backscroll.page(pageLines)) ?? NO_BACKSCROLL;
+  const text = await attached?.backscroll.page(pageLines);
   // Looked up again: the wait can outlast the session, or the app, and a
   // session gone since must not have a talk log or shop book made for it.
   // A different slot found now belongs to a session this window never
@@ -76,7 +79,7 @@ export async function attachSnapshot(
   const slot = sources.find(session) === attached ? attached : undefined;
   const manager = slot?.manager;
   return {
-    backscroll: slot ? backscroll : NO_BACKSCROLL,
+    backscroll: slot && text ? slot.marks.pageOf(text) : NO_BACKSCROLL,
     lines: manager?.lines ?? [],
     state: manager?.state ?? IDLE_CONNECTION,
     character: manager?.character ?? EMPTY_CHARACTER,

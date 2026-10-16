@@ -2510,7 +2510,7 @@ function registerIpc(): void {
       if (!slot || typeof lines !== 'number' || !Number.isFinite(lines)) {
         return Promise.resolve(NO_BACKSCROLL);
       }
-      return slot.backscroll.latest(lines);
+      return slot.backscroll.latest(lines).then((page) => slot.marks.pageOf(page));
     }
   );
 

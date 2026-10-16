@@ -40,7 +40,7 @@ export function fillFrom(
   done: (older: number | null) => void
 ): void {
   api.backscrollPage(session, lines).then(
-    (got) => into.refill(got.text, Math.max(lines, keep), () => done(got.older)),
+    (got) => into.refill(got, Math.max(lines, keep), () => done(got.older)),
     (error: unknown) => {
       into.notice(t('terminal.loadMoreFailed', { message: errorMessage(error) }));
       done(null);

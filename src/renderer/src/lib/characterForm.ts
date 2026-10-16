@@ -44,7 +44,7 @@ import {
   type PvpAction,
   type RetreatStrategy
 } from '@shared/safety';
-import { int } from '@shared/values';
+import { int, sameJson } from '@shared/values';
 import type { MobRule } from '@shared/mobRules';
 import { asReconnectTries, DEFAULT_RECONNECT_TRIES, type ProfileAccent } from '@shared/profiles';
 import type { LocateWord } from '@shared/locate';
@@ -73,7 +73,6 @@ import type {
 } from '../components/BlessingFields';
 import type { DrainField, DrainFieldsProps } from '../components/DrainFields';
 import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
-import { sameJson } from './history';
 import { pairsRecord, type StatedPair } from '@shared/pairs';
 
 /**

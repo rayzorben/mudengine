@@ -50,11 +50,12 @@ import { PROMPT_REPAINT } from '../net/stream-quirks';
 import { tuning } from '../app/tuning';
 import type { Block, BlockType } from '../../shared/blocks';
 import { tailAfterPrompt, type BatchBlock } from '../parse/Classifier';
-import type { LineTerminator, TerminalMark } from '../../shared/types';
+import type { LineId, LineTerminator, TerminalMark } from '../../shared/types';
 import { SGR_RESET } from '../../shared/template';
 import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
 import type { TimedChunk } from '../../shared/stamps';
 import { RowTimes, type RowText } from './RowTimes';
+import type { LineMarks } from './MarkBook';
 
 /**
  * How long an unterminated tail is held inside a quiet window before it is
@@ -170,6 +171,12 @@ export interface FeedSource {
    * line is asked for once the session has read it ({@link TerminalFeed.line}).
    */
   rewrite?(block: Block | BatchBlock): Emitted | null;
+  /**
+   * The ids of marked lines (`MarkBook`): one issued for a drawn line's mark,
+   * and one let go for a line that is never painted. Absent, a drawing is
+   * painted unmarked.
+   */
+  marks?: Pick<LineMarks, 'issue' | 'forget'>;
 }
 
 /**
@@ -191,7 +198,7 @@ export interface LineFacts {
 interface HeldLine {
   text: string;
   terminator: LineTerminator;
-  mark?: TerminalMark;
+  id?: LineId;
   /** Volunteered by the server mid-listing: painted after the drawn listing, never lost. */
   volunteered: boolean;
 }
@@ -201,7 +208,7 @@ interface UnreadLine {
   block: Block;
   text: string;
   terminator: LineTerminator;
-  mark?: TerminalMark;
+  id?: LineId;
 }
 
 /** A prompt that has begun but not finished: the tolerant pattern's own opening. */
@@ -307,19 +314,21 @@ interface Sent {
   decision?: DecisionKind;
 }
 
-/** One thing to paint, with the marks that decorate the lines in it. */
+/** What the client drew in the realm's place, with the marks that decorate its lines. */
 export interface Emitted {
   text: string;
   marks: Array<{ offset: number; mark: TerminalMark }>;
 }
 
-/** What the feed paints: the text, its marks, and where a row's time goes (`RowTimes`). */
-export interface Painted extends Emitted {
+/** What the feed paints: the text, where each marked line starts, and where a row's time goes (`RowTimes`). */
+export interface Painted {
+  text: string;
+  lines: Array<NonNullable<TimedChunk['lines']>[number]>;
   times: Array<NonNullable<TimedChunk['times']>[number]>;
 }
 
 function blank(): Painted {
-  return { text: '', marks: [], times: [] };
+  return { text: '', lines: [], times: [] };
 }
 
 export class TerminalFeed {
@@ -471,7 +480,7 @@ export class TerminalFeed {
     terminator: LineTerminator,
     plain: string,
     type: BlockType | null,
-    mark?: TerminalMark,
+    id?: LineId,
     facts?: LineFacts
   ): void {
     this.drawUnread();
@@ -504,7 +513,7 @@ export class TerminalFeed {
         this.held.lines.push({
           text,
           terminator,
-          ...(mark ? { mark } : {}),
+          ...(id ? { id } : {}),
           volunteered: type !== null && VOLUNTEERED.has(type)
         });
         return;
@@ -560,7 +569,7 @@ export class TerminalFeed {
       const kind: RowText = echoed && end === null && rest.length > 0 ? 'status-echo' : 'status';
       const decision = end === null ? by?.decision : undefined;
       if (rest.length === 0) this.time(kind, decision);
-      this.emit(rest, terminator, mark, kind, decision);
+      this.emit(rest, terminator, id, kind, decision);
       if (drawn !== null) this.owesReset = true;
       if (end !== null) this.swallowed = true;
       return;
@@ -581,7 +590,7 @@ export class TerminalFeed {
       if (opens && facts.batchNow !== null) {
         this.held = {
           type: facts.batchNow,
-          lines: [{ text, terminator, ...(mark ? { mark } : {}), volunteered: false }],
+          lines: [{ text, terminator, ...(id ? { id } : {}), volunteered: false }],
           timer: null
         };
         this.armHeldTimer();
@@ -590,7 +599,7 @@ export class TerminalFeed {
       // One line the client draws in the realm's place: the experience line,
       // the exits. Drawn once the session has read it (`drawUnread`).
       if (facts.batchNow === null && type !== null && this.source.rewrites(type)) {
-        this.unread = { block: facts.block, text, terminator, ...(mark ? { mark } : {}) };
+        this.unread = { block: facts.block, text, terminator, ...(id ? { id } : {}) };
         return;
       }
     }
@@ -600,7 +609,7 @@ export class TerminalFeed {
         text.slice(already),
         terminator,
         already === 0 && plain.length > 0,
-        mark,
+        id,
         kind,
         typedEcho ? this.queue[0]?.decision : undefined
       );
@@ -608,6 +617,7 @@ export class TerminalFeed {
     }
 
     this.swallowed = true;
+    this.drop(id);
     // Withheld — but the repaint marker is the prompt row being erased, and
     // the terminal must still see that or the next status line paints over
     // the old one.
@@ -626,7 +636,7 @@ export class TerminalFeed {
     text: string,
     terminator: LineTerminator,
     fresh: boolean,
-    mark?: TerminalMark,
+    id?: LineId,
     kind: RowText = 'other',
     decision?: DecisionKind
   ): void {
@@ -634,7 +644,7 @@ export class TerminalFeed {
       this.append('\r\n', 'other');
       this.atLineStart = true;
     }
-    this.emit(text, terminator, mark, kind, decision);
+    this.emit(text, terminator, id, kind, decision);
   }
 
   /**
@@ -651,9 +661,11 @@ export class TerminalFeed {
     this.unread = null;
     const drawn = this.source.rewrite?.(unread.block) ?? null;
     if (drawn === null) {
-      this.paintAsSent(unread.text, unread.terminator, true, unread.mark);
+      this.paintAsSent(unread.text, unread.terminator, true, unread.id);
       return;
     }
+    // The realm's line is replaced; the drawing's own marks carry their own ids.
+    this.drop(unread.id);
     this.emitDrawn(drawn);
     // The repaint marker still erases the prompt row it ended.
     if (unread.terminator === 'repaint' && unread.text.endsWith(PROMPT_REPAINT)) {
@@ -810,6 +822,7 @@ export class TerminalFeed {
   /** A new connection: nothing sent, nothing pending. */
   reset(): void {
     this.cancelHold();
+    this.dropPending();
     this.dropHeld();
     this.queue = [];
     this.popped = [];
@@ -826,6 +839,7 @@ export class TerminalFeed {
 
   dispose(): void {
     this.cancelHold();
+    this.dropPending();
     this.dropHeld();
     this.unread = null;
   }
@@ -841,22 +855,24 @@ export class TerminalFeed {
     if (held === null) return;
     this.dropHeld();
     if (drawn === null) {
-      for (const line of held.lines) this.emit(line.text, line.terminator, line.mark);
+      for (const line of held.lines) this.emit(line.text, line.terminator, line.id);
       return;
     }
     this.emitDrawn(drawn);
     for (const line of held.lines) {
-      if (line.volunteered) this.emit(line.text, line.terminator, line.mark);
+      if (line.volunteered) this.emit(line.text, line.terminator, line.id);
+      else this.drop(line.id);
     }
   }
 
-  /** The client's own lines, with their marks re-keyed to where they land in the chunk. */
+  /** The client's own lines, each marked line given its id where it lands in the chunk. */
   private emitDrawn(drawn: Emitted): void {
     if (drawn.text.length === 0) return;
     this.swallowed = false;
     this.settle();
     for (const { offset, mark } of drawn.marks) {
-      this.out.marks.push({ offset: this.out.text.length + offset, mark });
+      const id = this.source.marks?.issue(mark);
+      if (id !== undefined) this.out.lines.push({ offset: this.out.text.length + offset, id });
     }
     this.append(drawn.text, 'other');
     this.atLineStart = drawn.text.endsWith('\n');
@@ -882,6 +898,18 @@ export class TerminalFeed {
     this.held.timer.unref?.();
   }
 
+  /** A marked line that will never be painted: its id is let go. */
+  private drop(id: LineId | undefined): void {
+    if (id !== undefined) this.source.marks?.forget(id);
+  }
+
+  /** Every line not yet in a chunk, at a reset: withheld, waiting to be drawn, or not yet taken. */
+  private dropPending(): void {
+    for (const line of this.held?.lines ?? []) this.drop(line.id);
+    this.drop(this.unread?.id);
+    for (const line of this.out.lines) this.drop(line.id);
+  }
+
   private dropHeld(): void {
     if (this.held?.timer) clearTimeout(this.held.timer);
     this.held = null;
@@ -900,14 +928,17 @@ export class TerminalFeed {
   private emit(
     text: string,
     terminator: LineTerminator,
-    mark?: TerminalMark,
+    id?: LineId,
     kind: RowText = 'other',
     decision?: DecisionKind
   ): void {
-    if (text.length === 0) return;
+    if (text.length === 0) {
+      this.drop(id);
+      return;
+    }
     this.swallowed = false;
     this.settle();
-    if (mark) this.out.marks.push({ offset: this.out.text.length, mark });
+    if (id) this.out.lines.push({ offset: this.out.text.length, id });
     this.append(text, kind, decision);
     this.atLineStart = terminator !== 'flush' || text.endsWith('\n');
   }

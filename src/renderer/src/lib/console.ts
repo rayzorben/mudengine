@@ -127,7 +127,7 @@ export interface ConsoleWriter {
  * keystroke synchronously: walking a route showed it and walking by hand did
  * not.
  *
- * So there is one writer and everything funnels through it — chunk segments,
+ * So there is one writer and everything funnels through it: chunks,
  * notices, the font warning, the reset between two characters. Plain text
  * costs nothing: it is queued and written in the same turn. Only the two
  * things that must read the screen pay for a flush.

@@ -200,7 +200,7 @@ export class Paint {
       seq: this.seq,
       at,
       text: painted.text,
-      ...(painted.marks.length > 0 ? { marks: painted.marks } : {}),
+      ...(painted.lines.length > 0 ? { lines: painted.lines } : {}),
       ...(painted.times.length > 0 ? { times: painted.times } : {})
     });
   }

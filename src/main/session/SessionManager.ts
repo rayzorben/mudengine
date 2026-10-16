@@ -97,18 +97,15 @@ import { LineTokenizer, plainText } from '../net/LineTokenizer';
 import { DialCancelled, TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
 import { isPrompt, type Block } from '../../shared/blocks';
-import {
-  type CharacterState,
-  type FightSigns,
-  type RealmFamily as RealmWord,
-  type SessionPhase
-} from '../../shared/character';
+import { type CharacterState, type FightSigns, type SessionPhase } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { Errands, type RealmClass } from './Errands';
 import { Claims } from './Claims';
 import { Locating } from './Locating';
 import { Marks } from './Marks';
+import { RealmWordWatch } from './RealmWordWatch';
+import { MarkBook, type LineMarks } from './MarkBook';
 import { PromptDesign } from './PromptDesign';
 import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
@@ -154,7 +151,6 @@ import type { QuestWatched } from '../../shared/quests';
 import { identityOf, resetSignals } from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
 import type { RealmFamily } from '../../shared/realm';
-import { SHIPPED_WORLD_LABEL, worldOfRealm } from '../../shared/worlds';
 import { StatScreenHold } from './StatScreenHold';
 import { STATUS_LINE } from '../parse/patterns';
 import { answeringAfter } from '../parse/echo';
@@ -246,6 +242,8 @@ export interface SessionDeps {
   readonly players?: RealmPlayers;
   /** Where the character's record last placed it, drawn before any dial (`parse/lastRoom.ts`). */
   readonly lastRoom?: KeptRoom | null;
+  /** What each marked line in the console is marked with, beside the backscroll; in memory where absent. */
+  readonly marks?: LineMarks;
   /**
    * The realm's sentences for an effect landing and ending, shipped and
    * learned. Per realm like the lore beside it, and defaulting to none for
@@ -301,8 +299,8 @@ export class SessionManager {
    */
   private readonly feed: TerminalFeed;
   private readonly world: WorldGraph | undefined;
-  /** The realm's own word for its data, once the menu has said it. See `noteRealmWord`. */
-  private realmTold: RealmWord | null = null;
+  /** Whether the realm's word for its data matches the world loaded. See `RealmWordWatch`. */
+  private readonly realmWord: RealmWordWatch;
   private internal: InternalConfig = DEFAULT_INTERNAL;
   private readonly lineLog: StreamLine[] = [];
   private lineSeq = 0;
@@ -514,7 +512,8 @@ export class SessionManager {
       finds = NO_FINDS,
       shops = NO_SHOPS,
       sentences = NO_SHIPPED_SENTENCES,
-      words = UNSTATED_WORDS
+      words = UNSTATED_WORDS,
+      marks = new MarkBook({ lines: DEFAULT_CONFIG.terminal.scrollback })
     } = deps;
     const notice: SessionSink['notice'] = (message, decision) => sink.notice(message, decision);
     this.tracker = new CharacterTracker(
@@ -606,13 +605,14 @@ export class SessionManager {
       () => this.vocabulary.coins
     );
     this.world = world;
+    this.realmWord = new RealmWordWatch(world, sink);
     this.promptDesign = new PromptDesign(
       { tracker: this.tracker, rewriter: this.rewriter },
       { notice }
     );
     this.statlineReport = new StatlineReport({ notice });
     this.marks = new Marks(
-      { tracker: this.tracker, world },
+      { tracker: this.tracker, world, book: marks },
       { enrich: () => this.internal.terminal.enrich }
     );
     this.feed = new TerminalFeed(
@@ -632,7 +632,8 @@ export class SessionManager {
             state: this.tracker.current,
             world: this.world,
             wearer: this.errands.wearer()
-          })
+          }),
+        marks
       },
       // A held tail released by its timer, outside any chunk.
       (released) => this.paint.released(released)
@@ -2037,7 +2038,7 @@ export class SessionManager {
     this.outbound = '';
     this.playerMove = null;
     this.phaseWas = 'unknown';
-    this.realmTold = null;
+    this.realmWord.forget();
     this.endedBy = null;
     this.publisher.patch({
       phase: 'connecting',
@@ -2304,35 +2305,7 @@ export class SessionManager {
     if (was === 'in-game' && state.phase !== 'in-game') this.leftTheRealm();
     // Entering the realm starts the away clock (`Attendance`).
     if (was !== 'in-game' && state.phase === 'in-game') this.attendance.note();
-    this.noteRealmWord(state);
-  }
-
-  /**
-   * The realm has said which data it runs, and whether this session is
-   * walking it.
-   *
-   * `CharacterState.realm` is the menu prompt's own word, and it is the one
-   * place the wire says which of the two bundled worlds this is
-   * (`shared/worlds.ts`). Told to the sink once per connection so the address
-   * is remembered; and compared with the world this session was built on,
-   * because that was chosen before anything was dialled. A disagreement is
-   * said once and not resolved here — the world is bound for the session's
-   * life — so the sentence says what to do about it. A player's own database
-   * names no bundled world and is theirs: nothing is said about it.
-   */
-  private noteRealmWord(state: CharacterState): void {
-    if (state.realm === null || state.realm === this.realmTold) return;
-    this.realmTold = state.realm;
-    this.sink.realmTold?.(state.realm);
-    const wanted = worldOfRealm(state.realm);
-    const loaded = this.world?.info.world ?? null;
-    if (wanted === null || loaded === null || wanted === loaded) return;
-    this.sink.notice(
-      t('session.realm.worldDisagrees', {
-        realm: SHIPPED_WORLD_LABEL[wanted],
-        world: SHIPPED_WORLD_LABEL[loaded]
-      })
-    );
+    this.realmWord.note(state);
   }
 
   /**
@@ -2905,6 +2878,7 @@ export class SessionManager {
       // walker says "you moved the character yourself", not a wrong-room stop.
       this.notePlayerSteering(state);
       this.restAway.noteRoom();
+      this.marks.onCharacter(state);
       // The saved gear's hold after a death: bookkeeping, under no switch (todo 82).
       this.gearLocks.onCharacter(state);
       // What a lost connection left owed, first: the route back to the walker and

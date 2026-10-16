@@ -856,6 +856,14 @@ notices:
         arrives from now on, and nothing there is overwritten. Fix or remove it before the next launch.
       saveError: 'Could not write the backscroll in {dir}: {message}. The console still works, but
         nothing more is saved for the next launch, and scrolling back reaches only the newest lines.'
+    # The pictures and buttons beside room names in the console, kept beside the backscroll (todo 143).
+    marks:
+      readError: Could not read {file} ({message}). Room names already in the console come back
+        without their pictures, and nothing there is overwritten.
+      saveError: 'Could not write {file}: {message}. After the next launch, room names already in
+        the console come back without their pictures.'
+      skipped: '{file} had lines that could not be read ({count}): those room names come back
+        without their pictures.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
     # Connect pressed on a character already playing there, from a tab that
     # had not caught up: dialling again would hang up on the game.

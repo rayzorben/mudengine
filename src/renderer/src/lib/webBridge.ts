@@ -312,6 +312,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     askRemote: (session, who, name) => invoke(Invoke.askRemote, session, who, name),
 
     onData: (handler) => subscribe(Push.data, handler),
+    onMarks: (handler) => subscribe(Push.marks, handler),
     onState: (handler) => subscribe(Push.state, handler),
     onTelnet: (handler) => subscribe(Push.telnet, handler),
     onLine: (handler) => subscribe(Push.line, handler),

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Terminal, type ILink, type IMarker } from '@xterm/xterm';
+import { Terminal, type ILink } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -14,17 +14,15 @@ import { t } from '../lib/i18n';
 import { measurePitch } from '../lib/fonts';
 import type { TerminalConfig } from '@shared/config';
 import type { DecisionKind } from '@shared/decisionSettings';
-import type { NoticeDecision } from '@shared/ipc';
+import type { BackscrollPage, NoticeDecision } from '@shared/ipc';
 import type { TerminalPalette } from '@shared/themes';
 import type {
   EnterPlace,
   LostEnter,
+  MarkChange,
   StreamChunk,
-  TerminalAction,
   TerminalActionName,
-  TerminalMark,
-  TerminalSize,
-  InlineGlyph
+  TerminalSize
 } from '@shared/types';
 import { consoleWriter, type ConsoleWriter } from '../lib/console';
 import { screenNotices, terminalSurface, type ScreenNotices } from '../lib/screenNotices';
@@ -32,28 +30,34 @@ import type { NameIndex, SpanHit } from '../lib/names';
 import type { Box } from '../lib/menu';
 import { anchorRect, type PopoverAnchor } from '../lib/popover';
 import { DECISION_GLYPH, MARK_GLYPH } from './marks';
-import { GLYPH_CELLS, SGR_RESET } from '@shared/template';
-import { sliceLines, splitMarks } from '../lib/chunks';
+import { SGR_RESET } from '@shared/template';
+import { sliceLines } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
 import { drawStamps, type ConsoleStamps } from '../lib/consoleStamps';
+import { drawMarks } from '../lib/consoleMarks';
 import { edgeOf, type ScrollEdge } from '../lib/pages';
 import { linesOf, placeAt, rowOf, rowsOf, type Place } from '../lib/readBack';
 import { whenIdle } from '../lib/idle';
 
+/** A page of backscroll as a console writes it: its text and the marks of its lines. */
+export type MarkedText = Pick<BackscrollPage, 'text' | 'marks'>;
+
 /** The handle the parent uses to drive the terminal once it has mounted. */
 export interface TerminalHandle {
   write(chunk: StreamChunk): void;
+  /** Lines already written, marked anew (`Push.marks`): drawn once what came before is parsed. */
+  marks(changes: readonly MarkChange[]): void;
   /**
    * Write a restored backscroll a slice at a time, then `done` once parsed and
    * the view is at the live edge. See `lib/restore.ts`.
    */
-  restore(text: string, done: () => void): void;
+  restore(page: MarkedText, done: () => void): void;
   /**
    * Replace everything held with a longer page of the same backscroll, now
    * holding `scrollback` lines, and keep the reader on the line they were on.
    */
-  refill(text: string, scrollback: number, done: () => void): void;
+  refill(page: MarkedText, scrollback: number, done: () => void): void;
   /** Whether lines have scrolled off the top, so older ones exist in main. */
   atCapacity(): boolean;
   /**
@@ -451,6 +455,11 @@ export default function TerminalView({
     stampsRef.current = drawStamps(term, {
       glyph: DECISION_GLYPH,
       open: (decision) => handlers.current.onSetting?.(decision)
+    });
+    const marks = drawMarks(term, {
+      glyph: (icon) => MARK_GLYPH[icon],
+      send: (command) => handlers.current.onInput?.(`${command}\r`),
+      act: (action) => handlers.current.onAct?.(action)
     });
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
@@ -942,56 +951,19 @@ export default function TerminalView({
           }
           if (wasPinned) term.scrollToBottom();
         };
-        /*
-         * A marked line is written on its own, with a marker registered at
-         * the row it lands on and a decoration hung off the marker — an
-         * element laid over the cells, outside the grid, so the glyph beside
-         * a bank's name moves nothing and no escape sequence that counts
-         * columns ever sees it. The marker has to be taken when the cursor is
-         * really on the row, so a marked segment is the writer's `settled`
-         * and an unmarked one is a plain write that costs nothing.
-         */
-        const segments = splitMarks(chunk);
-        if (segments.length === 0) {
-          settle();
-          return;
-        }
         // Notices on a screen the server is drawing come off before its bytes
         // and go back after them, under whatever it drew.
         const bracketed = notices.active;
         if (bracketed) writer.settled(notices.lift);
-        segments.forEach((segment, index) => {
-          const last = index === segments.length - 1;
-          const mark = segment.mark;
-          if (!mark) {
-            writer.write(segment.text, last ? settle : undefined);
-            return;
-          }
-          writer.settled(() => {
-            const marker = term.registerMarker(0);
-            /*
-             * A marked line is indented two cells so the glyph has a place
-             * *before* the name rather than over its first letters. This is
-             * the one place the console's text is not the server's byte for
-             * byte, and it is confined to a plain line — a room's name — that
-             * no server sequence ever re-addresses: the in-place repaint works
-             * on the prompt row. The log and the capture carry the line as
-             * sent.
-             */
-            // Indented only for a glyph in the margin: a line the client drew
-            // (`ui.rewrites`) carries its glyphs inside its own cells.
-            const indent = mark.icon === undefined ? '' : MARK_INDENT;
-            term.write(`${indent}${segment.text}`, () => {
-              if (marker) {
-                decorate(term, marker, mark, indent, segment.text, {
-                  send: (command) => handlers.current.onInput?.(`${command}\r`),
-                  act: (action) => handlers.current.onAct?.(action)
-                });
-              }
-              if (last) settle();
-            });
-          });
-        });
+        /*
+         * A marked line's id registers its marker as it is parsed
+         * (`consoleMarks`), and its mark is drawn once the chunk is: a
+         * decoration over the cells, outside the grid, so nothing the server
+         * laid out moves and no escape sequence that counts columns sees it.
+         */
+        writer.write(chunk.text, settle);
+        const marked = chunk.marks;
+        if (marked !== undefined) writer.settled(() => marks.apply(marked));
         if (bracketed) writer.settled(notices.settle);
       },
       /*
@@ -999,15 +971,17 @@ export default function TerminalView({
        * a reset that jumped the line would clear the screen and then have the
        * previous character's last chunk painted onto it.
        */
-      restore: (text, done) => {
-        for (const piece of sliceLines(text, tuning().restoreSliceChars)) writer.write(piece);
+      marks: (changes) => writer.settled(() => marks.push(changes)),
+      restore: (page, done) => {
+        for (const piece of sliceLines(page.text, tuning().restoreSliceChars)) writer.write(piece);
         writer.settled(() => {
+          marks.page(page.marks);
           // A reader who scrolled up or selected while it filled stays put.
           if (!holdRef.current) term.scrollToBottom();
           done();
         });
       },
-      refill: (text, lines, done) => {
+      refill: (page, lines, done) => {
         // Lines above the live viewport, read when the refill reaches the
         // front of the queue, so what arrived before it is counted.
         let above = 0;
@@ -1018,8 +992,9 @@ export default function TerminalView({
           notices.forget();
           term.reset();
         });
-        for (const piece of sliceLines(text, tuning().restoreSliceChars)) writer.write(piece);
+        for (const piece of sliceLines(page.text, tuning().restoreSliceChars)) writer.write(piece);
         writer.settled(() => {
+          marks.page(page.marks);
           done();
           // Said again once it is done: the edges it passed while filling were not heard.
           edge = null;
@@ -1289,184 +1264,6 @@ export default function TerminalView({
       )}
     </div>
   );
-}
-
-/**
- * The glyph before a line, hung off its marker.
- *
- * `registerDecoration` is xterm's own overlay layer: an element positioned
- * over a cell row, tracking it through scrollback and disposed with the line.
- * Placed over the two cells the indent left empty, with the shop's name as
- * its tooltip and its accessible label — a glyph alone says nothing, per §6.
- */
-/** Cells a marked line is indented by, for the glyph to sit in. */
-const MARK_INDENT = '  ';
-
-/**
- * SGR colour sequences, for counting the cells a line actually paints.
- *
- * Only the `m` final byte: this measures a room's name, and the server has
- * never sent anything else inside one. A cursor-movement sequence would need
- * the terminal's own state to interpret, which is xterm's job, not this
- * measurement's.
- */
-const ANSI = /\x1b\[[0-9;]*m/g;
-
-/**
- * What a button beside a room's name can do: type, or ask main to act.
- *
- * Two callbacks rather than one, because they are two different things and
- * conflating them is what the old `Deposit All` did — a command composed in
- * main when the line was drawn and typed by the renderer when it was pressed,
- * with a stale figure inside it.
- */
-interface Press {
-  send(command: string): void;
-  act(action: TerminalActionName): void;
-}
-
-function decorate(
-  term: Terminal,
-  marker: IMarker,
-  mark: TerminalMark,
-  indent: string,
-  text: string,
-  press: Press
-): void {
-  const icon = mark.icon;
-  if (icon !== undefined) {
-    const decoration = term.registerDecoration({ marker, x: 0, width: indent.length });
-    if (!decoration) return;
-    decoration.onRender((element) => {
-      if (element.dataset['mark'] === icon) return;
-      element.dataset['mark'] = icon;
-      // Added, never assigned: xterm's own class carries the positioning.
-      element.classList.add('terminal-mark');
-      element.title = mark.label;
-      element.setAttribute('role', 'img');
-      element.setAttribute('aria-label', mark.label);
-      element.innerHTML = MARK_GLYPH[icon];
-    });
-  }
-  for (const glyph of mark.inline ?? []) inlineGlyph(term, marker, glyph, indent.length, press);
-  if (mark.actions?.length) actionButtons(term, marker, mark.actions, indent, text, press);
-}
-
-/**
- * A glyph inside a line the client drew: over the two blank cells the
- * drawing left for it, on the decoration layer like the margin's glyph so
- * nothing in the grid moves. With commands it is a button — the equip gate
- * beside a carried item — sent down the path a keystroke takes, and it hands
- * the caret straight back; without, a statement with its label for a
- * tooltip, which is how a slot's picture and a refusal's reason are read.
- */
-function inlineGlyph(
-  term: Terminal,
-  marker: IMarker,
-  glyph: InlineGlyph,
-  indent: number,
-  press: Press
-): void {
-  const decoration = term.registerDecoration({
-    marker,
-    x: indent + glyph.x,
-    width: GLYPH_CELLS
-  });
-  if (!decoration) return;
-  decoration.onRender((element) => {
-    if (element.dataset['mark'] === glyph.icon) return;
-    element.dataset['mark'] = glyph.icon;
-    element.classList.add('terminal-mark', 'terminal-glyph');
-    element.title = glyph.label;
-    element.setAttribute('aria-label', glyph.label);
-    element.innerHTML = MARK_GLYPH[glyph.icon];
-    const commands = glyph.commands;
-    if (commands === undefined || commands.length === 0) {
-      element.setAttribute('role', 'img');
-      return;
-    }
-    element.dataset['action'] = 'true';
-    element.setAttribute('role', 'button');
-    /*
-     * Clickable and never a tab stop: a thirty-item pack would put thirty
-     * stops into the scrollback, and focus lives in the terminal. The same
-     * control is on the pack card, keyboard-reachable there.
-     */
-    element.tabIndex = -1;
-    element.addEventListener('mousedown', (event) => event.preventDefault());
-    element.addEventListener('click', () => {
-      for (const command of commands) press.send(command);
-    });
-  });
-}
-
-/**
- * The buttons after a marked line's text.
- *
- * The same decoration layer as the glyph, and outside the grid for the same
- * reason: a control *inside* the cells would move everything the server laid
- * out beside it, and every escape sequence that counts columns would see it.
- * They start one cell past the last character of the line, so nothing the
- * server printed is covered.
- *
- * **No pixel constant.** The width is stated in cells and xterm places it from
- * its own measured cell size, which is the rule the column measurement already
- * records — the terminal font is configurable and the pane is resizable, so a
- * width decided here would be wrong for somebody.
- *
- * A press either sends the button's commands down the path a keystroke takes —
- * the Talk card's rule — or names its action for main to run, and hands the
- * caret straight back either way, because this is a control that is clicked
- * and never typed into.
- */
-function actionButtons(
-  term: Terminal,
-  marker: IMarker,
-  actions: readonly TerminalAction[],
-  indent: string,
-  text: string,
-  press: Press
-): void {
-  /*
-   * One cell of air after the **visible** text.
-   *
-   * `segment.text` is what the server sent — colour sequences and the line
-   * terminator included — and counting those put the buttons thirteen columns
-   * right of where `Town Square` ends, because a two-word name arrives as
-   * twenty-four bytes and paints eleven cells. A column is a cell, so only
-   * what paints may be counted.
-   */
-  const printed = text.replace(ANSI, '').replace(/[\r\n]/g, '');
-  const from = indent.length + printed.length + 1;
-  const width = Math.max(1, term.cols - from);
-  const decoration = term.registerDecoration({ marker, x: from, width });
-  if (!decoration) return;
-  decoration.onRender((element) => {
-    if (element.dataset['actions'] === 'true') return;
-    element.dataset['actions'] = 'true';
-    element.classList.add('terminal-actions');
-    for (const action of actions) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'terminal-action';
-      button.textContent = action.label;
-      button.title = action.title;
-      // A control that is clicked but never typed into refuses the mouse's
-      // attempt to park the caret, and leaves keyboard focus alone.
-      button.addEventListener('mousedown', (event) => event.preventDefault());
-      /*
-       * Either the realm's own commands, each down the same path a keystroke
-       * takes and in order — or, for a button whose payload depends on a fact
-       * that has to be read first, the *name* of the action, which main runs.
-       * Nothing here composes a command from a number.
-       */
-      button.addEventListener('click', () => {
-        if (action.act !== undefined) press.act(action.act);
-        else for (const command of action.commands) press.send(command);
-      });
-      element.append(button);
-    }
-  });
 }
 
 /**
