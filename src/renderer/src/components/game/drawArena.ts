@@ -348,6 +348,9 @@ export function drawFloor(
   }
 }
 
+/** A compass exit's disc, px, centred on the arena's rim; the ring round the room clears it. */
+export const EXIT_RADIUS = 15;
+
 /** The exits on the rim; returns where each was drawn, for the pointer. */
 export function drawExits(
   ctx: CanvasRenderingContext2D,
@@ -368,7 +371,7 @@ export function drawExits(
     ctx.shadowBlur = 14;
     ctx.fillStyle = lit ? pal.accent : exit.door ? pal.door : pal.text;
     ctx.beginPath();
-    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.arc(x, y, EXIT_RADIUS, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     ctx.fillStyle = pal.ink;

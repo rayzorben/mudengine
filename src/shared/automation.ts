@@ -11,6 +11,7 @@
  */
 import type { CharacterState } from './character';
 import type { LaidSetting } from './extensions';
+import type { RoundTiming } from './roundTiming';
 import type { RuleFiring } from './rules';
 
 /**
@@ -197,6 +198,8 @@ export interface AutomationSnapshot {
   laid: LaidSetting[];
   /** Nobody has pressed a key for `automation.afk.afterMinutes` (`Attendance`, todo 79). */
   away: boolean;
+  /** The room's rounds and off-rounds (todo 154); null before a round is seen this connection. */
+  rounds: RoundTiming | null;
 }
 
 export const EMPTY_AUTOMATION: AutomationSnapshot = {
@@ -208,5 +211,6 @@ export const EMPTY_AUTOMATION: AutomationSnapshot = {
   safety: [],
   engagements: [],
   extensions: {},
-  laid: []
+  laid: [],
+  rounds: null
 };

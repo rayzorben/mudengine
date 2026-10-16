@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { OffRounds, offRoundHoldMs } from '../OffRounds';
 import { StepTimes } from '../StepTimes';
+import { RoundClock } from '../../RoundClock';
 import { blockOf } from '../../../../shared/__tests__/blocks';
 import { t } from '../../../app/i18n';
 import { EMPTY_CHARACTER } from '../../../../shared/character';
@@ -54,7 +55,7 @@ describe('a held step', () => {
       steps.sent(0);
       steps.answered(2600);
     }
-    const offRounds = new OffRounds(steps, {}, () => now);
+    const offRounds = new OffRounds(steps, new RoundClock(), {}, () => now);
     offRounds.onBlock(blockOf('mob-hits', '', {}, 0));
     offRounds.begin(true);
     now = 4000;

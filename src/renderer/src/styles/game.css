@@ -136,6 +136,53 @@
   cursor: pointer;
 }
 
+/* The ring round the arena (todo 154), placed by WorldCanvas; the hand turns once a round. */
+.gv-round-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 11;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.gv-round-ring circle {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.gv-round-wait {
+  stroke: var(--game-round);
+  opacity: 0.55;
+}
+
+.gv-round-off {
+  stroke: var(--game-off-round);
+}
+
+.gv-round-unknown {
+  stroke: var(--game-round);
+  stroke-dasharray: 0.01 0.02;
+  opacity: 0.4;
+}
+
+.gv-round-hand {
+  stroke: var(--game-text);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation-name: gv-round-turn;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes gv-round-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .gv-hud {
   position: fixed;
   z-index: 12;
@@ -1163,6 +1210,11 @@
   .app[data-view='game'] .terminal-layers {
     animation: none !important;
     transition: none !important;
+  }
+
+  /* A hand held still at the top would show every moment as the round. */
+  .gv-round-hand {
+    display: none;
   }
 }
 

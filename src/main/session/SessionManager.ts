@@ -1584,7 +1584,7 @@ export class SessionManager {
       {
         tracker: this.tracker,
         appraisal: this.appraisal,
-        queue: this.queue,
+        ...{ queue: this.queue, times: this.walker.times },
         ...{ rules: this.rules, client: this.client, attendance: this.attendance }
       },
       { config: () => this.automationConfig, extensions: () => this.extensions },
