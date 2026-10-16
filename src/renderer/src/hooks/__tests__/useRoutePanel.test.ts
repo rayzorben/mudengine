@@ -1,4 +1,5 @@
 import { createElement } from 'react';
+import { act } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { useRoutePanel, type RoutePanelState } from '../useRoutePanel';
@@ -39,9 +40,16 @@ describe('useRoutePanel', () => {
     expect(shown().open).toBe(true);
     expect(returnFocus).not.toHaveBeenCalled();
 
-    shown().close();
-    // Not until the panel has gone from the page.
-    expect(returnFocus).not.toHaveBeenCalled();
+    /*
+     * Not until the panel has gone from the page. Inside `act`, as the app's
+     * concurrent root batches a close's updates: the test renderer's legacy
+     * root renders each update outside `act` at once, flushing the last one's
+     * effects before the next.
+     */
+    act(() => {
+      shown().close();
+      expect(returnFocus).not.toHaveBeenCalled();
+    });
     probe.render(createElement(Probe, { returnFocus }));
     expect(shown().open).toBe(false);
     expect(returnFocus).toHaveBeenCalledTimes(1);
@@ -56,5 +64,29 @@ describe('useRoutePanel', () => {
     shown().close();
     probe.render(createElement(Probe, { returnFocus }));
     expect(returnFocus).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the name it was opened on when it closes, by either way of closing (todo 136)', () => {
+    const returnFocus = vi.fn();
+    const draw = (): void => probe.render(createElement(Probe, { returnFocus }));
+    draw();
+
+    shown().openOn(null, 'grave');
+    draw();
+    expect(shown().search).toBe('grave');
+    shown().close();
+    draw();
+    shown().toggleCold();
+    draw();
+    expect(shown().open).toBe(true);
+    expect(shown().search).toBeNull();
+
+    shown().openOn(null, 'grave');
+    draw();
+    expect(shown().search).toBe('grave');
+    shown().toggleCold();
+    draw();
+    expect(shown().open).toBe(false);
+    expect(shown().search).toBeNull();
   });
 });

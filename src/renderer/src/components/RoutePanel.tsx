@@ -558,6 +558,8 @@ export default function RoutePanel({
       // And any plan still being computed is disowned, or it lands on the
       // panel after this has cleared it — see the destination effect above.
       planning.current += 1;
+      // Empty the field, so the next opening starts with nothing typed (todo 136).
+      setQuery('');
       setRoute(null);
       setTarget(null);
       setRefused(null);
