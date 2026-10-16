@@ -3,8 +3,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { setTuning } from '../../app/tuning';
 import { Poller } from '../Poller';
 import type { Watched } from '../revision';
+
+/** Off, a test's checks run only when it asks: no directory watch nudges one. */
+const watch = vi.hoisted(() => ({ on: true }));
+vi.mock('../revision', async (original) => {
+  const real = await original<typeof import('../revision')>();
+  return {
+    ...real,
+    directoriesOf: (watched: readonly Watched[]) =>
+      watch.on ? real.directoriesOf(watched) : Promise.resolve(new Map())
+  };
+});
 
 let dir: string;
 let file: string;
@@ -17,7 +30,17 @@ beforeEach(() => {
   pollers = [];
 });
 
+/** The fallback poll at `ms`, so a test can say which way in a reload came. */
+function pollEvery(ms: number): void {
+  setTuning({
+    ...DEFAULT_INTERNAL.tuning,
+    files: { ...DEFAULT_INTERNAL.tuning.files, pollIntervalMs: ms }
+  });
+}
+
 afterEach(() => {
+  watch.on = true;
+  setTuning(DEFAULT_INTERNAL.tuning);
   for (const poller of pollers) poller.stop();
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -101,5 +124,65 @@ describe('Poller', () => {
     await poller.poll();
     await reloaded(reload);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('notices a save by rename through the directory watch, the poll an hour away', async () => {
+    pollEvery(3_600_000);
+    const { reload } = open();
+    // What vim, JetBrains and the client's own write do: a new file renamed over the old.
+    const temporary = `${file}.tmp`;
+    fs.writeFileSync(temporary, 'a: 22\n');
+    fs.renameSync(temporary, file);
+    await reloaded(reload);
+    expect(reload).toHaveBeenCalledTimes(1);
+    // And again, which a watch on the file itself would have lost at the first rename.
+    fs.writeFileSync(temporary, 'a: 333\n');
+    fs.renameSync(temporary, file);
+    await reloaded(reload, 2);
+    expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps polling where no watch can start', async () => {
+    // Longer than the debounce, which each check that sees the change starts again.
+    pollEvery(200);
+    const missing = path.join(dir, 'later', 'default.yaml');
+    const { reload } = open(() => [{ kind: 'file', path: missing }]);
+    // Nothing watches `later/` (it is not there) or `dir` (not one of the store's).
+    fs.mkdirSync(path.dirname(missing));
+    fs.writeFileSync(missing, 'a: 1\n');
+    await reloaded(reload);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles its own write of one file, and still reloads a hand edit to another', async () => {
+    pollEvery(3_600_000);
+    watch.on = false;
+    const other = path.join(dir, 'other.yaml');
+    fs.writeFileSync(other, 'b: 1\n');
+    const { poller, reload } = open(() => [
+      { kind: 'file', path: file },
+      { kind: 'file', path: other }
+    ]);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const debounced = (): void => {
+      vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.files.debounceMs);
+    };
+    try {
+      fs.writeFileSync(file, 'a: 22\n');
+      poller.settleFile(file);
+      await poller.poll();
+      debounced();
+      expect(reload).not.toHaveBeenCalled();
+
+      // The positive control: a hand edit to the other file in the same window reloads.
+      fs.writeFileSync(other, 'b: 22\n');
+      fs.writeFileSync(file, 'a: 333\n');
+      poller.settleFile(file);
+      await poller.poll();
+      debounced();
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

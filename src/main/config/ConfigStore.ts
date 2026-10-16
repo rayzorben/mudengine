@@ -1,5 +1,7 @@
 /**
- * Loads, watches and republishes the YAML options file.
+ * Loads, watches and republishes the YAML options file, and holds its text
+ * so a save made in the client is live before the file is written
+ * (`HeldFiles`).
  *
  * The store owns exactly one file and never throws at its callers: a missing
  * file is created from the bundled template, and an unparseable one leaves the
@@ -21,6 +23,7 @@ import {
 } from '../../shared/config';
 import { mergeLoops, sameLoops, type Loop } from '../../shared/loops';
 import { errorMessage } from '../../shared/values';
+import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 
 export interface ConfigStoreEvents {
@@ -85,30 +88,9 @@ export class ConfigStore extends EventEmitter {
   private error: string | null = null;
   private loadedAt = 0;
 
-  /**
-   * The watcher polls `stat` rather than subscribing to inotify. That is the
-   * slower mechanism and it is the right one here: `fs.watch` loses the file
-   * the moment an editor saves by writing a temp file and renaming over the
-   * target — which vim, JetBrains and every atomic-save editor do by default —
-   * and this project lives inside a Dropbox tree, where the sync client
-   * replaces files the same way. `megamind-client` polls for exactly this
-   * reason; the earlier CoffeeScript `mudengine` used `fs.watch` and stops
-   * reloading after the first such save.
-   *
-   * The poll is an owned `setInterval` rather than `fs.watchFile`. The latter
-   * establishes its baseline with an *asynchronous* stat, so a write landing
-   * between `watch()` and that stat completing is absorbed into the baseline
-   * and never reported at all — the file silently stops being watched from the
-   * very first edit. Polling ourselves also keeps two stores on the same path
-   * independent, which `fs.watchFile`'s per-filename listener registry does
-   * not. One `stat` twice a second on a 2 KB file costs nothing.
-   *
-   * `Poller` holds the mechanism, once, for every store in this directory; the
-   * revision it settles on is the one that was actually parsed, so a write
-   * racing the read is picked up on the next tick instead of being mistaken
-   * for the starting state.
-   */
+  /** The watch over the file's directory and the fallback poll (`Poller`). */
   private readonly poller: Poller;
+  private readonly held: HeldFiles;
 
   constructor(options: ConfigStoreOptions) {
     super();
@@ -116,11 +98,24 @@ export class ConfigStore extends EventEmitter {
     this.poller = new Poller({
       watched: () => [{ kind: 'file', path: this.file }],
       reload: () => {
-        this.read();
+        this.load();
         this.emit('change', this.snapshot);
       }
     });
-    this.read();
+    this.held = new HeldFiles(
+      this.poller,
+      (file) => file === this.file,
+      () => {
+        this.absorb(this.held.read(this.file) ?? '');
+        this.emit('change', this.snapshot);
+      }
+    );
+    this.load();
+  }
+
+  /** The store's files, read and edited through what it holds (`HeldFiles`). */
+  get files(): OwnedFiles {
+    return this.held;
   }
 
   /** The current values. Always complete, even after a failed reload. */
@@ -189,7 +184,7 @@ export class ConfigStore extends EventEmitter {
    * parses to `null` — an empty file, or one that is only comments — is a valid
    * document meaning "all defaults", not an error.
    */
-  private read(): void {
+  private load(): void {
     let text: string;
 
     try {
@@ -199,10 +194,16 @@ export class ConfigStore extends EventEmitter {
       // Settled on the unreadable state, so a file that stays missing is quiet
       // until it appears.
       this.poller.settle();
+      this.held.replace(new Map());
       this.error = `Could not read ${this.file}: ${errorMessage(cause)}`;
       return;
     }
+    this.held.replace(new Map([[this.file, text]]));
+    this.absorb(text);
+  }
 
+  /** The values from the file's text; a text that does not parse keeps the last good ones. */
+  private absorb(text: string): void {
     let parsed: unknown;
     try {
       parsed = parse(text);

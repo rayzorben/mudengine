@@ -22,9 +22,9 @@
  * disagree with where it is, and moving one between scopes would be an edit
  * rather than a move.
  *
- * Watched like everything else the user owns — an owned poll over the listing,
- * for the reasons `ConfigStore` sets out — so a loop written by hand appears
- * without a restart, and one deleted stops being offered.
+ * Held and watched like every file the user owns (`HeldFiles`, `Poller`), so a
+ * loop filed from the client is live before its file is written, one written
+ * by hand appears without a restart, and one deleted stops being offered.
  */
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -33,10 +33,17 @@ import { parse } from 'yaml';
 
 import { isLoopFileName } from '../../shared/files';
 import { asLoops, type Loop } from '../../shared/loops';
-import type { Home } from '../app/home';
+import { LOOPS_DIR, type Home } from '../app/home';
 import { directoryNames } from './dirs';
+import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 import type { Watched } from './revision';
+
+/** The loops as a reader needs them: the settings editor's view of the live store. */
+export type LoopLists = Pick<LoopStore, 'globalLoops' | 'forServer' | 'forProfile'>;
+
+/** Which scope a loops directory is: everybody's, one realm's or one character's. */
+type LoopScopeOf = { scope: 'global' } | { scope: 'server' | 'profile'; id: string };
 
 export interface LoopStoreEvents {
   change: () => void;
@@ -53,6 +60,7 @@ export class LoopStore extends EventEmitter {
   private profiles = new Map<string, Loop[]>();
   private problems: string[] = [];
   private readonly poller: Poller;
+  private readonly held: HeldFiles;
 
   constructor(
     private readonly home: Home,
@@ -61,12 +69,22 @@ export class LoopStore extends EventEmitter {
     super();
     this.poller = new Poller({
       watched: () => this.watched(),
-      reload: () => {
-        this.read();
+      reload: () => this.reload()
+    });
+    this.held = new HeldFiles(
+      this.poller,
+      (file) => isLoopFileName(path.basename(file)) && this.scopeOf(path.dirname(file)) !== null,
+      () => {
+        this.resolve();
         this.emit('change');
       }
-    });
-    this.read();
+    );
+    this.load();
+  }
+
+  /** The store's files, read and edited through what it holds (`HeldFiles`). */
+  get files(): OwnedFiles {
+    return this.held;
   }
 
   /** Loops every character may walk. */
@@ -98,59 +116,91 @@ export class LoopStore extends EventEmitter {
     this.removeAllListeners();
   }
 
-  /** Re-reads now. For a caller that has just written one and wants it live. */
-  refresh(): void {
-    this.read();
+  /** Reads every loop file from disk now: the watch's reload, and an import's. */
+  reload(): void {
+    this.load();
     this.emit('change');
   }
 
-  private read(): void {
-    this.problems = [];
-    this.global = this.readDirectory(this.home.globalLoops);
-    this.servers = this.readScopes(this.home.serversDir, (id) => this.home.server(id).loops);
-    this.profiles = this.readScopes(this.home.profilesDir, (id) => this.home.profile(id).loops);
+  private load(): void {
+    const texts = new Map<string, string>();
+    const unread: string[] = [];
+    const take = (dir: string): void => {
+      for (const name of yamlFiles(dir)) {
+        const file = path.join(dir, name);
+        try {
+          texts.set(file, fs.readFileSync(file, 'utf8'));
+        } catch (error) {
+          unread.push(unreadable(file, error));
+        }
+      }
+    };
+    take(this.home.globalLoops);
+    for (const id of directories(this.home.serversDir)) take(this.home.server(id).loops);
+    for (const id of directories(this.home.profilesDir)) take(this.home.profile(id).loops);
+    this.held.replace(texts);
     this.poller.settle();
+    this.resolve(unread);
+  }
+
+  /** The three scopes from the held texts, each file in name order, each problem said. */
+  private resolve(unread: readonly string[] = []): void {
+    this.problems = [...unread];
+    const global: Loop[] = [];
+    const servers = new Map<string, Loop[]>();
+    const profiles = new Map<string, Loop[]>();
+    for (const file of this.held.files) {
+      const scope = this.scopeOf(path.dirname(file));
+      if (scope === null) continue;
+      const loops = this.loopsIn(file);
+      if (loops.length === 0) continue;
+      if (scope.scope === 'global') {
+        global.push(...loops);
+        continue;
+      }
+      const into = scope.scope === 'server' ? servers : profiles;
+      into.set(scope.id, [...(into.get(scope.id) ?? []), ...loops]);
+    }
+    this.global = global;
+    this.servers = servers;
+    this.profiles = profiles;
     for (const problem of this.problems) this.onError?.(problem);
   }
 
-  private readScopes(root: string, loopsIn: (id: string) => string): Map<string, Loop[]> {
-    const found = new Map<string, Loop[]>();
-    for (const id of directories(root)) {
-      const loops = this.readDirectory(loopsIn(id));
-      if (loops.length > 0) found.set(id, loops);
-    }
-    return found;
+  /** Whose loops a directory holds, or null for one that is not a loops directory. */
+  private scopeOf(dir: string): LoopScopeOf | null {
+    if (dir === this.home.globalLoops) return { scope: 'global' };
+    if (path.basename(dir) !== LOOPS_DIR) return null;
+    const owner = path.dirname(dir);
+    const id = path.basename(owner);
+    if (path.dirname(owner) === this.home.serversDir) return { scope: 'server', id };
+    if (path.dirname(owner) === this.home.profilesDir) return { scope: 'profile', id };
+    return null;
   }
 
-  private readDirectory(dir: string): Loop[] {
-    const loops: Loop[] = [];
-    for (const file of yamlFiles(dir)) {
-      const full = path.join(dir, file);
-      try {
-        const parsed = parse(fs.readFileSync(full, 'utf8'));
-        const found = readLoops(parsed, file.replace(/\.ya?ml$/i, ''));
-        if (found.length === 0) {
-          // Reported rather than skipped in silence: a file in a loops
-          // directory was put there on purpose, and one that produces nothing
-          // is a loop somebody believes they have.
-          this.problems.push(`${full} is in a loops directory but does not describe a loop`);
-          continue;
-        }
-        loops.push(...found);
-      } catch (error) {
-        this.problems.push(
-          `${full} could not be read: ${error instanceof Error ? error.message : 'unknown error'}`
-        );
+  /** The loops one held file describes; one that describes none, or does not parse, is said. */
+  private loopsIn(file: string): Loop[] {
+    try {
+      const parsed = parse(this.held.read(file) ?? '');
+      const found = readLoops(parsed, path.basename(file).replace(/\.ya?ml$/i, ''));
+      // Reported rather than skipped in silence: a file in a loops directory
+      // was put there on purpose, and one that produces nothing is a loop
+      // somebody believes they have.
+      if (found.length === 0) {
+        this.problems.push(`${file} is in a loops directory but does not describe a loop`);
       }
+      return found;
+    } catch (error) {
+      this.problems.push(unreadable(file, error));
+      return [];
     }
-    return loops;
   }
 
   /**
    * The loop files across all three scopes.
    *
    * Names, sizes and mtimes rather than contents: the point is to notice a
-   * change cheaply, and re-reading every loop twice a second to find out
+   * change cheaply, and re-reading every loop on every check to find out
    * whether any of them changed is the cost this avoids.
    */
   private watched(): Watched[] {
@@ -183,6 +233,10 @@ export function readLoops(parsed: unknown, fallbackName: string): Loop[] {
   if (Array.isArray(record['loops'])) return asLoops(record['loops']);
   const named = typeof record['name'] === 'string' && record['name'].trim().length > 0;
   return asLoops([named ? record : { ...record, name: fallbackName }]);
+}
+
+function unreadable(file: string, error: unknown): string {
+  return `${file} could not be read: ${error instanceof Error ? error.message : 'unknown error'}`;
 }
 
 /** Directory names inside `root`, sorted, or nothing if there is no `root`. */

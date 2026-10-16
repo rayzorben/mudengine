@@ -131,7 +131,9 @@ const CONFIG = path.join(HOME, 'global', 'default.yaml');
  * back, and a run then holds a socket per redial: two log files, a second
  * character counted as the third socket, and a remount checked mid-dial.
  * `LinkWatch.test.ts` owns that behaviour; the fixture cannot honestly
- * exercise it. The shipped template otherwise, comments and all.
+ * exercise it. And the fallback poll an hour away, so a toolbar press and a
+ * loop written by hand are seen through the store and the directory watch,
+ * never the poll (todo 137). The shipped template otherwise, comments and all.
  */
 const SNAP_DISTANCE = (() => {
   const internal = parseDocument(fs.readFileSync('resources/config/internal.yaml', 'utf8'));
@@ -139,6 +141,7 @@ const SNAP_DISTANCE = (() => {
     throw new Error('internal.yaml has no tuning.reconnect.silentForMs to switch off');
   }
   internal.setIn(['tuning', 'reconnect', 'silentForMs'], 0);
+  internal.setIn(['tuning', 'files', 'pollIntervalMs'], 3_600_000);
   fs.mkdirSync(HOME, { recursive: true });
   fs.writeFileSync(path.join(HOME, 'internal.yaml'), internal.toString(), 'utf8');
   // How near a dragged card must come to another's edge to snap to it, as the
@@ -4812,8 +4815,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       ].join('\n'),
       'utf8'
     );
-    // The stores poll rather than subscribe to inotify, and ProfileStore
-    // debounces on top of that, so this waits for two hops rather than one.
+    // The loop store's directory watch, then the profile store's resolve:
+    // two hops rather than one.
     await waitFor(async () => await offered('Added loop'));
     check(await offered('Added loop'), 'a loop added while the client runs reaches the palette');
 
@@ -9362,10 +9365,10 @@ const willFloat = async () =>
  * loaded put it somewhere else. A card nobody can find is a card that was
  * never built, and this one ships in a lane nothing else uses.
  *
- * The press is the other half. Every button writes one boolean into the
- * character's own YAML and the config store's poll brings it back — a round
- * trip through disk that nothing in `src/` can prove on its own, and one whose
- * failure mode (the button springs back) looks exactly like a broken control.
+ * The press is the other half. Every button sets one boolean through the
+ * profile store, which pushes the change before it writes the character's own
+ * YAML, with the fallback poll an hour away; its failure mode (the button
+ * springs back) looks exactly like a broken control.
  */
 {
   const toolbar = await evaluate(`
@@ -9411,11 +9414,9 @@ const willFloat = async () =>
   check(litBefore === 'true', 'a switch the character has on is drawn lit', litBefore);
   await evaluate(`(document.querySelector(${JSON.stringify(KEY)}).click(), true)`);
   /*
-   * The write goes to disk through `SettingsEditor` and comes back on the
-   * config store's 500ms poll, so this is a real round trip rather than a
-   * state update — which is the whole claim being checked: there is one source
-   * of truth for whether this character fights on its own, and it is the
-   * character's own YAML.
+   * The press goes through `SettingsEditor` to the profile store, which owns
+   * the value and the file: the one source of truth for whether this
+   * character fights on its own, pushed back to the button with no poll.
    */
   const litAfter = await readUntil(
     () =>
@@ -9433,9 +9434,8 @@ const willFloat = async () =>
   await evaluate(`(document.querySelector(${JSON.stringify(KEY)}).click(), true)`);
   /*
    * Back on, and the button says so rather than a second and a half saying it
-   * for us: the press writes a boolean into the character's own YAML and the
-   * config store's poll brings it back, so this is the whole round trip through
-   * disk — which is exactly what the picture below is of.
+   * for us: the profile store's change is what lights it, which is exactly
+   * what the picture below is of.
    */
   await readUntil(
     () =>

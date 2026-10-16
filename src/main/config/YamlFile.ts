@@ -22,9 +22,9 @@ import { parseDocument, type Document } from 'yaml';
  *   directory the user opens — and not none, because these edits are the only
  *   ones the user did not make themselves.
  * - **Written to a temporary file and renamed.** A crash mid-write must not
- *   leave a truncated options file. Rename is safe here precisely because the
- *   config watcher is an owned poll rather than `fs.watch`, which loses a file
- *   on the first atomic save (see CLAUDE.md).
+ *   leave a truncated options file. The stores watch each file's directory,
+ *   never the file, since a watch on the file is lost at the first rename
+ *   (`Poller`).
  */
 export type EditResult = { ok: true } | { ok: false; error: string };
 
@@ -48,24 +48,18 @@ export interface EditOptions {
   verify?(value: unknown): string | null;
 }
 
-/**
- * Reads, edits, verifies and replaces one YAML file.
- *
- * Creates it from an empty document if it does not exist, so a first server or
- * first character does not need the file to have been made by hand.
- */
-export function editYaml(file: string, options: EditOptions): EditResult {
-  let source = '';
-  const exists = fs.existsSync(file);
-  if (exists) {
-    try {
-      source = fs.readFileSync(file, 'utf8');
-    } catch (error) {
-      return { ok: false, error: `could not read ${path.basename(file)}: ${reason(error)}` };
-    }
-  }
+/** An edit applied to a file's text: the new text, or why it was refused. */
+export type Edited = { ok: true; text: string } | { ok: false; error: string };
 
-  const document = parseDocument(source);
+/**
+ * Applies one edit to a file's text without touching the disk: parse, mutate,
+ * stringify, verify. `source` null is a file that does not exist yet, edited
+ * from an empty document, so a first server or first character does not need
+ * the file to have been made by hand. A store applies it to the text it holds
+ * (`HeldFiles`); `editYaml` to what is on disk.
+ */
+export function applyEdit(file: string, source: string | null, options: EditOptions): Edited {
+  const document = parseDocument(source ?? '');
   if (document.errors.length > 0) {
     /*
      * Refuse rather than overwrite. A file that does not parse is a file
@@ -105,19 +99,50 @@ export function editYaml(file: string, options: EditOptions): EditResult {
     const complaint = options.verify(round.toJS() ?? {});
     if (complaint !== null) return { ok: false, error: complaint };
   }
+  return { ok: true, text };
+}
 
+/**
+ * Writes a file's new text: one rolling backup of what is on disk now, then a
+ * temporary file renamed over it. The backup is taken whenever the file
+ * exists, whatever the caller believed, so a hand edit a store had not read
+ * yet is still kept beside the file.
+ */
+export function writeYaml(file: string, text: string): EditResult {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    // One rolling backup, taken from what is on disk right now.
-    if (exists) fs.copyFileSync(file, `${file}.bak`);
+    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
     const temporary = `${file}.tmp-${process.pid}`;
     fs.writeFileSync(temporary, text, 'utf8');
     fs.renameSync(temporary, file);
   } catch (error) {
     return { ok: false, error: `could not save ${path.basename(file)}: ${reason(error)}` };
   }
-
   return { ok: true };
+}
+
+/** A file's text on disk, null when there is none, or why it could not be read. */
+export function readYaml(
+  file: string
+): { ok: true; text: string | null } | { ok: false; error: string } {
+  if (!fs.existsSync(file)) return { ok: true, text: null };
+  try {
+    return { ok: true, text: fs.readFileSync(file, 'utf8') };
+  } catch (error) {
+    return { ok: false, error: `could not read ${path.basename(file)}: ${reason(error)}` };
+  }
+}
+
+/**
+ * Reads, edits, verifies and replaces one YAML file on disk, for a writer that
+ * runs before any store holds it (migrations, `reconcileWithTemplate`) or
+ * with none running.
+ */
+export function editYaml(file: string, options: EditOptions): EditResult {
+  const read = readYaml(file);
+  if (!read.ok) return read;
+  const edited = applyEdit(file, read.text, options);
+  return edited.ok ? writeYaml(file, edited.text) : edited;
 }
 
 /**
@@ -136,6 +161,29 @@ export function removeYaml(file: string): EditResult {
   }
   return { ok: true };
 }
+
+/**
+ * Where the settings editor reads and writes a file the client owns: through
+ * the store that holds it, so the live value changes before the file does
+ * (todo 137), or straight on disk when no store is running.
+ */
+export interface YamlFiles {
+  /** The file's text as its owner holds it, null when there is none; throws when unreadable. */
+  read(file: string): string | null;
+  edit(file: string, options: EditOptions): EditResult;
+  remove(file: string): EditResult;
+}
+
+/** The files as they are on disk, for a caller with no store running. */
+export const ON_DISK: YamlFiles = {
+  read: (file) => {
+    const read = readYaml(file);
+    if (!read.ok) throw new Error(read.error);
+    return read.text;
+  },
+  edit: editYaml,
+  remove: removeYaml
+};
 
 /**
  * The message from a thrown value, without assuming it is an `Error`.

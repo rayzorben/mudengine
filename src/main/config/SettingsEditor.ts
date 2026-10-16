@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isMap, isSeq, parse, Scalar, type Document } from 'yaml';
 
-import { editYaml, removeYaml, type EditResult } from './YamlFile';
+import { ON_DISK, type EditResult, type YamlFiles } from './YamlFile';
 import type { RemoteGrant, RemoteName } from '../../shared/remotes';
 import { unknownWrites, type LayerWrite } from '../../shared/extensions';
-import { LoopStore, readLoops } from './LoopStore';
-import { ServerStore } from './ServerStore';
+import { LoopStore, readLoops, type LoopLists } from './LoopStore';
+import { ServerStore, type ServerList } from './ServerStore';
 import { directoryNames } from './dirs';
 import {
   asServer,
@@ -73,6 +73,13 @@ export interface SettingsEditorOptions {
   /** Every path the client owns. See `app/home.ts`. */
   home: Home;
   /**
+   * The files as the live stores hold them, and the realms and loops they
+   * resolved (todo 137): every read and write goes through the store that owns
+   * the file, so a save is live before the file is written. Absent, straight
+   * from disk, for a caller with no store running.
+   */
+  stores?: SettingsStores;
+  /**
    * What the spell pickers can offer, injected from `index.ts` because it is
    * the realm layer's to answer: the character's own persisted spellbook and
    * the cure gates computed over it, and the shipped realm's castable spells
@@ -89,6 +96,13 @@ export interface SettingsEditorOptions {
     };
     realm(): SpellOption[];
   };
+}
+
+/** What the editor reads and writes through: the live stores, or the disk. */
+export interface SettingsStores {
+  files: YamlFiles;
+  servers(): ServerList;
+  loops(): LoopLists;
 }
 
 /**
@@ -135,26 +149,46 @@ function differs(mine: unknown, value: unknown): boolean {
 export class SettingsEditor {
   private readonly home: Home;
   private readonly spells: SettingsEditorOptions['spells'];
+  private readonly stores: SettingsStores;
 
   constructor(options: SettingsEditorOptions) {
     this.home = options.home;
     this.spells = options.spells;
+    const home = options.home;
+    this.stores = options.stores ?? {
+      files: ON_DISK,
+      servers: () => new ServerStore(home),
+      loops: () => new LoopStore(home)
+    };
+  }
+
+  private get files(): YamlFiles {
+    return this.stores.files;
   }
 
   private profilePath(id: string): string {
     return this.home.profile(id).file;
   }
 
-  /**
-   * The servers and loops on disk, read fresh.
-   *
-   * Constructed per call rather than held: this class is built per IPC
-   * operation precisely so that what it writes is checked against what is on
-   * disk *now*, and a store captured when the screen opened would be a
-   * snapshot of whatever was there then.
-   */
-  private tree(): { servers: ServerStore; loops: LoopStore } {
-    return { servers: new ServerStore(this.home), loops: new LoopStore(this.home) };
+  /** Whether the file is there; one that cannot be read is, and its edit says why. */
+  private exists(file: string): boolean {
+    try {
+      return this.files.read(file) !== null;
+    } catch {
+      return true;
+    }
+  }
+
+  /** The refusal for a character with no file, or null. */
+  private missing(id: string): EditResult | null {
+    return this.exists(this.profilePath(id))
+      ? null
+      : { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+  }
+
+  /** The realms and loops, as the live stores resolved them. */
+  private tree(): { servers: ServerList; loops: LoopLists } {
+    return { servers: this.stores.servers(), loops: this.stores.loops() };
   }
 
   /**
@@ -168,7 +202,7 @@ export class SettingsEditor {
   private baseSource(): unknown {
     const file = this.readOptions();
     const stated = normalizeConfig(file).servers;
-    const found = new ServerStore(this.home).servers;
+    const found = this.stores.servers().all.map((entry) => entry.server);
     if (found.length === 0) return file;
     return {
       ...(isRecord(file) ? file : {}),
@@ -179,7 +213,7 @@ export class SettingsEditor {
   /** The options file alone, for an edit that has to leave the rest of it be. */
   private readOptions(): unknown {
     try {
-      return parse(fs.readFileSync(this.home.options, 'utf8')) ?? {};
+      return parse(this.files.read(this.home.options) ?? '') ?? {};
     } catch {
       // A missing or unreadable options file is not a reason to refuse a
       // character: `resolveProfile` treats an empty base as "no saved servers",
@@ -208,9 +242,9 @@ export class SettingsEditor {
      * later change to Global changes what the *next* character starts with,
      * not this one. That is the whole of "Global is just defaults".
      */
-    const creating = !fs.existsSync(file);
+    const creating = !this.exists(file);
 
-    const written = editYaml(file, {
+    const written = this.files.edit(file, {
       mutate: (document) => {
         document.setIn(['name'], draft.name.length > 0 ? draft.name : id);
         document.setIn(['accent'], draft.accent);
@@ -486,7 +520,7 @@ export class SettingsEditor {
      * profile was refused must not end up with loops it cannot walk.
      */
     if (!written.ok) return written;
-    return writeLoops(this.home.profile(id).loops, draft.loops);
+    return writeLoops(this.files, this.home.profile(id).loops, draft.loops);
   }
 
   /**
@@ -514,16 +548,15 @@ export class SettingsEditor {
    * without bound and would read, in the user's own file, as a list of people
    * with permissions — when what it holds is people with none.
    *
-   * Comments survive, like every write here: `editYaml` uses `parseDocument`,
+   * Comments survive, like every write here: `applyEdit` uses `parseDocument`,
    * and the file being edited is full of the user's own notes.
    */
   setRemoteGrant(id: string, name: string, grant: RemoteGrant): EditResult {
     const who = name.trim();
     if (who.length === 0) return { ok: false, error: t('errors.settings.remoteNameRequired') };
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
 
     // Lower-cased, once, the way `normalizeConfig` and `PlayerRegistry` key a
     // name: `Soul` clicked from a `who` listing and `soul` typed in a telepath
@@ -533,7 +566,7 @@ export class SettingsEditor {
     const deny = [...new Set(grant.deny)];
     const allow = [...new Set(grant.allow)].filter((remote) => !deny.includes(remote));
 
-    return editYaml(file, {
+    return this.files.edit(file, {
       mutate: (document) => {
         if (allow.length === 0 && deny.length === 0) {
           document.deleteIn(['automation', 'remotes', 'players', key]);
@@ -575,11 +608,10 @@ export class SettingsEditor {
    */
   setGangRemotes(id: string, remotes: readonly RemoteName[]): EditResult {
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
     const gang = [...new Set(remotes)];
-    return editYaml(file, {
+    return this.files.edit(file, {
       mutate: (document) => document.setIn(['automation', 'remotes', 'gang'], gang)
     });
   }
@@ -595,10 +627,9 @@ export class SettingsEditor {
    */
   setRemoteGangpath(id: string, on: boolean): EditResult {
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
-    return editYaml(file, {
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
+    return this.files.edit(file, {
       mutate: (document) => document.setIn(['automation', 'remotes', 'gangpath'], on)
     });
   }
@@ -614,10 +645,9 @@ export class SettingsEditor {
    */
   setSupplies(id: string, items: readonly SupplyItem[]): EditResult {
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
-    return editYaml(file, { mutate: (document) => writeSupplyItems(document, items) });
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
+    return this.files.edit(file, { mutate: (document) => writeSupplyItems(document, items) });
   }
 
   /**
@@ -636,10 +666,9 @@ export class SettingsEditor {
    */
   setAutomationSwitch(id: string, name: AutomationSwitch, on: boolean): EditResult {
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
-    return editYaml(file, {
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
+    return this.files.edit(file, {
       mutate: (document) => document.setIn(['automation', ...AUTOMATION_SWITCHES[name]], on)
     });
   }
@@ -652,15 +681,14 @@ export class SettingsEditor {
    */
   setAutomationValues(id: string, writes: readonly LayerWrite[]): EditResult {
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
     const unknown = unknownWrites(DEFAULT_CONFIG.automation, writes);
     if (unknown.length > 0) {
       const paths = unknown.map(([path]) => path.join('.')).join(', ');
       return { ok: false, error: t('errors.settings.unknownSettings', { paths }) };
     }
-    return editYaml(file, {
+    return this.files.edit(file, {
       mutate: (document) => {
         for (const [path, value] of writes) document.setIn(['automation', ...path], value);
       }
@@ -674,7 +702,9 @@ export class SettingsEditor {
   ownAliases(id: string): StatedPair[] {
     const file = this.profilePath(id);
     try {
-      const raw: unknown = parse(fs.readFileSync(file, 'utf8'));
+      const text = this.files.read(file);
+      if (text === null) throw new Error(t('errors.settings.characterNotFound', { id }));
+      const raw: unknown = parse(text);
       const automation = isRecord(raw) && isRecord(raw['automation']) ? raw['automation'] : {};
       return statedPairs(automation['aliases']);
     } catch (error) {
@@ -691,9 +721,8 @@ export class SettingsEditor {
    */
   setAlias(id: string, word: string, line: string | null): EditResult {
     const file = this.profilePath(id);
-    if (!fs.existsSync(file)) {
-      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
-    }
+    const missing = this.missing(id);
+    if (missing !== null) return missing;
     const spelled = aliasWord(word);
     const why = line === null ? null : aliasRefusal(spelled, line);
     if (why !== null) return { ok: false, error: aliasRefusalText(why, t) };
@@ -704,7 +733,7 @@ export class SettingsEditor {
       (pair) => aliasWord(pair.name) === spelled && pair.text.trim().length > 0
     );
     const at = ['automation', 'aliases', spelled];
-    return editYaml(file, {
+    return this.files.edit(file, {
       mutate: (document) => {
         if (line !== null) document.setIn(at, line.trim());
         else if (global) document.setIn(at, '');
@@ -752,17 +781,11 @@ export class SettingsEditor {
      * Its existing file when it has one, so a name kept is a file kept and the
      * comments somebody wrote in it survive being chosen again.
      */
-    const existing = readLoopFiles(dir);
+    const existing = readLoopFiles(this.files, dir);
     const found = existing.find((entry) => entry.name.toLowerCase() === loop.name.toLowerCase());
     const slug = found?.slug ?? loopFileName(loop.name, new Set(existing.map((e) => e.slug)));
 
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-    } catch (error) {
-      return { ok: false, error: errorMessage(error) };
-    }
-
-    return editYaml(path.join(dir, `${slug}.yaml`), {
+    return this.files.edit(path.join(dir, `${slug}.yaml`), {
       // Key by key, like every other edit to a file the user owns.
       mutate: (document) => {
         const node = loopNode(loop);
@@ -786,9 +809,9 @@ export class SettingsEditor {
     if (scope === 'global') return this.home.globalLoops;
     if (owner === null || owner.length === 0) return null;
     if (scope === 'profile') {
-      return fs.existsSync(this.profilePath(owner)) ? this.home.profile(owner).loops : null;
+      return this.exists(this.profilePath(owner)) ? this.home.profile(owner).loops : null;
     }
-    const id = new ServerStore(this.home).idFor(owner);
+    const id = this.stores.servers().idFor(owner);
     return id === undefined ? null : this.home.server(id).loops;
   }
 
@@ -802,7 +825,7 @@ export class SettingsEditor {
    * reports the removal and the session stays until it is idle.
    */
   deleteProfile(id: string): EditResult {
-    return removeYaml(this.profilePath(id));
+    return this.files.remove(this.profilePath(id));
   }
 
   /**
@@ -835,7 +858,7 @@ export class SettingsEditor {
     const id = existing ?? fileSlug(draft.name, new Set(servers.all.map((entry) => entry.id)));
     const scope = this.home.server(id);
 
-    const result = editYaml(scope.file, {
+    const result = this.files.edit(scope.file, {
       mutate: (document) => {
         document.setIn(['name'], draft.name);
         document.setIn(['host'], draft.host);
@@ -919,7 +942,7 @@ export class SettingsEditor {
      * same move the migration makes, made one server at a time.
      */
     if (existing === undefined) this.dropStatedServer(previousName ?? draft.name);
-    return writeLoops(scope.loops, draft.loops);
+    return writeLoops(this.files, scope.loops, draft.loops);
   }
 
   /**
@@ -932,7 +955,7 @@ export class SettingsEditor {
    */
   private dropStatedServer(name: string): void {
     const wanted = name.trim().toLowerCase();
-    editYaml(this.home.options, {
+    this.files.edit(this.home.options, {
       mutate: (document) => {
         const entries = (parse(String(document))?.['servers'] ?? []) as { name?: string }[];
         if (!Array.isArray(entries)) return;
@@ -982,7 +1005,7 @@ export class SettingsEditor {
     }
 
     const scope = this.home.server(id);
-    const removed = removeYaml(scope.file);
+    const removed = this.files.remove(scope.file);
     if (!removed.ok) return removed;
 
     try {
@@ -1014,7 +1037,7 @@ export class SettingsEditor {
     const config = normalizeConfig(file);
     // As written, for `statedPairs`'s reason: a refused entry is shown, not lost on a save.
     const stated = isRecord(file) ? file : {};
-    const loops = new LoopStore(this.home).globalLoops;
+    const loops = this.stores.loops().globalLoops;
 
     return {
       connection: {
@@ -1133,7 +1156,7 @@ export class SettingsEditor {
    * default means anyway.
    */
   saveGlobal(draft: GlobalDraft): EditResult {
-    const written = editYaml(this.home.options, {
+    const written = this.files.edit(this.home.options, {
       mutate: (document) => {
         const set = (path: readonly string[], value: unknown): void => {
           document.setIn([...path], value);
@@ -1245,7 +1268,7 @@ export class SettingsEditor {
     });
 
     if (!written.ok) return written;
-    return writeLoops(this.home.globalLoops, draft.loops);
+    return writeLoops(this.files, this.home.globalLoops, draft.loops);
   }
 
   /**
@@ -1272,10 +1295,11 @@ export class SettingsEditor {
 
     for (const id of this.characterIds()) {
       const file = this.home.profile(id).file;
-      if (!fs.existsSync(file)) continue;
       let raw: unknown;
       try {
-        raw = parse(fs.readFileSync(file, 'utf8'));
+        const text = this.files.read(file);
+        if (text === null) continue;
+        raw = parse(text);
       } catch (error) {
         // One unreadable file never costs you the others, and the screen is
         // where somebody can actually do something about it.
@@ -1464,7 +1488,7 @@ export class SettingsEditor {
     const found: string[] = [];
     for (const id of this.characterIds()) {
       try {
-        const raw = parse(fs.readFileSync(this.home.profile(id).file, 'utf8'));
+        const raw = parse(this.files.read(this.home.profile(id).file) ?? '');
         const server = raw?.['server'];
         if (typeof server === 'string' && server.trim().toLowerCase() === wanted) found.push(id);
       } catch {
@@ -1485,7 +1509,7 @@ export class SettingsEditor {
  * loop they can see actually lives.
  */
 function inheritedLoops(
-  tree: { servers: ServerStore; loops: LoopStore },
+  tree: { servers: ServerList; loops: LoopLists },
   serverName: string | null
 ): ScopedLoop[] {
   const id = serverName === null ? undefined : tree.servers.idFor(serverName);
@@ -1689,14 +1713,14 @@ function quoted(text: string): Scalar<string> {
  * - **Delete without a backup.** `removeYaml` keeps one, because this runs on
  *   a click and a loop is an evening's work.
  */
-export function writeLoops(dir: string, loops: readonly Loop[]): EditResult {
-  const existing = readLoopFiles(dir);
+export function writeLoops(files: YamlFiles, dir: string, loops: readonly Loop[]): EditResult {
+  const existing = readLoopFiles(files, dir);
   const wanted = new Map(loops.map((loop) => [loop.name.toLowerCase(), loop]));
   const taken = new Set(existing.map((entry) => entry.slug));
 
   for (const entry of existing) {
     if (wanted.has(entry.name.toLowerCase())) continue;
-    const gone = removeYaml(entry.file);
+    const gone = files.remove(entry.file);
     if (!gone.ok) return gone;
     taken.delete(entry.slug);
   }
@@ -1705,7 +1729,7 @@ export function writeLoops(dir: string, loops: readonly Loop[]): EditResult {
     const found = existing.find((entry) => entry.name.toLowerCase() === loop.name.toLowerCase());
     const slug = found?.slug ?? loopFileName(loop.name, taken);
     taken.add(slug);
-    const written = editYaml(path.join(dir, `${slug}.yaml`), {
+    const written = files.edit(path.join(dir, `${slug}.yaml`), {
       /*
        * Set key by key rather than replacing the document, so a comment
        * somebody wrote above `stops:` survives an edit made on the screen —
@@ -1726,7 +1750,10 @@ export function writeLoops(dir: string, loops: readonly Loop[]): EditResult {
 }
 
 /** What is already in a loops directory: which file holds which loop. */
-function readLoopFiles(dir: string): { file: string; slug: string; name: string }[] {
+function readLoopFiles(
+  files: YamlFiles,
+  dir: string
+): { file: string; slug: string; name: string }[] {
   let names: string[];
   try {
     names = fs.readdirSync(dir).sort();
@@ -1740,7 +1767,7 @@ function readLoopFiles(dir: string): { file: string; slug: string; name: string 
     const file = path.join(dir, name);
     const slug = name.replace(/\.ya?ml$/i, '');
     try {
-      const loops = readLoops(parse(fs.readFileSync(file, 'utf8')), slug);
+      const loops = readLoops(parse(files.read(file) ?? ''), slug);
       // Exactly one, or this file is not one this screen manages.
       if (loops.length === 1 && loops[0]) found.push({ file, slug, name: loops[0].name });
     } catch {

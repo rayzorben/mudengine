@@ -25,9 +25,11 @@ export interface TransferDeps {
   host: Pick<Host, 'transport' | 'chooseFile' | 'chooseSaveFile' | 'deliver'>;
   /** Whether a loaded character already uses this id, file or no file. */
   loaded(id: string): boolean;
+  /** An import has written its files: the stores read them now rather than at their next check. */
+  imported(): void;
 }
 
-export function handleCharacterTransfer({ home, host, loaded }: TransferDeps): void {
+export function handleCharacterTransfer({ home, host, loaded, imported }: TransferDeps): void {
   const { handle } = host.transport;
 
   handle(
@@ -70,6 +72,7 @@ export function handleCharacterTransfer({ home, host, loaded }: TransferDeps): v
       return { kind: 'refused', error: t('app.transfer.notACharacter') };
     }
     const { maxImportBytes } = tuning().transfer;
+    let result: CharacterImport;
     try {
       // Asked before reading: a device, a directory or a huge log picked by
       // mistake is refused without main holding it.
@@ -78,12 +81,14 @@ export function handleCharacterTransfer({ home, host, loaded }: TransferDeps): v
         return { kind: 'refused', error: t('app.transfer.notACharacter') };
       }
       const bytes = await fs.promises.readFile(rawFile);
-      return await importCharacter(home, bytes, { maxBytes: maxImportBytes, taken: loaded });
+      result = await importCharacter(home, bytes, { maxBytes: maxImportBytes, taken: loaded });
     } catch (error) {
       return {
         kind: 'refused',
         error: t('app.transfer.unreadable', { file: `${rawFile}: ${errorMessage(error)}` })
       };
     }
+    if (result.kind === 'imported') imported();
+    return result;
   });
 }

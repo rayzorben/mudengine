@@ -1,20 +1,13 @@
 /**
- * Loads and watches the profiles directory: one YAML file per character.
+ * Loads and watches the profiles directory: one YAML file per character, as a
+ * directory of its own. It holds each file's text and resolves the characters
+ * from it, so a change the client makes (`edit`, through `HeldFiles`) reaches
+ * every session before the file is written, and the watch (`Poller`) reloads
+ * only an edit made elsewhere. A revision covers the listing, so a character
+ * appearing or going counts as a change. `mudengine-config` has the reasons.
  *
- * A sibling of `ConfigStore`, and it polls for the same reasons — `fs.watch`
- * loses a file the moment an editor saves by writing a temp file and renaming
- * over the target, which vim, JetBrains and every atomic-save editor do by
- * default, and this project lives inside a Dropbox tree where the sync client
- * replaces files the same way. `fs.watchFile` establishes its baseline with an
- * asynchronous stat, so an edit landing during startup is absorbed and never
- * reported. Both failure modes are silent. See `ConfigStore` for the full
- * account; the only difference here is that the revision covers a *listing*
- * rather than one path, so a file appearing or disappearing counts as a change
- * too.
- *
- * Like the options store, it never throws at its callers. A file that will not
- * parse, or that cannot name a server, is reported and skipped — the other
- * characters load. One broken profile must not cost you the rest of them.
+ * It never throws at its callers. A file that will not parse, or that cannot
+ * name a server, is reported and skipped; the other characters load.
  */
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -26,6 +19,7 @@ import { resolveProfile, type Profile } from '../../shared/profiles';
 import { errorMessage } from '../../shared/values';
 import { PROFILE_FILE } from '../app/home';
 import { directoryNames } from './dirs';
+import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 
 export interface ProfileSnapshot {
@@ -80,6 +74,11 @@ export class ProfileStore extends EventEmitter {
   private errors: string[] = [];
   private loadedAt = 0;
   private readonly poller: Poller;
+  private readonly held: HeldFiles;
+  /** Files the last read from disk could not open, and why. */
+  private readErrors: string[] = [];
+  /** The directory itself, when it could not be listed. */
+  private unlisted: string | null = null;
 
   constructor(private readonly options: ProfileStoreOptions) {
     super();
@@ -92,12 +91,20 @@ export class ProfileStore extends EventEmitter {
           each: (id) => [{ kind: 'file', path: path.join(this.dir, id, PROFILE_FILE) }]
         }
       ],
-      reload: () => {
-        this.read();
-        this.emit('change', this.snapshot);
-      }
+      reload: () => this.reload()
     });
-    this.read();
+    this.held = new HeldFiles(
+      this.poller,
+      (file) =>
+        path.basename(file) === PROFILE_FILE && path.dirname(path.dirname(file)) === this.dir,
+      () => this.refresh()
+    );
+    this.load();
+  }
+
+  /** The store's files, read and edited through what it holds (`HeldFiles`). */
+  get files(): OwnedFiles {
+    return this.held;
   }
 
   get directory(): string {
@@ -131,13 +138,16 @@ export class ProfileStore extends EventEmitter {
   }
 
   /**
-   * Re-resolves every character against a changed global configuration.
-   *
-   * Nothing on disk moved, so the listing is untouched — this is the path for
-   * "the options file was edited", where each profile's overlay has to be
-   * reapplied to new base values.
+   * Re-resolves every character from the held files, for a changed global
+   * configuration or loop, or the store's own edit. Nothing is read from disk.
    */
   refresh(): void {
+    this.resolve();
+    this.emit('change', this.snapshot);
+  }
+
+  /** Reads every character's file from disk now: the watch's reload, and an import's. */
+  reload(): void {
     this.load();
     this.emit('change', this.snapshot);
   }
@@ -149,41 +159,19 @@ export class ProfileStore extends EventEmitter {
 
   // ---------------------------------------------------------------- internals
 
-  private read(): void {
+  private load(): void {
     /*
-     * Settled before loading rather than after, so a file changing while the
+     * Settled before reading rather than after, so a file changing while the
      * profiles are being read differs from the settled listing and is picked
-     * up on the next tick instead of being absorbed.
+     * up on the next check instead of being absorbed.
      */
     this.poller.settle();
-    this.load();
-  }
-
-  /**
-   * The character directories, sorted so tabs do not reshuffle.
-   *
-   * A character is a **directory** now rather than a file, because it owns
-   * loops of its own and a file cannot contain a directory. `strict` lets the
-   * caller that has to distinguish "no directory yet" from "unreadable" see
-   * the error, while the twice-a-second listing quietly reads nothing.
-   */
-  private ids(options: { strict?: boolean } = {}): string[] {
-    try {
-      return directoryNames(this.dir);
-    } catch (error) {
-      if (options.strict) throw error;
-      return [];
-    }
-  }
-
-  private load(): void {
-    const base = this.options.base();
-    const profiles: Profile[] = [];
+    const texts = new Map<string, string>();
     const errors: string[] = [];
-
-    let ids: string[];
+    this.unlisted = null;
+    let ids: string[] = [];
     try {
-      ids = this.ids({ strict: true });
+      ids = directoryNames(this.dir);
     } catch (cause) {
       /*
        * A directory that has become unreadable is not the same as one with no
@@ -191,23 +179,39 @@ export class ProfileStore extends EventEmitter {
        * with nothing said. `ENOENT` *is* the empty case — the directory has
        * simply not been created yet — and stays quiet.
        */
-      ids = [];
-      const code = (cause as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT') {
-        this.errors = [`${this.dir}: ${errorMessage(cause)}`];
-        this.current = [];
-        this.loadedAt = Date.now();
-        return;
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.unlisted = `${this.dir}: ${errorMessage(cause)}`;
       }
     }
-
     for (const id of ids) {
       const file = path.join(this.dir, id, PROFILE_FILE);
       if (!fs.existsSync(file)) continue;
+      try {
+        texts.set(file, fs.readFileSync(file, 'utf8'));
+      } catch (error) {
+        errors.push(`${id}: ${errorMessage(error)}`);
+      }
+    }
+    this.readErrors = errors;
+    this.held.replace(texts);
+    this.resolve();
+  }
 
+  /** The characters, ordered by id, from the held texts. */
+  private resolve(): void {
+    this.loadedAt = Date.now();
+    if (this.unlisted !== null) {
+      this.errors = [this.unlisted];
+      this.current = [];
+      return;
+    }
+    const base = this.options.base();
+    const profiles: Profile[] = [];
+    const errors = [...this.readErrors];
+    for (const { file, id } of this.held.byDirectory()) {
       let raw: unknown;
       try {
-        raw = parse(fs.readFileSync(file, 'utf8'));
+        raw = parse(this.held.read(file) ?? '');
       } catch (error) {
         errors.push(`${id}: ${errorMessage(error)}`);
         continue;
@@ -242,6 +246,5 @@ export class ProfileStore extends EventEmitter {
 
     this.current = profiles;
     this.errors = errors;
-    this.loadedAt = Date.now();
   }
 }

@@ -29,14 +29,15 @@ export interface ToolbarCardProps extends CardChrome {
  * The strips overlay the console rather than taking rows from it, so a toolbar
  * appearing does not resize the terminal, which would go out over NAWS.
  *
- * ## Every button is a toggle, and the state is the character's own file
+ * ## Every button is a toggle, and the profile store owns the state
  *
- * Pressing a switch writes one boolean into that character's YAML through
- * `SettingsEditor`, comments intact, and the config store's poll brings it
- * back half a second later — the path the Gang card's permission grid already
- * takes. There is no second, session-scoped copy of "is auto-combat on": two
- * places that can answer the same question eventually disagree, and the one
- * somebody reads is whichever is wrong.
+ * Pressing a switch hands one boolean to the profile store through
+ * `SettingsEditor`, which changes the live value, pushes it back to this
+ * button and the session in the same turn, then writes the character's YAML,
+ * comments intact (todo 137) — the path the Gang card's permission grid
+ * takes. There is no second copy of "is auto-combat on" here or in the
+ * session: two places that can answer the same question eventually disagree,
+ * and the one somebody reads is whichever is wrong.
  *
  * That also means a toolbar press survives a restart, which for the master
  * switch is the whole point: somebody who turned automation off before going

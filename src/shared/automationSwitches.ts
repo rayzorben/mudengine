@@ -12,9 +12,9 @@ import { isRecord } from './values';
  * Every one is a **boolean already in the options file** — this adds no
  * setting and invents no runtime state beside the config. There is one source
  * of truth for whether this character fights on its own, and it is the
- * character's own YAML; the toolbar writes it (comments intact, through
- * `SettingsEditor`) and the store's poll brings it back half a second later,
- * exactly as the Gang card's permission grid already does.
+ * character's own YAML, held by the profile store; the toolbar hands it the
+ * change (through `SettingsEditor`), which is live at once and then written,
+ * comments intact, exactly as the Gang card's permission grid does.
  *
  * The alternative — a session-scoped override the file does not know about —
  * was rejected for the reason `ui.showDiagnostics` was retired: two places

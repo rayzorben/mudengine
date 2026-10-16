@@ -2336,8 +2336,11 @@ const TUNING_DEFAULTS = {
   },
   /** Watching the files the client owns. */
   files: {
-    /** One listing twice a second costs nothing. */
-    pollIntervalMs: 500,
+    /**
+     * The fallback check, for a disk that gives no change notification (an
+     * Azure Files share). Where it does, a hand edit is seen at once.
+     */
+    pollIntervalMs: 5000,
     /** Collapses the burst of writes an editor emits into a single reload. */
     debounceMs: 80
   },

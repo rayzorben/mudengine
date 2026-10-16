@@ -2534,6 +2534,42 @@ describe("the debug window's trace", () => {
   });
 });
 
+describe('the file poll, a fallback since the directory watch (todo 137)', () => {
+  /** The paragraph above `files.pollIntervalMs`, on the key or on the block. */
+  const paragraphIn = (text: string): unknown => {
+    const files = parseDocument(text).getIn(['tuning', 'files'], true);
+    if (!isMap(files)) return undefined;
+    const first = files.items[0]?.key;
+    return (isScalar(first) ? first.commentBefore : undefined) ?? files.commentBefore;
+  };
+  const held = (): unknown =>
+    (parse(fs.readFileSync(home.internal, 'utf8')) as { tuning: { files: Record<string, number> } })
+      .tuning.files['pollIntervalMs'];
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+  });
+
+  it('carries the old default and its paragraph forward to the template', () => {
+    const old =
+      'tuning:\n  files:\n    # One listing twice a second costs nothing.\n    pollIntervalMs: 500\n';
+    fs.writeFileSync(home.internal, old, 'utf8');
+    migrate(true);
+    expect(held()).toBe(DEFAULT_INTERNAL.tuning.files.pollIntervalMs);
+    const shipped = paragraphIn(fs.readFileSync('resources/config/internal.yaml', 'utf8'));
+    expect(shipped).toBeTypeOf('string');
+    expect(paragraphIn(fs.readFileSync(home.internal, 'utf8'))).toBe(shipped);
+    expect(notesOf(said, 'notices.migration.filePollFallback')).toHaveLength(1);
+  });
+
+  it('leaves a figure the player chose alone', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  files:\n    pollIntervalMs: 60000\n', 'utf8');
+    migrate(true);
+    expect(held()).toBe(60000);
+    expect(notesOf(said, 'notices.migration.filePollFallback')).toHaveLength(0);
+  });
+});
+
 describe('the back button on an existing toolbar', () => {
   const ROW = `toolbar:
   pinned:

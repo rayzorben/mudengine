@@ -137,10 +137,8 @@ export interface SessionHostOptions {
    * exist.
    */
   worldFor(id: SessionId): WorldGraph | undefined;
-  /** Write one automation switch into a character's file; whether it was written. */
+  /** Set one automation switch, live and then in the character's file; whether it was written. */
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
-  /** Read every character's file again now, rather than on the next poll. */
-  reread?(): void;
   /** This character's own aliases as its file writes them (todo 134). */
   ownAliases?(id: SessionId): readonly StatedPair[];
   /** Write one alias into a character's file, null removing it: the error, or null. */
@@ -759,10 +757,10 @@ export class SessionHost {
     return true;
   }
 
-  /** A character's own aliases, written and read back now, as a switch is (`switchNow`). */
+  /** A character's own aliases, live as soon as written, as a switch is (`switchNow`). */
   private aliasFile(id: SessionId): AliasFile | null {
-    const { ownAliases, writeAlias, reread } = this.options;
-    if (ownAliases === undefined || writeAlias === undefined || reread === undefined) return null;
+    const { ownAliases, writeAlias } = this.options;
+    if (ownAliases === undefined || writeAlias === undefined) return null;
     return {
       // Unreadable, the list is said without its marks, and why.
       own: () => {
@@ -776,21 +774,13 @@ export class SessionHost {
           return [];
         }
       },
-      write: (word, line) => {
-        const error = writeAlias(id, word, line);
-        if (error === null) reread();
-        return error;
-      }
+      write: (word, line) => writeAlias(id, word, line)
     };
   }
 
-  /** One switch written into the character's file and read back now. Nothing is written that cannot be read back. */
+  /** One switch set now: the profile store reconfigures this session before it writes the file. */
   private switchNow(id: SessionId, name: AutomationSwitch, on: boolean): boolean {
-    const { flipSwitch, reread } = this.options;
-    if (flipSwitch === undefined || reread === undefined) return false;
-    if (!flipSwitch(id, name, on)) return false;
-    reread();
-    return true;
+    return this.options.flipSwitch?.(id, name, on) ?? false;
   }
 
   /**

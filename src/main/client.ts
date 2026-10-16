@@ -24,7 +24,12 @@ import { setTuning, tuning } from './app/tuning';
 import { ProfileStore, type ProfileSnapshot } from './config/ProfileStore';
 import { ServerStore } from './config/ServerStore';
 import { LoopStore } from './config/LoopStore';
-import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
+import {
+  SettingsEditor,
+  type SettingsEditorOptions,
+  type SettingsStores
+} from './config/SettingsEditor';
+import { routeFiles } from './config/HeldFiles';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
 import { CHARACTER_RECORDS, homeAt, homeRoot, type Home } from './app/home';
@@ -1560,16 +1565,35 @@ function createInternal(): InternalStore {
   return store;
 }
 
+/**
+ * The settings editor over the live stores: every read and write goes to the
+ * store holding the file, so the sessions and every window have a change
+ * before the file is written (todo 137). Before the stores are up it reads
+ * and writes the disk.
+ */
+function settingsEditor(spells?: SettingsEditorOptions['spells']): SettingsEditor {
+  return new SettingsEditor({ home, spells, stores: settingsStores() });
+}
+
+function settingsStores(): SettingsStores | undefined {
+  const [options, characters, realms, laps] = [config, profiles, servers, loops];
+  if (!options || !characters || !realms || !laps) return undefined;
+  return {
+    files: routeFiles([options.files, characters.files, realms.files, laps.files]),
+    servers: () => realms,
+    loops: () => laps
+  };
+}
+
 function createHost(): SessionHost {
   return new SessionHost({
     worldFor,
     // The same write the toolbar's press makes, so the toggle shows it.
-    flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
-    reread: () => profiles?.refresh(),
+    flipSwitch: (id, name, on) => settingsEditor().setAutomationSwitch(id, name, on).ok,
     // The `alias` command's read and write, the character's own file only (todo 134).
-    ownAliases: (id) => new SettingsEditor({ home }).ownAliases(id),
+    ownAliases: (id) => settingsEditor().ownAliases(id),
     writeAlias: (id, word, line) => {
-      const result = new SettingsEditor({ home }).setAlias(id, word, line);
+      const result = settingsEditor().setAlias(id, word, line);
       return result.ok ? null : result.error;
     },
     loopShelf: () => loopCatalogue().all(),
@@ -1593,7 +1617,7 @@ function createHost(): SessionHost {
       // Apart from the home's own folders, whatever an extension is called.
       records: (name, id) => home.state('extension-records', name, id),
       keep: (id, writes) => {
-        const result = new SettingsEditor({ home }).setAutomationValues(id, writes);
+        const result = settingsEditor().setAutomationValues(id, writes);
         return result.ok ? null : result.error;
       }
     },
@@ -3254,7 +3278,7 @@ function registerIpc(): void {
     realm: () => realms?.shippedGraph().castableSpells() ?? []
   };
 
-  const editor = (): SettingsEditor => new SettingsEditor({ home, spells: settingsSpells });
+  const editor = (): SettingsEditor => settingsEditor(settingsSpells);
 
   handle(Invoke.settingsSnapshot, () => editor().snapshot());
 
@@ -3282,7 +3306,17 @@ function registerIpc(): void {
     })
   );
 
-  handleCharacterTransfer({ home, host: platform, loaded: (id) => host?.has(id) ?? false });
+  handleCharacterTransfer({
+    home,
+    host: platform,
+    loaded: (id) => host?.has(id) ?? false,
+    // The realm and its loops before the character, so it resolves against them.
+    imported: () => {
+      servers?.reload();
+      loops?.reload();
+      profiles?.reload();
+    }
+  });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
     const id = asProfileId(rawId);
@@ -3291,8 +3325,6 @@ function registerIpc(): void {
     if (draft === null) return t('app.profiles.incompleteDraft');
     profiles?.ensureDirectory();
     const result = editor().saveProfile(id, draft);
-    // The store polls, so the new character appears without being told; saying
-    // so here as well would report it twice.
     return result.ok ? null : result.error;
   });
 
@@ -3314,8 +3346,6 @@ function registerIpc(): void {
     const draft = asGlobalDraft(rawDraft);
     if (draft === null) return t('app.settings.invalidGlobalDraft');
     const result = editor().saveGlobal(draft);
-    // The store polls, so the change reaches every character without being
-    // told; saying so here as well would report it twice.
     return result.ok ? null : result.error;
   });
 
@@ -3331,13 +3361,6 @@ function registerIpc(): void {
     const parsed = asGrant(grant);
     if (parsed === null) return t('app.remotes.invalidName');
     const result = editor().setRemoteGrant(session, name, parsed);
-    /*
-     * The store polls, so the character picks the change up without being
-     * told — but the *renderer* draws the Access face from `ProfileSummary`,
-     * which is pushed rather than polled, so the rosters are republished here
-     * or the flyout would go on showing the grant it had before the click.
-     */
-    if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
 
@@ -3347,39 +3370,29 @@ function registerIpc(): void {
     const parsed = asRemoteNames(remotes);
     if (parsed === null) return t('app.remotes.invalidName');
     const result = editor().setGangRemotes(session, parsed);
-    if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
 
-  /* Whether the gang's own channel is answered on at all. Same card, same push. */
+  /* Whether the gang's own channel is answered on at all. Same card. */
   handle(Invoke.setRemoteGangpath, (_caller, session: unknown, on: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
     const result = editor().setRemoteGangpath(session, on === true);
-    if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
 
-  /*
-   * This character's supplies list, from the Self card or the item panel.
-   * Same shape and same push: the list rides on `ProfileSummary`, and a card
-   * that drew the old list until the store's poll came round would show the
-   * row somebody just added as missing.
-   */
+  /* This character's supplies list, from the Self card or the item panel. */
   handle(Invoke.setSupplies, (_caller, session: unknown, items: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
     const parsed = asSupplyItems(items);
     if (parsed === null) return t('app.supplies.invalidList');
     const result = editor().setSupplies(session, parsed);
-    if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
 
   /*
-   * One automation switch, from the toolbar. Same shape and same push: the
-   * store's poll brings the change back to the *session* on its own, and the
-   * rosters are republished here because the toolbar draws from
-   * `ProfileSummary`, which is pushed rather than polled — without it the
-   * button would stay where it was until something else moved.
+   * One automation switch, from the toolbar. The profile store's change
+   * reconfigures the session and pushes the rosters the toolbar draws from,
+   * in the same turn as the press (todo 137).
    */
   handle(Invoke.setAutomationSwitch, (_caller, session: unknown, name: unknown, on: unknown) => {
     if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
@@ -3389,7 +3402,6 @@ function registerIpc(): void {
     const parsed = asAutomationSwitch(name);
     if (parsed === null) return t('app.automation.unknownSwitch');
     const result = editor().setAutomationSwitch(session, parsed, on === true);
-    if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
   // A HUD threshold, from the game view's Run and Rest steppers, the same way.
@@ -3400,7 +3412,6 @@ function registerIpc(): void {
       return t('app.automation.unknownThreshold');
     const share = Math.round(Math.max(0, Math.min(1, value)) * 100) / 100;
     const result = editor().setAutomationValues(session, [[[...HUD_THRESHOLDS[parsed]], share]]);
-    if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
 
@@ -3423,9 +3434,6 @@ function registerIpc(): void {
       typeof owner === 'string' && owner.trim().length > 0 ? owner.trim() : null,
       parsed
     );
-    // The store's poll would find it within the tick; refreshing now is what
-    // makes the modal's own list show it before the player looks away.
-    if (result.ok) loops?.refresh();
     return result.ok ? null : result.error;
   });
 
