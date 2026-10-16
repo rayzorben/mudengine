@@ -46,8 +46,8 @@ export interface GearTripPlanner extends TripPlanner {
   escaping(): boolean;
   /** *Run it*'s switch: true where auto-combat went off for the way, the refusal where it would not. */
   combatOffForRun(): boolean | string;
-  /** The run's way is over: auto-combat back on, said. */
-  combatOnAfterRun(): void;
+  /** The run's way is over, done or stopped short: auto-combat back on, said. */
+  combatOnAfterRun(arrived: boolean): void;
   /** The commands that put the bought items on, the slot's weakest taken off first where it must be. */
   wearCommands(bought: readonly GearBuy[], state: CharacterState): string[];
 }
@@ -385,13 +385,10 @@ export class GearTrip implements SessionModule {
           0
         )
       });
-    if (why === null) {
-      this.events.notice?.(ended);
-      // The run's way is over: auto-combat back on, as *Run it*'s arrival does.
-      if (trip.combatOff) this.planner.combatOnAfterRun();
-    } else {
-      this.say(t('automation.gearTrip.ended', { why }), why);
-    }
+    if (why === null) this.events.notice?.(ended);
+    else this.say(t('automation.gearTrip.ended', { why }), why);
+    // The run's way is over, done or stopped short: auto-combat back on, as *Run it*'s end does (todo 145).
+    if (trip.combatOff) this.planner.combatOnAfterRun(why === null);
     trip.stage = 'ended';
     this.last = this.progressOf(trip, ended, why === null);
     this.events.gearTrip?.(this.last);

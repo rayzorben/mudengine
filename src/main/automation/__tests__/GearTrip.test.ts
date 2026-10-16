@@ -114,7 +114,7 @@ const planner = (over: Partial<GearTripPlanner> = {}): GearTripPlanner => ({
     log.push('combat off');
     return true;
   },
-  combatOnAfterRun: () => void log.push('combat on'),
+  combatOnAfterRun: (arrived) => void log.push(arrived ? 'combat on' : 'combat on, short'),
   wearCommands: (bought) => bought.map((buy) => `wear ${buy.name}`),
   ...over
 });
@@ -188,7 +188,7 @@ describe('a gear trip', () => {
     expect(notices.at(-1)).toBe(t('automation.gearTrip.done', { bought: 2, wanted: 2 }));
   });
 
-  it('runs with auto-combat off and turns it on at the end; a run stopped short leaves it off', () => {
+  it('runs with auto-combat off and turns it on at the end, stopped short as well', () => {
     const shopOnly: GearTripPlan = { ...PLAN, stops: [PLAN.stops[1]!] };
     const trip = make();
     trip.start(shopOnly, true, current);
@@ -204,7 +204,7 @@ describe('a gear trip', () => {
     const stopped = make();
     stopped.start(shopOnly, true, carrying());
     stopped.stop();
-    expect(log).not.toContain('combat on');
+    expect(log).toContain('combat on, short');
     expect(notices.at(-1)).toBe(
       t('automation.gearTrip.ended', { why: t('automation.gearTrip.stoppedByPlayer') })
     );

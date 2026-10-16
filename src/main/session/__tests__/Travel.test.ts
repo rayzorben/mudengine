@@ -490,7 +490,7 @@ describe('a route run with auto-combat off', () => {
     expect(notices).toContain(t('automation.combat.onAfterRun'));
   });
 
-  /* A walk home after an escape replaces the run without ending it. */
+  /* A walk nobody asked for, not the walk home, replaces the run without ending it. */
   it('leaves it off when another walk replaced the run and arrives', () => {
     const { travel: moving, combat } = running(fighting);
     moving.walkRoute(ROUTE, true);
@@ -498,6 +498,80 @@ describe('a route run with auto-combat off', () => {
     moving.walkStarted();
     moving.walkEnded(true);
     expect(combat.flips).toEqual([false]);
+  });
+
+  /* Todo 145, the user's answer of 2026-10-15: the walk home gives back the run it replaced. */
+  describe('when the walk home after an escape replaced the run', () => {
+    const haven: AutomationConfig = {
+      ...fighting,
+      safety: {
+        ...fighting.safety,
+        retreat: { ...fighting.safety.retreat, strategy: 'safe-haven', safeHavenRoom: 'Hall 1/1' }
+      }
+    };
+
+    function walkingHome() {
+      const state = beside();
+      const made = travel(state, 'held', true, { on: true, writes: true }, { settings: haven });
+      made.parts.walker.start = vi.fn(() => {
+        made.travel.walkStarted();
+        return null;
+      });
+      made.parts.supplies.considerBeforeRoute = () => null;
+      vi.mocked(made.parts.errands.findStop).mockReturnValue({ map: 1, room: 1 } as never);
+      vi.mocked(made.parts.errands.routeBetween).mockReturnValue(ROUTE);
+      made.travel.walkRoute(ROUTE, true);
+      made.travel.considerEscape(state);
+      made.travel.walkHomeIfDue({ ...state, room: { ...state.room, map: 2, number: 5 } });
+      // Positive control: the run turned it off and the walk home is under way.
+      expect(made.combat.flips).toEqual([false]);
+      expect(made.parts.walker.start).toHaveBeenLastCalledWith(
+        ROUTE,
+        expect.anything(),
+        expect.objectContaining({ asked: false })
+      );
+      expect(made.travel.walkIsAsked).toBe(false);
+      return made;
+    }
+
+    it('turns it back on when the walk home arrives', () => {
+      const { travel: moving, combat, notices } = walkingHome();
+      moving.walkEnded(true);
+      expect(combat.flips).toEqual([false, true]);
+      expect(notices).toContain(t('automation.combat.onAfterRun'));
+    });
+
+    it('turns it back on when the walk home stops short out of a fight', () => {
+      const { travel: moving, combat, notices } = walkingHome();
+      moving.walkEnded(false);
+      expect(moving.retreatArmed).toBe(false);
+      expect(combat.flips).toEqual([false, true]);
+      expect(notices).toContain(t('automation.combat.onAfterRunEnded'));
+    });
+
+    it('turns it back on when the player stops the walk home', () => {
+      const { travel: moving, combat, parts, notices } = walkingHome();
+      // As the walker does: the stop says the walk ended.
+      parts.walker.stop = vi.fn(() => moving.walkEnded(false));
+      moving.stopMoving();
+      expect(parts.walker.stop).toHaveBeenCalled();
+      expect(combat.flips).toEqual([false, true]);
+      expect(notices).toContain(t('automation.combat.onAfterRunEnded'));
+    });
+
+    it('turns it back on when a death ends the walk home', () => {
+      const { travel: moving, combat } = walkingHome();
+      moving.stopGoingAnywhere();
+      expect(combat.flips).toEqual([false, true]);
+    });
+
+    it('leaves it off while a fight cut the walk home short and arms it again', () => {
+      const { travel: moving, combat, parts } = walkingHome();
+      Object.assign(parts.tracker, { current: { ...parts.tracker.current, inCombat: true } });
+      moving.walkEnded(false);
+      expect(moving.retreatArmed).toBe(true);
+      expect(combat.flips).toEqual([false]);
+    });
   });
 
   /* A room the way must empty is fought on any odds while the asked walk runs (2026-10-03). */
@@ -517,12 +591,24 @@ describe('a route run with auto-combat off', () => {
     expect(parts.combat.stopFighting).toHaveBeenCalledWith('hydra');
   });
 
-  it('leaves it off when the run stops short', () => {
-    const { travel: moving, combat } = running(fighting);
+  /* Todo 145: a run stopped on a spent token left Festus unable to hit back. */
+  it('turns it back on when the run stops short', () => {
+    const { travel: moving, combat, notices } = running(fighting);
     moving.walkRoute(ROUTE, true);
-    moving.walkEnded(false);
     expect(combat.flips).toEqual([false]);
-    expect(combat.on).toBe(false);
+    moving.walkEnded(false);
+    expect(combat.flips).toEqual([false, true]);
+    expect(notices).toContain(t('automation.combat.onAfterRunEnded'));
+  });
+
+  it('leaves it off when a run that never turned it off stops short', () => {
+    const { travel: moving, combat, notices } = running(switchedOff);
+    // Positive control: the run started, and found it already off.
+    expect(moving.walkRoute(ROUTE, true)).toBeNull();
+    expect(moving.walkIsAsked).toBe(true);
+    expect(notices).not.toContain(t('automation.combat.runningCombatOff'));
+    moving.walkEnded(false);
+    expect(combat.flips).toEqual([]);
   });
 
   /* Any asked route arrives with it on, walked as well as run (the user, 2026-10-08). */
@@ -570,9 +656,9 @@ describe('a route run with auto-combat off', () => {
     expect(moving.combatOffForRunNow).toBe(false);
     moving.walkRoute(ROUTE, true);
     expect(moving.combatOffForRunNow).toBe(true);
-    // The player's run stopped short leaves it off, and owes nothing at a relaunch.
+    // Stopped short, it is given back now, so nothing is owed at a relaunch.
     moving.walkEnded(false);
-    expect(combat.on).toBe(false);
+    expect(combat.on).toBe(true);
     expect(moving.combatOffForRunNow).toBe(false);
   });
 
