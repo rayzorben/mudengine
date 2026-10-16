@@ -540,6 +540,7 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
       ...(typeof found['talkChannels'] === 'boolean'
         ? { talkChannels: found['talkChannels'] }
         : {}),
+      ...(typeof found['talkRemotes'] === 'boolean' ? { talkRemotes: found['talkRemotes'] } : {}),
       ...(typeof found['mapDensity'] === 'number' && Number.isFinite(found['mapDensity'])
         ? { mapDensity: Math.max(0, Math.min(1, found['mapDensity'])) }
         : {}),

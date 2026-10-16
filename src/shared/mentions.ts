@@ -14,7 +14,7 @@ import type { Block } from './blocks';
 import { rowAsks, type AlertRule, type Notice } from './notifications';
 import { telepathNotice } from './characterNotices';
 import { isOwnName } from './players';
-import { parseRemoteCall } from './remotes';
+import { isRemoteTalk } from './remotes';
 
 /**
  * An `@word` opening a word: the start, a space, a bracket or a quote before
@@ -42,7 +42,7 @@ export function mentions(block: Block, self: string | null): boolean {
   // `You say`, `You yell`: this character's own line has no speaker.
   if (speaker === undefined && /^You\b/.test(block.text.trimStart())) return false;
   if (speaker !== undefined && isOwnName(self, speaker)) return false;
-  if (parseRemoteCall(said) !== null) return false;
+  if (isRemoteTalk(said)) return false;
   return mentionSpans(said, self).length > 0;
 }
 

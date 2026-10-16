@@ -111,15 +111,21 @@ describe('answering for an absent player', () => {
     expect(sent).toEqual(['/Rend {AFK}', '/Soul {AFK}', '/Rend {AFK}']);
   });
 
-  /* `@` is `Remotes`' business, and the sent receipt is not a question. */
-  it('leaves @ commands to the remotes and the sent receipt alone', () => {
+  /* `@` is `Remotes`' business, a reply in braces asks nothing, and the sent receipt is not a question. */
+  it('leaves remotes, their replies and the sent receipt alone', () => {
     const afk = make();
     attendance.note();
     clock += 6 * MINUTE;
     afk.onBlock(telepath('Rend', '@health'), state());
+    afk.onBlock(telepath('Rend', '{AFK}'), state());
+    afk.onBlock(telepath('Rend', '{HP=600/600,MA=10/20}{L7}'), state());
     afk.onBlock(telepath('Rend'), state());
     drain();
     expect(sent).toEqual([]);
+    // The positive control: the same sender talking is answered.
+    afk.onBlock(telepath('Rend', 'you there?'), state());
+    drain();
+    expect(sent).toEqual(['/Rend {AFK}']);
   });
 
   it('is present again the moment the player types', () => {

@@ -257,6 +257,15 @@ export const TALK_PRESENCE_TYPES: readonly BlockType[] = [
   'player-disconnects'
 ];
 
+/**
+ * What a talk line says: the words bound into this character's own receipt
+ * (`sent`, `Classifier.bindReceipt`), or what somebody else said, or `null`
+ * for a line with neither (a presence line, an unbound receipt).
+ */
+export function saidOf(block: Pick<Block, 'groups'>): string | null {
+  return block.groups['sent'] ?? block.groups['message'] ?? null;
+}
+
 /** Whether a block belongs in the Talk card, and so in its log. */
 export function isTalkBlock(block: Pick<Block, 'domain' | 'type'>): boolean {
   return block.domain === 'conversation' || TALK_PRESENCE_TYPES.includes(block.type);

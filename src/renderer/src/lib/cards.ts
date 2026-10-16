@@ -325,6 +325,12 @@ export interface CardSettings {
    */
   talkChannels?: boolean;
   /**
+   * Talk card: draw remote commands and their replies (`@wait`, `{ok}`).
+   * Off unless this says so; `isRemoteTalk` in `src/shared/remotes.ts` decides
+   * which lines they are.
+   */
+  talkRemotes?: boolean;
+  /**
    * Map card: how much of the realm to fit on it, 0 (sparse) to 1 (dense).
    *
    * A fraction rather than a room count, because what it chooses is how small

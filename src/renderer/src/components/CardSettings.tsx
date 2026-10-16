@@ -284,6 +284,19 @@ export default function CardSettingsPopup({
             <span>{t('cards.settings.talk.channels')}</span>
           </label>
 
+          {/* Remote traffic, off as shipped and stored only where it differs. */}
+          <label className="card-settings-check" data-setting="talkRemotes">
+            <input
+              checked={value.talkRemotes ?? false}
+              onChange={(event) => {
+                const on = event.target.checked;
+                onChange({ talkRemotes: on ? true : undefined });
+              }}
+              type="checkbox"
+            />
+            <span>{t('cards.settings.talk.remotes')}</span>
+          </label>
+
           <label className="card-settings-field">
             <span>{t('cards.settings.talk.layout')}</span>
             <select

@@ -22,6 +22,7 @@ import {
   REMOTE_NAMES,
   formatVitals,
   parseRemoteCall,
+  isRemoteTalk,
   parseRemoteReply,
   formatRoomAddress,
   parseRoomAddress,
@@ -483,5 +484,48 @@ describe('@path and the answers to @loop and @goto', () => {
       more: 2
     });
     expect(parseRemoteReply('{failed}')).toEqual({ kind: 'failed' });
+  });
+});
+
+describe('isRemoteTalk', () => {
+  // Every shape below is a talk line from captures/ (todo 138's census).
+  it('takes a call, with MegaMUD’s tags or its bracket after the word', () => {
+    for (const message of [
+      "@wait (can't move)",
+      ' @health',
+      '@health{L7}{P201}',
+      '@join{L:7}{P:101}{A:0}',
+      '@kill Gambit',
+      '@party go rift',
+      '@panic!'
+    ]) {
+      expect(isRemoteTalk(message), message).toBe(true);
+    }
+  });
+
+  it('takes a reply in braces, read here or not', () => {
+    for (const message of [
+      '{ok}',
+      '{no}',
+      '{Probe}',
+      '{12 copper}',
+      '{HP=600/600,MA=10/20}{L7}',
+      '{command invalid or not allowed}'
+    ]) {
+      expect(isRemoteTalk(message), message).toBe(true);
+    }
+  });
+
+  it('leaves somebody talking alone', () => {
+    for (const message of [
+      'wow ... @health',
+      '@lol',
+      '@rayzor you there?',
+      'ok {grin}',
+      '{ok} thanks',
+      ''
+    ]) {
+      expect(isRemoteTalk(message), message).toBe(false);
+    }
   });
 });
