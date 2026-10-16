@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import MapRouteFinder from './MapRouteFinder';
 import { findAction } from './findAction';
+import type { TeleportPress } from './MapPlan';
 import MapView from './MapView';
 import RouteSheetView from './RouteSheetView';
 import { useRoutePreview } from '../hooks/useRoutePreview';
@@ -75,6 +76,12 @@ export interface MapCardProps extends CardChrome {
    */
   onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
   onPeekEnd: (() => void) | null;
+  /**
+   * The route panel, on the room a teleport lands in (todo 147): nothing on
+   * this side shows what is through a portal, so a press plans the way there.
+   * Null on a pinned float, for `onBuild`'s reason, and no teleport is drawn.
+   */
+  onRouteTo: ((room: RoomId) => void) | null;
 }
 
 /**
@@ -102,6 +109,7 @@ function MapCard({
   onBuild,
   onPeek,
   onPeekEnd,
+  onRouteTo,
   routeBetween,
   search,
   walk,
@@ -115,6 +123,10 @@ function MapCard({
    * that did not change.
    */
   const foundRooms = useMemo(() => [...roomsWithFinds(finds)], [finds]);
+  const teleport = useMemo<TeleportPress | undefined>(
+    () => (onRouteTo === null ? undefined : { means: 'route', take: (away) => onRouteTo(away.to) }),
+    [onRouteTo]
+  );
   const { map: area, number } = character.room;
   const here = area === null || number === null ? null : roomId(area, number);
   const { mapRoomPixelsSparse: sparse, mapRoomPixelsDense: dense } = tuning();
@@ -331,6 +343,7 @@ function MapCard({
           onLoaded={setMap}
           onPeek={onPeek ?? undefined}
           onPeekEnd={onPeekEnd ?? undefined}
+          onTeleport={teleport}
           onZoom={leg === null ? onZoom : setLegZoom}
           {...(leg === null
             ? { path: walk.path, stops: loop.remainingStops, zoom }

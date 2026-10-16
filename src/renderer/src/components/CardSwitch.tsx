@@ -142,6 +142,8 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
              of its own to ask. */
           onPeek={ctx.peekRoom}
           onPeekEnd={ctx.endPeek}
+          // The route panel is the shown character's, as `chooseOnMap` says.
+          onRouteTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           walk={view.walk}
         />
       );

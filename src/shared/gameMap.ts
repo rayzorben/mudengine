@@ -7,7 +7,7 @@
  * database), and a room the pack does not cover takes the motif its name
  * suggests (`guessMotif`). Reasons: `mudengine-world` › *The game view's map*.
  */
-import type { MapCell } from './map';
+import type { MapAway, MapCell } from './map';
 import type { Direction, RoomId } from './world';
 
 /** What each tile carries as its small drawing. Runtime list beside the type. */
@@ -126,6 +126,22 @@ export interface GameCell extends MapCell {
   to: Partial<Record<Direction, RoomId>>;
   /** The room's name is labelled on its own: no other room of its stretch shares it. */
   named?: true;
+  /**
+   * The compass exits onto another map number, with that number (todo 147).
+   * The plane is one map's (`realmLayout.ts`), so such an exit's room is never
+   * on it and the canvas names the map instead. Absent when there are none.
+   */
+  otherMap?: Partial<Record<Direction, number>>;
+}
+
+/** A room's teleports (todo 147), which the canvas marks with a vortex. */
+export function teleportsOf(cell: MapCell): MapAway[] {
+  return (cell.away ?? []).filter((way) => way.kind === 'teleport');
+}
+
+/** Whether a room has a teleport, without building the list (drawn per tile per frame). */
+export function hasTeleport(cell: MapCell): boolean {
+  return cell.away?.some((way) => way.kind === 'teleport') ?? false;
 }
 
 export type MapLabelKind = 'area' | 'stretch' | 'landmark';

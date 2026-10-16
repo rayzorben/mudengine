@@ -50,7 +50,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BentoCard, { type CardChrome } from './BentoCard';
 import ClearField from './ClearField';
 import Icon from './Icon';
-import { type BuilderMarks } from './MapPlan';
+import { type BuilderMarks, type TeleportPress } from './MapPlan';
 import MapView from './MapView';
 import RoomMatches from './RoomMatches';
 import { CountInput } from './SupplyControls';
@@ -307,13 +307,16 @@ function LoopBuilderCard({
    * otherwise the planner would route to the landing room from wherever the
    * last pick was, by whatever way it liked.
    */
-  const teleport = useCallback(
-    (away: MapAway, from: RoomId): void => {
-      if (full()) return;
-      const viaFrom = picks[picks.length - 1] === from ? picks : (pickRoom(picks, from) ?? picks);
-      const next = pickRoom(viaFrom, away.to);
-      commit(next ?? viaFrom);
-    },
+  const teleport = useMemo<TeleportPress>(
+    () => ({
+      means: 'pick',
+      take: (away: MapAway, from: RoomId): void => {
+        if (full()) return;
+        const viaFrom = picks[picks.length - 1] === from ? picks : (pickRoom(picks, from) ?? picks);
+        const next = pickRoom(viaFrom, away.to);
+        commit(next ?? viaFrom);
+      }
+    }),
     [commit, full, picks]
   );
 

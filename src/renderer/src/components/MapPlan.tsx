@@ -42,6 +42,7 @@ import { t } from '../lib/i18n';
 import { viewBoxFor, type Box, type MapDetail, type MapView } from '../lib/mapView';
 import {
   layoutMap,
+  MAP_CELL,
   NO_TRAIL,
   trailOf,
   type LocalMap,
@@ -54,6 +55,7 @@ import {
 import type { SurvivalLevel } from '@shared/survival';
 import type { RoomId } from '@shared/world';
 import { tuning } from '../lib/tuning';
+import { VORTEX_DOT, vortexArms } from '../lib/vortex';
 
 /**
  * What is drawn *on* a room, and how far past the room's own radius each one
@@ -101,9 +103,21 @@ const FIND_DOT = 1.1;
 /**
  * How far out the off-plane controls sit, past the room's radius, the size of
  * their glyph, the stroke they wear and the hit target round each — `MARKS`'
- * shape, kept apart because they are drawn only for a builder.
+ * shape, kept apart because they sit beside the room rather than round it.
+ *
+ * `vortex` is a teleport's radius (todo 147). Rooms are `MAP_CELL` 10 apart
+ * with a radius of 3, so the gap to a west neighbour is 4 units, and a vortex
+ * centred in it fits at 1.8 with its stroke. A cell is drawn at 10 to 40
+ * pixels, so that is a 7 to 29 pixel glyph; at the chevrons' 1.5, beside the
+ * room, a spiral was 3 pixels wide.
  */
-const AWAY = { over: 2.4, size: 1.5, stroke: 0.6, hit: 1.2 } as const;
+const AWAY = { over: 2.4, size: 1.5, vortex: 1.8, stroke: 0.6, hit: 1.2 } as const;
+
+/** A press on a teleport: the builder's pick, or a route to where it lands. */
+export interface TeleportPress {
+  means: 'pick' | 'route';
+  take(away: MapAway, from: RoomId): void;
+}
 
 /**
  * The shape a room is drawn as.
@@ -288,11 +302,12 @@ export interface MapPlanProps {
    */
   onLook: (away: MapAway) => void;
   /**
-   * Take a teleport from a room. Present only on the builder's map, where a
-   * teleport is a pick, and only then are teleports drawn: a portal on the
-   * Map card has nothing a press could do that the quick view does not.
+   * What a press on a teleport does, and only where it is handed in are
+   * teleports drawn: the builder's is a pick, every other map's opens the
+   * route panel on the room it lands in (todo 147). A teleport is never a
+   * look, since nothing on this side shows what is through it.
    */
-  onTeleport?: (away: MapAway, from: RoomId) => void;
+  onTeleport?: TeleportPress;
   /**
    * The rooms the walk in progress has still to travel through, opening with
    * the one the character is standing in — `WalkProgress.path`.
@@ -472,7 +487,7 @@ export const Picture = memo(function Picture({
   marks: BuilderMarks | undefined;
   /** Absent where nothing answers a way off the plane; none is then drawn. */
   onLook: ((away: MapAway) => void) | undefined;
-  onTeleport: ((away: MapAway, from: RoomId) => void) | undefined;
+  onTeleport: TeleportPress | undefined;
   onChoose: ((map: number, room: number) => void) | undefined;
   onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | undefined;
   onPeekEnd: (() => void) | undefined;
@@ -833,22 +848,57 @@ export const Picture = memo(function Picture({
       {!plain &&
         onLook !== undefined &&
         drawing.nodes.flatMap((node) =>
-          (node.away ?? []).map((away, index) =>
-            away.kind === 'teleport' && onTeleport === undefined ? null : (
+          (node.away ?? []).map((away) => {
+            const press = pressOf(away, node.id, onLook, onTeleport);
+            return press === null ? null : (
               <AwayControl
                 away={away}
-                index={index}
+                of={(node.away ?? []).filter((way) => way.kind === away.kind)}
                 key={`${node.id}:${away.kind}:${away.to}`}
                 node={node}
-                onLook={onLook}
-                onTeleport={onTeleport}
+                press={press}
               />
-            )
-          )
+            );
+          })
         )}
     </>
   );
 });
+
+/** What a way out says before it is pressed, and what the press does. */
+interface AwayPress {
+  where: string;
+  take(): void;
+}
+
+/**
+ * Up and down look; a teleport is the surface's `TeleportPress`, and with
+ * none it is not drawn (null).
+ */
+function pressOf(
+  away: MapAway,
+  from: RoomId,
+  onLook: (away: MapAway) => void,
+  onTeleport: TeleportPress | undefined
+): AwayPress | null {
+  switch (away.kind) {
+    case 'up':
+      return { where: t('cards.map.away.up', { roomName: away.name }), take: () => onLook(away) };
+    case 'down':
+      return {
+        where: t('cards.map.away.down', { roomName: away.name }),
+        take: () => onLook(away)
+      };
+    case 'teleport':
+      return onTeleport === undefined
+        ? null
+        : { where: teleportTitle(away, onTeleport), take: () => onTeleport.take(away, from) };
+    default: {
+      const never: never = away.kind;
+      return never;
+    }
+  }
+}
 
 /**
  * One way out of a room that the plane cannot draw, as a control.
@@ -856,51 +906,48 @@ export const Picture = memo(function Picture({
  * Up sits above the room's right shoulder, down below it, a teleport off its
  * left — fixed places, so two rooms side by side with a way up each read the
  * same way. The glyphs are the chevrons the room wears on every other map and
- * a ring-with-a-dot for a teleport, which is the mark the legend keys. A
+ * a vortex for a teleport (todo 147), which is the mark the legend keys. A
  * press keeps the caret in the game like every other click on a map.
  *
- * The chevrons take the eye to the level they lead to; the teleport, drawn
- * only on the builder's map, adds itself to the way. The title says which,
- * because a control that looks like its neighbour and does something else
- * has to say so before it is pressed.
+ * The chevrons take the eye to the level they lead to. A teleport adds
+ * itself to the way on the builder's map and plans a route to where it lands
+ * on every other. The title says which, because a control that looks like its
+ * neighbour and does something else has to say so before it is pressed.
  */
 function AwayControl({
   away,
-  index,
+  of,
   node,
-  onLook,
-  onTeleport
+  press
 }: {
   away: MapAway;
-  index: number;
+  /** The room's ways of this kind, this one among them, for stacking. */
+  of: readonly MapAway[];
   node: MapNode;
-  onLook: (away: MapAway) => void;
-  onTeleport: ((away: MapAway, from: RoomId) => void) | undefined;
+  press: AwayPress;
 }) {
   const r = tuning().mapRoomRadius;
-  const dx = away.kind === 'teleport' ? -(r + AWAY.over) : r + AWAY.over;
-  // A room with several ways of one kind stacks them outward.
-  const dy = (away.kind === 'up' ? -1 : away.kind === 'down' ? 1 : 0) * (AWAY.size + 0.6);
-  const x = node.x + dx + (away.kind === 'teleport' ? -index * (AWAY.size * 2 + 0.6) : 0);
+  const size = away.kind === 'teleport' ? AWAY.vortex : AWAY.size;
+  // A teleport sits in the middle of the gap to the west neighbour; several
+  // stack down that gap, centred on the room (221 of the 237 rooms with one
+  // have only one, measured on gmud.zip by `todo/147-map-teleports-census.mjs`).
+  const dx = away.kind === 'teleport' ? -MAP_CELL / 2 : r + AWAY.over;
+  const dy =
+    away.kind === 'teleport'
+      ? (of.indexOf(away) - (of.length - 1) / 2) * (size * 2 + 0.4)
+      : (away.kind === 'up' ? -1 : 1) * (AWAY.size + 0.6);
+  const x = node.x + dx;
   const y = node.y + dy;
-  const where =
-    away.kind === 'up'
-      ? t('cards.map.away.up', { roomName: away.name })
-      : away.kind === 'down'
-        ? t('cards.map.away.down', { roomName: away.name })
-        : t('cards.map.away.teleport', { command: away.command, roomName: away.name });
+  const { where, take } = press;
   // The price the realm stated, beside the way: a door on the way up is
   // said here, where the corridor's bar would say it on the plane.
   const label = away.obstacle === undefined ? where : `${where} — ${away.obstacle.detail}`;
-  const take = (): void => {
-    if (away.kind === 'teleport') onTeleport?.(away, node.id);
-    else onLook(away);
-  };
   return (
     <g
       className="map-away"
       data-gated={away.obstacle === undefined ? undefined : away.obstacle.kind}
       data-kind={away.kind}
+      data-room={node.id}
       onClick={(event) => {
         // The room underneath is a control too; a way out is not a click on it.
         event.stopPropagation();
@@ -918,9 +965,14 @@ function AwayControl({
     >
       <title>{label}</title>
       {/* The hit target: a glyph this small cannot be pointed at. */}
-      <circle className="map-away-hit" cx={x} cy={y} r={AWAY.size + AWAY.hit} />
+      <circle
+        className="map-away-hit"
+        cx={x}
+        cy={y}
+        r={size + (away.kind === 'teleport' ? AWAY.stroke / 2 : AWAY.hit)}
+      />
       {away.kind === 'teleport' ? (
-        <TeleportGlyph size={AWAY.size} x={x} y={y} />
+        <VortexGlyph size={size} x={x} y={y} />
       ) : (
         <path
           className="map-away-glyph"
@@ -937,9 +989,24 @@ function AwayControl({
        * wants — is a bar across the glyph, the corridor's own mark for a
        * shut passage, and not a hue alone: §6, and the trap's lesson above.
        */}
-      {away.obstacle !== undefined && <GatedBar size={AWAY.size} x={x} y={y} />}
+      {away.obstacle !== undefined && <GatedBar size={size} x={x} y={y} />}
     </g>
   );
+}
+
+/** What a press on a teleport does, said before it is pressed. */
+function teleportTitle(away: MapAway, press: TeleportPress): string {
+  const params = { command: away.command, roomName: away.name };
+  switch (press.means) {
+    case 'pick':
+      return t('cards.map.away.teleport', params);
+    case 'route':
+      return t('cards.map.away.teleportRoute', params);
+    default: {
+      const never: never = press.means;
+      return never;
+    }
+  }
 }
 
 /** The bar across a way out with something in it: the door's mark, on the glyph. */
@@ -957,14 +1024,16 @@ function GatedBar({ size, x, y }: { size: number; x: number; y: number }) {
 }
 
 /**
- * A teleport's mark: a ring with a dot in it, which reads as *a hole to
- * somewhere* at any size the map draws it, where a swirl turns to mush.
+ * A teleport's mark: a whirling vortex, two arms turning in to a dot (the
+ * user, 2026-10-15). The ring with a dot it replaces was chosen because a
+ * swirl at the chevrons' size is a smudge; drawn at `AWAY.vortex` the arms
+ * stay apart at the densest zoom.
  */
-function TeleportGlyph({ size, x, y }: { size: number; x: number; y: number }) {
+function VortexGlyph({ size, x, y }: { size: number; x: number; y: number }) {
   return (
     <>
-      <circle className="map-away-glyph" cx={x} cy={y} r={size} strokeWidth={AWAY.stroke} />
-      <circle className="map-away-dot" cx={x} cy={y} r={size * 0.35} />
+      <path className="map-away-glyph" d={vortexArms(x, y, size)} strokeWidth={AWAY.stroke} />
+      <circle className="map-away-dot" cx={x} cy={y} r={size * VORTEX_DOT} />
     </>
   );
 }
@@ -1094,6 +1163,18 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendLook')}
       </span>
+      {/*
+        A teleport, on every map since todo 147: listed always, like the door,
+        and pressed like up and down except on the builder's map.
+      */}
+      <span data-kind="teleport">
+        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+          <g className="map-away">
+            <VortexGlyph size={4.4} x={0} y={0} />
+          </g>
+        </svg>
+        {t('cards.map.legendTeleport')}
+      </span>
       {/* A way out with something in it — listed always, like the door. */}
       <span data-kind="gated">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
@@ -1187,14 +1268,6 @@ export function MapLegend({
               </g>
             </svg>
             {t('cards.map.legendAgain')}
-          </span>
-          <span data-kind="teleport">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-away">
-                <TeleportGlyph size={3.4} x={0} y={0} />
-              </g>
-            </svg>
-            {t('cards.map.legendTeleport')}
           </span>
         </>
       )}

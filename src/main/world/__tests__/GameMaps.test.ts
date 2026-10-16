@@ -35,6 +35,14 @@ describe.runIf(fs.existsSync(world))('the game view map window', () => {
     expect(window.cells.find((cell) => cell.id === '1/1')!.to.n).toBe('1/3');
   });
 
+  it('names the map a compass exit onto another map number leads to', () => {
+    const window = maps.window({ kind: 'room', map: 1, room: 141, half: 4 }, () => null);
+    // Lofty Plateau's way south is Paradigm's 2/9; the plane is map 1's alone.
+    expect(window.cells.find((cell) => cell.id === '1/141')!.otherMap).toEqual({ s: 2 });
+    const gates = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null);
+    expect(gates.cells.find((cell) => cell.id === '1/1')!.otherMap).toBeUndefined();
+  });
+
   it('looks around a point once the map is dragged, with no centre room', () => {
     const at = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null).centre!;
     const window = maps.window(
