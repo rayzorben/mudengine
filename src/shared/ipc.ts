@@ -786,6 +786,8 @@ export const Invoke = {
   startMoving: 'move:start',
   /** Stop moving, whichever of the two is running. The place is kept. */
   stopMoving: 'move:stop',
+  /** Stop waiting for the party behind a portal and walk on (todo 849). */
+  walkOnWithoutParty: 'move:without-party',
   /**
    * One room back the way the character came, per press.
    *
@@ -1385,6 +1387,8 @@ export interface IpcApi {
   startCashRun(session: SessionId, ask: CashRunAsk): Promise<string | null>;
   /** Stop moving, whichever of the two is running. Keeps its place. */
   stopMoving(session: SessionId): Promise<void>;
+  /** Stop waiting for the party behind a portal and walk on; nothing while not waiting. */
+  walkOnWithoutParty(session: SessionId): Promise<void>;
   /**
    * Walk one room back the way the character came.
    *

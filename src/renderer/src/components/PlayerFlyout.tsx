@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import RemoteList from './RemoteList';
+import { CheckField } from './FormField';
 import PopupMenu from './PopupMenu';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import { useCopyMenu } from '../hooks/useCopyMenu';
@@ -884,6 +885,16 @@ function PlayerAccess({
         )}
       </dl>
 
+      {/* Above the warning: inviting is this character's own act, so `automation.remotes.enabled` does not gate it. */}
+      <CheckField
+        checked={grant.autoInvite}
+        hint={t('settings.remotes.autoInviteHint')}
+        label={t('settings.remotes.autoInviteLabel')}
+        name="player-auto-invite"
+        onChange={(on) => set({ ...grant, autoInvite: on })}
+        setting="automation.remotes.players"
+      />
+
       {/*
         A grid that cannot take effect says so rather than appearing to. Nothing
         below is answered while the feature is off for this character, and
@@ -906,6 +917,7 @@ function PlayerAccess({
           mode="player"
           onSet={(remote, stance) =>
             set({
+              ...grant,
               allow:
                 stance === 'allow'
                   ? [...grant.allow, remote]
@@ -921,8 +933,8 @@ function PlayerAccess({
             // state behind is a mode, and this grid has no room for one.
             set(
               stance === 'allow'
-                ? { allow: [...ACTIONABLE_REMOTES], deny: [] }
-                : { allow: [], deny: [] }
+                ? { ...grant, allow: [...ACTIONABLE_REMOTES], deny: [] }
+                : { ...grant, allow: [], deny: [] }
             )
           }
           returnFocus={returnFocus}

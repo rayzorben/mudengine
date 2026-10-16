@@ -3,7 +3,7 @@ import path from 'node:path';
 import { isMap, isSeq, parse, Scalar, type Document } from 'yaml';
 
 import { ON_DISK, type EditResult, type YamlFiles } from './YamlFile';
-import type { RemoteGrant, RemoteName } from '../../shared/remotes';
+import { grantIsEmpty, type RemoteGrant, type RemoteName } from '../../shared/remotes';
 import { unknownWrites, type LayerWrite } from '../../shared/extensions';
 import { LoopStore, readLoops, type LoopLists } from './LoopStore';
 import { ServerStore, type ServerList } from './ServerStore';
@@ -566,10 +566,11 @@ export class SettingsEditor {
     const key = who.toLowerCase();
     const deny = [...new Set(grant.deny)];
     const allow = [...new Set(grant.allow)].filter((remote) => !deny.includes(remote));
+    const kept: RemoteGrant = { allow, deny, autoInvite: grant.autoInvite };
 
     return this.files.edit(file, {
       mutate: (document) => {
-        if (allow.length === 0 && deny.length === 0) {
+        if (grantIsEmpty(kept)) {
           document.deleteIn(['automation', 'remotes', 'players', key]);
           /*
            * And the map itself once the last name comes off it, so a file that
@@ -582,10 +583,7 @@ export class SettingsEditor {
           }
           return;
         }
-        document.setIn(
-          ['automation', 'remotes', 'players', key],
-          document.createNode({ allow, deny })
-        );
+        document.setIn(['automation', 'remotes', 'players', key], document.createNode(kept));
         /*
          * Block style, explicitly, because the map this writes into is usually
          * the empty `players: {}` a profile save wrote — and `{}` is a *flow*

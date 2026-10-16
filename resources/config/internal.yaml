@@ -1290,6 +1290,11 @@ tuning:
     # listing still prints them [Invited].
     inviteAgainMs: 5000
 
+    # How long after inviting a player marked Invite When Seen they are not
+    # invited again on arriving, so a player stepping in and out, or hiding,
+    # is invited once. Chosen, not measured.
+    inviteSeenAgainMs: 60000
+
     # How soon after a party member's @wait or @heal sends par another may
     # send it again, while the party list shows their bar fuller than they
     # say it is. MegaMUD re-reads the party list every 15s in a fight

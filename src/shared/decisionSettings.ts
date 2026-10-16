@@ -600,6 +600,7 @@ export const DECISION_SETTINGS = {
   'afk-reply': ['automation.afk.enabled', 'automation.afk.reply', 'automation.afk.afterMinutes'],
   'party-autojoin': ['automation.remotes.enabled', 'automation.remotes.autoJoin'],
   'party-invite-followup': ['automation.onPartyChange'],
+  'party-autoinvite': ['automation.remotes.players'],
   'party-relay-portal': ['automation.party.relayPortals'],
   'party-regroup': ['automation.party.regroupMinutes', 'automation.onPartyChange'],
   'party-listing-clock': [

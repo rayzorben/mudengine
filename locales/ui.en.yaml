@@ -2874,6 +2874,7 @@ cards:
       play: Start Selected Loop
       resume: 'Resume: pick up where it left off'
       stop: Stop Moving
+      walkOn: Walk On Without the Party
     idle:
       nothing: Not currently moving.
     # The first entry of the picker when something is stopped: what play will
@@ -5068,6 +5069,9 @@ settings:
     autoJoinHint: Joins a party as soon as its leader invites this character, without waiting for
       @join. Only a leader allowed @join is joined.
     autoJoinLabel: Join When Invited
+    autoInviteLabel: Invite When Seen
+    autoInviteHint: Invites this player when they are in the room with this character, unless they
+      are already in the party or invited, or this character is following somebody.
     maxGets: Most Items per @get-all
     maxGetsHint:
       The most items one @get-all, @drop-all or get all takes, one command each, so a full
@@ -7069,6 +7073,7 @@ automation:
     regrouped: The party is back together; walking on.
     regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.
     regroupGaveUp: 'Stopped waiting for the party: {members} did not rejoin within {minutes} min.'
+    regroupReleased: Stopped waiting for the party; walking on without them.
     # Todo 67: an exit whose spell lands each member in a room of their own.
     apart: 'This exit sends {members} each to a room of their own and out of the party; not waiting for them.'
     # Todo 01: an invitation nobody has answered, followed up with @join.
@@ -7099,6 +7104,10 @@ automation:
     autoJoinNotGranted:
       '{from} invited this character; not joining, because {from} has not been granted
       @join.{unresolvedClause}'
+    # Todo 851: Invite When Seen.
+    reasonAutoInvite: 'inviting {who}: Invite When Seen'
+    autoInviteFollowing: '{who} is here; not inviting them, because this character is following {leader}.'
+    autoInviteWaiting: '{who} is here again; not inviting them for another {seconds} s.'
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     managedWait: 'Walking on through @wait from {from}: Manage Party Health If Leading holds them to
       your own rest settings.'

@@ -112,6 +112,7 @@ import {
   type CombatTally
 } from '../../shared/tally';
 import type { SessionModule } from './Module';
+import { AutoInvite } from './AutoInvite';
 import { AutoJoin, joinIntent } from './AutoJoin';
 import { restoreKit } from './restoreKit';
 import { takeFloor } from './takeFloor';
@@ -420,6 +421,8 @@ export class Remotes implements SessionModule {
   private seen = false;
   /** Answering an invitation as though `@join` had followed it. See `AutoJoin`. */
   private readonly autoJoin: AutoJoin;
+  /** Inviting a player marked Invite When Seen. See `AutoInvite`. */
+  private readonly autoInvite: AutoInvite;
   /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
   private readonly regroup: PartyRegroup;
   /** `@join` to somebody invited who has not joined, until they do. See `InviteFollowUp`. */
@@ -457,6 +460,7 @@ export class Remotes implements SessionModule {
     const notice = (message: string, decision?: DecisionKind): void =>
       events.notice?.(message, decision);
     this.autoJoin = new AutoJoin(config, queue, { notice });
+    this.autoInvite = new AutoInvite(config, queue, { notice });
     this.regroup = new PartyRegroup(config, queue, { notice });
     this.invites = new InviteFollowUp(config, queue, {
       notice,
@@ -483,6 +487,7 @@ export class Remotes implements SessionModule {
   configure(config: AutomationConfig): void {
     this.config = config;
     this.autoJoin.configure(config);
+    this.autoInvite.configure(config);
     this.regroup.configure(config);
     this.invites.configure(config);
     this.leaderDoors.configure(config);
@@ -506,6 +511,11 @@ export class Remotes implements SessionModule {
   /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */
   regrouping(state: CharacterState): boolean {
     return this.regroup.regrouping(state);
+  }
+
+  /** The player walks on without the party. See `PartyRegroup.release`. */
+  releaseRegroup(): void {
+    this.regroup.release();
   }
 
   /**
@@ -790,6 +800,7 @@ export class Remotes implements SessionModule {
   onCharacter(state: CharacterState): void {
     this.regroup.onCharacter(state);
     this.invites.onCharacter(state);
+    this.autoInvite.onCharacter(state);
     // A changed sheet goes out under the gate its first answer did (todo 118).
     if (this.config.enabled && this.config.remotes.enabled) {
       this.sweep(Date.now());
@@ -973,6 +984,7 @@ export class Remotes implements SessionModule {
     this.wantsHeal = false;
     this.seen = false;
     this.autoJoin.reset();
+    this.autoInvite.reset();
     this.regroup.reset();
     this.invites.reset();
     this.leaderDoors.reset();

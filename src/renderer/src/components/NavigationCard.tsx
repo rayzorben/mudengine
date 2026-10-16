@@ -10,6 +10,7 @@ import { rate } from '../lib/rates';
 import { movementOf, navigationFace } from '@shared/movement';
 import {
   isAfflictionHold,
+  waitingForParty,
   walkIsResting,
   type AfflictionHold,
   type WalkProgress
@@ -41,6 +42,8 @@ export interface NavigationCardProps extends CardChrome {
   onStart(loop: string | null): void;
   /** Stop, whichever of the two is running. The place is kept. */
   onStop(): void;
+  /** Stop waiting for the party behind a portal and walk on (todo 849). */
+  onWalkOn(): void;
   onReverseLoop(): void;
 }
 
@@ -78,6 +81,7 @@ function NavigationCard({
   onChoose,
   onStart,
   onStop,
+  onWalkOn,
   onReverseLoop,
   ...chrome
 }: NavigationCardProps) {
@@ -218,6 +222,15 @@ function NavigationCard({
       // The empty value is the resume entry: main is asked with `null` and
       // answers from what it actually stopped.
       run: () => onStart(choice === '' ? null : choice)
+    });
+  }
+  // Beside Stop while the walk waits for the party: walk on without the ones not coming.
+  if (waitingForParty(walk)) {
+    controls.push({
+      id: 'walk-on',
+      label: t('cards.navigation.actions.walkOn'),
+      icon: 'skip',
+      run: onWalkOn
     });
   }
   if (live && loop.bounce) {
@@ -629,7 +642,7 @@ function walkChip(walk: WalkProgress) {
     return <span className="chip info">{t('cards.navigation.route.badgeDark')}</span>;
   }
   // Leading, on the far side of a portal until the party rejoins (todo 839); bounded, so `info`.
-  if (walk.status === 'walking' && walk.hold === 'party') {
+  if (waitingForParty(walk)) {
     return <span className="chip info">{t('cards.navigation.route.badgeRegrouping')}</span>;
   }
   if (walk.status === 'walking') {

@@ -848,12 +848,7 @@ export class SessionManager {
       // nothing else (`Holds.canEndAFight`), and never past an escape's move.
       willFight: () => this.combat.wouldFight,
       escaping: () => this.travel.escapeUnanswered || this.travel.isRetreating(),
-      /*
-       * And whether one is coming for the room the character is standing in,
-       * which is what a walk waits on rather than giving up in the dark. This
-       * module runs *after* the walker on every state, so the walker cannot
-       * read the answer off the queue — it has to ask.
-       */
+      // A light coming for this room, which a walk waits on; asked, as this runs after the walker.
       lightComing: (state) => this.light.couldReady(state),
       regrouping: (state) => this.remotes.regrouping(state),
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
@@ -3261,6 +3256,11 @@ export class SessionManager {
   stopMoving(by: string | null = null): void {
     this.travel.stopMoving(by);
     this.extensions.playerStopped();
+  }
+
+  /** The player walks on without the party. See `PartyRegroup.release`. */
+  walkOnWithoutParty(): void {
+    this.remotes.releaseRegroup();
   }
 
   /** The named loop, or whatever was stopped. See `Travel.startMoving`. */

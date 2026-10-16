@@ -1603,7 +1603,11 @@ function playerGrants(value: unknown): Record<string, RemoteGrant> {
   for (const [name, grant] of Object.entries(value).slice(0, 256)) {
     const key = text(name).toLowerCase().slice(0, 64);
     if (key.length === 0 || !isRecord(grant)) continue;
-    out[key] = { allow: remoteNames(grant['allow']), deny: remoteNames(grant['deny']) };
+    out[key] = {
+      allow: remoteNames(grant['allow']),
+      deny: remoteNames(grant['deny']),
+      autoInvite: grant['autoInvite'] === true
+    };
   }
   return out;
 }

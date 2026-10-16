@@ -97,7 +97,7 @@ import {
   type AlertRule,
   type Severity
 } from './notifications';
-import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
+import { isRemoteName, NO_GRANT, type RemoteGrant, type RemoteName } from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { normalizeMobRules, type MobRule } from './mobRules';
 import { normalizeAliases, type Aliases } from './aliases';
@@ -3667,10 +3667,11 @@ function playerGrants(
   for (const [name, grant] of Object.entries(value)) {
     const key = name.trim().toLowerCase();
     if (key.length === 0 || !isRecord(grant)) continue;
-    const held = out[key] ?? { allow: [], deny: [] };
+    const held = out[key] ?? NO_GRANT;
     out[key] = {
       allow: [...new Set([...held.allow, ...remoteNames(grant['allow'], [])])],
-      deny: [...new Set([...held.deny, ...remoteNames(grant['deny'], [])])]
+      deny: [...new Set([...held.deny, ...remoteNames(grant['deny'], [])])],
+      autoInvite: held.autoInvite || bool(grant['autoInvite'], false)
     };
   }
   return out;

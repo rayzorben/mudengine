@@ -220,6 +220,11 @@ export function walkIsResting(hold: WalkHold): boolean {
   return hold === 'health' || hold === 'mana' || hold === 'trap' || hold === 'resting';
 }
 
+/** Leading, on the far side of a portal until the party rejoins or the player walks on (todos 839, 849). */
+export function waitingForParty(walk: Pick<WalkProgress, 'status' | 'hold'>): boolean {
+  return walk.status === 'walking' && walk.hold === 'party';
+}
+
 /**
  * The switches that let a walk go on through a stated condition, in the
  * template's order — the runtime half of `ConditionWaits`, read by the

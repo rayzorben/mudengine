@@ -1335,10 +1335,21 @@ export function isRemoteName(value: unknown): value is RemoteName {
 export interface RemoteGrant {
   allow: RemoteName[];
   deny: RemoteName[];
+  /**
+   * Send `invite <name>` when they are in the room with this character (todo
+   * 851, `AutoInvite`). Not a remote: it answers no request, so it is not in
+   * either list. Absent on disk reads as off.
+   */
+  autoInvite: boolean;
 }
 
 /** An empty grant: the state every name starts in, and the one nothing is allowed by. */
-export const NO_GRANT: RemoteGrant = { allow: [], deny: [] };
+export const NO_GRANT: RemoteGrant = { allow: [], deny: [], autoInvite: false };
+
+/** Whether a grant says nothing, so its name is dropped from `players` rather than kept empty. */
+export function grantIsEmpty(grant: RemoteGrant): boolean {
+  return grant.allow.length === 0 && grant.deny.length === 0 && !grant.autoInvite;
+}
 
 /**
  * How access is configured, mirrored from `RemotesConfig` so this module stays

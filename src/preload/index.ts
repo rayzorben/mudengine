@@ -67,6 +67,7 @@ const api: WireApi = {
   cashRunTokens: (session) => ipcRenderer.invoke(Invoke.cashRunTokens, session),
   startCashRun: (session, ask) => ipcRenderer.invoke(Invoke.startCashRun, session, ask),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
+  walkOnWithoutParty: (session) => ipcRenderer.invoke(Invoke.walkOnWithoutParty, session),
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),
   startLoop: (session, name) => ipcRenderer.invoke(Invoke.startLoop, session, name),

@@ -184,6 +184,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     cashRunTokens: (session) => invoke(Invoke.cashRunTokens, session),
     startCashRun: (session, ask) => invoke(Invoke.startCashRun, session, ask),
     stopMoving: (session) => invoke(Invoke.stopMoving, session),
+    walkOnWithoutParty: (session) => invoke(Invoke.walkOnWithoutParty, session),
     stepBack: (session, confirmed) => invoke(Invoke.stepBack, session, confirmed),
     listLoops: (session) => invoke(Invoke.listLoops, session),
     startLoop: (session, name) => invoke(Invoke.startLoop, session, name),

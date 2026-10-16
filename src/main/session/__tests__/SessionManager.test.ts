@@ -4991,8 +4991,8 @@ describe('a follower pacing the loop', () => {
           // the pacing pair reaching the loop, not about who was granted it.
           party: [],
           players: {
-            soul: { allow: ['wait', 'ok'], deny: [] },
-            yang: { allow: ['wait', 'ok'], deny: [] }
+            soul: { allow: ['wait', 'ok'], deny: [], autoInvite: false },
+            yang: { allow: ['wait', 'ok'], deny: [], autoInvite: false }
           }
         }
       }
@@ -7778,7 +7778,13 @@ describe('starting and stopping a movement', () => {
         ...quiet.remotes,
         enabled: true,
         party: [],
-        players: { brackle: { allow: ['stop', 'rego', 'loop', 'goto', 'comeback-room'], deny: [] } }
+        players: {
+          brackle: {
+            allow: ['stop', 'rego', 'loop', 'goto', 'comeback-room'],
+            deny: [],
+            autoInvite: false
+          }
+        }
       },
       loops: [
         { name: 'Corridor: Middle Rooms', stops: [{ room: 'Room 20 1/20' }, { room: 'Room 22' }] },

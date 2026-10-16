@@ -7,7 +7,8 @@
  * compass slot is neither (`Exits.SuccessMoveThroughExit`). On landing it sends
  * `par`, invites back a member standing here who is out of the party, and
  * holds the walk (`Holds.holdForParty`) until everyone is here and in it, or
- * `party.regroupMinutes` runs out. See `mudengine-automation` › parts/remotes.md.
+ * `party.regroupMinutes` runs out, or the player walks on (todo 849). See
+ * `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
 import { partyMembers, standingHere, type CharacterState } from '../../shared/character';
@@ -177,6 +178,17 @@ export class PartyRegroup {
         REGROUP
       );
     }, minutes * 60_000);
+  }
+
+  /**
+   * The player walks on without the party (todo 849): the wait ends as the
+   * timeout ends it, said. False when no regroup is pending.
+   */
+  release(): boolean {
+    if (this.timer === null) return false;
+    this.end();
+    this.events.notice?.(t('automation.party.regroupReleased'), REGROUP);
+    return true;
   }
 
   onBlock(block: Block): void {

@@ -285,6 +285,39 @@ describe('leading the party through a portal', () => {
     walk.dispose();
     it.dispose();
   });
+
+  /* Todo 849: a member who is not coming; the player walks on without waiting out the clock. */
+  it('walks on when the player releases the wait, said, and only while waiting', () => {
+    const said: string[] = [];
+    const it = new PartyRegroup(config(), queue, { notice: (line) => said.push(line) });
+    expect(it.release()).toBe(false);
+    let now = state('1/1', ['Soul']);
+    const walk = new Walker(config(), queue, {
+      stateNow: () => now,
+      stepping: (command, direction, to) => it.stepping(command, direction, to, now),
+      regrouping: (at) => it.regrouping(at)
+    });
+    walk.start(
+      routeOf(stepOf(1, 2, 'e', { direction: 'portal', command: 'go vortex' }), stepOf(2, 3, 'e')),
+      now
+    );
+    drain();
+    now = state('1/2', [], []);
+    walk.onCharacter(now);
+    it.onCharacter(now);
+    vi.advanceTimersByTime(TUNING.walk.holdMs * 2);
+    expect(walk.progress.hold).toBe('party');
+    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR]);
+
+    expect(it.release()).toBe(true);
+    expect(said.at(-1)).toBe(t('automation.party.regroupReleased'));
+    vi.advanceTimersByTime(TUNING.walk.holdMs + 50);
+    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, 'e']);
+    expect(walk.progress.hold).toBeNull();
+    expect(it.release()).toBe(false);
+    walk.dispose();
+    it.dispose();
+  });
 });
 
 describe('the decision behind the say, the wait and the invitation (todo 119)', () => {

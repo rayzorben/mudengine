@@ -10,6 +10,7 @@ import type { VitalsUiConfig } from '@shared/config';
 import type { ProfileSummary, SessionId, SessionSummary } from '@shared/ipc';
 import {
   isAfflictionHold,
+  waitingForParty,
   walkIsResting,
   type AfflictionHold,
   type WalkProgress
@@ -309,7 +310,7 @@ function attention(
     return { level: 'info', label: t('tabs.tab.markLighting') };
   }
   // Leading, on the far side of a portal until the party rejoins (todo 839); bounded, so `info`.
-  if (view.walk.status === 'walking' && view.walk.hold === 'party') {
+  if (waitingForParty(view.walk)) {
     return { level: 'info', label: t('tabs.tab.markRegrouping') };
   }
   /*

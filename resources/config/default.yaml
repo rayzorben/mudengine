@@ -1397,6 +1397,9 @@ automation:
   # `deny` beats everything, which is what makes "the party, except Corwin"
   # expressible; `allow` grants whether or not they are in the gang or party;
   # anything in neither list falls through to `gang` and then to `party`.
+  # `autoInvite: true` sends them `invite` when they are in the room with this
+  # character, unless they are already in the party or invited, or this
+  # character is following somebody (Invite When Seen on the Player flyout).
   #
   #   remotes:
   #     enabled: true
@@ -1407,9 +1410,11 @@ automation:
   #       ardren:
   #         allow: [health, do, get-all]
   #         deny: []
+  #         autoInvite: true
   #       corwin:
   #         allow: []
   #         deny: [do, drop-all]
+  #         autoInvite: false
   #
   # There is no ground meaning "everybody", and the absence is deliberate: it is
   # not a reason, it is the absence of a gate.
