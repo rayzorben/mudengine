@@ -6635,6 +6635,19 @@ describe('what a fight is written down as', () => {
     expect(fight).toMatchObject({ opened: false, mine: 3, others: 20, killed: true });
   });
 
+  /* Todo 152: what a party member deals a round is measured off whose blows these were. */
+  it('records what each other player named dealt', () => {
+    const [fight] = fought(
+      'You punch giant rat for 3 damage!',
+      'Grimjaw slashes the giant rat for 20 damage!',
+      'Grimjaw slashes the giant rat for 5 damage!',
+      'Soul smashes the giant rat for 4 damage!'
+    );
+    expect(fight?.struckBy).toEqual({ grimjaw: 25, soul: 4 });
+    // Positive control: alone, there is nobody to name.
+    expect(fought('You punch giant rat for 8 damage!')[0]?.struckBy).toBeUndefined();
+  });
+
   it('writes nothing for a fight in which nothing was hit', () => {
     expect(fought('The giant rat swings at you.')).toEqual([]);
   });

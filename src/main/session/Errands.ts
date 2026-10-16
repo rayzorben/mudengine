@@ -20,6 +20,7 @@ import { median } from '../../shared/median';
 import { minutesMs } from '../../shared/values';
 import { partyTraps, walkersThrough } from '../../shared/barrierHands';
 import { killShare } from '../../shared/company';
+import { partyPlan, withParty } from '../../shared/partyFight';
 import type { WalkKind } from '../../shared/walk';
 import { routePricesOf } from '../../shared/walkChoices';
 import { t } from '../app/i18n';
@@ -52,6 +53,7 @@ import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shar
 import type { Block } from '../../shared/blocks';
 import {
   fightIsRunning,
+  joinedMembers,
   ownAlignment,
   standingOf,
   packRows,
@@ -305,7 +307,7 @@ export interface ErrandsParts {
   readonly world: ErrandsWorld | undefined;
   readonly tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   /** What this character has measured dealing a round, for the survey. */
-  readonly fightRecord: Pick<FightSink, 'measured' | 'timing'>;
+  readonly fightRecord: Pick<FightSink, 'measured' | 'timing' | 'memberMeasured'>;
   /**
    * The rooms' refills the wire timed, what its kills paid solo, and which
    * spells had no effect on which monsters, and what its rounds measured,
@@ -1898,7 +1900,8 @@ export class Errands implements SessionModule {
       measuredMinutesLeast,
       paceLeast,
       paceMost,
-      measuredLevels
+      measuredLevels,
+      partyDamageStep
     } = tuning().hunting;
     const { maxDamageShare, trivialLevelMargin, cashExpShare } = this.automationConfig.hunting;
     // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
@@ -1978,6 +1981,21 @@ export class Errands implements SessionModule {
       heal,
       poisonHoldsRest
     };
+    /*
+     * The party fighting beside it (todo 152): its members' damage a round off
+     * this session's fights, at the realm's round as this character's own is.
+     */
+    const party = partyPlan(
+      joinedMembers(state),
+      (name) =>
+        this.fightRecord.memberMeasured?.(name, {
+          least: measuredFightsMin,
+          roundMs: c.roundSeconds * 1000,
+          openerRounds: 1
+        })?.perRound ?? null,
+      state.progress.charm,
+      partyDamageStep
+    );
     const assumptions: HuntingAssumptions = {
       family,
       hpMax: state.vitals.hpMax,
@@ -1988,6 +2006,7 @@ export class Errands implements SessionModule {
       heal,
       poisonHoldsRest,
       measured: null,
+      party: party?.said ?? null,
       constants: c
     };
     const cashPerHour = this.automationConfig.hunting.cashPerHour;
@@ -2019,6 +2038,10 @@ export class Errands implements SessionModule {
      * is that an impassable exit is not an exit.
      */
     const reach = this.navigation.withinNow(from, radius ?? Number.POSITIVE_INFINITY, state);
+    // The lairs' fights beside the party, null with no member in the fight.
+    const fighting = party?.odds ?? null;
+    // Alone, no party's fights are still run for it.
+    if (fighting === null) this.session.odds().alone();
     /*
      * Grouped by what spawns, not by name: two rooms naming the same rows at
      * the same cap are one hunting ground with two rooms in it, which is
@@ -2121,7 +2144,8 @@ export class Errands implements SessionModule {
       state.vitals.manaMax,
       measured === null ? '-' : Math.round(measured.perRound),
       speed,
-      this.noEffectsKey()
+      this.noEffectsKey(),
+      party?.odds?.key ?? '-'
     ].join('|');
     const live = as === this.tracker.current;
     if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
@@ -2159,7 +2183,9 @@ export class Errands implements SessionModule {
       const bare = weighRoom(entities, naked, weights);
       const recorded = (hp: number | null): number | null =>
         measured === null || hp === null || hp <= 0 ? null : hp / measured.perRound;
-      return entities.map((entity, index) => ({
+      const hpOf = (index: number): number | null =>
+        verdicts[index]?.menace?.hp ?? entities[index]?.hp ?? null;
+      const alone = entities.map((entity, index) => ({
         name: entity.name,
         /*
          * The realm's own figure where a solo kill has recorded one, else the
@@ -2180,13 +2206,13 @@ export class Errands implements SessionModule {
             ? null
             : (castsToKill(casting, {
                 name: entity.name,
-                hp: verdicts[index]?.menace?.hp ?? entity.hp ?? null,
+                hp: hpOf(index),
                 magicRes: entity.magicResist ?? null,
                 abilities: entity.abilities,
                 nature: entity.nature
               })?.rounds ?? null)) ??
           verdicts[index]?.rounds?.value ??
-          recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),
+          recorded(hpOf(index)),
         perRound: verdicts[index]?.menace?.perRound ?? null,
         nakedPerRound: bare[index]?.perRound ?? null,
         afflictions: afflictionsOf(entity, speed),
@@ -2198,6 +2224,10 @@ export class Errands implements SessionModule {
          */
         regenSeconds: regenSeconds(entity.regenHours, speed)
       }));
+      // Fought beside the party (todo 152): the members' damage shortens the kill; the blows stay on this character.
+      return party === null || fighting === null
+        ? alone
+        : alone.map((mob, index) => withParty(mob, hpOf(index), party.said));
     };
     const priced = new Map<string, HuntPriced>();
     const excluded = { ...NO_EXCLUSIONS };
@@ -2241,7 +2271,11 @@ export class Errands implements SessionModule {
        * figures, is not known to be: both are left out and counted. A fight
        * `simulateFight` cannot run is left to the estimate.
        */
-      const odds = kind.lair ? this.session.odds().lair(group.sample) : null;
+      const odds = !kind.lair
+        ? null
+        : fighting === null
+          ? this.session.odds().lair(group.sample)
+          : this.session.odds().partyLair(group.sample, fighting);
       if (odds?.kind === 'pending' || odds?.kind === 'unread') {
         excluded.unsimulated += 1;
         continue;

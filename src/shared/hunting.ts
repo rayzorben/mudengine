@@ -1359,7 +1359,22 @@ export interface HuntingAssumptions {
    * the record is too thin (`tuning.hunting.measuredFightsMin`).
    */
   measured: MeasuredOutput | null;
+  /** The party priced fighting beside the character (todo 152): null with nobody joined; `fighters` 0 where no member's health is known. */
+  party: HuntingParty | null;
   constants: HuntingConstants;
+}
+
+/**
+ * The party as the survey priced it (`partyFight.ts`): the members in the
+ * fight and what they deal a round together; and what was left out, said on the card:
+ * joined members out of the fight (no client said their health) and members
+ * in it with no measured damage, counted as dealing nothing.
+ */
+export interface HuntingParty {
+  fighters: number;
+  leftOut: number;
+  unmeasured: number;
+  damage: number;
 }
 
 /** What the survey left out before ranking, counted by reason. */

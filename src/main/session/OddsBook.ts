@@ -29,6 +29,7 @@ import type { FightSimulator } from '../../shared/simulator';
 import type { HarmOdds, HarmPrediction } from '../../shared/harm';
 import { mobTerms, worstModel } from '../../shared/mobRound';
 import { simulateFight, type Odds, type SurvivalInput } from '../../shared/survival';
+import type { PartyOdds } from '../../shared/partyFight';
 import { lairKey, parseLair, roomAddress, type WorldRoom } from '../../shared/world';
 
 export type OddsWorld = Pick<
@@ -53,11 +54,15 @@ export interface OddsBookSession {
 export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 
 /**
- * The readers, a lair run past (todo 31), and the lair's fights as they stand
+ * The readers, a lair run past (todo 31), a lair hunted beside the party
+ * (todo 152, the hunting grounds'), and the lair's fights as they stand
  * without queueing them (the router's).
  */
 export type OddsPeeker = OddsReader &
-  Pick<OddsBook, 'pass' | 'mobKnown' | 'lairKnown' | 'passKnown' | 'lairsLeft'>;
+  Pick<
+    OddsBook,
+    'pass' | 'mobKnown' | 'lairKnown' | 'passKnown' | 'lairsLeft' | 'partyLair' | 'alone'
+  >;
 
 /** What the session holds of the book: the readers, the what-if, and its life. */
 export type SessionOdds = Pick<
@@ -68,6 +73,8 @@ export type SessionOdds = Pick<
   | 'mobAs'
   | 'predict'
   | 'lair'
+  | 'partyLair'
+  | 'alone'
   | 'lairKnown'
   | 'pass'
   | 'passKnown'
@@ -97,7 +104,8 @@ export function fightBook(
 type LairWay = 'hunt' | 'pass';
 
 type Job =
-  { kind: 'mob'; name: string } | { kind: 'lair'; key: string; room: WorldRoom; way: LairWay };
+  | { kind: 'mob'; name: string }
+  | { kind: 'lair'; key: string; room: WorldRoom; way: LairWay; party?: PartyOdds };
 
 /** What is run for one set of figures, and what is still owed it. */
 interface Book {
@@ -109,6 +117,11 @@ interface Book {
   /** Asked for by a reader: run first. A monster's is said when done; the verdict carries it. */
   readonly asked: Set<string>;
   readonly told: Set<string>;
+  /**
+   * The lairs hunted beside the party last asked for, by lair key; only one
+   * party's are kept, and only those asked (the hunting grounds).
+   */
+  party: { key: string; lairs: Map<string, Odds> } | null;
 }
 
 const UNREAD: Odds = { kind: 'unread' };
@@ -162,7 +175,8 @@ export class OddsBook implements SessionModule {
     if (this.book === null) return UNREAD;
     const known = this.book.mobs.get(name);
     if (known !== undefined) return known;
-    this.promote(`mob:${name}`, { kind: 'mob', name }, true);
+    const job: Job = { kind: 'mob', name };
+    this.promote(idOf(job), job, true);
     return PENDING;
   }
 
@@ -222,6 +236,30 @@ export class OddsBook implements SessionModule {
     return this.asked(room, 'hunt');
   }
 
+  /**
+   * A lair hunted with the party beside the character (todo 152), queued
+   * when asked. Asking for another party forgets the last one's fights.
+   */
+  partyLair(room: WorldRoom, party: PartyOdds): Odds {
+    if (room.lair === undefined) return UNRUN;
+    const book = this.book;
+    if (book === null) return UNREAD;
+    if (book.party?.key !== party.key) this.forgetParty(book, party.key);
+    const key = lairKey(room.lair);
+    const known = book.party?.lairs.get(key);
+    if (known !== undefined) return known;
+    const job: Job = { kind: 'lair', key, room, way: 'hunt', party };
+    this.promote(idOf(job), job, false);
+    return PENDING;
+  }
+
+  /** The hunting grounds asked alone: the last party's fights are forgotten, and those owed are not run. */
+  alone(): void {
+    const book = this.book;
+    if (book === null || book.party === null) return;
+    this.forgetParty(book, null);
+  }
+
   /** `passKnown`'s queueing twin: a lair run past, as a route about to be read meets it. */
   pass(room: WorldRoom): Odds {
     return this.asked(room, 'pass');
@@ -248,7 +286,7 @@ export class OddsBook implements SessionModule {
     const job = this.lairJob(room, way);
     const known = this.book.lairs.get(job.key);
     if (known !== undefined) return known;
-    this.promote(`lair:${job.key}`, job, false);
+    this.promote(idOf(job), job, false);
     return PENDING;
   }
 
@@ -270,14 +308,12 @@ export class OddsBook implements SessionModule {
       : { kind: 'lair', key, room, way: 'hunt' };
   }
 
-  /** The lair fights not yet run for the character as it stands (hunts and passes): those queued and the one part way. */
+  /** The lair fights not yet run for the character as it stands (hunts, passes, and those beside the party asked about): those queued and the one part way. */
   get lairsLeft(): number {
     const book = this.book;
     if (book === null) return 0;
     const running = this.running?.book === book && this.running.job.kind === 'lair' ? 1 : 0;
-    return (
-      running + book.queue.filter((job) => job.kind === 'lair' && !book.lairs.has(job.key)).length
-    );
+    return running + book.queue.filter((job) => job.kind === 'lair' && !done(book, job)).length;
   }
 
   reset(): void {
@@ -337,8 +373,16 @@ export class OddsBook implements SessionModule {
       lairs: new Map(),
       queue: [...hunts, ...passes, ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))],
       asked: new Set(),
-      told: new Set()
+      told: new Set(),
+      party: null
     };
+  }
+
+  /** Drops one party's fights and what is owed them; `key` is the party now asked about, null for none. */
+  private forgetParty(book: Book, key: string | null): void {
+    book.party = key === null ? null : { key, lairs: new Map() };
+    book.queue = book.queue.filter((job) => job.kind !== 'lair' || job.party === undefined);
+    for (const id of book.asked) if (id.startsWith('party:')) book.asked.delete(id);
   }
 
   private promote(id: string, job: Job, tell: boolean): void {
@@ -390,8 +434,7 @@ export class OddsBook implements SessionModule {
         return;
       }
       const job = book.queue.shift()!;
-      const done = job.kind === 'mob' ? book.mobs.has(job.name) : book.lairs.has(job.key);
-      if (done) continue;
+      if (done(book, job)) continue;
       const input = this.inputOf(state, job);
       if ('kind' in input) {
         told = this.record(book, job, input) || told;
@@ -416,8 +459,9 @@ export class OddsBook implements SessionModule {
   /** Writes a job's odds into its book: whether a reader asked to be told. */
   private record(book: Book, job: Job, odds: Odds): boolean {
     if (job.kind === 'mob') book.mobs.set(job.name, odds);
-    else book.lairs.set(job.key, odds);
-    return book.told.delete(job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`);
+    else if (job.party === undefined) book.lairs.set(job.key, odds);
+    else if (book.party?.key === job.party.key) book.party.lairs.set(job.key, odds);
+    return book.told.delete(idOf(job));
   }
 
   /** The job's fight as the simulator takes it, or what it comes to where none can be set up. */
@@ -451,9 +495,23 @@ export class OddsBook implements SessionModule {
       ...character,
       ...this.setup.foes(state, character, met, 'arriving'),
       ...(draw === undefined ? {} : { draw }),
-      ...(job.kind === 'lair' && job.way === 'pass' ? { passing: true } : {})
+      ...(job.kind === 'lair' && job.way === 'pass' ? { passing: true } : {}),
+      ...(job.kind === 'lair' && job.party !== undefined ? { party: job.party.party } : {})
     };
   }
+}
+
+/** What a job is asked and told by. */
+function idOf(job: Job): string {
+  if (job.kind === 'mob') return `mob:${job.name}`;
+  return job.party === undefined ? `lair:${job.key}` : `party:${job.key}`;
+}
+
+/** Whether a job's odds are in its book, or its party is no longer the one asked about. */
+function done(book: Book, job: Job): boolean {
+  if (job.kind === 'mob') return book.mobs.has(job.name);
+  if (job.party === undefined) return book.lairs.has(job.key);
+  return book.party?.key !== job.party.key || book.party.lairs.has(job.key);
 }
 
 /** The book's odds as a record keeps them: the figures a report reads, not the whole run. */

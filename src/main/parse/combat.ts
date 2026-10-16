@@ -63,6 +63,8 @@ interface Ledger {
   key: string;
   mine: number;
   others: number;
+  /** Of `others`, what each attacker the sentence named dealt, by name in lower case. */
+  struckBy: Map<string, number>;
   /** Epoch ms of the first blow, so a record can say how long it took. */
   startedAt: number;
   /** And of the last. */
@@ -115,6 +117,7 @@ function newLedger(key: string, byMe: boolean, at = 0): Ledger {
     key,
     mine: 0,
     others: 0,
+    struckBy: new Map(),
     startedAt: at,
     lastAt: at,
     blows: 0,
@@ -628,7 +631,7 @@ export class FightTracker {
      * `{target}` handed the name of something a stranger is fighting would
      * start a second fight in a room already holding one.
      */
-    const ledger = this.recordDamage(target, damage, mine, at);
+    const ledger = this.recordDamage(target, damage, mine, at, mine ? undefined : attacker);
     if (!mine) {
       if (s.combat.target === null || mobKey(s.combat.target) !== ledger.key) return null;
       return {
@@ -724,7 +727,13 @@ export class FightTracker {
    * A blow with no readable number is still a blow and still worth recording as
    * having happened, but it moves no total.
    */
-  private recordDamage(name: string, damage: number, byMe: boolean, at = 0): Ledger {
+  private recordDamage(
+    name: string,
+    damage: number,
+    byMe: boolean,
+    at = 0,
+    attacker?: string
+  ): Ledger {
     const key = mobKey(name);
     let ledger = this.ledgers.get(key);
     if (!ledger) {
@@ -745,6 +754,11 @@ export class FightTracker {
     if (damage > 0) {
       if (byMe) ledger.mine += damage;
       else ledger.others += damage;
+      // Whose: what a party member deals a round is measured off it (todo 152).
+      if (!byMe && attacker !== undefined) {
+        const who = attacker.toLowerCase();
+        ledger.struckBy.set(who, (ledger.struckBy.get(who) ?? 0) + damage);
+      }
       // It took another blow, so it did not die. The suspicion was somebody
       // else's kill crediting this character with experience.
       ledger.killedAfter = null;
@@ -868,6 +882,7 @@ export class FightTracker {
       ...(killed && ledger.killedBy !== null ? { killedBy: ledger.killedBy } : {}),
       mine: ledger.mine,
       others: ledger.others,
+      ...(ledger.struckBy.size === 0 ? {} : { struckBy: Object.fromEntries(ledger.struckBy) }),
       blows: ledger.blows,
       wound: ledger.observed,
       opened: ledger.opened,

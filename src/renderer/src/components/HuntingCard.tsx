@@ -357,6 +357,33 @@ function HuntingCard({
           level: recorded.fromLevel
         });
 
+  const partyPriced = advice?.assumptions.party ?? null;
+  const party =
+    partyPriced === null
+      ? ''
+      : partyPriced.fighters === 0
+        ? t('cards.hunting.partyAlone')
+        : [
+            partyPriced.fighters === 1
+              ? t('cards.hunting.partyOne')
+              : t('cards.hunting.partyMany', { count: partyPriced.fighters }),
+            partyPriced.damage > 0
+              ? t('cards.hunting.partyDealing', { damage: Math.round(partyPriced.damage) })
+              : '',
+            partyPriced.unmeasured === 0
+              ? ''
+              : partyPriced.unmeasured === 1
+                ? t('cards.hunting.partyUnmeasuredOne')
+                : t('cards.hunting.partyUnmeasuredMany', { count: partyPriced.unmeasured }),
+            partyPriced.leftOut === 0
+              ? ''
+              : partyPriced.leftOut === 1
+                ? t('cards.hunting.partyLeftOutOne')
+                : t('cards.hunting.partyLeftOutMany', { count: partyPriced.leftOut })
+          ]
+            .filter((sentence) => sentence !== '')
+            .join(' ');
+
   return (
     <BentoCard
       {...chrome}
@@ -380,6 +407,7 @@ function HuntingCard({
                       swept: advice.swept.toLocaleString()
                     }),
                     measured,
+                    party,
                     leftOut,
                     unpriced
                   ]

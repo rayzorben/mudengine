@@ -709,3 +709,51 @@ describe('a fight that draws monsters in', () => {
     ).toBeNull();
   });
 });
+
+/* Todo 152: the party fighting beside the character, as the hunting grounds price a lair. */
+describe('the fight beside a party', () => {
+  // About a dozen rounds of the character's sword, against a bar that outlasts them.
+  const ogre = { hp: 1000, profiles: [biter(60, 8, 14)] };
+  const lair = (party?: SurvivalInput['party']): Survival =>
+    simulateFight(
+      fight({
+        hp: 1000,
+        hpMax: 1000,
+        foes: [{ name: 'ogre', subject: ogre }],
+        ...(party ? { party } : {})
+      })
+    )!;
+  const beside = (hp: number, perRound: number): SurvivalInput['party'] => ({
+    members: [{ hp, perRound }],
+    retarget: 0.5,
+    retargetMember: 0.5
+  });
+
+  it('shares the monster’s blows with a member who stands', () => {
+    const alone = lair();
+    const shared = lair(beside(100_000, 0));
+    // Positive control: alone, the ogre hurts the character.
+    expect(alone.lostMean).toBeGreaterThan(0);
+    // Nobody dealing more, the fight is as long, and about half its blows land elsewhere.
+    expect(shared.rounds.value).toBeCloseTo(alone.rounds.value, 0);
+    expect(shared.lostMean).toBeLessThan(alone.lostMean * 0.7);
+    expect(shared.lostMean).toBeGreaterThan(alone.lostMean * 0.3);
+  });
+
+  it('kills sooner with a member’s damage', () => {
+    const alone = lair();
+    const helped = lair(beside(100_000, 80));
+    expect(helped.rounds.value).toBeLessThan(alone.rounds.value * 0.7);
+  });
+
+  it('takes every blow again once a member has fallen', () => {
+    const alone = lair();
+    // Ten hit points against an unarmoured blow of 8–14: down on its first.
+    const frail = lair(beside(10, 0));
+    expect(frail.lostMean).toBeGreaterThan(alone.lostMean * 0.85);
+  });
+
+  it('reads the same as alone with nobody beside it', () => {
+    expect(lair({ members: [], retarget: 0.5, retargetMember: 0.5 })).toEqual(lair());
+  });
+});

@@ -2752,6 +2752,7 @@ function registerIpc(): void {
           heal: null,
           poisonHoldsRest: false,
           measured: null,
+          party: null,
           constants: { ...atSpeed(tuning().hunting, 1), ...DEFAULT_HUNT_CHOICES }
         },
         floor: NO_FLOOR,

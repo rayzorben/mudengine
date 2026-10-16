@@ -86,6 +86,13 @@ export interface FightRecord {
   mine: number;
   /** Damage anybody else dealt, which is a different fight. */
   others: number;
+  /**
+   * Of `others`, what each player the sentence named dealt, by name in lower
+   * case (todo 152): how a party member's damage a round is measured. Kept
+   * on disk with the fight, though only this session's are folded. Absent
+   * where nobody named struck it.
+   */
+  struckBy?: Record<string, number>;
   /** Blows exchanged, both ways, as the classifier counted them. */
   blows: number;
   /** The last wound word a `look` reported, when one ever did. */
@@ -164,6 +171,8 @@ export interface FightSink {
   measured?(level: number, ask: MeasureAsk): MeasuredOutput | null;
   /** The engagement's wait and the gap between kills (`measuredTiming`). Absent on a sink that keeps nothing. */
   timing?(least: number): MeasuredTiming;
+  /** What another player deals a round, off this session's fights (`memberPerRound`). Absent on a sink that keeps nothing. */
+  memberMeasured?(name: string, ask: MeasureAsk): MeasuredDealt | null;
 }
 
 /** The one that writes nothing, for a session with nowhere to write. */
@@ -486,9 +495,58 @@ export function measuredPerRound(
     if (fights >= ask.least) break;
   }
   if (fights === 0 || fights < ask.least || ask.roundMs <= 0) return null;
-  const rounds = ms / ask.roundMs + fights * Math.max(1, ask.openerRounds);
+  const rounds = roundsOver(ms, fights, ask);
   if (rounds <= 0 || mine <= 0) return null;
   return { perRound: mine / rounds, fights, fromLevel };
+}
+
+/** A fight of *k* rounds runs *k − 1* round lengths from its first blow to its last; the opener counts `openerRounds`. */
+function roundsOver(ms: number, fights: number, ask: MeasureAsk): number {
+  return ms / ask.roundMs + fights * Math.max(1, ask.openerRounds);
+}
+
+/** What one other player dealt across the fights it struck in. */
+export interface DealtFold {
+  fights: number;
+  damage: number;
+  /** Those fights' lengths, first blow to last. */
+  ms: number;
+}
+
+/** Per player, by name in lower case. */
+export type DealtFolds = Map<string, DealtFold>;
+
+/** Adds one fight into each named player's sums (`FightRecord.struckBy`). */
+export function foldDealt(into: DealtFolds, record: FightRecord): void {
+  for (const [name, damage] of Object.entries(record.struckBy ?? {})) {
+    const fold = into.get(name) ?? { fights: 0, damage: 0, ms: 0 };
+    fold.fights += 1;
+    fold.damage += damage;
+    fold.ms += record.ms ?? 0;
+    into.set(name, fold);
+  }
+}
+
+export interface MeasuredDealt {
+  perRound: number;
+  fights: number;
+}
+
+/**
+ * What a player deals a round over the fights it struck in (todo 152), at
+ * least `least` of them, each fight's rounds counted from anybody's first
+ * blow: a member who joins late reads as dealing less, never more.
+ */
+export function memberPerRound(
+  folds: ReadonlyMap<string, DealtFold>,
+  name: string,
+  ask: MeasureAsk
+): MeasuredDealt | null {
+  const fold = folds.get(name.toLowerCase());
+  if (fold === undefined || fold.fights < Math.max(1, ask.least) || ask.roundMs <= 0) return null;
+  const rounds = roundsOver(fold.ms, fold.fights, ask);
+  if (rounds <= 0 || fold.damage <= 0) return null;
+  return { perRound: fold.damage / rounds, fights: fold.fights };
 }
 
 /** How long a kill takes outside its rounds, measured off this character's own opened fights. */

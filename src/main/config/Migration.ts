@@ -8372,6 +8372,8 @@ function theTuningBlockGainedKeys(
     addKey('world', 'questReachTries', DEFAULT_INTERNAL.tuning.world.questReachTries);
     // When the route panel offers the most direct way (todo 145, 2026-10-16).
     addKey('world', 'directLonger', DEFAULT_INTERNAL.tuning.world.directLonger);
+    // How far a party member's damage moves before its lairs are run again (todo 152, 2026-10-16).
+    addKey('hunting', 'partyDamageStep', DEFAULT_INTERNAL.tuning.hunting.partyDamageStep);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
