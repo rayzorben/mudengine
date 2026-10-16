@@ -24,9 +24,11 @@ import {
 } from '../../shared/lore';
 import { rowNameOf } from '../../shared/mobs';
 import { learnRefill, type LearnedSpawns, type RefillTimed } from '../../shared/spawns';
+import type { RoundTally } from '../../shared/rounds';
 import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { NoEffectBook, readNoEffectRow, type NoEffectRow } from './NoEffectBook';
+import { readRoundTally, RoundsBook } from './RoundsBook';
 import { t } from '../app/i18n';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
@@ -118,6 +120,14 @@ interface LoreFile {
    * Optional for the same reason `slots` is.
    */
   killExp?: Record<string, Record<string, LearnedKillExp>>;
+  /**
+   * The rounds each realm played (`playedKey`) was counted for, by spell, and
+   * the casts in them (todo 121). See `RoundLore`. Optional for the same
+   * reason `slots` is.
+   */
+  castRounds?: Record<string, Record<string, RoundTally>>;
+  /** The same for swings, by `swingKey` (todo 123). */
+  swingRounds?: Record<string, Record<string, RoundTally>>;
 }
 
 /** What one realm paid for a solo kill of one monster, and when it last said so. */
@@ -165,6 +175,8 @@ export class RealmLore {
   private readonly instants = new Map<string, Map<string, LearnedInstant>>();
   /** What each realm said a spell has no effect on. See `LoreFile.noEffects`. */
   private readonly noEffects = new NoEffectBook(() => this.schedule());
+  /** What each realm's rounds measured. See `LoreFile.castRounds`. */
+  private readonly rounds = new RoundsBook(() => this.schedule());
   /** What each realm paid for a solo kill, by row name. See `LoreFile.killExp`. */
   private readonly killExp = new Map<string, Map<string, LearnedKillExp>>();
   private timer: NodeJS.Timeout | null = null;
@@ -238,6 +250,14 @@ export class RealmLore {
       killExpFor: (name) => this.killExpTable(playing()).get(rowOf(name))?.exp ?? null,
       allKillExp: () =>
         new Map([...this.killExpTable(playing())].map(([name, entry]) => [name, entry.exp])),
+      observeRound: (kind, name, count) => {
+        this.load();
+        this.rounds.observe(playing(), kind, name, count);
+      },
+      measuredRounds: () => {
+        this.load();
+        return this.rounds.measured(playing());
+      },
       spawnsAt: (room) => this.spawnTable(playing()).get(room) ?? null,
       allSpawns: () => this.spawnTable(playing()),
       observeRefill: (refill, at) => this.observeRefill(playing(), refill, at)
@@ -778,6 +798,18 @@ export class RealmLore {
         return row && mobKey(name).length > 0 ? [mobKey(name), row] : null;
       })
     );
+    for (const [kind, section] of [
+      ['casts', file.castRounds],
+      ['swings', file.swingRounds]
+    ] as const) {
+      this.rounds.load(
+        kind,
+        readTables(section, (name, value) => {
+          const tally = readRoundTally(value);
+          return tally && name.length > 0 ? [name, tally] : null;
+        })
+      );
+    }
     for (const [realm, table] of readTables(file.killExp, (name, value) => {
       const entry = readKillExpEntry(value);
       return entry && name.length > 0 ? [name, entry] : null;
@@ -835,6 +867,8 @@ export class RealmLore {
     const noEffects = writeTables(this.noEffects.tables());
     const spawns = writeTables(this.spawns);
     const killExp = writeTables(this.killExp);
+    const castRounds = writeTables(this.rounds.section('casts'));
+    const swingRounds = writeTables(this.rounds.section('swings'));
 
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -852,7 +886,9 @@ export class RealmLore {
             ...(Object.keys(instants).length > 0 ? { instants } : {}),
             ...(Object.keys(noEffects).length > 0 ? { noEffects } : {}),
             ...(Object.keys(spawns).length > 0 ? { spawns } : {}),
-            ...(Object.keys(killExp).length > 0 ? { killExp } : {})
+            ...(Object.keys(killExp).length > 0 ? { killExp } : {}),
+            ...(Object.keys(castRounds).length > 0 ? { castRounds } : {}),
+            ...(Object.keys(swingRounds).length > 0 ? { swingRounds } : {})
           } satisfies LoreFile,
           null,
           2

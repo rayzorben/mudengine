@@ -57,11 +57,7 @@ export class SpellHold {
   ): SpellHeld | null {
     if (swing.length === 0) return null;
     const cls = this.realmClass();
-    const sheet = prowessSheetOf(state, {
-      combat: cls.combat,
-      magery: cls.magery,
-      crits: cls.crits
-    });
+    const sheet = prowessSheetOf(state, cls);
     const finish = meleeFinishes(
       target.remaining,
       sheet,

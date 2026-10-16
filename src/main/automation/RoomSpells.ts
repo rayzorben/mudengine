@@ -139,12 +139,12 @@ export class RoomSpells {
 
   private casterOf(state: CharacterState): RoomCaster | null {
     if (state.spellbook === null) return null;
-    const { combat, magery, crits, family } = this.realmClass();
+    const { combat, magery, crits, rounds, family } = this.realmClass();
     return {
       book: state.spellbook,
       realm: this.realmSpell,
       level: state.progress.level,
-      sheet: prowessSheetOf(state, { combat, magery, crits }),
+      sheet: prowessSheetOf(state, { combat, magery, crits, rounds }),
       family
     };
   }

@@ -138,6 +138,29 @@ export function spellingsOf(
   return word.length > 0 ? [...namesOf(found), word] : namesOf(found);
 }
 
+/**
+ * A landed cast's line after `You`, lower-cased: `You cast harm at tall
+ * kobold thief for 15 damage!` reads `cast harm at tall kobold thief`. Null
+ * for a blow.
+ */
+export function castLine(line: string | undefined): string | null {
+  const read = (line ?? '').trim().toLowerCase();
+  return read.startsWith('cast ') ? read : null;
+}
+
+/**
+ * Which of `spellings` a landed cast's line names, the first that fits, or
+ * undefined. Matched against the spellings rather than cut at ` at `, so a
+ * name holding `on` or `at` is read whole.
+ */
+export function castNamed(
+  line: string | undefined,
+  spellings: readonly string[]
+): string | undefined {
+  const read = castLine(line);
+  return read === null ? undefined : spellings.find((name) => read.startsWith(`cast ${name} `));
+}
+
 /** The names a resolved spell goes by, lower-cased, without the cast word. */
 function namesOf(spell: ResolvedSpell): string[] {
   return [spell.configured, spell.known?.name, spell.known?.short, spell.realm?.name]

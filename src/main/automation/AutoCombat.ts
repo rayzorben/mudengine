@@ -1419,7 +1419,7 @@ export class AutoCombat implements SessionModule {
     menaces: ReadonlyArray<Menace | null>,
     entities: ReadonlyArray<MobEntity | undefined>
   ): Verdict[] {
-    const { combat, magery, crits, family, attack } = this.realmClass();
+    const { combat, magery, crits, rounds, family, attack } = this.realmClass();
     /*
      * The sheet and the target are read by the shared functions the Room card's
      * appraisal reads (`Appraisal.verdict`), so the figure the
@@ -1427,7 +1427,7 @@ export class AutoCombat implements SessionModule {
      * `targetOf` is what puts the monster's own armour into the roll; this
      * once passed `{}`, and priced every monster as unarmoured — see there.
      */
-    const sheet = prowessSheetOf(state, { combat, magery, crits });
+    const sheet = prowessSheetOf(state, { combat, magery, crits, rounds });
     const weapon = wieldedWeapon(state.inventory.items);
     return menaces.map((menace, index) =>
       verdictFor(menace, targetOf(entities[index]), sheet, weapon, family, attack)

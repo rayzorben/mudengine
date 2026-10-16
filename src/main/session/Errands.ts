@@ -26,6 +26,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
 import { RealmSpeed } from '../automation/RealmSpeed';
+import { RoundCount } from '../automation/RoundCount';
 import type { KeyedWay } from '../automation/AutoKeys';
 import type { RestAwayPlanner } from '../automation/RestAway';
 import type { WardSources } from '../automation/Wards';
@@ -63,6 +64,7 @@ import { type AutomationConfig } from '../../shared/config';
 import { type SupplyItem } from '../../shared/packConfig';
 import type { FightSink } from '../../shared/fights';
 import type { KillExpLore, NoEffectLore } from '../../shared/lore';
+import type { RoundLore } from '../../shared/rounds';
 import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
@@ -127,7 +129,14 @@ import {
   type QuestPlan,
   type QuestWatched
 } from '../../shared/quests';
-import { healFloor, holdsMovement, resolveSpell, spellServes } from '../../shared/spellcraft';
+import {
+  castNamed,
+  healFloor,
+  holdsMovement,
+  resolveSpell,
+  spellingsOf,
+  spellServes
+} from '../../shared/spellcraft';
 import {
   attacksWithNothing,
   castsToKill,
@@ -298,9 +307,10 @@ export interface ErrandsParts {
   readonly fightRecord: Pick<FightSink, 'measured' | 'timing'>;
   /**
    * The rooms' refills the wire timed, what its kills paid solo, and which
-   * spells had no effect on which monsters, on this realm (`RealmLore`).
+   * spells had no effect on which monsters, and what its rounds measured,
+   * on this realm (`RealmLore`).
    */
-  readonly lore: SpawnLore & KillExpLore & NoEffectReader;
+  readonly lore: SpawnLore & KillExpLore & NoEffectReader & RoundLore;
 }
 
 /** What the session that built this answers for it. */
@@ -334,6 +344,10 @@ export class Errands implements SessionModule {
   private readonly clocks: RoomClocks;
   /** How many times faster than the server's own clocks this realm runs, read off its rounds, kept per address. */
   private readonly speed = new RealmSpeed();
+  /** The character's own casts and swings a round, counted into the realm's lore. */
+  private readonly rounds: RoundCount;
+  /** What the realm's rounds measured, for the class every sheet is built with. */
+  private readonly measuredRounds: () => ReturnType<RoundLore['measuredRounds']>;
   /** The doors and hidden exits the walk opened, inside their close timers (todo 62). */
   private readonly openedWays = new OpenedWays(() => this.world ?? null);
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
@@ -407,6 +421,14 @@ export class Errands implements SessionModule {
     this.clocks = new RoomClocks(parts.lore);
     this.kills = parts.lore;
     this.noEffects = parts.lore;
+    this.measuredRounds = () => parts.lore.measuredRounds();
+    this.rounds = new RoundCount({
+      lore: parts.lore,
+      speed: () => this.speed.multiplier,
+      swinging: () => this.swinging(),
+      fighting: () => this.tracker.current.combat.target,
+      spellIn: (line) => this.spellIn(line)
+    });
     this.words = fightWords({
       combat: () => this.automationConfig.combat,
       current: () => this.tracker.current,
@@ -459,6 +481,7 @@ export class Errands implements SessionModule {
     this.ranFromSaid.clear();
     this.clocks.reset();
     this.speed.reset();
+    this.rounds.reset();
     this.openedWays.reset();
   }
 
@@ -479,9 +502,26 @@ export class Errands implements SessionModule {
     this.speed.useKept(kept);
   }
 
-  /** Every block, changed state or not: a round read for the realm's speed. */
-  onBlock(block: Pick<Block, 'type' | 'at'>): void {
+  /** Every block, changed state or not: a round read for the realm's speed, and counted. */
+  onBlock(block: Pick<Block, 'type' | 'at' | 'groups'>): void {
     this.speed.onBlock(block);
+    this.rounds.onBlock(block);
+  }
+
+  /** The realm's name of the book's spell a landed cast's line names, the longest name first; null for none. */
+  private spellIn(line: string): string | null {
+    const book = this.tracker.current.spellbook ?? [];
+    const realm = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
+    const longest = [...book].sort((a, b) => b.name.length - a.name.length);
+    const spell = longest.find((each) => castNamed(line, spellingsOf(each.name, book, realm)));
+    return spell === undefined ? null : (realm(spell.name)?.name ?? spell.name);
+  }
+
+  /** The attack fought with and the swings the sheet states for it now, which a round's swings are counted at. */
+  private swinging(): { kind: string; stated: number } | null {
+    const kind = this.realmClass().attack.kind;
+    const stated = statedNow(this.tracker.current)?.attacks?.[kind]?.swings;
+    return stated === undefined ? null : { kind, stated };
   }
 
   /** The session's figure for the realm's speed (`RealmSpeed`): the survey's, and every round reader's. */
@@ -1210,7 +1250,7 @@ export class Errands implements SessionModule {
     const came = stated ? null : this.clocks.wanderers(id);
     if (!stated && came === null) return null;
     const state = this.tracker.current;
-    const { combat, magery, crits, family, attack } = this.realmClass();
+    const { combat, magery, crits, rounds: measured, family, attack } = this.realmClass();
     /*
      * By the rows the lair names, never by name (todo 01, 2026-09-10): a name
      * folds every row sharing it and takes the worst, and the guard post on
@@ -1228,7 +1268,7 @@ export class Errands implements SessionModule {
       entities,
       this.menacePlayer(state),
       tuning().menace,
-      prowessSheetOf(state, { combat, magery, crits }),
+      prowessSheetOf(state, { combat, magery, crits, rounds: measured }),
       wieldedWeapon(state.inventory.items),
       family,
       attack
@@ -1876,8 +1916,8 @@ export class Errands implements SessionModule {
       ),
       this.fightRecord.timing?.(measuredFightsMin) ?? null
     );
-    const { combat, magery, crits, mageryType, family, attack } = this.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery, crits });
+    const { combat, magery, crits, rounds, mageryType, family, attack } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits, rounds });
     const regen = regeneration(sheet, mageryType, family);
     /*
      * The opener is `bs` and the weapon in hand lets it land: a weapon the
@@ -2817,8 +2857,8 @@ export class Errands implements SessionModule {
     manaPerRound: number | null;
     manaMax: number | null;
   } {
-    const { combat, magery, crits, family } = this.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery, crits });
+    const { combat, magery, crits, rounds, family } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits, rounds });
     const casting = this.castingInput(state, sheet, family);
     if (casting === null) return { manaPerRound: null, manaMax: null };
     const choice = chooseAttackSpell({ ...casting, target: null, excluded: new Set() });
@@ -2860,7 +2900,8 @@ export class Errands implements SessionModule {
       magery: row?.magery ?? null,
       mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
-      crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits)
+      crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits),
+      rounds: this.measuredRounds()
     };
   }
 

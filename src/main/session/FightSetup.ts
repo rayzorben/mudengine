@@ -127,8 +127,9 @@ export class FightSetup {
   ): FightCharacter | null {
     const { hp, mana, manaMax } = state.vitals;
     if (state.vitals.hpMax === null) return null;
-    const { combat, magery, crits, mageryType, family, attack } = this.errands.realmClass(verb);
-    const read = prowessSheetOf(state, { combat, magery, crits });
+    const { combat, magery, crits, rounds, mageryType, family, attack } =
+      this.errands.realmClass(verb);
+    const read = prowessSheetOf(state, { combat, magery, crits, rounds });
     const own = this.errands.menacePlayer(state);
     const hpMax = state.vitals.hpMax + (set ? set.maxHp : 0);
     // What is up, or blessed, comes on top of what the gear worn adds (`gearEffect`).

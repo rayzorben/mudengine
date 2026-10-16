@@ -5,7 +5,8 @@
  * runs faster than the server's own clocks (`RealmSpeed`: orohost at 5, a
  * round a second) the quiet is that much shorter, never under `speedQuietMs`;
  * at the server's own quiet a whole fight there read as one round. `CastRound`
- * reopens the round's cast with it and `RoundClock` numbers the rounds on it.
+ * reopens the round's cast with it, `RoundClock` numbers the rounds on it and
+ * `RoundCount` counts the character's own in each.
  */
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
@@ -17,6 +18,11 @@ export function roundMsAt(speed: number): number {
   return atSpeed(tuning().hunting, speed).roundSeconds * 1000;
 }
 
+/** The quiet after a blow that opens the next round at the realm's speed `speed`, in ms. */
+export function roundQuietMs(speed: number): number {
+  return Math.max(tuning().combat.roundGapMs / speed, tuning().hunting.speedQuietMs);
+}
+
 export class RoundBeat {
   private lastBlowAt = Number.NEGATIVE_INFINITY;
 
@@ -26,11 +32,7 @@ export class RoundBeat {
   /** True when the block is a blow, either way and hit or miss, that opens a new round. */
   onBlock(block: Pick<Block, 'type' | 'at'>): boolean {
     if (!isBlow(block.type)) return false;
-    const quiet = Math.max(
-      tuning().combat.roundGapMs / this.speed(),
-      tuning().hunting.speedQuietMs
-    );
-    const opens = block.at - this.lastBlowAt > quiet;
+    const opens = block.at - this.lastBlowAt > roundQuietMs(this.speed());
     this.lastBlowAt = block.at;
     return opens;
   }

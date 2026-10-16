@@ -383,7 +383,7 @@ export class AutoHeal implements SessionModule {
     }
     if (wanted.length === 0) return false;
 
-    const { combat, magery, crits, family } = this.realmClass();
+    const { combat, magery, crits, rounds, family } = this.realmClass();
     const { healTo } = this.config;
     const plan =
       state.spellbook === null
@@ -393,7 +393,7 @@ export class AutoHeal implements SessionModule {
             realm: this.realmSpell,
             level: state.progress.level,
             mana: state.vitals.mana,
-            sheet: prowessSheetOf(state, { combat, magery, crits }),
+            sheet: prowessSheetOf(state, { combat, magery, crits, rounds }),
             family,
             targets: figured,
             ceiling: healCeiling(healTo),
@@ -500,7 +500,7 @@ export class AutoHeal implements SessionModule {
   ): string {
     const pick = pickHeal(this.config.autoChooseHeal, deficit, (wanted) => {
       if (state.spellbook === null) return chooseHealSpell({ book: null });
-      const { combat, magery, crits, family } = this.realmClass();
+      const { combat, magery, crits, rounds, family } = this.realmClass();
       return chooseHealSpell({
         book: state.spellbook,
         realm: this.realmSpell,
@@ -508,7 +508,7 @@ export class AutoHeal implements SessionModule {
         mana: state.vitals.mana,
         deficit: wanted,
         aim,
-        sheet: prowessSheetOf(state, { combat, magery, crits }),
+        sheet: prowessSheetOf(state, { combat, magery, crits, rounds }),
         family
       });
     });

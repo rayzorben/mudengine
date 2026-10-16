@@ -9,6 +9,8 @@ import {
 } from './hitSpells';
 import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
+import { swingKey, type MeasuredRounds } from './rounds';
+import { spellKey } from './spell-messages';
 import type { StatedProwess } from './stated';
 import type { WorldItem, WorldSpell } from './world';
 
@@ -118,6 +120,11 @@ export interface ProwessSheet {
    */
   stated?: StatedProwess | null;
   /**
+   * What the realm's rounds measured (`MeasuredRounds`), which outranks the
+   * sheet's swings and the formula's casts. Absent or null is none measured.
+   */
+  measured?: MeasuredRounds | null;
+  /**
    * Blessings up, and the rows of what is worn (`gearEffect`), counted on
    * the formula paths only (`blessingeffects.ts`): a figure `stat all`
    * stated already carries both. Absent or null is none.
@@ -139,6 +146,8 @@ export interface ProwessClass {
   combat: number | null;
   magery: number | null;
   crits: number;
+  /** What the realm's rounds measured (`RoundCount`); absent or null is none. */
+  rounds?: MeasuredRounds | null;
 }
 
 /** The class as a fight is priced: its rows, the realm's family, and the attack fought with. */
@@ -330,11 +339,25 @@ export function swingsPerRound(
   family: RealmFamily | null
 ): Reckoning<number> | null {
   // Unarmed too: the sheet prints the bare-handed round, which no formula here has.
-  const said = sheet.stated?.attacks?.attack?.swings;
-  if (said !== undefined) return { value: said, from: 'stated' };
+  const said = statedSwings(sheet, 'attack');
+  if (said !== null) return said;
   const energy = energyPerSwing(sheet, weapon, family);
   if (energy === null) return null;
   return { value: swingsFor(energy.value), from: energy.from };
+}
+
+/**
+ * The swings a round the sheet states for `kind`, or the realm's measured
+ * swings at that statement where its rounds have said (todo 123: Festus's
+ * bash, stated 3.402, lands 3.06 on paramud). Null where the sheet is silent.
+ */
+function statedSwings(sheet: ProwessSheet, kind: AttackKind): Reckoning<number> | null {
+  const said = sheet.stated?.attacks?.[kind]?.swings;
+  if (said === undefined) return null;
+  const measured = sheet.measured?.swings[swingKey(kind, said)];
+  return measured === undefined
+    ? { value: said, from: 'stated' }
+    : { value: measured, from: 'measured' };
 }
 
 /** Blows a round of 1,000 energy buys, rounded to three decimals as the sheet prints them. */
@@ -819,13 +842,11 @@ export function swing(
   const low = stated?.min ?? (blow === null ? null : Math.floor(blow.low * factor.low));
   const high = stated?.max ?? (blow === null ? null : Math.floor(blow.high * factor.high));
   const spread = spreadOf(stated ?? null, blow, factor);
-  // A weapon's blows are the plain round's, the sheet's where it printed them, as the method takes them.
-  let swings: Reckoning<number> | null;
-  if (said?.swings !== undefined) {
-    swings = { value: said.swings, from: 'stated' };
-  } else if (isMartial(attack.kind)) {
+  // The sheet's blows (or what the realm's rounds measured at them), else the plain round's, as the method takes them.
+  let swings = statedSwings(sheet, attack.kind);
+  if (swings === null && isMartial(attack.kind)) {
     swings = blow === null ? null : { value: blow.blows, from: blow.from };
-  } else {
+  } else if (swings === null && !isMartial(attack.kind)) {
     const plain = swingsPerRound(sheet, weapon ?? BARE_HAND, family);
     const method = METHOD[attack.kind];
     swings = plain === null ? null : { value: method.swings(plain.value), from: plain.from };
@@ -1049,9 +1070,15 @@ const MAGIC_ROUND_ATTEMPTS = 20;
  * magic missile at 500 goes twice. The wire agrees (an acid slime fight's
  * first round, a hit and a fail before the slime swung). A row stating no
  * energy is read as one attempt, the old reading, never the twenty a zero
- * would buy.
+ * would buy. What the realm's rounds measured outranks it (todo 121:
+ * Paradigm on paramud casts harm once a round where its 500 energy buys two).
  */
-export function castsARound(spell: Pick<WorldSpell, 'energy'>): number {
+export function castsARound(
+  spell: Pick<WorldSpell, 'energy' | 'name'>,
+  sheet: Pick<ProwessSheet, 'measured'> | null = null
+): number {
+  const measured = sheet?.measured?.casts[spellKey(spell.name)];
+  if (measured !== undefined) return measured;
   const energy = spell.energy;
   if (energy === undefined || energy <= 0) return 1;
   return Math.max(1, Math.min(MAGIC_ROUND_ATTEMPTS, Math.floor(ROUND_ENERGY / energy)));
@@ -1063,14 +1090,14 @@ export function castsARound(spell: Pick<WorldSpell, 'energy'>): number {
  * cost where the odds are unread. Null where the cost is.
  */
 export function manaARound(
-  spell: Pick<WorldSpell, 'energy' | 'difficulty'>,
+  spell: Pick<WorldSpell, 'energy' | 'difficulty' | 'name'>,
   cost: number | null,
   sheet: ProwessSheet,
   family: RealmFamily | null
 ): number | null {
   if (cost === null) return null;
   const each = castOdds({ mana: cost, difficulty: spell.difficulty }, sheet, family)?.expectedMana;
-  return castsARound(spell) * (each?.value ?? cost);
+  return castsARound(spell, sheet) * (each?.value ?? cost);
 }
 
 /**

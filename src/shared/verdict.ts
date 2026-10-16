@@ -220,7 +220,7 @@ export function prowessTargetOf(entity: TargetEntity | undefined): ProwessTarget
  * neither — and a null row leaves both null, which `prowess` answers with
  * null rather than a guess. And what the last `stat all` said, where it still
  * holds (`statedNow`), so every reader of the sheet gets the server's figure
- * without asking for it.
+ * without asking for it, and what the realm's rounds measured (`cls.rounds`).
  */
 export function prowessSheetOf(
   state: Pick<CharacterState, 'progress' | 'inventory'> &
@@ -241,6 +241,7 @@ export function prowessSheetOf(
     mageryLevel: cls.magery,
     encumbrancePercent: loadPercent(encumbrance, encumbranceMax),
     stated: statedNow(state),
+    measured: cls.rounds ?? null,
     effects: gearEffect(state.inventory.items),
     classCrits: cls.crits
   };

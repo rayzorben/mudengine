@@ -102,7 +102,7 @@ export interface SpellCandidate {
   max: number;
   /** Mean damage a cast is expected to do, the cast's own odds folded in. */
   expected: number;
-  /** Attempts the server makes in one round (`castsARound`). */
+  /** Attempts the realm makes in one round (`castsARound`): measured, else the server's formula. */
   casts: number;
   /** Mean damage a round: `expected` for every attempt. */
   perRound: number;
@@ -165,7 +165,7 @@ export interface CastWeight {
   lands: number;
   /** Mean damage a cast is expected to do, `lands` folded in. */
   expected: number;
-  /** Attempts the server makes in one round (`castsARound`). */
+  /** Attempts the realm makes in one round (`castsARound`): measured, else the server's formula. */
   casts: number;
 }
 
@@ -196,7 +196,8 @@ export function weighCast(
   if (max <= 0) return null;
   const odds = castChance(realm, caster);
   const lands = odds * (1 - resist);
-  return { min, max, lands, expected: ((min + max) / 2) * lands, casts: castsARound(realm) };
+  const casts = castsARound(realm, caster.sheet);
+  return { min, max, lands, expected: ((min + max) / 2) * lands, casts };
 }
 
 /**
