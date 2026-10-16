@@ -12,6 +12,7 @@
  * `mudengine-automation` › `parts/combat.md` › *An attack spell opens the
  * fight, and the server casts it every round*.
  */
+import { CastsInFlight } from './CastsInFlight';
 import { canPayFor } from './mana';
 import { countMobs, countThreats } from './RuleEngine';
 import { DrainWhenHurt } from './DrainWhenHurt';
@@ -19,7 +20,7 @@ import { killCasting } from './killCasting';
 import { RoomSpells } from './RoomSpells';
 import { SpellHold } from './SpellHold';
 import { t } from '../app/i18n';
-import { castAimedAt } from '../../shared/aim';
+import { castAimedAt, typedCast } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
@@ -169,6 +170,8 @@ export class AttackSpells {
   private readonly hold: SpellHold;
   /** Which room spell, and the debuff ahead of it: asked, never decided here. */
   private readonly room: RoomSpells;
+  /** The casts, the player's and this module's, a sentence naming no spell may answer (todo 131). */
+  private readonly inFlight: CastsInFlight;
 
   constructor(
     private spells: SpellsConfig,
@@ -177,8 +180,14 @@ export class AttackSpells {
     private readonly realmClass: () => FightingClass,
     /** What this realm's wire taught before, kept past the connection: instant spells, and what each has no effect on. */
     private readonly realmLore: AttackSpellLore = NO_ATTACK_SPELL_LORE,
-    realmSpellById: (id: number) => WorldSpell | null = () => null
+    realmSpellById: (id: number) => WorldSpell | null = () => null,
+    /** How long a cast waits for its answer (`AutoCombat.engageCooldown`); omitted, for good. */
+    answerWithin: () => number = () => Number.POSITIVE_INFINITY
   ) {
+    this.inFlight = new CastsInFlight(
+      (spell) => spellingsOf(spell, this.book, realmSpell),
+      answerWithin
+    );
     this.drain = new DrainWhenHurt(
       spells,
       (message, decision) => events.notice?.(message, decision),
@@ -212,6 +221,7 @@ export class AttackSpells {
   /** A new connection. */
   reset(): void {
     this.fightEnded();
+    this.inFlight.clear();
     this.instant.clear();
     this.saidNoEffect.clear();
     this.drain.reset();
@@ -265,19 +275,43 @@ export class AttackSpells {
     );
   }
 
-  /** Whether the spell the server repeats is one the player typed: theirs to change. */
+  /**
+   * Whether the spell the server repeats is one the player typed, or a cast
+   * of theirs is still owed its answer: theirs to change, and a cast of this
+   * module's sent behind it would leave the answer to either.
+   */
   private get playerCasting(): boolean {
-    return this.repeating?.kind === 'spell' && this.repeating.by === 'player';
+    return (
+      (this.repeating?.kind === 'spell' && this.repeating.by === 'player') ||
+      this.playerCastOwed !== null
+    );
+  }
+
+  /** The spell of a cast the player typed and the server has not answered, or null. */
+  get playerCastOwed(): string | null {
+    return this.inFlight.playerCast(Date.now());
   }
 
   /** What an attack or a cast this module proposed does once it has gone. */
   sent(action: Action): void {
     this.room.sent(action.kind === 'spell' ? action.spell : '');
+    if (action.kind === 'spell')
+      this.inFlight.sent({ spell: action.spell, area: action.area, by: 'module' }, Date.now());
     this.awaiting =
       action.kind === 'spell'
         ? { spell: action.spell, afterOff: this.repeating?.kind === 'spell' }
         : null;
     this.repeating = action;
+  }
+
+  /**
+   * The player committed a command: a cast at anything, the monster listed
+   * or not, is on its way to the server (`typedCast`). Only the wait for its
+   * answer reads it; the engagement is `typed`'s, at a listed monster.
+   */
+  castTyped(command: string, state: CharacterState): void {
+    const word = typedCast(command, state.spellbook, this.realmSpell);
+    if (word !== null) this.inFlight.sent({ spell: word, area: false, by: 'player' }, Date.now());
   }
 
   /**
@@ -413,16 +447,20 @@ export class AttackSpells {
     else if (block.type === 'spell-failed') this.noteFizzle(block.groups['spell'] ?? '', book);
     else if (block.type === 'spell-cast') this.noteCast(block, book);
     else if (block.type === 'user-hits') this.noteHit(block, book);
+    this.inFlight.heard(block);
   }
 
   /**
    * A fizzle before any engagement is the roll an instant spell makes at the
    * cast (a combat spell rolls only in the rounds after it): it says the
-   * spell is instant, and is no cast.
+   * spell is instant, and is no cast. Not while the player's cast of the
+   * same spell is owed an answer: the fizzle may be theirs, and a combat
+   * spell held instant for the realm would be recast every round.
    */
   private noteFizzle(said: string, book: CharacterState['spellbook']): void {
     const awaiting = this.awaiting;
-    if (awaiting === null || !this.noteInstant(said, book)) return;
+    if (awaiting === null || this.inFlight.playerOwes(said, Date.now())) return;
+    if (!this.noteInstant(said, book)) return;
     const key = this.keyOf(awaiting.spell);
     const casts = (this.casts.get(key) ?? 1) - 1;
     if (casts > 0) this.casts.set(key, casts);
@@ -881,17 +919,30 @@ export class AttackSpells {
 
   /**
    * `Your spell has no effect on <name>.` — immunity (`Player.cs:5919`). The
-   * sentence never names the spell; the one the server is repeating is the
-   * one it is about. Said once per spell per target, because what the client
-   * does next is a decision a person should be able to read back. A
-   * single-target spell is kept for the realm against the monster the
-   * sentence names (`keep`), and only then: `… against this monster!` is a
-   * guard that moved in to protect the target (`Player.cs:6195`), and
-   * `… in this room!` the room.
+   * sentence never names the spell: it is about the one cast still owed an
+   * answer, else the one the server is repeating. With two owed, the
+   * player's and this module's, it is either's (todo 131), so both are ruled
+   * out for this fight, said, and neither is kept. Said once per spell per
+   * target, because what the client does next is a decision a person should
+   * be able to read back. A single-target spell is kept for the realm against
+   * the monster the sentence names (`keep`), and only then: `… against this
+   * monster!` is a guard that moved in to protect the target
+   * (`Player.cs:6195`), and `… in this room!` the room.
    */
   private noteIneffective(monster: string | null): void {
-    const cast = this.repeated;
-    if (cast === null || this.ineffective.has(this.keyOf(cast.spell))) return;
+    const owed = this.inFlight.unanswered(Date.now());
+    this.inFlight.clear();
+    const either = new Map(owed.map((each) => [this.keyOf(each.spell), each.spell]));
+    if (either.size > 1) {
+      for (const key of either.keys()) this.ineffective.add(key);
+      this.events.notice?.(
+        t('automation.combat.spellNoEffectEither', { spells: [...either.values()].join(' and ') }),
+        'attack-spell'
+      );
+      return;
+    }
+    const cast = owed[0] ?? this.repeated;
+    if (cast === undefined || cast === null || this.ineffective.has(this.keyOf(cast.spell))) return;
     this.ineffective.add(this.keyOf(cast.spell));
     if (!cast.area && monster !== null) this.keep(cast.spell, monster);
     const fallback = this.spells.attackFallback.trim();
@@ -946,7 +997,8 @@ export class AttackSpells {
   /**
    * A cast of `spell` landed on `monster`: a kept no-effect for the two was
    * a misread, and is forgotten and said. Only the player's own cast can
-   * show it, since nothing here casts a kept spell at that monster.
+   * show it, since nothing here casts a kept spell at that monster, so any
+   * spell the line names is read (`noteHit`), not only one waited on.
    */
   private landed(spell: string, monster: string | undefined): void {
     const name = this.nameOf(spell, this.book);
@@ -983,7 +1035,14 @@ export class AttackSpells {
       castNamed(block.groups['line'], spellingsOf(spell, book, this.realmSpell));
     const awaited = this.awaiting === null ? undefined : names(this.awaiting.spell);
     const struck = awaited ?? (this.repeated === null ? undefined : names(this.repeated.spell));
-    if (struck !== undefined) this.landed(struck, block.groups['target']);
+    // Whoever cast it: the player's `harm grave` landing is what clears a misread (todo 131).
+    const owed = this.inFlight.unanswered(Date.now()).map((cast) => cast.spell);
+    const named =
+      struck ??
+      [...(book ?? []).map((spell) => spell.name), ...owed]
+        .map(names)
+        .find((name) => name !== undefined);
+    if (named !== undefined) this.landed(named, block.groups['target']);
     if (awaited !== undefined && this.noteInstant(awaited, book)) return;
     const cast = this.repeated;
     if (cast === null || cast.area) return;

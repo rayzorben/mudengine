@@ -13,7 +13,6 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { AutoInvoke, type InvokeSources } from '../automation/AutoInvoke';
 import { Blessings, type BlessingsDeps } from '../automation/Blessings';
-import type { AutoCombat } from '../automation/AutoCombat';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
@@ -38,7 +37,7 @@ import {
   type SpotCycle
 } from '../../shared/blessingchoice';
 import { bareStateOf, sumEffects } from '../../shared/blessingeffects';
-import { fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightHere, type CharacterState, type FightSigns } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { atSpeed, sittingPerSecond, type HuntingSpot } from '../../shared/hunting';
 import type { ChosenItems } from '../../shared/invoke';
@@ -400,8 +399,8 @@ export function blessingsFor(
   parts: BlessingChoiceParts,
   deps: Omit<BlessingsDeps, 'source' | 'learnedDuration'> & {
     readonly queue: CommandQueue;
-    /** A fight asked for and not yet answered, which a swap must not go out into. */
-    readonly combat: Pick<AutoCombat, 'quarry'>;
+    /** A fight asked for or still swinging, which a blessing or a swap must not go out into. */
+    readonly signs: FightSigns;
     /** The uses left on each charged item (todo 44). */
     readonly charges: InvokeSources['charges'];
     /** `Belongings.recallSpellDurations`, read at the point of use: the store arrives with `useRealm`. */
@@ -410,7 +409,7 @@ export function blessingsFor(
   session: Omit<BlessingChoiceSession, 'learnedDuration'>,
   automation: AutomationConfig
 ): { blessings: Blessings; invoke: AutoInvoke; choice: BlessingChoiceReport } {
-  const { queue, combat, charges, durations, ...rest } = deps;
+  const { queue, charges, durations, ...rest } = deps;
   /*
    * The measured duration of this character's own cast, null before any
    * measurement (the shipped watchdog covers that). The one fact here that
@@ -427,7 +426,7 @@ export function blessingsFor(
     spellNamed: (name) => world?.spellNamed(name) ?? null,
     handsOf: (name) => errands.gearHandsOf(name),
     charges,
-    fightHere: () => fightIsRunning(tracker.current) || combat.quarry(tracker.current)
+    fightHere: () => fightHere(tracker.current, rest.signs, Date.now())
   };
   const blessings = new Blessings(automation.spells, automation.enabled, queue, {
     ...rest,

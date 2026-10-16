@@ -584,7 +584,8 @@ export class AutoCombat implements SessionModule {
       realmSpell,
       realmClass,
       spellLore,
-      realmSpellById
+      realmSpellById,
+      () => this.engageCooldown
     );
     this.spell.configure(undefined, config.mobRules);
   }
@@ -875,6 +876,7 @@ export class AutoCombat implements SessionModule {
       return;
     }
     const state = this.state;
+    if (state !== null) this.spell.castTyped(command, state);
     const aim = state === null ? undefined : attackAim(command, state, this.realmSpell);
     if (state !== null && aim !== undefined) {
       this.standDownUntil = 0;
@@ -1015,7 +1017,9 @@ export class AutoCombat implements SessionModule {
         else this.noEffectBroke();
         return;
       }
+      // A fizzle answers a cast too (`TryInvokeSpell`, `Player.cs:6250`): the player's stops holding the fight.
       case 'spell-cast':
+      case 'spell-failed':
         this.spell.heard(block, this.state);
         return;
       case 'attack-refused': {
@@ -1237,6 +1241,8 @@ export class AutoCombat implements SessionModule {
      */
     if (this.retreating) return false;
     if (state.combat.target !== null) return false;
+    // The player's cast is the answer to what is swinging, until the server answers it.
+    if (this.spell.playerCastOwed !== null) return false;
 
     /*
      * Which of them, when several are swinging: the one that costs the most
@@ -1679,6 +1685,9 @@ export class AutoCombat implements SessionModule {
     // A step is unanswered: this room is being left, and a fight opened into
     // it lands behind the character.
     if (this.movePending) return t('automation.combat.refusedMovePending');
+    // The player's cast is owed its answer, which a cast sent now would share (todo 131).
+    const typed = this.spell.playerCastOwed;
+    if (typed !== null) return t('automation.combat.refusedPlayerCast', { spell: typed });
     /*
      * Already swinging at something: the server rolls the rounds, and a second
      * `attack` on the same thing spends a command to say what it already knows.

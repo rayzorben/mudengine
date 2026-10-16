@@ -10,44 +10,38 @@ import { occupantAttacksOnSight } from '../../shared/mobRules';
 import type { SessionModule } from './Module';
 
 /**
- * Whether pulling the plug would be safe, and why not.
+ * Whether pulling the plug would be charged, and why.
  *
  * The classic MegaMUD panic button is "hang up when health is low", and on this
- * server family **that is one of the more reliable ways to die**. An unclean
- * disconnect costs a percentage of *maximum* HP — which at low health is fatal,
- * and is recorded as `DeathManager.KilledByType.DisconnectPenalty` — or drops
- * random items. See docs/greatermud/combat.md.
+ * server family a charged hangup can kill. It costs `PVPHangHPHit` percent of
+ * *maximum* HP (`DeathManager.KilledByType.DisconnectPenalty` when that kills),
+ * else random items (`Player.Disconnects`, `Player.cs:2975-3024`), and only
+ * where the realm allows PvP. See docs/greatermud/combat.md.
  *
- * Five conditions make a hangup unclean, and this tracks the four a client can
- * see:
+ * `ClearToHangWithoutPenalty` (`Player.cs:2905-2968`) charges for PvP alone, behind
+ * `PenalizeHangInPlayerCombat` (`true`, `GMUDServer.cs:121`):
  *
  * | Condition | Visible? |
  * |---|---|
- * | A player attacked you in the last 5 minutes | yes, once the roster says who is a player |
+ * | Your target is a player, or a player here has you as target (not in a protected room or a Colliseum) | yes, once the roster says who is a player; a Colliseum, no |
+ * | A player attacked you in the last 5 minutes, in any room | yes, same |
  * | You attacked a player in the last 5 minutes | yes, same |
- * | You are in combat | yes |
- * | A mob in the room is targeting you | approximately: it has hit or swung at you recently, or the realm data says it attacks on sight |
- * | The room is protected, or a Colliseum | protected where the realm data says so (`Room.safe`, todo 87); a Colliseum, no |
  *
- * The three server flags that gate the penalty at all — `AllowPvP`,
- * `PenalizeHangInPlayerCombat`, `PenalizeHangInMobCombat` — are also invisible.
- *
- * So this **cannot** report "safe"; it reports "no reason found not to". The
- * difference matters, and the default configuration acts on the cautious
- * reading: a hangup is refused while any reason stands.
- *
- * **This is a reading of the server source, not a capture.** Measuring it means
- * arranging to be attacked by a player and then disconnecting, on a realm where
- * the cost of being wrong is a character. Where the reading and the wire
- * disagree the wire wins — but nobody has asked the wire, so the safe direction
- * is the only one worth acting on.
+ * Its monster case is behind `PenalizeHangInMobCombat`, `false` at
+ * `GMUDServer.cs:120` and assigned nowhere, so a monster never makes a hangup
+ * charged (todo 131, reversing 2026-08-29). This is a reading of the server
+ * source, not a capture; Paradigm is a fork, and the day the wire shows a
+ * hangup charged with no player near, the wire wins. Whether staying is
+ * dangerous is a separate question (`threatened`, `monsterNear`).
  */
 /** The facts `assess` words, and `clean` only counts. */
 interface HangUpFindings {
-  inCombat: boolean;
-  mobEngaged: boolean;
-  onSight: string[];
-  unplaced: string[];
+  /**
+   * Who this character is fighting, or who is fighting it, here now, where
+   * that may be a player: `sure` for a listed player, false for a name the
+   * room does not list as a monster (unknown is never the reassuring answer).
+   */
+  pvpNow: { name: string; sure: boolean } | null;
   pvp: { name: string | null; minutes: number; clearInMs: number } | null;
 }
 
@@ -71,11 +65,12 @@ export interface HangUpAssessment {
 export const PVP_WINDOW_MS = 5 * 60 * 1000;
 
 /**
- * How recently a mob must have swung for it to count as targeting you.
+ * How recently a monster must have swung for it to count as still fighting
+ * the character: a hang-up beside it, a naked one, a rest or a blessing.
  *
  * `ShouldMobAttackTarget` is server-side state a client cannot read, so this
- * approximates it from the last blow. Deliberately generous: over-reporting a
- * reason costs a refused hangup, and under-reporting it costs a character.
+ * approximates it from the last blow. Deliberately generous: a rest or a
+ * blessing held a few seconds too long costs less than one sent into a fight.
  */
 export const MOB_ENGAGED_MS = 12 * 1000;
 
@@ -168,37 +163,14 @@ export class HangUpWatch implements SessionModule {
   }
 
   /**
-   * What stands against hanging up, unworded.
+   * What would charge a hangup, unworded.
    *
    * One set of tests for both readers below: the guard field asks on every
    * status line and needs a boolean, the settings path asks on a click and
-   * needs the sentences. Wording five reasons per line for a boolean was 4%
+   * needs the sentences. Wording the reasons per line for a boolean was 4%
    * of the parse path (2026-09-11).
    */
   private findings(state: CharacterState, now: number): HangUpFindings {
-    const mobEngaged = this.mobSwungSince(now);
-
-    /*
-     * `ShouldMobAttackTarget` is set the moment a monster decides to attack, a
-     * full round before its first swing — and the server's test is who is
-     * targeting whom, not who has landed a blow. So the blow above misses
-     * exactly the window in which a hangup looks safe and is not: the monster
-     * has just walked in. The realm data names which monsters decide that on
-     * sight, and `attacksOnSight` is the same reading AutoCombat acts on; here
-     * it only ever adds a reason. A monster the data cannot place is a reason
-     * too — unknown is never the reassuring answer — worded as the doubt it
-     * is, so the refusal says what it does and does not know.
-     */
-    const standing = standingOf(state);
-    const onSight: string[] = [];
-    const unplaced: string[] = [];
-    for (const who of state.room.occupants) {
-      if (who.kind !== 'mob') continue;
-      const verdict = occupantAttacksOnSight(who, standing);
-      if (verdict === true && !onSight.includes(who.name)) onSight.push(who.name);
-      else if (verdict === null && !unplaced.includes(who.name)) unplaced.push(who.name);
-    }
-
     let pvp: HangUpFindings['pvp'] = null;
     if (this.lastPvpAt !== null) {
       const since = now - this.lastPvpAt;
@@ -210,8 +182,7 @@ export class HangUpWatch implements SessionModule {
         };
       }
     }
-
-    return { inCombat: state.inCombat, mobEngaged, onSight, unplaced, pvp };
+    return { pvpNow: playerFighting(state), pvp };
   }
 
   /**
@@ -226,40 +197,48 @@ export class HangUpWatch implements SessionModule {
    */
   monsterNear(state: CharacterState, now: number): boolean {
     return (
-      this.mobSwungSince(now) ||
+      this.monsterSwung(now) ||
       fightIsRunning(state) ||
       state.room.occupants.some((who) => who.kind !== 'player')
     );
   }
 
-  /** A monster hit or swung at this character inside `MOB_ENGAGED_MS`. */
-  private mobSwungSince(now: number): boolean {
-    return this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS;
-  }
-
-  /** Whether no reason to expect a penalty was found. Never "safe". */
-  clean(state: CharacterState, now: number): boolean {
-    const found = this.findings(state, now);
-    return (
-      !found.inCombat &&
-      !found.mobEngaged &&
-      found.onSight.length === 0 &&
-      found.unplaced.length === 0 &&
-      found.pvp === null
+  /**
+   * Whether something here would attack the character: a fight, a monster's
+   * recent blow, a monster that attacks on sight or that the realm data
+   * cannot place (unknown is never the reassuring answer), or a hangup the
+   * realm would charge for. What a naked character's hang-up asks: whether
+   * staying is dangerous, which a monster decides though it charges nothing.
+   */
+  threatened(state: CharacterState, now: number): boolean {
+    if (state.inCombat || this.monsterSwung(now) || !this.clean(state, now)) return true;
+    const standing = standingOf(state);
+    return state.room.occupants.some(
+      (who) => who.kind === 'mob' && occupantAttacksOnSight(who, standing) !== false
     );
   }
 
-  /** Every reason found not to hang up, in words, or none. */
+  /** A monster hit or swung at this character inside `MOB_ENGAGED_MS`. */
+  monsterSwung(now: number): boolean {
+    return this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS;
+  }
+
+  /** Whether no reason to expect a charge was found. Never "safe". */
+  clean(state: CharacterState, now: number): boolean {
+    const found = this.findings(state, now);
+    return found.pvpNow === null && found.pvp === null;
+  }
+
+  /** Every reason found that a hangup would be charged, in words, or none. */
   assess(state: CharacterState, now: number): HangUpAssessment {
     const found = this.findings(state, now);
     const reasons: string[] = [];
-    if (found.inCombat) reasons.push(t('automation.hangUp.reasonInCombat'));
-    if (found.mobEngaged) reasons.push(t('automation.hangUp.reasonMobEngaged'));
-    if (found.onSight.length > 0) {
-      reasons.push(t('automation.hangUp.reasonMobOnSight', { names: found.onSight.join(', ') }));
-    }
-    if (found.unplaced.length > 0) {
-      reasons.push(t('automation.hangUp.reasonMobUnplaced', { names: found.unplaced.join(', ') }));
+    if (found.pvpNow !== null) {
+      reasons.push(
+        found.pvpNow.sure
+          ? t('automation.hangUp.reasonPvpNow', { name: found.pvpNow.name })
+          : t('automation.hangUp.reasonPvpUnplaced', { name: found.pvpNow.name })
+      );
     }
     if (found.pvp !== null) {
       reasons.push(
@@ -273,6 +252,26 @@ export class HangUpWatch implements SessionModule {
     }
     return { clean: reasons.length === 0, reasons, clearInMs: found.pvp?.clearInMs ?? null };
   }
+}
+
+/**
+ * Who in the fight may be a player, by the name the fight holds, or null: a
+ * listed player first, else a name the room does not list as a monster (an
+ * `unknown` occupant, or one not listed at all). The server does not charge
+ * for it in a protected room (`Room.safe`); a Colliseum is not in the realm
+ * data, so it counts.
+ */
+function playerFighting(state: CharacterState): HangUpFindings['pvpNow'] {
+  if (state.room.safe === true) return null;
+  const kindOf = (name: string) =>
+    state.room.occupants.find((who) => who.name.toLowerCase() === name.toLowerCase())?.kind;
+  const fighting = [state.combat.target, ...state.combat.attackers].filter(
+    (name): name is string => name !== null
+  );
+  const player = fighting.find((name) => kindOf(name) === 'player');
+  if (player !== undefined) return { name: player, sure: true };
+  const doubt = fighting.find((name) => kindOf(name) !== 'mob');
+  return doubt === undefined ? null : { name: doubt, sure: false };
 }
 
 /**

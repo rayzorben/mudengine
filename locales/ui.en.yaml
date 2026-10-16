@@ -883,6 +883,14 @@ notices:
       readError: 'could not read {file}: {message}'
       writeError: 'could not write {file}: {message}'
       spellLearned: 'Learned the {kind} of {spell}: "{text}"'
+      # Todo 131: a once-only repair of what an earlier version wrote (`loreRepairs.ts`).
+      noEffectMisread:
+        one: 'Forgot {count} spell noted as having no effect on a monster, written by a version that
+          could name the wrong spell. One that really has no effect is noted again the first time
+          the server says so.'
+        many: 'Forgot {count} spells noted as having no effect on a monster, written by a version
+          that could name the wrong spell. One that really has no effect is noted again the first
+          time the server says so.'
       deathLearned: 'Learned how {mob} dies: "{text}". From now on that line removes it from the
         room, whoever killed it.'
       spellUnlearned: 'Unlearned the {kind} of {spell}: "{text}". The stats still showed it.'
@@ -6138,6 +6146,7 @@ automation:
     refusedMinMobs: only {here} monsters here, under the Min Monsters in Room of {min}
     refusedTooRich: '{target} is worth {exp} exp, over the Max Monster Exp of {cap}'
     refusedMovePending: a step is still waiting for its room
+    refusedPlayerCast: your {spell} is still waiting for an answer
     refusedNotHostile: the world data does not say {target} attacks first
     refusedAvoided: '{target} {why}'
     refusedClaimed: '{player} is already fighting {target}, and Polite Attacks is on'
@@ -6202,6 +6211,9 @@ automation:
       confirms the spell's name, so this is forgotten after this fight."
     # The player's own cast landed on a monster kept as one the spell has no effect on.
     spellNoEffectForgotten: '{spell} landed on {target}, so it is cast at one again on this realm.'
+    # Todo 131: the sentence names no spell, and two casts were waiting for their answer.
+    spellNoEffectEither: 'A spell had no effect while {spells} were waiting for an answer, so it is
+      not known which. Neither is cast again this fight or noted for this realm.'
     whyUnweighed: 'first of {count} here: the world data cannot rate {target}, and unknown is not
       safe'
     hazardList: '; {list}'
@@ -6581,10 +6593,8 @@ automation:
     reachWield: 'Wielding {weapon}: the weapon in hand has no effect against {target}.'
     reachBack: 'Wielding {weapon} again after the fight.'
   hangUp:
-    reasonInCombat: you are in combat
-    reasonMobEngaged: something in the room is still attacking you
-    reasonMobOnSight: 'in the room and attacks on sight: {names}'
-    reasonMobUnplaced: 'in the room and not in the world data, so it may attack: {names}'
+    reasonPvpNow: you are in PvP combat with {name}
+    reasonPvpUnplaced: '{name} is in the fight and may be a player'
     reasonPvpNamed: PvP with {name} in the last five minutes ({minutes} to go)
     reasonPvpUnnamed: PvP in the last five minutes ({minutes} to go)
   heal:

@@ -139,3 +139,21 @@ export function attackAim(
   const reached = occupantNamed(occupants, aimed);
   return occupants.some((who) => who.kind === 'mob' && who.name === reached) ? aimed : undefined;
 }
+
+/**
+ * The spell word of a cast the player typed at something, or null: a cast
+ * at a monster the room does not list yet counts too. `attackAim` reads only
+ * a cast at a listed monster, since the engagement binds to it; this is for
+ * knowing a cast of the player's is on its way to the server, whose answer
+ * may follow the client's own cast (todo 131: `turn grave` typed a room
+ * early, `Your spell has no effect on big gravedigger.` 12 ms after the
+ * client's `harm`). A bare cast aims at nobody and is not read.
+ */
+export function typedCast(
+  command: string,
+  spellbook: readonly CastableSpell[] | null,
+  realmSpell: (word: string) => WorldSpell | null
+): string | null {
+  const cast = castAimedAt(command, spellbook, realmSpell);
+  return cast === null || cast.aimed.length === 0 ? null : cast.word;
+}

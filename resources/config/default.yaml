@@ -2599,7 +2599,8 @@ automation:
   #                partySize   how many travel with you, including you
   #                stealth     `sneaking` or `seen`, unknown until the server
   #                            has said either
-  #                hangUpClean whether a disconnect looks unpenalised
+  #                hangUpClean whether a disconnect looks unpenalised: no player
+  #                            in the fight now or in the last five minutes
   #
   #              And what the realm data says about the room you are in. These
   #              answer only once the room has been *placed* -- before that the

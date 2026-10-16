@@ -35,11 +35,9 @@ function state(over: Partial<CharacterState> = {}): CharacterState {
 }
 
 /*
- * The classic MegaMUD panic button is "hang up when health is low", and on this
- * server family that is one of the more reliable ways to die: an unclean
- * disconnect costs a percentage of *maximum* HP. See docs/greatermud/combat.md.
- *
- * So the interesting cases here are all the ones where it refuses.
+ * A charged disconnect costs a percentage of *maximum* HP, and only PvP
+ * charges one (`ClearToHangWithoutPenalty`, todo 131). See
+ * docs/greatermud/combat.md.
  */
 describe('whether hanging up would be penalised', () => {
   it('finds no reason when nothing has happened', () => {
@@ -47,23 +45,70 @@ describe('whether hanging up would be penalised', () => {
     expect(watch.assess(state(), T0)).toMatchObject({ clean: true, reasons: [] });
   });
 
-  it('refuses while in combat', () => {
-    const watch = new HangUpWatch();
-    const result = watch.assess(state({ inCombat: true }), T0);
-    expect(result.clean).toBe(false);
-    expect(result.reasons).toContain(t('automation.hangUp.reasonInCombat'));
-  });
-
-  it('refuses while something in the room is still swinging', () => {
+  /* `PenalizeHangInMobCombat` is false and assigned nowhere (`GMUDServer.cs:120`). */
+  it('charges nothing for a fight with a monster, which still threatens', () => {
     const watch = new HangUpWatch();
     watch.observe(block('mob-hits', { attacker: 'orc' }), []);
-    expect(watch.assess(state(), T0 + 1000).clean).toBe(false);
+    const fighting = state({
+      inCombat: true,
+      room: { ...EMPTY_CHARACTER.room, occupants: mobs_([['giant rat', 'hostile']]) }
+    });
+    // Positive control: the same room is one a naked character would not stay in.
+    expect(watch.threatened(fighting, T0 + 1000)).toBe(true);
+    expect(watch.clean(fighting, T0 + 1000)).toBe(true);
+    expect(watch.assess(fighting, T0 + 1000)).toMatchObject({ clean: true, reasons: [] });
   });
 
-  it('and stops refusing once the mob has stopped', () => {
+  it('threatens while something is still swinging, and stops once it has stopped', () => {
     const watch = new HangUpWatch();
     watch.observe(block('mob-hits', { attacker: 'orc' }), []);
-    expect(watch.assess(state(), T0 + MOB_ENGAGED_MS + 1).clean).toBe(true);
+    expect(watch.threatened(state(), T0 + 1000)).toBe(true);
+    expect(watch.threatened(state(), T0 + MOB_ENGAGED_MS + 1)).toBe(false);
+  });
+
+  it('charges for a player it is fighting, or one fighting it, right now', () => {
+    const watch = new HangUpWatch();
+    const room = {
+      ...EMPTY_CHARACTER.room,
+      occupants: here_(['Grimjaw', 'orc rogue'], ['Grimjaw'])
+    };
+    const players = { online: [who('Grimjaw', 'Outlaw')], room };
+    const target = state({ ...players, combat: { ...EMPTY_CHARACTER.combat, target: 'Grimjaw' } });
+    expect(watch.assess(target, T0).reasons).toEqual([
+      t('automation.hangUp.reasonPvpNow', { name: 'Grimjaw' })
+    ]);
+    const attacked = state({
+      ...players,
+      combat: { ...EMPTY_CHARACTER.combat, attackers: ['Grimjaw'] }
+    });
+    expect(watch.clean(attacked, T0)).toBe(false);
+    // A monster as the target is no PvP.
+    const monster = state({
+      ...players,
+      combat: { ...EMPTY_CHARACTER.combat, target: 'orc rogue' }
+    });
+    expect(watch.clean(monster, T0)).toBe(true);
+    // Not in a protected room (`Room.IsProtected`).
+    expect(watch.clean({ ...target, room: { ...room, safe: true } }, T0)).toBe(true);
+  });
+
+  /* Unknown is never the reassuring answer: a name the room does not list as a monster may be a player. */
+  it('charges, as a doubt, for a fighter the client cannot place', () => {
+    const watch = new HangUpWatch();
+    const room = { ...EMPTY_CHARACTER.room, occupants: here_(['Gorgo']) };
+    const unplaced = state({ room, combat: { ...EMPTY_CHARACTER.combat, attackers: ['Gorgo'] } });
+    expect(watch.assess(unplaced, T0).reasons).toEqual([
+      t('automation.hangUp.reasonPvpUnplaced', { name: 'Gorgo' })
+    ]);
+    const unlisted = state({ combat: { ...EMPTY_CHARACTER.combat, attackers: ['Gorgo'] } });
+    expect(watch.clean(unlisted, T0)).toBe(false);
+  });
+
+  it('charges four minutes after a player hit you, and not six', () => {
+    const watch = new HangUpWatch();
+    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    expect(watch.clean(state(), T0 + 4 * 60_000)).toBe(false);
+    expect(watch.clean(state(), T0 + 6 * 60_000)).toBe(true);
   });
 
   /*
@@ -107,9 +152,10 @@ describe('whether hanging up would be penalised', () => {
   it('does not open the PvP window for a name nobody has listed', () => {
     const watch = new HangUpWatch();
     watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), []);
-    // Still a reason — something hit us — but it lapses in seconds, not minutes.
-    expect(watch.assess(state(), T0 + 1000).clean).toBe(false);
-    expect(watch.assess(state(), T0 + MOB_ENGAGED_MS + 1).clean).toBe(true);
+    // Read as a monster's blow: a threat that lapses in seconds, and no charge.
+    expect(watch.threatened(state(), T0 + 1000)).toBe(true);
+    expect(watch.clean(state(), T0 + 1000)).toBe(true);
+    expect(watch.threatened(state(), T0 + MOB_ENGAGED_MS + 1)).toBe(false);
   });
 
   it('matches a roster name whatever its case', () => {
@@ -121,9 +167,15 @@ describe('whether hanging up would be penalised', () => {
   it('reports every reason at once rather than only the first', () => {
     const watch = new HangUpWatch();
     watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
-    watch.observe(block('mob-hits', { attacker: 'orc' }, T0 + 500), []);
-    const result = watch.assess(state({ inCombat: true }), T0 + 1000);
-    expect(result.reasons).toHaveLength(3);
+    const result = watch.assess(
+      state({
+        online: [who('Grimjaw', 'Outlaw')],
+        room: { ...EMPTY_CHARACTER.room, occupants: here_(['Grimjaw'], ['Grimjaw']) },
+        combat: { ...EMPTY_CHARACTER.combat, attackers: ['Grimjaw'] }
+      }),
+      T0 + 1000
+    );
+    expect(result.reasons).toHaveLength(2);
   });
 
   /* A new connection is a new character in the realm. */
@@ -133,36 +185,28 @@ describe('whether hanging up would be penalised', () => {
    * misses exactly the window in which a hangup looks safe and is not. The
    * realm data names which monsters decide that on sight.
    */
-  it('refuses while something the realm says attacks on sight is in the room', () => {
+  it('threatens, uncharged, where the realm says a monster attacks on sight', () => {
     const watch = new HangUpWatch();
-    const result = watch.assess(
-      state({ room: { ...EMPTY_CHARACTER.room, occupants: mobs_([['giant rat', 'hostile']]) } }),
-      T0
-    );
-    expect(result.clean).toBe(false);
-    expect(result.reasons.join(' ')).toMatch(/giant rat/);
+    const here = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: mobs_([['giant rat', 'hostile']]) }
+    });
+    expect(watch.threatened(here, T0)).toBe(true);
+    expect(watch.clean(here, T0)).toBe(true);
   });
 
-  it('does not refuse for a monster the realm says never starts a fight', () => {
+  it('does not threaten for a monster the realm says never starts a fight', () => {
     const watch = new HangUpWatch();
-    const result = watch.assess(
-      state({
-        room: { ...EMPTY_CHARACTER.room, occupants: mobs_([['practice dummy', 'passive']]) }
-      }),
-      T0
-    );
-    expect(result.clean).toBe(true);
+    const here = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: mobs_([['practice dummy', 'passive']]) }
+    });
+    expect(watch.threatened(here, T0)).toBe(false);
   });
 
-  /* Unknown is never the reassuring answer, and the wording says it is a doubt. */
-  it('refuses, as a doubt, for a monster the realm data cannot place', () => {
+  /* Unknown is never the reassuring answer. */
+  it('threatens for a monster the realm data cannot place', () => {
     const watch = new HangUpWatch();
-    const result = watch.assess(
-      state({ room: { ...EMPTY_CHARACTER.room, occupants: here_(['kobold']) } }),
-      T0
-    );
-    expect(result.clean).toBe(false);
-    expect(result.reasons).toContain(t('automation.hangUp.reasonMobUnplaced', { names: 'kobold' }));
+    const here = state({ room: { ...EMPTY_CHARACTER.room, occupants: here_(['kobold']) } });
+    expect(watch.threatened(here, T0)).toBe(true);
   });
 
   it('does not count a player standing in the room as a monster reason', () => {

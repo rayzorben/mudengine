@@ -56,7 +56,13 @@
 import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
-import type { ActiveBuff, CharacterState } from '../../shared/character';
+import {
+  fightHere,
+  NO_FIGHT_SIGNS,
+  type ActiveBuff,
+  type CharacterState,
+  type FightSigns
+} from '../../shared/character';
 import type { BlessingConfig, BlessingSource } from '../../shared/blessings';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
@@ -136,6 +142,12 @@ export interface BlessingsDeps {
    * always.
    */
   readonly source?: BlessingSource;
+  /**
+   * A fight the state stopped showing (`fightHere`): a heal's `*Combat Off*`
+   * clears the flag while the monster goes on swinging (todo 131). Omitted,
+   * the state alone.
+   */
+  readonly signs?: FightSigns;
 }
 
 export class Blessings implements SessionModule {
@@ -168,6 +180,7 @@ export class Blessings implements SessionModule {
   private readonly due: NegateDue;
   private readonly gate: CastGate;
   private readonly source: BlessingSource | null;
+  private readonly signs: FightSigns;
 
   constructor(
     private config: SpellsConfig,
@@ -182,6 +195,7 @@ export class Blessings implements SessionModule {
     this.due = deps.due ?? NO_NEGATE_DUE;
     this.gate = deps.castGate ?? OPEN_CAST_GATE;
     this.source = deps.source ?? null;
+    this.signs = deps.signs ?? NO_FIGHT_SIGNS;
     // The toolbar's Auto-Bless switch, under the master one — as `configure`
     // folds it, so the first pass and every later one agree.
     this.enabled = enabled && config.autoBless;
@@ -414,9 +428,10 @@ export class Blessings implements SessionModule {
 
   /** Proposes one self recast if this entry is due; true when it did. */
   private castSelf(entry: BlessingConfig, state: CharacterState, now: number): boolean {
-    if (state.inCombat && !entry.inCombat) return false;
+    const fighting = fightHere(state, this.signs, now);
+    if (fighting && !entry.inCombat) return false;
     // Negate magic lands on this character only; mid-fight the round's blessing goes as ever.
-    if (!state.inCombat && this.due.negateDue) return false;
+    if (!fighting && this.due.negateDue) return false;
     if (!manaAtLeast(state, entry.minMana)) return false;
 
     // Under its name or any other the establishing sentence could have
@@ -443,7 +458,7 @@ export class Blessings implements SessionModule {
 
   /** Proposes one party recast if any member is due; true when it did. */
   private castParty(entry: BlessingConfig, state: CharacterState, now: number): boolean {
-    if (state.inCombat && !entry.inCombat) return false;
+    if (fightHere(state, this.signs, now) && !entry.inCombat) return false;
     if (!manaAtLeast(state, entry.minMana)) return false;
 
     const self = (state.name ?? '').toLowerCase();

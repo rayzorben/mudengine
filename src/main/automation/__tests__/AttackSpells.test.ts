@@ -86,6 +86,38 @@ describe('what answers a cast sent while the server repeats a spell', () => {
 });
 
 /*
+ * Todo 131: a fizzle reaches this unit now (`TryInvokeSpell`, `Player.cs:6250`).
+ * Before any engagement it is the roll an instant spell makes at the cast,
+ * unless the player's cast of the same spell is owed: then it may be theirs.
+ */
+describe('a fizzle before any engagement', () => {
+  const fizzle = (spell: string) => block('spell-failed', { spell });
+  const known: CharacterState = {
+    ...EMPTY_CHARACTER,
+    spellbook: [{ name: 'hold person', short: 'hold', level: 1, cost: 1 }]
+  };
+  const INSTANT = t('automation.combat.spellInstant', { spell: 'hold person' });
+
+  it('says the awaited spell is instant', () => {
+    const { spells, notices } = unit();
+    spells.sent(cast('hold person'));
+    spells.heard(fizzle('hold person'), known);
+    expect(notices).toContain(INSTANT);
+  });
+
+  it("learns nothing while the player's cast of the same spell is owed", () => {
+    const { spells, notices } = unit();
+    spells.sent(cast('hold person'));
+    spells.castTyped('hold kobold', known);
+    expect(spells.playerCastOwed).toBe('hold');
+    spells.heard(fizzle('hold person'), known);
+    // Owed until the fizzle, which answers it and lets the fight go on (the control is above).
+    expect(notices).not.toContain(INSTANT);
+    expect(spells.playerCastOwed).toBeNull();
+  });
+});
+
+/*
  * Todo 820, on review: what the wire taught is kept for the whole realm, so
  * the name it is kept under is the listing's, or the realm row's only where
  * the row matched the whole name. `word` is exalted, tainted and balanced

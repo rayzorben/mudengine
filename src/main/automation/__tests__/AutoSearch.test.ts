@@ -85,7 +85,7 @@ beforeEach(() => {
   queueSearch = (over = config(), enabled = true) =>
     new AutoSearch(over, enabled, queue, {
       stateNow: () => now,
-      quarry: (said) => quarry(said),
+      signs: { quarry: (said) => quarry(said), monsterSwung: () => false },
       moveInFlight: () => moves > 0,
       standsDown: () => false
     });

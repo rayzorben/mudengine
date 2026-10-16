@@ -99,6 +99,7 @@ import { LinkWatch } from './LinkWatch';
 import { isPrompt, type Block } from '../../shared/blocks';
 import {
   type CharacterState,
+  type FightSigns,
   type RealmFamily as RealmWord,
   type SessionPhase
 } from '../../shared/character';
@@ -731,6 +732,10 @@ export class SessionManager {
     const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
     const moveOnly = (state: CharacterState): boolean => this.underTimedSpell(state) !== null;
+    const signs: FightSigns = {
+      monsterSwung: (at) => this.hangUp.monsterSwung(at),
+      quarry: (state) => this.combat.quarry(state)
+    };
     this.routines = new Routines(automation, this.queue, { notice, onTheGround });
 
     // `abandon` is a loss: `close` reports `graceful` false, so the loop is held.
@@ -900,24 +905,18 @@ export class SessionManager {
       { fled }
     );
 
-    /*
-     * Sitting down, which is the opposite answer to the same number the
-     * retreat reads. Both are consulted below, in the order that settles which wins:
-     * running away is `emergency` and this is `probe`, so a character under
-     * both thresholds runs first and rests wherever it lands.
-     */
+    // Sitting down: the run is `emergency` and this `probe`, so under both it runs, then rests.
     this.recovery = new Recovery(automation, this.queue, {
       notice,
       /*
-       * GreaterMUD's engine refuses `rest` while poisoned unless the character is
-       * immune (`RestCommand.cs:28`), as a Kang is by race (todo 22), so a Kang is
-       * never told it cannot. The family, not the loaded database: it is the
-       * server's branch, so a MajorMUD server running a converted GreaterMUD realm
-       * does not have it, and null is not `greatermud`.
+       * GreaterMUD refuses `rest` while poisoned unless immune (`RestCommand.cs:28`), as a
+       * Kang is by race (todo 22). The family, not the database: it is the server's branch,
+       * so a MajorMUD server on a converted GreaterMUD realm has none; null is not `greatermud`.
        */
       poisonRefusesRest: () =>
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family),
-      beforeRest: (state, restTo) => this.restSpell.beforeRest(state, restTo)
+      beforeRest: (state, restTo) => this.restSpell.beforeRest(state, restTo),
+      signs
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
     const floor = new FloorAfterKill(this.queue, this.tracker, () => this.loot.taking());
@@ -1072,7 +1071,7 @@ export class SessionManager {
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
       ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light },
       ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot },
-      ...{ deposit: this.deposit, questWatch: this.questWatch }
+      ...{ deposit: this.deposit, questWatch: this.questWatch, signs }
     });
     const config = () => this.automationConfig;
     const charges = (this.charges = new ItemCharges(this.queue, () => this.world, config));
@@ -1234,7 +1233,7 @@ export class SessionManager {
     this.drop = new AutoDrop(automation.drop, automation.enabled, this.queue, trip.kept, reports);
     this.search = new AutoSearch(automation.search, automation.enabled, this.queue, {
       stateNow: () => this.tracker.current,
-      quarry: (state) => this.combat.quarry(state),
+      signs,
       moveInFlight,
       standsDown: (state) => moveOnly(state) || this.travel.isRetreating()
     });
@@ -1567,7 +1566,7 @@ export class SessionManager {
         onTheGround,
         castGate: this.castRound,
         due: this.hostTrips,
-        combat: this.combat,
+        signs,
         charges,
         durations: () => this.belongings.recallSpellDurations()
       },

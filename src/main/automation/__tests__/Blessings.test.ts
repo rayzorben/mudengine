@@ -219,6 +219,40 @@ describe('keeping a blessing up on this character', () => {
     fighter.dispose();
   });
 
+  /* Todo 131: a heal's `*Combat Off*` drops the flag while the monster goes on swinging. */
+  it('waits out a fight the flag no longer shows while a monster here swung lately', () => {
+    let swung = true;
+    const signs = { monsterSwung: () => swung, quarry: () => false };
+    const room = {
+      ...EMPTY_CHARACTER.room,
+      occupants: [
+        {
+          name: 'big gravedigger',
+          kind: 'mob' as const,
+          disposition: null,
+          uncertain: false,
+          costly: 'never' as const,
+          charmed: false,
+          hidden: false,
+          free: false
+        }
+      ]
+    };
+    const patient = new Blessings(spells([{ ...armour, inCombat: false }]), true, queue, {
+      ...standing,
+      signs
+    });
+    patient.onCharacter(state({ inCombat: false, room }));
+    vi.advanceTimersByTime(10_000);
+    expect(sent).toEqual([]);
+    // The control: the blow lapses, and the same state casts.
+    swung = false;
+    patient.onCharacter(state({ inCombat: false, room }));
+    vi.advanceTimersByTime(10_000);
+    expect(sent).toEqual(['protection']);
+    patient.dispose();
+  });
+
   /* Unknown is not plenty: a caster whose sheet has not arrived waits for it. */
   it('waits for a mana maximum when the floor needs one', () => {
     const floored = new Blessings(spells([armour]), true, queue, standing);
