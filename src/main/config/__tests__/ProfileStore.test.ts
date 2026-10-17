@@ -81,6 +81,27 @@ describe('ProfileStore', () => {
     expect(store.profiles[1]?.name).toBe('Thorn');
   });
 
+  /* Todo 817: MegaMUD's table sits beneath the list a character resolves to. */
+  it('lays the rows beneath every scope, the character’s own winning', () => {
+    write(
+      'thorn.yaml',
+      'server: local\nautomation:\n  combat:\n    mobRules:\n      - mob: orc\n        treat: low\n'
+    );
+    const store = new ProfileStore({
+      directory: dir,
+      base: () => base,
+      mobRulesBeneath: () => [
+        { mob: 'orc', treat: 'never' },
+        { mob: 'troll', treat: 'high' }
+      ]
+    });
+    stores.push(store);
+    expect(store.profiles[0]?.config.automation.combat.mobRules).toEqual([
+      { mob: 'orc', treat: 'low' },
+      { mob: 'troll', treat: 'high' }
+    ]);
+  });
+
   it('is empty and quiet when there are no files', () => {
     const store = open();
     expect(store.profiles).toEqual([]);

@@ -975,6 +975,7 @@ export default function GlobalSettings({
                 setting="automation.combat.mobRules"
                 known={[]}
                 namePrefix="global-mob-rule"
+                inherits={{ scope: 'global', realm: '' }}
                 spells={realmSpells}
                 onChange={(rows) =>
                   automation({ combat: { ...draft.automation.combat, mobRules: rows } })

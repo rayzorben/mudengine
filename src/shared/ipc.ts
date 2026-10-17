@@ -83,6 +83,7 @@ import {
 } from './packConfig';
 import type { RetreatStrategy, PvpAction } from './safety';
 import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './drafts';
+import type { MobRuleLayer, MobRuleScope, MobTreatment } from './mobRules';
 import type { RemoteGrant, RemoteName } from './remotes';
 import type { CureGates, SpellServes, SpellTargeting } from './spellcraft';
 import type { InvokeChoice } from './invoke';
@@ -786,6 +787,10 @@ export const Invoke = {
   startMoving: 'move:start',
   /** Stop moving, whichever of the two is running. The place is kept. */
   stopMoving: 'move:stop',
+  /** The monster lists beneath a settings form's own, broadest first (todo 817). */
+  inheritedMobRules: 'settings:inherited-mob-rules',
+  /** One monster's row in the character's realm list, from the Combat card (todo 817). */
+  treatMonster: 'settings:treat-monster',
   /** Stop waiting for the party behind a portal and walk on (todo 849). */
   walkOnWithoutParty: 'move:without-party',
   /**
@@ -1387,6 +1392,17 @@ export interface IpcApi {
   startCashRun(session: SessionId, ask: CashRunAsk): Promise<string | null>;
   /** Stop moving, whichever of the two is running. Keeps its place. */
   stopMoving(session: SessionId): Promise<void>;
+  /**
+   * The monster lists beneath a settings form's own, broadest first: MegaMUD's
+   * table, the options file's, and for a character its realm's (`realm`, by
+   * name; ignored for the global form).
+   */
+  inheritedMobRules(scope: MobRuleScope, realm: string): Promise<MobRuleLayer[]>;
+  /**
+   * Treat a monster one way on this character's realm: its row in the realm's
+   * list, replaced or added, or taken out with null. Why not, or null.
+   */
+  treatMonster(session: SessionId, mob: string, treat: MobTreatment | null): Promise<string | null>;
   /** Stop waiting for the party behind a portal and walk on; nothing while not waiting. */
   walkOnWithoutParty(session: SessionId): Promise<void>;
   /**

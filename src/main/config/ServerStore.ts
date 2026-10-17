@@ -120,8 +120,13 @@ export class ServerStore extends EventEmitter {
    * how `servers:` has always been looked up.
    */
   idFor(name: string): string | undefined {
+    return this.named(name)?.id;
+  }
+
+  /** The realm a name refers to, matched as `idFor` matches it. */
+  named(name: string): StoredServer | undefined {
     const wanted = name.trim().toLowerCase();
-    return this.stored.find((entry) => entry.server.name.toLowerCase() === wanted)?.id;
+    return this.stored.find((entry) => entry.server.name.toLowerCase() === wanted);
   }
 
   watch(): void {

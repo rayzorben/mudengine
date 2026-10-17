@@ -31,6 +31,8 @@ import {
 } from './config/SettingsEditor';
 import { routeFiles } from './config/HeldFiles';
 import { LoopCatalogue } from './config/LoopCatalogue';
+import { MegamudMonsters } from './config/MegamudMonsters';
+import { mobRuleLayers } from './config/mobRuleLayers';
 import { ShippedList } from './config/ShippedList';
 import { NicknameShelf, type RoomNicknames } from './world/RoomNicknames';
 import { findRooms } from './world/roomSearch';
@@ -68,7 +70,7 @@ import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
 import { asPlaceKind } from '../shared/places';
 import { asQuestMarks } from '../shared/quests';
-import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
+import { asMobRuleScope, asMobTreatment, rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import type { ItemRarity } from '../shared/rarity';
 import {
   dropAllPlan,
@@ -1079,6 +1081,14 @@ function internalTemplate(): string {
   return path.join(resourcesDir(), 'config', 'internal.yaml');
 }
 
+/** MegaMUD's monster table, the lowest scope of every monster list. See `MegamudMonsters`. */
+let megamudTable: MegamudMonsters | null = null;
+
+function megamudMonsters(): MegamudMonsters {
+  megamudTable ??= new MegamudMonsters(path.join(resourcesDir(), 'megamud', 'monsters.yaml'));
+  return megamudTable;
+}
+
 /** The shipped loops, read once. See `LoopCatalogue`. */
 let catalogue: LoopCatalogue | null = null;
 
@@ -1544,6 +1554,7 @@ function createProfiles(): ProfileStore {
         loops?.forProfile(id) ?? []
       );
     },
+    mobRulesBeneath: () => megamudMonsters().all(),
     // A key or an alias of its own that does not load, or one that loops through Global's.
     resolved: (id, raw, profile) => {
       const base = config?.source ?? {};
@@ -2293,6 +2304,16 @@ function registerIpc(): void {
   });
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
+  });
+  // Parsed: a scope the form did not send reads nothing.
+  handle(Invoke.inheritedMobRules, (_caller, scope: unknown, realm: unknown) => {
+    const parsed = asMobRuleScope(scope);
+    if (parsed === null) return [];
+    return mobRuleLayers(parsed, typeof realm === 'string' ? realm : '', {
+      megamud: () => megamudMonsters().all(),
+      global: () => config?.config.automation.combat.mobRules ?? [],
+      realm: (name) => servers?.named(name)?.server.mobRules ?? []
+    });
   });
   handle(Invoke.walkOnWithoutParty, (_caller, session: SessionId) => {
     host?.get(session)?.manager.walkOnWithoutParty();
@@ -3361,6 +3382,17 @@ function registerIpc(): void {
     const parsed = asGrant(grant);
     if (parsed === null) return t('app.remotes.invalidName');
     const result = editor().setRemoteGrant(session, name, parsed);
+    return result.ok ? null : result.error;
+  });
+
+  // Parsed: a treatment the card did not offer writes nothing; null takes the realm's row out.
+  handle(Invoke.treatMonster, (_caller, session: unknown, mob: unknown, treat: unknown) => {
+    const realm = typeof session === 'string' ? profileFor(session)?.serverName : undefined;
+    if (realm === undefined) return t('app.profiles.noSuchCharacter');
+    const parsed = treat === null ? null : asMobTreatment(treat);
+    if (typeof mob !== 'string') return t('errors.settings.mobRuleNameRequired');
+    if (treat !== null && parsed === null) return t('errors.settings.mobRuleTreatUnknown');
+    const result = editor().setRealmMobRule(realm, mob, parsed);
     return result.ok ? null : result.error;
   });
 

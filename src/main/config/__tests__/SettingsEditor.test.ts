@@ -670,6 +670,37 @@ describe('servers, one directory each', () => {
     });
     expect(editor.deleteServer('GreaterMUD (local)').ok).toBe(true);
   });
+
+  /* Todo 817: the Combat card's Treat as writes one row of the realm's list. */
+  it("sets, changes and takes out one monster's row, keeping the rest", () => {
+    editor.saveServer(
+      null,
+      server({ mobRules: [{ mob: 'orc', treat: 'high', noBackstab: true }] })
+    );
+    const rows = (): unknown =>
+      parse(fs.readFileSync(home.server('bearfather').file, 'utf8'))['mobRules'];
+
+    expect(editor.setRealmMobRule('Bearfather', 'The Cave Bear', 'never')).toEqual({ ok: true });
+    expect(rows()).toEqual([
+      { mob: 'orc', treat: 'high', noBackstab: true },
+      { mob: 'cave bear', treat: 'never' }
+    ]);
+    // A band keeps the way the row fights; a stance takes it off (`treated`).
+    expect(editor.setRealmMobRule('Bearfather', 'orc', 'low').ok).toBe(true);
+    expect(rows()).toEqual([
+      { mob: 'cave bear', treat: 'never' },
+      { mob: 'orc', treat: 'low', noBackstab: true }
+    ]);
+    editor.setRealmMobRule('Bearfather', 'orc', null);
+    editor.setRealmMobRule('Bearfather', 'cave bear', null);
+    expect(rows()).toBeUndefined();
+  });
+
+  it('refuses a realm it has no file for, and a blank monster', () => {
+    expect(editor.setRealmMobRule('Nowhere', 'orc', 'never').ok).toBe(false);
+    editor.saveServer(null, server());
+    expect(editor.setRealmMobRule('Bearfather', '  ', 'never').ok).toBe(false);
+  });
 });
 
 /*
