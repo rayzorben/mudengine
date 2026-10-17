@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isMap, isSeq, parse, Scalar, type Document } from 'yaml';
+import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 
 import { ON_DISK, type EditResult, type YamlFiles } from './YamlFile';
 import { grantIsEmpty, type RemoteGrant, type RemoteName } from '../../shared/remotes';
@@ -46,6 +46,8 @@ import { statedRoomNames, writtenRoomNames } from '../../shared/roomNicknames';
 import { pairsRecord, statedPairs, type StatedPair } from '../../shared/pairs';
 import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases';
 import { statedKeys } from '../../shared/keys';
+import { normalizeMobRules, treated, type MobTreatment } from '../../shared/mobRules';
+import { mobKey } from '../../shared/world';
 
 /**
  * Writing what a settings screen collects into the files that own it.
@@ -825,6 +827,43 @@ export class SettingsEditor {
    */
   deleteProfile(id: string): EditResult {
     return this.files.remove(this.profilePath(id));
+  }
+
+  /**
+   * One monster's row in a realm's own list, from the Combat card's Treat as
+   * (todo 817): replaced or added with `treat`, or taken out with null so the
+   * broader lists hold again. The rest of the list is kept as it parses
+   * (`normalizeMobRules`), and an emptied list loses its key, as `saveServer`
+   * writes it.
+   */
+  setRealmMobRule(realmName: string, mob: string, treat: MobTreatment | null): EditResult {
+    const key = mobKey(mob);
+    if (key.length === 0) return { ok: false, error: t('errors.settings.mobRuleNameRequired') };
+    const id = this.tree().servers.idFor(realmName);
+    if (id === undefined) {
+      return { ok: false, error: t('errors.settings.realmNotFound', { name: realmName }) };
+    }
+    return this.files.edit(this.home.server(id).file, {
+      mutate: (document) => {
+        const node = document.getIn(['mobRules'], true);
+        const rows = normalizeMobRules(isNode(node) ? node.toJSON() : []);
+        const held = rows.find((row) => row.mob === key);
+        const others = rows.filter((row) => row !== held);
+        const next =
+          treat === null
+            ? others
+            : [
+                ...others,
+                held === undefined ? treated({ mob: key, treat }, treat) : treated(held, treat)
+              ];
+        if (next.length > 0)
+          document.setIn(
+            ['mobRules'],
+            next.map((row) => ({ ...row }))
+          );
+        else if (document.hasIn(['mobRules'])) document.deleteIn(['mobRules']);
+      }
+    });
   }
 
   /**

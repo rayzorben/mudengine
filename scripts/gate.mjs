@@ -184,6 +184,8 @@ const SMOKE_PATHS = [
   'locales/',
   'resources/config/',
   'resources/servers/',
+  // MegaMUD's monster table, beneath every character's list (todo 817).
+  'resources/megamud/',
   'electron.vite.config.ts',
   'package.json',
   'package-lock.json',

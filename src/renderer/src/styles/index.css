@@ -14136,3 +14136,43 @@ tr:hover .row-action.worn,
   color: var(--text-lo);
   margin: 0;
 }
+
+/* The rows beneath a monster list (todo 817): name, treatment, where it comes
+   from, and Override, one column each, aligned down the list. */
+.mob-rules-inherited {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.mob-rules-inherited-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mob-rules-inherited-list .mob-rule-inherited {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.mob-rules-inherited-list .mob-rule-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mob-rules-inherited-list .mob-rule-inherited[data-replaced='true'] {
+  color: var(--text-lo);
+}
+
+/* Treat as, beside a monster's name on the Combat card: a glyph, not a word,
+   so the name keeps the line. */
+.treat-as {
+  flex: none;
+  padding: 0 2px;
+}

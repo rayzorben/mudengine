@@ -1,15 +1,18 @@
 import { fieldHintId } from './FormField';
 import { Hint } from './Hint';
 import Icon from './Icon';
+import InheritedMobRules from './InheritedMobRules';
 import NameCombo from './NameCombo';
 import { SpellCombo } from './SpellPicker';
 import { t } from '../lib/i18n';
+import { TREATMENT_WORD } from '../lib/mobRuleWords';
 import {
   isBanded,
   MOB_CAST_MOST,
   MOB_TREATMENTS,
   treated,
   type MobRule,
+  type MobRuleScope,
   type MobTreatment
 } from '@shared/mobRules';
 import { int } from '@shared/values';
@@ -35,6 +38,8 @@ export interface MobRuleListProps {
   spells: readonly SpellOption[];
   /** Distinguishes the two forms' controls for the harnesses and for labels. */
   namePrefix: string;
+  /** Whose list this is, and the realm beneath a character's: the rows it inherits are drawn under it (todo 817). */
+  inherits: { scope: MobRuleScope; realm: string };
   onChange(rows: MobRule[]): void;
 }
 
@@ -70,6 +75,7 @@ export default function MobRuleList({
   known,
   spells,
   namePrefix,
+  inherits,
   onChange
 }: MobRuleListProps): React.JSX.Element {
   const replace = (index: number, row: MobRule) =>
@@ -221,23 +227,13 @@ export default function MobRuleList({
         <Icon name="plus" />
         {t('settings.combat.mobRuleAdd')}
       </button>
+      <InheritedMobRules
+        namePrefix={namePrefix}
+        onOverride={(row) => onChange([...rows, row])}
+        own={rows}
+        realm={inherits.realm}
+        scope={inherits.scope}
+      />
     </div>
   );
 }
-
-/**
- * One literal `t()` per treatment, never a key built from the value:
- * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic key
- * would be an unexempted dynamic call and nine keys nothing is seen to read.
- */
-const TREATMENT_WORD: Record<MobTreatment, () => string> = {
-  never: () => t('settings.combat.mobRuleNever'),
-  friend: () => t('settings.combat.mobRuleFriend'),
-  escape: () => t('settings.combat.mobRuleEscape'),
-  hangup: () => t('settings.combat.mobRuleHangup'),
-  first: () => t('settings.combat.mobRuleFirst'),
-  high: () => t('settings.combat.mobRuleHigh'),
-  default: () => t('settings.combat.mobRuleDefault'),
-  low: () => t('settings.combat.mobRuleLow'),
-  last: () => t('settings.combat.mobRuleLast')
-};

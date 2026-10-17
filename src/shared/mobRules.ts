@@ -68,13 +68,95 @@ export interface MobCast {
   times: number;
 }
 
+/**
+ * Where a monster list comes from, broadest first (todo 817): MegaMUD's
+ * shipped table, the options file, the realm. A character's own list is the
+ * narrowest and is the one its form edits, so it is never inherited.
+ */
+export const MOB_RULE_SOURCES = ['megamud', 'global', 'realm'] as const;
+export type MobRuleSource = (typeof MOB_RULE_SOURCES)[number];
+
+/** One broader scope's rows, as a settings form shows them beneath its own. */
+export interface MobRuleLayer {
+  source: MobRuleSource;
+  rows: readonly MobRule[];
+}
+
+/** Which list a settings form edits, and so which sources sit beneath it. */
+export const MOB_RULE_SCOPES = ['global', 'realm', 'character'] as const;
+export type MobRuleScope = (typeof MOB_RULE_SCOPES)[number];
+
+/** A scope off the wire, or null. */
+export function asMobRuleScope(value: unknown): MobRuleScope | null {
+  return (MOB_RULE_SCOPES as readonly unknown[]).includes(value) ? (value as MobRuleScope) : null;
+}
+
+/** The sources beneath a scope's own list, broadest first. */
+export function sourcesBeneath(scope: MobRuleScope): readonly MobRuleSource[] {
+  switch (scope) {
+    case 'global':
+      return ['megamud'];
+    case 'realm':
+      return ['megamud', 'global'];
+    case 'character':
+      return MOB_RULE_SOURCES;
+    default: {
+      const unreachable: never = scope;
+      return unreachable;
+    }
+  }
+}
+
+/** A row a form inherits: the one that holds for its monster, where it comes from, and whether the form's own list replaces it. */
+export interface InheritedRow {
+  row: MobRule;
+  source: MobRuleSource;
+  replaced: boolean;
+}
+
+/**
+ * The rows beneath a form's own list, one per monster, the narrowest source
+ * holding, as `mergeMobRules` would merge them; each marked where the form's
+ * own rows already name the monster. Sorted by monster.
+ */
+export function inheritedRows(
+  layers: readonly MobRuleLayer[],
+  own: readonly MobRule[]
+): InheritedRow[] {
+  const mine = new Set(own.map((row) => mobKey(row.mob)));
+  const held = new Map<string, InheritedRow>();
+  for (const layer of [...layers].reverse()) {
+    for (const row of layer.rows) {
+      const mob = mobKey(row.mob);
+      if (mob.length === 0 || held.has(mob)) continue;
+      held.set(mob, { row: { ...row, mob }, source: layer.source, replaced: mine.has(mob) });
+    }
+  }
+  return [...held.values()].sort((a, b) => a.row.mob.localeCompare(b.row.mob));
+}
+
+/** The most rows one scope's list may hold; the shipped MegaMUD scope passes its own. */
+export const MOB_RULES_MOST = 64;
+
 /** The most casts a row may name — MegaMUD's own field, 0–99. */
 export const MOB_CAST_MOST = 99;
 
+/** Each list's rows by monster, built once: MegaMUD's scope makes a list of hundreds (todo 817). */
+const indexed = new WeakMap<readonly MobRule[], Map<string, MobRule>>();
+
 /** The row for a monster, in the wire's spelling or the room's, or undefined. */
 export function mobRuleFor(rules: readonly MobRule[], name: string): MobRule | undefined {
-  const wanted = mobKey(name);
-  return rules.find((row) => mobKey(row.mob) === wanted);
+  let index = indexed.get(rules);
+  if (index === undefined) {
+    index = new Map();
+    // The first row for a monster wins, as `normalizeMobRules` keeps it.
+    for (const row of rules) {
+      const key = mobKey(row.mob);
+      if (!index.has(key)) index.set(key, row);
+    }
+    indexed.set(rules, index);
+  }
+  return index.get(mobKey(name));
 }
 
 /** A row given a new treatment: a stance takes the way of fighting it. */
@@ -138,6 +220,11 @@ export type MobTreatment = (typeof MOB_TREATMENTS)[number];
 export const DEFAULT_MOB_PRIORITY: MobPriorityBand = 'default';
 
 /** Whether a treatment is a stance rather than a band. */
+/** A treatment off the wire, or null. */
+export function asMobTreatment(value: unknown): MobTreatment | null {
+  return (MOB_TREATMENTS as readonly unknown[]).includes(value) ? (value as MobTreatment) : null;
+}
+
 export function isStance(treat: MobTreatment): treat is MobStance {
   return (MOB_STANCES as readonly string[]).includes(treat);
 }
@@ -295,7 +382,7 @@ export function stanceHere(
  * narrowest scope's row is already in front and anything behind it is the
  * broader scope it overrode.
  */
-export function normalizeMobRules(value: unknown): MobRule[] {
+export function normalizeMobRules(value: unknown, most = MOB_RULES_MOST): MobRule[] {
   const rows: MobRule[] = [];
   if (!Array.isArray(value)) return rows;
   const seen = new Set<string>();
@@ -307,7 +394,7 @@ export function normalizeMobRules(value: unknown): MobRule[] {
     if (!MOB_TREATMENTS.includes(treat)) continue;
     seen.add(mob);
     rows.push(isStance(treat) ? { mob, treat } : { mob, treat, ...fightingOf(entry) });
-    if (rows.length >= 64) break;
+    if (rows.length >= most) break;
   }
   return rows;
 }

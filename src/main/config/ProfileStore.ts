@@ -15,6 +15,7 @@ import path from 'node:path';
 import { parse } from 'yaml';
 
 import { mergeLoops, type Loop } from '../../shared/loops';
+import { mergeMobRules, type MobRule } from '../../shared/mobRules';
 import { resolveProfile, type Profile } from '../../shared/profiles';
 import { errorMessage } from '../../shared/values';
 import { PROFILE_FILE } from '../app/home';
@@ -56,6 +57,12 @@ export interface ProfileStoreOptions {
    * scopes are not.
    */
   loopsFor?: (id: string, serverName: string) => readonly Loop[];
+  /**
+   * The monster rows beneath every scope: MegaMUD's table (todo 817). Merged
+   * after resolution, under the list the three scopes already made, so any
+   * row a player states for the same monster wins.
+   */
+  mobRulesBeneath?: () => readonly MobRule[];
   /** Each character read, as its file states it and as it resolved, for what it refuses (todo 134). */
   resolved?: (id: string, raw: unknown, profile: Profile) => void;
 }
@@ -239,6 +246,11 @@ export class ProfileStore extends EventEmitter {
           result.profile.config.automation.loops,
           lent
         );
+      }
+      const beneath = this.options.mobRulesBeneath?.() ?? [];
+      if (beneath.length > 0) {
+        const combat = result.profile.config.automation.combat;
+        combat.mobRules = mergeMobRules(beneath, combat.mobRules);
       }
       this.options.resolved?.(id, raw, result.profile);
       profiles.push(result.profile);

@@ -291,6 +291,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           players={view.players}
           inspect={ctx.inspect}
           onSelect={ctx.selectPlayer}
+          onTreat={ctx.treatMonster}
           verdict={view.verdict}
         />
       );

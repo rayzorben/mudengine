@@ -2568,6 +2568,10 @@ cards:
       others: 'Party/Others: {damage}'
     empty: Not in combat.
     noTarget: No target engaged.
+    # Todo 817: a monster's row in this character's realm list, from the card.
+    treatAsTitle: 'Treat {target} as… on this realm'
+    treatAsAria: 'Treat {target} as'
+    treatAsClear: Use the other monster lists
     provenance:
       learned: learned by fighting
       unknown: unknown monster
@@ -4374,6 +4378,22 @@ settings:
       MegaMUD's Stop to kill if able. It is attacked even with fewer monsters in
       the room than Min Monsters in Room, and even when a player outside the party is fighting it
       (Polite Attacks).
+    # Todo 817: the rows beneath this list, MegaMUD's table among them.
+    mobRuleFromMegamud: MegaMUD
+    mobRuleFromGlobal: All characters
+    mobRuleFromRealm: This realm
+    mobRuleInheritedNote: 'Also applied, beneath the rows above: {counts}. A row above for the same
+      monster replaces one of these.'
+    mobRuleInheritedNone: No other monster list applies beneath this one.
+    mobRuleInheritedLoading: Reading the monster lists beneath this one…
+    mobRuleInheritedFind: Find in the Other Lists
+    mobRuleInheritedFindHint: Part of the name. Override copies the row into the list above to change it.
+    mobRuleInheritedMore: '{more} more; type part of a name to narrow them.'
+    mobRuleOverride: Override
+    mobRuleOverrideTitle: 'Copy the row for {mob} into the list above, where it can be changed'
+    mobRuleReplacedHere: Replaced above
+    mobRuleListFull: 'This list holds {most} monsters, the most one list keeps; remove one above to
+      override another.'
     # Todo 816: how a banded row fights its monster.
     mobRuleNoBackstab: No backstab
     mobRuleSpellAria: 'Spell for monster {number}'
@@ -5661,6 +5681,8 @@ errors:
     realmInUse: '{name} is still where {users} {playsOrPlay}. Move them first, or they will have
       nowhere to connect.'
     realmNotFound: There is no realm called {name}.
+    mobRuleNameRequired: A monster row needs the monster's name.
+    mobRuleTreatUnknown: That is not a way to treat a monster.
     realmSaveMismatch: the saved realm does not match what was asked for
     realmSaveVerifyFailed: the realm did not survive being saved
     profileUnreadable: could not be read

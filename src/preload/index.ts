@@ -67,6 +67,9 @@ const api: WireApi = {
   cashRunTokens: (session) => ipcRenderer.invoke(Invoke.cashRunTokens, session),
   startCashRun: (session, ask) => ipcRenderer.invoke(Invoke.startCashRun, session, ask),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
+  inheritedMobRules: (scope, realm) => ipcRenderer.invoke(Invoke.inheritedMobRules, scope, realm),
+  treatMonster: (session, mob, treat) =>
+    ipcRenderer.invoke(Invoke.treatMonster, session, mob, treat),
   walkOnWithoutParty: (session) => ipcRenderer.invoke(Invoke.walkOnWithoutParty, session),
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),

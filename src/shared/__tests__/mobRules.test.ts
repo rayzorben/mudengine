@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   attacksFirst,
   hitsBack,
+  inheritedRows,
+  mergeMobRules,
+  mobRuleFor,
+  sourcesBeneath,
   isBanded,
   MOB_STANCES,
   MOB_TREATMENTS,
@@ -143,5 +147,57 @@ describe('a row may say what a monster is', () => {
     expect(stanceHere([{ name: 'Nusse', kind: 'unknown' as const }], rules, 'hangup')).toBe(
       'Nusse'
     );
+  });
+});
+
+/* Todo 817: MegaMUD's table is the lowest scope, and a form shows what it inherits. */
+describe('the monster lists beneath a form', () => {
+  const megamud: MobRule[] = [
+    { mob: 'orc', treat: 'never' },
+    { mob: 'troll', treat: 'high' }
+  ];
+  const global: MobRule[] = [{ mob: 'orc', treat: 'low' }];
+
+  it('lets every narrower scope replace a MegaMUD row, and a default band cancel its stance', () => {
+    const merged = mergeMobRules(megamud, global, [{ mob: 'troll', treat: 'default' }]);
+    expect(mobRuleFor(merged, 'an orc')).toEqual({ mob: 'orc', treat: 'low' });
+    expect(mobRuleFor(merged, 'Troll')).toEqual({ mob: 'troll', treat: 'default' });
+    expect(mobRuleFor(merged, 'goblin')).toBeUndefined();
+  });
+
+  it('finds a row by the first one for its monster, in a list of hundreds', () => {
+    const many = Array.from({ length: 700 }, (_, at): MobRule => ({
+      mob: `mob ${at}`,
+      treat: 'low'
+    }));
+    const rows = [...many, { mob: 'mob 3', treat: 'never' } as MobRule];
+    expect(mobRuleFor(rows, 'mob 3')).toEqual({ mob: 'mob 3', treat: 'low' });
+    expect(mobRuleFor(rows, 'mob 699')?.treat).toBe('low');
+  });
+
+  it('keeps 64 rows a scope unless the caller says more', () => {
+    const many = Array.from({ length: 100 }, (_, at) => ({ mob: `mob ${at}`, treat: 'low' }));
+    expect(normalizeMobRules(many)).toHaveLength(64);
+    expect(normalizeMobRules(many, 1000)).toHaveLength(100);
+  });
+
+  it('shows the narrowest inherited row per monster, marked where the form replaces it', () => {
+    const rows = inheritedRows(
+      [
+        { source: 'megamud', rows: megamud },
+        { source: 'global', rows: global }
+      ],
+      [{ mob: 'Troll', treat: 'last' }]
+    );
+    expect(rows).toEqual([
+      { row: { mob: 'orc', treat: 'low' }, source: 'global', replaced: false },
+      { row: { mob: 'troll', treat: 'high' }, source: 'megamud', replaced: true }
+    ]);
+  });
+
+  it('puts MegaMUD beneath every scope, and the realm only beneath a character', () => {
+    expect(sourcesBeneath('global')).toEqual(['megamud']);
+    expect(sourcesBeneath('realm')).toEqual(['megamud', 'global']);
+    expect(sourcesBeneath('character')).toEqual(['megamud', 'global', 'realm']);
   });
 });

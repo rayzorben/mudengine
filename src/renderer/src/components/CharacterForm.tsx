@@ -605,13 +605,13 @@ export default function CharacterForm({
 
               <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
                 <legend>{t('settings.combat.mobRuleLegend')}</legend>
-                {/* In the open: the band skips the weighing, and somebody could have
-                    that wrong for a whole evening. */}
+                {/* In the open: the band skips the weighing (MobRuleList). */}
                 <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
                 <MobRuleList
                   setting="automation.combat.mobRules"
                   known={mobs}
                   namePrefix="mob-rule"
+                  inherits={{ scope: 'character', realm: form.serverName ?? '' }}
                   spells={shownBook.spells}
                   onChange={(rows) => patch({ combatMobRules: rows })}
                   rows={form.combatMobRules}

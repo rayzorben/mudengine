@@ -250,6 +250,7 @@ export default function ServerForm({
         <MobRuleList
           known={[]}
           namePrefix="realm-mob-rule"
+          inherits={{ scope: 'realm', realm: draft.name }}
           spells={[]}
           onChange={(rows) => onChange({ ...draft, mobRules: rows })}
           rows={draft.mobRules}

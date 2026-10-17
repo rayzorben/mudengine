@@ -14,6 +14,7 @@ import type { PlayerAsked } from '../components/PlayerFlyout';
 import type { SupplyList } from '../components/SupplyControls';
 import type { BuilderApi } from './useLoopBuilder';
 import type { SessionView } from './useSessionViews';
+import type { MobTreatment } from '@shared/mobRules';
 import { ZERO_METER, type Pressure, type StreamMeter } from './useStreamPressure';
 import type { PinnedToolbar } from './useToolbarPins';
 import { t } from '../lib/i18n';
@@ -165,6 +166,8 @@ export interface CardContext {
   stopMoving(): void;
   /** Walk on without the party the walk is waiting for, addressed at this card's character. */
   walkOnWithoutParty(): void;
+  /** Treat a monster one way on this card's character's realm, or take its row out (todo 817). */
+  treatMonster(name: string, treat: MobTreatment | null): void;
   startLoop(name: string): void;
   reverseLoop(): void;
   /** Whose Player flyout is open from one of this character's listings, lower-cased, or null. */
@@ -233,6 +236,7 @@ export interface AddressedActions {
   startMoving(loop: string | null): void;
   stopMoving(): void;
   walkOnWithoutParty(): void;
+  treatMonster(name: string, treat: MobTreatment | null): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
   startLoop(name: string): void;
@@ -274,6 +278,7 @@ export type CardApi = Pick<
   | 'gearStop'
   | 'stopMoving'
   | 'walkOnWithoutParty'
+  | 'treatMonster'
   | 'startLoop'
   | 'reverseLoop'
   | 'setGangRemotes'
@@ -462,6 +467,10 @@ export function useCardContext({
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         walkOnWithoutParty: () => void api.walkOnWithoutParty(sid),
+        treatMonster: (name, treat) =>
+          void api
+            .treatMonster(sid, name, treat)
+            .then((refused) => sayRefusalRef.current(sid)(refused)),
         // Through a ref like `selectPlayer` beside it: this one changes the
         // window's state rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
@@ -624,6 +633,7 @@ export function useCardContext({
         startMoving: shown ? startMoving : bound.startMoving,
         stopMoving: shown ? stopMoving : bound.stopMoving,
         walkOnWithoutParty: bound.walkOnWithoutParty,
+        treatMonster: bound.treatMonster,
         // Addressed always: a pinned float's Reset re-bases that character's
         // card, never the one being watched.
         resetStats: bound.resetStats,

@@ -4,6 +4,8 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import FightOutlook from './FightOutlook';
 import MobFactRow from './MobFactRow';
 import RowPeaceChip from './RowPeaceChip';
+import TreatAs from './TreatAs';
+import type { MobTreatment } from '@shared/mobRules';
 import { healthLeft, type CharacterState, type TargetHealth } from '@shared/character';
 import type { PlayerRegistry } from '@shared/players';
 import type { RoomVerdict } from '@shared/verdict';
@@ -26,6 +28,8 @@ export interface CombatCardProps extends CardChrome {
   inspect?(name: string, anchor: HTMLElement): void;
   /** A person's name clicked: the Player flyout — a PvP attacker is a person. */
   onSelect?(name: string, anchor: PopoverAnchor): void;
+  /** Treat as: a monster's row in this character's realm list, or taken out with null (todo 817). */
+  onTreat?(name: string, treat: MobTreatment | null): void;
 }
 
 /**
@@ -267,6 +271,7 @@ function CombatCard({
   verdict,
   inspect,
   onSelect,
+  onTreat,
   ...chrome
 }: CombatCardProps) {
   const { combat } = character;
@@ -330,6 +335,9 @@ function CombatCard({
                     onSelect={onSelect}
                   />
                   <RowPeaceChip character={character} name={combat.health.name} verdict={verdict} />
+                  {onTreat && !isKnownPlayer(players, character, combat.health.name) && (
+                    <TreatAs name={combat.health.name} onTreat={onTreat} />
+                  )}
                   <span className="from-medium">
                     <Provenance health={combat.health} />
                   </span>
@@ -433,6 +441,9 @@ function CombatCard({
                           onSelect={onSelect}
                         />
                         <RowPeaceChip character={character} name={name} verdict={verdict} />
+                        {onTreat && !isKnownPlayer(players, character, name) && (
+                          <TreatAs name={name} onTreat={onTreat} />
+                        )}
                         {index < combat.attackers.length - 1 && ', '}
                       </span>
                     ))}
