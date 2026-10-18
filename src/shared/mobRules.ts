@@ -159,6 +159,28 @@ export function mobRuleFor(rules: readonly MobRule[], name: string): MobRule | u
   return index.get(mobKey(name));
 }
 
+/**
+ * A row laid beneath every list from MegaMUD's table rather than written by
+ * the player (todo 856). Marked on the resolved list only: `normalizeMobRules`
+ * builds each row from its known keys, so the mark is never read from a file
+ * and never written to one.
+ */
+export type LaidMobRule = MobRule & { laid: Extract<MobRuleSource, 'megamud'> };
+
+/** MegaMUD's rows, marked as laid. */
+export function laidFromTable(rows: readonly MobRule[]): LaidMobRule[] {
+  return rows.map((row) => ({ ...row, laid: 'megamud' }));
+}
+
+/**
+ * The row for a monster when the player wrote it, in any of their three
+ * scopes; undefined for none, and for a row MegaMUD's table laid.
+ */
+export function ownRow(rules: readonly MobRule[], name: string): MobRule | undefined {
+  const row = mobRuleFor(rules, name);
+  return row === undefined || ('laid' in row && row.laid === 'megamud') ? undefined : row;
+}
+
 /** A row given a new treatment: a stance takes the way of fighting it. */
 export function treated(row: MobRule, treat: MobTreatment): MobRule {
   return isStance(treat) ? { mob: row.mob, treat } : { ...row, treat };

@@ -15,7 +15,7 @@ import path from 'node:path';
 import { parse } from 'yaml';
 
 import { mergeLoops, type Loop } from '../../shared/loops';
-import { mergeMobRules, type MobRule } from '../../shared/mobRules';
+import { laidFromTable, mergeMobRules, type MobRule } from '../../shared/mobRules';
 import { resolveProfile, type Profile } from '../../shared/profiles';
 import { errorMessage } from '../../shared/values';
 import { PROFILE_FILE } from '../app/home';
@@ -250,7 +250,7 @@ export class ProfileStore extends EventEmitter {
       const beneath = this.options.mobRulesBeneath?.() ?? [];
       if (beneath.length > 0) {
         const combat = result.profile.config.automation.combat;
-        combat.mobRules = mergeMobRules(beneath, combat.mobRules);
+        combat.mobRules = mergeMobRules(laidFromTable(beneath), combat.mobRules);
       }
       this.options.resolved?.(id, raw, result.profile);
       profiles.push(result.profile);

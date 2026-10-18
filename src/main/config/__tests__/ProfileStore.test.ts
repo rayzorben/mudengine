@@ -96,9 +96,10 @@ describe('ProfileStore', () => {
       ]
     });
     stores.push(store);
+    // MegaMUD's row is marked as laid, so a monster the realm calls passive is not attacked for it (todo 856).
     expect(store.profiles[0]?.config.automation.combat.mobRules).toEqual([
       { mob: 'orc', treat: 'low' },
-      { mob: 'troll', treat: 'high' }
+      { mob: 'troll', treat: 'high', laid: 'megamud' }
     ]);
   });
 
