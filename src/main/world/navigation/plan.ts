@@ -335,12 +335,7 @@ function keyedRoute(made: Extract<Plan, { kind: 'plan' }>): Route | null {
   };
 }
 
-/**
- * The way through doors a walkable route went round, where fetching their
- * keys and walking through beats it by `alternativeMinSteps`, the fetches
- * priced as the plan walks them (todo 805: 155 steps round against one
- * through the black star key's door).
- */
+/** The way through doors a walkable route went round, as one route (`keyedPlan`). */
 function keyedOffer(
   realm: PlanRealm,
   oracle: NavigationOracle,
@@ -349,6 +344,47 @@ function keyedOffer(
   traveller: Traveller,
   direct: Route
 ): Route | null {
+  const made = keyedPlan(realm, oracle, from, to, traveller, direct);
+  return made === null ? null : keyedRoute(made);
+}
+
+/**
+ * The way through doors a walkable route went round where every key on it is
+ * bought (todo 02), for a player's walk to take on its own: the route and the
+ * plan whose buys get the keys. Null where the direct route meets no keyed
+ * door, or the way through wants a key asked for or killed for.
+ */
+export function boughtOffer(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller
+): { way: Route; plan: Extract<Plan, { kind: 'plan' }> } | null {
+  const direct = realm.route(from, to, traveller);
+  if (!walkable(direct) || direct.keysAhead !== true) return null;
+  const made = keyedPlan(realm, oracle, from, to, traveller, direct);
+  if (made === null || !made.steps.every((step) => !isFetch(step) || step.kind === 'buy')) {
+    return null;
+  }
+  const way = keyedRoute(made);
+  return way === null ? null : { way, plan: made };
+}
+
+/**
+ * The plan through doors a walkable route went round, where fetching their
+ * keys and walking through beats it by `alternativeMinSteps`, the fetches
+ * priced as the plan walks them (todo 805: 155 steps round against one
+ * through the black star key's door).
+ */
+function keyedPlan(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  direct: Route
+): Extract<Plan, { kind: 'plan' }> | null {
   const { alternativeMinSteps } = tuning().world;
   const beat = direct.cost - alternativeMinSteps;
   if (beat <= 0) return null;
@@ -363,8 +399,7 @@ function keyedOffer(
     way.steps.every((step, index) => step.to === direct.steps[index]?.to);
   if (same) return null;
   const made = planKeys(realm, oracle, from, to, traveller, held.needs);
-  if (made.kind === 'refused' || made.cost > beat) return null;
-  return keyedRoute(made);
+  return made.kind === 'refused' || made.cost > beat ? null : made;
 }
 
 /**

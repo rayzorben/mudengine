@@ -25,7 +25,12 @@ import { personStop } from '../automation/personStop';
 import type { HostTrips } from './hostTrips';
 import type { AreaSearch } from '../automation/AreaSearch';
 import type { TrainErrand } from '../automation/TrainErrand';
-import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
+import {
+  fightIsRunning,
+  packRows,
+  placedByServer,
+  type CharacterState
+} from '../../shared/character';
 import type { WalkKind } from '../../shared/walk';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { Walker } from '../automation/Walker';
@@ -42,6 +47,8 @@ import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
 import { PartyWait } from './PartyWait';
+import { KeyBuying } from './KeyBuying';
+import { packHolds } from '../../shared/quests';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
 import type { CarriedRoute } from '../../shared/underway';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
@@ -49,6 +56,7 @@ import {
   asDirection,
   crossedWords,
   DIRECTION_NAME,
+  itemDemanded,
   mobKey,
   newDemands,
   OPPOSITE,
@@ -154,6 +162,8 @@ export interface TravelParts {
     | 'askCountersFor'
     | 'findStop'
     | 'shun'
+    | 'boughtTo'
+    | 'priceAt'
   >;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly walker: Pick<
@@ -298,6 +308,8 @@ export class Travel implements SessionModule {
    * in the room, by key, so the refusal is said once while it stays (818).
    */
   private dreadSaid: string | null = null;
+  /** Whether a player's walk buys a key for a shorter way (todo 02). */
+  private readonly keyBuying: KeyBuying;
   /**
    * The escape whose answer has not come: the direction sent, by when, how
    * many times its door has been opened, and every direction tried from this
@@ -465,6 +477,21 @@ export class Travel implements SessionModule {
       waitMinutes: () => this.automationConfig.party.waitMinutes
     });
     this.autoRest = new AutoRestBack(session);
+    this.keyBuying = new KeyBuying({
+      choices: () => this.automationConfig.movement,
+      boughtTo: (to) => this.errands.boughtTo(to),
+      priceAt: (name, room) => this.errands.priceAt(name, room),
+      listPack: () =>
+        this.queue.enqueue({
+          decision: 'key-buy',
+          command: 'i',
+          priority: 'probe',
+          coalesceKey: 'probe:i',
+          expiresAt: Date.now() + tuning().queue.unreadRetryMs,
+          reason: t('session.walk.keys.reasonPack')
+        }),
+      notice: (message) => this.session.notice(message, 'key-buy')
+    });
   }
 
   private get automationConfig(): AutomationConfig {
@@ -486,6 +513,7 @@ export class Travel implements SessionModule {
     this.retreat = null;
     this.saidWaitingToBePlaced = false;
     this.autoRest.backOn('connected');
+    this.keyBuying.reset();
   }
 
   /**
@@ -2162,7 +2190,7 @@ export class Travel implements SessionModule {
     }
     this.errandOwes = null;
     const errand = this.supplies.considerBeforeRoute(this.tracker.current);
-    if (errand === null) return this.startLit(route, run);
+    if (errand === null) return this.walkOrBuy(route, run);
     const last = route.steps.at(-1);
     if (last !== undefined) {
       this.errandOwes = { to: last.to, name: last.name, run, crossing: crossedWords(route) };
@@ -2175,6 +2203,55 @@ export class Travel implements SessionModule {
       })
     );
     return null;
+  }
+
+  /** A player's route, or the shorter way through a door whose key is bought on the way (`KeyBuying`). */
+  private walkOrBuy(route: Route, run: boolean): string | null {
+    const choice = this.keyBuying.choose(route, run, this.tracker.current);
+    switch (choice.kind) {
+      case 'walk':
+        return this.startLit(route, run);
+      case 'listing':
+        return null;
+      case 'buy':
+        return this.itemErrand.collect(choice.items, choice.way, this.tracker.current, run);
+      default: {
+        const never: never = choice;
+        return never;
+      }
+    }
+  }
+
+  /**
+   * The walk `KeyBuying` held for the inventory, once it answers: the pressed
+   * way where the pack holds every key it demands, else planned again from
+   * here, or the pressed way where no answer came. A refusal is said, nobody
+   * pressing now.
+   */
+  walkOnceListed(state: CharacterState): void {
+    const held = this.keyBuying.released(state);
+    if (held === null) return;
+    const to = held.route.steps.at(-1)?.to;
+    let refused: string | null;
+    // The pressed way, where the listing holds every item it demands or it was never read.
+    if (!held.listed || to === undefined || this.holdsEveryKey(held.route, state)) {
+      refused = this.startLit(held.route, held.run);
+    } else {
+      const plan = this.errands.planFromHere(to, {}, 'walk', crossedWords(held.route));
+      if (typeof plan === 'string') refused = plan;
+      else if (plan.blocked) refused = plan.reason ?? t('automation.walk.refusalNoRoute');
+      else refused = this.walkOrBuy(plan, held.run);
+    }
+    if (refused !== null) this.session.notice(refused, 'key-buy');
+  }
+
+  /** Whether the listed pack holds every item a step of `route` demands. */
+  private holdsEveryKey(route: Route, state: CharacterState): boolean {
+    const rows = packRows(state.inventory);
+    return route.steps.every((step) => {
+      const item = itemDemanded(step.requirement ?? null);
+      return item === null || packHolds(rows, item) === true;
+    });
   }
 
   /**
@@ -2286,6 +2363,10 @@ export class Travel implements SessionModule {
     if (owed !== null) {
       this.session.notice(t('session.walk.notResumed', { destination: owed.name, reason }));
     }
+    const held = this.keyBuying.drop();
+    if (held !== null) {
+      this.session.notice(t('session.walk.notResumed', { destination: held, reason }));
+    }
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
     // Before the walk, so the leg's end is not read as a room to pass over.
     this.areaSearch.stop(reason);
@@ -2361,6 +2442,7 @@ export class Travel implements SessionModule {
     // lap has just replaced.
     this.journey = null;
     this.errandOwes = null;
+    this.keyBuying.drop();
     const refused = this.autoRest.around('loop', () =>
       this.loops.start(loop, this.tracker.current)
     );
@@ -2531,6 +2613,8 @@ export class Travel implements SessionModule {
    */
   stopGoingAnywhere(): void {
     this.dropWalkHome();
+    const held = this.keyBuying.drop();
+    if (held !== null) this.session.notice(t('session.walk.keys.dropped', { destination: held }));
     const retreat = this.retreat;
     if (retreat !== null) {
       this.retreat = null;

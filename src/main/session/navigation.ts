@@ -7,9 +7,10 @@
  */
 import { tuning } from '../app/tuning';
 import type { CharacterTracker } from '../parse/CharacterTracker';
-import { leg, plan } from '../world/navigation/plan';
+import { boughtOffer, leg, plan } from '../world/navigation/plan';
 import { planRealmOf } from '../world/navigation/realm';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
+import { chargedInCopper, coveredBy } from '../../shared/coins';
 import { unfoughtShare } from '../../shared/danger';
 import type { CharacterState } from '../../shared/character';
 import type { NavigationOracle, Plan } from '../../shared/navigation';
@@ -78,6 +79,16 @@ export class Navigation {
     return leg(planRealmOf(world), this.oracle(world), from, to, traveller, options);
   }
 
+  /** The way to `to` through doors the walk goes round, every key on it bought (`boughtOffer`); null where none. */
+  boughtTo(to: RoomId): ReturnType<typeof boughtOffer> {
+    const world = this.parts.world();
+    const state = this.parts.tracker.current;
+    const here = roomAddress(state.room);
+    if (world === undefined || here === null) return null;
+    const traveller = this.parts.errands.travellerNow(state);
+    return boughtOffer(planRealmOf(world), this.oracle(world), here, to, traveller);
+  }
+
   /**
    * Every room a traveller can walk to within `steps` moves, with the fewest
    * moves to each; an exit it cannot take, or one priced at `wallCost`, is
@@ -127,11 +138,14 @@ export class Navigation {
     const odds = this.parts.odds();
     return {
       fight: (monster, room) => fightOdds(odds, world, monster, room),
+      // The purse, or a bank on record that makes up the rest (todo 02).
       affords: (item, room) => {
-        const wealth = this.parts.tracker.current.inventory.wealth;
+        const state = this.parts.tracker.current;
         const name = world.item(item)?.name;
         const price = name === undefined ? null : this.parts.errands.priceAt(name, room);
-        return wealth === null || price === null ? null : wealth >= price;
+        if (price === null) return null;
+        const owed = chargedInCopper(price, state.progress.charm);
+        return coveredBy(owed, state.inventory.wealth, state.banks);
       }
     };
   }

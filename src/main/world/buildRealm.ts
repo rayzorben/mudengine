@@ -25,6 +25,7 @@ import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
 import { spellNegates, type NegateRow } from './navigation/scriptNegates';
 import { readTextblocks } from './navigation/textblock';
+import { askTable, type BuiltAsk } from './mobAsks';
 import {
   indexSupply,
   itemsInSupply,
@@ -150,8 +151,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 69 | **A roll table's quest step carries the gates of the line that rolls it.** `random N` was not followed, so a counter granted in a roll table was a step with no gates and no owner but whoever greeted with the table: DarkbaneQuest's two steps (blocks 1810, 1811) read as open to everybody, asked of the orc warlord, where the realm rolls them from the Ghost of Justice Darkbane's `return` (block 1809) behind class, `minlevel 50`, `goodaligned -51`, `failability 205` and the holy item 1655. `Reached.rolledBy` carries each rolling line's gates and takes into the step's routes; a roll's threshold is never a phrase; a roll table is never a greeting's root. Four roll tables grant a counter in gmud.zip and pmud.zip alike (todo 132) |
  * | 70 | **`failroomitem` is a gate on the room, not an item to carry.** The server checks the room's floor, visible or hidden, for it (`TextBlockPart.cs:998`), and `spellHazard.ts` put it in `hz.av` beside `failitem`, which every reader takes as *carry this*: `rock check` (the rock outcropping its own script drops), `branch check` (the withered tree) and stock's `hydra boss check` (the great hydra statue). It is now followed at full weight as `roomitem` is (todo 135) |
  * | 71 | **The ways a quest counter lets through.** A room command or exit whose gate wants a counter at a rank (`Quest.opens`, `questOpenings.ts`), with its own level gate, less the ways the quest's own steps go on to use: a step, a command that gives an item a step takes back, a way into a step's room. A quest that pays nothing kept counts one its last rank goes through as its reward, at that way's level: MerchantCaptain's `secure passage to talkiran` at Blackwater Harbor, Wharf (14/759), level 65 on pmud.zip and 70 on gmud.zip (todo 155) |
+ * | 72 | **What a monster answers to.** `Monsters.GreetTXT` was walked three times at build time (quests, levers, supply) and each kept only the words leading to its own kind of thing, so a monster's information could not list what it can be asked. `BuiltMob.ak` and `BuiltMobRow.ak` are its `ask` table (`mobAsks.ts`): every word, those running the same steps under the longest, with the items given and taken, spells taught and copper charged. The wounded messenger (243) answers eight in gmud.zip. The fold carries it only where every row's table agrees (todo 01) |
  */
-export const REALM_FORMAT = 71;
+export const REALM_FORMAT = 72;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -768,6 +770,8 @@ export interface BuiltMob {
    * a resident still resolves its own row outright.
    */
   rt?: number;
+  /** Its `ask` table (format 72), only where every row of the name has the same one, as `rt`. */
+  ak?: BuiltAsk[];
   /**
    * Its coin maxima, `Monsters.R P G S C` in `DENOMINATIONS` order (format 49).
    * The fold takes the row whose coins are worth least, as `xp` takes the
@@ -898,6 +902,8 @@ export interface BuiltMobRow {
   und?: 1;
   /** This row's own `Abil-n` pairs (format 57), absent where it states none. */
   ab?: Array<[number, number]>;
+  /** This row's `ask` table (format 72), absent where it has none. */
+  ak?: BuiltAsk[];
 }
 
 /**
@@ -1589,7 +1595,10 @@ export function buildRealm(
 
   const items = indexItems(source, neededItems, fromScripts.from, itemLandings);
   const named = new Map(items.map((item) => [item.id, item.n]));
-  const mobs = indexMobs(source, named);
+  const spellNames = new Map(spells.map((spell) => [spell.id, spell.n]));
+  const mobs = indexMobs(source, named, (greet) =>
+    askTable(greet, blocks, { item: (id) => named.get(id), spell: (id) => spellNames.get(id) })
+  );
   // Every row a gate names, said by its name: a room's commands and the quests.
   const races = indexRaces(source);
   const classes = indexClasses(source);
@@ -2149,7 +2158,11 @@ export function indexClasses(source: RealmSource): BuiltClass[] {
  * Sorted by name so a realm converted at runtime and one built by the script
  * produce byte-identical output.
  */
-export function indexMobs(source: RealmSource, itemNames?: Map<number, string>): BuiltMob[] {
+export function indexMobs(
+  source: RealmSource,
+  itemNames?: Map<number, string>,
+  asksOf?: (greet: number) => BuiltAsk[]
+): BuiltMob[] {
   const monsters = source.table('Monsters');
   if (monsters === null) return [];
 
@@ -2196,6 +2209,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
        * reason `BuiltMob.rt` gives — one value means the name agrees.
        */
       rts: Set<number>;
+      /** Format 72: each row's `ask` table as JSON, a row with none counted as `[]`. */
+      asks: Map<string, BuiltAsk[]>;
       /** Format 18: gathered rather than reduced, for the reason `ty` states. */
       types: Set<number>;
       dmg?: number;
@@ -2269,6 +2284,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       ids: id === null ? [] : [id],
       coins: coinMaxima(row),
       rts: new Set<number>(),
+      asks: new Map<string, BuiltAsk[]>(),
       types: new Set<number>(),
       casts: new Set<number>(),
       profiles: new Map<string, MobProfile>(),
@@ -2310,6 +2326,10 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
      * the question — so it votes `0` and a disagreeing name states nothing.
      */
     entry.rts.add(ownClock(row) ?? 0);
+    // Format 72, gathered as the clocks are: one table is the whole name agreeing.
+    const greet = number(row['GreetTXT']);
+    const asked = asksOf !== undefined && greet !== null && greet > 0 ? asksOf(greet) : [];
+    entry.asks.set(JSON.stringify(asked), asked);
     /*
      * Format 18. `ty` is gathered because nothing reduces it — see the field.
      * `dmg` takes the worst, like `ac` and `dr`; `chl` takes the worst too,
@@ -2369,6 +2389,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       if (number(row['Undead']) === 1) own.und = 1;
       const effects = abilityPairs(row);
       if (effects.length > 0) own.ab = effects;
+      if (asked.length > 0) own.ak = asked;
       entry.rows.push(own);
     }
     /*
@@ -2426,6 +2447,10 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       if (span.rts.size === 1) {
         const only = [...span.rts][0]!;
         if (only > 0) mob.rt = only;
+      }
+      if (span.asks.size === 1) {
+        const only = [...span.asks.values()][0]!;
+        if (only.length > 0) mob.ak = only;
       }
       // Format 18. Sorted so a file written twice from one database matches.
       if (span.types.size > 0) mob.ty = [...span.types].sort((a, b) => a - b);

@@ -1058,6 +1058,16 @@ automation:
     anotherWayLonger: 0.5
     avoidRanFromMinutes: 15
 
+    # Buying a key on the way. A walk you send the character on (the route
+    # panel's Walk, Go to, @goto) that goes round a door whose key a shop
+    # sells takes the shorter way through it instead, buying the key at the
+    # counter first, when the purse or a bank on record covers it and the keys
+    # cost at most `buyKeysMaxGold` gold together. The inventory is listed
+    # first when it has not been. A key you have to ask for or kill for is
+    # only offered on the route panel. Loops and errands never buy one.
+    buyKeys: true
+    buyKeysMaxGold: 500
+
     # The key to the door in front of you.
     #
     # A keyed exit with no key and nothing a picklock can do about it is a wall

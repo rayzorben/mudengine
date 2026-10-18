@@ -473,6 +473,11 @@ export class Errands implements SessionModule {
     return this.navigation.planTo(to);
   }
 
+  /** The way to a room through doors the walk goes round, every key bought (`Navigation.boughtTo`). */
+  boughtTo(to: RoomId): ReturnType<Navigation['boughtTo']> {
+    return this.navigation.boughtTo(to);
+  }
+
   private get automationConfig(): AutomationConfig {
     return this.session.config();
   }

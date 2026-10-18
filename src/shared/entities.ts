@@ -353,8 +353,6 @@ export interface NpcEntity {
   /** From the room's shop, where it has one. Undefined is *the realm does not say*. */
   npcType?: 'shopkeeper' | 'banker' | 'trainer' | 'innkeeper' | 'tavernkeeper' | 'priest';
   shopId?: number;
-  /** `Monsters.GreetTXT` — what it says when you walk in. */
-  greetingText?: string;
   /** The same three-state the room's occupants carry: null is not safe. */
   disposition: MobDisposition | null;
   costly: AlignmentCost;

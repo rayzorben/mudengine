@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { NavigationOracle } from '../../../shared/navigation';
 import type { FightOdds, Route, RouteStep } from '../../../shared/world';
 import { tuning } from '../../app/tuning';
-import { leg, plan, type PlanRealm } from '../navigation/plan';
+import { boughtOffer, leg, plan, type PlanRealm } from '../navigation/plan';
 import type { ItemSource } from '../navigation/sources';
 import type { Traveller } from '../Router';
 import { planRealmOf } from '../navigation/realm';
@@ -324,5 +324,47 @@ describe.skipIf(graph === null)('the trainers soul was sent to, on the shipped r
     expect(made.kind === 'plan' && made.steps).toContainEqual(
       expect.objectContaining({ kind: 'clear', monsters: ['hydra'] })
     );
+  });
+});
+
+/*
+ * Bank of Khazarad to Gulgulthra (todo 02): the mine pass is sold at the
+ * Miner's Guild (6/1567), whose east exit it opens. Without it the way goes
+ * round by the vortex and the crack, 511 moves; with it, 343.
+ */
+describe.skipIf(graph === null)('a key bought on the way, on the shipped realm', () => {
+  const world = (): PlanRealm => planRealmOf(graph!);
+  const dwarf = (keys: number[]): Traveller => ({
+    level: 20,
+    classId: graph!.classNamed('Warrior')?.id ?? null,
+    raceId: graph!.raceId('Dwarf'),
+    wealth: 100_000,
+    packKnown: true,
+    keys
+  });
+  const paying = (affords: boolean | null): NavigationOracle => ({
+    fight: () => WON,
+    affords: () => affords
+  });
+
+  it('buys the mine pass at the guild and walks through its door', () => {
+    const offer = boughtOffer(world(), paying(true), '6/1334', '6/3108', dwarf([]));
+    expect(offer).not.toBeNull();
+    const buys = offer!.plan.steps.filter((s) => s.kind === 'buy');
+    expect(buys).toEqual([
+      expect.objectContaining({
+        kind: 'buy',
+        room: '6/1567',
+        item: expect.objectContaining({ id: 942 })
+      })
+    ]);
+    expect(offer!.way.steps.some((s) => s.from === '6/1567' && s.to === '6/1568')).toBe(true);
+    const round = world().route('6/1334', '6/3108', dwarf([]));
+    expect(offer!.way.steps.length).toBeLessThan(round.steps.length);
+  });
+
+  it('offers nothing to a character carrying the pass, or one who cannot pay', () => {
+    expect(boughtOffer(world(), paying(true), '6/1334', '6/3108', dwarf([942]))).toBeNull();
+    expect(boughtOffer(world(), paying(false), '6/1334', '6/3108', dwarf([]))).toBeNull();
   });
 });

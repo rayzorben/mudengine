@@ -320,6 +320,7 @@ function migrateAll(options: MigrationOptions): void {
   theUnplacedExitsLostTheirMark(home, note);
   statedAutoRest(home, note, options.template);
   pinTheAutoRestSwitch(home, note);
+  statedKeyBuying(home, note, options.template);
 }
 
 /**
@@ -4884,6 +4885,30 @@ function statedAutoRest(
     stated.length === 1
       ? t('notices.migration.autoRest.one', params)
       : t('notices.migration.autoRest.many', params)
+  );
+}
+
+/**
+ * `automation.movement.buyKeys` and `buyKeysMaxGold` into every file that
+ * states `movement:` without them, after `avoidRanFromMinutes`, at the shipped
+ * values with the template's comment (todo 02, 2026-10-17).
+ */
+function statedKeyBuying(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const d = DEFAULT_CONFIG.automation.movement;
+  const stated = stateKeysIn(home, template, MOVEMENT_BLOCK, 'avoidRanFromMinutes', [
+    ['buyKeys', d.buyKeys],
+    ['buyKeysMaxGold', d.buyKeysMaxGold]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.keyBuying.one', params)
+      : t('notices.migration.keyBuying.many', params)
   );
 }
 

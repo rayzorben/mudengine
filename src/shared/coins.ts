@@ -320,6 +320,20 @@ export function coinReader(names: CoinNames): CoinReader {
   };
 }
 
+/**
+ * Whether `owed` copper can be paid: from the purse, or with what one bank on
+ * record holds beyond it, as `Supplies` withdraws at a counter it is short at.
+ * Null where the purse is unread.
+ */
+export function coveredBy(
+  owed: number,
+  purse: number | null,
+  banks: ReadonlyArray<{ copper: number }>
+): boolean | null {
+  if (purse === null) return null;
+  return purse >= owed || banks.some((bank) => bank.copper >= owed - purse);
+}
+
 /** Every bank on record, in copper. */
 export function bankedCopper(banks: ReadonlyArray<{ copper: number }>): number {
   return banks.reduce((sum, bank) => sum + bank.copper, 0);

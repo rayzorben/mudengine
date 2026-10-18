@@ -22,6 +22,7 @@ import { standingOf, type CharacterState } from '@shared/character';
 import type { RemotesConfig } from '@shared/config';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { RemoteName } from '@shared/remotes';
+import { askLine } from '@shared/asking';
 
 export interface SlideOutsProps {
   /** The slot, less the openers a map calls: drawing and dismissing is all this does. */
@@ -33,6 +34,8 @@ export interface SlideOutsProps {
   lookup: ReferencePopoverProps['lookup'];
   loadRoomBrief: RoomQuickViewProps['load'];
   supplies: ReferencePopoverProps['supplies'];
+  /** A command through the shown character's queue: a monster's word asked from the reference. */
+  ask(command: string): void;
   /** The route panel on a room: a shop in *Sold by* opens it. */
   chooseOnMap(map: number, room: number): void;
   /** One character's resolved `automation.remotes`. */
@@ -50,6 +53,7 @@ export default function SlideOuts({
   lookup,
   loadRoomBrief,
   supplies,
+  ask,
   chooseOnMap,
   remotesFor,
   api,
@@ -96,6 +100,8 @@ export default function SlideOuts({
           asked={asked}
           level={character.progress.level}
           lookup={lookup}
+          // By the name clicked, the room's own spelling, which `ask` matches whole.
+          onAsk={character.phase === 'in-game' ? (word) => ask(askLine(asked.name, word)) : null}
           onDismiss={dismissAsked}
           /*
             A shop in `Sold by` opens the route panel, and this panel goes with

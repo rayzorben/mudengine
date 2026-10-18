@@ -2,10 +2,12 @@
  * What a route pays for what it walks through (todo 118), one fieldset for the
  * character form and the options page beside Avoiding: a fight and a lair in
  * steps, how Another way is looked for, and how long a trip goes round a room
- * this character ran from. The router reads them per request, so each
- * character's own figures price its own routes.
+ * this character ran from, and whether a walk buys a key on the way (todo 02).
+ * The router reads them per request, so each character's own figures price
+ * its own routes.
  */
 import ChoiceFields, { type ChoiceRow } from './ChoiceFields';
+import { CheckField } from './FormField';
 import { t } from '../lib/i18n';
 import { movementChoices, type MovementChoices } from '@shared/walkChoices';
 
@@ -75,6 +77,34 @@ export default function RoutingFieldset({
         rows={rows()}
         values={choices}
       />
+      <div className="settings-inline">
+        <CheckField
+          checked={choices.buyKeys}
+          hint={t('settings.movement.buyKeysHint')}
+          label={t('settings.movement.buyKeys')}
+          name={`${namePrefix}buy-keys`}
+          setting="automation.movement.buyKeys"
+          onChange={(checked) => onChoice({ buyKeys: checked })}
+        />
+        {choices.buyKeys && (
+          <ChoiceFields
+            bare
+            namePrefix={namePrefix}
+            onChange={onChoice}
+            read={movementChoices}
+            rows={[
+              {
+                field: 'buyKeysMaxGold',
+                name: 'buy-keys-max-gold',
+                setting: 'automation.movement.buyKeysMaxGold',
+                label: t('settings.movement.buyKeysMaxGold'),
+                hint: t('settings.movement.buyKeysMaxGoldHint')
+              }
+            ]}
+            values={choices}
+          />
+        )}
+      </div>
     </fieldset>
   );
 }
