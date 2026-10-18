@@ -965,6 +965,20 @@ async function waitFor(probe, tries = 60, every = 50) {
 }
 
 /**
+ * Waits until the card `selector` names has finished arriving, and says
+ * whether it did. `card-enter` (index.css) slides a card up and fades it in,
+ * so a box read during it is off where the card comes to rest and an alpha is
+ * below its resting value (2026-10-17: the builder's map was measured
+ * mid-arrival and the pointer landed on the corridor below the room).
+ */
+const cardArrived = (selector) =>
+  waitFor(async () =>
+    evaluate(
+      `(() => { const c = document.querySelector(${JSON.stringify(selector)}); return !!c && c.getAnimations().length === 0; })()`
+    )
+  );
+
+/**
  * Waits for the room panel to hold the realm's answer. It opens before the
  * lookup answers, its heading the pending name till then, and a read in
  * between finds "This room" for any room (2026-10-02).
@@ -10581,13 +10595,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       })()
     `)
     );
-  // The card arrives with `card-enter`, which runs its opacity up from 0, so
-  // the alphas are read once the arrival has finished.
-  await waitFor(async () =>
-    evaluate(
-      `(() => { const c = document.querySelector('${liftedFloat} > .card'); return !!c && c.getAnimations().length === 0; })()`
-    )
-  );
+  await cardArrived(`${liftedFloat} > .card`);
   const alphas = await readAlphas();
   check(
     alphas.card === 1,
@@ -14201,6 +14209,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * button for a day and that was two panels wearing one name -- asserted here
    * so the next surface to draw a map cannot quietly grow a third.
    */
+  // The card can still be arriving, so the room is measured once it has come
+  // to rest.
+  check(await cardArrived('.loop-builder-card'), 'the builder’s card comes to rest');
   const restOn = JSON.parse(
     await evaluate(`
       JSON.stringify((() => {
