@@ -26,6 +26,7 @@ import {
   type RoomOccupant
 } from '../../../shared/character';
 import { classifyOccupant, type AlignmentCost, type MobDisposition } from '../../../shared/mobs';
+import { laidFromTable } from '../../../shared/mobRules';
 import type { Block } from '../../../shared/blocks';
 import type { ItemEntity, MobEntity } from '../../../shared/entities';
 import { GUARDED_BY_ABILITY } from '../../../shared/guards';
@@ -3853,6 +3854,75 @@ describe('saying why it did not open a fight', () => {
     ]);
   });
 
+  /* Todo 856: MegaMUD's Enemy. Skinny's storm giants, Neutral in the realm,
+     were stood beside at `engage: hostile` though he had listed them. */
+  describe('a monster the player listed', () => {
+    const giant = (experience?: number): RoomOccupant => {
+      const base = mob('storm giant', 'passive');
+      return {
+        ...base,
+        mob: {
+          name: 'storm giant',
+          rawName: 'storm giant',
+          source: 'hybrid',
+          charmed: false,
+          disposition: 'passive',
+          uncertain: false,
+          costly: 'never',
+          ...(experience === undefined ? {} : { experience })
+        }
+      };
+    };
+    const inRoom = (who: RoomOccupant): CharacterState =>
+      state({ room: { ...EMPTY_CHARACTER.room, occupants: [who] } });
+
+    it('is attacked on sight though the realm says it waits, and the reason says so', () => {
+      const auto = make(combat({ mobRules: [{ mob: 'storm giant', treat: 'default' }] }));
+      auto.onCharacter(inRoom(giant()));
+      drain();
+      expect(sent).toEqual(['a storm giant']);
+      expect(decisions.find((decision) => decision.acted)?.because).toMatch(
+        sentence('automation.combat.whyListed', { why: ANY, target: 'storm giant' })
+      );
+    });
+
+    it('is not attacked when the only row is one MegaMUD laid', () => {
+      const laid = laidFromTable([{ mob: 'storm giant', treat: 'high' }]);
+      const auto = make(combat({ mobRules: laid }));
+      auto.onCharacter(inRoom(giant()));
+      drain();
+      expect(sent).toEqual([]);
+      expect(refusals()).toEqual([
+        `storm giant — ${t('automation.combat.refusedNotHostile', { target: 'storm giant' })}`
+      ]);
+    });
+
+    it('is still refused at hostile when killing it may cost alignment', () => {
+      const auto = make(combat({ mobRules: [{ mob: 'storm giant', treat: 'default' }] }));
+      auto.onCharacter(inRoom({ ...giant(), costly: 'sometimes' }));
+      drain();
+      expect(sent).toEqual([]);
+      expect(refusals()).toEqual([
+        `storm giant — ${t('automation.combat.refusedUncertain', { target: 'storm giant' })}`
+      ]);
+    });
+
+    it('is still refused by the experience cap', () => {
+      const auto = make(
+        combat({
+          maxMonsterExperience: 500,
+          mobRules: [{ mob: 'storm giant', treat: 'default' }]
+        })
+      );
+      auto.onCharacter(inRoom(giant(90_000)));
+      drain();
+      expect(sent).toEqual([]);
+      expect(refusals()[0]).toBe(
+        `storm giant — ${t('automation.combat.refusedTooRich', { target: 'storm giant', exp: 90_000, cap: 500 })}`
+      );
+    });
+  });
+
   /* 2026-10-04: a hunt sent to the drunken gamblers walked past them; the realm does not say they attack first. */
   it("opens on the hunt's monsters the realm does not say attack first, and on nothing else of that kind", () => {
     const auto = make(combat());
@@ -4092,7 +4162,7 @@ describe('the size of the room and the size of the monster', () => {
       expect(sent).toEqual([]);
     });
 
-    it('still stops at the maximum and at a monster that does not attack first', () => {
+    it('still stops at the maximum, and opens on a monster that does not attack first', () => {
       const crowd = make(combat({ engage: 'all', maxMobs: 1, mobRules: stop }));
       const room = inRoom(mob('cave bear', 'hostile'), mob('giant rat', 'hostile'));
       expect(crowd.quarry(room)).toBe(false);
@@ -4102,14 +4172,12 @@ describe('the size of the room and the size of the monster', () => {
         `cave bear — ${t('automation.combat.refusedMaxMobs', { here: 2, max: 1 })}`
       );
 
+      // The player wrote the row, so the bear is listed: opened on though passive (todo 856).
       sent.length = 0;
       const calm = make(combat({ engage: 'hostile', mobRules: stop }));
       calm.onCharacter(inRoom(mob('cave bear', 'passive')));
       drain();
-      expect(sent).toEqual([]);
-      expect(refusals().at(-1)).toBe(
-        `cave bear — ${t('automation.combat.refusedNotHostile', { target: 'cave bear' })}`
-      );
+      expect(sent).toEqual(['a cave bear']);
     });
   });
 

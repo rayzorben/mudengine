@@ -107,6 +107,7 @@ import {
   mobRuleFor,
   LEAVING_STANCES,
   occupantAttacksOnSight,
+  ownRow,
   peaceOf,
   stanceHere,
   stopsToKill,
@@ -1808,6 +1809,8 @@ export class AutoCombat implements SessionModule {
     const bystanders = new Set<RoomOccupant>();
     // A room under `minMobs` is opened in only for a `stopToKill` monster.
     const few = this.tooFew(state);
+    // Opened on only because the player listed it, which the reason says.
+    const listed = new Set<RoomOccupant>();
 
     for (const who of mobs) {
       const row = mobRuleFor(this.config.mobRules, who.name);
@@ -1919,6 +1922,22 @@ export class AutoCombat implements SessionModule {
             : t('automation.combat.refusedRowNotHostile', { target: who.name })
         );
         if (who.costly === 'never') bystanders.add(who);
+        continue;
+      }
+      /*
+       * The player listed it: MegaMUD's Enemy, attacked on sight whatever the
+       * realm says of its temper (todo 856). Every refusal above still holds.
+       * A row MegaMUD's table laid does not count, or every realm would open
+       * on the passive monsters a Paramud priority names. A possible alignment
+       * cost is not the monster's temper, so it still goes to the coin toss below.
+       */
+      const own = ownRow(this.config.mobRules, who.name);
+      const mayCost = who.costly === 'sometimes' && this.config.engage === 'hostile';
+      if (own !== undefined && isBanded(own) && this.config.engage !== 'none' && !mayCost) {
+        if (this.config.engage !== 'all' && occupantAttacksOnSight(who, me) !== true) {
+          listed.add(who);
+        }
+        willing.push(who);
         continue;
       }
       /*
@@ -2034,19 +2053,17 @@ export class AutoCombat implements SessionModule {
         };
       }
     }
-    if (ranked !== null) {
-      return {
-        target: pick.name,
-        because: this.whyRanked(
-          pick.name,
-          candidates.length,
-          candidates.filter((_, at) => at !== index).map((who) => who.name)
-        )
-      };
-    }
+    const why =
+      ranked !== null
+        ? this.whyRanked(
+            pick.name,
+            candidates.length,
+            candidates.filter((_, at) => at !== index).map((who) => who.name)
+          )
+        : this.explain(pick.name, kept[index] ?? null, candidates.length, false);
     return {
       target: pick.name,
-      because: this.explain(pick.name, kept[index] ?? null, candidates.length, false)
+      because: listed.has(pick) ? t('automation.combat.whyListed', { why, target: pick.name }) : why
     };
   }
 

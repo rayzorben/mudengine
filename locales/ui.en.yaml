@@ -6420,6 +6420,9 @@ automation:
     whyHitBackGuard: 'hitting back: {target} protects {ward}, so it goes first'
     whyInRoom: in the room
     whyStillOn: 'still on {target}: one target at a time, until it dies'
+    # Todo 856: a monster the player listed is attacked though the realm says it waits.
+    whyListed: '{why}; {target} is on your monster list, though the world data does not say it
+      attacks first'
     # Todo 816: a monster's row withholds the backstab opener.
     whyNoBackstab: '{why}; no backstab, as the monster rule for {target} says'
     whyRanked: 'first of {count} here: your monster rules rank {target} {band}'

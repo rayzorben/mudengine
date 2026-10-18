@@ -15,6 +15,8 @@ import {
   stanceHere,
   stopsToKill,
   treated,
+  laidFromTable,
+  ownRow,
   type MobRule
 } from '../mobRules';
 import type { RoomOccupant } from '../character';
@@ -199,5 +201,21 @@ describe('the monster lists beneath a form', () => {
     expect(sourcesBeneath('global')).toEqual(['megamud']);
     expect(sourcesBeneath('realm')).toEqual(['megamud', 'global']);
     expect(sourcesBeneath('character')).toEqual(['megamud', 'global', 'realm']);
+  });
+});
+
+describe('ownRow', () => {
+  // Todo 856: only a row the player wrote opens on a monster the realm calls passive.
+  it("answers the player's row and not one MegaMUD's table laid", () => {
+    const rules = mergeMobRules(
+      laidFromTable([
+        { mob: 'storm giant', treat: 'high' },
+        { mob: 'orc', treat: 'never' }
+      ]),
+      [{ mob: 'orc', treat: 'low' }]
+    );
+    expect(ownRow(rules, 'orc')).toEqual({ mob: 'orc', treat: 'low' });
+    expect(ownRow(rules, 'storm giant')).toBeUndefined();
+    expect(mobRuleFor(rules, 'storm giant')?.treat).toBe('high');
   });
 });
