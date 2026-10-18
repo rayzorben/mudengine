@@ -1322,8 +1322,7 @@ export default function App() {
         {railVisible && (
           <div className="rail">
             {/*
-              Adding one back, at the top of the rail where the gap it leaves
-              is, beside the client's own mark (`CardRailHead`).
+              Adding one back where its gap is, and the view switch (`CardRailHead`).
             */}
             <CardRailHead
               autoLayout={autoLayout}
@@ -1334,6 +1333,7 @@ export default function App() {
               // A row is a handle as well as a button: dragged onto the
               // console it floats there, into the rail it lands there.
               onGrab={grabCard}
+              onGameView={game.toggle}
               showLogo={config.ui.showLogo}
             />
 

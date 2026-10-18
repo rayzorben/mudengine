@@ -1144,12 +1144,41 @@ describe('the receipt for an addressed message carries what was said', () => {
     expect(next('--- Telepath Sent to Soul ---').groups['sent']).toBeUndefined();
   });
 
-  it('leaves the earlier of two in flight unbound rather than misquoted', () => {
-    // One slot: the second send overwrote the first, so the first receipt
-    // states the send with no body invented.
+  it('binds each of two in flight to its own receipt', () => {
     const next = sends('/soul hi', '/brack yo');
-    expect(next('--- Telepath Sent to Soul ---').groups['sent']).toBeUndefined();
+    expect(next('--- Telepath Sent to Soul ---').groups['sent']).toBe('hi');
     expect(next('--- Telepath Sent to Brackle ---').groups['sent']).toBe('yo');
+  });
+
+  it('binds a burst to one player in the order it was sent', () => {
+    // A party join: `@health`, `@version` and the answer to their `@health`
+    // went out before the first receipt came back (rayzor, 2026-10-09 12:44:04).
+    const next = sends('/Brakkle @health', '/Brakkle @version', '/Brakkle {HP=79/97,MA=0/71}');
+    expect(next('--- Telepath Sent to Brakkle ---').groups['sent']).toBe('@health');
+    expect(next('--- Telepath Sent to Brakkle ---').groups['sent']).toBe('@version');
+    expect(next('--- Telepath Sent to Brakkle ---').groups['sent']).toBe('{HP=79/97,MA=0/71}');
+  });
+
+  it('drops a refused send when a later receipt is matched past it', () => {
+    // `/rayzor hi` to oneself is refused with no receipt; the next receipt is Soul's.
+    const next = sends('/rayzor hi', '/soul yo');
+    expect(next('--- Telepath Sent to Soul ---').groups['sent']).toBe('yo');
+    expect(next('--- Telepath Sent to Soul ---').groups['sent']).toBeUndefined();
+  });
+
+  it('leaves a receipt unbound when two sends under different names could own it', () => {
+    // `/br hi` refused as `Please be more specific` with Bracken online, then
+    // retyped in full: binding the oldest match would put every later
+    // receipt to Brakkle one send behind.
+    const next = sends('/br hi', '/brakkle hi', '/Brakkle @health');
+    expect(next('--- Telepath Sent to Brakkle ---').groups['sent']).toBeUndefined();
+    expect(next('--- Telepath Sent to Brakkle ---').groups['sent']).toBe('@health');
+  });
+
+  it('keeps a directed say queued behind a telepath receipt', () => {
+    const next = sends('>soul look', '/brack yo');
+    expect(next('--- Telepath Sent to Brackle ---').groups['sent']).toBe('yo');
+    expect(next('--- Message Directed to Soul ---').groups['sent']).toBe('look');
   });
 
   it('never decorates an incoming telepath', () => {

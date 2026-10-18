@@ -2,6 +2,7 @@ import type { PointerEvent } from 'react';
 
 import CardPicker from './CardPicker';
 import Icon from './Icon';
+import ViewSwitch from './ViewSwitch';
 import { useExtensions } from '../hooks/useExtensions';
 import type { AutoLayoutApi, CardId } from '../lib/cards';
 import { keepFocus } from '../lib/focus';
@@ -20,6 +21,8 @@ export interface CardRailHeadProps {
   showLogo: boolean;
   /** Auto layout, and the undo of it while there is an arrangement kept. */
   autoLayout: AutoLayoutApi;
+  /** Into the game view (todo 04). */
+  onGameView(): void;
 }
 
 const MARK_NAME = t('app.windowTitle');
@@ -37,7 +40,7 @@ const MARK_TOOLTIP =
 
 /**
  * The row at the head of the card rail: the put-away chip, auto layout and
- * its undo, and the mark.
+ * its undo, the switch into the game view, and the mark.
  *
  * The mark was a line-high glyph at the left of the status rail, where it was
  * the smallest thing on the smallest line in the window. Here it has the band
@@ -53,6 +56,7 @@ export default function CardRailHead({
   away: put,
   showLogo,
   autoLayout,
+  onGameView,
   ...picker
 }: CardRailHeadProps) {
   // The extension card is offered only where an extension draws one.
@@ -86,6 +90,7 @@ export default function CardRailHead({
           <Icon name="undo" />
         </button>
       )}
+      <ViewSwitch className="chip" game={false} onToggle={onGameView} />
       {showLogo && (
         <span className="app-mark" title={MARK_TOOLTIP}>
           <span className="app-mark-version">{t('app.markVersion', { version })}</span>
