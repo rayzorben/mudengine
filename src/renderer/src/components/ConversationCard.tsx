@@ -222,9 +222,10 @@ const SIGILS: Record<string, string> = {
  * be the card losing the one thing it exists to keep, which is the failure
  * `Classifier.bindReceipt` was written to fix. So the line is stated as it was
  * **typed**: the channel's sigil, the recipient the *server* resolved, and the
- * body the classifier bound. Where nothing was bound — two telepaths in flight
- * at once — the server's own line stands, because a body invented for it would
- * be the client misquoting its own player.
+ * body the classifier bound. Where nothing was bound (a receipt whose send the
+ * classifier never saw, or one it could not tell from another), the server's
+ * own line stands, because a body invented for it would be the client
+ * misquoting its own player.
  */
 function originalOf(message: Block): string {
   const body = message.groups['sent'];

@@ -212,7 +212,7 @@
   left: 16px;
   right: 16px;
   display: grid;
-  grid-template-columns: auto minmax(260px, 440px) minmax(200px, 320px) 1fr auto;
+  grid-template-columns: auto minmax(260px, 440px) minmax(200px, 320px) 1fr auto auto;
   gap: 22px;
   align-items: center;
   padding: 8px 16px 8px 9px;
@@ -412,6 +412,18 @@
   color: var(--game-muted);
   font-size: 11.5px;
   font-weight: 600;
+}
+
+/* The view switch (todo 04): a chip on the player bar that is a button. */
+.gv-player > button.gv-chip {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.gv-player > button.gv-chip:hover,
+.gv-player > button.gv-chip:focus-visible {
+  color: var(--game-white);
 }
 
 .gv-chip .icon {

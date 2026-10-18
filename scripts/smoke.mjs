@@ -16323,6 +16323,46 @@ if (paletteOpen) {
     await evaluate(`getComputedStyle(document.querySelector('.status-rail')).display !== 'none'`),
     'with its chrome drawn again'
   );
+
+  // The button at the upper right of either view is the same switch (todo 04).
+  const press = (selector) =>
+    evaluate(`
+      (() => {
+        const button = document.querySelector(${JSON.stringify(selector)});
+        if (!button) return false;
+        button.click();
+        return true;
+      })()
+    `);
+  check(
+    await press('.card-rail-head [data-action="switch-view"]'),
+    'the card rail head has the view switch'
+  );
+  check(
+    (await readUntil(view, (v) => v === 'game')) === 'game',
+    'and pressing it shows the game view'
+  );
+  check(
+    await readUntil(
+      () => evaluate(`document.activeElement?.classList.contains('gv-root') === true`),
+      (on) => on
+    ),
+    'with the caret on its command layer'
+  );
+  check(
+    await evaluate(
+      `window.__gameViewScreen === document.querySelector('.terminal-layer[data-shown="true"] .xterm-screen')`
+    ),
+    'and the console still the same element'
+  );
+  check(
+    await press('.gv-player [data-action="switch-view"]'),
+    'the player bar has the view switch'
+  );
+  check(
+    (await readUntil(view, (v) => v === 'classic')) === 'classic',
+    'and pressing it shows the classic view'
+  );
   // As this run found the window: the palette open, for the checks after this.
   await key('k', 'KeyK', 75, 2);
   await paletteReady();

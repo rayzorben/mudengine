@@ -2,9 +2,10 @@
  * The game view's player bar (todo 140): name and level; HP and mana or kai as
  * stacked bars with the totals on them and Run and Rest marked on the HP bar;
  * exp with what is owed and the time to level; status icons; exp rate and the
- * coins carried. An unknown figure is shown as unknown, never as 0.
+ * coins carried, then whatever the view puts at the end (the view switch,
+ * todo 04). An unknown figure is shown as unknown, never as 0.
  */
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 
 import type { CharacterState } from '@shared/character';
 import { experienceOf } from '@shared/experience';
@@ -24,6 +25,8 @@ export interface PlayerBarProps {
   restBelow: number | null;
   /** The character's name as its file states it, until the realm says it. */
   profileName: string | null;
+  /** The bar's last column; memoised by the caller, or the bar redraws per render. */
+  end: ReactNode;
 }
 
 const share = (value: number | null, max: number | null): number | null =>
@@ -75,7 +78,14 @@ function Meter({
   );
 }
 
-function PlayerBar({ character, statsBase, runBelow, restBelow, profileName }: PlayerBarProps) {
+function PlayerBar({
+  character,
+  statsBase,
+  runBelow,
+  restBelow,
+  profileName,
+  end
+}: PlayerBarProps) {
   const name = character.name ?? profileName;
   const { vitals, progress } = character;
   const { standing, owed } = experienceOf(progress);
@@ -181,6 +191,7 @@ function PlayerBar({ character, statsBase, runBelow, restBelow, profileName }: P
           </b>
         </div>
       </div>
+      {end}
     </header>
   );
 }

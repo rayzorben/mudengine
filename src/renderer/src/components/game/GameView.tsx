@@ -63,6 +63,7 @@ import PartyFrames from './PartyFrames';
 import PlayerBar from './PlayerBar';
 import TalkFeed from './TalkFeed';
 import TargetCard from './TargetCard';
+import ViewSwitch from '../ViewSwitch';
 import WorldCanvas, { type WorldCanvasHandle } from './WorldCanvas';
 
 export interface GameViewProps {
@@ -326,6 +327,10 @@ function GameView({
     [view.players]
   );
   const candidates = useMemo(() => candidatesOf(character), [character]);
+  const viewSwitch = useMemo(
+    () => <ViewSwitch className="gv-chip" game onToggle={game.toggle} />,
+    [game.toggle]
+  );
   const bound = useMemo(() => {
     const out: Partial<Record<Direction, string>> = {};
     // The character's own keys over Global's (todo 134).
@@ -380,6 +385,7 @@ function GameView({
         profileName={profile?.name ?? null}
         restBelow={profile?.restBelow ?? null}
         runBelow={profile?.runBelow ?? null}
+        end={viewSwitch}
         statsBase={view.statsBase}
       />
       <div className="gv-hud gv-legend" aria-hidden="true">

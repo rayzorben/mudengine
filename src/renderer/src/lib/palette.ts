@@ -651,7 +651,6 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       keywords: ['density', 'compact', 'comfortable', 'spacing', 'size'],
       run: deps.cycleDensity
     },
-    // The only way in or out of the game view, for now (user, 2026-10-14).
     {
       id: 'game-view',
       icon: 'layout' as const,

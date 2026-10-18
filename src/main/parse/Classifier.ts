@@ -53,6 +53,13 @@ const PRONOUN_LED = /^(You|He|She|It|They|We|I)\b/;
  * with itself.
  */
 const STATUS_LINE_START = /^\[(?:HP|H)=/i;
+/** One addressed message waiting for its receipt; `name` is lower-cased as typed. */
+interface Addressed {
+  sigil: '/' | '>';
+  name: string;
+  body: string;
+}
+
 const ADDRESSED_COMMAND = /^([/>])\s*([A-Za-z][\w'-]*)\s+(\S.*)$/;
 const CAPITALISED_FIRST_WORD = /^([A-Z][\w'-]*)\s/;
 const ARTICLE = /^(?:The|A|An)$/;
@@ -293,17 +300,18 @@ export class Classifier {
    */
   private pendingEchoes: string[] = [];
   /**
-   * The last addressed message sent — `/soul hi`, `>soul hi` — split into
-   * sigil, the name as typed and the body.
+   * The addressed messages sent and not yet confirmed (`/soul hi`, `>soul
+   * hi`), oldest first, each split into sigil, the name as typed and the body.
    *
    * The receipt the server answers with (`--- Telepath Sent to Soul ---`)
    * confirms the send and names the resolved recipient, and nothing else: the
-   * body is never echoed, so this slot is the only record of what was
-   * actually said. One slot, so that where two addressed messages are in
-   * flight at once the earlier receipt goes unbound rather than bound to the
-   * wrong words.
+   * body is never echoed, so this is the only record of what was actually
+   * said. A queue, because the server answers in order and a party joining
+   * sends `@health`, `@version` and `@stats` in one burst (todo 03): one slot
+   * bound the first receipt to the second send's words and left the rest
+   * bare. Bounded by `tuning.parse.maxPendingEchoes`, the same in-flight claim.
    */
-  private addressed: { sigil: '/' | '>'; name: string; body: string } | null = null;
+  private addressed: Addressed[] = [];
   /**
    * A bare `search` is out and its answer has not arrived.
    *
@@ -430,20 +438,21 @@ export class Classifier {
       }
     }
     /*
-     * An addressed message fills the receipt slot; anything else leaves it.
-     * An intervening command does not invalidate what the receipt will
-     * confirm — the server answers in order, so the receipt for `/soul hi`
-     * still means `/soul hi` after an `n` has gone out behind it — and a
-     * refused send whose receipt never comes is overwritten by the next
-     * addressed message rather than cleared by guesswork.
+     * An addressed message joins the receipt queue; anything else leaves it.
+     * An intervening command does not invalidate what a receipt will confirm
+     * — the server answers in order, so the receipt for `/soul hi` still
+     * means `/soul hi` after an `n` has gone out behind it. A refused send
+     * whose receipt never comes is dropped when a later receipt is matched
+     * past it (`bindReceipt`).
      */
     const address = ADDRESSED_COMMAND.exec(this.lastCommand);
     if (address) {
-      this.addressed = {
+      this.addressed.push({
         sigil: address[1] as '/' | '>',
-        name: address[2]!,
+        name: address[2]!.toLowerCase(),
         body: address[3]!.trim()
-      };
+      });
+      if (this.addressed.length > tuning().parse.maxPendingEchoes) this.addressed.shift();
     }
 
     // A bare `search`, in any of the realm's four spellings for it.
@@ -518,7 +527,7 @@ export class Classifier {
   reset(): void {
     this.lastCommand = '';
     this.pendingEchoes = [];
-    this.addressed = null;
+    this.addressed = [];
     this.searching = false;
     this.inDescription = false;
     this.batch = null;
@@ -985,11 +994,17 @@ export class Classifier {
    * stream every consumer reads: a body only the sender's composer knew would
    * be invisible to a telepath typed at the console or sent by `Remotes`.
    *
-   * The recipient must extend the name as typed, because the server resolves
-   * a target by prefix — `/brack hi` is answered `to Brackle` — and each
-   * sigil answers only its own receipt. Where nothing matches, `sent` is
-   * absent rather than guessed: a wrong body on a receipt is the client
-   * misquoting its own player.
+   * The receipt binds the oldest unconfirmed send on its own sigil whose name
+   * as typed it extends, because the server resolves a target by prefix
+   * (`/brack hi` is answered `to Brackle`) and answers in order. Sends on the
+   * same sigil queued ahead of that one were refused (`Why are you
+   * telepathing to yourself?`, an unknown name) and are dropped. Where
+   * nothing matches, `sent` is absent rather than guessed: a wrong body on a
+   * receipt is the client misquoting its own player. So where two sends typed
+   * under different names both match (`/br hi` refused as `Please be more
+   * specific`, then `/brakkle hi`), the receipt could answer either: it stays
+   * unbound and both are dropped, so no later receipt binds a body one send
+   * early.
    *
    * Deliberately a group of its own (`sent`), never `message`. Three
    * consumers — the player registry's sighting, `Remotes` and the tracker's
@@ -999,16 +1014,20 @@ export class Classifier {
    * answer sent by telepath would be read back as the recipient's vitals.
    */
   private bindReceipt(type: BlockType, groups: Record<string, string | undefined>): void {
-    if (this.addressed === null) return;
     if (type !== 'conversation-telepath' && type !== 'conversation-directed') return;
     // An incoming line on the same channel carries a message; a receipt cannot.
     if (groups['message'] !== undefined) return;
-    const to = groups['player'];
+    const to = groups['player']?.toLowerCase();
     if (to === undefined) return;
-    if (this.addressed.sigil !== (type === 'conversation-telepath' ? '/' : '>')) return;
-    if (!to.toLowerCase().startsWith(this.addressed.name.toLowerCase())) return;
-    groups['sent'] = this.addressed.body;
-    this.addressed = null;
+    const sigil = type === 'conversation-telepath' ? '/' : '>';
+    const matches = (sent: Addressed): boolean => sent.sigil === sigil && to.startsWith(sent.name);
+    const at = this.addressed.findIndex(matches);
+    if (at < 0) return;
+    const first = this.addressed[at]!;
+    const rival = this.addressed.findIndex((sent) => matches(sent) && sent.name !== first.name);
+    if (rival < 0) groups['sent'] = first.body;
+    const through = rival < 0 ? at : rival;
+    this.addressed = this.addressed.filter((sent, i) => i > through || sent.sigil !== sigil);
   }
 
   /**
