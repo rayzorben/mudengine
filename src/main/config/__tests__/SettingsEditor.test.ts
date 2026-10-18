@@ -1181,6 +1181,24 @@ describe('the loops a character owns', () => {
     expect(new LoopStore(home).globalLoops).toEqual([sewers]);
   });
 
+  /*
+   * A save lists every loop in the scope, and a file it would only rewrite
+   * keeps what somebody typed: the comment, the flow list, the bare names.
+   * The positive control is the loop the same save did change.
+   */
+  it('leaves a loop file the save did not change exactly as it was', () => {
+    const typed = '# my own\nname: Sewer loop\nstops: [Sewer Tunnel 1/606, Sewer Tunnel 1/604]\n';
+    fs.mkdirSync(home.profile('vaelor').loops, { recursive: true });
+    fs.writeFileSync(file('vaelor', 'sewer-loop'), typed, 'utf8');
+    editor.saveProfile('vaelor', draft({ loops: [sewers, arena] }));
+    editor.saveProfile('vaelor', draft({ loops: [sewers, { ...arena, bounce: false }] }));
+
+    expect(fs.readFileSync(file('vaelor', 'sewer-loop'), 'utf8')).toBe(typed);
+    expect(fs.existsSync(`${file('vaelor', 'sewer-loop')}.bak`)).toBe(false);
+    expect(owned('vaelor').find((loop) => loop.name === arena.name)?.bounce).toBeUndefined();
+    expect(fs.existsSync(`${file('vaelor', 'newhaven-arena')}.bak`)).toBe(true);
+  });
+
   it('writes something the client can then load, and walk', () => {
     editor.saveProfile('vaelor', draft({ loops: [arena] }));
     const store = new LoopStore(home);

@@ -7408,6 +7408,10 @@ function dropDiagnosticsPreference(home: Home, note: (message: string) => void):
  * conditions together are what keeps this off a name a person chose. Two shelf
  * loops with the same places under different names would make the answer a
  * guess, so neither renames anything.
+ *
+ * A file whose new name its directory already holds keeps its old name, and
+ * the migration note names it: two files of one name in one scope are one
+ * loop the screen cannot tell apart (todo 854).
  */
 function loopsTookTheirRecordedNames(
   home: Home,
@@ -7434,27 +7438,57 @@ function loopsTookTheirRecordedNames(
     byPlaces.set(key, byPlaces.has(key) ? null : loop);
   }
 
+  const loopOf = (document: { toJS(): unknown } | null | undefined): Loop | undefined =>
+    asLoops([document?.toJS()])[0];
+  const held = new Map<string, Set<string>>();
+  for (const file of files) {
+    const name = loopOf(documentOf(file))?.name.toLowerCase();
+    if (name === undefined) continue;
+    const dir = path.dirname(file);
+    held.set(dir, (held.get(dir) ?? new Set()).add(name));
+  }
+
   const renamed: string[] = [];
+  const kept: string[] = [];
   for (const file of files) {
     edit(file, (document) => {
-      const loop = asLoops([document.toJS() as unknown])[0];
+      const loop = loopOf(document);
       if (loop === undefined) return false;
       const shelved = byPlaces.get(placesKey(loop));
       if (!shelved || shelved.name === loop.name) return false;
       if (loopCategory(loop.name) !== shelved.category) return false;
+      const names = held.get(path.dirname(file));
+      const was = loop.name.toLowerCase();
+      const now = shelved.name.toLowerCase();
+      // A rename that only changes case is onto the file's own name.
+      if (now !== was && names?.has(now) === true) {
+        kept.push(`${loop.name} (${path.basename(file)})`);
+        return false;
+      }
+      names?.delete(was);
+      names?.add(now);
       document.set('name', shelved.name);
       renamed.push(`${loop.name} -> ${shelved.name}`);
       return true;
     });
   }
 
-  if (renamed.length === 0) return;
-  const params = { count: renamed.length, loopList: renamed.join(', ') };
-  note(
-    renamed.length === 1
-      ? t('notices.migration.loopsRenamed.one', params)
-      : t('notices.migration.loopsRenamed.many', params)
-  );
+  if (renamed.length > 0) {
+    const params = { count: renamed.length, loopList: renamed.join(', ') };
+    note(
+      renamed.length === 1
+        ? t('notices.migration.loopsRenamed.one', params)
+        : t('notices.migration.loopsRenamed.many', params)
+    );
+  }
+  if (kept.length > 0) {
+    const params = { count: kept.length, loopList: kept.join(', ') };
+    note(
+      kept.length === 1
+        ? t('notices.migration.loopsRenameTaken.one', params)
+        : t('notices.migration.loopsRenameTaken.many', params)
+    );
+  }
 }
 
 /**

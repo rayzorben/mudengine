@@ -2224,6 +2224,28 @@ stops:
     expect(nameIn(file)).toBe('Sewers: Dark Cave-1 866');
   });
 
+  /*
+   * The player copied the renamed row again, so the folder holds both
+   * spellings. Renaming the old one would leave two files of one name.
+   */
+  it('keeps the old name where the folder already has the new one, and says so', () => {
+    const old = path.join(home.profile('vaelor').loops, 'slime-beast.yaml');
+    const again = path.join(home.profile('vaelor').loops, 'slime-beast-loop.yaml');
+    write(old, COPIED);
+    write(again, COPIED.replace('Slime Beast-1 1765', 'Slime Beast Loop'));
+
+    migrateWithShelf();
+
+    expect(nameIn(old)).toBe('Goblin caves: Slime Beast-1 1765');
+    expect(notesOf(said, 'notices.migration.loopsRenameTaken.one')).toHaveLength(1);
+    expect(said.join(' ')).toContain('slime-beast.yaml');
+    // The positive control: the same loop alone in another folder is renamed.
+    const elsewhere = path.join(home.globalLoops, 'slime-beast.yaml');
+    write(elsewhere, COPIED);
+    migrateWithShelf();
+    expect(nameIn(elsewhere)).toBe('Goblin caves: Slime Beast Loop');
+  });
+
   it('does not read four hundred loops for a client that has copied none', () => {
     migrateWithShelf();
     expect(reads).toBe(0);

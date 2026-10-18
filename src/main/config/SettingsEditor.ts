@@ -20,7 +20,13 @@ import {
 import { type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
 import { type RetreatConfig } from '../../shared/safety';
 import { fileSlug, isLoopFileName } from '../../shared/files';
-import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
+import {
+  loopFileName,
+  sameLoop,
+  type Loop,
+  type LoopScope,
+  type ScopedLoop
+} from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
 import { asLowLives, DEFAULT_LOW_LIVES } from '../../shared/lives';
@@ -1771,6 +1777,12 @@ export function writeLoops(files: YamlFiles, dir: string, loops: readonly Loop[]
 
   for (const loop of loops) {
     const found = existing.find((entry) => entry.name.toLowerCase() === loop.name.toLowerCase());
+    /*
+     * A file that already reads as this loop is left as it is: rewritten, a
+     * loop somebody typed by hand loses its comments and its flow list on
+     * every save of the page, whichever loop the save was for.
+     */
+    if (found !== undefined && sameLoop(found.loop, loop)) continue;
     const slug = found?.slug ?? loopFileName(loop.name, taken);
     taken.add(slug);
     const written = files.edit(path.join(dir, `${slug}.yaml`), {
@@ -1797,7 +1809,7 @@ export function writeLoops(files: YamlFiles, dir: string, loops: readonly Loop[]
 function readLoopFiles(
   files: YamlFiles,
   dir: string
-): { file: string; slug: string; name: string }[] {
+): { file: string; slug: string; name: string; loop: Loop }[] {
   let names: string[];
   try {
     names = fs.readdirSync(dir).sort();
@@ -1805,7 +1817,7 @@ function readLoopFiles(
     return [];
   }
 
-  const found: { file: string; slug: string; name: string }[] = [];
+  const found: { file: string; slug: string; name: string; loop: Loop }[] = [];
   for (const name of names) {
     if (!isLoopFileName(name)) continue;
     const file = path.join(dir, name);
@@ -1813,7 +1825,9 @@ function readLoopFiles(
     try {
       const loops = readLoops(parse(files.read(file) ?? ''), slug);
       // Exactly one, or this file is not one this screen manages.
-      if (loops.length === 1 && loops[0]) found.push({ file, slug, name: loops[0].name });
+      if (loops.length === 1 && loops[0]) {
+        found.push({ file, slug, name: loops[0].name, loop: loops[0] });
+      }
     } catch {
       // Unreadable: left alone, and left out, so it is never removed.
     }
