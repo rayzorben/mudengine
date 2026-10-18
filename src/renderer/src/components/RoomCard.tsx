@@ -36,6 +36,7 @@ import {
 } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import type { RoomAsk } from '@shared/quests';
+import { askLine } from '@shared/asking';
 import { gatesWords } from '@shared/gateWords';
 import { DISPOSITION_WORD, type Standing } from '@shared/mobs';
 import { occupantAttacksOnSight } from '@shared/mobRules';
@@ -727,7 +728,7 @@ function RoomBody({
           {asks.length > 0 && (
             <div className="exits room-asks from-medium">
               {asks.map((offer, index) => {
-                const line = t('cards.room.asks.command', { who: offer.who, word: offer.say });
+                const line = askLine(offer.who, offer.say);
                 const wants = offer.wants?.join(', ');
                 const title =
                   wants === undefined

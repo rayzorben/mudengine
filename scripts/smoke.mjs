@@ -33,6 +33,7 @@ import {
   sentence
 } from '../src/main/app/copyMatch.ts';
 import { escapeRegExp } from '../src/shared/regex.ts';
+import { askLine } from '../src/shared/asking.ts';
 import { normalizeInternal } from '../src/shared/internal.ts';
 import { holdPort } from './lib/port-lock.mjs';
 import { spawnElectron, useVirtualDisplay } from './lib/display.mjs';
@@ -6860,12 +6861,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           (found) => found.length > 0
         );
         check(
-          offered === copy('cards.room.asks.command', { who: askable.who, word: askable.say }),
+          offered === askLine(askable.who, askable.say),
           'and a monster standing in the room offers what it can be asked, as a control',
-          JSON.stringify({
-            offered,
-            want: copy('cards.room.asks.command', { who: askable.who, word: askable.say })
-          })
+          JSON.stringify({ offered, want: askLine(askable.who, askable.say) })
         );
         check(
           askable.behind.every((word) => !offered.includes(word)),

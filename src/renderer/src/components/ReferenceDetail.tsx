@@ -1,6 +1,7 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
 import { Fragment, useState } from 'react';
 import EntityNumber from './EntityNumber';
+import MobAsks from './MobAsks';
 import MobFactRow from './MobFactRow';
 import RarityRows from './RarityRows';
 import { t } from '../lib/i18n';
@@ -235,7 +236,8 @@ function MobDetail({
   realm,
   names,
   onRoom,
-  onResize
+  onResize,
+  onAsk
 }: {
   mob: WorldMob;
   learned: MobLoreEntry | null;
@@ -247,6 +249,7 @@ function MobDetail({
   names: EffectNames;
   onRoom: ((map: number, room: number) => void) | null;
   onResize: (() => void) | null;
+  onAsk: ((word: string) => void) | null;
 }) {
   const word = mob.disposition === null ? null : DISPOSITION_WORD[mob.disposition];
   /*
@@ -483,6 +486,7 @@ function MobDetail({
           <dd>{mob.drops.join(', ')}</dd>
         </>
       )}
+      {mob.asks !== undefined && <MobAsks asks={mob.asks} onAsk={onAsk} />}
       {/*
         And where to go for one — last, beside the drop table, because these
         are the two rows somebody acts on rather than reads: what killing it
@@ -1247,6 +1251,8 @@ export interface ReferenceDetailProps {
    * this, and this is the same fact from a component that owns the state.
    */
   onResize?: (() => void) | null;
+  /** Asks the monster about a word it answers to. Null draws the words as text. */
+  onAsk?: ((word: string) => void) | null;
   /**
    * This character's supplies list and the write, for the *Keep in pack*
    * controls on an item. Null where there is no character to write for — a
@@ -1284,6 +1290,7 @@ export default function ReferenceDetail({
   onRoom = null,
   onName = null,
   onResize = null,
+  onAsk = null,
   supplies = null,
   heading = true
 }: ReferenceDetailProps) {
@@ -1309,6 +1316,7 @@ export default function ReferenceDetail({
           learned={entry.learned}
           mob={entry.mob}
           names={names}
+          onAsk={onAsk}
           onResize={onResize}
           onRoom={onRoom}
           peace={entry.peace}

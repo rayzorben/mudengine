@@ -413,6 +413,12 @@ const TUNING_DEFAULTS = {
     /** How many times it is asked again before the client gives up and says so. */
     unreadRetries: 3,
     /**
+     * The longest line a card may hand the queue (`asCardCommand`). The
+     * longest the realm data makes is an `ask` of 49 characters; a longer line
+     * is a pasted blob.
+     */
+    cardCommandMaxChars: 120,
+    /**
      * How long a command the server threw away waits before it is sent again.
      *
      * `You fumble in confusion!` is `ActionFigure.CheckConfusion` discarding

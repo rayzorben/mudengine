@@ -35,6 +35,7 @@ import {
   type WorldLookup,
   type WorldMob,
   type WorldMobRow,
+  type MobAsk,
   type WorldNames,
   type WorldRace,
   type WorldRoom,
@@ -626,6 +627,8 @@ export class Catalogue {
       // this name. See `BuiltMob.ab`.
       const abilities = readAbilities(record);
       if (abilities.length > 0) mob.abilities = abilities;
+      const asks = readAsks(record['ak']);
+      if (asks.length > 0) mob.asks = asks;
       this.mobs.set(mobKey(name), mob);
       const ids = (Array.isArray(record['i']) ? record['i'] : []).filter(
         (id): id is number => typeof id === 'number'
@@ -672,6 +675,8 @@ export class Catalogue {
         kept.charmLevel = stated('chl');
         if (row['und'] === 1) kept.undead = true;
         if (version >= ROW_ABILITIES_SINCE) kept.abilities = readAbilities(row);
+        const rowAsks = readAsks(row['ak']);
+        if (rowAsks.length > 0) kept.asks = rowAsks;
         kept.nature = natureOf([{ abilities: kept.abilities, undead: kept.undead }]);
         this.rowsById.set(id, kept);
         named.push(kept);
@@ -2225,6 +2230,8 @@ export function mobAsRow(mob: WorldMob, row: WorldMobRow, choice: MobRowChoice):
   resolved.charmLevel = row.charmLevel;
   resolved.undead = row.undead;
   overlayAbilities(resolved, row);
+  if (row.asks === undefined) delete resolved.asks;
+  else resolved.asks = row.asks;
   if (mob.profiles !== undefined) resolved.profiles = row.profile === null ? [] : [row.profile];
   return resolved;
 }
@@ -2312,6 +2319,32 @@ function readAbilities(record: Record<string, unknown>): Array<[number, number]>
           typeof pair[1] === 'number'
       )
     : [];
+}
+
+/** `BuiltAsk` back into answers (format 72); an entry not that shape is dropped, as `readAbilities` drops one. */
+function readAsks(raw: unknown): MobAsk[] {
+  const names = (value: unknown): string[] | undefined =>
+    Array.isArray(value) && value.length > 0 && value.every((name) => typeof name === 'string')
+      ? (value as string[])
+      : undefined;
+  const asks: MobAsk[] = [];
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    const word = record['w'];
+    if (typeof word !== 'string' || word.length === 0) continue;
+    const ask: MobAsk = { word };
+    const gives = names(record['g']);
+    const takes = names(record['t']);
+    const teaches = names(record['s']);
+    if (gives !== undefined) ask.gives = gives;
+    if (takes !== undefined) ask.takes = takes;
+    if (teaches !== undefined) ask.teaches = teaches;
+    const copper = positiveIn(record, 'p');
+    if (copper !== undefined) ask.copper = copper;
+    asks.push(ask);
+  }
+  return asks;
 }
 
 /**

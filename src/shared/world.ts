@@ -1933,6 +1933,25 @@ export interface WorldMobRow {
   abilities?: Array<[number, number]>;
   /** What this row is, as a spell asks (`natureOf`). */
   nature?: MonsterNature;
+  /** This row's `ask` table (format 72). */
+  asks?: MobAsk[];
+}
+
+/**
+ * One word a monster answers `ask` with (`Monsters.GreetTXT`), and what saying
+ * it can do. Words reaching the same answer are one, under the longest. What
+ * the monster says is not in the realm's export, so only what its script
+ * hands over is known.
+ */
+export interface MobAsk {
+  word: string;
+  gives?: string[];
+  takes?: string[];
+  teaches?: string[];
+  /** The most its script charges, in copper. */
+  copper?: number;
+  /** The quest step the word moves, joined from the quest book when the monster is looked up. */
+  quest?: { name: string; to?: number };
 }
 
 /**
@@ -2080,6 +2099,8 @@ export interface WorldMob {
   follows?: number;
   /** True when any row sharing this name is undead. */
   undead?: boolean;
+  /** What it answers `ask` with (format 72): on the fold only where every row agrees. */
+  asks?: MobAsk[];
   /**
    * What it drops, by name, capped at six.
    *
@@ -3330,7 +3351,7 @@ export const ROUTE_BLOCK_KINDS = [
  * Whole gold where it divides evenly, which every toll in the shipped realm
  * does, and copper otherwise — never a fraction of a coin nobody can hold.
  */
-function coinWords(copper: number): string {
+export function coinWords(copper: number): string {
   if (copper === 0) return 'nothing';
   if (copper % COPPER_PER_GOLD === 0) {
     const gold = copper / COPPER_PER_GOLD;

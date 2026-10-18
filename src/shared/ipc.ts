@@ -1109,7 +1109,7 @@ export const Invoke = {
    * round trip.
    */
   names: 'world:names',
-  /** A probe command asked for from a card, sent through the arbiter. */
+  /** A command from a card, one line (`asCardCommand`), sent through the command queue. */
   ask: 'session:ask',
   /**
    * The Room card's locate button (todo 811). Its own channel rather than

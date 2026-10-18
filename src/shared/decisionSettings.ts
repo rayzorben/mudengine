@@ -550,6 +550,7 @@ export const DECISION_SETTINGS = {
     'automation.movement.disarmTraps'
   ],
   'route-shun': ['automation.movement.avoidRanFromMinutes'],
+  'key-buy': ['automation.movement.buyKeys', 'automation.movement.buyKeysMaxGold'],
   'route-price': [
     'automation.movement.fightCost',
     'automation.movement.dangerCost',

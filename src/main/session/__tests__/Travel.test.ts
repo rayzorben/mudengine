@@ -86,7 +86,9 @@ function travel(
       lapTraveller: vi.fn(),
       askCountersFor: vi.fn(),
       findStop: vi.fn(),
-      shun: vi.fn()
+      shun: vi.fn(),
+      boughtTo: vi.fn(() => null),
+      priceAt: vi.fn(() => null)
     },
     queue: {
       enqueue: (intent) => {
@@ -918,5 +920,128 @@ describe('auto-rest put back on', () => {
     const { travel: moving, notices } = made(restOff, false);
     moving.reset();
     expect(notices).toContain(t('automation.autoRest.onConnectedRefused'));
+  });
+});
+
+/*
+ * Todo 02: a player's walk round a door whose key a shop sells buys the key
+ * on the way, through the item errand, where `movement.buyKeys` allows it.
+ */
+describe('a walk that buys its key on the way', () => {
+  const ROUND = {
+    steps: [
+      { from: '1/1', to: '1/2' },
+      { from: '1/2', to: '1/3' },
+      { from: '1/3', to: '1/9' }
+    ],
+    cost: 30,
+    blocked: false,
+    keysAhead: true
+  } as unknown as Route;
+  const THROUGH = {
+    steps: [{ from: '1/1', to: '1/9' }],
+    cost: 2,
+    blocked: false
+  } as unknown as Route;
+  const pass = { id: 942, name: 'mine pass' };
+  const buy = { kind: 'buy' as const, item: pass, room: '1/1' };
+
+  function walking(settings: AutomationConfig) {
+    const state = beside();
+    const listed = { ...state, inventory: { ...state.inventory, listedAt: 1, rows: [] } };
+    const made = travel(listed, 'none', false, { on: true, writes: true }, { settings });
+    made.parts.supplies.considerBeforeRoute = () => null;
+    made.parts.light.beforeRoute = () => false;
+    made.parts.walker.start = vi.fn(() => null);
+    vi.mocked(made.parts.errands.boughtTo).mockReturnValue({
+      way: THROUGH,
+      plan: { kind: 'plan', steps: [buy, { kind: 'walk', route: THROUGH }], cost: 2 }
+    });
+    vi.mocked(made.parts.errands.priceAt).mockReturnValue(100);
+    vi.mocked(made.parts.itemErrand.collect).mockReturnValue(null);
+    return made;
+  }
+
+  it('collects the key and walks the way through', () => {
+    const { travel: moving, parts } = walking(config);
+    expect(moving.walkRoute(ROUND)).toBeNull();
+    expect(parts.errands.boughtTo).toHaveBeenCalledWith('1/9');
+    expect(vi.mocked(parts.itemErrand.collect).mock.calls[0]?.[0]).toEqual([
+      { ...pass, from: { step: buy, moves: 0 } }
+    ]);
+    expect(vi.mocked(parts.itemErrand.collect).mock.calls[0]?.[1]).toBe(THROUGH);
+    expect(parts.walker.start).not.toHaveBeenCalled();
+  });
+
+  it('walks the way round with the setting off', () => {
+    const off: AutomationConfig = {
+      ...config,
+      movement: { ...config.movement, buyKeys: false }
+    };
+    const { travel: moving, parts } = walking(off);
+    moving.walkRoute(ROUND);
+    expect(parts.itemErrand.collect).not.toHaveBeenCalled();
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUND, expect.anything(), { offRounds: false });
+  });
+});
+
+/* Todo 02: a walk held while the inventory is checked, and what ends it. */
+describe('a walk held for the inventory', () => {
+  const DOOR = {
+    steps: [
+      {
+        from: '1/1',
+        to: '1/9',
+        name: 'Mine',
+        requirement: { kind: 'item', raw: 'Item: 942', keyId: 942 }
+      }
+    ],
+    cost: 2,
+    blocked: false
+  } as unknown as Route;
+
+  function holding() {
+    const state = beside();
+    const unlisted = { ...state, inventory: { ...state.inventory, listedAt: null, rows: [] } };
+    const made = travel(unlisted, 'none', false);
+    made.parts.supplies.considerBeforeRoute = () => null;
+    made.parts.light.beforeRoute = () => false;
+    made.parts.walker.start = vi.fn(() => null);
+    const listed = (rows: number[]): CharacterState => ({
+      ...state,
+      inventory: { ...state.inventory, listedAt: 1, rows }
+    });
+    return { ...made, listed };
+  }
+
+  it('asks for the inventory, then walks the pressed way when it holds the key', () => {
+    const { travel: moving, parts, sent, listed } = holding();
+    expect(moving.walkRoute(DOOR)).toBeNull();
+    expect(sent).toEqual(['i']);
+    expect(parts.walker.start).not.toHaveBeenCalled();
+    moving.walkOnceListed(listed([942]));
+    expect(parts.walker.start).toHaveBeenCalledWith(DOOR, expect.anything(), {
+      offRounds: false
+    });
+  });
+
+  it('walks nowhere once the player has pressed Stop, and says so', () => {
+    const { travel: moving, parts, notices, listed } = holding();
+    moving.walkRoute(DOOR);
+    moving.stopMoving();
+    expect(notices).toContain(
+      t('session.walk.notResumed', { destination: 'Mine', reason: personStop(null) })
+    );
+    moving.walkOnceListed(listed([942]));
+    expect(parts.walker.start).not.toHaveBeenCalled();
+  });
+
+  it('walks nowhere after a death, and says so', () => {
+    const { travel: moving, parts, notices, listed } = holding();
+    moving.walkRoute(DOOR);
+    moving.stopGoingAnywhere();
+    expect(notices).toContain(t('session.walk.keys.dropped', { destination: 'Mine' }));
+    moving.walkOnceListed(listed([942]));
+    expect(parts.walker.start).not.toHaveBeenCalled();
   });
 });

@@ -58,6 +58,8 @@ export interface ReferencePopoverProps {
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /** This character's supplies list and the write. See `ReferenceDetailProps`. */
   supplies?: SupplyList | null;
+  /** Asks the monster about a word, by the name that was clicked. See `ReferenceDetailProps`. */
+  onAsk?: ((word: string) => void) | null;
   onDismiss(): void;
 }
 
@@ -85,7 +87,8 @@ export default function ReferencePopover({
   onRoom = null,
   onName = null,
   onDismiss,
-  supplies = null
+  supplies = null,
+  onAsk = null
 }: ReferencePopoverProps) {
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
   /*
@@ -208,6 +211,7 @@ export default function ReferencePopover({
             entry={entry}
             heading={false}
             level={level}
+            onAsk={onAsk}
             onName={onName}
             onResize={onResize}
             onRoom={onRoom}

@@ -68,6 +68,7 @@ import { LoopHistory } from './session/LoopHistory';
 import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
+import { asCardCommand, withAskQuests } from '../shared/asking';
 import { asPlaceKind } from '../shared/places';
 import { asQuestMarks } from '../shared/quests';
 import { asMobRuleScope, asMobTreatment, rowPeaceFor, type RowPeace } from '../shared/mobRules';
@@ -2952,7 +2953,10 @@ function registerIpc(): void {
     const here = host?.get(session)?.manager.character.room;
     const at =
       !here || here.map === null || here.number === null ? null : roomId(here.map, here.number);
-    const found = world.lookup(typeof query === 'string' ? query.slice(0, 128) : '', 12, at);
+    const looked = world.lookup(typeof query === 'string' ? query.slice(0, 128) : '', 12, at);
+    // And the quest step each word a monster answers to moves (todo 01).
+    const quests = world.quests();
+    const found = { ...looked, mobs: looked.mobs.map((mob) => withAskQuests(mob, quests)) };
     // And what this character's realm has learned about each monster named,
     // beside the realm's figure. Only where fighting has taught something.
     const lore = loreFor(session);
@@ -3039,12 +3043,16 @@ function registerIpc(): void {
   /*
    * A command asked for from a card, sent through the arbiter like every
    * automated command — which is what makes it quiet when `internal.yaml`
-   * says so. Parsed: one word, from a short allowlist, because this is a
-   * window handing main a string that becomes bytes on a socket.
+   * says so. Parsed to one line of printable text, because this is a window
+   * handing main a string that becomes bytes on a socket; a refusal is said.
    */
   handle(Invoke.ask, (_caller, session: SessionId, command: unknown) => {
-    if (typeof command !== 'string' || !/^[a-z]{1,8}$/.test(command)) return false;
-    return host?.get(session)?.manager.ask(command) ?? false;
+    const line = asCardCommand(command, tuning().queue.cardCommandMaxChars);
+    if (line === null) {
+      notice(t('session.probe.refused', { max: tuning().queue.cardCommandMaxChars }), session);
+      return false;
+    }
+    return host?.get(session)?.manager.ask(line) ?? false;
   });
 
   /*

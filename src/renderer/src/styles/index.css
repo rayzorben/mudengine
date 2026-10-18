@@ -2160,7 +2160,8 @@ kbd {
  * server does not use.
  */
 .room-answers .chip,
-.room-asks .chip {
+.room-asks .chip,
+.mob-asks .chip {
   /*
    * **As the realm spells it.** A chip is uppercase because a chip is a label;
    * this one is a command somebody could type, and TOUCH GEM is a word the
@@ -2170,7 +2171,8 @@ kbd {
 }
 
 .room-answers button.chip,
-.room-asks button.chip {
+.room-asks button.chip,
+.mob-asks button.chip {
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--font-micro);
@@ -2179,7 +2181,8 @@ kbd {
 }
 
 .room-answers button.chip:hover,
-.room-asks button.chip:hover {
+.room-asks button.chip:hover,
+.mob-asks button.chip:hover {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border-color: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--text-hi);
@@ -8935,6 +8938,13 @@ button.quest-tile-name:hover:not(:disabled) {
  */
 .reference-detail .effects {
   line-height: 1.5;
+}
+
+/* A monster's ask words (todo 01): one per line, what each leads to after it. */
+.reference-detail .mob-asks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /*

@@ -557,7 +557,9 @@ export function keywordTable(block: Pick<Textblock, 'lines'>): Map<number, strin
  * - `roll`: each line leads with the cumulative threshold a 1–100 roll picks;
  * - `shown`: printed as text, and only what it links to runs.
  */
-export type TbUse = 'phrased' | 'steps' | 'roll' | 'shown';
+export const TB_USES = ['phrased', 'steps', 'roll', 'shown'] as const;
+
+export type TbUse = (typeof TB_USES)[number];
 
 /**
  * The lines a block run this way reaches. A roll table stops at the first
@@ -595,13 +597,12 @@ export function stepsRun(line: TbLine, use: Exclude<TbUse, 'shown'>): readonly T
  */
 export function blockUses(
   blocks: ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>,
-  roots: { phrased: Iterable<number>; steps: Iterable<number> }
+  roots: Readonly<Partial<Record<TbUse, Iterable<number>>>>
 ): Map<number, Set<TbUse>> {
   const uses = new Map<number, Set<TbUse>>();
-  const queue: Array<[number, TbUse]> = [
-    ...[...roots.phrased].map((id): [number, TbUse] => [id, 'phrased']),
-    ...[...roots.steps].map((id): [number, TbUse] => [id, 'steps'])
-  ];
+  const queue: Array<[number, TbUse]> = TB_USES.flatMap((use) =>
+    [...(roots[use] ?? [])].map((id): [number, TbUse] => [id, use])
+  );
   while (queue.length > 0) {
     const [id, use] = queue.shift()!;
     const block = blocks.get(id);

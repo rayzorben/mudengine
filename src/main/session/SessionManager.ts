@@ -2876,8 +2876,7 @@ export class SessionManager {
       this.marks.onCharacter(state);
       // The saved gear's hold after a death: bookkeeping, under no switch (todo 82).
       this.gearLocks.onCharacter(state);
-      // What a lost connection left owed, first: the route back to the walker and
-      // the loop's hold let go, so both decide on the line that placed the character.
+      // What a lost connection left owed first, so walk and lap decide on the line placing it.
       this.travel.pickUpAfterLoss(state);
       this.extensions.onCharacter(state);
       /*
@@ -2933,8 +2932,9 @@ export class SessionManager {
       // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);
-      // And the walk home a `safe-haven` escape armed, once the fight is over.
+      // The walk home a `safe-haven` escape armed, after the fight; a walk held for `i` (todo 02).
       this.travel.walkHomeIfDue(state);
+      this.travel.walkOnceListed(state);
       if (!moveOnly) {
         // Shopping, which yields to every one of the above (`Supplies.consider`).
         this.supplies.onCharacter(state);

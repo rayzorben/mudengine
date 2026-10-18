@@ -537,10 +537,9 @@ export default function App() {
    * Where this realm's find log says something was turned up, for the route
    * panel's picture — the mark the Map card draws from the same log.
    *
-   * Here rather than inside the panel because the panel belongs to the
-   * character on screen and nothing else; a *card* computes its own, addressed
-   * at the character it was drawn for, which is the rule every other world
-   * fact in this file follows.
+   * Here because the panel belongs to the character on screen; a *card*
+   * computes its own, addressed at the character it was drawn for, as every
+   * other world fact in this file is.
    */
   const foundRooms = useMemo(() => [...roomsWithFinds(view.finds)], [view.finds]);
 
@@ -1390,6 +1389,7 @@ export default function App() {
 
       <SlideOuts
         api={api}
+        ask={ask}
         character={character}
         chooseOnMap={chooseOnMap}
         loadRoomBrief={loadRoomBrief}

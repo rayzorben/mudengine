@@ -408,6 +408,9 @@ notices:
     autoRest:
       many: 'Auto-Rest was added, on, to {count} files: {fileList}'
       one: 'Auto-Rest was added, on, to {fileList}'
+    keyBuying:
+      many: 'Buy a Key on the Way was added, on, to {count} files: {fileList}'
+      one: 'Buy a Key on the Way was added, on, to {fileList}'
     restSpell:
       many: 'Cast Before Resting was added, empty, to {count} files: {fileList}'
       one: 'Cast Before Resting was added, empty, to {fileList}'
@@ -3181,6 +3184,15 @@ cards:
       defenceFigure: '{ac} AC, {dr} DR'
       defenceLabel: Defence
       dropsLabel: Drops
+      ask:
+        label: Ask
+        sendTooltip: Ask about {word}
+        quest: '{quest}'
+        questRank: '{quest} to rank {rank}'
+        gives: gives {items}
+        takes: takes {items}
+        teaches: teaches {spells}
+        costs: costs {copper}
       experienceLabel: Experience (Exp)
       followsFigure: '{percent}%'
       followsLabel: Pursuit Chance
@@ -3275,10 +3287,8 @@ cards:
       opensExitElsewhere: opens the {direction} exit of {roomRef}
       sendTooltip: Send "{phrase}", the game's own word for it
     # What the things standing in the room answer to, beside what the room
-    # itself does. `command` is the realm's own verb and argument order, so it
-    # is the line that goes in the console and is drawn as one.
+    # itself does. The line is built in code (`askLine`) and drawn as sent.
     asks:
-      command: ask {who} {word}
       sendTooltip: 'Send "{line}": {quest}'
       wants: needs {items}
       wantsTooltip: '{quest}: this needs {items}, which you are not carrying'
@@ -4876,6 +4886,11 @@ settings:
     collectKeysHint: Only when the world data says an exit of the room needs it, your inventory does
       not show one, and it is on the floor here. A locked door with no key is a wall the router
       plans around, so this is the one time picking it up matters. On by default.
+    buyKeys: Buy a Key on the Way
+    buyKeysHint: A walk you send the character on takes the shorter way through a door whose key a
+      shop sells, buying it first. Loops and errands never do.
+    buyKeysMaxGold: Most for Keys, Gold
+    buyKeysMaxGoldHint: The most the keys on one walk may cost together. 0 never buys one.
     doorsLegend: Doors
     stealthLegend: Sneaking and Running
     lightLegend: Light
@@ -5841,6 +5856,7 @@ session:
     fault: Something on this line could not be read; the console is unaffected. {message}
   probe:
     askedFromCard: asked from a card
+    refused: A card's command was not sent. It has to be one line of plain text, at most {max} characters.
   lowLives:
     held: 'Lives left: {lives}. With automation on, the client asks before logging in at {floor} or
       fewer, and has not logged in.'
@@ -6031,6 +6047,16 @@ session:
     tooWide: The status line you designed is {cells} cells wide and the line holds {max}, so the
       game's own line is shown instead. Shorten it in the Status Line section of settings.
   walk:
+    keys:
+      listing: Checking the inventory before walking, since the way crosses a door that needs a key.
+      reasonPack: checking inventory for a key on the way
+      unlisted: The inventory did not come back, so the walk goes as planned.
+      notAsked: The inventory could not be checked before walking, so the walk goes as planned.
+      dropped: The walk to {destination}, waiting on the inventory, was dropped.
+      nowhere: where it was going
+      unpriced: Not buying {item} on the way, since the world data gives no price for it.
+      overCeiling: 'Not buying {items} on the way: {price} is more than your {ceiling} gold for keys.'
+      buying: 'Buying {items} on the way for {price}: {moves} moves instead of {instead}.'
     keptOutDemand: crossing {word}, which you avoid
     keptOutChoose: This way crosses {wordList}, which you avoid. Choose the way through or the way
       around in the route panel.
