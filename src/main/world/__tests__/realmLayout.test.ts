@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { roomId, type Direction, type WorldRoom } from '../../../shared/world';
 import { layOutMap, RealmLayouts, UNJOINED_GAP } from '../realmLayout';
 import { WorldGraph } from '../WorldGraph';
+import { timedAgainstReference } from './referenceWork';
 
 function graphOf(rooms: Array<[number, string, Array<[Direction, number, number?]>]>) {
   const byId = new Map<string, WorldRoom>();
@@ -314,17 +315,19 @@ describe.runIf(fs.existsSync(world))("Paradigm's planes", () => {
   it('place every room of every map, one to a cell', () => {
     const layouts = new RealmLayouts(graph);
     const maps = new Set([...graph.everyRoom()].map((r) => r.map));
-    const started = performance.now();
     let rooms = 0;
-    for (const map of maps) {
-      const plane = layouts.of(map);
-      expect(plane.cells.size).toBe(plane.at.size);
-      expect(plane.at.size).toBe(layouts.roomsOf(map).length);
-      rooms += plane.at.size;
-    }
+    const { tookMs, referenceMs } = timedAgainstReference(() => {
+      for (const map of maps) {
+        const plane = layouts.of(map);
+        expect(plane.cells.size).toBe(plane.at.size);
+        expect(plane.at.size).toBe(layouts.roomsOf(map).length);
+        rooms += plane.at.size;
+      }
+    });
     expect(rooms).toBe([...graph.everyRoom()].length);
-    // Laid out on first ask, on the main thread: it must stay well under a second.
-    expect(performance.now() - started).toBeLessThan(1500);
+    // Laid out on first ask, on the main thread: about 38 reference jobs alone and in the full
+    // suite (2026-10-17), so 80 is twice that.
+    expect(tookMs).toBeLessThan(80 * referenceMs);
   });
 
   const layouts = new RealmLayouts(graph);
