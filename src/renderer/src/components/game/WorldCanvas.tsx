@@ -74,7 +74,7 @@ import {
 import { drawPeek, PEEK_SIZE } from './drawPeek';
 import { drawStairs, type StairSpot } from './drawStairs';
 import FloorStrip from './FloorStrip';
-import RoundRing, { RING_EXTENT, RING_STROKE_PX } from './RoundRing';
+import RoundRing, { RING_EXTENT, RING_GLOW_PX } from './RoundRing';
 
 export interface WorldCanvasHandle {
   zoom(by: number): void;
@@ -538,13 +538,15 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
 
 /**
  * The ring's radius past the arena's rim, px: the compass exits' discs are centred on the rim, so
- * the ring's stroke sits half its width outside them. Up and down sit further out and are crossed.
+ * the glow sits just outside them. Up and down sit further out and are crossed.
  */
-const RING_GAP_PX = EXIT_RADIUS + RING_STROKE_PX;
+const RING_GAP_PX = EXIT_RADIUS + RING_GLOW_PX / 2;
 
 function placeRing(element: SVGSVGElement | null, disc: Disc): void {
   if (element === null) return;
-  const half = (disc.r + RING_GAP_PX) * RING_EXTENT;
+  const radius = disc.r + RING_GAP_PX;
+  const half = radius * RING_EXTENT;
+  element.style.setProperty('--ring-unit', String(1 / radius));
   element.style.width = `${2 * half}px`;
   element.style.height = `${2 * half}px`;
   element.style.transform = `translate(${disc.x - half}px, ${disc.y - half}px)`;

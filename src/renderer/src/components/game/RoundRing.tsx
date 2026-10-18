@@ -1,20 +1,28 @@
 /**
- * The ring round the arena (todo 154): one turn a round, the off-round after
- * each round in one colour and the rest of the round, which a run waits out,
- * in another; a hand sweeps it from the round at the top. The hand turns by a
- * CSS animation, so the map's canvas still draws only on change
- * (`mudengine-ui` › parts/game.md). `WorldCanvas` places it on the arena each
- * frame it draws.
+ * The glow round the arena (todo 154, drawn as the game view prototype's
+ * `todo/archive/140-game-view-prototype.html`): a soft band just outside the
+ * rim, the off-round after each round in one colour and the rest of the round,
+ * which a run waits out, in another; an arc fills it once a round from the
+ * top. The arc grows by a CSS animation, so the map's canvas still draws only
+ * on change (`mudengine-ui` › parts/game.md). `WorldCanvas` places it on the
+ * arena each frame it draws.
  */
-import { forwardRef, memo, type ForwardedRef } from 'react';
+import { forwardRef, memo, type CSSProperties, type ForwardedRef } from 'react';
 
 import { intoRound, type RoundAnchor } from '../../lib/gameRounds';
 import { t } from '../../lib/i18n';
 
-/** How far the drawing reaches past the ring's radius (the hand's tip); `placeRing` sizes by it. */
+/** The SVG's size as a share of the ring's radius; the blur spills past it (`overflow: visible`). */
 export const RING_EXTENT = 1.1;
-/** The ring's and the hand's stroke, px; `placeRing` keeps the ring this far off the exit discs. */
-export const RING_STROKE_PX = 3;
+/** The glow's width, px; `placeRing` keeps the ring half this off the exit discs. */
+export const RING_GLOW_PX = 8;
+const SWEEP_PX = 2.5;
+/**
+ * The ring is drawn at radius 1 and `placeRing` sets `--ring-unit` to one screen px in those
+ * units. Widths are scaled by it rather than drawn with `non-scaling-stroke`, which makes
+ * Chromium ignore `pathLength` and break each arc into dots (measured 2026-10-17).
+ */
+const width = (px: number): CSSProperties => ({ strokeWidth: `calc(var(--ring-unit) * ${px}px)` });
 const VIEW = `${-RING_EXTENT} ${-RING_EXTENT} ${2 * RING_EXTENT} ${2 * RING_EXTENT}`;
 
 function RoundRing({ anchor }: { anchor: RoundAnchor | null }, ref: ForwardedRef<SVGSVGElement>) {
@@ -29,33 +37,33 @@ function RoundRing({ anchor }: { anchor: RoundAnchor | null }, ref: ForwardedRef
         });
   return (
     <svg aria-label={label} className="gv-round-ring" ref={ref} role="img" viewBox={VIEW}>
-      {share === null ? (
-        <circle className="gv-round-unknown" pathLength={1} r={1} strokeWidth={RING_STROKE_PX} />
-      ) : (
-        <g transform="rotate(-90)">
-          <circle className="gv-round-wait" pathLength={1} r={1} strokeWidth={RING_STROKE_PX} />
-          <circle
-            className="gv-round-off"
-            pathLength={1}
-            r={1}
-            strokeDasharray={`${share} 1`}
-            strokeWidth={RING_STROKE_PX}
-          />
-        </g>
-      )}
-      <line
-        className="gv-round-hand"
-        key={anchor.roundAt}
-        strokeWidth={RING_STROKE_PX}
-        style={{
-          animationDuration: `${anchor.periodMs}ms`,
-          animationDelay: `${-intoRound(anchor, Date.now())}ms`
-        }}
-        x1={0}
-        x2={0}
-        y1={-0.95}
-        y2={-RING_EXTENT}
-      />
+      <g transform="rotate(-90)">
+        {share === null ? (
+          <circle className="gv-round-glow gv-round-unknown" r={1} style={width(RING_GLOW_PX)} />
+        ) : (
+          <>
+            <circle className="gv-round-glow gv-round-wait" r={1} style={width(RING_GLOW_PX)} />
+            <circle
+              className="gv-round-glow gv-round-off"
+              pathLength={1}
+              r={1}
+              strokeDasharray={`${share} 1`}
+              style={width(RING_GLOW_PX)}
+            />
+          </>
+        )}
+        <circle
+          className="gv-round-sweep"
+          key={anchor.roundAt}
+          pathLength={1}
+          r={1}
+          style={{
+            ...width(SWEEP_PX),
+            animationDuration: `${anchor.periodMs}ms`,
+            animationDelay: `${-intoRound(anchor, Date.now())}ms`
+          }}
+        />
+      </g>
     </svg>
   );
 }
