@@ -60,11 +60,33 @@ describe('a talk-box line of several commands', () => {
   });
 
   /* Reviewer's find: `;D` split off a gossip is `D`, which walks down. */
-  it('never splits a line that opens on a channel', () => {
+  it('keeps a wink in the text, on any line and on speech', () => {
     expect(parseMacro('gos lol ;D')).toBeNull();
     expect(parseMacro('.see you;)')).toBeNull();
-    expect(parseMacro('/Soul on my way; 2 mins')).toBeNull();
-    expect(parseMacro('  br back in 5;brb')).toBeNull();
+    expect(parseMacro('gos gg ;-( bye')).toBeNull();
+    expect(parseMacro('get torch ;)')).toBeNull();
+    // Off a channel a letter after `;` is a command: `d` walks down.
+    expect(parseMacro('n;d')).toEqual([
+      { command: 'n', times: 1 },
+      { command: 'd', times: 1 }
+    ]);
+  });
+
+  // User, 2026-10-17: a line that opens on a channel splits like any other.
+  it('splits a line that opens on a channel into speech and commands', () => {
+    expect(parseMacro('.@do enter arch;enter arch;invite brak;/brak @do join rayz;par')).toEqual([
+      { command: '.@do enter arch', times: 1 },
+      { command: 'enter arch', times: 1 },
+      { command: 'invite brak', times: 1 },
+      { command: '/brak @do join rayz', times: 1 },
+      { command: 'par', times: 1 }
+    ]);
+    expect(parseMacro('gos lol ;D;2n')).toEqual([
+      { command: 'gos lol ;D', times: 1 },
+      { command: 'n', times: 2 }
+    ]);
+    // A lowercase `d` after an announcement is a move.
+    expect(parseMacro('.going down;d')).toHaveLength(2);
     // A word that only begins like a channel is a command like any other.
     expect(parseMacro('gossipers;n')).toHaveLength(2);
   });

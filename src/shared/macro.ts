@@ -5,8 +5,9 @@
  * `;` separates commands, `6s` is `s` six times, and `2d,6s,3u` is three of
  * those in one piece. A comma only joins repeats: a piece whose every
  * comma-separated part is `<count><command>` is split, and anything else —
- * `say hi, all` — is one command with its comma. A line that opens on a
- * channel is speech and is never split. A macro written as a list holds one
+ * `say hi, all` — is one command with its comma. A `;` that opens a wink
+ * (`;)`, and on a line that opens on a channel `;D` and `;P` too) is text,
+ * never a separator (user, 2026-10-17). A macro written as a list holds one
  * command an entry (`pairs.ts` joins them a line each), and nothing in an
  * entry is split on `;`, so `gos gg ;)` stays one command. Pure, so the box
  * can decide with it which path a line takes and main can parse the same
@@ -42,16 +43,40 @@ function piecesOf(piece: string): MacroPiece[] {
     : [{ command: piece, times: 1 }];
 }
 
+/** A `;` opening a wink of punctuation, `;)` or `;-(`: speech, and `)` alone does nothing. */
+const WINK = /;['^-]?[()[\]|/\\*]+(?=[\s;]|$)/y;
+/** On a line that opens on a channel, `;D` and `;P` are winks too; elsewhere `d` walks down. */
+const SPOKEN_WINK = /;['^-]?[DP](?=[\s;]|$)/y;
+
+/** The line cut at every `;` that separates commands, leaving each wink in its text. */
+function splitCommands(line: string): string[] {
+  const winks = channelPrefix(line.trimStart()) === null ? [WINK] : [WINK, SPOKEN_WINK];
+  const pieces: string[] = [];
+  let from = 0;
+  for (let at = line.indexOf(';'); at !== -1; at = line.indexOf(';', at + 1)) {
+    const wink = winks.some((pattern) => {
+      pattern.lastIndex = at;
+      return pattern.test(line);
+    });
+    if (wink) continue;
+    pieces.push(line.slice(from, at));
+    from = at + 1;
+  }
+  pieces.push(line.slice(from));
+  return pieces;
+}
+
 /**
  * The commands a line stands for, in order, or null where it is one command
- * with no directive in it, which the box sends exactly as typed.
+ * with no directive in it, which the box sends exactly as typed. A line that
+ * opens on a channel is split like any other: `.@do enter arch;par` says the
+ * first and sends the second (user, 2026-10-17).
  */
 export function parseMacro(line: string): MacroPiece[] | null {
-  // Speech carries `;)`, and `gos gg ;)` split would say `)` in the room.
-  if (channelPrefix(line.trimStart()) !== null) return null;
-  let directive = line.includes(';');
+  const parts = splitCommands(line);
+  let directive = parts.length > 1;
   const steps: MacroPiece[] = [];
-  for (const piece of line.split(';')) {
+  for (const piece of parts) {
     const trimmed = piece.trim();
     if (trimmed.length === 0) continue;
     const pieces = piecesOf(trimmed);

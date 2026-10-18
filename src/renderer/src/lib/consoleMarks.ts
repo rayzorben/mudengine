@@ -48,6 +48,13 @@ export interface ConsoleMarks {
    * resets the rows it was drawn on.
    */
   page(changes: readonly MarkChange[]): void;
+  /**
+   * The console was reset: every row is gone. xterm's `reset` makes new
+   * buffers and leaves the old markers undisposed, still holding their line
+   * numbers, so a later push for an old line drew its glyph on whatever row
+   * now has that number.
+   */
+  cleared(): void;
 }
 
 interface Row {
@@ -101,6 +108,10 @@ export function drawMarks(term: Terminal, dress: MarkDress): ConsoleMarks {
     page(changes) {
       apply(changes);
       apply([...pushed].map(([id, mark]) => ({ id, mark })));
+    },
+    cleared() {
+      for (const row of [...rows.values()]) row.marker.dispose();
+      rows.clear();
     }
   };
 }

@@ -915,6 +915,12 @@ export default function TerminalView({
     const writer = consoleWriter(term);
     writerRef.current = writer;
     const notices: ScreenNotices = screenNotices(() => terminalSurface(term));
+    /** The screen emptied, with the notices and marked rows it held. */
+    const wipe = (): void => {
+      notices.forget();
+      term.reset();
+      marks.cleared();
+    };
     /**
      * Every notice, at the writer's `settled` moment. `term.buffer` answers
      * for what has been **parsed**, not for what has been queued: three
@@ -989,8 +995,7 @@ export default function TerminalView({
           const buffer = term.buffer.active;
           above = buffer.baseY - buffer.viewportY;
           term.options.scrollback = lines;
-          notices.forget();
-          term.reset();
+          wipe();
         });
         for (const piece of sliceLines(page.text, tuning().restoreSliceChars)) writer.write(piece);
         writer.settled(() => {
@@ -1003,11 +1008,7 @@ export default function TerminalView({
         });
       },
       atCapacity: () => term.buffer.active.baseY >= (term.options.scrollback ?? 0),
-      reset: () =>
-        writer.settled(() => {
-          notices.forget();
-          term.reset();
-        }),
+      reset: () => writer.settled(wipe),
       notice: postNotice,
       jumpToLatest,
       place: () => {

@@ -104,11 +104,19 @@ function isFault(read: MacroStep | MacroFault): read is MacroFault {
   return !(MACRO_STEP_KINDS as readonly string[]).includes(read.kind);
 }
 
-/** A macro's text (a list's lines, or a `;` line) read into its steps, or why not. */
-export function readMacro(text: string): MacroRead {
+/**
+ * A macro's text (a list's lines, or a `;` line) read into its steps, or why
+ * not. `typed` is a line from the Talk box or the terminal, whose speech is
+ * never filled in; a written macro's `gos {hp}` is.
+ */
+export function readMacro(text: string, typed = false): MacroRead {
   const steps: MacroStep[] = [];
   for (const { command, times } of macroLines(text)) {
-    const read = stepOf(command, times);
+    // Typed speech goes out as typed, split or not: `{grins}` and a remote's `{HP=600/600}` are words.
+    const read =
+      typed && channelPrefix(command.trim()) !== null
+        ? ({ kind: 'send', command, times, fills: [] } as const)
+        : stepOf(command, times);
     if (isFault(read)) return { fault: read };
     // Counted, as MegaMUD counts: `2get all` gets twice. A send keeps its count as `times`.
     const each = read.kind === 'send' ? 1 : times;
@@ -133,13 +141,13 @@ export function runsItself(line: string): boolean {
 /**
  * A typed line read into its steps, or null where it goes out as typed: a
  * line of several (`parseMacro`), a list, a client command, or a line with
- * braces. Speech on a channel and a line marked `AS_TYPED` are never any of
+ * braces. One line of speech and a line marked `AS_TYPED` are never any of
  * them.
  */
 export function typedSteps(line: string): MacroRead | null {
   if (asTyped(line) !== null) return null;
   if (!line.includes('\n') && parseMacro(line) === null && !runsItself(line)) return null;
-  return readMacro(line);
+  return readMacro(line, true);
 }
 
 /** The other macros a step list may call: a key by its name, an alias by its word. */
