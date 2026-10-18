@@ -5,7 +5,7 @@ import { aliasRowRefusals, normalizeAliases } from '../aliases';
 import { DEFAULT_CONFIG, normalizeConfig } from '../config';
 import { keyRowRefusals, readKeys } from '../keys';
 import { macroBook, loopingIn } from '../macroBook';
-import { expandMacros, readMacro } from '../macroSteps';
+import { expandMacros, readMacro, typedSteps } from '../macroSteps';
 import { pairsRecord, statedPairs } from '../pairs';
 
 // Todo 134: a macro written one command a line, with values, calls and actions.
@@ -184,5 +184,26 @@ describe('the alias command', () => {
     // Positive control above: speech and other words are not it.
     expect(aliasCommandOf('gos alias dg')).toBeNull();
     expect(aliasCommandOf('aliases')).toBeNull();
+  });
+});
+
+// User, 2026-10-17: a typed line opening on a channel splits, and its speech goes out as typed.
+describe('a typed line of speech and commands', () => {
+  it('sends the speech as typed, braces and all, and the commands after it', () => {
+    expect(typedSteps('gos my hp {hp}')).toBeNull();
+    expect(typedSteps('gos my hp {hp};n')).toEqual({
+      steps: [
+        { kind: 'send', command: 'gos my hp {hp}', times: 1, fills: [] },
+        { kind: 'send', command: 'n', times: 1, fills: [] }
+      ]
+    });
+    expect(typedSteps('gos {grins};n')).not.toHaveProperty('fault');
+    // A written macro's speech is still filled in.
+    expect(readMacro('gos my hp {hp}\nn')).toEqual({
+      steps: [
+        { kind: 'send', command: 'gos my hp {hp}', times: 1, fills: ['hp'] },
+        { kind: 'send', command: 'n', times: 1, fills: [] }
+      ]
+    });
   });
 });

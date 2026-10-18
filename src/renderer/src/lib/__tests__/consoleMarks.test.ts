@@ -104,6 +104,20 @@ describe('a marked line in the console', () => {
     marks.apply([{ id: 'k1.1', mark: GLYPH_ONLY }]);
     expect(live().map((entry) => [entry.line, entry.options.x])).toEqual([[2, 16]]);
   });
+
+  it('draws nothing for a line the reset took and the refill did not bring back', async () => {
+    const { term, marks, live } = console80();
+    await parsed(term, `${lineIdOf('k1.1')}Bank of Godfrey\r\n`);
+    marks.apply([{ id: 'k1.1', mark: BANK }]);
+    // The positive control: the line was drawn on before the reset.
+    expect(live()).toHaveLength(2);
+    term.reset();
+    marks.cleared();
+    await parsed(term, 'Town\r\nNorth Road\r\n');
+    // Leaving the bank takes its buttons off, a push for a line no longer held.
+    marks.push([{ id: 'k1.1', mark: GLYPH_ONLY }]);
+    expect(live()).toEqual([]);
+  });
 });
 
 describe('a page and a push that crossed it', () => {
