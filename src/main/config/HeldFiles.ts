@@ -75,6 +75,9 @@ export class HeldFiles implements OwnedFiles {
     if (!before.ok) return before;
     const edited = applyEdit(file, before.text, options);
     if (!edited.ok) return edited;
+    // Nothing changed: no republish and no write, so a save that lists every
+    // loop writes only the loops it changed (todo 854: 423 unchanged edits took 7.3 s).
+    if (edited.text === before.text) return { ok: true };
     return this.swap(file, before.text, edited.text, () => writeYaml(file, edited.text));
   }
 

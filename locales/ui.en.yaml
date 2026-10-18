@@ -580,6 +580,11 @@ notices:
       many: 'The loops that ship with the client now use the names their authors gave them, instead
         of the room they start in. {count} of your loops were copied from that list and have been
         renamed to match: {loopList}'
+    loopsRenameTaken:
+      one: '{count} loop kept its old name, because a loop in the same folder already has the new
+        one: {loopList}'
+      many: '{count} loops kept their old names, because a loop in the same folder already has the
+        new one: {loopList}'
     globalLoopsLifted:
       many: '{count} loops moved from the options file into {globalLoopsDir}. Every character can
         use them.'

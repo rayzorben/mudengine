@@ -242,6 +242,24 @@ describe('a store edit', () => {
  * handler pushed the list the store held before the write, and a second edit
  * made from that list put the first one back.
  */
+describe('an edit that changes nothing', () => {
+  it('is neither republished nor written, where a change is both', () => {
+    let changes = 0;
+    store.on('change', () => (changes += 1));
+    const stamp = fs.statSync(file).mtimeMs;
+
+    expect(store.files.edit(file, { mutate: () => undefined }).ok).toBe(true);
+    expect(changes).toBe(0);
+    expect(fs.existsSync(`${file}.bak`)).toBe(false);
+    expect(fs.statSync(file).mtimeMs).toBe(stamp);
+
+    // The positive control: the same door with a real change.
+    expect(store.files.edit(file, { mutate: (doc) => doc.set('name', 'Thorn II') }).ok).toBe(true);
+    expect(changes).toBe(1);
+    expect(fs.readFileSync(file, 'utf8')).toContain('Thorn II');
+  });
+});
+
 describe('a supplies write', () => {
   /** Rayzor's torch as his file holds it: a block mapping, written by hand. */
   const TORCH =

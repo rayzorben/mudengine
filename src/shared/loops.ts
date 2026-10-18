@@ -322,47 +322,54 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((loop, index) => {
     const other = b[index];
-    if (!other) return false;
-    if (loop.name !== other.name) return false;
-    if ((loop.bounce ?? false) !== (other.bounce ?? false)) return false;
-    // Preferring is a routing fact about the whole realm, so a file that
-    // gains or loses it has to republish for the reason `category` does.
-    if ((loop.prefer ?? false) !== (other.prefer ?? false)) return false;
-    /*
-     * `category` **is** compared, even though `loopNode` deliberately never
-     * writes it.
-     *
-     * Not comparing it looks safe — it is derived from the name, so two loops
-     * with the same name usually agree about it and the check reads as a
-     * tautology. It stops being one the moment a file states `category:`
-     * outright, which the field's own documentation permits for the loop whose
-     * area is not in its name. Editing that key would then be a change this
-     * function reported as no change at all: the store would not recompose, the
-     * configuration would not republish, and the Loops modal would go on
-     * grouping the loop under its old area until something unrelated forced a
-     * reload. A hot-reloaded file that does not hot-reload is the failure here,
-     * arriving through the one field that was assumed not to matter.
-     *
-     * Both operands always come through `asLoops` — every `LoopStore` path
-     * does — so this is never `string` against `undefined`, and the ordinary
-     * derived case still compares equal rather than republishing on every poll.
-     *
-     * Writing it back is the separate question and the answer is still no: a
-     * value the client derived, appearing in a file the user owns, is one they
-     * would then have to keep in step with a name they are free to edit.
-     */
-    if (loop.category !== other.category) return false;
-    if (loop.pathFile !== other.pathFile) return false;
-    if (loop.stops.length !== other.stops.length) return false;
-    return loop.stops.every((stop, at) => {
-      const twin = other.stops[at];
-      return (
-        !!twin &&
-        stop.room === twin.room &&
-        (stop.linger ?? 0) === (twin.linger ?? 0) &&
-        (stop.every ?? 0) === (twin.every ?? 0)
-      );
-    });
+    return !!other && sameLoop(loop, other);
+  });
+}
+
+/**
+ * Whether two loops say the same thing: `sameLoops`' test for one pair, and
+ * `writeLoops`' for a file that already holds the loop a save lists.
+ */
+export function sameLoop(loop: Loop, other: Loop): boolean {
+  if (loop.name !== other.name) return false;
+  if ((loop.bounce ?? false) !== (other.bounce ?? false)) return false;
+  // Preferring is a routing fact about the whole realm, so a file that
+  // gains or loses it has to republish for the reason `category` does.
+  if ((loop.prefer ?? false) !== (other.prefer ?? false)) return false;
+  /*
+   * `category` **is** compared, even though `loopNode` deliberately never
+   * writes it.
+   *
+   * Not comparing it looks safe — it is derived from the name, so two loops
+   * with the same name usually agree about it and the check reads as a
+   * tautology. It stops being one the moment a file states `category:`
+   * outright, which the field's own documentation permits for the loop whose
+   * area is not in its name. Editing that key would then be a change this
+   * function reported as no change at all: the store would not recompose, the
+   * configuration would not republish, and the Loops modal would go on
+   * grouping the loop under its old area until something unrelated forced a
+   * reload. A hot-reloaded file that does not hot-reload is the failure here,
+   * arriving through the one field that was assumed not to matter.
+   *
+   * Both operands always come through `asLoops` — every `LoopStore` path
+   * does — so this is never `string` against `undefined`, and the ordinary
+   * derived case still compares equal rather than republishing on every poll.
+   *
+   * Writing it back is the separate question and the answer is still no: a
+   * value the client derived, appearing in a file the user owns, is one they
+   * would then have to keep in step with a name they are free to edit.
+   */
+  if (loop.category !== other.category) return false;
+  if (loop.pathFile !== other.pathFile) return false;
+  if (loop.stops.length !== other.stops.length) return false;
+  return loop.stops.every((stop, at) => {
+    const twin = other.stops[at];
+    return (
+      !!twin &&
+      stop.room === twin.room &&
+      (stop.linger ?? 0) === (twin.linger ?? 0) &&
+      (stop.every ?? 0) === (twin.every ?? 0)
+    );
   });
 }
 

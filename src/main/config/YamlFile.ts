@@ -142,7 +142,9 @@ export function editYaml(file: string, options: EditOptions): EditResult {
   const read = readYaml(file);
   if (!read.ok) return read;
   const edited = applyEdit(file, read.text, options);
-  return edited.ok ? writeYaml(file, edited.text) : edited;
+  if (!edited.ok) return edited;
+  // Unchanged text is not written, so the one rolling backup stays the last real edit's.
+  return edited.text === read.text ? { ok: true } : writeYaml(file, edited.text);
 }
 
 /**
