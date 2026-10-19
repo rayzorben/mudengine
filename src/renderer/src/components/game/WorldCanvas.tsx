@@ -47,6 +47,7 @@ import {
   drawFlights,
   drawExits,
   drawFloor,
+  drawRoomName,
   drawTokens,
   EXIT_RADIUS,
   FLIGHT_MS,
@@ -298,7 +299,6 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
         pal,
         d,
         {
-          name: p.character.room.name ?? cell?.name ?? t('game.arena.unknownRoom'),
           facts,
           place,
           area,
@@ -326,6 +326,14 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       }
       const hovered = hoverRef.current?.kind === 'exit' ? hoverRef.current.direction : null;
       exits.current = drawExits(ctx, pal, d, rim, hovered);
+      drawRoomName(
+        ctx,
+        pal,
+        d,
+        p.character.room.name ?? cell?.name ?? t('game.arena.unknownRoom'),
+        exits.current,
+        RING_GAP_PX
+      );
       placeRing(ring.current, d);
       const at = standings(d, list, fighting);
       const { live, struck } = drawFlights(ctx, pal, flights.current, at, now);
