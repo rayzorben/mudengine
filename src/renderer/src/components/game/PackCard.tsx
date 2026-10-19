@@ -15,6 +15,31 @@ import ItemPicture from './ItemPicture';
 const weightText = ({ known, unknown }: Weight): string =>
   unknown === 0 ? known.toLocaleString() : `${known.toLocaleString()}+`;
 
+/**
+ * Where a worn item is worn, as the Inventory card says it: a word from the
+ * realm file rather than the server is marked so, and a slot no listing has
+ * named reads as in use.
+ */
+function WornSlot({ item }: { item: CarriedItem }) {
+  if (item.slot === null)
+    return (
+      <span className="gv-pack-slot" title={t('cards.inventory.inUseTooltip')}>
+        {t('cards.inventory.inUseStatus')}
+      </span>
+    );
+  return item.slotSource === 'realm' ? (
+    <span
+      className="gv-pack-slot"
+      data-inferred="true"
+      title={t('cards.inventory.realmSlotTooltip')}
+    >
+      {item.slot}
+    </span>
+  ) : (
+    <span className="gv-pack-slot">{item.slot}</span>
+  );
+}
+
 function PackCard({
   group,
   label,
@@ -49,7 +74,10 @@ function PackCard({
                 src={art === null ? null : pictureOf(art, realm, item)}
               />
             </span>
-            <span className="gv-pack-name">{item.name}</span>
+            <span className="gv-pack-name">
+              {item.name}
+              {item.equipped && <WornSlot item={item} />}
+            </span>
             {(item.count ?? 1) > 1 ? (
               <span className="gv-pack-count">×{item.count}</span>
             ) : (

@@ -18,7 +18,7 @@ import {
   gameCommands,
   type GameCommands
 } from '../gameCommands';
-import { dockGeometry, DOCK_MIN_COLUMNS, DOCK_PADDING } from '../gameDock';
+import { consoleReach, dockGeometry, DOCK_MIN_COLUMNS, DOCK_PADDING } from '../gameDock';
 import { anchorOf, intoRound, RESYNC_MS } from '../gameRounds';
 import { feedOf, forYou, unreadFor } from '../gameTalk';
 import { t } from '../i18n';
@@ -541,6 +541,16 @@ describe("the game view's console", () => {
 
   it('gives a window too narrow for 80 columns all it has', () => {
     expect(dockGeometry('left', 600, 800, cell).console.width).toBe(600 - 32);
+  });
+
+  it('tells a panel how far up the open console reaches, and that a shut or side one does not', () => {
+    const reach = (dock: 'bottom' | 'float' | 'left' | 'right', open: boolean): number =>
+      consoleReach(dock, dockGeometry(dock, 1920, 1080, cell), open, 1080);
+    expect(reach('bottom', false)).toBe(0);
+    expect(reach('bottom', true)).toBe(dockGeometry('bottom', 1920, 1080, cell).open.height + 16);
+    expect(reach('float', true)).toBe(1080 - dockGeometry('float', 1920, 1080, cell).open.top);
+    expect(reach('left', true)).toBe(0);
+    expect(reach('right', true)).toBe(0);
   });
 });
 
