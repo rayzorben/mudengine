@@ -1124,7 +1124,7 @@ game:
     party: Party
     character: Character
     talk: Talk
-    type: Type
+    pack: Pack
     move: Move
     diagonal: '{first} then {second}'
     bound: key {key}
@@ -1192,18 +1192,52 @@ game:
     oddities: Oddities
     furniture: Furniture
     guild: Guild
+  pack:
+    aria: Pack
+    title: Pack
+    close: Close the pack
+    notListed: The inventory has not been seen yet. It is read on entering the realm, or type i in the console.
+    loadAria: 'Encumbrance {now} of {max}'
+    loadUnknown: The server has not printed the encumbrance yet.
+    loadWorn: Worn
+    loadCarried: Carried
+    loadRest: Coins and items of unknown weight
+    loadFree: Free
+    groupMeta: '{count} · {weight} enc'
+    group:
+      gear: Weapons and armour
+      use: Potions, food and drink
+      scroll: Scrolls
+      other: Other things
+    cash: Cash
+    wealth: 'Wealth {copper} copper'
+    keys: Keys
+    tokens: Tokens
   sheet:
     aria: Character
-    close: Close the character sheet
+    close: Close the character panel
     level: level {level}
+    portrait: '{race} {className}'
+    livesCp: Lives/CP
+    exp: Exp
+    attributes: Attributes
+    combat: Combat
+    skills: Skills
+    hits: Hits
+    elsewhere: 'Also worn: {items}'
+    region:
+      head: Head
+      torso: Body
+      arms: Arms and hands
+      held: Held
+      lower: Waist and legs
     strength: Strength
     intellect: Intellect
     willpower: Willpower
     agility: Agility
     health: Health
     charm: Charm
-    armourClass: Armour class
-    damageResist: Damage resist
+    acDr: AC/DR
     magicRes: Magic res
     spellcasting: Spellcasting
     perception: Perception
@@ -1213,7 +1247,6 @@ game:
     picklocks: Picklocks
     tracking: Tracking
     martialArts: Martial arts
-    lives: Lives
   status:
     combat: '*Combat Engaged*'
     sneaking: Sneaking
