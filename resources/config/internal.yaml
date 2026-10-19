@@ -1822,6 +1822,9 @@ tuning:
     # exiting at all.
     exitDrainMs: 500
 
+    # The largest picture put on the clipboard, in bytes.
+    clipboardImageBytes: 8000000
+
   # The flight recorder: each thread sampled in chunks, and a chunk kept under
   # the log directory's stalls/ only when the thread was busy without a break
   # for stallMs (2026-10-01, lag at startup nobody could catch afterwards).

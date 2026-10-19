@@ -40,33 +40,52 @@ function statusLine(status: PortraitStatus): string | null {
 function PortraitHead({
   character,
   art,
-  portrait
+  portrait,
+  onOpen
 }: {
   character: CharacterState;
   art: ItemArtIndex | null;
   portrait: PortraitView;
+  /** The drawn portrait pressed: shown whole. */
+  onOpen(): void;
 }) {
   const name = character.fullName ?? character.name ?? t('game.bar.unknownName');
   const kind = art === null ? null : portraitOf(art, character.race, character.className);
   const { src, failed } = useFirstPicture([portrait.picture, kind]);
   const why = statusLine(portrait.status);
+  const drawn = src !== null && src === portrait.picture;
   const p = character.progress;
+  const picture =
+    src === null ? (
+      <span aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+    ) : (
+      <img
+        alt={t('game.sheet.portrait', {
+          race: character.race ?? '',
+          className: character.className ?? ''
+        })}
+        onError={failed}
+        src={src}
+      />
+    );
   return (
     <div className="gv-portrait-head">
-      <div className="gv-portrait" title={why ?? undefined}>
-        {src === null ? (
-          <span aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
-        ) : (
-          <img
-            alt={t('game.sheet.portrait', {
-              race: character.race ?? '',
-              className: character.className ?? ''
-            })}
-            onError={failed}
-            src={src}
-          />
-        )}
-      </div>
+      {drawn ? (
+        <button
+          aria-label={t('game.sheet.portraitOpen')}
+          className="gv-portrait"
+          data-drawn="true"
+          onClick={onOpen}
+          title={t('game.sheet.portraitOpen')}
+          type="button"
+        >
+          {picture}
+        </button>
+      ) : (
+        <div className="gv-portrait" title={why ?? undefined}>
+          {picture}
+        </div>
+      )}
       <div>
         <h3>{name}</h3>
         <div className="gv-quiet">

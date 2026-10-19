@@ -208,7 +208,12 @@ export interface Host {
    */
   deliver(caller: Caller, file: string): string | null;
   /** The system clipboard, or null where the window has to keep its own. */
-  readonly clipboard: { read(): string; write(text: string): void } | null;
+  readonly clipboard: {
+    read(): string;
+    write(text: string): void;
+    /** A PNG; false when the platform could not read it as one. */
+    writeImage(png: Uint8Array): boolean;
+  } | null;
   /** Put the quit confirmation up and wait for the answer. */
   askAboutQuitting(question: QuitQuestion): QuitAnswer;
 

@@ -32,6 +32,8 @@ export interface PortraitKeeperDeps {
 
 export class PortraitKeeper {
   private view: PortraitView = NO_PORTRAIT;
+  /** The bytes behind `view.picture`, for a save. */
+  private shown: Picture | null = null;
   /** The facts each ask was for, done or under way: never asked twice for the same. */
   private readonly asked = new Set<string>();
   /** Of those, the ones the server did not answer: asked again on the next entry to the realm. */
@@ -49,6 +51,11 @@ export class PortraitKeeper {
 
   current(): PortraitView {
     return this.view;
+  }
+
+  /** The picture shown, as drawn, or null before one. */
+  picture(): Picture | null {
+    return this.shown;
   }
 
   observe(state: CharacterState): void {
@@ -151,6 +158,7 @@ export class PortraitKeeper {
   }
 
   private show(picture: Picture, drawn = true): void {
+    this.shown = picture;
     const url = `data:${picture.type};base64,${Buffer.from(picture.bytes).toString('base64')}`;
     const status: PortraitStatus = drawn ? { kind: 'drawn' } : this.view.status;
     this.set({ picture: url, status });

@@ -2390,7 +2390,12 @@ const TUNING_DEFAULTS = {
      * nobody may be reading. The one thing worse than losing the message is not
      * exiting at all.
      */
-    exitDrainMs: 500
+    exitDrainMs: 500,
+    /**
+     * The largest picture put on the clipboard, as the PNG the window made of
+     * it: a 512 by 768 portrait is well under 1 MB, a full-size one about 1.2 MB.
+     */
+    clipboardImageBytes: 8_000_000
   },
   /**
    * The flight recorder (`FlightRecorder`): each thread sampled in chunks, and

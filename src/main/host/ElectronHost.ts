@@ -15,6 +15,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  nativeImage,
   net,
   protocol,
   screen,
@@ -420,7 +421,13 @@ export function createElectronHost(layout: Layout): Host {
 
     clipboard: {
       read: () => clipboard.readText(),
-      write: (text) => clipboard.writeText(text)
+      write: (text) => clipboard.writeText(text),
+      writeImage: (png) => {
+        const image = nativeImage.createFromBuffer(Buffer.from(png));
+        if (image.isEmpty()) return false;
+        clipboard.writeImage(image);
+        return true;
+      }
     },
 
     /*

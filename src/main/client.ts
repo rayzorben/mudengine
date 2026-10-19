@@ -121,6 +121,8 @@ import { ART_BUILD_SECRET } from './art/buildSecret';
 import { lastPortraitAt, PortraitCache } from './art/portraitCache';
 import { Portraits } from './art/Portraits';
 import { solveOnWorker } from './art/proofOfWork';
+import { pngOfDataUrl } from './art/pngOfDataUrl';
+import { handlePortraitFiles } from './art/portraitFiles';
 import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
 import { NO_PORTRAIT } from '../shared/portrait';
 import { SlicedSimulator } from './session/slicedSimulator';
@@ -3402,6 +3404,11 @@ function registerIpc(): void {
       profiles?.reload();
     }
   });
+  handlePortraitFiles({
+    host: platform,
+    picture: (id) => portraits?.picture(id) ?? null,
+    nameOf: (id) => labelOf(id).name
+  });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
     const id = asProfileId(rawId);
@@ -3569,6 +3576,19 @@ function registerIpc(): void {
       return;
     }
     platform.clipboard.write(text);
+  });
+  // A PNG the window drew from a picture; parsed, and bounded by `tuning.app.clipboardImageBytes`.
+  handle(Invoke.copyImage, (_caller, png: unknown) => {
+    const bytes = pngOfDataUrl(png, tuning().app.clipboardImageBytes);
+    if (bytes === null) {
+      announce('clipboard', t('app.clipboard.notAPicture'));
+      return false;
+    }
+    if (platform.clipboard === null) {
+      announce('clipboard', t('app.clipboard.none'));
+      return false;
+    }
+    return platform.clipboard.writeImage(bytes);
   });
   handle(Invoke.pasteText, () => {
     if (platform.clipboard === null) {

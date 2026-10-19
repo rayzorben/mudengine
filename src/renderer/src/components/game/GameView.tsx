@@ -80,6 +80,8 @@ export interface GameViewProps {
     | 'setThreshold'
     | 'portrait'
     | 'onPortrait'
+    | 'copyImage'
+    | 'savePortrait'
   >;
   session: SessionId;
   view: SessionView;
