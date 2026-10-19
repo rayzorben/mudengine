@@ -133,6 +133,32 @@ describe('a death', () => {
     expect(after.progress.damageResist).toBeNull();
     expect(after.progress.magicRes).toBeNull();
   });
+
+  /* 2026-10-19: the monster that killed Soul read as beside him in the temple. */
+  it('leaves nobody in the room until the temple says who is there', () => {
+    const killed: CharacterState = {
+      ...EMPTY_CHARACTER,
+      room: {
+        ...EMPTY_CHARACTER.room,
+        name: 'Darkwood Forest',
+        occupants: [
+          {
+            name: 'orc',
+            kind: 'mob',
+            disposition: 'hostile',
+            uncertain: false,
+            costly: 'never',
+            charmed: false,
+            hidden: false,
+            free: false
+          }
+        ]
+      }
+    };
+    const after = died(killed, T);
+    expect(after.room.occupants).toEqual([]);
+    expect(after.room.name).toBe('Darkwood Forest');
+  });
 });
 
 /*
