@@ -2775,7 +2775,12 @@ function registerIpc(): void {
     const world = worldFor(session);
     const parsed = asGameMapAsk(ask);
     if (!world || world.size === 0 || parsed === null) return EMPTY_GAME_MAP;
-    return gameMapsFor(world).window(parsed, lairLevelOf(session));
+    const room = host?.get(session)?.manager.character.room;
+    const here =
+      room === undefined || room.map === null || room.number === null
+        ? null
+        : roomId(room.map, room.number);
+    return gameMapsFor(world).window(parsed, lairLevelOf(session), here);
   });
   handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {
     const manager = host?.get(session)?.manager;

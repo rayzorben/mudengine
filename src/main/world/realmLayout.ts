@@ -1,18 +1,21 @@
 /**
  * Every room of one map on floors, for the game view (todo 140, floors todo
- * 151). A floor number per room first: up is one more, down one less, a
- * compass exit the same, followed from either end of an exit. Then each floor
- * is laid out breadth-first over `planeSteps`, nothing dropped: a room whose
- * cell is taken starts an island pushed out along the exit that reached it; a
- * floor reached by stairs starts on the stairs' own cell when it fits; a
- * room's teleport sets its landing east of it; a room nothing on the map
- * reaches starts one `UNJOINED_GAP` east of everything. Laid out on first ask
- * and kept. The reasons are in `mudengine-world` › `parts/realm.md` › *The game
- * view's map*.
+ * 151). A floor per room first: rooms joined both ways by a compass exit share
+ * one, then up is one more and down one less. Then each floor is laid out
+ * breadth-first over `planeSteps`, nothing dropped: a room whose cell is taken
+ * starts an island pushed out along the exit that reached it; a floor reached
+ * by stairs starts on the stairs' own cell when it fits; a teleport's landing
+ * goes east of it; a room nothing on the map reaches, or nothing leads into,
+ * starts one `UNJOINED_GAP` east of everything. Laid out on first ask and
+ * kept. Why: `mudengine-world` › `parts/realm.md` › *The game view's map*.
  */
 import { cellKey, type GameStair } from '../../shared/gameMap';
 import { roomId, type RoomId, type WorldRoom } from '../../shared/world';
 import { leapSteps, planeSteps, type LeapGraph } from './planeSteps';
+import type { WorldGraph } from './WorldGraph';
+
+/** The realm as the layout reads it: the plane's ways, and whether anything leads into a room. */
+export type LayoutGraph = LeapGraph & Pick<WorldGraph, 'hasWayIn'>;
 
 export interface PlanePlace {
   gx: number;
@@ -54,6 +57,8 @@ interface Link {
   dz: -1 | 0 | 1;
   /** A teleport's landing keeps no floor of its own: it is counted from the other ways. */
   teleport: boolean;
+  /** The room's own exit, or the reverse of one that leads in. */
+  own: boolean;
 }
 
 interface Spill {
@@ -67,7 +72,7 @@ const idOf = (room: WorldRoom): RoomId => roomId(room.map, room.room);
 
 /** Each room's ways to other rooms of the map, its own first, then the ones that lead in. */
 function linksOf(
-  graph: LeapGraph,
+  graph: LayoutGraph,
   map: number,
   rooms: readonly WorldRoom[]
 ): { steps: Map<RoomId, Link[]>; leaps: Map<RoomId, Link[]> } {
@@ -79,34 +84,55 @@ function linksOf(
     else into.set(id, [link]);
   };
   const inward: Array<[Map<RoomId, Link[]>, RoomId, Link]> = [];
-  const both = (into: Map<RoomId, Link[]>, room: WorldRoom, link: Link) => {
-    add(into, idOf(room), link);
+  const both = (
+    into: Map<RoomId, Link[]>,
+    room: WorldRoom,
+    id: RoomId,
+    entered: boolean,
+    link: Link
+  ) => {
+    add(into, id, link);
+    // A room nothing leads into is never drawn beside the room it leads to:
+    // Town Gates (1/1315) would stand by Town Gates (1/1) as a second gate.
+    if (!entered) return;
     inward.push([
       into,
       link.to,
       {
-        to: idOf(room),
+        to: id,
         destination: room,
         dx: -link.dx,
         dy: -link.dy,
         dz: -link.dz as Link['dz'],
-        teleport: link.teleport
+        teleport: link.teleport,
+        own: false
       }
     ]);
   };
   for (const room of rooms) {
+    const id = idOf(room);
+    const entered = graph.hasWayIn(id);
     for (const { dx, dy, to, destination } of planeSteps(graph, room))
       if (destination.map === map)
-        both(steps, room, { to, destination, dx, dy, dz: 0, teleport: false });
+        both(steps, room, id, entered, {
+          to,
+          destination,
+          dx,
+          dy,
+          dz: 0,
+          teleport: false,
+          own: true
+        });
     for (const way of leapSteps(graph, room))
       if (way.destination.map === map)
-        both(leaps, room, {
+        both(leaps, room, id, entered, {
           to: way.to,
           destination: way.destination,
           dx: 0,
           dy: 0,
           dz: way.kind === 'up' ? 1 : way.kind === 'down' ? -1 : 0,
-          teleport: way.kind === 'teleport'
+          teleport: way.kind === 'teleport',
+          own: true
         });
   }
   for (const [into, id, link] of inward) add(into, id, link);
@@ -114,27 +140,47 @@ function linksOf(
 }
 
 /**
- * A floor number per room, breadth-first from the lowest-numbered room not yet
- * reached. A room reached two ways that disagree keeps the first: the stairs'
- * mark then says so (`GameStair.odd`).
+ * A floor number per room. Rooms joined by a compass exit and its way back
+ * share a floor, and each such group is flooded whole before anything leaves
+ * it; stairs, and a compass exit with no way back, then set the next group's
+ * floor, breadth-first from the lowest-numbered room not yet reached. A floor
+ * already set stays, and a stair that disagrees with it is marked
+ * (`GameStair.odd`): Silvermere's Jail Cell drops into the Bank Vault, and the
+ * street the vault opens onto stays on its own floor.
  */
 function floorsOf(
   rooms: readonly WorldRoom[],
   steps: ReadonlyMap<RoomId, Link[]>,
   leaps: ReadonlyMap<RoomId, Link[]>
 ): Map<RoomId, number> {
+  // Each room's own compass exits: a pair both ways is a two-way exit.
+  const own = new Map<RoomId, Set<RoomId>>();
+  for (const [id, links] of steps) {
+    const to = new Set<RoomId>();
+    for (const link of links) if (link.own) to.add(link.to);
+    own.set(id, to);
+  }
   const z = new Map<RoomId, number>();
   for (const root of rooms) {
     if (z.has(idOf(root))) continue;
-    z.set(idOf(root), 0);
-    const queue = [root];
-    for (let head = 0; head < queue.length; head += 1) {
-      const id = idOf(queue[head]!);
-      const here = z.get(id)!;
-      for (const link of [...(steps.get(id) ?? []), ...(leaps.get(id) ?? [])]) {
-        if (link.teleport || z.has(link.to)) continue;
-        z.set(link.to, here + link.dz);
-        queue.push(link.destination);
+    const climbs: Array<{ room: WorldRoom; floor: number }> = [{ room: root, floor: 0 }];
+    for (let next = 0; next < climbs.length; next += 1) {
+      const { room, floor } = climbs[next]!;
+      if (z.has(idOf(room))) continue;
+      z.set(idOf(room), floor);
+      const group = [room];
+      for (let head = 0; head < group.length; head += 1) {
+        const id = idOf(group[head]!);
+        for (const link of steps.get(id) ?? []) {
+          if (z.has(link.to)) continue;
+          if (own.get(id)?.has(link.to) === true && own.get(link.to)?.has(id) === true) {
+            z.set(link.to, floor);
+            group.push(link.destination);
+          } else climbs.push({ room: link.destination, floor });
+        }
+        for (const link of leaps.get(id) ?? [])
+          if (!link.teleport && !z.has(link.to))
+            climbs.push({ room: link.destination, floor: floor + link.dz });
       }
     }
   }
@@ -187,8 +233,17 @@ function stairsOf(
   return out;
 }
 
-export function layOutMap(graph: LeapGraph, map: number, rooms: readonly WorldRoom[]): PlaneLayout {
-  const ordered = [...rooms].sort((a, b) => a.room - b.room);
+export function layOutMap(
+  graph: LayoutGraph,
+  map: number,
+  rooms: readonly WorldRoom[]
+): PlaneLayout {
+  // Rooms something leads into first, so a room nothing leads into never seeds the island its
+  // namesake is laid out in.
+  const shut = new Set(rooms.filter((room) => !graph.hasWayIn(idOf(room))).map(idOf));
+  const ordered = [...rooms].sort(
+    (a, b) => Number(shut.has(idOf(a))) - Number(shut.has(idOf(b))) || a.room - b.room
+  );
   const { steps, leaps } = linksOf(graph, map, ordered);
   const z = floorsOf(ordered, steps, leaps);
   const at = new Map<RoomId, PlanePlace>();
@@ -318,7 +373,7 @@ export class RealmLayouts {
   private readonly planes = new Map<number, PlaneLayout>();
   private byMap: Map<number, WorldRoom[]> | null = null;
 
-  constructor(private readonly graph: LeapGraph & { everyRoom(): Iterable<WorldRoom> }) {}
+  constructor(private readonly graph: LayoutGraph & { everyRoom(): Iterable<WorldRoom> }) {}
 
   /** Every room of a map, read from the graph once. */
   roomsOf(map: number): readonly WorldRoom[] {

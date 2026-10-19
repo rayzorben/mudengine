@@ -1204,6 +1204,8 @@ export class Router {
    */
   private draws: Map<number, ScatterSpell> | null = null;
   private backward: Map<RoomId, ReverseEdge[]> | null = null;
+  /** Every room something leads into, a draw's landings included: `hasWayIn`. */
+  private entered: Set<RoomId> | null = null;
   private solved: { to: RoomId; traveller: Traveller; costs: ReadonlyMap<number, number> } | null =
     null;
   /**
@@ -1266,6 +1268,21 @@ export class Router {
    */
   portalsFrom(id: RoomId): readonly PortalExit[] {
     return this.portals.get(id) ?? [];
+  }
+
+  /**
+   * Whether any exit or teleport leads into the room, or a draw can land in
+   * it. The realm holds rooms nothing leads into (Silvermere has a Town Gates
+   * and a Park Plaza that only lead out into their namesakes); the game view's
+   * map keeps them off the streets they lead into.
+   */
+  hasWayIn(id: RoomId): boolean {
+    if (this.entered === null) {
+      this.entered = new Set(this.reverse().keys());
+      for (const draw of this.scatterDoors().values())
+        for (const room of draw.rooms) this.entered.add(room);
+    }
+    return this.entered.has(id);
   }
 
   /**
@@ -2276,10 +2293,10 @@ export class Router {
    * Rooms that lead to each room by a move that always arrives — built once.
    *
    * The scatter solve asks *what does it cost from here to the goal*, and
-   * that is a question about edges pointing the other way. Built lazily and
-   * kept: it is a pure function of the file, and a session that never routes
-   * through a draw never pays for it. A draw is left out, because it leads to
-   * no particular room and that is the whole of what makes it one.
+   * the game view's map asks whether anything leads into a room (`hasWayIn`):
+   * both are questions about edges pointing the other way. Built on the first
+   * ask and kept, as a pure function of the file. A draw is left out, because
+   * it leads to no particular room and that is the whole of what makes it one.
    */
   private reverse(): ReadonlyMap<RoomId, ReadonlyArray<ReverseEdge>> {
     if (this.backward !== null) return this.backward;

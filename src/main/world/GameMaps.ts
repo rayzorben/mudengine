@@ -25,7 +25,7 @@ import { roomId, type Direction, type RoomId, type WorldRoom } from '../../share
 import { tuning } from '../app/tuning';
 import { mapCellOf, type LairLevel, type MapCellGraph } from './localMap';
 import { leapSteps, planeSteps } from './planeSteps';
-import { floorCellKey, RealmLayouts, type PlaneLayout } from './realmLayout';
+import { floorCellKey, RealmLayouts, type LayoutGraph, type PlaneLayout } from './realmLayout';
 import type { ThemePack } from './themePack';
 import type { WorldGraph } from './WorldGraph';
 
@@ -61,7 +61,7 @@ export class GameMaps {
   private readonly facts = new Map<number, PlaneFacts>();
 
   constructor(
-    private readonly graph: MapCellGraph & Pick<WorldGraph, 'everyRoom'>,
+    private readonly graph: MapCellGraph & LayoutGraph & Pick<WorldGraph, 'everyRoom'>,
     private readonly pack: ThemePack
   ) {
     this.layouts = new RealmLayouts(graph);
@@ -138,8 +138,14 @@ export class GameMaps {
     return made;
   }
 
-  window(ask: GameMapAsk, lairLevel: LairLevel): GameMapWindow {
+  /**
+   * `here` is the room the character stands in: a room nothing leads into
+   * (the second Town Gates, 1/1315) is drawn only while the character is in it
+   * (the user, 2026-10-19).
+   */
+  window(ask: GameMapAsk, lairLevel: LairLevel, here: RoomId | null): GameMapWindow {
     const plane = this.layouts.of(ask.map);
+    const shown = (id: RoomId): boolean => id === here || this.graph.hasWayIn(id);
     const half = Math.max(1, Math.min(tuning().view.gameMapHalf, Math.round(ask.half)));
     let centre: GameMapWindow['centre'] = null;
     let cx: number;
@@ -148,7 +154,7 @@ export class GameMaps {
     if (ask.kind === 'room') {
       const id = roomId(ask.map, ask.room);
       const at = plane.at.get(id);
-      if (!at) return { ...EMPTY_GAME_MAP, map: ask.map };
+      if (!at || !shown(id)) return { ...EMPTY_GAME_MAP, map: ask.map };
       centre = { room: id, gx: at.gx, gy: at.gy };
       cx = at.gx;
       cy = at.gy;
@@ -179,7 +185,7 @@ export class GameMaps {
     for (let gy = box.y0; gy <= box.y1; gy += 1) {
       for (let gx = box.x0; gx <= box.x1; gx += 1) {
         const id = plane.cells.get(floorCellKey(floor, gx, gy));
-        if (id === undefined) continue;
+        if (id === undefined || !shown(id)) continue;
         const room = this.graph.byId(id)!;
         const to: GameCell['to'] = {};
         const otherMap: NonNullable<GameCell['otherMap']> = {};
@@ -207,12 +213,13 @@ export class GameMaps {
         });
       }
     }
-    const inBox = (label: PlaneLabel) =>
-      label.z === floor &&
-      label.gx >= box.x0 &&
-      label.gx <= box.x1 &&
-      label.gy >= box.y0 &&
-      label.gy <= box.y1;
+    const inBox = (label: PlaneLabel) => {
+      if (label.z !== floor || label.gx < box.x0 || label.gx > box.x1) return false;
+      if (label.gy < box.y0 || label.gy > box.y1) return false;
+      // Never over the empty cell of a room that is not drawn.
+      const id = plane.cells.get(floorCellKey(floor, label.gx, label.gy));
+      return id === undefined || shown(id);
+    };
     const labels: MapLabel[] = facts.labels
       .filter(inBox)
       .map((label) => ({ ...label, area: areaIndex(label.area) }));
