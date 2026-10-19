@@ -7,7 +7,8 @@
  *
  * Command mode is this element's own key layer: a letter acts at once; `n` or
  * `s` waits for `e` or `w` only in a room with a diagonal starting with it;
- * `i` or Enter opens the console; Esc brings a dragged map back.
+ * Enter opens the console; `c` the character panel and `i` the pack; Esc
+ * closes a panel, else brings a dragged map back.
  */
 import {
   memo,
@@ -55,9 +56,10 @@ import { t } from '../../lib/i18n';
 import { tuning } from '../../lib/tuning';
 import { walkTo } from '../../lib/walkTo';
 import AutoBar from './AutoBar';
-import CharacterSheet from './CharacterSheet';
+import CharacterPanel from './CharacterPanel';
 import CommandBar from './CommandBar';
 import ConsoleBar from './ConsoleBar';
+import PackPanel from './PackPanel';
 import PartyFrames from './PartyFrames';
 import PlayerBar from './PlayerBar';
 import TalkFeed from './TalkFeed';
@@ -90,6 +92,9 @@ export interface GameViewProps {
   renderTalk(onClose: () => void): ReactNode;
 }
 
+/** The panel open over the map, one at a time: `c`'s or `i`'s. */
+type Panel = 'character' | 'pack';
+
 /** The legend: each kind of place the map marks, the lair and a player. */
 const LEGEND = ['bank', 'goods', 'temple', 'tavern', 'trainer'] as const;
 
@@ -113,7 +118,8 @@ function GameView({
   const going = character.combat.engaged || view.walk.status === 'walking';
   const rounds = useRoundAnchor(view.automation.rounds, going);
   const [picked, setPicked] = useState<string | null>(null);
-  const [sheet, setSheet] = useState(false);
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const closePanel = useCallback(() => setPanel(null), []);
   const [fired, setFired] = useState<{ key: string; at: number } | null>(null);
   const pending = useRef<{ first: Direction; timer: number } | null>(null);
   const [talking, setTalking] = useState(false);
@@ -188,13 +194,13 @@ function GameView({
           send('party');
           return;
         case 'character':
-          setSheet((open) => !open);
+        case 'pack': {
+          const which = command.action;
+          setPanel((open) => (open === which ? null : which));
           return;
+        }
         case 'talk':
           setTalk(!talking);
-          return;
-        case 'type':
-          game.openConsole();
           return;
         case undefined:
           return;
@@ -204,7 +210,7 @@ function GameView({
         }
       }
     },
-    [character, target, send, stepBack, session, game, setTalk, talking]
+    [character, target, send, stepBack, session, setTalk, talking]
   );
 
   const flush = useCallback(() => {
@@ -243,7 +249,7 @@ function GameView({
       flush();
     }
     if (key === 'Escape') {
-      if (sheet) setSheet(false);
+      if (panel !== null) setPanel(null);
       else canvas.current?.follow();
       event.preventDefault();
       return;
@@ -346,6 +352,7 @@ function GameView({
       aria-label={t('game.aria')}
       className="gv-root"
       data-console={game.open ? 'open' : 'shut'}
+      data-panel={panel ?? undefined}
       data-talk={talking ? 'open' : undefined}
       data-owns-enter="true"
       onKeyDown={onKeyDown}
@@ -452,7 +459,8 @@ function GameView({
           ◎
         </button>
       </div>
-      {sheet && <CharacterSheet character={character} onClose={() => setSheet(false)} />}
+      {panel === 'character' && <CharacterPanel character={character} onClose={closePanel} />}
+      {panel === 'pack' && <PackPanel character={character} onClose={closePanel} />}
       <TalkFeed lines={feed} self={self} unread={unread} />
       {talking && (
         <div className="gv-hud gv-talk-panel" data-owns-keys="true">

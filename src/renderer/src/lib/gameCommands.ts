@@ -10,7 +10,7 @@ import { asDirection, type Direction } from '@shared/world';
 import { t } from './i18n';
 
 /** What a key does that is not a line sent to the realm. */
-export type GameAction = 'nextTarget' | 'run' | 'party' | 'character' | 'talk' | 'type';
+export type GameAction = 'nextTarget' | 'run' | 'party' | 'character' | 'talk' | 'pack';
 
 export type CommandGlyph =
   | 'attack'
@@ -26,7 +26,7 @@ export type CommandGlyph =
   | 'next'
   | 'character'
   | 'talk'
-  | 'type';
+  | 'pack';
 
 export interface GameCommand {
   key: string;
@@ -182,7 +182,7 @@ export function gameCommands({ character, picked, place, unread }: CommandInputs
       action: 'talk',
       ...(unread > 0 ? { badge: unread, main: true as const } : {})
     },
-    { key: 'i', label: t('game.commands.type'), glyph: 'type', action: 'type' }
+    { key: 'i', label: t('game.commands.pack'), glyph: 'pack', action: 'pack' }
   ];
   return { fight, here, you, exits: exitsOf(character) };
 }

@@ -686,6 +686,7 @@ export default function App() {
    * to show, and each half decides for itself.
    */
   const railVisible = hudOpen || railOpen;
+  const railShown = railOpen && !game.on;
 
   const connected = state.phase === 'connected';
 
@@ -1022,16 +1023,15 @@ export default function App() {
      * window binding firing as well would put two surfaces away with one
      * keystroke: the failure `useHotkeys` records for the diagnostics rail
      * eating the Talk card's Escape. Below that, the topmost of the route
-     * panel, the search bar, the rail and the debug window takes it. The
-     * debug window covers the console and every control in it uses
-     * `keepFocus`, so without its binding Escape went to the realm unseen.
+     * panel, the search bar, the rail (`railShown`: the game view hides it) and
+     * the debug window takes it; its controls `keepFocus`, so unbound, Escape went to the realm.
      */
     ...(!covered && routeOpen ? [{ key: 'Escape', run: closeRoute }] : []),
     ...(!covered && searchOpen && !routeOpen ? [{ key: 'Escape', run: closeSearch }] : []),
-    ...(!covered && railOpen && !searchOpen && !routeOpen
+    ...(!covered && railShown && !searchOpen && !routeOpen
       ? [{ key: 'Escape', run: toggleRail }]
       : []),
-    ...(!covered && debugOpen && !railOpen && !searchOpen && !routeOpen
+    ...(!covered && debugOpen && !railShown && !searchOpen && !routeOpen
       ? [{ key: 'Escape', run: closeDebug }]
       : [])
   ]);

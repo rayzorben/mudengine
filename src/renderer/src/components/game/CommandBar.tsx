@@ -25,7 +25,7 @@ const GLYPH: Record<CommandGlyph, IconName> = {
   next: 'next',
   character: 'user',
   talk: 'broadcast',
-  type: 'terminal'
+  pack: 'bag'
 };
 
 export interface CommandBarProps {

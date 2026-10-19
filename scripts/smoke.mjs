@@ -16364,6 +16364,35 @@ if (paletteOpen) {
     ),
     'and the console still the same element'
   );
+
+  // `i` is the pack and `c` the character panel; Enter, not `i`, opens the
+  // console (todo 20261018-2032-01). The pack is seen first, so the console
+  // opening after Enter is Enter's doing.
+  const panel = () => evaluate(`document.querySelector('.gv-root')?.dataset.panel ?? ''`);
+  const consoleState = () => evaluate(`document.querySelector('.app')?.dataset.console ?? ''`);
+  await key('i', 'KeyI', 73);
+  check(
+    (await readUntil(panel, (p) => p === 'pack')) === 'pack' &&
+      (await evaluate(`!!document.querySelector('.gv-pack')`)),
+    '`i` opens the pack in the game view'
+  );
+  check((await consoleState()) === 'shut', 'and leaves the console shut');
+  await key('c', 'KeyC', 67);
+  check(
+    (await readUntil(panel, (p) => p === 'character')) === 'character' &&
+      (await evaluate(`document.querySelectorAll('.gv-character .gv-slot').length >= 19`)),
+    '`c` swaps it for the character panel, with a square per worn slot'
+  );
+  await key('Escape', 'Escape', 27);
+  check((await readUntil(panel, (p) => p === '')) === '', 'Escape closes the panel');
+  await key('Enter', 'Enter', 13);
+  check((await readUntil(consoleState, (s) => s === 'open')) === 'open', 'Enter opens the console');
+  await key('Escape', 'Escape', 27);
+  check(
+    (await readUntil(consoleState, (s) => s === 'shut')) === 'shut',
+    'and Escape shuts it again'
+  );
+
   check(
     await press('.gv-player [data-action="switch-view"]'),
     'the player bar has the view switch'

@@ -160,6 +160,13 @@ describe("the game view's command bar", () => {
     const commands = gameCommands({ character: state({}), picked: null, place: null, unread: 2 });
     expect(commandFor(commands, 't')).toMatchObject({ action: 'talk', badge: 2, main: true });
   });
+  it('opens the character panel on c and the pack on i; Enter alone opens the console', () => {
+    const commands = gameCommands({ character: state({}), picked: null, place: null, unread: 0 });
+    expect(commandFor(commands, 'c')?.action).toBe('character');
+    expect(commandFor(commands, 'i')?.action).toBe('pack');
+    const all = [...commands.fight, ...commands.here, ...commands.you];
+    expect(all.some((command) => command.key === 'Enter')).toBe(false);
+  });
 });
 
 describe('the diagonal keys', () => {
