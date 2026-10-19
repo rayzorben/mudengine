@@ -59,7 +59,7 @@ const NUMBER_GROW_MS = 140;
 export function standings(
   disc: Disc,
   tokens: readonly ArenaToken[],
-  zoomed: boolean
+  fighting: boolean
 ): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   const place = (list: readonly ArenaToken[], from: number, to: number, reach: number) =>
@@ -73,8 +73,8 @@ export function standings(
     });
   // The character stands on its own room's square, at the middle (user, 2026-10-14).
   for (const token of tokens) if (token.self) out.set(token.key, { x: disc.x, y: disc.y });
-  if (zoomed) {
-    zoomedStandings(tokens, place);
+  if (fighting) {
+    fightStandings(tokens, place);
     return out;
   }
   // The party in a half circle behind it to the left, monsters in one to the right.
@@ -101,12 +101,13 @@ export function standings(
 }
 
 /**
- * Zoomed for a fight (todo 20261018-1314-01, the user's pick of four
- * prototypes): the target in front of the character, the other monsters behind
- * it on two arcs above and below the line to it, so no blow crosses a name.
- * Bearings and reaches are the prototype's.
+ * In a fight (todo 20261019-1358-01, the user's pick of the prototypes): the
+ * target in front of the character, the other monsters behind it on two arcs
+ * above and below the line to it, 12 degrees apart from 36 so four a side
+ * clear each other, the target's line and the room's name. Measured in
+ * `todo/20261019-1358-01-fight-layout.html` at the resting radius.
  */
-function zoomedStandings(
+function fightStandings(
   tokens: readonly ArenaToken[],
   place: (list: readonly ArenaToken[], from: number, to: number, reach: number) => void
 ): void {
@@ -118,19 +119,17 @@ function zoomedStandings(
   );
   const foes = tokens.filter((one) => one.side === 'foe');
   const target = foes.find((one) => one.target);
-  if (target !== undefined) place([target], 0, 0, 0.6);
+  if (target !== undefined) place([target], 0, 0, 0.64);
   const rest = foes.filter((one) => one !== target);
-  place(
+  const arc = (list: readonly ArenaToken[], sign: number) =>
+    place(list, sign * BEHIND_FROM, sign * (BEHIND_FROM + BEHIND_STEP * (list.length - 1)), 0.86);
+  arc(
     rest.filter((_, index) => index % 2 === 0),
-    -27,
-    -65,
-    0.84
+    -1
   );
-  place(
+  arc(
     rest.filter((_, index) => index % 2 === 1),
-    27,
-    65,
-    0.84
+    1
   );
   place(
     tokens.filter((one) => one.side === 'player'),
@@ -139,6 +138,10 @@ function zoomedStandings(
     0.74
   );
 }
+
+/** Where the arcs behind the target start and how far apart their monsters stand, degrees. */
+const BEHIND_FROM = 36;
+const BEHIND_STEP = 12;
 
 /** Up and down leave the plane, so their discs sit off the rim, high and low on the east side. */
 const OFF_PLANE: Partial<Record<Direction, number>> = {
@@ -369,7 +372,7 @@ export function drawFloor(
   pal: GamePalette,
   disc: Disc,
   room: ArenaRoom,
-  zoomed: boolean
+  fighting: boolean
 ): void {
   ctx.save();
   ctx.shadowColor = hexA(pal.shade, 0.6);
@@ -398,7 +401,7 @@ export function drawFloor(
   ctx.stroke();
   // The room's own square, larger than the character's token so its edge shows
   // round it: which room you are in stays plain (the user, 2026-10-18).
-  const half = SELF_RADIUS * tokenScale(disc, zoomed) * 1.45;
+  const half = sizeOf('self', fighting) * disc.r * 1.45;
   ctx.save();
   ctx.shadowColor = hexA(pal.accent, 0.55);
   ctx.shadowBlur = 16;
@@ -432,9 +435,11 @@ export function drawFloor(
   ctx.font = `600 13.5px ${pal.font}`;
   ctx.lineWidth = 4;
   ctx.strokeStyle = hexA(pal.shade, 0.6);
-  ctx.strokeText(room.name, disc.x, disc.y - disc.r * 0.72);
+  // In a fight it sits lower, clear of the top arc behind the target.
+  const nameAt = disc.y - disc.r * (fighting ? 0.66 : 0.72);
+  ctx.strokeText(room.name, disc.x, nameAt);
   ctx.fillStyle = pal.text;
-  ctx.fillText(room.name, disc.x, disc.y - disc.r * 0.72);
+  ctx.fillText(room.name, disc.x, nameAt);
   ctx.font = `500 10.5px ${pal.font}`;
   const factsAt = disc.y + disc.r + 62;
   ctx.strokeText(room.facts, disc.x, factsAt);
@@ -521,37 +526,56 @@ export function drawTokens(
   tokens: readonly ArenaToken[],
   at: ReadonlyMap<string, { x: number; y: number }>,
   struck: ReadonlyMap<string, number>,
-  zoomed: boolean
+  fighting: boolean
 ): void {
-  const scale = tokenScale(disc, zoomed);
   for (const token of tokens) {
     const p = at.get(token.key);
     if (!p) continue;
-    // Zoomed, a monster behind the target is its initials alone (todo 20261018-1314-01).
-    const behind = zoomed && token.side === 'foe' && !token.target;
-    const radius =
-      (token.self ? SELF_RADIUS : token.side === 'player' ? 15 : behind ? 14 : 18) * scale;
-    // Zoomed, the target's name stands above it and its hit points under it.
-    const headed = zoomed && token.target;
-    drawToken(ctx, pal, token, p, radius, struck.get(token.key) ?? 0, !behind && !headed);
-    if (headed) {
-      label(ctx, pal, token.name, p.x, p.y - radius - TARGET_RING_GAP - 16, pal.text);
-      if (token.points !== null)
-        label(ctx, pal, token.points, p.x, p.y + radius + TARGET_RING_GAP + 3, pal.muted);
+    const role = roleOf(token, fighting);
+    const radius = tokenRadius(token, disc, fighting);
+    // In a fight a monster behind the target is its initials and gauge alone,
+    // and the target's name and hit points are one line under it.
+    drawToken(
+      ctx,
+      pal,
+      token,
+      p,
+      radius,
+      struck.get(token.key) ?? 0,
+      role !== 'behind' && role !== 'target'
+    );
+    if (role === 'target') {
+      const line = token.points === null ? token.name : `${token.name}  ${token.points}`;
+      label(ctx, pal, line, p.x, p.y + radius + TARGET_RING_GAP + 3, pal.text);
     }
   }
 }
 
+type Role = 'self' | 'party' | 'player' | 'target' | 'behind' | 'foe';
+
+function roleOf(token: ArenaToken, fighting: boolean): Role {
+  if (token.self) return 'self';
+  if (token.side !== 'foe') return token.side;
+  if (!fighting) return 'foe';
+  return token.target ? 'target' : 'behind';
+}
+
 /**
- * The disc radius tokens are drawn at full size against, px: resting, and
- * zoomed, where the prototype drew a 22 px target on a 188 px arena and the
- * character's 24 px token is this scale's 22 at 170.
+ * A token's radius as a share of the arena's (todo 20261019-1358-01), so the
+ * layout looks the same at the resting size and at any combat zoom. At rest,
+ * today's 22, 18 and 15 px on a 110 px arena; in a fight, the prototype's,
+ * measured at the 124 px resting radius.
  */
-const RESTING_SCALE_R = 110;
-const ZOOMED_SCALE_R = 170;
-const SELF_RADIUS = 22;
-const tokenScale = (disc: Disc, zoomed: boolean): number =>
-  disc.r / (zoomed ? ZOOMED_SCALE_R : RESTING_SCALE_R);
+const SIZES: Readonly<Record<'rest' | 'fight', Readonly<Record<Role, number>>>> = {
+  rest: { self: 0.2, party: 0.164, player: 0.136, target: 0.164, behind: 0.164, foe: 0.164 },
+  fight: { self: 0.16, party: 0.11, player: 0.1, target: 0.16, behind: 0.085, foe: 0.16 }
+};
+
+const sizeOf = (role: Role, fighting: boolean): number => SIZES[fighting ? 'fight' : 'rest'][role];
+
+/** A token's radius on this arena, px: what it is drawn at, and what a pointer must land inside. */
+export const tokenRadius = (token: ArenaToken, disc: Disc, fighting: boolean): number =>
+  sizeOf(roleOf(token, fighting), fighting) * disc.r;
 
 /** Three rings rising off a token, a heal it cast on itself (todo 20261018-1314-01): the prototype's 26 px of growth from the blow ripple's 26 px start. */
 const RING_STAGGER_MS = 120;

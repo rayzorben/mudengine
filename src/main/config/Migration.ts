@@ -301,6 +301,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheExtensionSwitches(home, note, options.template);
   statedTheRoomNames(home, note, options.template);
   statedTheArtServer(home, note, options.template);
+  statedTheCombatZoom(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -5284,6 +5285,28 @@ function statedTheArtServer(
   if (stateTemplateBlock(home, template, [], 'art', 'rooms')) {
     note(t('notices.migration.artServerStated', { file: home.options }));
   }
+}
+
+/**
+ * `gameView.combatZoom` (todo 20261019-1358-01) into every file that states
+ * `gameView:`, after `opacity`, off: the zoom shipped on, drawn from the
+ * window's size, and the player asked for it off by default.
+ */
+function statedTheCombatZoom(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateKeysIn(home, template, ['gameView'], 'opacity', [
+    ['combatZoom', DEFAULT_CONFIG.gameView.combatZoom]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.combatZoom.one', params)
+      : t('notices.migration.combatZoom.many', params)
+  );
 }
 
 /**

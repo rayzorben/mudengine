@@ -8659,6 +8659,45 @@ describe('Allow @kill and @hangup is stated, off (todo 118)', () => {
   });
 });
 
+describe('Combat Zoom is stated, off (todo 20261019-1358-01)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const gameViewOf = (file: string): Record<string, unknown> =>
+    parse(fs.readFileSync(file, 'utf8')).gameView as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-combatzoom-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds the zoom after opacity, off, once', () => {
+    fs.writeFileSync(home.options, 'gameView:\n  dock: bottom\n  opacity: 0.55\n', 'utf8');
+    migrate();
+    const keys = Object.keys(gameViewOf(home.options));
+    expect(keys[keys.indexOf('opacity') + 1]).toBe('combatZoom');
+    expect(gameViewOf(home.options)['combatZoom']).toBe(0);
+    expect(notesOf(said, 'notices.migration.combatZoom.one')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(notesOf(said, 'notices.migration.combatZoom.one')).toHaveLength(0);
+  });
+});
+
 describe('a switch per installed extension is stated (todo 118)', () => {
   let home: Home;
   let dir: string;

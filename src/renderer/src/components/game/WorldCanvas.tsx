@@ -51,6 +51,7 @@ import {
   EXIT_RADIUS,
   FLIGHT_MS,
   standings,
+  tokenRadius,
   type Disc,
   type ExitSpot,
   type Flight
@@ -99,6 +100,8 @@ export interface WorldCanvasProps {
   picked: string | null;
   /** Where the party's gauges turn yellow and red. */
   hpLines: VitalThresholds;
+  /** How much bigger the arena grows in a fight, 0 for off (`gameView.combatZoom`). */
+  combatZoom: number;
   /** The room's beat, drawn as the ring round the arena (todo 154); null for no ring. */
   rounds: RoundAnchor | null;
   onFoe(name: string): void;
@@ -125,6 +128,9 @@ const LOST_AREA: MapArea = {
 
 const arenaRadius = (width: number, height: number): number =>
   Math.max(92, Math.min(124, Math.min(width, height) * 0.13));
+
+/** How far past a token's edge a press still picks it, px: the old fixed 24 px over a 20 px monster. */
+const POINTER_SLACK_PX = 4;
 
 /** How far an eased value moves toward its goal each frame. */
 const EASE = 0.16;
@@ -161,9 +167,17 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   hoverRef.current = hover;
   const peek = usePeek(api, session, hover?.kind === 'stair' ? hover.spot.stair.to : null);
 
+  /*
+   * Which of a name's monsters was pressed, by token key: it stands in front as
+   * the target. A key is the monster's place in the room's list, so it holds
+   * only in the room and while that list is the one it was pressed in.
+   */
+  const [pressed, setPressed] = useState<{ key: string; listed: string } | null>(null);
+  const listed = `${here}\n${character.room.occupants.map((one) => one.name).join('\n')}`;
+  const pressedKey = pressed !== null && pressed.listed === listed ? pressed.key : null;
   const tokens = useMemo(
-    () => arenaTokensOf(character, props.picked, props.hpLines),
-    [character, props.picked, props.hpLines]
+    () => arenaTokensOf(character, props.picked, props.hpLines, pressedKey),
+    [character, props.picked, props.hpLines, pressedKey]
   );
   const hereCell = here === null ? undefined : map.byId.get(here);
   const arenaExits = useMemo(
@@ -212,10 +226,10 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     const view: View = {
       width,
       height,
-      cam: { ...cam.current, z: zoomAt(cam.current.z, d.fight) }
+      cam: { ...cam.current, z: zoomAt(cam.current.z, p.combatZoom, d.fight) }
     };
-    const fight = zoomsIn(p.character.combat.engaged, follow.current) ? 1 : 0;
-    const radius = arenaRadiusAt(width, height, arenaRadius(width, height), d.fight);
+    const fight = zoomsIn(p.combatZoom, p.character.combat.engaged, follow.current) ? 1 : 0;
+    const radius = arenaRadiusAt(arenaRadius(width, height), p.combatZoom, d.fight);
     /*
      * Lost, the arena stands in the middle of the screen: the fight is drawn
      * wherever the room is. A known room outside the window (◎ after a long
@@ -238,8 +252,8 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
         } else d[key] = goal[key];
       }
 
-    // Past halfway in, the arena takes the fight's layout.
-    const zoomed = d.fight > 0.5;
+    // In a fight the target grows and the rest shrink, zoomed or not (todo 20261019-1358-01).
+    const fighting = p.character.combat.engaged;
     const scene: Scene = {
       win: p.map.win,
       at: p.map.at,
@@ -256,7 +270,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     };
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     drawGround(ctx, view, pal);
-    ctx.globalAlpha = mapAlphaAt(d.fight);
+    ctx.globalAlpha = mapAlphaAt(p.combatZoom, d.fight);
     drawWorld(ctx, view, scene, pal, d);
     const pointed = hoverRef.current?.kind === 'stair' ? hoverRef.current.spot : null;
     stairs.current = drawStairs(ctx, view, scene, pal, pointed);
@@ -294,7 +308,7 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
           counts: namesakeCounts(p.character),
           detached: d.dock > 0.5 ? t('game.arena.detached') : null
         },
-        zoomed
+        fighting
       );
       if (d.dock > 0.05 && cell) {
         const room = toScreen(view, cell.gx, cell.gy);
@@ -313,10 +327,10 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       const hovered = hoverRef.current?.kind === 'exit' ? hoverRef.current.direction : null;
       exits.current = drawExits(ctx, pal, d, rim, hovered);
       placeRing(ring.current, d);
-      const at = standings(d, list, zoomed);
+      const at = standings(d, list, fighting);
       const { live, struck } = drawFlights(ctx, pal, flights.current, at, now);
       flights.current = live;
-      drawTokens(ctx, pal, d, list, at, struck, zoomed);
+      drawTokens(ctx, pal, d, list, at, struck, fighting);
       if (live.length > 0) moving = true;
       if (p.character.room.cash !== null && p.character.room.cash.totalCopper > 0) {
         ctx.fillStyle = pal.accent;
@@ -442,17 +456,23 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   const viewNow = (): View => ({
     width: size.current.width,
     height: size.current.height,
-    cam: { ...cam.current, z: zoomAt(cam.current.z, disc.current.fight) }
+    cam: {
+      ...cam.current,
+      z: zoomAt(cam.current.z, latest.current.props.combatZoom, disc.current.fight)
+    }
   });
 
   const pick = (x: number, y: number): Hover => {
     for (const spot of exits.current)
       if (Math.hypot(spot.x - x, spot.y - y) < 17 || inBox(spot.box, x, y))
         return { kind: 'exit', direction: spot.direction, x, y };
-    const at = standings(disc.current, latest.current.tokens, disc.current.fight > 0.5);
+    const fighting = latest.current.props.character.combat.engaged;
+    const at = standings(disc.current, latest.current.tokens, fighting);
     for (const token of latest.current.tokens) {
       const spot = at.get(token.key);
-      if (token.side === 'foe' && spot && Math.hypot(spot.x - x, spot.y - y) < 24)
+      // The token itself, a few px past its edge: a monster behind the target is small.
+      const reach = tokenRadius(token, disc.current, fighting) + POINTER_SLACK_PX;
+      if (token.side === 'foe' && spot && Math.hypot(spot.x - x, spot.y - y) < reach)
         return { kind: 'foe', token, x, y };
     }
     const held = hoverRef.current;
@@ -530,8 +550,10 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     const d = disc.current;
     if (found?.kind === 'stair') show(found.spot.stair.to);
     else if (found?.kind === 'exit') props.onExit(found.direction);
-    else if (found?.kind === 'foe') props.onFoe(found.token.name);
-    else if (found?.kind === 'room') props.onWalk(found.cell);
+    else if (found?.kind === 'foe') {
+      setPressed({ key: found.token.key, listed });
+      props.onFoe(found.token.name);
+    } else if (found?.kind === 'room') props.onWalk(found.cell);
     else if (!follow.current && Math.hypot(d.x - event.clientX, d.y - event.clientY) < d.r)
       setFollow(true);
   };

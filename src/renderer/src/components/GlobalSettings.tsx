@@ -29,7 +29,7 @@ import RoomNameList from './RoomNameList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import SettingsSection from './SettingsSection';
 import { GAME_DOCKS, isGameDock } from '@shared/gameMap';
-import { GAME_VIEW_OPACITY_FLOOR } from '@shared/gameViewConfig';
+import { asCombatZoom, COMBAT_ZOOMS, GAME_VIEW_OPACITY_FLOOR } from '@shared/gameViewConfig';
 import ArtFields from './ArtFields';
 import { dockLabel } from '../lib/gameDock';
 import type { SettingsFind } from '../hooks/useSettingsFind';
@@ -538,6 +538,22 @@ export default function GlobalSettings({
                     });
                 }}
                 value={Math.round(draft.gameView.opacity * 100)}
+              />
+              <SelectField
+                hint={t('settings.client.appearance.combatZoomHint')}
+                label={t('settings.client.appearance.combatZoomLabel')}
+                name="global-game-combat-zoom"
+                onChange={(value) => patch('gameView', { combatZoom: asCombatZoom(Number(value)) })}
+                options={COMBAT_ZOOMS.map((zoom) => ({
+                  value: String(zoom),
+                  label:
+                    zoom === 0
+                      ? t('settings.client.appearance.combatZoomOff')
+                      : t('settings.client.appearance.combatZoomBigger', {
+                          percent: Math.round(zoom * 100)
+                        })
+                }))}
+                value={String(draft.gameView.combatZoom)}
               />
             </div>
 

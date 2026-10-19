@@ -388,6 +388,10 @@ notices:
       look at a charged item. Each asks as it always did.'
     extensionSwitches: '"extensions" was added to {file}: a switch for each installed extension,
       all on as they were. One can be switched off from the MudEngine settings page.'
+    combatZoom:
+      one: 'Combat Zoom was added to {fileList}, off: the game view''s arena keeps its size in a fight.'
+      many: 'Combat Zoom was added to {count} files ({fileList}), off: the game view''s arena keeps its
+        size in a fight.'
     killAndHangup:
       one: 'Allow @kill and @hangup was added to {fileList}, off: @kill, @hangup, @relog and
         @panic! are still refused to everyone.'
@@ -4370,6 +4374,10 @@ settings:
       gameDockHint: Where the game view's console sits when you open it with i.
       gameOpacityLabel: Console Opacity, %
       gameOpacityHint: How much of the map shows through the game view's console, {floor} to 100.
+      combatZoomLabel: Combat Zoom
+      combatZoomHint: How much bigger the game view's arena grows in a fight. Off keeps it the same size.
+      combatZoomOff: 'Off'
+      combatZoomBigger: '{percent}% bigger'
       scrollbackLabel: Scrollback, Lines
       showHud: Show Cards Beside Console
       showLogo: Show The MudEngine Logo

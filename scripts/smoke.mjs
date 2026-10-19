@@ -16405,6 +16405,8 @@ if (paletteOpen) {
   check((await readUntil(panel, (p) => p === '')) === '', 'Escape closes the panel');
   await key('Enter', 'Enter', 13);
   check((await readUntil(consoleState, (s) => s === 'open')) === 'open', 'Enter opens the console');
+  // Esc shuts only a console holding the caret, which lands a frame or more after `open` under load.
+  await waitFor(async () => evaluate(`!!document.activeElement?.closest('.terminal-cell')`));
   await key('Escape', 'Escape', 27);
   check(
     (await readUntil(consoleState, (s) => s === 'shut')) === 'shut',
