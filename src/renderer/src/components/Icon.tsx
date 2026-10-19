@@ -51,6 +51,7 @@ export type IconName =
   | 'copy'
   | 'more'
   | 'trash'
+  | 'download'
   | 'paste'
   | 'edit'
   | 'plus'
@@ -339,6 +340,13 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1.5 1.5" />
       <path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1.5-1.5" />
+    </>
+  ),
+  // An arrow down into a tray: saving to disk.
+  download: (
+    <>
+      <path d="M12 4.5v10M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2" />
     </>
   ),
   paste: (

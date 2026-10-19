@@ -34,7 +34,7 @@ import {
   Invoke,
   Push,
   Send,
-  type CharacterExport,
+  type SavedFile,
   type DebugSave,
   type IpcApi,
   type Notice
@@ -86,6 +86,12 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     anchor.href = link;
     anchor.download = '';
     anchor.click();
+  };
+  /** A channel main answers with a `SavedFile`, the written one downloaded into the tab. */
+  const delivered = async (channel: string, ...args: unknown[]): Promise<SavedFile> => {
+    const result = await invoke<SavedFile>(channel, ...args);
+    if (result.kind === 'written') download(result.download);
+    return result;
   };
 
   const take = (message: RpcOutbound): void => {
@@ -186,6 +192,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     stopMoving: (session) => invoke(Invoke.stopMoving, session),
     inheritedMobRules: (scope, realm) => invoke(Invoke.inheritedMobRules, scope, realm),
     portrait: (session) => invoke(Invoke.portrait, session),
+    savePortrait: (session) => delivered(Invoke.savePortrait, session),
     treatMonster: (session, mob, treat) => invoke(Invoke.treatMonster, session, mob, treat),
     walkOnWithoutParty: (session) => invoke(Invoke.walkOnWithoutParty, session),
     stepBack: (session, confirmed) => invoke(Invoke.stepBack, session, confirmed),
@@ -249,6 +256,21 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
         notice(t('web.clipboard.writeRefused'));
       }
     },
+    copyImage: async (png) => {
+      try {
+        // Decoded here: the page's policy keeps `fetch` off `data:` URLs.
+        const bytes = Uint8Array.from(atob(png.slice(png.indexOf(',') + 1)), (c) =>
+          c.charCodeAt(0)
+        );
+        const blob = new Blob([bytes], { type: 'image/png' });
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        return true;
+      } catch (error) {
+        console.warn(`clipboard: the picture was not written: ${String(error)}`);
+        notice(t('web.clipboard.imageRefused'));
+        return false;
+      }
+    },
     pasteText: async () => {
       try {
         return await navigator.clipboard.readText();
@@ -264,11 +286,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     deleteServer: (name) => invoke(Invoke.deleteServer, name),
     settingsSnapshot: () => invoke(Invoke.settingsSnapshot),
     chooseRealm: () => pickOnTheClient(),
-    exportCharacter: async (id, password) => {
-      const result = await invoke<CharacterExport>(Invoke.exportCharacter, id, password);
-      if (result.kind === 'written') download(result.download);
-      return result;
-    },
+    exportCharacter: (id, password) => delivered(Invoke.exportCharacter, id, password),
     chooseCharacterFile: () => pickOnTheClient(),
     importCharacter: (file) => invoke(Invoke.importCharacter, file),
     searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),

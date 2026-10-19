@@ -69,4 +69,7 @@ export function withChange(view: PortraitView, change: PortraitChange): Portrait
   };
 }
 
+/** How a PNG picture crosses to main for the clipboard, the one type every clipboard takes. */
+export const PNG_DATA_URL = 'data:image/png;base64,';
+
 export const NO_PORTRAIT: PortraitView = { picture: null, status: { kind: 'incomplete' } };

@@ -69,6 +69,7 @@ const api: WireApi = {
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
   inheritedMobRules: (scope, realm) => ipcRenderer.invoke(Invoke.inheritedMobRules, scope, realm),
   portrait: (session) => ipcRenderer.invoke(Invoke.portrait, session),
+  savePortrait: (session) => ipcRenderer.invoke(Invoke.savePortrait, session),
   treatMonster: (session, mob, treat) =>
     ipcRenderer.invoke(Invoke.treatMonster, session, mob, treat),
   walkOnWithoutParty: (session) => ipcRenderer.invoke(Invoke.walkOnWithoutParty, session),
@@ -117,6 +118,7 @@ const api: WireApi = {
   revealLogs: () => ipcRenderer.invoke(Invoke.revealLogs),
   browseHome: (target) => ipcRenderer.invoke(Invoke.browseHome, target),
   copyText: (text: string) => ipcRenderer.invoke(Invoke.copyText, text),
+  copyImage: (png: string) => ipcRenderer.invoke(Invoke.copyImage, png),
   pasteText: () => ipcRenderer.invoke(Invoke.pasteText),
 
   saveProfile: (id, draft) => ipcRenderer.invoke(Invoke.saveProfile, id, draft),

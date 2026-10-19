@@ -57,6 +57,11 @@ app:
     exportCharacterTitle: Export character
     importCharacterTitle: Import character
     realmDatabaseFilter: World database
+    savePortraitTitle: Save portrait
+    pictureFilter: Picture
+  portrait:
+    none: There is no drawn portrait of this character to save yet.
+    saveFailed: 'The portrait could not be saved: {message}'
   errorBoundary:
     body: Active character sessions are unaffected. Reload to restore the interface.
     heading: UI Rendering Error
@@ -145,6 +150,7 @@ app:
     unreadable: '{path} could not be listed: {message}'
   clipboard:
     none: This host has no clipboard, so the window keeps its own.
+    notAPicture: The picture to copy was not a PNG the client could read, so nothing was copied.
   commitUnknown: unknown
   markTooltip: '{name} {version}'
   markTooltipBuilt: '{name} {version}, built {built}'
@@ -1222,6 +1228,17 @@ game:
     close: Close the character panel
     level: level {level}
     portrait: '{race} {className}'
+    portraitOpen: Show the portrait whole
+    portraitViewer: '{name}, drawn by the art server'
+    portraitCopy: Copy the picture
+    portraitSave: Save the picture
+    portraitClose: Back to the character
+    portraitCopied: Copied.
+    portraitNotCopied: The picture was not copied.
+    portraitCopyFailed: 'The picture could not be copied: {message}'
+    portraitSaved: 'Saved to {file}.'
+    portraitDownloaded: Downloaded.
+    portraitSaveFailed: 'The picture could not be saved: {message}'
     portraitOff: Portraits are off. Draw Portraits is on the Global settings page, under Realm.
     portraitUnavailable: This build was made without the art server's secret, so it draws no portrait.
     portraitIncomplete: The portrait is drawn once the stats, the inventory and a look at you are in.
@@ -7723,6 +7740,7 @@ web:
     readRefused: The browser would not give the clipboard to the client; paste with Ctrl+V or
       Shift+Insert, which the browser handles itself.
     writeRefused: The browser would not accept the copy; select the text and copy it yourself.
+    imageRefused: The browser would not put the picture on the clipboard; save it instead.
   picker:
     unavailable: There is no way to choose a world database here.
   rpc:

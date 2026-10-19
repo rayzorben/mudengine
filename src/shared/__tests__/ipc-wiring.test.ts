@@ -21,7 +21,9 @@ import { Invoke, PUSH_METHODS, Push, Send, type UnlistedPush } from '../ipc';
  */
 const read = (file: string): string => fs.readFileSync(path.resolve(file), 'utf8');
 /** Main's handlers: the client, and the channels it composes in from elsewhere. */
-const main = ['src/main/client.ts', 'src/main/app/transfer.ts'].map(read).join('\n');
+const main = ['src/main/client.ts', 'src/main/app/transfer.ts', 'src/main/art/portraitFiles.ts']
+  .map(read)
+  .join('\n');
 const preload = read('src/preload/index.ts');
 const web = read('src/renderer/src/lib/webBridge.ts');
 
@@ -34,6 +36,7 @@ const web = read('src/renderer/src/lib/webBridge.ts');
  */
 const ANSWERED_IN_THE_WINDOW = [
   'copyText',
+  'copyImage',
   'pasteText',
   'chooseRealm',
   'chooseCharacterFile',

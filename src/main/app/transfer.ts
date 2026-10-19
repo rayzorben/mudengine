@@ -12,13 +12,14 @@ import fs from 'node:fs';
 
 import { asProfileId } from '../../shared/drafts';
 import { fileSlug } from '../../shared/files';
-import { Invoke, type CharacterExport, type CharacterImport } from '../../shared/ipc';
+import { Invoke, type CharacterImport, type SavedFile } from '../../shared/ipc';
 import { errorMessage } from '../../shared/values';
 import { exportCharacter, importCharacter } from '../config/CharacterTransfer';
 import type { Host } from '../host/Host';
 import type { Home } from './home';
 import { t } from './i18n';
 import { tuning } from './tuning';
+import { writeChosenFile } from './chosenFile';
 
 export interface TransferDeps {
   home: Home;
@@ -34,27 +35,23 @@ export function handleCharacterTransfer({ home, host, loaded, imported }: Transf
 
   handle(
     Invoke.exportCharacter,
-    async (caller, rawId: unknown, rawPassword: unknown): Promise<CharacterExport> => {
+    async (caller, rawId: unknown, rawPassword: unknown): Promise<SavedFile> => {
       const id = asProfileId(rawId);
       if (id === null) return { kind: 'refused', error: t('app.profiles.noSuchCharacter') };
       const built = await exportCharacter(home, id, rawPassword === true);
       if (!built.ok) return { kind: 'refused', error: built.error };
-      try {
-        const file = await host.chooseSaveFile(caller, {
+      return writeChosenFile(
+        host,
+        caller,
+        {
           title: t('app.dialog.exportCharacterTitle'),
           defaultName: `${fileSlug(built.name)}-${new Date().toISOString().slice(0, 10)}.tar.gz`,
           extensions: ['gz'],
           extensionsLabel: t('app.dialog.characterFileFilter')
-        });
-        if (file === null) return { kind: 'dismissed' };
-        await fs.promises.writeFile(file, built.bytes);
-        return { kind: 'written', file, download: host.deliver(caller, file) };
-      } catch (error) {
-        return {
-          kind: 'refused',
-          error: t('app.transfer.exportFailed', { message: errorMessage(error) })
-        };
-      }
+        },
+        built.bytes,
+        (message) => t('app.transfer.exportFailed', { message })
+      );
     }
   );
 

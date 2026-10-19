@@ -6,7 +6,7 @@
 import type { CharacterState } from '../../shared/character';
 import type { SessionId } from '../../shared/ipc';
 import type { PortraitChange, PortraitSource, PortraitView } from '../../shared/portrait';
-import type { LastPortrait, PortraitCache } from './portraitCache';
+import type { LastPortrait, Picture, PortraitCache } from './portraitCache';
 import { PortraitKeeper } from './PortraitKeeper';
 
 export interface PortraitsDeps {
@@ -30,6 +30,11 @@ export class Portraits {
 
   view(id: SessionId): PortraitView {
     return this.keeperOf(id).current();
+  }
+
+  /** The picture shown for a character already kept, or null. */
+  picture(id: SessionId): Picture | null {
+    return this.keepers.get(id)?.picture() ?? null;
   }
 
   remove(id: SessionId): void {

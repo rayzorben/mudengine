@@ -155,6 +155,7 @@ describe('when a portrait is asked for', () => {
     const first = keeper();
     first.observe(PROBE);
     await until(drawn(first));
+    await until(() => fs.existsSync(path.join(dir, 'portrait', 'probe.json')));
     // A second launch's panel, open before any state: the kept portrait, and no ask.
     const opened = keeper();
     await until(() => opened.current().picture !== null);

@@ -190,18 +190,19 @@ export type HostKind = 'electron' | 'web';
 export type Revealed = { how: 'opened' } | { how: 'listed'; path: string };
 
 /**
- * What exporting a character did. `file` is where it was written: the path the
+ * What saving to a file the player picks did: a character export, a portrait.
+ * `file` is where it was written: the path the
  * player chose on the desktop, or `exports/` under the home in a browser tab,
  * which has no save dialog on the machine the files are on. `download` is the
  * link a browser tab fetches the written file from, null where the window
  * shares the client's disk (`Host.deliver`).
  */
-export type CharacterExport =
+export type SavedFile =
   | { kind: 'written'; file: string; download: string | null }
   | { kind: 'dismissed' }
   | { kind: 'refused'; error: string };
 
-/** The bug report written, with its download link as `CharacterExport`'s, or the failure. */
+/** The bug report written, with its download link as `SavedFile`'s, or the failure. */
 export type DebugSave = { path: string; download: string | null } | { error: string };
 
 /** What importing one did, and what the player should know about it. */
@@ -794,6 +795,8 @@ export const Invoke = {
   treatMonster: 'settings:treat-monster',
   /** The character's portrait as it stands, for a panel that opens (todo 20261019-0931-01). */
   portrait: 'art:portrait',
+  /** The character's portrait written to a file the player picks. */
+  savePortrait: 'art:save-portrait',
   /** Stop waiting for the party behind a portal and walk on (todo 849). */
   walkOnWithoutParty: 'move:without-party',
   /**
@@ -948,6 +951,8 @@ export const Invoke = {
    */
   copyText: 'clipboard:write',
   pasteText: 'clipboard:read',
+  /** A picture, as a PNG `data:` URL, onto the system clipboard (todo 20261019-0931-01). */
+  copyImage: 'clipboard:write-image',
 
   /*
    * Writing settings back.
@@ -1410,6 +1415,8 @@ export interface IpcApi {
   treatMonster(session: SessionId, mob: string, treat: MobTreatment | null): Promise<string | null>;
   /** The character's portrait and why it is what it is; asks the art server nothing. */
   portrait(session: SessionId): Promise<PortraitView>;
+  /** The character's portrait, saved where the player picks (a browser tab downloads it). */
+  savePortrait(session: SessionId): Promise<SavedFile>;
   /** Stop waiting for the party behind a portal and walk on; nothing while not waiting. */
   walkOnWithoutParty(session: SessionId): Promise<void>;
   /**
@@ -1507,6 +1514,8 @@ export interface IpcApi {
   copyText(text: string): Promise<void>;
   /** What is on the system clipboard, for a paste into the terminal. */
   pasteText(): Promise<string>;
+  /** Put a picture on the system clipboard, as a PNG `data:` URL. False when it could not. */
+  copyImage(png: string): Promise<boolean>;
 
   /** Each resolves to why it refused, or null if it was written. */
   saveProfile(id: string, draft: ProfileDraft): Promise<string | null>;
@@ -1563,7 +1572,7 @@ export interface IpcApi {
   settingsSnapshot(): Promise<SettingsSnapshot>;
   chooseRealm(): Promise<string | null>;
   /** `password` keeps the account password in the file; without it the file holds none. */
-  exportCharacter(id: string, password: boolean): Promise<CharacterExport>;
+  exportCharacter(id: string, password: boolean): Promise<SavedFile>;
   /** A file to import, from the client's disk. Null when dismissed. */
   chooseCharacterFile(): Promise<string | null>;
   importCharacter(file: string): Promise<CharacterImport>;
