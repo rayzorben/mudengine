@@ -44,6 +44,7 @@ import { RoomDraft } from './draft';
 import { isPortalClaim, MOVE_COMMANDS, type Expectations } from './expectations';
 import { floorEntries, list } from './inventory';
 import { leavesRoom } from './departs';
+import { moverName } from './movers';
 import { ladderInput, promisedRoom, spendsPromise } from './nameLine';
 import { confirmedBy } from './lastRoom';
 
@@ -93,7 +94,10 @@ export interface RoomSources {
   itemEntity(name: string, observed: ItemObservation): ItemEntity;
   /** Whether a committed move kept this character unseen; spends the receipt (`stealth.ts`). */
   stealthAfterMove(): Stealth;
-  /** A move landed: the trail's to record (`Trail.rememberTheWayBack`). */
+  /**
+   * A move landed: the trail records the way back, and the fight lets go of
+   * what did not follow (`toldOfSteps`).
+   */
   rememberTheWayBack(s: CharacterState, room: Room, moved: Direction | null): void;
   /** Told when the character proves the realm data wrong. */
   onDiscovery: ((discovery: Discovery) => void) | undefined;
@@ -314,27 +318,6 @@ export function searchFoundNothing(
   if (direction !== undefined) return null;
   if (s.room.hidden.length === 0 && s.room.hiddenCash === null) return null;
   return { ...s, room: { ...s.room, hidden: [], hiddenCash: null } };
-}
-
-/**
- * The name in an arrival sentence the realm data could not resolve.
- *
- * `A large lashworm crawls into the room from the above!` leaves
- * `large lashworm crawls`, and a departure (`A giant crab scurries off to the
- * north.`) leaves `giant crab scurries`: the last word is the finite verb.
- * That is positional grammar rather than a verb list, which is the thing
- * docs/greatermud/messages.md forbids: English puts the verb immediately before
- * `into the room from` or `off to the`, whatever word the realm chose.
- *
- * A last resort, used only when neither the room nor the realm's monster table
- * could say. It can be wrong — a two-word verb phrase leaves a word on the
- * name — and both consequences of being wrong are bounded: the next `Also
- * here:` replaces the list outright, and a name nothing recognises carries no
- * disposition, so it is never something the client opens a fight with.
- */
-function trimVerb(middle: string): string {
-  const words = middle.trim().split(/\s+/).filter(Boolean);
-  return words.length <= 1 ? '' : words.slice(0, -1).join(' ');
 }
 
 /**
@@ -960,7 +943,7 @@ export class RoomTracker {
     arrives: boolean,
     g: Readonly<Record<string, string>>
   ): CharacterState | null {
-    const named = g['mob'] ?? g['attacker'] ?? trimVerb(g['line'] ?? '');
+    const named = moverName(g);
     if (named.length === 0) return null;
     if (!arrives) {
       const after = leavesRoom(s, mobKey(named), true);

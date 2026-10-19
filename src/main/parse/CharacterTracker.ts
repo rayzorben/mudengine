@@ -19,7 +19,6 @@ import {
   NO_PARTY,
   type CarriedItem,
   type CharacterState,
-  type Room,
   NO_AFFLICTIONS,
   type RealmFamily as RealmWord
 } from '../../shared/character';
@@ -111,6 +110,7 @@ import { wireItem, type ItemEntity } from '../../shared/entities';
 import { Company } from './company';
 import { claimedBy, engagedBy, swingingAtMe, threatenedBy, vouchedFor } from './engagements';
 import { keepCurrent } from './keepCurrent';
+import { leftRoom, toldOfSteps } from './steps';
 import { freshTally, pastimeOf, trackTally } from './tally';
 import { KillRun } from './killRun';
 import { NO_TALLY, settleClocks, withPastime, type CombatTally } from '../../shared/tally';
@@ -133,17 +133,6 @@ import {
   type RealmPlayers
 } from '../../shared/players';
 import { tuning } from '../app/tuning';
-
-/** Whether the character stands somewhere else than it did. See `apply`. */
-function leftRoom(before: Room, after: Room): boolean {
-  if (before === after) return false;
-  if (before.name !== after.name) return true;
-  return (
-    before.map !== null &&
-    before.number !== null &&
-    (before.map !== after.map || before.number !== after.number)
-  );
-}
 
 export class CharacterTracker {
   private state: CharacterState = structuredClone(EMPTY_CHARACTER);
@@ -308,7 +297,7 @@ export class CharacterTracker {
       registry: () => this.company.players,
       itemEntity: (name, observed) => this.itemEntity(name, observed),
       stealthAfterMove: () => this.stealth.afterMove(),
-      rememberTheWayBack: (s, room, moved) => this.backtrail.rememberTheWayBack(s, room, moved),
+      rememberTheWayBack: toldOfSteps(this.backtrail, () => this.fight),
       onDiscovery
     });
     // Classification asks the realm's monster table and the roster, so a blow

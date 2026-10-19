@@ -1175,6 +1175,18 @@ async function valued(selector, want) {
   );
 }
 
+/** The opening volley's fight, sent again wherever the checks below need it running. */
+function fightVolley() {
+  return Buffer.from(
+    '\x1b[1;31m*Combat Engaged*\x1b[0m\r\n' +
+      '\x1b[0;37mYou slash the orc rogue for 12 damage!\x1b[0m\r\n' +
+      '\x1b[0;31mThe orc rogue slashes you for 5 damage!\x1b[0m\r\n' +
+      '\x1b[0;31mThe giant rat bites you for 2 damage!\x1b[0m\r\n' +
+      '\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n',
+    'latin1'
+  );
+}
+
 async function hostSays(write, holds, { prompt = false, session = SESSION } = {}) {
   const framed = async () => (await evaluate(`window.mudengine.getLines('${session}')`)) ?? [];
   // A string where the line is built from a value this run read out of the
@@ -4939,18 +4951,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * written against.
    */
   await hostSays(() => {
-    for (const socket of liveSockets) {
-      socket.write(
-        Buffer.from(
-          '\x1b[1;31m*Combat Engaged*\x1b[0m\r\n' +
-            '\x1b[0;37mYou slash the orc rogue for 12 damage!\x1b[0m\r\n' +
-            '\x1b[0;31mThe orc rogue slashes you for 5 damage!\x1b[0m\r\n' +
-            '\x1b[0;31mThe giant rat bites you for 2 damage!\x1b[0m\r\n' +
-            '\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n',
-          'latin1'
-        )
-      );
-    }
+    for (const socket of liveSockets) socket.write(fightVolley());
   }, /The giant rat bites you/);
 
   /*
@@ -6906,6 +6907,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         /Also here: Nathaniel/,
         { prompt: true }
       );
+      /*
+       * The walk out of the room let go of the fight fought in it: a monster
+       * that did not follow is left behind, and the orc rogue listed here
+       * again starts from its own health (todo 20261018-1314-02). So the fight
+       * the Combat card checks read is started again in the room it is back in.
+       */
+      await hostSays(() => liveSockets[0]?.write(fightVolley()), /The giant rat bites you/);
     }
 
     const looked = await evaluate(`window.mudengine.lookup('${SESSION}', 'heal')`);

@@ -273,6 +273,11 @@ tuning:
     # this scaled to match, which is why it is a setting and not a constant.
     mobRegenMs: 30000
 
+    # How long a monster that was fighting this character may still follow it
+    # into the next room, in milliseconds. GreaterMUD's monsters stop tracking
+    # after 30 seconds.
+    followMs: 30000
+
     # How long after this character's own landed blow an unattributed damage
     # line still reads as that blow's weapon proc, in milliseconds.
     #

@@ -3276,6 +3276,7 @@ cards:
       foughtDamage: ' — on average {damage} damage over {blows} swings'
       foughtDuration: ' — about {seconds}s a fight'
       foughtJoined: ' — {joined} joined halfway'
+      foughtFollowed: ' — {followed} followed you out'
       foughtLabel: Fought
       foughtLast: ' — last {agoText}'
       foughtOnceKilled: once, and killed it

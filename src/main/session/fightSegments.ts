@@ -245,6 +245,7 @@ function isFoldable(value: unknown): boolean {
     typeof value['mob'] === 'string' &&
     typeof value['killed'] === 'boolean' &&
     typeof value['opened'] === 'boolean' &&
+    (value['followed'] === undefined || value['followed'] === true) &&
     number('at') &&
     number('mine') &&
     number('others') &&

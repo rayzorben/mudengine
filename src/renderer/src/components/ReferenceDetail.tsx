@@ -392,6 +392,11 @@ function MobDetail({
                 {t('cards.reference.mob.foughtJoined', { joined: fights.fights - fights.opened })}
               </span>
             )}
+            {fights.followed > 0 && (
+              <span className="quiet">
+                {t('cards.reference.mob.foughtFollowed', { followed: fights.followed })}
+              </span>
+            )}
             <span className="quiet">
               {t('cards.reference.mob.foughtLast', { agoText: ago(fights.latest, Date.now()) })}
             </span>

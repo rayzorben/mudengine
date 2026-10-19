@@ -34,14 +34,21 @@ import type { Block } from '../../shared/blocks';
 import { wornGear, type FightRecord, type FightSink } from '../../shared/fights';
 import type { HarmSink } from '../../shared/harm';
 import type { MobLore } from '../../shared/lore';
-import { mobKey, nameAnswersTo, roomAddress, type RoomId } from '../../shared/world';
+import {
+  mobKey,
+  nameAnswersTo,
+  roomAddress,
+  type Direction,
+  type RoomId
+} from '../../shared/world';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
 import { leavesRoom } from './departs';
-import { FightClock } from './fightClock';
+import { FightClock, type FightTiming } from './fightClock';
 import { harmOf, HarmLedger } from './harm';
 import { LeftOff } from './leftOff';
 import { OwedAttacks } from './owed';
+import { Pursuit } from './pursuit';
 
 /**
  * What one monster has taken in the fight currently running.
@@ -110,6 +117,12 @@ interface Ledger {
    * `src/shared/lore.ts`.
    */
   opened: boolean;
+  /**
+   * Whether it walked in after the character from the room the fight began in
+   * (todo 20261018-1314-02). A namesake walking in from the way back inside the
+   * window counts as the follower (the user, 2026-10-18), and the record says so.
+   */
+  followed: boolean;
 }
 
 function newLedger(key: string, byMe: boolean, at = 0): Ledger {
@@ -128,7 +141,8 @@ function newLedger(key: string, byMe: boolean, at = 0): Ledger {
     killedAfter: null,
     killedAt: null,
     killedBy: null,
-    opened: byMe
+    opened: byMe,
+    followed: false
   };
 }
 
@@ -208,6 +222,13 @@ export class FightTracker {
    * grow this without limit.
    */
   private ledgers = new Map<string, Ledger>();
+  /**
+   * The ledgers of monsters that may follow the character into the next room,
+   * each with the character as it left the room, for its record (todo 20261018-1314-02).
+   */
+  private readonly pursuit = new Pursuit<{ ledger: Ledger; left: CharacterState }>();
+  /** The time of the latest block heard: when a step happened, which the room's port does not carry. */
+  private heardAt = 0;
 
   /**
    * The attacks sent and not yet answered (`owed.ts`), one consumed per
@@ -338,7 +359,18 @@ export class FightTracker {
    * another, no `*Combat Off*` printed) settles what each monster did then.
    */
   heard(block: Pick<Block, 'type' | 'text' | 'groups' | 'at'>, s: CharacterState): void {
+    this.heardAt = block.at;
     this.owed.heard(block);
+    // A monster that followed walks in with what it took in the room left. A
+    // namesake already fought here shares one total with it, as namesakes do.
+    const back = this.pursuit.arrived(block);
+    if (back !== null) {
+      const here = this.ledgers.get(back.key);
+      const came = { ...back.value.ledger, followed: true };
+      this.ledgers.set(back.key, here === undefined ? came : joined(here, came));
+    }
+    for (const { ledger, left } of this.pursuit.expired(block.at))
+      this.settleLedgers(left, [ledger], block.at, {});
     if (!fightIsRunning(s)) {
       this.harm.settle(block.at, 'off');
       return;
@@ -385,6 +417,7 @@ export class FightTracker {
    */
   forget(): void {
     this.ledgers.clear();
+    this.pursuit.clear();
     this.harm.forget();
     this.owed.forget();
     this.leftOff.forget();
@@ -797,39 +830,86 @@ export class FightTracker {
    * a floor too high.
    */
   private settleFight(s: CharacterState, at: number): void {
-    // The engagement's timings go to the first fight it opened, once.
-    let timing = this.clock.take(tuning().hunting.killGapMostMs);
-    let anyKilled = false;
-    for (const ledger of this.ledgers.values()) {
-      const total = ledgerTotal(ledger);
-      if (total <= 0) continue;
-      const killed = ledger.killedAfter !== null && ledger.killedAfter === total;
-      /*
-       * Written down before the guard below, deliberately.
-       *
-       * The lore refuses to *learn* from a kill this client did not open,
-       * because a minimum estimator that accepts an undercount keeps it for
-       * good. The record has no such problem: it carries `opened`, so whoever
-       * reads it later can decide, and a fight thrown away here is a fight
-       * nobody can ever ask about.
-       */
-      const record = this.fightRecord(s, ledger, total, killed, at);
-      anyKilled ||= killed;
-      if (ledger.opened) {
-        this.sources.fights.record({ ...record, ...timing });
-        timing = {};
-      } else {
-        this.sources.fights.record(record);
-      }
-      if (killed && !ledger.opened) continue;
-      this.sources.lore.observe(ledger.key, { damage: total, killed, at });
-    }
-    if (anyKilled) this.clock.killed(at, roomAddress(s.room));
+    this.settleLedgers(s, this.ledgers.values(), at, this.engagement());
     this.ledgers.clear();
     this.harm.settle(at, 'off');
     // The fight is over, so nothing after it is one of its procs. See
     // `landed`: the binding is to a blow inside a round, not to a name.
     this.landed = null;
+  }
+
+  /**
+   * A step out of the room (todo 20261018-1314-02). A monster that was
+   * fighting the character and can follow has its ledger set aside until it
+   * walks in after it (`Pursuit`). Every other one is settled as the fight it
+   * was, in the room it was fought in, and let go, so a monster of the same
+   * name in the next room starts from its own health.
+   */
+  walked(s: CharacterState, moved: Direction | null): void {
+    const at = this.heardAt;
+    for (const { ledger, left } of this.pursuit.stepped(moved, at))
+      this.settleLedgers(left, [ledger], at, {});
+    const follows = mayFollow(s, moved);
+    const left: Ledger[] = [];
+    let parked = false;
+    for (const ledger of this.ledgers.values()) {
+      // A monster already dead follows nobody: its kill is settled now.
+      if (moved !== null && follows.has(ledger.key) && ledger.killedAfter === null) {
+        this.pursuit.park(ledger.key, { ledger, left: s }, moved, at + tuning().parse.followMs);
+        parked = true;
+      } else left.push(ledger);
+    }
+    // The engagement's timings stay with a follower, whose fight goes on in the next room.
+    this.settleLedgers(s, left, at, parked ? {} : this.engagement());
+    this.ledgers.clear();
+  }
+
+  /** What the engagement took, given once to the first fight it opened. */
+  private engagement(): Partial<FightTiming> {
+    return this.clock.take(tuning().hunting.killGapMostMs);
+  }
+
+  /** Each ledger settled as its own fight; the timing goes to the first one the character opened. */
+  private settleLedgers(
+    s: CharacterState,
+    ledgers: Iterable<Ledger>,
+    at: number,
+    timing: Partial<FightTiming>
+  ): void {
+    let anyKilled = false;
+    for (const ledger of ledgers) {
+      const settled = this.settleLedger(s, ledger, at, timing);
+      if (settled === null) continue;
+      anyKilled ||= settled.killed;
+      if (settled.timed) timing = {};
+    }
+    if (anyKilled) this.clock.killed(at, roomAddress(s.room));
+  }
+
+  /** One monster's fight written down and taught to the lore; null when nothing was dealt to it. */
+  private settleLedger(
+    s: CharacterState,
+    ledger: Ledger,
+    at: number,
+    timing: Partial<FightTiming>
+  ): { killed: boolean; timed: boolean } | null {
+    const total = ledgerTotal(ledger);
+    if (total <= 0) return null;
+    const killed = ledger.killedAfter !== null && ledger.killedAfter === total;
+    /*
+     * Written down before the guard below, deliberately.
+     *
+     * The lore refuses to *learn* from a kill this client did not open,
+     * because a minimum estimator that accepts an undercount keeps it for
+     * good. The record has no such problem: it carries `opened`, so whoever
+     * reads it later can decide, and a fight thrown away here is a fight
+     * nobody can ever ask about.
+     */
+    const record = this.fightRecord(s, ledger, total, killed, at);
+    this.sources.fights.record(ledger.opened ? { ...record, ...timing } : record);
+    if (!killed || ledger.opened)
+      this.sources.lore.observe(ledger.key, { damage: total, killed, at });
+    return { killed, timed: ledger.opened };
   }
 
   /**
@@ -868,6 +948,7 @@ export class FightTracker {
       blows: ledger.blows,
       wound: ledger.observed,
       opened: ledger.opened,
+      ...(ledger.followed ? { followed: true } : {}),
       name: s.name,
       race: s.race,
       className: s.className,
@@ -1033,4 +1114,35 @@ function judges(s: CharacterState, key: string): boolean {
     (s.combat.target !== null && mobKey(s.combat.target) === key) ||
     s.room.occupants.some((one) => one.kind === 'mob' && mobKey(one.name) === key)
   );
+}
+
+/**
+ * Who could walk in after this step: a monster fighting the character that the
+ * realm does not say never follows (`follows` 0). Nothing follows a sneaking
+ * character or a step with no way back (`Exits.cs:165-184`).
+ */
+function mayFollow(s: CharacterState, moved: Direction | null): ReadonlySet<string> {
+  if (moved === null || s.stealth === 'sneaking') return new Set();
+  const named =
+    s.combat.target === null ? s.combat.attackers : [...s.combat.attackers, s.combat.target];
+  const keys = new Set(named.map(mobKey));
+  for (const one of s.room.occupants)
+    if (one.kind === 'mob' && one.mob?.follows === 0) keys.delete(mobKey(one.name));
+  return keys;
+}
+
+/** Two ledgers under one name made one: a follower walking in where a namesake was already fought. */
+function joined(here: Ledger, came: Ledger): Ledger {
+  const struckBy = new Map(here.struckBy);
+  for (const [who, damage] of came.struckBy) struckBy.set(who, (struckBy.get(who) ?? 0) + damage);
+  return {
+    ...here,
+    mine: here.mine + came.mine,
+    others: here.others + came.others,
+    blows: here.blows + came.blows,
+    struckBy,
+    startedAt: Math.min(here.startedAt || came.startedAt, came.startedAt || here.startedAt),
+    opened: here.opened || came.opened,
+    followed: here.followed || came.followed
+  };
 }

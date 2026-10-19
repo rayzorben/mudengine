@@ -65,6 +65,7 @@ describe("what a character has learned rides beside the realm's answer", () => {
           meanBlows: 3,
           meanMs: null,
           opened: 2,
+          followed: 0,
           latest: 5
         }
       }
