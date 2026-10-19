@@ -277,6 +277,12 @@ const TUNING_DEFAULTS = {
      */
     mobRegenMs: 30_000,
     /**
+     * How long a monster that was fighting the character may still walk in
+     * after it, ms: `Mob.CheckFollow` stops tracking after 30 s (todo
+     * 20261018-1314-02). A setting because a realm's own timing may differ, as with `mobRegenMs`.
+     */
+    followMs: 30_000,
+    /**
      * How long after this character's own landed blow an unattributed damage
      * line still reads as that blow's weapon proc, in milliseconds.
      *

@@ -36,7 +36,8 @@ const declaration = (opening: string): string => {
  */
 const FOLDED_WITH: Readonly<Record<number, string>> = {
   1: '7937e008f3996b5f',
-  2: '7a106db7bc88f217'
+  2: '7a106db7bc88f217',
+  3: '25d2950aa42f1c27'
 };
 
 describe('the fold version', () => {
@@ -54,6 +55,28 @@ describe('the fold version', () => {
       FOLDED_WITH[FOLD_VERSION],
       `the fold code changed: raise FOLD_VERSION and add ${digest} for it`
     ).toBe(digest);
+  });
+});
+
+describe('a monster that followed', () => {
+  it('is counted in its summary, and a fight it did not follow is not', () => {
+    const fight = (followed: boolean): FightRecord =>
+      ({
+        at: 1,
+        ms: null,
+        mob: 'orc',
+        killed: true,
+        mine: 10,
+        others: 0,
+        blows: 2,
+        wound: null,
+        opened: true,
+        ...(followed ? { followed: true } : {})
+      }) as FightRecord;
+    const folds: FightFolds = new Map();
+    foldFight(folds, fight(true));
+    foldFight(folds, fight(false));
+    expect(summarizeFolds([folds], 'orc')).toMatchObject({ fights: 2, followed: 1 });
   });
 });
 

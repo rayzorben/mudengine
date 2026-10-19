@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { FightTracker, playerDies } from '../combat';
+import { leftRoom } from '../steps';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { NO_LORE } from '../../../shared/lore';
 import type { FightRecord } from '../../../shared/fights';
@@ -167,6 +168,102 @@ describe('every monster the room lists', () => {
     expect(
       other.hit(fresh, 1_000, 'cave bear', 'Rand', 20)!.combat.healthHere['cave bear']?.sinceLook
     ).toBeNull();
+  });
+});
+
+describe('a step out of a fight', () => {
+  const fightingIn = (follows?: number) => {
+    const records: FightRecord[] = [];
+    const tracker = new FightTracker({
+      lore: { ...NO_LORE, maximumFor: () => ({ max: 100, source: 'realm', span: null }) },
+      fights: { record: (record) => records.push(record) },
+      harm: NO_HARM,
+      withOccupant: (s) => s.room
+    });
+    const orc = { ...mob('orc'), ...(follows === undefined ? {} : { mob: { follows } as never }) };
+    const room = { ...EMPTY_CHARACTER.room, name: 'Main Road', occupants: [orc] };
+    let s = state({ room });
+    tracker.heard({ type: 'status-line', text: '', groups: {}, at: 1_000 }, s);
+    s = tracker.hit(s, 1_000, 'orc', 'You', 40)!;
+    s = { ...s, combat: { ...s.combat, attackers: ['orc'] } };
+    return { tracker, records, s };
+  };
+  const arrives = (at: number, from: string) => ({
+    type: 'mob-arrives-room' as const,
+    text: `orc moves into the room from the ${from}.`,
+    groups: { line: 'orc moves', direction: from },
+    at
+  });
+  const nextRoom = (s: CharacterState): CharacterState => ({
+    ...s,
+    room: { ...s.room, name: 'Forest Entry', occupants: [mob('orc')] },
+    combat: { ...s.combat, attackers: [], target: null }
+  });
+
+  it('keeps the damage of a monster that follows, and only when it walks in from the way back', () => {
+    const { tracker, records, s } = fightingIn();
+    tracker.walked(s, 'e');
+    const there = nextRoom(s);
+    tracker.heard(arrives(2_000, 'west'), there);
+    const hit = tracker.hit(there, 2_100, 'orc', 'You', 10)!;
+    expect(hit.combat.health?.remaining).toBeCloseTo(0.5, 5);
+    // One fight across two rooms, and its record says the orc followed.
+    tracker.status(hit, false, 3_000);
+    expect(records.map((one) => [one.mob, one.mine, one.followed])).toEqual([['orc', 50, true]]);
+  });
+
+  it('lets go of a monster that did not follow, written down under the room it was fought in', () => {
+    const { tracker, records, s } = fightingIn();
+    tracker.walked(s, 'e');
+    const there = nextRoom(s);
+    // An orc wandering in from elsewhere is another orc.
+    tracker.heard(arrives(2_000, 'north'), there);
+    expect(tracker.hit(there, 2_100, 'orc', 'You', 10)?.combat.health?.remaining).toBeCloseTo(
+      0.9,
+      5
+    );
+    // When its window passes, the orc that never walked in is written down where it was fought.
+    tracker.heard({ type: 'status-line', text: '', groups: {}, at: 40_000 }, there);
+    expect(records.map((one) => [one.mob, one.roomName, one.mine])).toContainEqual([
+      'orc',
+      'Main Road',
+      40
+    ]);
+  });
+
+  it('writes down a monster killed before the step at once, as a kill in the room it died in', () => {
+    const { tracker, records, s } = fightingIn();
+    const dead = tracker.died(s, 1_500);
+    tracker.walked(dead, 'e');
+    expect(records.map((one) => [one.mob, one.roomName, one.killed])).toEqual([
+      ['orc', 'Main Road', true]
+    ]);
+  });
+
+  it('lets go of everything when the character was sneaking, or the realm says it never follows', () => {
+    for (const [follows, stealth] of [
+      [0, 'unknown'],
+      [undefined, 'sneaking']
+    ] as const) {
+      const { tracker, s } = fightingIn(follows);
+      tracker.walked({ ...s, stealth }, 'e');
+      const there = nextRoom(s);
+      tracker.heard(arrives(2_000, 'west'), there);
+      expect(tracker.hit(there, 2_100, 'orc', 'You', 10)?.combat.health?.remaining).toBeCloseTo(
+        0.9,
+        5
+      );
+    }
+  });
+});
+
+describe('a step that is no step', () => {
+  it('leaves the fight alone when a look or a refused move lands in the same room', () => {
+    // `toldOfSteps` asks `leftRoom` first; the fight itself never sees the redisplay.
+    expect(leftRoom(EMPTY_CHARACTER.room, { ...EMPTY_CHARACTER.room })).toBe(false);
+    expect(leftRoom(EMPTY_CHARACTER.room, { ...EMPTY_CHARACTER.room, name: 'Forest Entry' })).toBe(
+      true
+    );
   });
 });
 

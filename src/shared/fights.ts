@@ -106,6 +106,12 @@ export interface FightRecord {
    */
   opened: boolean;
   /**
+   * Present when the monster followed the character into another room mid-fight
+   * (todo 20261018-1314-02): one of that name walking in from the way back
+   * within `parse.followMs`, which a wanderer of the same name would also be.
+   */
+  followed?: true;
+  /**
    * Ms from `*Combat Engaged*` to this character's first blow, on a fight it
    * opened. The engagement starts with a full round's energy
    * (`combatEngageStartEnergy`), so the first blow comes before the room's
@@ -198,6 +204,8 @@ export interface FightSummary {
   meanMs: number | null;
   /** How many this character opened rather than joined. */
   opened: number;
+  /** How many it followed the character into another room. */
+  followed: number;
   /** Epoch ms of the latest fight. */
   latest: number;
 }
@@ -246,6 +254,7 @@ export interface FightFold {
   timed: number;
   ms: number;
   opened: number;
+  followed: number;
   latest: number;
 }
 
@@ -259,7 +268,7 @@ export type FightFolds = Map<string, FightFold>;
  * A record field either function starts reading also goes into `isFoldable`
  * (`session/fightSegments.ts`).
  */
-export const FOLD_VERSION = 2;
+export const FOLD_VERSION = 3;
 
 /** Adds every name's sums in `from` into `into`. */
 export function mergeFolds(into: FightFolds, from: ReadonlyMap<string, FightFold>): void {
@@ -275,6 +284,7 @@ export const FOLD_FIELDS: Readonly<Record<keyof FightFold, Combine>> = {
   timed: 'sum',
   ms: 'sum',
   opened: 'sum',
+  followed: 'sum',
   latest: 'max'
 };
 
@@ -310,6 +320,7 @@ export function foldFight(into: FightFolds, record: FightRecord): void {
     timed: 0,
     ms: 0,
     opened: 0,
+    followed: 0,
     latest: -Infinity
   };
   fold.fights += 1;
@@ -321,6 +332,7 @@ export function foldFight(into: FightFolds, record: FightRecord): void {
     fold.ms += record.ms;
   }
   if (record.opened) fold.opened += 1;
+  if (record.followed === true) fold.followed += 1;
   if (record.at > fold.latest) fold.latest = record.at;
   into.set(record.mob, fold);
 }
@@ -347,6 +359,7 @@ export function summarizeFolds(
   let timed = 0;
   let ms = 0;
   let opened = 0;
+  let followed = 0;
   let latest = -Infinity;
   for (const table of folds) {
     for (const [mob, fold] of table) {
@@ -358,6 +371,7 @@ export function summarizeFolds(
       timed += fold.timed;
       ms += fold.ms;
       opened += fold.opened;
+      followed += fold.followed;
       if (fold.latest > latest) latest = fold.latest;
     }
   }
@@ -369,6 +383,7 @@ export function summarizeFolds(
     meanBlows: blows / fights,
     meanMs: timed === 0 ? null : ms / timed,
     opened,
+    followed,
     latest
   };
 }

@@ -184,6 +184,7 @@ describe('what the record says about a monster', () => {
       meanBlows: 4,
       meanMs: 4000,
       opened: 2,
+      followed: 0,
       latest: 2
     });
     // Null is no fights, not zero of everything.
