@@ -37,11 +37,11 @@ const MOUNTS: Readonly<Record<number, readonly Mount[]>> = {
   ],
   5: [{ region: 'lower', side: 'below', at: [116, 388] }],
   6: [{ region: 'arms', side: 'left', at: [44, 142] }],
-  7: [{ region: 'torso', side: 'left', at: [60, 98] }],
+  7: [{ region: 'torso', side: 'right', at: [124, 132] }],
   8: [{ region: 'torso', side: 'right', at: [110, 80] }],
   9: [{ region: 'lower', side: 'below', at: [80, 300] }],
   10: [{ region: 'lower', side: 'below', at: [132, 210] }],
-  11: [{ region: 'torso', side: 'right', at: [124, 132] }],
+  11: [{ region: 'torso', side: 'left', at: [60, 98] }],
   12: [{ region: 'held', side: 'left', at: [26, 228] }],
   14: [
     { region: 'arms', side: 'left', at: [32, 196] },
