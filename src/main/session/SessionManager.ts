@@ -133,6 +133,7 @@ import type { SessionExtensions } from '../extensions/SessionExtensions';
 
 import { NO_LORE, type RealmLoreView } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
+import { spellHeals } from '../../shared/spellcraft';
 import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
 import {
   NO_REALM_PLAYERS,
@@ -585,11 +586,9 @@ export class SessionManager {
       // reads; a lookup because what has been learned changes as the session runs.
       (text) => spellLore.match(text),
       /*
-       * And how this realm's monsters die: what its own wire taught (todo 04)
-       * **beside** the server's own table, which may name several (2026-09-14):
-       * the one learned answer hid the four the table names, so a sentence every
-       * dark monk in the room answers to read as naming exactly one. The room
-       * settles it or nothing does; see `Classifier.asDeathSentence`.
+       * And how this realm's monsters die: what its own wire taught (todo 04) **beside** the
+       * server's own table, which may name several (2026-09-14); the room settles it or
+       * nothing does (`Classifier.asDeathSentence`).
        */
       (text) => {
         const learned = lore.deathOf?.(text) ?? [];
@@ -603,7 +602,8 @@ export class SessionManager {
       (text) => sentences.messages.match(text),
       // And the rows a confusing spell prints on a fumble, in the realm's words.
       (row) => world?.spellsByMessage(CONFUSE_MESSAGE_ABILITY).has(row) ?? false,
-      () => this.vocabulary.coins
+      () => this.vocabulary.coins,
+      (spell) => spellHeals(world?.spellNamed(spell))
     );
     this.world = world;
     this.realmWord = new RealmWordWatch(world, sink);

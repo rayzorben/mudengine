@@ -346,6 +346,10 @@ export function servesOf(
   return spellServes(spell.abilities, (id) => byId(id)?.abilities);
 }
 
+/** Whether the realm's row for a spell heals hit points: a cast that prints no amount is drawn as a heal on it (todo 20261018-1314-01). */
+export const spellHeals = (spell: WorldSpell | null | undefined): boolean =>
+  spell != null && spellServes(spell.abilities).hp;
+
 /**
  * The condition each cure answers: the settings word (*poison*) to the wire's
  * state and `spellServes`' flag (*poisoned*). One map, read by `Cures` and by

@@ -1009,6 +1009,12 @@ export interface TargetHealth {
    * arithmetic has got to, and this is what was actually observed.
    */
   observed: WoundBand | null;
+  /**
+   * Share of full lost since that look, net of what it healed back: the blows
+   * that come off both edges of the band; all of it once killed. Null with no
+   * look, or no maximum while it lives.
+   */
+  sinceLook: number | null;
 }
 
 /**
@@ -1069,6 +1075,13 @@ export interface Combat {
    * whether or not anything can put a number on what it is swinging at.
    */
   health: TargetHealth | null;
+  /**
+   * The same estimate for every monster name the room lists, keyed by `mobKey`
+   * (todo 20261018-1314-01): the arena fills each monster's token from it.
+   * Monsters that share a name share one entry, since the wire cannot say which
+   * of them a blow landed on. A listed name with no entry is unknown.
+   */
+  healthHere: Readonly<Record<string, TargetHealth>>;
   /** Epoch ms of the last blow either way, for mid-round timing. */
   lastBlowAt: number | null;
   /** Blows exchanged in this fight, for a card that says how it is going. */
@@ -1093,6 +1106,7 @@ export const NO_COMBAT: Combat = {
   targetEntity: null,
   attackers: [],
   health: null,
+  healthHere: {},
   lastBlowAt: null,
   blows: 0,
   claimed: {}

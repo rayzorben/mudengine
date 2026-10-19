@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Block } from '@shared/blocks';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '@shared/character';
+import {
+  EMPTY_CHARACTER,
+  type CharacterState,
+  type RoomOccupant,
+  type TargetHealth
+} from '@shared/character';
+import type { WoundBand } from '@shared/wounds';
 import type { ExitEntity } from '@shared/entities';
-import { arenaTokensOf } from '../gameArena';
+import { arenaTokensOf, namesakeCounts } from '../gameArena';
 import { blowOf, SELF } from '../gameBlows';
 import {
   commandFor,
@@ -15,6 +21,7 @@ import {
 import { dockGeometry, DOCK_MIN_COLUMNS, DOCK_PADDING } from '../gameDock';
 import { anchorOf, intoRound, RESYNC_MS } from '../gameRounds';
 import { feedOf, forYou, unreadFor } from '../gameTalk';
+import { t } from '../i18n';
 
 const mob = (name: string, hostile = false): RoomOccupant =>
   ({ name, kind: 'mob', disposition: hostile ? 'hostile' : null }) as RoomOccupant;
@@ -176,26 +183,148 @@ describe('the diagonal keys', () => {
 });
 
 describe('the arena', () => {
-  it('gives the target its wound band and every other monster an unknown one, never full', () => {
+  const LINES = { caution: 0.5, critical: 0.25 };
+  const estimate = (
+    name: string,
+    remaining: number | null,
+    observed: WoundBand | null = null,
+    sinceLook: number | null = null
+  ) =>
+    ({
+      name,
+      max: remaining === null ? null : 100,
+      source: remaining === null ? null : 'realm',
+      span: null,
+      damage: { mine: 0, others: 0 },
+      remaining,
+      observed,
+      sinceLook
+    }) as TargetHealth;
+  const withHealth = (character: CharacterState, ...health: TargetHealth[]): CharacterState => ({
+    ...character,
+    combat: {
+      ...character.combat,
+      healthHere: Object.fromEntries(health.map((one) => [one.name, one]))
+    }
+  });
+
+  it("fills every monster's gauge from its estimate, the target's and the rest", () => {
     const character = state({
       occupants: [mob('kobold thief'), mob('giant rat')],
       engaged: true,
       target: 'giant rat'
     });
-    const fought = {
-      ...character,
-      combat: {
-        ...character.combat,
-        health: { observed: 'heavily wounded' } as CharacterState['combat']['health']
-      }
-    };
-    const tokens = arenaTokensOf(fought, null);
+    const tokens = arenaTokensOf(
+      withHealth(character, estimate('giant rat', 0.2), estimate('kobold thief', 0.8)),
+      null,
+      LINES
+    );
     const rat = tokens.find((one) => one.name === 'giant rat')!;
     const thief = tokens.find((one) => one.name === 'kobold thief')!;
-    expect(rat.band).not.toBeNull();
-    expect(rat.target).toBe(true);
-    expect(thief.band).toBeNull();
-    expect(thief.health).toBeNull();
+    expect(rat).toMatchObject({ target: true, health: 0.2, band: null, level: 'critical' });
+    expect(thief).toMatchObject({ target: false, health: 0.8, band: null, level: 'ok' });
+  });
+
+  it('draws a monster with no maximum, or not yet worked out, as unknown, never full', () => {
+    const character = state({ occupants: [mob('kobold thief'), mob('strange shade')] });
+    const tokens = arenaTokensOf(
+      withHealth(character, estimate('strange shade', null)),
+      null,
+      LINES
+    );
+    for (const one of tokens.filter((token) => token.side === 'foe'))
+      expect(one).toMatchObject({ health: null, band: null, level: 'unknown' });
+  });
+
+  it("draws a look's band lighter above the fill, and alone where nothing knows a maximum", () => {
+    const character = state({ occupants: [mob('kobold thief'), mob('strange shade')] });
+    const tokens = arenaTokensOf(
+      withHealth(
+        character,
+        estimate('kobold thief', 0.75, 'moderately wounded'),
+        estimate('strange shade', null, 'moderately wounded')
+      ),
+      null,
+      LINES
+    );
+    expect(tokens.find((one) => one.name === 'kobold thief')).toMatchObject({
+      health: 0.75,
+      band: { lo: 0.75, hi: 0.85 }
+    });
+    expect(tokens.find((one) => one.name === 'strange shade')).toMatchObject({
+      health: 0.7,
+      band: { lo: 0.7, hi: 0.85 }
+    });
+  });
+
+  it("brings both edges of a look's band down with the blows since", () => {
+    const character = state({ occupants: [mob('kobold thief')] });
+    const [, thief] = arenaTokensOf(
+      withHealth(character, estimate('kobold thief', 0.55, 'moderately wounded', 0.2)),
+      null,
+      LINES
+    );
+    expect(thief).toMatchObject({ health: 0.55 });
+    expect(thief?.band?.hi).toBeCloseTo(0.65, 5);
+  });
+
+  it('gives the target alone its hit points, while its maximum is known', () => {
+    const character = state({
+      occupants: [mob('kobold thief'), mob('giant rat')],
+      engaged: true,
+      target: 'giant rat'
+    });
+    const tokens = arenaTokensOf(
+      withHealth(character, estimate('giant rat', 0.76), estimate('kobold thief', 0.5)),
+      null,
+      LINES
+    );
+    expect(tokens.find((one) => one.name === 'giant rat')?.points).toBe(
+      t('game.arena.points', { left: 76, max: 100 })
+    );
+    expect(tokens.find((one) => one.name === 'kobold thief')?.points).toBeNull();
+    const unknown = arenaTokensOf(withHealth(character, estimate('giant rat', null)), null, LINES);
+    expect(unknown.find((one) => one.name === 'giant rat')?.points).toBeNull();
+  });
+
+  it('counts the monsters only when a name repeats', () => {
+    expect(namesakeCounts(state({ occupants: [mob('giant rat'), mob('orc')] }))).toBeNull();
+    const counted = namesakeCounts(
+      state({ occupants: [mob('giant rat'), mob('orc'), mob('giant rat')] })
+    );
+    expect(counted).toBe(
+      [
+        t('game.arena.count', { count: 2, name: 'giant rat' }),
+        t('game.arena.count', { count: 1, name: 'orc' })
+      ].join('  ·  ')
+    );
+  });
+
+  it('gives namesakes the range their shared total allows, and marks them', () => {
+    const character = state({ occupants: [mob('giant rat'), mob('giant rat'), mob('orc')] });
+    const tokens = arenaTokensOf(
+      withHealth(character, estimate('giant rat', 0.4), estimate('orc', 1)),
+      null,
+      LINES
+    );
+    const rats = tokens.filter((one) => one.name === 'giant rat');
+    expect(rats).toHaveLength(2);
+    for (const rat of rats)
+      expect(rat).toMatchObject({ health: 0.4, band: { lo: 0.4, hi: 1 }, shared: true });
+    expect(tokens.find((one) => one.name === 'orc')).toMatchObject({ shared: false });
+  });
+
+  it("colours the party's gauges at the vitals' lines", () => {
+    const character = {
+      ...state({ occupants: [player('Kael')] }),
+      party: {
+        ...EMPTY_CHARACTER.party,
+        members: [{ name: 'Kael', health: 0.5, mana: null }] as CharacterState['party']['members']
+      }
+    };
+    const kael = arenaTokensOf(character, null, LINES).find((one) => one.name === 'Kael')!;
+    // `<=`, as the Vitals card reads it: 50% is already the caution line.
+    expect(kael.level).toBe('caution');
   });
 
   it('stands party members in the room beside the character, and other players apart', () => {
@@ -209,7 +338,7 @@ describe('the arena', () => {
         ] as CharacterState['party']['members']
       }
     };
-    const tokens = arenaTokensOf(character, null);
+    const tokens = arenaTokensOf(character, null, { caution: 0.5, critical: 0.25 });
     expect(tokens.map((one) => [one.name, one.side])).toEqual([
       ['Rayzor', 'party'],
       ['Kael', 'party'],
@@ -278,6 +407,60 @@ describe('a blow on the arena', () => {
         names
       )
     ).toEqual({ from: 'p:kael#0', to: SELF, kind: 'heal', amount: 9 });
+  });
+
+  it('reads a heal that says so after its amount, which once read as a blow', () => {
+    // captures/003: `for` before the amount, `healing` after it.
+    expect(
+      blowOf(
+        block('spell-cast', 'Kael casts major healing on you for 20 healing!', {
+          caster: 'Kael',
+          kind: 'for',
+          amount: '20',
+          effect: 'healing'
+        }),
+        names
+      )
+    ).toEqual({ from: 'p:kael#0', to: SELF, kind: 'heal', amount: 20 });
+    expect(
+      blowOf(
+        block('spell-cast', 'Kael casts magic missile on you for 6 damage!', {
+          caster: 'Kael',
+          kind: 'for',
+          amount: '6',
+          effect: 'damage'
+        }),
+        names
+      )
+    ).toMatchObject({ kind: 'hit', amount: 6 });
+  });
+
+  it('reads a heal cast on yourself as one end', () => {
+    expect(
+      blowOf(
+        block('spell-cast', 'You cast mend on yourself, regenerating 19 damage!', {
+          caster: 'You',
+          kind: 'regenerating',
+          amount: '19',
+          effect: 'damage'
+        }),
+        names
+      )
+    ).toEqual({ from: SELF, to: SELF, kind: 'heal', amount: 19 });
+  });
+
+  it('draws a heal that prints no amount as a heal with no number', () => {
+    expect(
+      blowOf(
+        block('spell-cast', 'Kael casts greater healing on you!', {
+          caster: 'Kael',
+          spell: 'greater healing',
+          target: 'you',
+          heals: 'yes'
+        }),
+        names
+      )
+    ).toEqual({ from: 'p:kael#0', to: SELF, kind: 'heal', amount: null });
   });
 
   it('draws nothing for a line naming nobody on the arena', () => {

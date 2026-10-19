@@ -110,7 +110,7 @@ import { commandOf, type RereadClaim } from '../../shared/commands';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { Company } from './company';
 import { claimedBy, engagedBy, swingingAtMe, threatenedBy, vouchedFor } from './engagements';
-import { keepPartyCurrent } from './partyUpkeep';
+import { keepCurrent } from './keepCurrent';
 import { freshTally, pastimeOf, trackTally } from './tally';
 import { KillRun } from './killRun';
 import { NO_TALLY, settleClocks, withPastime, type CombatTally } from '../../shared/tally';
@@ -824,7 +824,7 @@ export class CharacterTracker {
     if (next !== null && moved && Object.keys(next.combat.claimed).length > 0) {
       next = { ...next, combat: { ...next.combat, claimed: {} } };
     }
-    const party = keepPartyCurrent(before, next ?? this.state, block, moved);
+    const party = keepCurrent(before, next ?? this.state, block, moved, this.fight);
     if (party !== (next ?? this.state)) next = party;
     /*
      * **A room the character could read is proof it can see** — the second

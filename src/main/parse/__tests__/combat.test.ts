@@ -118,12 +118,55 @@ describe("this character's own swings", () => {
 
   it("somebody else's blow is tallied and never becomes this character's target", () => {
     const { tracker, s } = fight([mob('giant rat')]);
-    // Not fighting it: recorded, nothing to republish.
-    expect(tracker.hit(s, 1_000, 'giant rat', 'Rand', 5)).toBeNull();
+    // Not fighting it: recorded and republished for the arena's gauge, never a target.
+    const watched = tracker.hit(s, 1_000, 'giant rat', 'Rand', 5)!;
+    expect(watched.combat.target).toBeNull();
+    expect(watched.combat.healthHere['giant rat']?.damage).toEqual({ mine: 0, others: 5 });
+    // A monster the room does not list moves no gauge, so nothing to republish.
+    expect(tracker.hit(s, 1_050, 'cave bear', 'Rand', 5)).toBeNull();
     const mine = tracker.hit(s, 1_100, 'giant rat', 'You', 3)!;
     const theirs = tracker.hit(mine, 1_200, 'giant rat', 'Rand', 5)!;
     expect(theirs.combat.target).toBe('giant rat');
     expect(theirs.combat.health?.damage).toEqual({ mine: 3, others: 10 });
+  });
+});
+
+describe('every monster the room lists', () => {
+  it("publishes each name's estimate, the one namesakes share, from whoever's blows", () => {
+    const { tracker, s } = healer(100, null);
+    const room = {
+      ...s.room,
+      occupants: [mob('cave bear'), mob('fat giant rat'), mob('fat giant rat')]
+    };
+    const here = { ...s, room };
+    const first = tracker.hit(here, 1_000, 'fat giant rat', 'Rand', 30)!;
+    const next = tracker.hit(first, 1_100, 'cave bear', 'You', 10)!;
+    expect(Object.keys(next.combat.healthHere).sort()).toEqual(['cave bear', 'fat giant rat']);
+    expect(next.combat.healthHere['cave bear']?.remaining).toBeCloseTo(0.9, 5);
+    // Two rats, one ledger: the 30 is theirs between them.
+    expect(next.combat.healthHere['fat giant rat']?.remaining).toBeCloseTo(0.7, 5);
+    expect(next.combat.health?.name).toBe('cave bear');
+  });
+
+  it('takes a look at a monster nobody is fighting as its gauge', () => {
+    const { tracker, s } = healer(100, null);
+    const looked = tracker.wounded(s, 'moderately wounded', 'cave bear', 1_000)!;
+    expect(looked.combat.target).toBeNull();
+    expect(looked.combat.healthHere['cave bear']?.observed).toBe('moderately wounded');
+    expect(looked.combat.healthHere['cave bear']?.remaining).toBeLessThan(1);
+  });
+
+  it('counts what a monster lost since the look, so blows come off both edges of its band', () => {
+    const { tracker, s } = healer(100, null);
+    const looked = tracker.wounded(s, 'moderately wounded', 'cave bear', 1_000)!;
+    expect(looked.combat.healthHere['cave bear']?.sinceLook).toBe(0);
+    const struck = tracker.hit(looked, 1_100, 'cave bear', 'Rand', 20)!;
+    expect(struck.combat.healthHere['cave bear']?.sinceLook).toBeCloseTo(0.2, 5);
+    // No look, nothing to come off.
+    const { tracker: other, s: fresh } = healer(100, null);
+    expect(
+      other.hit(fresh, 1_000, 'cave bear', 'Rand', 20)!.combat.healthHere['cave bear']?.sinceLook
+    ).toBeNull();
   });
 });
 

@@ -3140,6 +3140,7 @@ describe('the fight this character is in', () => {
       target: null,
       targetEntity: null,
       health: null,
+      healthHere: {},
       attackers: [],
       lastBlowAt: null,
       blows: 0,

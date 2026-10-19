@@ -3633,3 +3633,27 @@ describe('a trap disarmed', () => {
     expect(classify('Your skill fails you this time.').type).toBe('skill-failed');
   });
 });
+
+describe('a cast the realm says heals', () => {
+  // captures/060: the heal prints no amount, so only the spell's row can say it healed.
+  const heals = (spell: string) => spell === 'greater healing';
+  const classify = (plain: string) =>
+    new Classifier(
+      NAMES,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      heals
+    ).classify(line(plain, plain)).block;
+
+  it('marks a cast of a healing spell, amount or none', () => {
+    expect(classify('Eagle casts greater healing on you!')?.groups['heals']).toBe('yes');
+  });
+
+  it('leaves any other cast unmarked', () => {
+    expect(classify('Eagle casts bless on you!')?.groups['heals']).toBeUndefined();
+  });
+});

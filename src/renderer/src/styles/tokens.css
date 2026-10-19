@@ -231,6 +231,10 @@
   /* The ring round the arena (todo 154): the off-round a step goes in, the rest it waits out. */
   --game-off-round: var(--game-heal);
   --game-round: var(--game-hp);
+  /* A gauge on the arena (todo 20261018-1314-01): the classic view's vital colours. */
+  --game-ok: var(--ok);
+  --game-caution: var(--pending);
+  --game-critical: var(--danger);
   --game-blur: blur(14px) saturate(1.2);
   --dur-game-dock: 320ms;
   --dur-game-fill: 250ms;
