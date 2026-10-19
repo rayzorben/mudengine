@@ -1376,7 +1376,7 @@ export default function App() {
         <GameView
           api={api}
           game={game}
-          keys={config.keys}
+          config={config}
           openRouteOn={openRouteOn}
           profile={profiles.find((one) => one.id === session) ?? null}
           renderTalk={renderTalk}

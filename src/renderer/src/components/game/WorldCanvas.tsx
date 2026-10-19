@@ -24,7 +24,7 @@ import {
   type WheelEvent
 } from 'react';
 
-import type { CharacterState } from '@shared/character';
+import type { CharacterState, VitalThresholds } from '@shared/character';
 import { MOTIF_PALETTES, teleportsOf, type GameCell, type MapArea } from '@shared/gameMap';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { Direction, RoomId } from '@shared/world';
@@ -32,6 +32,7 @@ import {
   arenaExitsOf,
   arenaNames,
   arenaTokensOf,
+  namesakeCounts,
   placeLabel,
   type ArenaToken
 } from '../../lib/gameArena';
@@ -75,6 +76,7 @@ import { drawPeek, PEEK_SIZE } from './drawPeek';
 import { drawStairs, type StairSpot } from './drawStairs';
 import FloorStrip from './FloorStrip';
 import RoundRing, { RING_EXTENT, RING_GLOW_PX } from './RoundRing';
+import { arenaRadiusAt, mapAlphaAt, zoomAt, zoomsIn } from '../../lib/gameZoom';
 
 export interface WorldCanvasHandle {
   zoom(by: number): void;
@@ -95,6 +97,8 @@ export interface WorldCanvasProps {
   found: readonly FoundWay[];
   players: Scene['players'];
   picked: string | null;
+  /** Where the party's gauges turn yellow and red. */
+  hpLines: VitalThresholds;
   /** The room's beat, drawn as the ring round the arena (todo 154); null for no ring. */
   rounds: RoundAnchor | null;
   onFoe(name: string): void;
@@ -131,7 +135,13 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   const canvas = useRef<HTMLCanvasElement>(null);
   const cam = useRef<Camera>({ x: 0, y: 0, z: 1 });
   const follow = useRef(true);
-  const disc = useRef<Disc & { dock: number }>({ x: 0, y: 0, r: 0, dock: 0 });
+  const disc = useRef<Disc & { dock: number; fight: number }>({
+    x: 0,
+    y: 0,
+    r: 0,
+    dock: 0,
+    fight: 0
+  });
   const size = useRef({ width: 0, height: 0, ratio: 1 });
   const flights = useRef<Flight[]>([]);
   const exits = useRef<ExitSpot[]>([]);
@@ -151,7 +161,10 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   hoverRef.current = hover;
   const peek = usePeek(api, session, hover?.kind === 'stair' ? hover.spot.stair.to : null);
 
-  const tokens = useMemo(() => arenaTokensOf(character, props.picked), [character, props.picked]);
+  const tokens = useMemo(
+    () => arenaTokensOf(character, props.picked, props.hpLines),
+    [character, props.picked, props.hpLines]
+  );
   const hereCell = here === null ? undefined : map.byId.get(here);
   const arenaExits = useMemo(
     () =>
@@ -195,31 +208,38 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
         if (!follow.current) focus.current = null;
       }
     }
-    const view: View = { width, height, cam: cam.current };
-    const radius = arenaRadius(width, height);
     const d = disc.current;
+    const view: View = {
+      width,
+      height,
+      cam: { ...cam.current, z: zoomAt(cam.current.z, d.fight) }
+    };
+    const fight = zoomsIn(p.character.combat.engaged, follow.current) ? 1 : 0;
+    const radius = arenaRadiusAt(width, height, arenaRadius(width, height), d.fight);
     /*
      * Lost, the arena stands in the middle of the screen: the fight is drawn
      * wherever the room is. A known room outside the window (◎ after a long
      * drag, todo 151) is not lost: the arena holds still until its square comes.
      */
     const goal = !follow.current
-      ? { x: width - radius * 0.82 - 44, y: height * 0.54, r: radius * 0.82, dock: 1 }
+      ? { x: width - radius * 0.82 - 44, y: height * 0.54, r: radius * 0.82, dock: 1, fight }
       : cell
-        ? { ...toScreen(view, cell.gx, cell.gy), r: radius, dock: 0 }
+        ? { ...toScreen(view, cell.gx, cell.gy), r: radius, dock: 0, fight }
         : p.here === null || d.r === 0
-          ? { x: width / 2, y: height / 2, r: radius, dock: 0 }
-          : { x: d.x, y: d.y, r: d.r, dock: 0 };
+          ? { x: width / 2, y: height / 2, r: radius, dock: 0, fight }
+          : { x: d.x, y: d.y, r: d.r, dock: 0, fight };
     if (d.r === 0) Object.assign(d, goal);
     else
-      for (const key of ['x', 'y', 'r', 'dock'] as const) {
+      for (const key of ['x', 'y', 'r', 'dock', 'fight'] as const) {
         const gap = goal[key] - d[key];
-        if (Math.abs(gap) > SETTLED * (key === 'dock' ? 1 : 100)) {
+        if (Math.abs(gap) > SETTLED * (key === 'dock' || key === 'fight' ? 1 : 100)) {
           d[key] += gap * EASE;
           moving = true;
         } else d[key] = goal[key];
       }
 
+    // Past halfway in, the arena takes the fight's layout.
+    const zoomed = d.fight > 0.5;
     const scene: Scene = {
       win: p.map.win,
       at: p.map.at,
@@ -236,9 +256,11 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
     };
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     drawGround(ctx, view, pal);
+    ctx.globalAlpha = mapAlphaAt(d.fight);
     drawWorld(ctx, view, scene, pal, d);
     const pointed = hoverRef.current?.kind === 'stair' ? hoverRef.current.spot : null;
     stairs.current = drawStairs(ctx, view, scene, pal, pointed);
+    ctx.globalAlpha = 1;
 
     {
       const area = (cell === undefined ? undefined : p.map.win.areas[cell.area]) ?? LOST_AREA;
@@ -257,16 +279,23 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       ]
         .filter((one): one is string => one !== null)
         .join('  ·  ');
-      drawFloor(ctx, pal, d, {
-        name: p.character.room.name ?? cell?.name ?? t('game.arena.unknownRoom'),
-        facts,
-        place,
-        area,
-        dark: cell?.dark === true,
-        engaged: p.character.combat.engaged,
-        docked: d.dock > 0.5,
-        detached: d.dock > 0.5 ? t('game.arena.detached') : null
-      });
+      drawFloor(
+        ctx,
+        pal,
+        d,
+        {
+          name: p.character.room.name ?? cell?.name ?? t('game.arena.unknownRoom'),
+          facts,
+          place,
+          area,
+          dark: cell?.dark === true,
+          engaged: p.character.combat.engaged,
+          docked: d.dock > 0.5,
+          counts: namesakeCounts(p.character),
+          detached: d.dock > 0.5 ? t('game.arena.detached') : null
+        },
+        zoomed
+      );
       if (d.dock > 0.05 && cell) {
         const room = toScreen(view, cell.gx, cell.gy);
         const angle = Math.atan2(room.y - d.y, room.x - d.x);
@@ -284,10 +313,10 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
       const hovered = hoverRef.current?.kind === 'exit' ? hoverRef.current.direction : null;
       exits.current = drawExits(ctx, pal, d, rim, hovered);
       placeRing(ring.current, d);
-      const at = standings(d, list);
+      const at = standings(d, list, zoomed);
       const { live, struck } = drawFlights(ctx, pal, flights.current, at, now);
       flights.current = live;
-      drawTokens(ctx, pal, d, list, at, struck);
+      drawTokens(ctx, pal, d, list, at, struck, zoomed);
       if (live.length > 0) moving = true;
       if (p.character.room.cash !== null && p.character.room.cash.totalCopper > 0) {
         ctx.fillStyle = pal.accent;
@@ -413,14 +442,14 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
   const viewNow = (): View => ({
     width: size.current.width,
     height: size.current.height,
-    cam: cam.current
+    cam: { ...cam.current, z: zoomAt(cam.current.z, disc.current.fight) }
   });
 
   const pick = (x: number, y: number): Hover => {
     for (const spot of exits.current)
       if (Math.hypot(spot.x - x, spot.y - y) < 17 || inBox(spot.box, x, y))
         return { kind: 'exit', direction: spot.direction, x, y };
-    const at = standings(disc.current, latest.current.tokens);
+    const at = standings(disc.current, latest.current.tokens, disc.current.fight > 0.5);
     for (const token of latest.current.tokens) {
       const spot = at.get(token.key);
       if (token.side === 'foe' && spot && Math.hypot(spot.x - x, spot.y - y) < 24)

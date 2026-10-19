@@ -17,6 +17,7 @@ import {
   type MapArea,
   type MapLabel
 } from '@shared/gameMap';
+import type { VitalLevel } from '@shared/character';
 import { asSpokenDirection, OPPOSITE, type Direction, type RoomId } from '@shared/world';
 import {
   DROP_PATH,
@@ -48,6 +49,8 @@ export interface GamePalette {
   ink: string;
   shade: string;
   places: Record<PlaceTone, string>;
+  /** A gauge's colour by its level; unknown is the faint ink of a dashed ring. */
+  levels: Record<VitalLevel, string>;
   font: string;
 }
 
@@ -77,6 +80,12 @@ export function readGamePalette(from: Element): GamePalette {
       tavern: token('tavern'),
       trainer: token('trainer'),
       shop: token('shop')
+    },
+    levels: {
+      ok: token('ok'),
+      caution: token('caution'),
+      critical: token('critical'),
+      unknown: token('faint')
     },
     font: style.getPropertyValue('--font-ui-family').trim() || 'sans-serif'
   };

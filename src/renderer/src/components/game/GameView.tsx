@@ -20,11 +20,10 @@ import {
   type ReactNode
 } from 'react';
 
-import type { AutomationSwitch } from '@shared/config';
+import type { AppConfig, AutomationSwitch, UiConfig } from '@shared/config';
 import type { HudThreshold } from '@shared/gameViewConfig';
 import type { GameCell } from '@shared/gameMap';
 import type { IpcApi, ProfileSummary, SessionId } from '@shared/ipc';
-import type { KeyBindings } from '@shared/keys';
 import {
   asDirection,
   asRoomReference,
@@ -81,7 +80,8 @@ export interface GameViewProps {
   session: SessionId;
   view: SessionView;
   profile: ProfileSummary | null;
-  keys: KeyBindings;
+  /** The key bindings, and where a vital bar turns yellow and red for the party's gauges. */
+  config: Pick<AppConfig, 'keys'> & { ui: Pick<UiConfig, 'vitals'> };
   openRouteOn(room: WorldRoom, search: null): void;
   stepBack(session: SessionId, confirmed: number | null): void;
   /** A refusal, said in this character's console. */
@@ -99,7 +99,7 @@ function GameView({
   session,
   view,
   profile,
-  keys,
+  config,
   openRouteOn,
   stepBack,
   say,
@@ -334,12 +334,12 @@ function GameView({
   const bound = useMemo(() => {
     const out: Partial<Record<Direction, string>> = {};
     // The character's own keys over Global's (todo 134).
-    for (const [chord, line] of Object.entries(profile?.keys ?? keys)) {
+    for (const [chord, line] of Object.entries(profile?.keys ?? config.keys)) {
       const direction = asDirection(line);
       if (direction !== null) out[direction] ??= chord;
     }
     return out;
-  }, [keys, profile]);
+  }, [config.keys, profile]);
 
   return (
     <div
@@ -367,6 +367,7 @@ function GameView({
         finds={finds}
         found={found}
         here={here}
+        hpLines={config.ui.vitals.hp}
         map={map}
         onDetached={setDetached}
         onExit={move}

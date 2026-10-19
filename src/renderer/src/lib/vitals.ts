@@ -7,7 +7,9 @@
  * levels that say nothing return null on purpose: an `ok` bar wearing a word
  * would be the scale nobody can read under pressure.
  */
+import type { VitalLevel } from '@shared/character';
 import { t } from './i18n';
+import { tuning } from './tuning';
 
 export function levelWord(level: string): string | null {
   if (level === 'caution') return t('cards.vitals.level.caution');
@@ -36,4 +38,16 @@ export function meterValue(fraction: number | null, max: number | null): string 
   return max === null
     ? `${percent}%`
     : t('cards.party.ofMax', { percent, max: max.toLocaleString() });
+}
+
+/**
+ * A monster's level from the share of it left, at the Combat card's lines
+ * (`woundCaution`, `woundCritical`): the arena's gauges and the card's bar wear
+ * the same colour for the same monster (todo 20261018-1314-01).
+ */
+export function woundLevel(remaining: number | null): VitalLevel {
+  if (remaining === null) return 'unknown';
+  if (remaining < tuning().woundCritical) return 'critical';
+  if (remaining < tuning().woundCaution) return 'caution';
+  return 'ok';
 }

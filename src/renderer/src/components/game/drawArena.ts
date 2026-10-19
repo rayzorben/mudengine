@@ -25,6 +25,8 @@ export interface ArenaRoom {
   dark: boolean;
   engaged: boolean;
   docked: boolean;
+  /** How many of each monster stand here, only when a name repeats. */
+  counts: string | null;
   /** The line under the facts while the map is detached. */
   detached: string | null;
 }
@@ -56,7 +58,8 @@ const NUMBER_GROW_MS = 140;
 /** Where each token stands: the character at the middle, the party on an arc to the left, monsters to the right. */
 export function standings(
   disc: Disc,
-  tokens: readonly ArenaToken[]
+  tokens: readonly ArenaToken[],
+  zoomed: boolean
 ): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   const place = (list: readonly ArenaToken[], from: number, to: number, reach: number) =>
@@ -70,6 +73,10 @@ export function standings(
     });
   // The character stands on its own room's square, at the middle (user, 2026-10-14).
   for (const token of tokens) if (token.self) out.set(token.key, { x: disc.x, y: disc.y });
+  if (zoomed) {
+    zoomedStandings(tokens, place);
+    return out;
+  }
   // The party in a half circle behind it to the left, monsters in one to the right.
   place(
     tokens.filter((one) => one.side === 'party' && !one.self),
@@ -91,6 +98,46 @@ export function standings(
     0.78
   );
   return out;
+}
+
+/**
+ * Zoomed for a fight (todo 20261018-1314-01, the user's pick of four
+ * prototypes): the target in front of the character, the other monsters behind
+ * it on two arcs above and below the line to it, so no blow crosses a name.
+ * Bearings and reaches are the prototype's.
+ */
+function zoomedStandings(
+  tokens: readonly ArenaToken[],
+  place: (list: readonly ArenaToken[], from: number, to: number, reach: number) => void
+): void {
+  place(
+    tokens.filter((one) => one.side === 'party' && !one.self),
+    212,
+    148,
+    0.52
+  );
+  const foes = tokens.filter((one) => one.side === 'foe');
+  const target = foes.find((one) => one.target);
+  if (target !== undefined) place([target], 0, 0, 0.6);
+  const rest = foes.filter((one) => one !== target);
+  place(
+    rest.filter((_, index) => index % 2 === 0),
+    -27,
+    -65,
+    0.84
+  );
+  place(
+    rest.filter((_, index) => index % 2 === 1),
+    27,
+    65,
+    0.84
+  );
+  place(
+    tokens.filter((one) => one.side === 'player'),
+    104,
+    76,
+    0.74
+  );
 }
 
 /** Up and down leave the plane, so their discs sit off the rim, high and low on the east side. */
@@ -142,13 +189,56 @@ function initials(name: string): string {
     .slice(0, 2);
 }
 
+/**
+ * The gauge (todo 20261018-1314-01): the token filled from the bottom to its
+ * health in its level's colour, and the range it may also be in lighter above.
+ */
+function gauge(
+  ctx: CanvasRenderingContext2D,
+  pal: GamePalette,
+  token: ArenaToken,
+  radius: number,
+  shape: Path2D
+): void {
+  if (token.health === null) return;
+  const colour = pal.levels[token.level];
+  const top = (share: number) => radius - 2 * radius * share;
+  ctx.save();
+  ctx.clip(shape);
+  if (token.band !== null && token.band.hi > token.band.lo) {
+    ctx.fillStyle = hexA(colour, 0.18);
+    ctx.fillRect(-radius, top(token.band.hi), radius * 2, top(token.band.lo) - top(token.band.hi));
+  }
+  ctx.fillStyle = hexA(colour, 0.45);
+  ctx.fillRect(-radius, top(token.health), radius * 2, radius * 2);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-radius, top(token.health));
+  ctx.lineTo(radius, top(token.health));
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Two linked rings under a monster whose name another here shares: one damage total between them. */
+function sharedMark(ctx: CanvasRenderingContext2D, pal: GamePalette, radius: number): void {
+  ctx.strokeStyle = pal.muted;
+  ctx.lineWidth = 1.5;
+  for (const dx of [-3, 3]) {
+    ctx.beginPath();
+    ctx.ellipse(-radius * 0.75 + dx, radius * 0.85, 3.5, 2.2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 function drawToken(
   ctx: CanvasRenderingContext2D,
   pal: GamePalette,
   token: ArenaToken,
   at: { x: number; y: number },
   radius: number,
-  struck: number
+  struck: number,
+  named: boolean
 ): void {
   ctx.save();
   ctx.translate(at.x, at.y);
@@ -160,49 +250,32 @@ function drawToken(
       ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 5]);
       ctx.beginPath();
-      ctx.arc(0, 0, radius + 11, 0, Math.PI * 2);
+      ctx.arc(0, 0, radius + TARGET_RING_GAP, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
     ctx.shadowColor = token.hostile ? hexA(pal.hp, 0.5) : pal.shade;
     ctx.shadowBlur = 18;
-    ctx.beginPath();
-    ctx.roundRect(-radius, -radius, radius * 2, radius * 2, 9);
+    const square = new Path2D();
+    square.roundRect(-radius, -radius, radius * 2, radius * 2, 9);
     ctx.fillStyle = pal.ink;
-    ctx.fill();
+    ctx.fill(square);
     ctx.shadowBlur = 0;
+    gauge(ctx, pal, token, radius, square);
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = token.hostile ? hexA(pal.hp, 0.7) : hexA(pal.muted, 0.6);
-    ctx.stroke();
-    // The wound band: certain to `lo`, maybe to `hi`. Unknown is a dashed ring, never a full one.
-    ctx.lineWidth = 3.5;
-    if (token.band === null) {
+    ctx.stroke(square);
+    // The ring is the gauge's colour. Unknown is a dashed ring, never a full one.
+    if (token.health === null) {
+      ctx.lineWidth = 3.5;
       ctx.setLineDash([3, 5]);
       ctx.strokeStyle = hexA(pal.text, 0.25);
       ctx.beginPath();
       ctx.arc(0, 0, radius + 5, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
-    } else {
-      const angle = (share: number) => -Math.PI / 2 + share * Math.PI * 2;
-      ctx.strokeStyle = track;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius + 5, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.lineCap = 'round';
-      if (token.band.lo > 0) {
-        ctx.strokeStyle = pal.hp;
-        ctx.beginPath();
-        ctx.arc(0, 0, radius + 5, angle(0), angle(token.band.lo));
-        ctx.stroke();
-      }
-      if (token.band.hi > token.band.lo) {
-        ctx.strokeStyle = hexA(pal.hp, 0.35);
-        ctx.beginPath();
-        ctx.arc(0, 0, radius + 5, angle(token.band.lo), angle(token.band.hi));
-        ctx.stroke();
-      }
-    }
+    } else ring(ctx, radius + 5, token.health, pal.levels[token.level], 3.5, track);
+    if (token.shared) sharedMark(ctx, pal, radius);
     ctx.fillStyle = token.hostile ? pal.hp : pal.muted;
   } else {
     const colour = token.side === 'player' ? pal.player : token.self ? pal.accent : pal.heal;
@@ -210,21 +283,28 @@ function drawToken(
     ctx.shadowColor = pal.shade;
     ctx.shadowBlur = token.self ? 0 : 14;
     ctx.fillStyle = token.self ? hexA(pal.ink, 0.35) : pal.ink;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.fill();
+    const disc = new Path2D();
+    disc.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill(disc);
     ctx.shadowBlur = 0;
+    if (token.side === 'party') gauge(ctx, pal, token, radius, disc);
     if (token.side === 'player') {
       ctx.strokeStyle = colour;
       ctx.lineWidth = 1.5;
-      ctx.stroke();
+      ctx.stroke(disc);
       ctx.restore();
       icon(ctx, PATHS.player, at.x, at.y, radius * 1.1, colour);
       label(ctx, pal, token.name, at.x, at.y + radius + 4, colour);
       return;
     }
-    const low = token.health !== null && token.health < 0.35;
-    ring(ctx, radius + 4, token.health, low ? pal.hp : colour, 3.5, track);
+    ring(
+      ctx,
+      radius + 4,
+      token.health,
+      token.health === null ? colour : pal.levels[token.level],
+      3.5,
+      track
+    );
     if (token.pool !== undefined) {
       if (token.pool.share === null) {
         ctx.setLineDash([2, 3]);
@@ -238,11 +318,14 @@ function drawToken(
   ctx.font = `600 ${Math.round(radius * 0.8)}px ${pal.font}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(
-    token.side === 'foe' ? initials(token.name) : (token.name[0] ?? '?').toUpperCase(),
-    0,
-    1
-  );
+  const letters =
+    token.side === 'foe' ? initials(token.name) : (token.name[0] ?? '?').toUpperCase();
+  // A dark edge keeps the letters legible over any gauge colour.
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = pal.ink;
+  ctx.strokeText(letters, 0, 1);
+  ctx.fillText(letters, 0, 1);
   if (struck > 0) {
     ctx.fillStyle = hexA(pal.text, struck * 0.45);
     ctx.beginPath();
@@ -258,7 +341,8 @@ function drawToken(
     ctx.restore();
     icon(ctx, PATHS.drop, at.x + radius * 0.8, at.y - radius * 0.8, 12, pal.poison);
   } else ctx.restore();
-  label(ctx, pal, token.name, at.x, at.y + radius + (token.side === 'foe' ? 10 : 12), pal.text);
+  if (named)
+    label(ctx, pal, token.name, at.x, at.y + radius + (token.side === 'foe' ? 10 : 12), pal.text);
 }
 
 function label(
@@ -284,7 +368,8 @@ export function drawFloor(
   ctx: CanvasRenderingContext2D,
   pal: GamePalette,
   disc: Disc,
-  room: ArenaRoom
+  room: ArenaRoom,
+  zoomed: boolean
 ): void {
   ctx.save();
   ctx.shadowColor = hexA(pal.shade, 0.6);
@@ -311,6 +396,20 @@ export function drawFloor(
   ctx.beginPath();
   ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
   ctx.stroke();
+  // The room's own square, larger than the character's token so its edge shows
+  // round it: which room you are in stays plain (the user, 2026-10-18).
+  const half = SELF_RADIUS * tokenScale(disc, zoomed) * 1.45;
+  ctx.save();
+  ctx.shadowColor = hexA(pal.accent, 0.55);
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.roundRect(disc.x - half, disc.y - half, half * 2, half * 2, half * 0.35);
+  ctx.fillStyle = hexA(room.area.palette.ground, 0.9);
+  ctx.fill();
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -341,10 +440,16 @@ export function drawFloor(
   ctx.strokeText(room.facts, disc.x, factsAt);
   ctx.fillStyle = hexA(pal.text, 0.65);
   ctx.fillText(room.facts, disc.x, factsAt);
+  let below = factsAt;
+  if (room.counts !== null) {
+    below += 16;
+    ctx.strokeText(room.counts, disc.x, below);
+    ctx.fillText(room.counts, disc.x, below);
+  }
   if (room.detached !== null) {
     ctx.fillStyle = pal.accent;
     ctx.font = `600 10px ${pal.font}`;
-    ctx.fillText(room.detached, disc.x, factsAt + 16);
+    ctx.fillText(room.detached, disc.x, below + 16);
   }
 }
 
@@ -405,6 +510,9 @@ export function drawExits(
   return spots;
 }
 
+/** The target's dashed ring past its token, px. */
+const TARGET_RING_GAP = 11;
+
 /** Every token; `struck` says how recently a blow landed on each. */
 export function drawTokens(
   ctx: CanvasRenderingContext2D,
@@ -412,15 +520,59 @@ export function drawTokens(
   disc: Disc,
   tokens: readonly ArenaToken[],
   at: ReadonlyMap<string, { x: number; y: number }>,
-  struck: ReadonlyMap<string, number>
+  struck: ReadonlyMap<string, number>,
+  zoomed: boolean
 ): void {
-  const scale = disc.r / 110;
+  const scale = tokenScale(disc, zoomed);
   for (const token of tokens) {
     const p = at.get(token.key);
     if (!p) continue;
-    const radius = (token.self ? 22 : token.side === 'player' ? 15 : 18) * scale;
-    drawToken(ctx, pal, token, p, radius, struck.get(token.key) ?? 0);
+    // Zoomed, a monster behind the target is its initials alone (todo 20261018-1314-01).
+    const behind = zoomed && token.side === 'foe' && !token.target;
+    const radius =
+      (token.self ? SELF_RADIUS : token.side === 'player' ? 15 : behind ? 14 : 18) * scale;
+    // Zoomed, the target's name stands above it and its hit points under it.
+    const headed = zoomed && token.target;
+    drawToken(ctx, pal, token, p, radius, struck.get(token.key) ?? 0, !behind && !headed);
+    if (headed) {
+      label(ctx, pal, token.name, p.x, p.y - radius - TARGET_RING_GAP - 16, pal.text);
+      if (token.points !== null)
+        label(ctx, pal, token.points, p.x, p.y + radius + TARGET_RING_GAP + 3, pal.muted);
+    }
   }
+}
+
+/**
+ * The disc radius tokens are drawn at full size against, px: resting, and
+ * zoomed, where the prototype drew a 22 px target on a 188 px arena and the
+ * character's 24 px token is this scale's 22 at 170.
+ */
+const RESTING_SCALE_R = 110;
+const ZOOMED_SCALE_R = 170;
+const SELF_RADIUS = 22;
+const tokenScale = (disc: Disc, zoomed: boolean): number =>
+  disc.r / (zoomed ? ZOOMED_SCALE_R : RESTING_SCALE_R);
+
+/** Three rings rising off a token, a heal it cast on itself (todo 20261018-1314-01): the prototype's 26 px of growth from the blow ripple's 26 px start. */
+const RING_STAGGER_MS = 120;
+const RING_RISE_MS = 700;
+function risingRings(
+  ctx: CanvasRenderingContext2D,
+  colour: string,
+  at: { x: number; y: number },
+  t: number
+): void {
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 2.5;
+  for (let one = 0; one < 3; one += 1) {
+    const k = (t - one * RING_STAGGER_MS) / RING_RISE_MS;
+    if (k <= 0 || k >= 1) continue;
+    ctx.globalAlpha = 1 - k;
+    ctx.beginPath();
+    ctx.arc(at.x, at.y - k * 10, 26 + k * 26, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /**
@@ -452,7 +604,9 @@ export function drawFlights(
     const qx = (u: number) => (1 - u) * (1 - u) * a.x + 2 * (1 - u) * u * mx + u * u * b.x;
     const qy = (u: number) => (1 - u) * (1 - u) * a.y + 2 * (1 - u) * u * my + u * u * b.y;
     const fade = t < FLY_MS ? 1 : Math.max(0, 1 - (t - FLY_MS) / LINE_FADE_MS);
-    if (fade > 0) {
+    // A heal on yourself has no line: it rises off your own token.
+    if (flight.from === flight.to) risingRings(ctx, colour, b, t);
+    else if (fade > 0) {
       ctx.globalAlpha = fade;
       ctx.strokeStyle = colour;
       ctx.lineCap = 'round';

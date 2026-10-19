@@ -403,7 +403,13 @@ export class Classifier {
      * matched (`coinReader`, todo 830), so every coin rule reads them as it
      * reads the stock ones. The terminal is shown the line as it came.
      */
-    private readonly coins?: () => CoinReader
+    private readonly coins?: () => CoinReader,
+    /**
+     * Whether the realm's row for a spell, by the name a cast prints, heals
+     * (todo 20261018-1314-01): `Eagle casts greater healing on you!` prints no
+     * amount, so only the row can say the cast was a heal.
+     */
+    private readonly heals?: (spell: string) => boolean
   ) {}
 
   /**
@@ -669,6 +675,7 @@ export class Classifier {
       this.resolveNames(rule, groups);
       if (rule.named && groups['attacker'] === undefined) continue;
       this.bindReceipt(rule.type, groups);
+      if (rule.type === 'spell-cast') this.markHeal(groups);
 
       return this.build(line, this.fellHere(rule.type, groups, text), groups, text, confidence);
     }
@@ -837,6 +844,7 @@ export class Classifier {
         return this.build(line, 'realm-message', this.messageGroups(hit), text, confidence);
       }
       groups['message'] = String(hit.number);
+      this.markHeal(groups);
       return this.build(line, 'spell-cast', groups, text, confidence);
     }
     return this.build(line, 'realm-message', this.messageGroups(hit), text, confidence);
@@ -1084,6 +1092,12 @@ export class Classifier {
     if (block.type !== 'room-items') return block;
     this.searching = false;
     return this.build(line, 'room-hidden-items', block.groups, text, block.confidence);
+  }
+
+  /** A cast of a spell whose realm row heals, marked `heals` for `castEffect` (todo 20261018-1314-01). */
+  private markHeal(groups: Record<string, string | undefined>): void {
+    const spell = groups['spell'];
+    if (spell !== undefined && this.heals?.(spell) === true) groups['heals'] = 'yes';
   }
 
   private build(

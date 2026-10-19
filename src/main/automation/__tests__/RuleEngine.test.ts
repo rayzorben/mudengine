@@ -514,6 +514,7 @@ describe('guards over the fight', () => {
       targetEntity: null,
       attackers: [],
       health: null,
+      healthHere: {},
       lastBlowAt: 1,
       blows: 1,
       claimed: {},

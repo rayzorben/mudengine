@@ -675,10 +675,13 @@ export class RoomTracker {
      * of the early returns, so a teleport-resolved arrival leaves them
      * behind too.
      */
+    // The gauges were the last room's monsters, so any move forgets them (todo 20261018-1314-01).
     const combat =
       movedSomehow && (s.combat.attackers.length > 0 || s.combat.target !== null)
-        ? { ...s.combat, attackers: [], target: null, health: null }
-        : s.combat;
+        ? { ...s.combat, attackers: [], target: null, health: null, healthHere: {} }
+        : movedSomehow
+          ? { ...s.combat, healthHere: {} }
+          : s.combat;
     // The same move, read for the other thing it proves — see `stoodUp`.
     const afflictions = movedSomehow ? stoodUp(s) : s.afflictions;
 
@@ -1048,8 +1051,8 @@ export class RoomTracker {
     this.expect.takeUnmodelled(false);
     const combat =
       s.combat.attackers.length > 0 || s.combat.target !== null
-        ? { ...s.combat, attackers: [], target: null, health: null }
-        : s.combat;
+        ? { ...s.combat, attackers: [], target: null, health: null, healthHere: {} }
+        : { ...s.combat, healthHere: {} };
     // A step that landed is the one proof a hold has passed that needs no
     // sentence to read — see `stoodUp`.
     const afflictions = stoodUp(s);

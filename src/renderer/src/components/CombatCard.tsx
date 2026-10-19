@@ -6,7 +6,12 @@ import MobFactRow from './MobFactRow';
 import RowPeaceChip from './RowPeaceChip';
 import TreatAs from './TreatAs';
 import type { MobTreatment } from '@shared/mobRules';
-import { healthLeft, type CharacterState, type TargetHealth } from '@shared/character';
+import {
+  healthLeft,
+  type CharacterState,
+  type TargetHealth,
+  type VitalLevel
+} from '@shared/character';
 import type { PlayerRegistry } from '@shared/players';
 import type { RoomVerdict } from '@shared/verdict';
 import { woundBandFor } from '@shared/wounds';
@@ -15,8 +20,7 @@ import { t } from '../lib/i18n';
 import { percent } from '../lib/outlook';
 import { isKnownPlayer, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
-import { levelWord } from '../lib/vitals';
-import { tuning } from '../lib/tuning';
+import { levelWord, woundLevel } from '../lib/vitals';
 
 export interface CombatCardProps extends CardChrome {
   character: CharacterState;
@@ -71,15 +75,6 @@ function Combatant({
   );
 }
 
-type Level = 'unknown' | 'ok' | 'caution' | 'critical';
-
-function levelOf(remaining: number | null): Level {
-  if (remaining === null) return 'unknown';
-  if (remaining < tuning().woundCritical) return 'critical';
-  if (remaining < tuning().woundCaution) return 'caution';
-  return 'ok';
-}
-
 /**
  * How much of a monster is left, and who took the rest of it off.
  *
@@ -103,7 +98,7 @@ function levelOf(remaining: number | null): Level {
 function TargetMeter({ health }: { health: TargetHealth }) {
   const { max, damage, remaining } = health;
   const dealt = damage.mine + damage.others;
-  const level = levelOf(remaining);
+  const level = woundLevel(remaining);
 
   /*
    * Where the split line sits.
@@ -214,7 +209,7 @@ function Provenance({ health }: { health: TargetHealth }) {
  */
 function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | null }) {
   const survival = verdict.survival;
-  const level: Level =
+  const level: VitalLevel =
     survival === null
       ? 'unknown'
       : survival.level === 'safe'

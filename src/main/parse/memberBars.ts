@@ -8,6 +8,7 @@
  * maximum (todo 142). `mudengine-wire` › *The party roster*.
  */
 import type { Block } from '../../shared/blocks';
+import { castEffect } from '../../shared/casts';
 import {
   joinedMembers,
   standingHere,
@@ -94,7 +95,7 @@ function hitPointChanges(state: CharacterState, block: Block): HitPointChange[] 
     const amount = figure(g['amount']);
     const who = g['target'];
     if (amount === null || who === undefined) return [];
-    const by = g['kind'] === 'for' ? -amount : amount;
+    const by = castEffect(g) === 'harm' ? -amount : amount;
     /*
      * `You cast healing rain on your party, healing 12 damage!` (captures/045,
      * 103): one amount for every member in the room, as `Spell.cs:1371` adds

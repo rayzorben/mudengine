@@ -9,6 +9,7 @@
  * each party member, each monster in the room.
  */
 import type { Block } from '@shared/blocks';
+import { castEffect } from '@shared/casts';
 
 export type BlowKind = 'hit' | 'miss' | 'heal';
 
@@ -64,13 +65,13 @@ export function blowOf(
   block: Pick<Block, 'type' | 'text' | 'groups'>,
   names: readonly ArenaName[]
 ): Blow | null {
-  const cast = block.type === 'spell-cast' ? block.groups['kind'] : undefined;
+  const cast = block.type === 'spell-cast' ? castEffect(block.groups) : null;
   const kind: BlowKind | null =
-    HITS.has(block.type) || cast === 'for'
+    HITS.has(block.type) || cast === 'harm'
       ? 'hit'
       : MISSES.has(block.type)
         ? 'miss'
-        : cast === 'healing'
+        : cast === 'heal'
           ? 'heal'
           : null;
   if (kind === null) return null;

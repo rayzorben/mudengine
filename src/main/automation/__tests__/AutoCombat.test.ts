@@ -1859,7 +1859,8 @@ describe('casting in a fight', () => {
               span: null,
               damage: { mine: 0, others: 0 },
               remaining,
-              observed: null
+              observed: null,
+              sinceLook: null
             }
           },
           vitals: { ...EMPTY_CHARACTER.vitals, mana: 40, manaMax: 100, manaType: 'MA' },

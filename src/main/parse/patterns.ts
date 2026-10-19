@@ -911,7 +911,7 @@ export const RULES: Rule[] = [
      * tracker keys its peer protocol on.
      */
     pattern:
-      /^(?<caster>You|[A-Z][\w'-]*) casts? (?<spell>[\w' -]+?) on (?<target>yourself|you|[A-Z][\w'-]*)(?:,? (?<kind>for|healing|regenerating) (?<amount>\d+) (?:healing|damage))?[!.]$/
+      /^(?<caster>You|[A-Z][\w'-]*) casts? (?<spell>[\w' -]+?) on (?<target>yourself|you|[A-Z][\w'-]*)(?:,? (?<kind>for|healing|regenerating) (?<amount>\d+) (?<effect>healing|damage))?[!.]$/
   },
   {
     /*

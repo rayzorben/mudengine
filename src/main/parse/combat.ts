@@ -365,8 +365,7 @@ export class FightTracker {
       return null;
     }
     const target = resolveAgainstRoom(s, guard);
-    const health = this.healthFor(target, at, roomAddress(s.room));
-    return { ...s, combat: { ...s.combat, target, health } };
+    return { ...s, combat: this.judged(s, { ...s.combat, target }, at) };
   }
 
   /**
@@ -453,13 +452,7 @@ export class FightTracker {
     return {
       ...s,
       inCombat: true,
-      combat: {
-        ...s.combat,
-        engaged: true,
-        attackers,
-        target,
-        health: this.healthFor(target, at, roomAddress(s.room))
-      }
+      combat: this.judged(s, { ...s.combat, engaged: true, attackers, target }, at)
     };
   }
 
@@ -499,12 +492,9 @@ export class FightTracker {
     // rather than from the first blow of the fight.
     ledger.anchoredAt = at;
 
-    // Only a change worth republishing when it is the monster on the card.
-    if (s.combat.target === null || mobKey(s.combat.target) !== key) return null;
-    return {
-      ...s,
-      combat: { ...s.combat, health: this.healthFor(s.combat.target, at, roomAddress(s.room)) }
-    };
+    // Only a change worth republishing for the target or a monster the room lists.
+    if (!judges(s, key)) return null;
+    return { ...s, combat: this.judged(s, s.combat, at) };
   }
 
   /**
@@ -551,10 +541,7 @@ export class FightTracker {
     this.clock.swung(at);
     if (!target || mobKey(target) === mobKey(s.combat.target ?? '')) return null;
     const combat = struck(s.combat, at, { at: target });
-    return {
-      ...s,
-      combat: { ...combat, health: this.healthFor(combat.target, at, roomAddress(s.room)) }
-    };
+    return { ...s, combat: this.judged(s, combat, at) };
   }
 
   /**
@@ -633,18 +620,13 @@ export class FightTracker {
      */
     const ledger = this.recordDamage(target, damage, mine, at, mine ? undefined : attacker);
     if (!mine) {
-      if (s.combat.target === null || mobKey(s.combat.target) !== ledger.key) return null;
-      return {
-        ...s,
-        combat: { ...s.combat, health: this.healthFor(s.combat.target, at, roomAddress(s.room)) }
-      };
+      // Another's blow moves the gauge of the target or whatever the room lists.
+      if (!judges(s, ledger.key)) return null;
+      return { ...s, combat: this.judged(s, s.combat, at) };
     }
 
     const combat = struck(s.combat, at, { at: target });
-    return {
-      ...s,
-      combat: { ...combat, health: this.healthFor(combat.target, at, roomAddress(s.room)) }
-    };
+    return { ...s, combat: this.judged(s, combat, at) };
   }
 
   /**
@@ -915,6 +897,29 @@ export class FightTracker {
     };
   }
 
+  /** The gauges again, after the room's list changed: an arrival has one at once (todo 20261018-1314-01). */
+  rejudge(s: CharacterState, at: number): CharacterState {
+    return { ...s, combat: this.judged(s, s.combat, at) };
+  }
+
+  /**
+   * The fight with its estimates brought up to date: the target's, and every
+   * monster name the room lists (todo 20261018-1314-01). One `healthFor` per
+   * name, so namesakes share an entry as they share a ledger.
+   */
+  private judged(s: CharacterState, combat: Combat, at: number): Combat {
+    const room = roomAddress(s.room);
+    const healthHere: Record<string, TargetHealth> = {};
+    for (const one of s.room.occupants) {
+      if (one.kind !== 'mob') continue;
+      const key = mobKey(one.name);
+      if (key in healthHere) continue;
+      const health = this.healthFor(key, at, room);
+      if (health !== null) healthHere[key] = health;
+    }
+    return { ...combat, health: this.healthFor(combat.target, at, room), healthHere };
+  }
+
   /**
    * What is believed about the monster this character is swinging at.
    *
@@ -942,11 +947,14 @@ export class FightTracker {
     const known = this.sources.lore.maximumFor(key, at);
 
     let remaining: number | null = null;
+    let sinceLook: number | null = null;
     // A monster believed dead reads as empty whether or not anything knows how
     // much it started with — which is the one case where a bar can be drawn
     // without a maximum, because both ends of it are known.
     if (ledger?.killedAfter !== null && ledger?.killedAfter !== undefined) {
       remaining = 0;
+      // All of it, so a look's band comes down to empty with the gauge.
+      if (ledger.observed !== null) sinceLook = 1;
     } else if (known.max !== null && known.max > 0) {
       const since = ledgerTotal(ledger ?? newLedger(key, false)) - (ledger?.anchoredAfter ?? 0);
       const anchor = ledger?.anchor ?? 1;
@@ -972,6 +980,7 @@ export class FightTracker {
         if (elapsed > 0 && cadence > 0) healed = Math.floor(elapsed / cadence) * regen;
       }
       remaining = Math.min(1, Math.max(0, anchor - (since - healed) / known.max));
+      if (ledger?.observed != null) sinceLook = (since - healed) / known.max;
     }
 
     return {
@@ -981,7 +990,8 @@ export class FightTracker {
       span: known.span,
       damage,
       remaining,
-      observed: ledger?.observed ?? null
+      observed: ledger?.observed ?? null,
+      sinceLook
     };
   }
 }
@@ -1015,4 +1025,12 @@ export function playerDies(s: CharacterState, who: string | undefined): Characte
       health: target === null ? null : s.combat.health
     }
   };
+}
+
+/** Whether a monster by this `mobKey` has an estimate shown: the target's, or one the room lists. */
+function judges(s: CharacterState, key: string): boolean {
+  return (
+    (s.combat.target !== null && mobKey(s.combat.target) === key) ||
+    s.room.occupants.some((one) => one.kind === 'mob' && mobKey(one.name) === key)
+  );
 }
