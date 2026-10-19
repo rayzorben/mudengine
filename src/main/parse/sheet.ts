@@ -172,9 +172,11 @@ export function droppedWounded(s: CharacterState): CharacterState {
  * `user-dies`: the state the death leaves. What it forgets — the queue, the
  * fight, the trail — is the tracker's.
  *
- * `combat` is emptied rather than the room: the temple's own block is two
- * lines away and will replace the room outright, and clearing it here
- * would blank the map for those two lines.
+ * The room keeps its name and number, since clearing them would blank the
+ * map until the temple's block two lines away replaces the room. Its
+ * occupants go: the realm moves the dead character out of their reach, and
+ * kept until that block, the monster that killed it read as standing beside
+ * a naked character in the temple (2026-10-19, Soul hung up there).
  */
 export function died(s: CharacterState, at: number): CharacterState {
   // Death strips what was cast: the temple room two lines away holds a
@@ -184,6 +186,7 @@ export function died(s: CharacterState, at: number): CharacterState {
     ...s,
     inCombat: false,
     combat: NO_COMBAT,
+    room: { ...s.room, occupants: [] },
     buffs: [],
     // And every condition a spell put on it: a knockdown kept through the
     // death read the character in the temple as held, and no route or lap

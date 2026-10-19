@@ -66,6 +66,16 @@ describe('whether hanging up would be penalised', () => {
     expect(watch.threatened(state(), T0 + MOB_ENGAGED_MS + 1)).toBe(false);
   });
 
+  /* 2026-10-19: Soul hung up naked in the temple seconds after the killing blow. */
+  it('forgets the killing blow at the death', () => {
+    const watch = new HangUpWatch();
+    watch.observe(block('mob-hits', { attacker: 'orc' }), []);
+    expect(watch.threatened(state(), T0 + 1000)).toBe(true);
+    watch.observe(block('user-dies', {}, T0 + 1500), []);
+    expect(watch.threatened(state(), T0 + 2000)).toBe(false);
+    expect(watch.monsterNear(state(), T0 + 2000)).toBe(false);
+  });
+
   it('charges for a player it is fighting, or one fighting it, right now', () => {
     const watch = new HangUpWatch();
     const room = {

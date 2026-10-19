@@ -128,6 +128,12 @@ export class HangUpWatch implements SessionModule {
         this.lastMobBlowAt = block.at;
         return;
 
+      // The monster that landed the killing blow is not in the temple the death
+      // moves the character to. A player's window stays: the server charges it.
+      case 'user-dies':
+        this.lastMobBlowAt = null;
+        return;
+
       /*
        * `<Name> moves to attack you!` — the round *before* the first blow.
        * The window opens on the attack, not on the damage: the server's own
