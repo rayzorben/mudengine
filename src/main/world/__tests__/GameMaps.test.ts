@@ -15,7 +15,7 @@ describe.runIf(fs.existsSync(world))('the game view map window', () => {
   const maps = new GameMaps(graph, pack);
 
   it('centres on the asked room and holds only cells inside its square', () => {
-    const window = maps.window({ kind: 'room', map: 1, room: 1, half: 12 }, () => null);
+    const window = maps.window({ kind: 'room', map: 1, room: 1, half: 12 }, () => null, null);
     expect(window.centre?.room).toBe('1/1');
     const { x0, y0, x1, y1 } = window.box;
     expect(x1 - x0).toBe(24);
@@ -31,45 +31,61 @@ describe.runIf(fs.existsSync(world))('the game view map window', () => {
   });
 
   it("gives each cell its exits' rooms, for the ways the grid cannot join", () => {
-    const window = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null);
+    const window = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null, null);
     expect(window.cells.find((cell) => cell.id === '1/1')!.to.n).toBe('1/3');
   });
 
   it('names the map a compass exit onto another map number leads to', () => {
-    const window = maps.window({ kind: 'room', map: 1, room: 141, half: 4 }, () => null);
+    const window = maps.window({ kind: 'room', map: 1, room: 141, half: 4 }, () => null, null);
     // Lofty Plateau's way south is Paradigm's 2/9; the plane is map 1's alone.
     expect(window.cells.find((cell) => cell.id === '1/141')!.otherMap).toEqual({ s: 2 });
-    const gates = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null);
+    const gates = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null, null);
     expect(gates.cells.find((cell) => cell.id === '1/1')!.otherMap).toBeUndefined();
   });
 
   it('marks a one-way exit at the room it leaves, and nothing at the room it enters', () => {
-    const window = maps.window({ kind: 'room', map: 1, room: 1393, half: 3 }, () => null);
-    const road = window.cells.find((cell) => cell.id === '1/1393')!;
-    const behind = window.cells.find((cell) => cell.id === '1/1638')!;
+    // The Storage Room's door east into Park Plaza has no way back.
+    const window = maps.window({ kind: 'room', map: 1, room: 128, half: 3 }, () => null, null);
+    const road = window.cells.find((cell) => cell.id === '1/128')!;
+    const behind = window.cells.find((cell) => cell.id === '1/316')!;
     expect(behind.oneWay).toEqual(['e']);
-    expect(behind.to.e).toBe('1/1393');
+    expect(behind.to.e).toBe('1/128');
     expect(road.to.w).toBeUndefined();
     expect(road.oneWay).toBeUndefined();
   });
 
+  it('draws a room nothing leads into only while the character stands in it', () => {
+    // A second Town Gates, 1/1315, with one exit into Town Gates and no way in.
+    const ask = { kind: 'room', map: 1, room: 1315, half: 2 } as const;
+    const away = maps.window(ask, () => null, null);
+    expect(away.centre).toBeNull();
+    expect(away.cells.some((cell) => cell.id === '1/1315')).toBe(false);
+    const inside = maps.window(ask, () => null, '1/1315');
+    expect(inside.centre?.room).toBe('1/1315');
+    expect(inside.cells.some((cell) => cell.id === '1/1315')).toBe(true);
+    // Standing at Town Gates, the copy is not drawn beside it.
+    const gates = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null, '1/1');
+    expect(gates.cells.some((cell) => cell.id === '1/1315')).toBe(false);
+  });
+
   it("holds one floor: the room's own, with its stairs to the next", () => {
-    const window = maps.window({ kind: 'room', map: 8, room: 555, half: 3 }, () => null);
-    const stairs = window.cells.find((cell) => cell.id === '8/555')!;
-    expect(stairs.stairs).toEqual([
-      expect.objectContaining({ direction: 'u', to: '8/557', floors: 1, floor: window.floor! + 1 })
-    ]);
-    expect(window.cells.some((cell) => cell.id === '8/557')).toBe(false);
-    const above = maps.window({ kind: 'room', map: 8, room: 557, half: 3 }, () => null);
+    const window = maps.window({ kind: 'room', map: 1, room: 313, half: 3 }, () => null, null);
+    const stairs = window.cells.find((cell) => cell.id === '1/313')!;
+    expect(stairs.stairs).toContainEqual(
+      expect.objectContaining({ direction: 'u', to: '1/847', floors: 1, floor: window.floor! + 1 })
+    );
+    expect(window.cells.some((cell) => cell.id === '1/847')).toBe(false);
+    const above = maps.window({ kind: 'room', map: 1, room: 847, half: 3 }, () => null, null);
     expect(above.floor).toBe(window.floor! + 1);
     expect([above.centre!.gx, above.centre!.gy]).toEqual([window.centre!.gx, window.centre!.gy]);
   });
 
   it('looks around a point once the map is dragged, with no centre room', () => {
-    const at = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null).centre!;
+    const at = maps.window({ kind: 'room', map: 1, room: 1, half: 4 }, () => null, null).centre!;
     const window = maps.window(
       { kind: 'point', map: 1, floor: 0, gx: at.gx + 3, gy: at.gy, half: 4 },
-      () => null
+      () => null,
+      null
     );
     expect(window.centre).toBeNull();
     expect(window.box.x0).toBe(at.gx - 1);
@@ -77,15 +93,15 @@ describe.runIf(fs.existsSync(world))('the game view map window', () => {
 
   it('takes the motif a name suggests where no pack claims the room', () => {
     const bare = new GameMaps(graph, NO_THEME_PACK);
-    const window = bare.window({ kind: 'room', map: 1, room: 1, half: 6 }, () => null);
+    const window = bare.window({ kind: 'room', map: 1, room: 1, half: 6 }, () => null, null);
     expect(window.areas.every((area) => !area.named)).toBe(true);
     expect(window.labels.every((label) => label.kind !== 'area')).toBe(true);
   });
 
   it('answers a full window quickly once the map is laid out', () => {
-    maps.window({ kind: 'room', map: 14, room: 1, half: 40 }, () => null);
+    maps.window({ kind: 'room', map: 14, room: 1, half: 40 }, () => null, null);
     const started = performance.now();
-    maps.window({ kind: 'room', map: 1, room: 1, half: 40 }, () => null);
+    maps.window({ kind: 'room', map: 1, room: 1, half: 40 }, () => null, null);
     const took = performance.now() - started;
     expect(took).toBeLessThan(250);
   });

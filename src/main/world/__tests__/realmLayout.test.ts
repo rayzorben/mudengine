@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { roomId, type Direction, type WorldRoom } from '../../../shared/world';
+import { planeSteps } from '../planeSteps';
 import { layOutMap, RealmLayouts, UNJOINED_GAP } from '../realmLayout';
 import { WorldGraph } from '../WorldGraph';
 import { timedAgainstReference } from './referenceWork';
@@ -21,10 +22,14 @@ function graphOf(rooms: Array<[number, string, Array<[Direction, number, number?
         requirement: null
       }))
     } as WorldRoom);
+  const into = new Set(
+    [...byId.values()].flatMap((room) => room.exits.map((exit) => roomId(exit.map, exit.room)))
+  );
   return {
     byId: (id: string) => byId.get(id),
     beyond: (exit: { map: number; room: number }) => roomId(exit.map, exit.room),
     portalsFrom: () => [],
+    hasWayIn: (id: string) => into.has(id),
     everyRoom: () => byId.values(),
     rooms: [...byId.values()]
   };
@@ -268,10 +273,12 @@ describe("a map's plane", () => {
     const g = {
       ...graphOf([
         [1, 'a', []],
-        // 2 leads west into 1; 1 lists no way back.
+        // 2 leads west into 1; 1 lists no way back, and 4 is the way into 2.
         [2, 'b', [['w', 1]]],
-        [3, 'landing', []]
+        [3, 'landing', []],
+        [4, 'd', [['s', 2]]]
       ]),
+      hasWayIn: (id: string) => id !== '1/4',
       portalsFrom: (id: string) =>
         id === '1/1'
           ? [
@@ -308,6 +315,65 @@ describe("a map's plane", () => {
   });
 });
 
+describe("a map's floors", () => {
+  it('keeps a street on one floor when a drop from below lands at its end first', () => {
+    // A street 1-2-3-4 and a cellar under its gate that drops one way onto its far end.
+    const g = graphOf([
+      [
+        1,
+        'gate',
+        [
+          ['e', 2],
+          ['d', 5]
+        ]
+      ],
+      [
+        2,
+        'street',
+        [
+          ['w', 1],
+          ['e', 3]
+        ]
+      ],
+      [
+        3,
+        'street',
+        [
+          ['w', 2],
+          ['s', 4]
+        ]
+      ],
+      [4, 'street', [['n', 3]]],
+      [
+        5,
+        'cellar',
+        [
+          ['u', 1],
+          ['d', 4]
+        ]
+      ]
+    ]);
+    const plane = layOutMap(g, 1, g.rooms);
+    expect(['1/1', '1/2', '1/3', '1/4'].map((id) => plane.at.get(id)!.z)).toEqual([0, 0, 0, 0]);
+    expect(plane.at.get('1/5')!.z).toBe(-1);
+    // Counted against the street, the drop is the stair that disagrees.
+    expect(plane.stairs.get('1/5')!.find((stair) => stair.direction === 'd')!.odd).toBe(true);
+  });
+
+  it('never sets a room nothing leads into beside the room it leads to', () => {
+    const g = graphOf([
+      [1, 'Town Gates', [['n', 2]]],
+      [2, 'Silver Street', [['s', 1]]],
+      [3, 'Town Gates', [['nw', 1]]]
+    ]);
+    const plane = layOutMap(g, 1, g.rooms);
+    const gate = plane.at.get('1/1')!;
+    const namesake = plane.at.get('1/3')!;
+    expect(namesake.gx - gate.gx).toBeGreaterThanOrEqual(UNJOINED_GAP);
+    expect(plane.island.get('1/3')).not.toBe(plane.island.get('1/1'));
+  });
+});
+
 const world = path.resolve('resources/world/paradigm.jsonl.gz');
 
 describe.runIf(fs.existsSync(world))("Paradigm's planes", () => {
@@ -325,21 +391,25 @@ describe.runIf(fs.existsSync(world))("Paradigm's planes", () => {
       }
     });
     expect(rooms).toBe([...graph.everyRoom()].length);
-    // Laid out on first ask, on the main thread: about 38 reference jobs alone and in the full
-    // suite (2026-10-17), so 80 is twice that.
-    expect(tookMs).toBeLessThan(80 * referenceMs);
+    // Laid out on first ask, on the main thread. 2026-10-19: 48 to 57 reference jobs alone (HEAD
+    // before the two-way floors measured the same), 85 to 116 with the world tests in parallel
+    // beside it, so 160. A layout gone quadratic is tens of times that.
+    expect(tookMs).toBeLessThan(160 * referenceMs);
   });
 
   const layouts = new RealmLayouts(graph);
 
-  it("set the floor up the Spiral Stairway on the stairs' own cell", () => {
-    const plane = layouts.of(8);
-    const stairs = plane.at.get('8/555')!;
-    const landing = plane.at.get('8/557')!;
+  it("set the floor up the Homely Hearth's stairwell on the stairs' own cell", () => {
+    const plane = layouts.of(1);
+    const stairs = plane.at.get('1/313')!;
+    const landing = plane.at.get('1/847')!;
     expect([landing.gx, landing.gy, landing.z]).toEqual([stairs.gx, stairs.gy, stairs.z + 1]);
-    // Its way south is one-way into the tower hallway, and is still its neighbour.
-    const hallway = plane.at.get('8/554')!;
-    expect([hallway.gx, hallway.gy, hallway.z]).toEqual([stairs.gx, stairs.gy + 1, stairs.z]);
+    // Map 8's Spiral Stairway is a copy nothing leads into (the stair walked is 1/37), so it
+    // stands off the tower hallway its way south reaches.
+    expect(plane.at.has('8/555')).toBe(false);
+    const copy = layouts.of(8).at.get('8/555')!;
+    const hallway = layouts.of(8).at.get('8/554')!;
+    expect(Math.abs(copy.gx - hallway.gx) + Math.abs(copy.gy - hallway.gy)).toBeGreaterThan(1);
   });
 
   it("take the Mithril Mine's cart ramp as one stair to the room at its foot", () => {
@@ -347,6 +417,34 @@ describe.runIf(fs.existsSync(world))("Paradigm's planes", () => {
     const down = plane.stairs.get('6/1617')!.find((stair) => stair.direction === 'd')!;
     expect(down.floors).toBeGreaterThan(8);
     expect(plane.stairs.get(down.to)!.find((stair) => stair.direction === 'u')!.to).toBe('6/1617');
+  });
+
+  it("draw Town Square's way south as one step south on its own floor", () => {
+    const plane = layouts.of(1);
+    const square = plane.at.get('1/224')!;
+    const sovereign = plane.at.get('1/225')!;
+    expect([sovereign.gx, sovereign.gy, sovereign.z]).toEqual([square.gx, square.gy + 1, square.z]);
+    // The doubled Town Gates nothing leads into stands off the streets.
+    const gates = plane.at.get('1/1')!;
+    const namesake = plane.at.get('1/1315')!;
+    expect(Math.abs(namesake.gx - gates.gx)).toBeGreaterThan(1);
+  });
+
+  it('put both ends of every two-way compass exit on one floor', () => {
+    let pairs = 0;
+    const split: string[] = [];
+    for (const room of graph.everyRoom()) {
+      const plane = layouts.of(room.map);
+      const here = roomId(room.map, room.room);
+      for (const step of planeSteps(graph, room)) {
+        if (step.destination.map !== room.map) continue;
+        if (![...planeSteps(graph, step.destination)].some((back) => back.to === here)) continue;
+        pairs += 1;
+        if (plane.at.get(here)!.z !== plane.at.get(step.to)!.z) split.push(`${here} ${step.to}`);
+      }
+    }
+    expect(pairs).toBeGreaterThan(100_000);
+    expect(split).toEqual([]);
   });
 
   it("put up and down on the stairs' own cell for most stairs", () => {

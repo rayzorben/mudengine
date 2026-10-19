@@ -2242,18 +2242,16 @@ export class WorldGraph {
     return this.router.portalsFrom(id);
   }
 
+  /** Whether anything leads into a room, as `Router.hasWayIn` answers. */
+  hasWayIn(id: RoomId): boolean {
+    return this.router.hasWayIn(id);
+  }
+
   byId(id: RoomId): WorldRoom | undefined {
     return this.rooms.get(id);
   }
 
-  /**
-   * How many of a draw's rooms the realm holds — what the chip says *one of*.
-   *
-   * The range as stated is not the count: `landingRooms` cannot filter,
-   * because `src/shared` holds no realm. This is the one place that join is
-   * made for a sentence, and it is the same join `Router.scatterDoors` makes
-   * for the arithmetic.
-   */
+  /** How many of a draw's rooms the realm holds, which `landingRooms` cannot say from `src/shared`. */
   landingCount(landing: Landing): number {
     return landingRooms(landing).filter((id) => this.rooms.has(id)).length;
   }
