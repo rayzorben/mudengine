@@ -22,7 +22,7 @@ import {
 } from 'react';
 
 import type { AppConfig, AutomationSwitch, UiConfig } from '@shared/config';
-import type { HudThreshold } from '@shared/gameViewConfig';
+import type { GameViewConfig, HudThreshold } from '@shared/gameViewConfig';
 import type { GameCell } from '@shared/gameMap';
 import type { IpcApi, ProfileSummary, SessionId } from '@shared/ipc';
 import {
@@ -87,7 +87,10 @@ export interface GameViewProps {
   view: SessionView;
   profile: ProfileSummary | null;
   /** The key bindings, and where a vital bar turns yellow and red for the party's gauges. */
-  config: Pick<AppConfig, 'keys'> & { ui: Pick<UiConfig, 'vitals'> };
+  config: Pick<AppConfig, 'keys'> & {
+    ui: Pick<UiConfig, 'vitals'>;
+    gameView: Pick<GameViewConfig, 'combatZoom'>;
+  };
   openRouteOn(room: WorldRoom, search: null): void;
   stepBack(session: SessionId, confirmed: number | null): void;
   /** A refusal, said in this character's console. */
@@ -379,6 +382,7 @@ function GameView({
         found={found}
         here={here}
         hpLines={config.ui.vitals.hp}
+        combatZoom={config.gameView.combatZoom}
         map={map}
         onDetached={setDetached}
         onExit={move}

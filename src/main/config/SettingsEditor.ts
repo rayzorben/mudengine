@@ -1259,6 +1259,7 @@ export class SettingsEditor {
 
         set(['gameView', 'dock'], draft.gameView.dock);
         set(['gameView', 'opacity'], draft.gameView.opacity);
+        set(['gameView', 'combatZoom'], draft.gameView.combatZoom);
         set(['art', 'enabled'], draft.art.enabled);
         set(['art', 'server'], artServer);
         // Only when changed, so a hand-written list keeps its layout and comments.

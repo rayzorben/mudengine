@@ -95,6 +95,20 @@ function pointsOf(health: TargetHealth | undefined): string | null {
     : t('game.arena.points', { left, max: health.max });
 }
 
+/**
+ * A monster's gauge and `left/max`, read the one way the arena and the target
+ * card both read it (todo 20261019-1358-01).
+ */
+export function gaugeOf(
+  character: CharacterState,
+  name: string,
+  namesakes = namesakesOf(character)
+): Pick<ArenaToken, 'health' | 'band' | 'level' | 'shared'> & { points: string | null } {
+  const key = mobKey(name);
+  const health = character.combat.healthHere[key];
+  return { ...foeGauge(health, namesakes.get(key)?.count ?? 1), points: pointsOf(health) };
+}
+
 /** How many monsters the room lists under each name, by `mobKey`: namesakes share one damage total. */
 function namesakesOf(character: CharacterState): Map<string, { name: string; count: number }> {
   const counts = new Map<string, { name: string; count: number }>();
@@ -118,7 +132,8 @@ export function namesakeCounts(character: CharacterState): string | null {
 export function arenaTokensOf(
   character: CharacterState,
   picked: string | null,
-  hpLines: VitalThresholds
+  hpLines: VitalThresholds,
+  pressed: string | null = null
 ): ArenaToken[] {
   const { vitals, room, combat, party, afflictions } = character;
   const here = new Set(
@@ -166,6 +181,13 @@ export function arenaTokensOf(
   });
   const aimedAt = picked ?? combat.target;
   const namesakes = namesakesOf(character);
+  // One token is the target: the one pressed while its name is aimed at, else the first of that
+  // name. The rest are drawn behind it (todo 20261019-1358-01).
+  const aimedKeys = room.occupants.flatMap((one, index) =>
+    one.kind === 'mob' && one.name === aimedAt ? [keyOf('m', one.name, index)] : []
+  );
+  const targetKey =
+    pressed !== null && aimedKeys.includes(pressed) ? pressed : (aimedKeys[0] ?? null);
   room.occupants.forEach((one, index) => {
     if (one.kind === 'player') {
       if (members.has(one.name.toLowerCase())) return;
@@ -186,14 +208,15 @@ export function arenaTokensOf(
       return;
     }
     if (one.kind !== 'mob') return;
-    const target = one.name === aimedAt;
-    const key = mobKey(one.name);
+    const key = keyOf('m', one.name, index);
+    const target = key === targetKey;
+    const gauge = gaugeOf(character, one.name, namesakes);
     tokens.push({
-      key: keyOf('m', one.name, index),
+      key,
       name: one.name,
       side: 'foe',
-      ...foeGauge(combat.healthHere[key], namesakes.get(key)?.count ?? 1),
-      points: target ? pointsOf(combat.healthHere[key]) : null,
+      ...gauge,
+      points: target ? gauge.points : null,
       hostile: one.disposition === 'hostile',
       target,
       poisoned: false,

@@ -9,7 +9,7 @@ import {
 } from '@shared/character';
 import type { WoundBand } from '@shared/wounds';
 import type { ExitEntity } from '@shared/entities';
-import { arenaTokensOf, namesakeCounts } from '../gameArena';
+import { arenaTokensOf, gaugeOf, namesakeCounts } from '../gameArena';
 import { blowOf, SELF } from '../gameBlows';
 import {
   commandFor,
@@ -319,6 +319,52 @@ describe('the arena', () => {
     for (const rat of rats)
       expect(rat).toMatchObject({ health: 0.4, band: { lo: 0.4, hi: 1 }, shared: true });
     expect(tokens.find((one) => one.name === 'orc')).toMatchObject({ shared: false });
+  });
+
+  it("makes the first of the target's name the one target, and the rest the ones behind it", () => {
+    const character = state({
+      occupants: [mob('minotaur champion'), mob('minotaur champion'), mob('minotaur champion')],
+      engaged: true,
+      target: 'minotaur champion'
+    });
+    const tokens = arenaTokensOf(
+      withHealth(character, estimate('minotaur champion', 0.29)),
+      null,
+      LINES
+    ).filter((one) => one.side === 'foe');
+    expect(tokens.map((one) => one.target)).toEqual([true, false, false]);
+    // Only the target carries its hit points; all three share the gauge.
+    expect(tokens.map((one) => one.points !== null)).toEqual([true, false, false]);
+    for (const one of tokens) expect(one).toMatchObject({ health: 0.29, shared: true });
+  });
+
+  it('puts the pressed one of a name in front, and the first once that name is not aimed at', () => {
+    const character = state({
+      occupants: [mob('minotaur champion'), mob('minotaur champion'), mob('orc')],
+      engaged: true,
+      target: 'minotaur champion'
+    });
+    const second = arenaTokensOf(character, null, LINES).filter((one) => one.side === 'foe')[1]!;
+    const pressed = arenaTokensOf(character, null, LINES, second.key).filter(
+      (one) => one.side === 'foe'
+    );
+    expect(pressed.map((one) => one.target)).toEqual([false, true, false]);
+    const orc = pressed[2]!.key;
+    const elsewhere = arenaTokensOf(character, null, LINES, orc).filter(
+      (one) => one.side === 'foe'
+    );
+    expect(elsewhere.map((one) => one.target)).toEqual([true, false, false]);
+  });
+
+  it('gives the target card the gauge the arena draws', () => {
+    const character = withHealth(
+      state({ occupants: [mob('orc')], engaged: true, target: 'orc' }),
+      estimate('orc', 0.58)
+    );
+    expect(gaugeOf(character, 'orc')).toMatchObject({
+      health: 0.58,
+      points: t('game.arena.points', { left: 58, max: 100 })
+    });
   });
 
   it("colours the party's gauges at the vitals' lines", () => {
