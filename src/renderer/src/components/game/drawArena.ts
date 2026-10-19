@@ -16,10 +16,9 @@ import type { ArenaExit, ArenaToken } from '../../lib/gameArena';
 import { hexA, icon, PATHS, type GamePalette } from './drawWorld';
 
 export interface ArenaRoom {
-  name: string;
   /** The line under the arena: the fight, the light, the lair. */
   facts: string;
-  /** The place's banner over the name, if it is one. */
+  /** The place's banner at the top of the floor, if it is one. */
   place: { label: string; colour: string; path: Path2D } | null;
   area: MapArea;
   dark: boolean;
@@ -366,7 +365,7 @@ function label(
   ctx.fillText(text, x, y);
 }
 
-/** The arena's floor, rim, banner, name and facts; under the tokens. */
+/** The arena's floor, rim, banner and facts; under the tokens. */
 export function drawFloor(
   ctx: CanvasRenderingContext2D,
   pal: GamePalette,
@@ -432,15 +431,9 @@ export function drawFloor(
     ctx.fillStyle = room.place.colour;
     ctx.fillText(text, disc.x + 8, y + 0.5);
   }
-  ctx.font = `600 13.5px ${pal.font}`;
+  ctx.font = `500 10.5px ${pal.font}`;
   ctx.lineWidth = 4;
   ctx.strokeStyle = hexA(pal.shade, 0.6);
-  // In a fight it sits lower, clear of the top arc behind the target.
-  const nameAt = disc.y - disc.r * (fighting ? 0.66 : 0.72);
-  ctx.strokeText(room.name, disc.x, nameAt);
-  ctx.fillStyle = pal.text;
-  ctx.fillText(room.name, disc.x, nameAt);
-  ctx.font = `500 10.5px ${pal.font}`;
   const factsAt = disc.y + disc.r + 62;
   ctx.strokeText(room.facts, disc.x, factsAt);
   ctx.fillStyle = hexA(pal.text, 0.65);
@@ -513,6 +506,51 @@ export function drawExits(
     spots.push({ direction: exit.direction, x, y, box: { x: lx, y: ly, w, h } });
   }
   return spots;
+}
+
+const NAME_PILL_HEIGHT = 26;
+const NAME_PILL_GAP = 6;
+
+/**
+ * The room's name in a pill above the arena (the user, 2026-10-19: inside the
+ * rim it ran into a north-west exit's label). It sits above the round ring
+ * (`ringGap` past the rim) and above any exit disc or label under its span,
+ * so a north exit's label stays below it.
+ */
+export function drawRoomName(
+  ctx: CanvasRenderingContext2D,
+  pal: GamePalette,
+  disc: Disc,
+  name: string,
+  exits: readonly ExitSpot[],
+  ringGap: number
+): void {
+  ctx.font = `600 13.5px ${pal.font}`;
+  const w = ctx.measureText(name).width + 28;
+  const left = disc.x - w / 2;
+  let bottom = disc.y - disc.r - ringGap;
+  for (const spot of exits) {
+    const top = Math.min(spot.y - EXIT_RADIUS, spot.box.h > 0 ? spot.box.y : Infinity);
+    const from = Math.min(spot.x - EXIT_RADIUS, spot.box.h > 0 ? spot.box.x : Infinity);
+    const to = Math.max(spot.x + EXIT_RADIUS, spot.box.x + spot.box.w);
+    if (from < left + w && to > left) bottom = Math.min(bottom, top);
+  }
+  const y = bottom - NAME_PILL_GAP - NAME_PILL_HEIGHT;
+  ctx.save();
+  ctx.shadowColor = hexA(pal.accent, 0.45);
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.roundRect(left, y, w, NAME_PILL_HEIGHT, NAME_PILL_HEIGHT / 2);
+  ctx.fillStyle = hexA(pal.ink, 0.92);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = pal.accent;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = pal.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, disc.x, y + NAME_PILL_HEIGHT / 2 + 0.5);
 }
 
 /** The target's dashed ring past its token, px. */
