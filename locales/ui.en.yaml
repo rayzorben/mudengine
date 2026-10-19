@@ -184,6 +184,9 @@ notices:
   migration:
     roomNamesStated: '"rooms" was added to {file}, empty: your own room names, found by the room
       search and @goto. Add them under Movement on the Global settings page.'
+    artServerStated: '"art" was added to {file}: the character panel asks the art server for
+      your character''s portrait. Turn it off or change the server under Realm on the Global
+      settings page.'
     fightsSegmented:
       one: '{file} was moved into {dir} as one file of up to {per} fights, {fights} fights in
         all. The old file is kept as {backup}.'
@@ -1219,6 +1222,12 @@ game:
     close: Close the character panel
     level: level {level}
     portrait: '{race} {className}'
+    portraitOff: Portraits are off. Draw Portraits is on the Global settings page, under Realm.
+    portraitUnavailable: This build was made without the art server's secret, so it draws no portrait.
+    portraitIncomplete: The portrait is drawn once the stats, the inventory and a look at you are in.
+    portraitWaiting: The art server is drawing your portrait.
+    portraitRefused: 'The art server would not draw it: {reason}'
+    portraitUnreachable: 'No portrait from the art server: {reason}'
     livesCp: Lives/CP
     exp: Exp
     attributes: Attributes
@@ -4601,6 +4610,14 @@ settings:
         right. {user} and {password} stand for the character's own. A new realm starts with these,
         and each realm keeps its own copy on its page afterwards.
       noteBeforeCharacter: Until you have made a character, this is also the address the client connects to.
+    art:
+      legend: Portraits
+      enabled: Draw Portraits
+      enabledHint: The character panel asks the art server to draw your character from its look and
+        the gear it wears, once and again when either changes. It applies to every character; no
+        realm or character keeps its own copy.
+      server: Art Server
+      serverHint: The art server's address, starting https://.
     saved: Settings saved.
     startingValuesNote: Starting values. A new realm or character copies these when you create it
       and keeps its own copy afterwards, so changing them here only affects new ones.
@@ -5726,6 +5743,7 @@ settings:
 errors:
   settings:
     characterNotFound: No character called {id}.
+    artServerInvalid: '"{server}" is not an art server address. It starts with https://.'
     aliasNotLoaded:
       'The alias {word} would not load: it runs itself, through the macros it calls, or is
       set twice.'
@@ -7366,6 +7384,9 @@ automation:
       cash
     reasonProfile: checking which status line the game has
     reasonStatAll: reading the game's own figures for what you wear and have up
+    reasonSelfLook: looking at yourself for your hair, eyes and gender, which the portrait is drawn from
+    selfLookOff: Portraits are off, so the client does not look at you on the way in. Draw Portraits
+      is on the Global settings page, under Realm.
     statAllGaveUp: The game answered {command} {count} times with no figures; not asking again until
       you reconnect.
     spellbookCorrected: Asked for the wrong spellbook; the game says to list {book}, so asking for
@@ -7525,6 +7546,12 @@ movement:
   whatHappens: 'Walking back is a trip like any other: through whatever lives on the way, with
     auto-combat and your other settings working as usual. Staying here changes nothing: the loop or
     route keeps its place, and you can press play again.'
+
+# What the art server's portraits say outside the character panel.
+art:
+  noBuildSecret: This build was made without the art server's secret, so the character panel shows
+    the race and class picture and draws no portrait.
+  portraitNot: 'Portrait: {message}'
 
 # A character is down to its last few lives with automation on, and the client
 # asks before logging it in.

@@ -300,6 +300,7 @@ function migrateAll(options: MigrationOptions): void {
   statedKillAndHangup(home, note, options.template);
   statedTheExtensionSwitches(home, note, options.template);
   statedTheRoomNames(home, note, options.template);
+  statedTheArtServer(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -5266,6 +5267,22 @@ function statedTheRoomNames(
 ): void {
   if (stateTemplateBlock(home, template, [], 'rooms', 'gameView')) {
     note(t('notices.migration.roomNamesStated', { file: home.options }));
+  }
+}
+
+/**
+ * The top-level `art:` block (todo 20261019-0931-01), portraits on and the
+ * art server's address, into the options file after `rooms:` with the
+ * template's paragraph. Only the options file: the install has one art server.
+ * Idempotent: a block already there is left alone.
+ */
+function statedTheArtServer(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (stateTemplateBlock(home, template, [], 'art', 'rooms')) {
+    note(t('notices.migration.artServerStated', { file: home.options }));
   }
 }
 

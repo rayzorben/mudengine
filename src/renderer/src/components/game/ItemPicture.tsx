@@ -2,11 +2,13 @@
  * One item's picture, or its name where the art run drew none or the file is
  * not there: a square never shows a broken image (todo 20261018-2032-01).
  */
-import { memo, useState } from 'react';
+import { memo } from 'react';
 
-function ItemPicture({ src, name }: { src: string | null; name: string }) {
-  const [missing, setMissing] = useState<string | null>(null);
-  if (src === null || missing === src) return <span className="gv-picture-name">{name}</span>;
+import { useFirstPicture } from '../../hooks/useFirstPicture';
+
+function ItemPicture({ src: picture, name }: { src: string | null; name: string }) {
+  const { src, failed } = useFirstPicture([picture]);
+  if (src === null) return <span className="gv-picture-name">{name}</span>;
   return (
     <img
       alt={name}
@@ -14,7 +16,7 @@ function ItemPicture({ src, name }: { src: string | null; name: string }) {
       decoding="async"
       draggable={false}
       loading="lazy"
-      onError={() => setMissing(src)}
+      onError={failed}
       src={src}
     />
   );

@@ -80,6 +80,7 @@ import {
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
 import { normalizeGameView, type GameViewConfig } from './gameViewConfig';
+import { DEFAULT_ART, type ArtConfig } from './artConfig';
 import { statedRoomNames, type StatedRoomName } from './roomNicknames';
 import { asCoinNames, type CoinNames } from './coins';
 import { asGearWeights, type GearWeights } from './gearWeighing';
@@ -274,6 +275,8 @@ export interface GlobalDraft {
   };
   /** The game view's console (todo 140): where it docks open, and how opaque it is. */
   gameView: GameViewConfig;
+  /** The art server (todo 20261019-0931-01): the address as typed, checked when saved. */
+  art: ArtConfig;
   /** The player's own room names as the file states them, refused entries included (todo 153). */
   rooms: StatedRoomName[];
   automation: {
@@ -1349,6 +1352,15 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   };
 }
 
+/** The art block as the form holds it: the address unchecked, so a half-typed one stays in its field. */
+function artDraft(value: unknown): ArtConfig {
+  const block = isRecord(value) ? value : {};
+  return {
+    enabled: typeof block['enabled'] === 'boolean' ? block['enabled'] : DEFAULT_ART.enabled,
+    server: text(block['server']).slice(0, 400)
+  };
+}
+
 /**
  * The options file's own draft, from a window.
  *
@@ -1447,6 +1459,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000)
     },
     gameView: normalizeGameView(value['gameView']),
+    art: artDraft(value['art']),
     rooms: statedRoomNames(value['rooms']),
     automation: {
       enabled: automation['enabled'] === true,

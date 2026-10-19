@@ -54,6 +54,7 @@ import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases'
 import { statedKeys } from '../../shared/keys';
 import { normalizeMobRules, treated, type MobTreatment } from '../../shared/mobRules';
 import { mobKey } from '../../shared/world';
+import { asArtServer } from '../../shared/artConfig';
 
 /**
  * Writing what a settings screen collects into the files that own it.
@@ -1124,6 +1125,7 @@ export class SettingsEditor {
         rewrites: structuredClone(config.ui.rewrites)
       },
       gameView: { ...config.gameView },
+      art: { ...config.art },
       rooms: statedRoomNames(stated['rooms']),
       logging: {
         enabled: config.logging.enabled,
@@ -1201,6 +1203,13 @@ export class SettingsEditor {
    * default means anyway.
    */
   saveGlobal(draft: GlobalDraft): EditResult {
+    const artServer = asArtServer(draft.art.server);
+    if (artServer === null) {
+      return {
+        ok: false,
+        error: t('errors.settings.artServerInvalid', { server: draft.art.server })
+      };
+    }
     const written = this.files.edit(this.home.options, {
       mutate: (document) => {
         const set = (path: readonly string[], value: unknown): void => {
@@ -1250,6 +1259,8 @@ export class SettingsEditor {
 
         set(['gameView', 'dock'], draft.gameView.dock);
         set(['gameView', 'opacity'], draft.gameView.opacity);
+        set(['art', 'enabled'], draft.art.enabled);
+        set(['art', 'server'], artServer);
         // Only when changed, so a hand-written list keeps its layout and comments.
         const rooms = document.get('rooms', true);
         const written = writtenRoomNames(draft.rooms);

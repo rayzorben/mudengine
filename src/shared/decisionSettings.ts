@@ -34,6 +34,7 @@ export type SettingPath =
   | `automation.${PathsOf<AppConfig['automation']>}`
   | `connection.login.${PathsOf<AppConfig['connection']['login']>}`
   | keyof Pick<AppConfig, 'extensions'>
+  | `art.${keyof AppConfig['art']}`
   | `profile.${keyof Pick<Profile, 'lowLives' | 'autoReconnect' | 'reconnectTries' | 'locate'>}`
   | 'profile.login.enabled'
   | `server.${keyof Pick<Server, 'login' | 'hangPenalties' | 'fleeGoto'>}`
@@ -637,6 +638,7 @@ export const DECISION_SETTINGS = {
     'automation.asks.expMinutes'
   ],
   'stat-all': ['automation.asks.statAll'],
+  'look-at-self': ['art.enabled'],
   'look-at-player': ['automation.talk.lookAtPlayers'],
   'keep-alive': [
     'automation.idle.enabled',

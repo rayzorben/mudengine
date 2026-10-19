@@ -78,6 +78,8 @@ export interface GameViewProps {
     | 'walkRoute'
     | 'setAutomationSwitch'
     | 'setThreshold'
+    | 'portrait'
+    | 'onPortrait'
   >;
   session: SessionId;
   view: SessionView;
@@ -459,7 +461,9 @@ function GameView({
           ◎
         </button>
       </div>
-      {panel === 'character' && <CharacterPanel character={character} onClose={closePanel} />}
+      {panel === 'character' && (
+        <CharacterPanel api={api} character={character} onClose={closePanel} session={session} />
+      )}
       {panel === 'pack' && <PackPanel character={character} onClose={closePanel} />}
       <TalkFeed lines={feed} self={self} unread={unread} />
       {talking && (

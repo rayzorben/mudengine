@@ -27,6 +27,7 @@ import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
 import type { DecisionKind } from './decisionSettings';
 import type { PlayerRegistry } from './players';
+import type { PortraitChange, PortraitView } from './portrait';
 import type { DebugRecord } from './debug';
 import type { UnreadLine } from './unread';
 import type { GearAction, Wearer } from './gear';
@@ -791,6 +792,8 @@ export const Invoke = {
   inheritedMobRules: 'settings:inherited-mob-rules',
   /** One monster's row in the character's realm list, from the Combat card (todo 817). */
   treatMonster: 'settings:treat-monster',
+  /** The character's portrait as it stands, for a panel that opens (todo 20261019-0931-01). */
+  portrait: 'art:portrait',
   /** Stop waiting for the party behind a portal and walk on (todo 849). */
   walkOnWithoutParty: 'move:without-party',
   /**
@@ -1198,6 +1201,8 @@ export const Push = {
    * 6.75ms to clone, each side, per status line) and moves far less often.
    */
   players: 'session:players',
+  /** The character's portrait, when it or why it is what it is changed (todo 20261019-0931-01). */
+  portrait: 'art:portrait-changed',
   /** Route-walk progress, on change. */
   walk: 'walk:progress',
   loop: 'loop:progress',
@@ -1403,6 +1408,8 @@ export interface IpcApi {
    * list, replaced or added, or taken out with null. Why not, or null.
    */
   treatMonster(session: SessionId, mob: string, treat: MobTreatment | null): Promise<string | null>;
+  /** The character's portrait and why it is what it is; asks the art server nothing. */
+  portrait(session: SessionId): Promise<PortraitView>;
   /** Stop waiting for the party behind a portal and walk on; nothing while not waiting. */
   walkOnWithoutParty(session: SessionId): Promise<void>;
   /**
@@ -1807,6 +1814,7 @@ export interface IpcApi {
   onBlock(handler: (message: Addressed<Block>) => void): () => void;
   onCharacter(handler: (message: Addressed<CharacterState>) => void): () => void;
   onPlayers(handler: (message: Addressed<PlayerRegistry>) => void): () => void;
+  onPortrait(handler: (message: Addressed<PortraitChange>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;
@@ -1847,6 +1855,7 @@ export const PUSH_METHODS = [
   'onBlock',
   'onCharacter',
   'onPlayers',
+  'onPortrait',
   'onWalk',
   'onLoop',
   'onAutomation',

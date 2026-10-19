@@ -115,6 +115,14 @@ import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import { SimulatorPool } from './app/simulatorPool';
+import { ArtClient } from './art/ArtClient';
+import { ART_TOKEN_FILE, artTokensAt } from './art/artToken';
+import { ART_BUILD_SECRET } from './art/buildSecret';
+import { lastPortraitAt, PortraitCache } from './art/portraitCache';
+import { Portraits } from './art/Portraits';
+import { solveOnWorker } from './art/proofOfWork';
+import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
+import { NO_PORTRAIT } from '../shared/portrait';
 import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
@@ -339,6 +347,10 @@ let logSweep: LogSweep | null = null;
 let simulators: SimulatorPool | null = null;
 /** Where the simulator's worker was built, as the entry states it (`index.ts`). */
 let simulatorWorker = '';
+/** Where the art server's proof of work was built, the same way. */
+let artWorker = '';
+/** Every character's portrait from the art server (todo 20261019-0931-01). */
+let portraits: Portraits | null = null;
 
 /**
  * The realm knowledge base, loaded once.
@@ -1645,6 +1657,35 @@ function settingsStores(): SettingsStores | undefined {
   };
 }
 
+/**
+ * The art server's client, the store on disk and a keeper per character (todo
+ * 20261019-0931-01). A build made without the registration secret says so once
+ * while portraits are on.
+ */
+function createPortraits(): Portraits {
+  const art = (): ArtConfig => config?.config.art ?? DEFAULT_ART;
+  if (ART_BUILD_SECRET === null && art().enabled) {
+    announce('art', t('art.noBuildSecret'), 'log');
+  }
+  return new Portraits({
+    source: new ArtClient({
+      server: () => art().server,
+      buildSecret: ART_BUILD_SECRET,
+      tokens: artTokensAt(home.state(ART_TOKEN_FILE)),
+      solve: (challenge, bits) => solveOnWorker(artWorker, challenge, bits, tuning().art.workMs),
+      limits: () => {
+        const { requestMs, drawMs, mostBits, pollMs, pollMostMs, pollLeastMs } = tuning().art;
+        return { requestMs, drawMs, mostBits, pollMs, pollMostMs, pollLeastMs };
+      }
+    }),
+    cache: new PortraitCache(home.state('art', 'portraits'), () => tuning().art.portraitsKept),
+    lastFor: (id) => lastPortraitAt(home.record('portrait', id)),
+    enabled: () => art().enabled,
+    publish: (id, view) => windows.toAll(Push.portrait, { session: id, payload: view }),
+    say: (id, message) => pushNotice({ session: id, message: t('art.portraitNot', { message }) })
+  });
+}
+
 function createHost(): SessionHost {
   return new SessionHost({
     worldFor,
@@ -1704,7 +1745,11 @@ function createHost(): SessionHost {
     realmTold: (_id, realm, word) => worldBook?.learn(realmName(realm), word),
     // Not a domain concern: see `keepSignalsWorking`.
     onConnected: keepSignalsWorking,
-    removed: (id) => mapPlacements.forget(id),
+    removed: (id) => {
+      mapPlacements.forget(id);
+      portraits?.remove(id);
+    },
+    characterSeen: (id, state) => portraits?.observe(id, state),
     // Per window: which characters have tabs where is the one roster question
     // that differs between them.
     publishRoster: publishRosters,
@@ -2306,6 +2351,12 @@ function registerIpc(): void {
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
   });
+  // Only a loaded character's: a stray id makes no keeper.
+  handle(Invoke.portrait, (_caller, session: unknown) =>
+    typeof session === 'string' && host?.has(session) && portraits !== null
+      ? portraits.view(session)
+      : NO_PORTRAIT
+  );
   // Parsed: a scope the form did not send reads nothing.
   handle(Invoke.inheritedMobRules, (_caller, scope: unknown, realm: unknown) => {
     const parsed = asMobRuleScope(scope);
@@ -3576,9 +3627,13 @@ function guardTheProcess(): void {
  * behind the same channels. What differs is asked of `platform` at the point
  * it differs.
  */
-export function startClient(host: Host, built: { simulatorWorker: string }): void {
+export function startClient(
+  host: Host,
+  built: { simulatorWorker: string; artWorker: string }
+): void {
   platform = host;
   simulatorWorker = built.simulatorWorker;
+  artWorker = built.artWorker;
   asked = homeRoot(process.env, host.defaultHome);
   home = homeAt(asked.root);
 
@@ -3758,6 +3813,7 @@ function build(): void {
     (message) => announce('simulator', message),
     () => new SlicedSimulator()
   );
+  portraits = createPortraits();
   lore = createLore();
   playerBook = createPlayerBook();
   destinations = createDestinations();

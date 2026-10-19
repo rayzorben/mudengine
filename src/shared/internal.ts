@@ -628,6 +628,35 @@ const TUNING_DEFAULTS = {
      */
     unansweredAsks: 3
   },
+  /** The art server (`main/art/`, todo 20261019-0931-01). */
+  art: {
+    /**
+     * How long one request may go unanswered. The server holds a portrait
+     * request up to 25 s and a poll up to 20 s while it draws, so past 40 s
+     * nothing is coming.
+     */
+    requestMs: 40_000,
+    /** How long a portrait may take to draw, from the ask: 13 to 23 s each, ten queued at most. */
+    drawMs: 300_000,
+    /** Portraits kept on disk, the newest; a character changing gear often comes back to one. */
+    portraitsKept: 100,
+    /**
+     * How long the registration's proof of work may take on its worker: 20
+     * bits measured a median 3.1 s and at most 5.8 s (todo 20261019-0931-01).
+     */
+    workMs: 60_000,
+    /**
+     * The most zero bits of work a registration is done for: 28 is about 270
+     * million hashes, several minutes. A server asking more is refused, said.
+     */
+    mostBits: 28,
+    /** The wait before asking after a drawing again, where the server names none (it names 5 s). */
+    pollMs: 5_000,
+    /** The longest wait a server may name before the next ask after a drawing. */
+    pollMostMs: 60_000,
+    /** The shortest, so a server naming 0 is not asked in a tight loop. */
+    pollLeastMs: 1_000
+  },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
     /** How long a heal proposal stays worth sending. */

@@ -48,6 +48,7 @@
  * maintained for free".
  */
 import { PARTY_LISTING_KEY, PartyListing } from './PartyListing';
+import { SelfLook } from './SelfLook';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
@@ -88,6 +89,8 @@ export interface RoutineEvents {
    * character down as standing.
    */
   onTheGround(): boolean;
+  /** Whether this install draws portraits (`art.enabled`), which the look at this character is for. */
+  portraits?(): boolean;
 }
 
 export class Routines implements SessionModule {
@@ -171,6 +174,8 @@ export class Routines implements SessionModule {
   private readonly searcher: UnlistedSearcher;
   /** `stat a` once per basis, out of a fight (todo 45). See `StatAllAsk`. */
   private readonly statAll: StatAllAsk;
+  /** `l <name>` once on the way in, for the portrait (todo 20261019-0931-01). See `SelfLook`. */
+  private readonly selfLook: SelfLook;
 
   constructor(
     private config: AutomationConfig,
@@ -182,6 +187,11 @@ export class Routines implements SessionModule {
     this.searcher = new UnlistedSearcher(queue);
     this.statAll = new StatAllAsk(queue, (message, decision) =>
       this.events.notice?.(message, decision)
+    );
+    this.selfLook = new SelfLook(
+      queue,
+      () => this.events.portraits?.() ?? false,
+      (message, decision) => this.events.notice?.(message, decision)
     );
   }
 
@@ -213,6 +223,7 @@ export class Routines implements SessionModule {
     this.aged.reset();
     this.searcher.reset();
     this.statAll.reset();
+    this.selfLook.reset();
     this.stopIdle();
   }
 
@@ -281,6 +292,7 @@ export class Routines implements SessionModule {
        */
       this.inRealm = false;
       this.stopIdle();
+      this.selfLook.left();
       return;
     }
     if (!this.inRealm) {
@@ -355,6 +367,7 @@ export class Routines implements SessionModule {
       if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'), 'aged-facts');
       else this.stale.ask();
       if (this.config.asks.statAll) this.statAll.onCharacter(state);
+      this.selfLook.onCharacter(state);
     }
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);

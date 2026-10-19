@@ -101,10 +101,34 @@ describe('the order a kit reaches out in', () => {
   it('files no description of this character, and one of anybody else', () => {
     const { company } = rig();
     const before = company.players;
-    company.described(vaelor(), 'Vaelor', 'massive, muscular Nekojin Ranger', T);
+    company.described(vaelor(), { player: 'Vaelor', who: 'massive, muscular Nekojin Ranger' }, T);
     expect(company.players).toBe(before);
-    company.described(vaelor(), 'Soul', 'thin, moderately built Human Warrior', T);
+    company.described(vaelor(), { player: 'Soul', who: 'thin, moderately built Human Warrior' }, T);
     expect(company.players['soul']?.className).toBe('Warrior');
+  });
+
+  it('keeps this character’s hair, eyes and gender, and nobody else’s', () => {
+    const { company } = rig();
+    const looks = { hair: 'shoulder-length brown', eyes: 'slate-grey', pronoun: 'He' };
+    const self = company.described(vaelor(), { player: 'Vaelor', who: 'x', ...looks }, T);
+    expect(self?.appearance).toEqual({
+      gender: 'male',
+      hair: { none: false, length: 'shoulder-length', colour: 'brown' },
+      eyes: 'slate-grey'
+    });
+    expect(company.described(self!, { player: 'Vaelor', who: 'x', ...looks }, T)).toBeNull();
+    expect(company.described(vaelor(), { player: 'Soul', who: 'x', ...looks }, T)).toBeNull();
+  });
+
+  it('reads a look at this character with no usable sentence as nothing known', () => {
+    const { company } = rig();
+    const opened = company.lookOpened(vaelor(), 'Vaelor', undefined) ?? vaelor();
+    company.described(opened, { player: 'Vaelor', who: 'massive, muscular Nekojin Ranger' }, T);
+    expect(company.equipment(opened, KIT, T)?.appearance).toEqual({
+      gender: null,
+      hair: null,
+      eyes: null
+    });
   });
 });
 

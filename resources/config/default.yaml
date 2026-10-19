@@ -2931,3 +2931,16 @@ gameView:
 # no say. Example:
 #   - { code: 'GATE', name: 'The first gates', room: 'Town Gates 1/1' }
 rooms: []
+
+# Portraits (the character panel, c in the game view): the art server draws
+# your character from what a look at it says, its race, class, build, hair and
+# eyes, and the gear it is wearing. The client asks once, and again only when
+# one of those changes. Nothing else about you is sent, not even the name, and
+# the server keeps the picture for anybody who looks the same. The first time,
+# the client registers with the server and keeps the key it is given in the
+# client's folder. Set enabled: false to never ask; the panel then shows its
+# race and class picture. server is the art server's address, https only. For
+# every character, so a character's file has no say.
+art:
+  enabled: true
+  server: https://art.150-136-117-176.sslip.io

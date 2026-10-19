@@ -1136,6 +1136,15 @@ export class Classifier {
    * cannot continue through.
    */
   private feedBatch(line: StreamLine, text: string, type: BlockType): BatchBlock | undefined {
+    // A record ends at another listing's header, which opens as it would have:
+    // a look's description cut short leaves `He is equipped with:` its kit.
+    const open = this.batch?.rule;
+    if (
+      open?.wraps === 'record' &&
+      BATCH_RULES.some((rule) => rule !== open && rule.header.test(text))
+    ) {
+      this.batch = null;
+    }
     if (!this.batch) {
       const rule = BATCH_RULES.find((candidate) => candidate.header.test(text));
       if (!rule) return undefined;

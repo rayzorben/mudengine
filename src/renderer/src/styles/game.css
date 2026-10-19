@@ -1303,6 +1303,12 @@
   object-fit: cover;
 }
 
+.gv-portrait-why {
+  max-width: 48ch;
+  margin-top: 4px;
+  font-size: 10.5px;
+}
+
 .gv-chips {
   display: flex;
   flex-wrap: wrap;

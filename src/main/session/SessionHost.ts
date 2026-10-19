@@ -26,6 +26,7 @@ import path from 'node:path';
 import { t } from '../app/i18n';
 import { errorMessage } from '../../shared/values';
 import type { Loop } from '../../shared/loops';
+import type { CharacterState } from '../../shared/character';
 import type { RoomReference } from '../../shared/world';
 import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
 import { Backscroll } from './Backscroll';
@@ -315,6 +316,8 @@ export interface SessionHostOptions {
    * with it. Optional, for `onConnected`'s reason.
    */
   removed?(id: SessionId): void;
+  /** Each state the character publishes, for what main keeps beside the window (the portrait). */
+  characterSeen?(id: SessionId, state: CharacterState): void;
   /**
    * Republishes the character roster.
    *
@@ -551,6 +554,7 @@ export class SessionHost {
           this.options.toAll(Push.character, { session: id, payload: state });
           // What the room said, for the next pass over the world's look (todo 140).
           descriptions?.saw(state.room, Date.now());
+          this.options.characterSeen?.(id, state);
           /*
            * A tab is named after the character, and the realm does not say who
            * that is until the stat sheet arrives. Without this the rail keeps
@@ -584,6 +588,7 @@ export class SessionHost {
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomationNow: (name, on) => this.switchNow(id, name, on),
         keys: () => this.options.configFor(id).keys,
+        portraits: () => this.options.configFor(id).art.enabled,
         aliasFile: () => this.aliasFile(id),
         loopShelf: () => this.options.loopShelf?.() ?? [],
         roomCoded: (code) => this.options.roomCoded?.(id, code) ?? null,

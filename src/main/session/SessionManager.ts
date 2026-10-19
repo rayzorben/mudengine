@@ -732,6 +732,7 @@ export class SessionManager {
     });
 
     const onTheGround = (): boolean => this.grounded.down;
+    const portraits = (): boolean => sink.portraits?.() ?? false;
     const realmSpeed = (): number => this.errands.realmSpeed;
     const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
@@ -740,7 +741,7 @@ export class SessionManager {
       monsterSwung: (at) => this.hangUp.monsterSwung(at),
       quarry: (state) => this.combat.quarry(state)
     };
-    this.routines = new Routines(automation, this.queue, { notice, onTheGround });
+    this.routines = new Routines(automation, this.queue, { notice, onTheGround, portraits });
 
     // `abandon` is a loss: `close` reports `graceful` false, so the loop is held.
     this.link = new LinkWatch({
@@ -757,8 +758,7 @@ export class SessionManager {
       notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
-    // Walking a route is an outbound action: it proposes to the arbiter like
-    // everything else, a verified step at a time.
+    // A route offers the command queue one verified step at a time, like everything else.
     this.walker = new Walker(automation, this.queue, {
       realmSpeed,
       ended: (arrived, reason) => {

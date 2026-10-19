@@ -258,6 +258,16 @@ const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(
  */
 export const ROOM_EXITS = /^Obvious exits: (?<exits>[\w, ]+)/;
 
+/**
+ * `Player.ObjDesc`'s first sentence up to ` with `, and what follows it through
+ * the second sentence's verb: `with no hair and black eyes. He moves`
+ * (`They move` for `Gender.NonBinary`; GreaterMUD source, todo
+ * 20261019-0931-01). MajorMUD puts two spaces after the full stop
+ * (captures/034, 036). Shared by the single line and the folded record.
+ */
+const DESCRIBED_OPENING = `^(?<player>[A-Z][\\w'-]*) is an? [A-Za-z]+, (?<who>[A-Za-z][A-Za-z' -]*?) with(?:\\s|$)`;
+const DESCRIBED_LOOKS = `(?<hair>no|[A-Za-z-]+ [A-Za-z-]+) hair and (?<eyes>[A-Za-z-]+) eyes\\.\\s+(?<pronoun>He|She|They|It) moves? `;
+
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
   { type: 'prompt-username', pattern: /^Please enter your username or "new":/ },
@@ -1596,9 +1606,14 @@ export const RULES: Rule[] = [
      *
      * A character under `ShadowForm` prints no description at all
      * (`Player.ObjDesc`), so an absent sentence is never an absent race.
+     *
+     * Hair, eyes and the pronoun are read where the line carries them through
+     * `He moves` (todo 20261019-0931-01): a look at yourself folds at about
+     * 150 characters (orohost, wire). Where the fold lands before that, the
+     * `player-described` record below reads the sentence whole.
      */
     type: 'player-described',
-    pattern: /^(?<player>[A-Z][\w'-]*) is an? [A-Za-z]+, (?<who>[A-Za-z][A-Za-z' -]*?) with(?:\s|$)/
+    pattern: new RegExp(`${DESCRIBED_OPENING}(?:${DESCRIBED_LOOKS})?`)
   },
   { type: 'player-enters', pattern: /^(?<player>\w+) just entered the Realm\./ },
   { type: 'player-exits', pattern: /^(?<player>\w+) just left the Realm\./ },
@@ -2482,6 +2497,22 @@ export const BATCH_RULES: BatchRule[] = [
     wraps: 'record',
     maxLines: 6,
     qualifiers: [/^You notice (?<items>.+?) here\.$/]
+  },
+  {
+    /*
+     * A look's description where the server folded it before `He moves`
+     * (todo 20261019-0931-01): the user's paste of Soul at 80 columns,
+     * `…Halfling Mystic with no hair and black` / `eyes. He moves very
+     * swiftly…`, and MajorMUD's 80-column fold inside the hair (captures/036)
+     * or the eyes (captures/034). The single-line rule has read the race and class off the first
+     * line already; this adds the hair, the eyes and the pronoun.
+     */
+    type: 'player-described',
+    header: new RegExp(DESCRIBED_OPENING),
+    shape: 'object',
+    wraps: 'record',
+    maxLines: 4,
+    qualifiers: [new RegExp(DESCRIBED_OPENING + DESCRIBED_LOOKS)]
   },
   {
     /*

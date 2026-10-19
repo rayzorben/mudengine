@@ -30,6 +30,7 @@ import SettingsNav, { type NavFieldset } from './SettingsNav';
 import SettingsSection from './SettingsSection';
 import { GAME_DOCKS, isGameDock } from '@shared/gameMap';
 import { GAME_VIEW_OPACITY_FLOOR } from '@shared/gameViewConfig';
+import ArtFields from './ArtFields';
 import { dockLabel } from '../lib/gameDock';
 import type { SettingsFind } from '../hooks/useSettingsFind';
 import AttackFields, { ATTACK_KIND } from './AttackFields';
@@ -207,7 +208,10 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   keys: [{ id: 'keys', label: t('settings.keys.legend') }],
   records: [],
   extensions: [{ id: 'extensions', label: t('settings.extensions.legend') }],
-  realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
+  realm: [
+    { id: 'realm-portraits', label: t('settings.global.art.legend') },
+    { id: 'realm-login', label: t('settings.realms.loginLegend') }
+  ],
   combat: [
     { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
     { id: 'combat-odds', label: t('settings.combat.oddsLegend') },
@@ -718,6 +722,8 @@ export default function GlobalSettings({
                 value={draft.connection.port || ''}
               />
             </div>
+
+            <ArtFields onChange={(art) => patch('art', art)} value={draft.art} />
 
             <Advanced label={t('settings.advancedWire')}>
               <SelectField

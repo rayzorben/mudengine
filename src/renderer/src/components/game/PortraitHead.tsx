@@ -1,23 +1,60 @@
 /**
- * The character panel's head (todo 20261018-2032-01): the portrait drawn for
- * the character's race and class, else its initial; the name; race, class and
- * level; lives and CP, and experience.
+ * The character panel's head (todo 20261018-2032-01): the portrait the art
+ * server drew of this character (todo 20261019-0931-01), else the picture for
+ * its race and class, else its initial, with why it is not the drawn one; the
+ * name; race, class and level; lives and CP, and experience.
  */
 import { memo } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import type { PortraitStatus, PortraitView } from '@shared/portrait';
+import { useFirstPicture } from '../../hooks/useFirstPicture';
 import { t } from '../../lib/i18n';
 import { figure } from '../../lib/stats';
 import { portraitOf, type ItemArtIndex } from '../../lib/itemArt';
 
-function PortraitHead({ character, art }: { character: CharacterState; art: ItemArtIndex | null }) {
+/** Why the panel shows something other than the drawn portrait, or null when it is the drawn one. */
+function statusLine(status: PortraitStatus): string | null {
+  switch (status.kind) {
+    case 'drawn':
+      return null;
+    case 'off':
+      return t('game.sheet.portraitOff');
+    case 'unavailable':
+      return t('game.sheet.portraitUnavailable');
+    case 'incomplete':
+      return t('game.sheet.portraitIncomplete');
+    case 'waiting':
+      return t('game.sheet.portraitWaiting');
+    case 'refused':
+      return t('game.sheet.portraitRefused', { reason: status.reason });
+    case 'unreachable':
+      return t('game.sheet.portraitUnreachable', { reason: status.reason });
+    default: {
+      const never: never = status;
+      return never;
+    }
+  }
+}
+
+function PortraitHead({
+  character,
+  art,
+  portrait
+}: {
+  character: CharacterState;
+  art: ItemArtIndex | null;
+  portrait: PortraitView;
+}) {
   const name = character.fullName ?? character.name ?? t('game.bar.unknownName');
-  const portrait = art === null ? null : portraitOf(art, character.race, character.className);
+  const kind = art === null ? null : portraitOf(art, character.race, character.className);
+  const { src, failed } = useFirstPicture([portrait.picture, kind]);
+  const why = statusLine(portrait.status);
   const p = character.progress;
   return (
     <div className="gv-portrait-head">
-      <div className="gv-portrait">
-        {portrait === null ? (
+      <div className="gv-portrait" title={why ?? undefined}>
+        {src === null ? (
           <span aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
         ) : (
           <img
@@ -25,7 +62,8 @@ function PortraitHead({ character, art }: { character: CharacterState; art: Item
               race: character.race ?? '',
               className: character.className ?? ''
             })}
-            src={portrait}
+            onError={failed}
+            src={src}
           />
         )}
       </div>
@@ -48,6 +86,7 @@ function PortraitHead({ character, art }: { character: CharacterState; art: Item
             {t('game.sheet.exp')} <b>{figure(p.exp)}</b>
           </span>
         </div>
+        {why !== null && <div className="gv-quiet gv-portrait-why">{why}</div>}
       </div>
     </div>
   );
