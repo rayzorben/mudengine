@@ -25,7 +25,7 @@ import {
 import { isGameDock, type GameDock } from '@shared/gameMap';
 import type { GameViewConfig } from '@shared/gameViewConfig';
 import type { TerminalPalette } from '@shared/themes';
-import { dockGeometry } from '../lib/gameDock';
+import { consoleReach, dockGeometry } from '../lib/gameDock';
 import { readStored, writeStored } from '../lib/storage';
 import { useOverridablePreference } from './usePreference';
 
@@ -233,7 +233,8 @@ export function useGameView(
         '--console-fit-width': `${geometry.console.width}px`,
         '--console-fit-height': `${geometry.console.height}px`,
         '--console-scale': open ? 1 : geometry.scale,
-        '--console-opacity': opacity / 100
+        '--console-opacity': opacity / 100,
+        '--console-reach': `${consoleReach(dock, geometry, open, box.height)}px`
       } as CSSProperties
     };
   }, [on, open, dock, box, cell, opacity]);

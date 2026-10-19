@@ -244,6 +244,7 @@
   --game-region-held: var(--game-tavern);
   --game-region-lower: var(--game-mana);
   /* The pack's sections and its load bar's parts. */
+  --game-pack-worn: var(--game-player);
   --game-pack-gear: var(--game-hp);
   --game-pack-use: var(--game-heal);
   --game-pack-scroll: var(--game-bank);

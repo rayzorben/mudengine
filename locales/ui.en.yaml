@@ -1205,6 +1205,7 @@ game:
     loadFree: Free
     groupMeta: '{count} · {weight} enc'
     group:
+      worn: Worn
       gear: Weapons and armour
       use: Potions, food and drink
       scroll: Scrolls

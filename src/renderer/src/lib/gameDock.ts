@@ -98,6 +98,32 @@ export function dockGeometry(
   return { open, console, thumb, scale };
 }
 
+/**
+ * How far up from the window's bottom the open console reaches, in px: a panel
+ * over the map ends above it. A console docked left or right sits beside, and a
+ * shut one is a thumbnail the panel covers, so none.
+ */
+export function consoleReach(
+  dock: GameDock,
+  geometry: DockGeometry,
+  open: boolean,
+  height: number
+): number {
+  if (!open) return 0;
+  switch (dock) {
+    case 'bottom':
+    case 'float':
+      return height - geometry.open.top;
+    case 'left':
+    case 'right':
+      return 0;
+    default: {
+      const never: never = dock;
+      return never;
+    }
+  }
+}
+
 /** What each dock is called, on the console's bar and the settings page. */
 export function dockLabel(dock: GameDock): string {
   switch (dock) {

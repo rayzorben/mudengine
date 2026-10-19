@@ -35,8 +35,14 @@ describe('the pack', () => {
     expect(loadOf(EMPTY_CHARACTER.inventory)).toBeNull();
   });
 
-  it('sorts carried items into sections, tokens apart, nothing worn and nothing dropped', () => {
+  it('sorts items into sections, worn apart, tokens apart, nothing dropped', () => {
     const pack = packOf(listed)!;
+    expect(pack.groups.worn.map((one) => one.name)).toEqual([
+      'golden pike',
+      'white gold ring',
+      'wedding band',
+      'red rose'
+    ]);
     expect(pack.groups.gear.map((one) => one.name)).toEqual(['vorpal sword']);
     expect(pack.groups.use.map((one) => one.name)).toEqual(['turquoise potion']);
     expect(pack.groups.scroll.map((one) => one.name)).toEqual(['rolled parchment']);

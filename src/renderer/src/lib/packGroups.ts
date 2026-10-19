@@ -1,17 +1,17 @@
 /**
  * The pack panel's sections (todo 20261018-2032-01): what the character
- * carries and does not wear, by the realm's `ItemType`, with tokens apart, and
+ * wears, then what it carries by the realm's `ItemType`, with tokens apart, and
  * the load split by what makes it up. Keys and coins are never items here: the
  * server prints them on lines of their own. Pure; `PackPanel` draws it.
  */
 import type { CarriedItem, Inventory } from '@shared/character';
 import type { ItemKind } from '@shared/items';
 
-export type PackGroup = 'gear' | 'use' | 'scroll' | 'other';
-export const PACK_GROUPS: readonly PackGroup[] = ['gear', 'use', 'scroll', 'other'];
+export type PackGroup = 'worn' | 'gear' | 'use' | 'scroll' | 'other';
+export const PACK_GROUPS: readonly PackGroup[] = ['worn', 'gear', 'use', 'scroll', 'other'];
 
 /** Every kind has a section, so a new kind fails to compile until it is placed. */
-const GROUP_OF: Readonly<Record<ItemKind, PackGroup>> = {
+const GROUP_OF: Readonly<Record<ItemKind, Exclude<PackGroup, 'worn'>>> = {
   weapon: 'gear',
   armour: 'gear',
   food: 'use',
@@ -42,11 +42,18 @@ export interface PackContents {
 /** Null where nobody has listed the pack: unknown, not empty. */
 export function packOf(inventory: Inventory): PackContents | null {
   if (inventory.listedAt === null) return null;
-  const groups: Record<PackGroup, CarriedItem[]> = { gear: [], use: [], scroll: [], other: [] };
+  const groups: Record<PackGroup, CarriedItem[]> = {
+    worn: [],
+    gear: [],
+    use: [],
+    scroll: [],
+    other: []
+  };
   const tokens: CarriedItem[] = [];
   for (const item of inventory.items) {
-    if (item.equipped) continue;
-    if (isToken(item.name)) tokens.push(item);
+    // Worn is a section of its own, in the order the server printed it.
+    if (item.equipped) groups.worn.push(item);
+    else if (isToken(item.name)) tokens.push(item);
     // A thing the realm does not know is among the other things, never dropped.
     else groups[item.kind === undefined ? 'other' : GROUP_OF[item.kind]].push(item);
   }

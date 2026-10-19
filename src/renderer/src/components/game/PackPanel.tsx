@@ -1,8 +1,9 @@
 /**
  * The game view's pack panel, on `i` (todo 20261018-2032-01, the user's pick
- * of prototype B): the load bar, a card per section of what is carried, and
- * cash, keys and tokens along the bottom. Until the pack has been listed it
- * says so, rather than showing an empty pack. Esc or × closes it.
+ * of prototype B): the load bar, a card for what is worn and one per section
+ * of what is carried, and cash, keys and tokens along the bottom. Until the
+ * pack has been listed it says so, rather than showing an empty pack. Esc or ×
+ * closes it.
  */
 import { memo, useMemo } from 'react';
 
@@ -15,6 +16,7 @@ import PackCard from './PackCard';
 import PackTray from './PackTray';
 
 const GROUP_LABEL: Record<PackGroup, string> = {
+  worn: t('game.pack.group.worn'),
   gear: t('game.pack.group.gear'),
   use: t('game.pack.group.use'),
   scroll: t('game.pack.group.scroll'),

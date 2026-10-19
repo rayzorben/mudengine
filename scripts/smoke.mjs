@@ -16377,12 +16377,22 @@ if (paletteOpen) {
     '`i` opens the pack in the game view'
   );
   check((await consoleState()) === 'shut', 'and leaves the console shut');
+  // The picture index is its own chunk, loaded on the first panel: shoot once it is drawn.
+  await readUntil(
+    () =>
+      evaluate(
+        `(() => { const all = [...document.querySelectorAll('.gv-pack img')]; return all.length > 0 && all.every((img) => img.complete); })()`
+      ),
+    (drawn) => drawn
+  );
+  await capture('smoke-game-pack.png', 'game view pack');
   await key('c', 'KeyC', 67);
   check(
     (await readUntil(panel, (p) => p === 'character')) === 'character' &&
       (await evaluate(`document.querySelectorAll('.gv-character .gv-slot').length >= 19`)),
     '`c` swaps it for the character panel, with a square per worn slot'
   );
+  await capture('smoke-game-character.png', 'game view character panel');
   await key('Escape', 'Escape', 27);
   check((await readUntil(panel, (p) => p === '')) === '', 'Escape closes the panel');
   await key('Enter', 'Enter', 13);
