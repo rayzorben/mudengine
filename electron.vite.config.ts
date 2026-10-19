@@ -12,6 +12,15 @@ const shared = resolve('src/shared');
 const stamp = { __BUILD_STAMP__: JSON.stringify(buildStamp(resolve('.'))) };
 
 /**
+ * The art server's registration secret, main only, from the environment the
+ * build runs in (`main/art/buildSecret.ts`). Never in the repository, and
+ * never in the window's bundle.
+ */
+const artSecret = {
+  __ART_BUILD_SECRET__: JSON.stringify(process.env['ART_BUILD_SECRET']?.trim() ?? '')
+};
+
+/**
  * Bundled rather than externalised.
  *
  * Electron's ESM loader cannot pre-parse an external dependency of either
@@ -101,7 +110,7 @@ const CHUNK_LIMIT_KB = { main: 4400, preload: 100, renderer: 3600 } as const;
 export default defineConfig({
   main: {
     ...stripComments,
-    define: stamp,
+    define: { ...stamp, ...artSecret },
     plugins: [
       externalizeDepsPlugin({ exclude: BUNDLED }),
       yamlPlugin(),
@@ -114,7 +123,9 @@ export default defineConfig({
         input: {
           index: resolve('src/main/index.ts'),
           // A worker thread's own entry, beside `index.js` (`app/simulatorPool.ts`).
-          simulatorWorker: resolve('src/main/app/simulatorWorker.ts')
+          simulatorWorker: resolve('src/main/app/simulatorWorker.ts'),
+          // The art server's registration proof of work (`art/proofOfWork.ts`).
+          artWorker: resolve('src/main/art/artWorker.ts')
         }
       }
     }

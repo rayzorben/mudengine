@@ -6,15 +6,28 @@
 import { memo, useMemo } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import type { IpcApi, SessionId } from '@shared/ipc';
 import { useItemArt } from '../../hooks/useItemArt';
+import { usePortrait } from '../../hooks/usePortrait';
 import { t } from '../../lib/i18n';
 import { wornSlotsOf } from '../../lib/wornSlots';
 import PortraitHead from './PortraitHead';
 import StatBlock from './StatBlock';
 import WornSlots from './WornSlots';
 
-function CharacterPanel({ character, onClose }: { character: CharacterState; onClose(): void }) {
+function CharacterPanel({
+  character,
+  api,
+  session,
+  onClose
+}: {
+  character: CharacterState;
+  api: Pick<IpcApi, 'portrait' | 'onPortrait'>;
+  session: SessionId;
+  onClose(): void;
+}) {
   const art = useItemArt();
+  const portrait = usePortrait(api, session);
   const worn = useMemo(() => wornSlotsOf(character.inventory), [character.inventory]);
   return (
     <aside aria-label={t('game.sheet.aria')} className="gv-hud gv-glass gv-panel gv-character">
@@ -26,7 +39,7 @@ function CharacterPanel({ character, onClose }: { character: CharacterState; onC
       >
         ×
       </button>
-      <PortraitHead art={art} character={character} />
+      <PortraitHead art={art} character={character} portrait={portrait} />
       <div className="gv-character-body">
         <WornSlots art={art} realm={character.realm} worn={worn} />
         <StatBlock character={character} />

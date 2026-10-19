@@ -546,6 +546,31 @@ tuning:
     # `stat all`, and is not asked again until you reconnect.
     unansweredAsks: 3
 
+  # The art server, which draws the character panel's portrait.
+  art:
+    # How long one request may go unanswered, in milliseconds. The server holds
+    # a request up to 25 seconds while it draws.
+    requestMs: 40000
+
+    # How long a portrait may take to draw, in milliseconds, from the ask.
+    drawMs: 300000
+
+    # Portraits kept on disk, the newest.
+    portraitsKept: 100
+
+    # How long registering's proof of work may take, in milliseconds.
+    workMs: 60000
+
+    # The most zero bits of work a registration is done for; a server asking
+    # more is refused.
+    mostBits: 28
+
+    # The wait before asking after a drawing again where the server names
+    # none, and the longest and shortest wait it may name, in milliseconds.
+    pollMs: 5000
+    pollMostMs: 60000
+    pollLeastMs: 1000
+
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
     # How long a heal proposal stays worth sending.

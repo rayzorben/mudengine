@@ -109,8 +109,26 @@ if (fs.existsSync(profilesDir)) {
 }
 
 const secrets = configuredSecrets(configs);
+/*
+ * And the art server's token secret (todo 20261019-0931-01), which signs every
+ * portrait request: it belongs in `<home>/.art-token` and nowhere else, and
+ * that file is never read here, its name being none of `WORTH_READING`'s.
+ */
+try {
+  const token = JSON.parse(fs.readFileSync(path.join(home.root, '.art-token'), 'utf8'));
+  if (typeof token?.secret === 'string' && token.secret.length > 0) {
+    secrets.push({ owner: 'art server token', value: token.secret });
+  }
+} catch (error) {
+  // No token yet is nothing to look for; one that cannot be read is a check not run, said.
+  if (error?.code !== 'ENOENT') {
+    console.log(
+      `\n  The art server token could not be read, so its secret was not looked for: ${error}`
+    );
+  }
+}
 console.log(
-  `\n${characters} character(s) resolved, ${secrets.length} distinct password(s) to look for`
+  `\n${characters} character(s) resolved, ${secrets.length} distinct secret(s) to look for`
 );
 
 if (secrets.length === 0) {

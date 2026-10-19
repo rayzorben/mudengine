@@ -19,6 +19,7 @@
 import { PRIORITY } from './automation';
 import { bool, fraction, int, isRecord, oneOf, str } from './values';
 import { DEFAULT_GAME_VIEW, normalizeGameView, type GameViewConfig } from './gameViewConfig';
+import { DEFAULT_ART, normalizeArt, type ArtConfig } from './artConfig';
 import { DEFAULT_SAFETY, normalizeSafety, type SafetyConfig } from './safety';
 import {
   DEFAULT_DROP,
@@ -2333,6 +2334,8 @@ export interface AppConfig {
   extensions: ExtensionSwitches;
   /** The game view's console, global only (todo 140). */
   gameView: GameViewConfig;
+  /** The art server and whether portraits are asked of it, global only (todo 20261019-0931-01). */
+  art: ArtConfig;
   /** The player's own room names, in front of MegaMUD's shipped ones, global only (todo 153). */
   rooms: RoomNickname[];
 }
@@ -2755,6 +2758,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   keys: MEGAMUD_KEYS,
   extensions: DEFAULT_EXTENSION_SWITCHES,
   gameView: DEFAULT_GAME_VIEW,
+  art: DEFAULT_ART,
   rooms: []
 };
 
@@ -2943,6 +2947,7 @@ export function normalizeConfig(input: unknown): AppConfig {
     keys: normalizeKeys(raw['keys'], looping),
     extensions: normalizeExtensionSwitches(raw['extensions']),
     gameView: normalizeGameView(raw['gameView']),
+    art: normalizeArt(raw['art']),
     rooms: asRoomNicknames(raw['rooms'])
   };
 }

@@ -11,7 +11,7 @@ import { sourceFiles } from './sources';
  * `structure.test.ts` does: a field names its setting as a literal.
  */
 const NAMED =
-  /\bsetting(?:=\{?|:\s*)['"]((?:automation|connection|profile|server|loop)\.[a-zA-Z.]+|extensions)['"]/g;
+  /\bsetting(?:=\{?|:\s*)['"]((?:automation|connection|profile|server|loop|art)\.[a-zA-Z.]+|extensions)['"]/g;
 
 function namedSettings(): Set<string> {
   const named = new Set<string>();

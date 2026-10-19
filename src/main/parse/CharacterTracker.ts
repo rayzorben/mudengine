@@ -1582,7 +1582,7 @@ export class CharacterTracker {
         return this.company.lookOpened(s, g['name'], g['gang']);
 
       case 'player-described':
-        return this.company.described(s, g['player'], g['who'], block.at);
+        return this.company.described(s, g, block.at);
 
       case 'player-equipment':
         return this.company.equipment(s, rows, block.at);

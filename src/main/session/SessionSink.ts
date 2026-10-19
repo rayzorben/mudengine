@@ -192,4 +192,6 @@ export interface SessionSink {
   loopShelf?(): readonly Loop[];
   /** The room a MegaMUD code names on this character's realm, or null (todo 144). */
   roomCoded?(code: string): RoomReference | null;
+  /** Whether this install draws portraits (`art.enabled`); absent is no. */
+  portraits?(): boolean;
 }

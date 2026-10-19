@@ -2441,6 +2441,94 @@ describe('a player looked at', () => {
 });
 
 /*
+ * Hair, eyes and the pronoun (todo 20261019-0931-01). A look at yourself
+ * folds at about 150 characters (`probe:look`, orohost, wire); the user's
+ * pastes of Soul and Festus are the same sentence at 80 and at 150.
+ */
+describe('what a look says a character looks like', () => {
+  const run = (lines: string[]) => {
+    const classifier = new Classifier(NAMES);
+    return lines.map((plain) => classifier.classify(line(plain)));
+  };
+
+  it('reads the whole first sentence off one line', () => {
+    const [opening] = run([
+      'Probe is a stout, well built Gnome Priest with no hair and black eyes. He moves cautiously, and is hostile and rather unappealing. Probe appears to be',
+      'intelligent and has a worldly air about him. He is unwounded.'
+    ]);
+    expect(opening?.block.type).toBe('player-described');
+    expect(opening?.block.groups).toMatchObject({
+      player: 'Probe',
+      who: 'well built Gnome Priest',
+      hair: 'no',
+      eyes: 'black',
+      pronoun: 'He'
+    });
+    expect(opening?.batch).toBeUndefined();
+  });
+
+  it('joins a sentence folded at 80 before the eyes', () => {
+    const [opening, rest] = run([
+      'Soul is a healthy, moderately built Halfling Mystic with no hair and black',
+      'eyes. He moves very swiftly, and is likable in an unassuming sort of way. Soul'
+    ]);
+    // The first line still gives the race and class on its own.
+    expect(opening?.block.type).toBe('player-described');
+    expect(opening?.block.groups['hair']).toBeUndefined();
+    expect(rest?.batch?.type).toBe('player-described');
+    expect(rest?.batch?.groups).toMatchObject({
+      player: 'Soul',
+      who: 'moderately built Halfling Mystic',
+      hair: 'no',
+      eyes: 'black',
+      pronoun: 'He'
+    });
+  });
+
+  it('reads two-word hair and hyphened eyes', () => {
+    const [opening] = run([
+      'Festus is a massive, physically Godlike Kang Paladin with shoulder-length brown hair and slate-grey eyes. He moves blindingly fast, and is likable in an'
+    ]);
+    expect(opening?.block.groups).toMatchObject({
+      hair: 'shoulder-length brown',
+      eyes: 'slate-grey',
+      pronoun: 'He'
+    });
+  });
+
+  /* The kit after a description cut short is still the kit. */
+  it('gives way to the equipment block’s header', () => {
+    const results = run([
+      'Pherough is a colossal, Herculean Dark-Elf Mystic with short white hair and',
+      'He is equipped with:',
+      'gilded robes                   (Torso)',
+      '[HP=334/KAI=27]:'
+    ]);
+    expect(results[3]?.batch?.type).toBe('player-equipment');
+    expect(results[3]?.batch?.rows).toEqual([{ item: 'gilded robes', slot: 'Torso' }]);
+  });
+
+  /* captures/036 and 034, verbatim: MajorMUD folds inside the hair, and spaces its stops twice. */
+  it('joins a MajorMUD fold inside the hair and inside the eyes', () => {
+    const bhaal = run([
+      'Bhaal is a massive, powerfully built Dark-Elf Thief with shoulder-length red',
+      'hair and crimson eyes.  He moves blindingly fast, and is incredibly'
+    ]);
+    expect(bhaal[1]?.batch?.groups).toMatchObject({
+      who: 'powerfully built Dark-Elf Thief',
+      hair: 'shoulder-length red',
+      eyes: 'crimson',
+      pronoun: 'He'
+    });
+    const pherough = run([
+      'Pherough is a colossal, Herculean Dark-Elf Mystic with short white hair and',
+      'black eyes.  He moves blindingly fast, and is quite unfriendly and aloof.'
+    ]);
+    expect(pherough[1]?.batch?.groups).toMatchObject({ hair: 'short white', eyes: 'black' });
+  });
+});
+
+/*
  * One framed line, two facts.
  *
  * `LineTokenizer` frames on the status line's `ESC[79D ESC[K` repaint, and the

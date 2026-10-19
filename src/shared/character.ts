@@ -9,6 +9,7 @@
  *
  * Dependency-free: the main process derives it, the renderer draws it.
  */
+import type { Appearance } from './appearance';
 import type { Sight } from './light';
 import type { Alignment } from './alignment';
 import type { Loadout } from './gear';
@@ -1481,6 +1482,8 @@ export interface CharacterState {
   fullName: string | null;
   race: string | null;
   className: string | null;
+  /** Gender, hair and eyes from a look at this character, or null before one. See `Appearance`. */
+  appearance: Appearance | null;
   vitals: Vitals;
   room: Room;
   progress: Progress;
@@ -1668,6 +1671,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   fullName: null,
   race: null,
   className: null,
+  appearance: null,
   vitals: {
     hp: null,
     mana: null,

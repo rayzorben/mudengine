@@ -8,6 +8,7 @@
  * owns what both write into, and nothing it holds is published but by
  * identity (`players`).
  */
+import { appearanceOf, sameAppearance, UNKNOWN_APPEARANCE } from '../../shared/appearance';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { RoomId } from '../../shared/world';
@@ -112,6 +113,8 @@ export class Company {
    * server's spelling here is already resolved from whatever was typed.
    */
   private lookedAt: string | null = null;
+  /** Whether the look being read gave this character's appearance (todo 20261019-0931-01). */
+  private selfDescribed = false;
 
   constructor(
     private book: Book,
@@ -266,25 +269,30 @@ export class Company {
     gang: string | undefined
   ): CharacterState | null {
     this.lookedAt = name ?? null;
+    this.selfDescribed = false;
     return withLookedAt(s, name, gang);
   }
 
   /**
    * `player-described`: the sentence under that line, where the race and the
    * class are, filed against the name the *sentence* carries — the same name
-   * as `lookedAt`, from the server. Skipped for this character's own look:
-   * `trackPlayers` keeps everybody but self out of the registry, so a name in
-   * the console does not open a panel about the person reading it, and this
-   * character's own race and class are on the stat sheet.
+   * as `lookedAt`, from the server. This character's own look is kept out of
+   * the registry: `trackPlayers` keeps everybody but self out of it, so a name
+   * in the console does not open a panel about the person reading it, and
+   * this character's own race and class are on the stat sheet. What it says
+   * of hair, eyes and gender is this character's appearance (todo
+   * 20261019-0931-01).
    */
-  described(
-    s: CharacterState,
-    name: string | undefined,
-    clause: string | undefined,
-    at: number
-  ): null {
-    if (isSelf(s, name ?? null)) return null;
-    this.registry = withDescription(this.registry, name, clause, at);
+  described(s: CharacterState, g: Record<string, string>, at: number): CharacterState | null {
+    const name = g['player'];
+    if (isSelf(s, name ?? null)) {
+      const appearance = appearanceOf(g['hair'], g['eyes'], g['pronoun']);
+      if (appearance === null) return null;
+      this.selfDescribed = true;
+      if (sameAppearance(appearance, s.appearance)) return null;
+      return { ...s, appearance };
+    }
+    this.registry = withDescription(this.registry, name, g['who'], at);
     return null;
   }
 
@@ -310,7 +318,15 @@ export class Company {
     for (const { item, slot } of kit) this.sources.teachSlot(item, slot, at);
     if (isSelf(s, this.lookedAt)) {
       for (const { item, slot } of kit) this.sources.rememberSlot(item, slot);
-      return withOwnEquipment(s, rows);
+      const worn = withOwnEquipment(s, rows);
+      /*
+       * The kit follows the description, so a look at this character that gave
+       * no hair, eyes or pronoun by now gave none at all: a word folded where
+       * the rule cannot read it. All three are unknown, and the portrait is
+       * drawn without them rather than waiting for a sentence that has passed.
+       */
+      if (this.selfDescribed || s.appearance !== null) return worn;
+      return { ...(worn ?? s), appearance: UNKNOWN_APPEARANCE };
     }
     this.registry = withEquipment(this.registry, this.lookedAt, rows, at);
     return null;
