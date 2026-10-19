@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { placesIn, WORN_SLOT } from '@shared/items';
-import { crossings, DOLL_GEOMETRY, DOLL_SLOTS, layoutDoll, packColumn } from '../paperDoll';
+import {
+  crossings,
+  DOLL_GEOMETRY,
+  DOLL_SLOTS,
+  DRAWING_GEOMETRY,
+  layoutDoll,
+  packColumn
+} from '../paperDoll';
 
 describe('the paper doll', () => {
   it('has a square for every place of every worn slot', () => {
@@ -27,6 +34,12 @@ describe('the paper doll', () => {
         ]
       ])
     ).toBe(1);
+    expect(crossings(placed.map((slot) => slot.line))).toBe(0);
+  });
+
+  it('crosses no lines over the drawing either', () => {
+    const placed = layoutDoll(DRAWING_GEOMETRY);
+    expect(placed).toHaveLength(DOLL_SLOTS.length);
     expect(crossings(placed.map((slot) => slot.line))).toBe(0);
   });
 

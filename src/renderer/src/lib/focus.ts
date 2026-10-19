@@ -33,6 +33,18 @@ export function keepFocus(event: MouseEvent): void {
   event.preventDefault();
 }
 
+/**
+ * Whether nothing in the chrome holds the caret: the page itself, or the game
+ * view's command layer, which `returnFocus` gives it to when nothing else
+ * does. A dialog taking the caret back after the window returns asks this
+ * first, as `App`'s window focus does, so a field the player was in keeps it.
+ */
+export function caretIsFree(
+  active: { tagName: string; matches(selector: string): boolean } | null
+): boolean {
+  return active === null || active.tagName.toUpperCase() === 'BODY' || active.matches('.gv-root');
+}
+
 /** What `ownsItsEnter` and `describeElement` read of an element. */
 export interface KeyTarget {
   tagName: string;

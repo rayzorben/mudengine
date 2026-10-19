@@ -8,7 +8,10 @@ import PortraitViewer from '../game/PortraitViewer';
 import { mount } from '../../hooks/__tests__/mount';
 
 const probe = mount();
-afterEach(() => probe.unmount());
+afterEach(() => {
+  probe.unmount();
+  vi.unstubAllGlobals();
+});
 
 const DRAWN = 'data:image/webp;base64,UklGRg==';
 
@@ -42,6 +45,7 @@ describe('the portrait in the character panel', () => {
   });
 
   it('saves through main, and keeps its Esc from the game view', async () => {
+    vi.stubGlobal('window', Object.assign(new EventTarget(), { requestAnimationFrame: vi.fn() }));
     const savePortrait = vi.fn(async () => ({ kind: 'dismissed' as const }));
     const onClose = vi.fn();
     probe.render(
