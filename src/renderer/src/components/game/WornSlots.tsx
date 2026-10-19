@@ -1,8 +1,10 @@
 /**
  * The paper doll (todo 20261018-2032-01): the body in five coloured regions,
  * a square per worn slot round it, each with a line to where it is worn, in
- * its region's colour. The layout is `lib/paperDoll.ts`; what fills a square
- * is `lib/wornSlots.ts`.
+ * its region's colour. Once the art server has drawn the character, the
+ * drawing takes the body's place and the lines run dotted to it (todo
+ * 20261019-0931-01); a press on it shows it whole. The layout is
+ * `lib/paperDoll.ts`; what fills a square is `lib/wornSlots.ts`.
  */
 import { memo, useMemo } from 'react';
 
@@ -11,8 +13,10 @@ import { t } from '../../lib/i18n';
 import { pictureOf, type ItemArtIndex } from '../../lib/itemArt';
 import {
   DOLL_BOX as BOX,
-  DOLL_GEOMETRY as GEOMETRY,
+  DOLL_GEOMETRY,
   DOLL_REGIONS,
+  DRAWING_BOX,
+  DRAWING_GEOMETRY,
   layoutDoll,
   type DollRegion
 } from '../../lib/paperDoll';
@@ -52,15 +56,25 @@ function Figure() {
 function WornSlots({
   worn,
   art,
-  realm
+  realm,
+  drawing,
+  name,
+  onOpen
 }: {
   /** Null until the pack is listed: every square is unknown. */
   worn: Worn | null;
   art: ItemArtIndex | null;
   realm: RealmFamily | null;
+  /** The art server's drawing of the character, or null for the doll's own body. */
+  drawing: string | null;
+  /** Whose drawing, for its alt text. */
+  name: string;
+  /** The drawing pressed: shown whole. */
+  onOpen(): void;
 }) {
-  const placed = useMemo(() => layoutDoll(GEOMETRY), []);
-  const { figure } = GEOMETRY;
+  const geometry = drawing === null ? DOLL_GEOMETRY : DRAWING_GEOMETRY;
+  const placed = useMemo(() => layoutDoll(geometry), [geometry]);
+  const { figure } = geometry;
   return (
     <div className="gv-doll">
       <div className="gv-doll-legend">
@@ -71,19 +85,35 @@ function WornSlots({
           </span>
         ))}
       </div>
-      <div className="gv-doll-box" style={{ width: BOX.width, height: BOX.height }}>
+      <div
+        className="gv-doll-box"
+        data-drawn={drawing === null ? undefined : 'true'}
+        style={{ width: BOX.width, height: BOX.height }}
+      >
+        {drawing !== null && (
+          <img
+            alt={name}
+            className="gv-doll-drawing"
+            draggable={false}
+            onClick={onOpen}
+            src={drawing}
+            style={{ left: DRAWING_BOX.left, top: DRAWING_BOX.top, height: DRAWING_BOX.height }}
+          />
+        )}
         <svg
           aria-hidden="true"
           height={BOX.height}
           viewBox={`0 0 ${BOX.width} ${BOX.height}`}
           width={BOX.width}
         >
-          <g
-            className="gv-doll-figure"
-            transform={`translate(${figure.x} ${figure.y}) scale(${figure.scale})`}
-          >
-            <Figure />
-          </g>
+          {drawing === null && (
+            <g
+              className="gv-doll-figure"
+              transform={`translate(${figure.x} ${figure.y}) scale(${figure.scale})`}
+            >
+              <Figure />
+            </g>
+          )}
           {placed.map((slot) => (
             <g data-region={slot.region} key={slot.id}>
               <path
@@ -103,7 +133,7 @@ function WornSlots({
               data-region={slot.region}
               data-state={state}
               key={slot.id}
-              style={{ left: slot.x, top: slot.y, width: GEOMETRY.size, height: GEOMETRY.size }}
+              style={{ left: slot.x, top: slot.y, width: geometry.size, height: geometry.size }}
               title={item === null ? slot.word : `${item.name} (${slot.word})`}
             >
               {item !== null && (

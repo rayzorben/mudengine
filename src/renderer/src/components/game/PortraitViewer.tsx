@@ -3,11 +3,12 @@
  * the small one (todo 20261019-0931-01): Copy puts it on the clipboard as a
  * PNG, Save writes the file as drawn. Esc or × goes back to the panel.
  */
-import { memo, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { IpcApi, SessionId } from '@shared/ipc';
 import { PNG_DATA_URL } from '@shared/portrait';
 import { errorMessage } from '@shared/values';
+import { caretIsFree } from '../../lib/focus';
 import { t } from '../../lib/i18n';
 import Icon from '../Icon';
 
@@ -46,6 +47,22 @@ function PortraitViewer({
   const close = useRef<HTMLButtonElement>(null);
   const [said, setSaid] = useState<string | null>(null);
   useEffect(() => close.current?.focus(), []);
+  /*
+   * The caret comes back here, so Esc stays this viewer's: the save dialog
+   * takes it, and when the window regains focus the client hands it to the
+   * game view's layer, whose own Esc closes the whole panel. A frame later,
+   * after that hand-back (`App`'s window focus), and only where nothing else
+   * holds it (`caretIsFree`).
+   */
+  const takeBack = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      if (caretIsFree(document.activeElement)) close.current?.focus();
+    });
+  }, []);
+  useEffect(() => {
+    window.addEventListener('focus', takeBack);
+    return () => window.removeEventListener('focus', takeBack);
+  }, [takeBack]);
 
   const copy = (): void => {
     pngOf(src)
@@ -55,21 +72,25 @@ function PortraitViewer({
           setSaid(copied ? t('game.sheet.portraitCopied') : t('game.sheet.portraitNotCopied')),
         (error: unknown) =>
           setSaid(t('game.sheet.portraitCopyFailed', { message: errorMessage(error) }))
-      );
+      )
+      .finally(takeBack);
   };
   const save = (): void => {
-    api.savePortrait(session).then(
-      (result) => {
-        if (result.kind === 'refused') setSaid(result.error);
-        else if (result.kind === 'written' && result.download !== null) {
-          setSaid(t('game.sheet.portraitDownloaded'));
-        } else if (result.kind === 'written') {
-          setSaid(t('game.sheet.portraitSaved', { file: result.file }));
-        }
-      },
-      (error: unknown) =>
-        setSaid(t('game.sheet.portraitSaveFailed', { message: errorMessage(error) }))
-    );
+    api
+      .savePortrait(session)
+      .then(
+        (result) => {
+          if (result.kind === 'refused') setSaid(result.error);
+          else if (result.kind === 'written' && result.download !== null) {
+            setSaid(t('game.sheet.portraitDownloaded'));
+          } else if (result.kind === 'written') {
+            setSaid(t('game.sheet.portraitSaved', { file: result.file }));
+          }
+        },
+        (error: unknown) =>
+          setSaid(t('game.sheet.portraitSaveFailed', { message: errorMessage(error) }))
+      )
+      .finally(takeBack);
   };
   // Its own Esc, before the game view's closes the whole panel.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {

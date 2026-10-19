@@ -1310,19 +1310,39 @@ button.gv-portrait {
 
 /*
  * The art server's drawing is the whole figure, 832 by 1216. The square shows
- * its head: 320 px wide, centred 55% across and 17% down, measured on three
- * drawings (two Kang, the head 5-20% down; a Gnome, 14-27%).
+ * its head: 320 px of it, from 298 px across and 47 down (centred 55% across
+ * and 17% down), measured on three drawings (two Kang, the head 5-20% down; a
+ * Gnome, 14-27%). As the square's share: 832/320 wide, 298/320 and 47/320 in.
  */
-.gv-portrait[data-drawn] img {
-  object-view-box: inset(3.9% 25.7% 69.9% 35.8%);
+.gv-portrait[data-drawn] {
+  position: relative;
 }
 
-/* The drawing where the paper doll stands, at the doll's height. */
-.gv-figure {
+.gv-portrait[data-drawn] img {
+  position: absolute;
+  top: -14.7%;
+  left: -93.1%;
+  width: 260%;
+  height: auto;
+  max-width: none;
+}
+
+/* The drawing in the doll's place, mirrored to face the doll's way (`DRAWING_BOX`). */
+.gv-doll-drawing {
+  position: absolute;
   width: auto;
-  max-width: 100%;
-  object-fit: contain;
+  transform: scaleX(-1);
   cursor: zoom-in;
+}
+
+/* Over a drawing the lines run dotted, since the place on the body is approximate. */
+.gv-doll-box[data-drawn] .gv-doll-line {
+  stroke-dasharray: 3 4;
+}
+
+/* The lines lie over the drawing; a press goes through them to it. */
+.gv-doll-box[data-drawn] svg {
+  pointer-events: none;
 }
 
 /* Over the whole panel, which stops scrolling under it. */

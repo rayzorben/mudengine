@@ -13,7 +13,6 @@ import { useItemArt } from '../../hooks/useItemArt';
 import { usePortrait } from '../../hooks/usePortrait';
 import { t } from '../../lib/i18n';
 import { wornSlotsOf } from '../../lib/wornSlots';
-import { DOLL_BOX } from '../../lib/paperDoll';
 import PortraitHead from './PortraitHead';
 import PortraitViewer from './PortraitViewer';
 import StatBlock from './StatBlock';
@@ -63,18 +62,14 @@ function CharacterPanel({
       </button>
       <PortraitHead art={art} character={character} onOpen={open} portrait={portrait} />
       <div className="gv-character-body">
-        {portrait.picture === null ? (
-          <WornSlots art={art} realm={character.realm} worn={worn} />
-        ) : (
-          <img
-            alt={name}
-            className="gv-figure"
-            draggable={false}
-            onClick={open}
-            src={portrait.picture}
-            style={{ height: DOLL_BOX.height }}
-          />
-        )}
+        <WornSlots
+          art={art}
+          drawing={portrait.picture}
+          name={name}
+          onOpen={open}
+          realm={character.realm}
+          worn={worn}
+        />
         <StatBlock character={character} />
       </div>
       {whole && portrait.picture !== null && (

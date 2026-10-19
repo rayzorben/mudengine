@@ -4,7 +4,9 @@
  * slot belongs to a region, which colours the body part, the line and the
  * square. A column keeps its slots in the order their landing points run down
  * the body, and each square sits level with its point as far as spacing
- * allows, so no two lines cross (the user, 2026-10-18). Pure; `WornSlots`
+ * allows, so no two lines cross (the user, 2026-10-18). With the art
+ * server's drawing in the body's place the squares stay and the lines run
+ * dotted to the same places on it (the user, 2026-10-19). Pure; `WornSlots`
  * draws it.
  */
 import { placesIn, WORN_SLOT } from '@shared/items';
@@ -17,7 +19,7 @@ type Side = 'left' | 'right' | 'below';
 interface Mount {
   region: DollRegion;
   side: Side;
-  /** Where the line lands, in the figure's own 200 x 400 box. */
+  /** Where the line lands, in the figure's own 200 x 400 box (`FIGURE`). */
   at: readonly [number, number];
 }
 
@@ -100,6 +102,52 @@ export const DOLL_GEOMETRY: DollGeometry = {
   top: 12,
   bottom: 478,
   below: { y: 432, from: 120, to: 420 }
+};
+
+/**
+ * The art server's drawing (todo 20261019-0931-01), 832 x 1216, and where its
+ * body runs in it, measured on three drawings: from about 9% down (a crown
+ * 6%, a Gnome's bald head 13.5%) to 96%, centred 53% across. It is drawn
+ * mirrored: the server puts the weapon in the character's right hand, the
+ * viewer's left, and the doll has the weapon hand on the viewer's right.
+ */
+const DRAWING = {
+  width: 832,
+  height: 1216,
+  bodyTop: 0.09,
+  bodyBottom: 0.96,
+  /** The body's centre across, mirrored: 1 - 0.53. */
+  bodyAcross: 0.47
+} as const;
+
+/** The figure box's size, which a mount's `at` is measured in. */
+const FIGURE = { width: 200, height: 400 } as const;
+
+/** The doll's own body centre across, where the drawing's is put. */
+const DOLL_CENTRE = DOLL_GEOMETRY.figure.x + (FIGURE.width / 2) * DOLL_GEOMETRY.figure.scale;
+
+/** The drawing's height in `DOLL_BOX`: its feet end above the row under them. */
+const DRAWN_HEIGHT = 420;
+const DRAWN_TOP = 4;
+const DRAWN_WIDTH = (DRAWN_HEIGHT * DRAWING.width) / DRAWING.height;
+
+/** Where the drawing sits in `DOLL_BOX`. */
+export const DRAWING_BOX = {
+  left: DOLL_CENTRE - DRAWING.bodyAcross * DRAWN_WIDTH,
+  top: DRAWN_TOP,
+  height: DRAWN_HEIGHT
+} as const;
+
+const DRAWN_SCALE = ((DRAWING.bodyBottom - DRAWING.bodyTop) * DRAWN_HEIGHT) / FIGURE.height;
+
+/** The doll's squares, with the figure box laid over the drawing's body. */
+export const DRAWING_GEOMETRY: DollGeometry = {
+  ...DOLL_GEOMETRY,
+  figure: {
+    x: DOLL_CENTRE - (FIGURE.width / 2) * DRAWN_SCALE,
+    y: DRAWN_TOP + DRAWING.bodyTop * DRAWN_HEIGHT,
+    scale: DRAWN_SCALE
+  }
 };
 
 export interface PlacedSlot extends DollSlot {
