@@ -6,9 +6,11 @@
  * and the flag bits are in `docs/mega-paramud.md` › *The room list*. Each row
  * is placed, in order, by the `map room` typed at the end of its name where
  * the realm has a room there, else by its checksum as the replayed path files
- * saw it, else by a name only one realm room has. A typed `map room` and a
- * checksum that disagree go to whichever room the MegaMUD name begins; where
- * neither or both do, the row is dropped. A checksum seen in more than one room
+ * saw it, else by a name only one realm room has. Where the checksum was never
+ * seen in the typed room and every path file ending at the row ends in one
+ * room, the row goes to that room. Otherwise a typed `map room` and a checksum
+ * that disagree go to whichever room the MegaMUD name begins; where neither or
+ * both do, the row is dropped. A checksum seen in more than one room
  * is never used: it is a hash and collides. Dropped rows are counted in the
  * file's header and listed by `--list`.
  *
@@ -53,6 +55,8 @@ const byCode = new Map(rows.map((row) => [row.code, row]));
 
 /* Checksum → room ids, learned by replaying every path file from a start ROOMS.md places. */
 const seen = new Map();
+/* Code → the rooms the path files ending at it were replayed into. */
+const ended = new Map();
 const learn = (checksum, room) => {
   const ids = seen.get(checksum) ?? new Set();
   ids.add(idOf(room));
@@ -67,9 +71,15 @@ for (const file of fs.readdirSync(source).filter((name) => /\.mp$/i.test(name)))
   const walked = replay(world, from, steps.map((step) => step.command));
   if (!walked) continue;
   steps.forEach((step, at) => learn(step.checksum, walked.stood[at]));
-  // A goto path's third line names the room it ends in: where the replay finished.
+  // A goto path's third line names the room it ends in: where the replay
+  // finished, unless its last step was a word the replay could not read.
   const end = byCode.get(/^\[(\w+):/.exec(lines[2] ?? '')?.[1] ?? '');
-  if (end) learn(end.checksum, walked.rooms.at(-1));
+  if (end && walked.unread.at(-1) !== steps.length - 1) {
+    learn(end.checksum, walked.rooms.at(-1));
+    const ids = ended.get(end.code) ?? new Set();
+    ids.add(idOf(walked.rooms.at(-1)));
+    ended.set(end.code, ids);
+  }
 }
 
 const fold = (text) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -78,6 +88,10 @@ const named = (id, name) => fold(world.byId(id).name).startsWith(fold(name));
 /** The room a row names, or why it names none. */
 function place(row) {
   const ids = seen.get(row.checksum);
+  // King Crab is typed 16/297, a room with no exits; its checksum is seen in
+  // 16/296 and 16/287, so it names neither, and SHSHKICR.mp ends in 16/287.
+  const walkedTo = ended.get(row.code);
+  if (row.id && ids && !ids.has(row.id) && walkedTo?.size === 1) return { id: [...walkedTo][0] };
   const checked = ids && ids.size === 1 ? [...ids][0] : null;
   if (row.id && checked && checked !== row.id) {
     // The typed map/room is sometimes a typo (Narrow Ledge 15/640 for 16/640).
