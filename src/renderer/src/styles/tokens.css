@@ -255,6 +255,8 @@
   /* How long a line said stays in the game view's talk feed before it fades, and the fade. */
   --dur-game-talk-linger: 30s;
   --dur-game-talk-fade: 2s;
+  /* A tutorial page coming in. */
+  --dur-game-page: 220ms;
 
   /* ------------------------------------------------------------- type
    *

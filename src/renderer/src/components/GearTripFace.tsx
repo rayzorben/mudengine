@@ -2,6 +2,7 @@ import Icon from './Icon';
 import PlanFights from './PlanFights';
 import { copperWords, unpricedWords } from '../lib/gearPicks';
 import { t } from '../lib/i18n';
+import { progressAt, type Progress } from '../lib/progression';
 import type { GearLeg, GearStop, GearTripPlan, GearTripProgress } from '@shared/gearTrip';
 import { describeBlock } from '@shared/world';
 
@@ -101,8 +102,7 @@ function Figure({ label, value, tone }: { label: string; value: string; tone?: '
 
 export default function GearTripFace({ plan, trip, onGo, onStop, onReplan }: GearTripFaceProps) {
   const running = trip !== null && trip.stage !== 'ended' && trip.plan === plan;
-  const progressOf = (index: number): 'done' | 'now' | 'left' =>
-    !running ? 'left' : index < trip.stop ? 'done' : index === trip.stop ? 'now' : 'left';
+  const progressOf = (index: number): Progress => (running ? progressAt(index, trip.stop) : 'left');
   const notes = [
     unpricedWords(plan.unpriced),
     plan.purse === null ? t('cards.gear.tripPurseUnread') : '',

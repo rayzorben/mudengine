@@ -28,6 +28,31 @@ export type CommandGlyph =
   | 'talk'
   | 'pack';
 
+/**
+ * The command layer's keys, one table for the bar, the key layer and the
+ * tutorial. A letter acts at once; Enter and Esc are the layer's own.
+ */
+export const GAME_KEYS = {
+  attack: 'a',
+  next: 'Tab',
+  backstab: 'b',
+  run: 'f',
+  get: 'g',
+  sneak: 'k',
+  hide: 'h',
+  rest: 'r',
+  search: 'x',
+  look: 'l',
+  business: 'y',
+  party: 'p',
+  character: 'c',
+  talk: 't',
+  pack: 'i',
+  help: '?',
+  console: 'Enter',
+  back: 'Escape'
+} as const;
+
 export interface GameCommand {
   key: string;
   label: string;
@@ -112,7 +137,7 @@ export function gameCommands({ character, picked, place, unread }: CommandInputs
 
   if (target !== null) {
     fight.push({
-      key: 'a',
+      key: GAME_KEYS.attack,
       label: t('game.commands.attack', { name: target }),
       glyph: 'attack',
       line: `a ${target}`,
@@ -120,29 +145,35 @@ export function gameCommands({ character, picked, place, unread }: CommandInputs
     });
     if (monstersHere(character).length > 1)
       fight.push({
-        key: 'Tab',
+        key: GAME_KEYS.next,
         label: t('game.commands.next'),
         glyph: 'next',
         action: 'nextTarget'
       });
     if (sneaking && !engaged)
       fight.push({
-        key: 'b',
+        key: GAME_KEYS.backstab,
         label: t('game.commands.backstab'),
         glyph: 'backstab',
         line: `bs ${target}`,
         main: true
       });
   }
-  if (engaged) fight.push({ key: 'f', label: t('game.commands.run'), glyph: 'run', action: 'run' });
+  if (engaged)
+    fight.push({ key: GAME_KEYS.run, label: t('game.commands.run'), glyph: 'run', action: 'run' });
 
   const cash = character.room.cash;
   const item = character.room.items[0]?.name ?? null;
   if (cash !== null && cash.totalCopper > 0)
-    here.push({ key: 'g', label: t('game.commands.getCoins'), glyph: 'get', line: 'get coins' });
+    here.push({
+      key: GAME_KEYS.get,
+      label: t('game.commands.getCoins'),
+      glyph: 'get',
+      line: 'get coins'
+    });
   else if (item !== null)
     here.push({
-      key: 'g',
+      key: GAME_KEYS.get,
       label: t('game.commands.get', { item }),
       glyph: 'get',
       line: `get ${item}`
@@ -150,20 +181,35 @@ export function gameCommands({ character, picked, place, unread }: CommandInputs
 
   if (!engaged) {
     if (!sneaking)
-      here.push({ key: 'k', label: t('game.commands.sneak'), glyph: 'sneak', line: 'sneak' });
-    here.push({ key: 'h', label: t('game.commands.hide'), glyph: 'hide', line: 'hide' });
+      here.push({
+        key: GAME_KEYS.sneak,
+        label: t('game.commands.sneak'),
+        glyph: 'sneak',
+        line: 'sneak'
+      });
+    here.push({ key: GAME_KEYS.hide, label: t('game.commands.hide'), glyph: 'hide', line: 'hide' });
     const { hp, hpMax, mana, manaMax } = character.vitals;
     const hurt =
       (hp !== null && hpMax !== null && hp < hpMax) ||
       (mana !== null && manaMax !== null && mana < manaMax);
     if (hurt && !character.vitals.resting)
-      here.push({ key: 'r', label: t('game.commands.rest'), glyph: 'rest', line: 'rest' });
-    here.push({ key: 'x', label: t('game.commands.search'), glyph: 'search', line: 'search' });
+      here.push({
+        key: GAME_KEYS.rest,
+        label: t('game.commands.rest'),
+        glyph: 'rest',
+        line: 'rest'
+      });
+    here.push({
+      key: GAME_KEYS.search,
+      label: t('game.commands.search'),
+      glyph: 'search',
+      line: 'search'
+    });
     const business = businessOf(place, character);
     if (business !== null) here.unshift(business);
   }
   here.push({
-    key: 'l',
+    key: GAME_KEYS.look,
     label:
       target !== null && engaged
         ? t('game.commands.lookAt', { name: target })
@@ -173,16 +219,21 @@ export function gameCommands({ character, picked, place, unread }: CommandInputs
   });
 
   const you: GameCommand[] = [
-    { key: 'p', label: t('game.commands.party'), glyph: 'party', line: 'party' },
-    { key: 'c', label: t('game.commands.character'), glyph: 'character', action: 'character' },
+    { key: GAME_KEYS.party, label: t('game.commands.party'), glyph: 'party', line: 'party' },
     {
-      key: 't',
+      key: GAME_KEYS.character,
+      label: t('game.commands.character'),
+      glyph: 'character',
+      action: 'character'
+    },
+    {
+      key: GAME_KEYS.talk,
       label: t('game.commands.talk'),
       glyph: 'talk',
       action: 'talk',
       ...(unread > 0 ? { badge: unread, main: true as const } : {})
     },
-    { key: 'i', label: t('game.commands.pack'), glyph: 'pack', action: 'pack' }
+    { key: GAME_KEYS.pack, label: t('game.commands.pack'), glyph: 'pack', action: 'pack' }
   ];
   return { fight, here, you, exits: exitsOf(character) };
 }
@@ -196,7 +247,7 @@ function businessOf(place: ShopIcon | null, character: CharacterState): GameComm
       const carried = character.inventory.wealth;
       return carried !== null && carried > 0
         ? {
-            key: 'y',
+            key: GAME_KEYS.business,
             label: t('game.commands.deposit'),
             glyph: null,
             line: `deposit ${carried}`,
@@ -206,7 +257,13 @@ function businessOf(place: ShopIcon | null, character: CharacterState): GameComm
         : null;
     }
     case 'trainer':
-      return { key: 'y', label: t('game.commands.train'), glyph: null, line: 'train', place };
+      return {
+        key: GAME_KEYS.business,
+        label: t('game.commands.train'),
+        glyph: null,
+        line: 'train',
+        place
+      };
     case 'temple':
     case 'guild':
       return null;
@@ -229,7 +286,13 @@ function businessOf(place: ShopIcon | null, character: CharacterState): GameComm
     case 'recycler':
     case 'oddities':
     case 'furniture':
-      return { key: 'y', label: t('game.commands.list'), glyph: null, line: 'list', place };
+      return {
+        key: GAME_KEYS.business,
+        label: t('game.commands.list'),
+        glyph: null,
+        line: 'list',
+        place
+      };
     default: {
       const never: never = place;
       return never;

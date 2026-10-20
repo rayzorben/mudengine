@@ -15,3 +15,11 @@ describe('the combat zoom setting', () => {
     expect(normalizeGameView({ combatZoom: -1 }).combatZoom).toBe(0);
   });
 });
+
+describe('the tutorial setting', () => {
+  it('is on unless a file says otherwise', () => {
+    expect(normalizeGameView({}).tutorial).toBe(true);
+    expect(normalizeGameView({ tutorial: 'no' }).tutorial).toBe(true);
+    expect(normalizeGameView({ tutorial: false }).tutorial).toBe(false);
+  });
+});

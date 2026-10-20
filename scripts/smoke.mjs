@@ -16298,6 +16298,22 @@ if (paletteOpen) {
 
   await pick(copy('palette.view.gameViewLabel'));
   check((await readUntil(view, (v) => v === 'game')) === 'game', 'the palette shows the game view');
+  // The tutorial opens the first time the view comes up in a window, and holds the caret.
+  check(
+    await readUntil(
+      () => evaluate(`document.activeElement?.closest('.gvt-dialog') !== null`),
+      (on) => on
+    ),
+    'the tutorial opens by itself, holding the caret'
+  );
+  await key('Escape', 'Escape', 27);
+  check(
+    await readUntil(
+      () => evaluate(`document.querySelector('.gvt-dialog') === null`),
+      (gone) => gone
+    ),
+    'and Esc closes it'
+  );
   check(
     await readUntil(
       () => evaluate(`document.activeElement?.classList.contains('gv-root') === true`),

@@ -446,9 +446,8 @@ export default function App() {
    * typing into a button. With several characters, "the terminal" means the one
    * being shown. See docs/ui-design.md §3.6.
    *
-   * Deferred a frame so it lands after React has committed whatever closed. A
-   * command that deliberately parks focus elsewhere opts out with `movesFocus`
-   * rather than racing this.
+   * Deferred a frame so it lands after React has committed whatever closed; a
+   * command that parks focus elsewhere on purpose opts out with `movesFocus`.
    *
    * **And it stands down for a dialog that has taken the caret meanwhile.** A
    * palette command that reveals a path answers from main a moment later, and
@@ -1377,6 +1376,7 @@ export default function App() {
           api={api}
           game={game}
           config={config}
+          configKnown={loadedAt > 0}
           openRouteOn={openRouteOn}
           profile={profiles.find((one) => one.id === session) ?? null}
           renderTalk={renderTalk}
