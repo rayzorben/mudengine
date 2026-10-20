@@ -547,6 +547,8 @@ describe('isRemoteTalk', () => {
       '@rayzor you there?',
       'ok {grin}',
       '{ok} thanks',
+      '{Fact: Now that Hands ate swine, he has to wait a couple days to be purified.}',
+      '{see you all tomorrow!}',
       ''
     ]) {
       expect(isRemoteTalk(message), message).toBe(false);
