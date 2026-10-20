@@ -555,11 +555,13 @@ function remoteWord(message: string): { name: RemoteName; rest: string } | null 
  * Anchored at the start like the call, so `wow ... @health` is somebody
  * talking. A player who says only `{grin}` reads as a reply too; run over every
  * talk line in captures/ (todo 138), it hid 183 of 628, none of them talk.
+ * A braced sentence is talk: players gossip `{Fact: ... to be purified.}`
+ * (2026-10-19), and no reply in captures/ ends in a word and a full stop.
  */
 export function isRemoteTalk(message: string): boolean {
   const call = remoteWord(message);
   if (call !== null) return /^(?:$|[\s{])/.test(call.rest);
-  return /^\s*(?:\{[^{}]*\}\s*)+$/.test(message);
+  return /^\s*(?:\{[^{}]*\}\s*)+$/.test(message) && !/[a-z][.!?]\s*\}/i.test(message);
 }
 
 /**
