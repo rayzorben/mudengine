@@ -46,7 +46,8 @@ import { tuning } from '../app/tuning';
 import { leavesRoom } from './departs';
 import { FightClock, type FightTiming } from './fightClock';
 import { harmOf, HarmLedger } from './harm';
-import { LeftOff } from './leftOff';
+import { listedMobs } from './engagements';
+import { LeftOff, type Resumed } from './leftOff';
 import { OwedAttacks } from './owed';
 import { Pursuit } from './pursuit';
 
@@ -371,6 +372,8 @@ export class FightTracker {
     }
     for (const { ledger, left } of this.pursuit.expired(block.at))
       this.settleLedgers(left, [ledger], block.at, {});
+    const off = this.leftOff.lapsed(block.at);
+    if (off !== null) this.settleFight(off.left, off.at);
     if (!fightIsRunning(s)) {
       this.harm.settle(block.at, 'off');
       return;
@@ -440,9 +443,15 @@ export class FightTracker {
        * nothing is settled as a *kill* here — that needs `You gain N
        * experience.`, which arrives first and settles its own ledger. What
        * is left standing at this point survived, and how much it absorbed
-       * is a floor under its health worth keeping.
+       * is a floor under its health worth keeping. It is written down when
+       * no `*Combat Engaged*` takes the fight back (`goOn`, `heard`), since a
+       * cast mid-fight prints the pair and the fight goes on.
        */
-      this.settleFight(s, at);
+      this.settleEnded(s, s, at);
+      this.harm.settle(at, 'off');
+      // Nothing after the Off is one of its procs. See `landed`: the binding
+      // is to a blow inside a round, not to a name.
+      this.landed = null;
       /*
        * The owed attacks deliberately survive this. Re-attacking — or
        * switching targets — makes the server print `*Combat Off*` and
@@ -471,9 +480,12 @@ export class FightTracker {
      * of a fight already in progress says nothing new, though it still
      * answers its attack.
      */
-    if (!s.inCombat) this.clock.engage(at, roomAddress(s.room));
+    const off = this.leftOff.resume(s, at);
+    const goesOn = off !== null && this.goOn(off, s);
+    // A fight that goes on keeps the engagement it opened with, for its record.
+    if (!s.inCombat && !goesOn) this.clock.engage(at, roomAddress(s.room));
     const aimed = this.owed.answer(at);
-    const resumed = this.leftOff.resume(s, at);
+    const resumed = off?.attackers ?? [];
     const attackers =
       resumed.length === 0
         ? s.combat.attackers
@@ -832,10 +844,31 @@ export class FightTracker {
   private settleFight(s: CharacterState, at: number): void {
     this.settleLedgers(s, this.ledgers.values(), at, this.engagement());
     this.ledgers.clear();
-    this.harm.settle(at, 'off');
-    // The fight is over, so nothing after it is one of its procs. See
-    // `landed`: the binding is to a blow inside a round, not to a name.
-    this.landed = null;
+  }
+
+  /**
+   * The engagement after a `*Combat Off*` (`leftOff.ts`). Inside the window
+   * and in the same room the fight goes on: a monster the room still lists
+   * and nothing killed keeps its damage, so a heal mid-fight leaves its bar
+   * where it was (festus, 2026-10-20). Returns whether the Off's fight goes on.
+   */
+  private goOn(off: Resumed, s: CharacterState): boolean {
+    if (off.attackers === null) this.settleFight(off.left, off.at);
+    else this.settleEnded(s, off.left, off.at);
+    return off.attackers !== null && this.ledgers.size > 0;
+  }
+
+  /**
+   * Writes down at once each monster whose fight cannot go on: killed, or no
+   * longer listed in the room `s` stands in. The rest wait for the engagement.
+   */
+  private settleEnded(s: CharacterState, left: CharacterState, at: number): void {
+    const listed = listedMobs(s);
+    const done = [...this.ledgers.values()].filter(
+      (ledger) => ledger.killedAfter !== null || !listed.has(ledger.key)
+    );
+    for (const ledger of done) this.ledgers.delete(ledger.key);
+    if (done.length > 0) this.settleLedgers(left, done, at, this.engagement());
   }
 
   /**
@@ -847,6 +880,8 @@ export class FightTracker {
    */
   walked(s: CharacterState, moved: Direction | null): void {
     const at = this.heardAt;
+    // A fight a `*Combat Off*` left is settled here with the rest.
+    this.leftOff.forget();
     for (const { ledger, left } of this.pursuit.stepped(moved, at))
       this.settleLedgers(left, [ledger], at, {});
     const follows = mayFollow(s, moved);

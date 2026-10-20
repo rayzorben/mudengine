@@ -209,6 +209,7 @@ describe('a step out of a fight', () => {
     expect(hit.combat.health?.remaining).toBeCloseTo(0.5, 5);
     // One fight across two rooms, and its record says the orc followed.
     tracker.status(hit, false, 3_000);
+    tracker.heard({ type: 'status-line', text: '', groups: {}, at: 40_000 }, hit);
     expect(records.map((one) => [one.mob, one.mine, one.followed])).toEqual([['orc', 50, true]]);
   });
 
@@ -341,14 +342,37 @@ describe('a death and the end of a fight', () => {
     const over = tracker.status(next, false, 3_000);
     expect(over.inCombat).toBe(false);
     expect(over.combat.attackers).toEqual([]);
-    expect(records.map((r) => [r.mob, r.killed, r.opened, r.mine, r.others])).toEqual([
+    const written = () => records.map((r) => [r.mob, r.killed, r.opened, r.mine, r.others]);
+    // The kill at once; a monster still standing waits for an engagement that may take it back.
+    expect(written()).toEqual([['giant rat', true, true, 9, 0]]);
+    const bind = DEFAULT_INTERNAL.tuning.parse.engageBindMs;
+    tracker.heard({ type: 'status-line', text: '', groups: {}, at: 3_001 + bind }, over);
+    expect(written()).toEqual([
       ['giant rat', true, true, 9, 0],
       // Still standing when the fight ended, and not this character's fight.
       ['kobold thief', false, false, 0, 4]
     ]);
     // Written once: the ledgers are gone with the fight.
-    tracker.status(over, false, 4_000);
+    tracker.status(over, false, 4_000 + bind);
+    tracker.heard({ type: 'status-line', text: '', groups: {}, at: 5_001 + 2 * bind }, over);
     expect(records).toHaveLength(2);
+  });
+
+  it('keeps a monster’s damage across a cast that prints Combat Off and Combat Engaged', () => {
+    const { tracker, records, s } = fight([mob('giant rat')]);
+    const room = { ...s.room, map: 1, number: 100 };
+    let next = tracker.hit({ ...s, room }, 1_000, 'giant rat', 'You', 40)!;
+    const off = tracker.status(next, false, 2_000);
+    tracker.noteAttack('giant rat', 'aa giant rat', 2_100);
+    next = tracker.status(off, true, 2_200);
+    expect(next.combat.health?.damage.mine).toBe(40);
+    next = tracker.hit(next, 3_000, 'giant rat', 'You', 10)!;
+    expect(next.combat.health?.damage.mine).toBe(50);
+    // One fight, written down when it really ends.
+    tracker.status(next, false, 4_000);
+    expect(records).toEqual([]);
+    tracker.heard({ type: 'status-line', text: '', groups: {}, at: 60_000 }, next);
+    expect(records.map((r) => [r.mob, r.mine])).toEqual([['giant rat', 50]]);
   });
 
   it('forgetting settles nothing', () => {

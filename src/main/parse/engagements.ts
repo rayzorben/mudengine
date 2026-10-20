@@ -273,7 +273,8 @@ export function fightsStillHere(
   return { ...s, party: { ...s.party, engaged, threatened } };
 }
 
-function listedMobs(s: CharacterState): Set<string> {
+/** The monster names the room lists, by key. */
+export function listedMobs(s: CharacterState): Set<string> {
   return new Set(
     s.room.occupants.filter((there) => there.kind === 'mob').map((there) => mobKey(there.name))
   );
