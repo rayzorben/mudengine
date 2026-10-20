@@ -558,6 +558,13 @@ export default function GlobalSettings({
             </div>
 
             <CheckField
+              checked={draft.gameView.tutorial}
+              label={t('settings.client.appearance.gameTutorial')}
+              name="global-game-tutorial"
+              onChange={(value) => patch('gameView', { tutorial: value })}
+            />
+
+            <CheckField
               checked={draft.ui.showHud}
               label={t('settings.client.appearance.showHud')}
               name="global-hud"

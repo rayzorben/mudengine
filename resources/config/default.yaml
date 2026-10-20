@@ -2922,6 +2922,9 @@ gameView:
   # How much bigger the arena grows in a fight, 0.1 to 0.9, the map coming
   # nearer with it. 0 keeps the arena its usual size.
   combatZoom: 0
+  # Show the game view's tutorial the first time the view comes up in each
+  # window. Its own checkbox changes this for the window; ? reopens it.
+  tutorial: true
 
 # Your own room names, as MegaMUD's goto list has them: a code, a name, and the
 # realm's room as a loop stop names it (`Darkwood Forest 3/784`). The room

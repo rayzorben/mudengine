@@ -1,7 +1,7 @@
 /**
  * The game view console's title bar (todo 140): where it docks when open, how
  * opaque its ground is, and that Esc goes back to the map. Shut, a badge on
- * the thumbnail says a click or `i` opens it. Both sit over the console's own
+ * the thumbnail says a click or Enter opens it. Both sit over the console's own
  * box, which `useGameView` places through `.app`'s properties.
  */
 import { memo } from 'react';

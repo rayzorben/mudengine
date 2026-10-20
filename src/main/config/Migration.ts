@@ -302,6 +302,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheRoomNames(home, note, options.template);
   statedTheArtServer(home, note, options.template);
   statedTheCombatZoom(home, note, options.template);
+  statedTheTutorial(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -5306,6 +5307,28 @@ function statedTheCombatZoom(
     stated.length === 1
       ? t('notices.migration.combatZoom.one', params)
       : t('notices.migration.combatZoom.many', params)
+  );
+}
+
+/**
+ * `gameView.tutorial` into every file that states `gameView:`, after
+ * `combatZoom`, on: the game view's tutorial opens once per launch until the
+ * player unticks it.
+ */
+function statedTheTutorial(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateKeysIn(home, template, ['gameView'], 'combatZoom', [
+    ['tutorial', DEFAULT_CONFIG.gameView.tutorial]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.gameTutorial.one', params)
+      : t('notices.migration.gameTutorial.many', params)
   );
 }
 

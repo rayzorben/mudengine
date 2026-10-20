@@ -4,7 +4,7 @@
  * Beside `config.ts` rather than in it, which composes them into `AppConfig`.
  */
 import { isGameDock, type GameDock } from './gameMap';
-import { fraction, isRecord } from './values';
+import { bool, fraction, isRecord } from './values';
 
 /**
  * The game view's console (todo 140): where it docks when opened, and how
@@ -20,6 +20,8 @@ export interface GameViewConfig {
    * (the default), 0.1 to 0.9 grows it that share (todo 20261019-1358-01).
    */
   combatZoom: number;
+  /** Whether the tutorial opens the first time the game view comes up in a launch. */
+  tutorial: boolean;
 }
 
 /** The combat zooms offered: off, then 10% to 90% bigger in tenths. */
@@ -47,11 +49,17 @@ export function normalizeGameView(raw: unknown): GameViewConfig {
       GAME_VIEW_OPACITY_FLOOR,
       fraction(block['opacity'], DEFAULT_GAME_VIEW.opacity)
     ),
-    combatZoom: asCombatZoom(block['combatZoom'])
+    combatZoom: asCombatZoom(block['combatZoom']),
+    tutorial: bool(block['tutorial'], DEFAULT_GAME_VIEW.tutorial)
   };
 }
 
-export const DEFAULT_GAME_VIEW: GameViewConfig = { dock: 'bottom', opacity: 0.55, combatZoom: 0 };
+export const DEFAULT_GAME_VIEW: GameViewConfig = {
+  dock: 'bottom',
+  opacity: 0.55,
+  combatZoom: 0,
+  tutorial: true
+};
 
 /**
  * The two thresholds the game view steps from its HUD (todo 140), by their

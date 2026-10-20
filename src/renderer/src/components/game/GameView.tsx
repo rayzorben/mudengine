@@ -8,7 +8,7 @@
  * Command mode is this element's own key layer: a letter acts at once; `n` or
  * `s` waits for `e` or `w` only in a room with a diagonal starting with it;
  * Enter opens the console; `c` the character panel and `i` the pack; Esc
- * closes a panel, else brings a dragged map back.
+ * closes a panel, else brings a dragged map back; `?` opens the tutorial.
  */
 import {
   memo,
@@ -36,6 +36,7 @@ import { roomsWithFinds } from '@shared/finds';
 import { isFoundWay } from '@shared/memory';
 import type { GameViewState } from '../../hooks/useGameView';
 import { useGameMap } from '../../hooks/useGameMap';
+import { useGameTutorial } from '../../hooks/useGameTutorial';
 import { useRoundAnchor } from '../../hooks/useRoundAnchor';
 import type { SessionView } from '../../hooks/useSessionViews';
 import { candidatesOf } from '../../lib/gameArena';
@@ -43,6 +44,7 @@ import {
   commandFor,
   diagonalOf,
   diagonalWaits,
+  GAME_KEYS,
   gameCommands,
   monstersHere,
   moveKey,
@@ -59,6 +61,7 @@ import AutoBar from './AutoBar';
 import CharacterPanel from './CharacterPanel';
 import CommandBar from './CommandBar';
 import ConsoleBar from './ConsoleBar';
+import GameTutorial from './GameTutorial';
 import PackPanel from './PackPanel';
 import PartyFrames from './PartyFrames';
 import PlayerBar from './PlayerBar';
@@ -89,8 +92,10 @@ export interface GameViewProps {
   /** The key bindings, and where a vital bar turns yellow and red for the party's gauges. */
   config: Pick<AppConfig, 'keys'> & {
     ui: Pick<UiConfig, 'vitals'>;
-    gameView: Pick<GameViewConfig, 'combatZoom'>;
+    gameView: Pick<GameViewConfig, 'combatZoom' | 'tutorial'>;
   };
+  /** Whether the options file has arrived, so its `gameView.tutorial` is the player's. */
+  configKnown: boolean;
   openRouteOn(room: WorldRoom, search: null): void;
   stepBack(session: SessionId, confirmed: number | null): void;
   /** A refusal, said in this character's console. */
@@ -112,6 +117,7 @@ function GameView({
   view,
   profile,
   config,
+  configKnown,
   openRouteOn,
   stepBack,
   say,
@@ -127,6 +133,13 @@ function GameView({
   const [picked, setPicked] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const closePanel = useCallback(() => setPanel(null), []);
+  // Never by itself while the console is open: it would take the caret mid-line.
+  const tutorial = useGameTutorial(config.gameView.tutorial, configKnown && !game.open);
+  // A frame later, once the tutorial and its hold on the caret are gone.
+  const focusHome = useCallback(
+    () => window.requestAnimationFrame(() => game.home.current?.focus()),
+    [game.home]
+  );
   const [fired, setFired] = useState<{ key: string; at: number } | null>(null);
   const pending = useRef<{ first: Direction; timer: number } | null>(null);
   const [talking, setTalking] = useState(false);
@@ -233,7 +246,7 @@ function GameView({
     if (event.ctrlKey || event.altKey || event.metaKey) return;
     // The Talk panel's composer types; its Escape goes back to the map.
     if (event.target instanceof Element && event.target.closest('.gv-talk-panel')) {
-      if (event.key === 'Escape') {
+      if (event.key === GAME_KEYS.back) {
         event.preventDefault();
         closeTalk();
       }
@@ -241,6 +254,19 @@ function GameView({
     }
     if (event.target instanceof HTMLInputElement) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    // The tutorial reads its own keys; one that reaches here past it acts on nothing.
+    if (tutorial.open) {
+      if (key === GAME_KEYS.back) {
+        event.preventDefault();
+        tutorial.close();
+      }
+      return;
+    }
+    if (key === GAME_KEYS.help) {
+      event.preventDefault();
+      tutorial.show();
+      return;
+    }
     const exits = commands.exits.map((exit) => exit.direction);
     const step = moveKey(key);
     const held = pending.current;
@@ -255,13 +281,13 @@ function GameView({
       }
       flush();
     }
-    if (key === 'Escape') {
+    if (key === GAME_KEYS.back) {
       if (panel !== null) setPanel(null);
       else canvas.current?.follow();
       event.preventDefault();
       return;
     }
-    if (key === 'Enter') {
+    if (key === GAME_KEYS.console) {
       event.preventDefault();
       game.openConsole();
       return;
@@ -466,6 +492,9 @@ function GameView({
         >
           ◎
         </button>
+        <button aria-label={t('game.tutorial.aria')} onClick={tutorial.show} type="button">
+          ?
+        </button>
       </div>
       {panel === 'character' && (
         <CharacterPanel api={api} character={character} onClose={closePanel} session={session} />
@@ -477,6 +506,7 @@ function GameView({
           {renderTalk(closeTalk)}
         </div>
       )}
+      {tutorial.open && <GameTutorial onClosed={focusHome} tutorial={tutorial} />}
       <ConsoleBar
         dock={game.dock}
         open={game.open}

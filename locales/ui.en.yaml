@@ -392,6 +392,11 @@ notices:
       one: 'Combat Zoom was added to {fileList}, off: the game view''s arena keeps its size in a fight.'
       many: 'Combat Zoom was added to {count} files ({fileList}), off: the game view''s arena keeps its
         size in a fight.'
+    gameTutorial:
+      one: 'Game View Tutorial was added to {fileList}, on: the game view shows how it works the first
+        time it opens in each window.'
+      many: 'Game View Tutorial was added to {count} files ({fileList}), on: the game view shows how it
+        works the first time it opens in each window.'
     killAndHangup:
       one: 'Allow @kill and @hangup was added to {fileList}, off: @kill, @hangup, @relog and
         @panic! are still refused to everyone.'
@@ -1071,7 +1076,7 @@ loops:
 # Command palette: entries, groups, hints and chrome.
 # The game view (todo 140): the world map, the arena and the HUD, from the palette.
 game:
-  aria: Game view. Letters act at once; i or Enter opens the console.
+  aria: Game view. Letters act at once; Enter opens the console.
   arena:
     you: You
     lair: lair
@@ -1144,7 +1149,7 @@ game:
   console:
     title: Console
     badge: Command
-    badgeHint: click or i to type
+    badgeHint: click or Enter to type
     dockAria: Where the open console sits
     float: Float
     bottom: Bottom
@@ -1156,6 +1161,62 @@ game:
     shops: Shops
     lair: Lair
     player: Player
+  # The tutorial (opens once per launch while its checkbox is ticked; ? reopens it).
+  tutorial:
+    aria: How the game view works
+    close: Close the tutorial
+    back: Back
+    next: Next
+    done: Play
+    page: 'Page {page} of {count}'
+    onStartup: Show this tutorial on startup
+    reopen: opens this again
+    palette: every command
+    # The pictures' own words: a room, a monster and two lines of the console.
+    sample:
+      room: Town Square
+      monster: giant rat
+      exits: 'Obvious exits: north, east, south'
+      statline: '[HP=48/MA=12]:'
+    map:
+      title: Your room is the circle
+      body: The map is the realm around you. The circle in the middle is the room you are in, with its
+        exits round the rim and what is here inside it. Click another room to walk there.
+      viewSwitch: The button at the upper right goes back to the classic view.
+    keys:
+      title: Letters act at once
+      body: The game view is in command mode. A letter goes to the realm as soon as you press it, with
+        no Enter. The bar along the bottom holds only what works here now, each with its key.
+      sent: sent at once
+    moving:
+      title: Walking
+      body: n, s, e, w, u and d take an exit. For a diagonal press n or s, then e or w. Drag the map to
+        look around; Esc or ◎ brings it back to you.
+      diagonal: '{first} then {second}'
+      click: Click a room to walk there
+    console:
+      title: The console is a key away
+      body: Enter opens the console, where you type anything as in the classic view. Esc goes back to
+        the map. Clicking the thumbnail in the corner opens it too, and its bar sets where it sits and
+        how much of the map shows through.
+      open: opens the console
+      shut: back to the map
+    panels:
+      title: Character, pack and talk
+      body: c, i and t each open a panel over the map, one at a time; Esc or the same key closes it.
+        p sends party.
+      character: Paper doll, stats and what you wear
+      pack: What you carry and wear, cash, keys and tokens
+      talk: What was said, and a line to say something
+      party: Sends party
+    fight:
+      title: Fighting
+      body: Every monster wears a gauge of its health. The glow round the room fills once a round, and
+        the bar puts what the fight needs first.
+      attack: Attack the target
+      next: Next monster
+      backstab: Backstab while sneaking
+      run: Run
   map:
     aria: Map of the realm around you, with the room you are in as the arena
     clickToWalk: click to walk there
@@ -4371,13 +4432,14 @@ settings:
       densityLabel: Density
       fontSizeLabel: Size, px
       gameDockLabel: Game View Console
-      gameDockHint: Where the game view's console sits when you open it with i.
+      gameDockHint: Where the game view's console sits when you open it with Enter.
       gameOpacityLabel: Console Opacity, %
       gameOpacityHint: How much of the map shows through the game view's console, {floor} to 100.
       combatZoomLabel: Combat Zoom
       combatZoomHint: How much bigger the game view's arena grows in a fight. Off keeps it the same size.
       combatZoomOff: 'Off'
       combatZoomBigger: '{percent}% bigger'
+      gameTutorial: Show The Game View Tutorial On Startup
       scrollbackLabel: Scrollback, Lines
       showHud: Show Cards Beside Console
       showLogo: Show The MudEngine Logo

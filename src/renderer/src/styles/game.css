@@ -1883,3 +1883,461 @@ button.gv-portrait {
 .gv-thing .gv-picture-name {
   display: none;
 }
+
+/* ----------------------------------------------------------- the tutorial
+ * Opens once per launch while ticked, and on `?` (`GameTutorial`). Over
+ * everything the view draws, the shut console included. */
+
+.gvt-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--game-shade) 45%, transparent);
+}
+
+.gvt-dialog {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: min(640px, 100%);
+  max-height: calc(100vh - 32px);
+  padding: 22px 24px 18px;
+  overflow: auto;
+  border-radius: 18px;
+  background: var(--game-glass-strong);
+  box-shadow: 0 30px 90px color-mix(in srgb, var(--game-shade) 60%, transparent);
+  outline: none;
+}
+
+.gvt-scene {
+  display: grid;
+  place-items: center;
+  height: 236px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--game-line);
+  border-radius: 14px;
+  background:
+    radial-gradient(
+      circle at 50% 45%,
+      color-mix(in srgb, var(--game-accent) 9%, transparent),
+      transparent 70%
+    ),
+    var(--game-ground);
+  animation: gvt-in var(--dur-game-page) var(--ease-out);
+}
+
+.gvt-words {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  /* Room for the longest page, so the buttons hold still while paging. */
+  min-height: 112px;
+  animation: gvt-in var(--dur-game-page) var(--ease-out);
+}
+
+.gvt-words h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.gvt-words p {
+  margin: 0;
+  max-width: 64ch;
+  color: var(--game-muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.gvt-words p.gv-quiet {
+  color: var(--game-faint);
+  font-size: 12px;
+}
+
+@keyframes gvt-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* The pages' stepper wears the progression's three words. */
+.gvt-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gvt-steps {
+  display: flex;
+  gap: 6px;
+}
+
+.gvt-steps button {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px !important;
+  background: var(--game-text) !important;
+  opacity: 0.55;
+  transition:
+    width var(--dur-game-page) var(--ease-out),
+    opacity var(--dur-game-page) var(--ease-out);
+}
+
+.gvt-steps button[data-progress='done'] {
+  background: var(--game-faint) !important;
+  opacity: 1;
+}
+
+.gvt-steps button[data-progress='now'] {
+  width: 24px;
+  background: var(--game-accent) !important;
+  opacity: 1;
+}
+
+.gvt-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--game-line);
+}
+
+.gvt-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.gvt-check input {
+  margin: 0;
+  accent-color: var(--game-accent);
+}
+
+.gvt-button {
+  height: 32px;
+  padding: 0 14px !important;
+  border-radius: 9px;
+  font-weight: 600;
+}
+
+.gvt-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--game-white) 8%, transparent) !important;
+}
+
+.gvt-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.gvt-button[data-primary='true'] {
+  background: var(--game-accent) !important;
+  color: var(--game-ink) !important;
+}
+
+/* The pictures: shapes in the map's own colours. */
+
+.gvt-svg {
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  overflow: visible;
+}
+
+.gvt-link {
+  fill: none;
+  stroke: var(--game-line-strong);
+  stroke-width: 2;
+}
+
+.gvt-room {
+  fill: color-mix(in srgb, var(--game-white) 6%, transparent);
+  stroke: var(--game-line-strong);
+}
+
+.gvt-arena {
+  fill: color-mix(in srgb, var(--game-white) 4%, transparent);
+  stroke: color-mix(in srgb, var(--game-accent) 55%, transparent);
+  stroke-width: 2;
+}
+
+.gvt-exit {
+  fill: var(--game-ink);
+  stroke: var(--game-line-strong);
+}
+
+.gvt-exit-text,
+.gvt-you-text,
+.gvt-pill-text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-anchor: middle;
+  fill: var(--game-muted);
+}
+
+.gvt-you {
+  fill: color-mix(in srgb, var(--game-player) 30%, transparent);
+  stroke: var(--game-player);
+  stroke-width: 2;
+}
+
+.gvt-you-text {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--game-player);
+}
+
+.gvt-foe {
+  fill: color-mix(in srgb, var(--game-hp) 30%, transparent);
+  stroke: var(--game-hp);
+  stroke-width: 1.5;
+}
+
+.gvt-gauge {
+  fill: none;
+  stroke: var(--game-ok);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.gvt-pill {
+  fill: var(--game-accent);
+}
+
+.gvt-pill-text {
+  font-family: var(--font-ui-family);
+  font-weight: 700;
+  fill: var(--game-ink);
+}
+
+.gvt-ring-wait {
+  fill: none;
+  stroke: var(--game-round);
+  stroke-width: 6;
+  opacity: 0.2;
+  filter: blur(2px);
+}
+
+.gvt-ring-sweep {
+  fill: none;
+  stroke: var(--game-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.gvt-scene kbd[data-big='true'] {
+  min-width: 34px;
+  border-color: color-mix(in srgb, var(--game-white) 18%, transparent);
+  border-bottom-width: 3px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--game-white) 9%, transparent);
+  color: var(--game-text);
+  font-size: 14px;
+  line-height: 30px;
+}
+
+.gvt-keys {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  max-width: 100%;
+}
+
+.gvt-sent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gvt-sent code {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--game-ink);
+  color: var(--game-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.gvt-arrow {
+  width: 26px;
+  height: 2px;
+  background: var(--game-accent);
+  position: relative;
+}
+
+.gvt-arrow::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border: 5px solid transparent;
+  border-right: 0;
+  border-left-color: var(--game-accent);
+}
+
+.gvt-bar {
+  max-width: 100%;
+  pointer-events: none;
+}
+
+.gvt-moving {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 28px;
+}
+
+.gvt-compass {
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  grid-auto-rows: 40px;
+  place-items: center;
+}
+
+.gvt-compass-you {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--game-player);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--game-player) 30%, transparent);
+}
+
+.gvt-diagonal {
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0.75;
+}
+
+.gvt-updown {
+  display: grid;
+  gap: 8px;
+}
+
+.gvt-aside {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--game-muted);
+}
+
+.gvt-aside .icon,
+.gvt-tile .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--game-accent);
+}
+
+.gvt-console {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 18px 26px;
+}
+
+.gvt-window {
+  position: relative;
+  width: 250px;
+  overflow: hidden;
+  border: 1px solid var(--game-line-strong);
+  border-radius: 10px;
+}
+
+.gvt-window .gvt-svg {
+  display: block;
+  padding: 6px 6px 44px;
+}
+
+.gvt-dock {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  display: grid;
+  padding: 5px 8px;
+  border: 1px solid var(--game-line-strong);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--game-shade) 70%, transparent);
+  color: var(--game-text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.gvt-legend {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0;
+}
+
+.gvt-legend dt {
+  justify-self: end;
+}
+
+.gvt-legend dd {
+  margin: 0;
+  color: var(--game-muted);
+}
+
+.gvt-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.gvt-tile {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px 12px;
+  line-height: 1.35;
+  border: 1px solid var(--game-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--game-white) 4%, transparent);
+}
+
+.gvt-tile .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.gvt-tile b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gvt-fight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 24px;
+}
+
+.gvt-fight .gvt-svg {
+  max-width: 220px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gvt-scene,
+  .gvt-words,
+  .gvt-steps button {
+    animation: none;
+    transition: none;
+  }
+}

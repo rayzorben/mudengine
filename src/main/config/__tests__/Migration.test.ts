@@ -8698,6 +8698,49 @@ describe('Combat Zoom is stated, off (todo 20261019-1358-01)', () => {
   });
 });
 
+describe('the game view tutorial is stated, on', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const gameViewOf = (file: string): Record<string, unknown> =>
+    parse(fs.readFileSync(file, 'utf8')).gameView as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-tutorial-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds the tutorial after combatZoom, on, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'gameView:\n  dock: bottom\n  opacity: 0.55\n  combatZoom: 0\n',
+      'utf8'
+    );
+    migrate();
+    const keys = Object.keys(gameViewOf(home.options));
+    expect(keys[keys.indexOf('combatZoom') + 1]).toBe('tutorial');
+    expect(gameViewOf(home.options)['tutorial']).toBe(true);
+    expect(notesOf(said, 'notices.migration.gameTutorial.one')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(notesOf(said, 'notices.migration.gameTutorial.one')).toHaveLength(0);
+  });
+});
+
 describe('a switch per installed extension is stated (todo 118)', () => {
   let home: Home;
   let dir: string;
