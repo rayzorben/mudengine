@@ -10,7 +10,7 @@
 # range. Its shop, bank, trainer and class fields are left out: the realm data
 # states those.
 #
-# 1583 of 1674 rows. Dropped 91: no room, a name several
+# 1604 of 1674 rows. Dropped 70: no room, a name several
 # rooms share, or a typed map/room and checksum that disagree.
 rooms:
   - { code: 'ARBD', name: 'Alba River Bottoms, Decline', room: 'Alba River Bottoms, Decline 14/5714' }
@@ -52,8 +52,9 @@ rooms:
   - { code: 'AFBV', name: 'Burning Valley, Dead End', room: 'Burning Valley, Dead End 17/2959' }
   - { code: 'BVMF', name: 'Burning Valley, Middle Fork', room: 'Burning Valley 17/2958', hidden: true }
   - { code: 'BVNF', name: 'Burning Valley, North Fork', room: 'Burning Valley 17/2970', hidden: true }
-  - { code: 'AFDP', name: 'Deep Black Pit', room: 'Ancient Fortress, Outer Wall 17/2857', hidden: true }
+  - { code: 'AFDP', name: 'Deep Black Pit', room: 'Ancient Fortress, Outer Wall 17/2859', hidden: true }
   - { code: 'AFDL', name: 'Demon Lord', room: 'Flaming Chamber 17/2978', stopBefore: true }
+  - { code: 'HTFI', name: 'Floating Island (Heaven)', room: 'Floating Island 17/2901' }
   - { code: 'AFGP', name: 'Golden Phoenix', room: 'Golden Island 17/2936', stopBefore: true }
   - { code: 'AFGH', name: 'Grand Hallway', room: 'Grand Hallway 17/2982' }
   - { code: 'HMHM', name: 'Handsome Man (TRAPS!)', room: 'Hedge Maze 17/2879' }
@@ -105,7 +106,7 @@ rooms:
   - { code: 'CLDF', name: 'Crystal Lake, Dying Fields', room: 'Crystal Lake 17/1346' }
   - { code: 'BFCI', name: 'Crystal Lake, Inlet', room: 'Crystal Lake, Inlet 17/1013' }
   - { code: 'CLND', name: 'Crystal Lake, Near Docks', room: 'Crystal Lake, Near Docks 17/1124' }
-  - { code: 'CLSD', name: 'Crystal Lake, Southern Dock', room: 'Arlysia, Outer Wall 17/569' }
+  - { code: 'CLSD', name: 'Crystal Lake, Southern Dock', room: 'Crystal Lake 17/1569' }
   - { code: 'DCNS', name: 'Damp Cave (near tsunami squid)', room: 'Damp Cave 17/3355', hidden: true, minLevel: 50 }
   - { code: 'ARDS', name: 'Dirt Street', room: 'Dirt Street 17/2472' }
   - { code: 'ARFR', name: 'Filthy Room, Old Man', room: 'Filthy Room 17/2020' }
@@ -222,6 +223,7 @@ rooms:
   - { code: 'FRT1', name: 'Black Fortress', room: 'Black Fortress 7/1182' }
   - { code: 'FCOB', name: 'Champion of Blood', room: 'Dark Temple, Altar of Blood 7/1285', stopBefore: true }
   - { code: 'FBIS', name: 'Dark Bishop', room: 'Elaborate Chamber 7/1227', stopBefore: true }
+  - { code: 'FCEL', name: 'Dark Cell', room: 'Dark Cell 7/1250', hidden: true }
   - { code: 'FWIZ', name: 'Dark Wizard', room: 'Spartan Bedroom 7/1258', stopBefore: true }
   - { code: 'DRKT', name: 'Darkened Tunnels', room: 'Darkened Tunnels 15/477' }
   - { code: 'DRES', name: 'Dreary Shop', room: 'Small Store 7/1136' }
@@ -232,6 +234,7 @@ rooms:
   - { code: 'FMAS', name: 'Master Assassin', room: 'Dark Chamber 7/1283', stopBefore: true }
   - { code: 'NEWM', name: 'New Master Assassin', room: 'Darkened Tunnels, Throne Room 15/416', stopBefore: true }
   - { code: 'FRT2', name: 'Outside Dark Wizard', room: 'Black Fortress, Dungeon 7/1254', hidden: true }
+  - { code: 'FRT3', name: 'Outside Master Assassin', room: 'Black Fortress 7/1262', hidden: true }
   - { code: 'FRTC', name: 'Room Of Change', room: 'Room Of Change 7/1281' }
   - { code: 'ANSD', name: 'Ancient Spore Dragon', room: 'Fungal Dome 2/12033', stopBefore: true }
   - { code: 'BHB1', name: 'Black House, Basement', room: 'Black House, Basement 1/1450' }
@@ -301,11 +304,12 @@ rooms:
   - { code: 'BFI1', name: 'Blackwood Instant Regen 1', room: 'Dirt Path 17/25' }
   - { code: 'BFI2', name: 'Blackwood Instant Regen 2', room: 'Forest Trail 17/33' }
   - { code: 'BFI3', name: 'Blackwood Instant Regen 3', room: 'Blackwood Forest 17/2644' }
+  - { code: 'BEDE', name: 'Bloodwood Weald, Dead End', room: 'Bloodwood Weald, Dead End 17/3599' }
   - { code: 'BFBW', name: 'Bloodwood Weald', room: 'Bloodwood Weald 17/3449' }
   - { code: 'BFBE', name: 'Bloody Executioner', room: 'Blackwood Forest, Winding Trail 17/591', stopBefore: true }
   - { code: 'CTLF', name: 'Covered Tent, Lord Feyr', room: 'Covered Tent 17/2718', stopBefore: true }
-  - { code: 'BFDL', name: 'Darken Beast Lord', room: 'Blackwood Forest 17/831', stopBefore: true }
-  - { code: 'DMIN', name: 'Death Minion', room: 'Graveyard 17/314', stopBefore: true }
+  - { code: 'BFDL', name: 'Darken Beast Lord', room: 'Dark Den 17/2813', stopBefore: true }
+  - { code: 'DMIN', name: 'Death Minion', room: 'Tomb 17/347', stopBefore: true }
   - { code: 'DPLS', name: 'Dirt Path Large Sign', room: 'Dirt Path 17/41' }
   - { code: 'BFHC', name: 'Dreadlord of Blood', room: 'Blackwood Forest, Hidden Camp 17/979', stopBefore: true }
   - { code: 'WDFE', name: 'Dying Fields, West Side', room: 'Blackwood Forest 17/2632' }
@@ -391,6 +395,7 @@ rooms:
   - { code: 'CTP3', name: 'Cracked Tunnel, (start of whites)', room: 'Cracked Tunnel, Hole Up 7/1494' }
   - { code: 'CTPM', name: 'Cracked Tunnel, Pit Mouth', room: 'Cracked Tunnel, Pit Mouth 7/1514', hidden: true }
   - { code: 'CTL1', name: 'Cracked Tunnel', room: 'Cracked Tunnel 7/1406' }
+  - { code: 'CTMB', name: 'Massive Black Worm', room: 'Pit Bottom 7/1524', stopBefore: true }
   - { code: 'CKDC', name: 'Crimson Keep, Dungeon Cell', room: 'Crimson Keep, Dungeon Cell 13/2776', hidden: true }
   - { code: 'CKIT', name: 'Crimson Keep, Inquisitor Thorand', room: 'Crimson Keep, Training Room 13/2731' }
   - { code: 'CBN1', name: 'Crimson Keep, North Barracks', room: 'Crimson Keep, Barracks 13/2758' }
@@ -459,6 +464,7 @@ rooms:
   - { code: 'ATNS', name: 'Ancient Darkwood Tree, Narrow Stair', room: 'Ancient Darkwood Tree, Narrow Stair 9/1422', hidden: true }
   - { code: 'ATRE', name: 'Ancient Tree (Morukai)', room: 'Ancient Darkwood Tree 9/1423' }
   - { code: 'APOR', name: 'Ancient Tree Portal', room: 'Ancient Darkwood Tree, Portal 9/1291' }
+  - { code: 'SPST', name: 'Ancient Tree Spiral Stairs', room: 'Ancient Darkwood Tree, Spiral Staircase 9/1340' }
   - { code: 'HKRR', name: 'Bandit Keep, Recreation Room', room: 'Recreation Room 9/844' }
   - { code: 'BLU1', name: 'Blue Tower (Jorah)', room: 'Blue Tower, Bottom Floor 1/2327' }
   - { code: 'BLU2', name: 'Blue Tower, Armour (leather)', room: 'Blue Tower, Second Floor 1/2328' }
@@ -532,7 +538,7 @@ rooms:
   - { code: 'DMCO', name: 'Copper Mine (Level 2)', room: 'Copper Mine, Cart Ramp 6/1626' }
   - { code: 'DMCS', name: 'Copper/Silver Mine (Level 3)', room: 'Copper Mine, Cart Ramp 6/1898' }
   - { code: 'DDFM', name: 'Devil Fiend Malivek', room: 'Molten Chamber, Portal 15/1934', stopBefore: true }
-  - { code: 'DMDF', name: 'Diamond Mine (Devil Fiend area)', room: 'Copper Mine Tunnel 6/1791' }
+  - { code: 'DMDF', name: 'Diamond Mine (Devil Fiend area)', room: 'Diamond Mine Tunnel 15/1791' }
   - { code: 'DMBF', name: 'Diamond Mine Tunnel, blue fork', room: 'Diamond Mine Tunnel 15/1720' }
   - { code: 'DMDI', name: 'Diamond Mine Tunnel, Cart Ramp', room: 'Diamond Mine Tunnel, Cart Ramp 15/1683' }
   - { code: 'DMGD', name: 'Diamond Mine Tunnel, Grn Dmlngs', room: 'Diamond Mine Tunnel, Diamond Vein 15/1769' }
@@ -642,6 +648,7 @@ rooms:
   - { code: 'ECNI', name: 'Earthen Catacombs (no idol)', room: 'Earthen Catacombs 16/2228' }
   - { code: 'ECOK', name: 'Earthen Catacombs, Outside Kuel', room: 'Earthen Catacombs 16/2268' }
   - { code: 'JJCA', name: 'Jungle Cave', room: 'Jungle Cave 16/1510' }
+  - { code: 'DCJP', name: 'Jungle NPP Portal-1-2685', room: 'Dark Cave 1/2685', stopBefore: true, minLevel: 50 }
   - { code: 'KUEL', name: 'Kuel', room: 'Earthen Catacombs, Meditation Chamber 16/2667', stopBefore: true }
   - { code: 'LLGM', name: 'Large Mound', room: 'Shallow Jungle, Large Mound 16/1405' }
   - { code: 'JTMW', name: 'Massive Web', room: 'Tasloi Village, Massive Web 16/50' }
@@ -745,6 +752,7 @@ rooms:
   - { code: 'KPBE', name: 'The Bitter End Tavern', room: 'The Bitter End Tavern 14/1725' }
   - { code: 'TGSC', name: 'Troubadour''s Guild', room: 'Troubadour''s Guild, Supply Counter 14/1484' }
   - { code: 'SHED', name: 'Adult She-Dragon', room: 'Volcanic Chamber 7/1358', stopBefore: true }
+  - { code: 'LFCP', name: 'Choira Pyromancer', room: 'Lava Pool 15/1165', stopBefore: true }
   - { code: 'CFCR', name: 'Crazed Inquisitor', room: 'Crimson Fortress, Command Room 15/1099', stopBefore: true, avoid: true }
   - { code: 'CFOR', name: 'Crimson Fortress, Entrance', room: 'Crimson Fortress, Entrance 15/1053' }
   - { code: 'CFNT', name: 'Crimson Fortress, Hallway North T', room: 'Crimson Fortress, Hallway 15/1096', hidden: true }
@@ -805,6 +813,7 @@ rooms:
   - { code: 'LCAF', name: 'Armour Shop, Front Room', room: 'Armour Shop, Front Room 16/317' }
   - { code: 'LCBA', name: 'Bank of the Lost City', room: 'Bank 16/320' }
   - { code: 'LCGH', name: 'Deranged Priest', room: 'Guarded Hut 16/356', stopBefore: true }
+  - { code: 'LCWR', name: 'Elders'' Council Chambers, Wait/Rm', room: 'Elders'' Council Chambers, Waiting Room 16/380' }
   - { code: 'LCF4', name: 'Forest Street', room: 'Forest Street 16/411', hidden: true }
   - { code: 'LCF2', name: 'Forest Street', room: 'Forest Street 16/378', hidden: true }
   - { code: 'LSF1', name: 'Forest Street, Intersection', room: 'Forest Street, Intersection 16/350', hidden: true }
@@ -825,6 +834,7 @@ rooms:
   - { code: 'TGHD', name: 'Training Grounds, Halls/ the Dead', room: 'Training Grounds, Halls of the Dead 16/542', hidden: true }
   - { code: 'LCWB', name: 'Weapons Shop, Back Room', room: 'Weapons Shop, Back Room 16/331' }
   - { code: 'LCWF', name: 'Weapons Shop, Front Room', room: 'Weapons Shop, Front Room 16/330' }
+  - { code: 'LCDE', name: 'Well Lit Alley, Dead End', room: 'Well Lit Alley, Dead End 16/426' }
   - { code: 'AURU', name: 'Aurumvorax', room: 'Cramped Cave, Lair 6/108', stopBefore: true }
   - { code: 'TROL', name: 'Giant Two-Headed Troll', room: 'Misty Bog, Huge Pool 6/539', stopBefore: true }
   - { code: 'GYPE', name: 'Gypsy Encampment', room: 'Gypsy Encampment 6/124' }
@@ -868,8 +878,10 @@ rooms:
   - { code: 'NTEM', name: 'Temple Healer', room: 'Newhaven, Healer 1/2190', maxLevel: 3 }
   - { code: 'NWEP', name: 'Weapons Shop (Nathaniel)', room: 'Newhaven, Weapons Shop 1/2141', maxLevel: 3 }
   - { code: 'ETRE', name: 'Ancient Tree', room: 'Ancient Tree, Rope Bridge 3/533' }
+  - { code: 'AWIL', name: 'Ancient Willow', room: 'Dying Grove, Small Pool 3/213', stopBefore: true }
   - { code: 'HIVE', name: 'Bee Hive', room: 'Huge Hive 3/140', stopBefore: true }
   - { code: 'BCCP', name: 'Bloodbear cave, Cramped Passageway', room: 'Cramped Passageway 3/348', hidden: true }
+  - { code: 'NFBC', name: 'Bloodbear cave, Evil Entry to silv', room: 'Dark Cave, Lair 3/317' }
   - { code: 'OBBF', name: 'Bronzewood Obelisk', room: 'Bronzewood Forest 1/2420', hidden: true }
   - { code: 'NUTS', name: 'Brown Nuts Tree', room: 'Copperwood Tree, Small Platform 3/381' }
   - { code: 'VXCF', name: 'Copperwood Vortex', room: 'Copperwood Forest 3/393' }
@@ -893,7 +905,7 @@ rooms:
   - { code: 'ELRD', name: 'Woodelf Lord', room: 'Meeting Hall 3/543', stopBefore: true }
   - { code: 'DCWS', name: 'Damp Cavern, Wellspring', room: 'Damp Cavern, Wellspring 16/637' }
   - { code: 'GIRT', name: 'Giant River Turtle', room: 'Underground Cave 16/663' }
-  - { code: 'KICR', name: 'King Crab', room: 'Sandbar 16/297', stopBefore: true }
+  - { code: 'KICR', name: 'King Crab', room: 'Sandbar 16/287', stopBefore: true }
   - { code: 'LLPB', name: 'Lagoon, Large Pool Bottom', room: 'Lagoon, Large Pool 16/3036' }
   - { code: 'LLGP', name: 'Lagoon, Large Pool', room: 'Lagoon, Large Pool 16/2138' }
   - { code: 'LRPL', name: 'Lagoon, Reef - Pool', room: 'Lagoon, Reef 16/2635', hidden: true }
@@ -911,6 +923,7 @@ rooms:
   - { code: 'SSHE', name: 'Ocean Floor, Sunken Ship', room: 'Ocean Floor, Sunken Ship 16/4948' }
   - { code: 'OFSW', name: 'Ocean Floor, Sunken Ship', room: 'Ocean Floor, Sunken Ship 16/4037' }
   - { code: 'KRAK', name: 'Ocean Floor, Sunken Ship, Kraken', room: 'Ocean Floor, Sunken Ship 16/4947', stopBefore: true }
+  - { code: 'PUTA', name: 'Putakwa', room: 'Floating Platform, Hut 16/2663' }
   - { code: 'M7DP', name: 'River Landing, Dirt Path', room: 'River Landing, Dirt Path 16/2161' }
   - { code: 'SAND', name: 'Sandbar', room: 'Sandbar 16/272' }
   - { code: 'JSBE', name: 'Sandy Beach, Entrance', room: 'Sandy Beach 16/2489' }
@@ -953,6 +966,7 @@ rooms:
   - { code: 'PBSQ', name: 'Blackwater Square', room: 'Blackwater Square 14/189' }
   - { code: 'PBTM', name: 'Blackwater, Small Temple (Halls)', room: 'Small Temple 13/314' }
   - { code: 'PBCL', name: 'Cartographor Landron', room: 'Cartographer''s Office 14/310' }
+  - { code: 'CBIE', name: 'Elthezar', room: 'The Crusty Barnacle Inn, Lounge 14/328' }
   - { code: 'PBGS', name: 'General Store', room: 'General Store 14/249' }
   - { code: 'PBGR', name: 'Grizzled Ranger', room: 'Row House 14/228' }
   - { code: 'PBGO', name: 'Guild Office (Guildmaster Othan)', room: 'Guild Office 14/316' }
@@ -1055,6 +1069,7 @@ rooms:
   - { code: 'CTNS', name: 'Crumbling Temple, North Stair', room: 'Crumbling Temple, Stair 12/2245' }
   - { code: 'TCSC', name: 'Crumbling Temple, Scorp. Statue', room: 'Temple Colonnade 12/2444' }
   - { code: 'CTSS', name: 'Crumbling Temple, South Stair', room: 'Crumbling Temple, Stair 12/2389' }
+  - { code: 'TCSP', name: 'Crumbling Temple, Sphinx Statue', room: 'Temple Colonnade 12/2442' }
   - { code: 'SDCT', name: 'Crumbling Temple', room: 'Crumbling Temple 12/2227' }
   - { code: 'DVCR', name: 'Dusty Village, Common Room', room: 'Common Room 12/52' }
   - { code: 'DVEA', name: 'Dusty Village, Eastern Entrance', room: 'Scorching Desert, Outside Village 12/1047', hidden: true }
@@ -1070,6 +1085,7 @@ rooms:
   - { code: 'GPND', name: 'Golden Palace, North Door', room: 'Fortress Courtyard 12/101' }
   - { code: 'GPNP', name: 'Golden Palace, NPP Portal', room: 'Earthen Room 1/2683' }
   - { code: 'PKSL', name: 'Golden Palace, Secret Library', room: 'Golden Spire, Secret Library 12/2248' }
+  - { code: 'GSTR', name: 'Golden Palace,Rakshasha Rajah', room: 'Golden Spire, Throne Room 12/134', stopBefore: true }
   - { code: 'GP5F', name: 'Great Pyramid (Below Pharoah)', room: 'Great Pyramid 12/2085' }
   - { code: 'GPES', name: 'Great Pyramid, Entrance', room: 'Great Pyramid 12/1800', hidden: true }
   - { code: 'GPLF', name: 'Great Pyramid, Level 3 Entrance', room: 'Great Pyramid 12/2002', hidden: true }
@@ -1099,6 +1115,7 @@ rooms:
   - { code: 'SMEB', name: 'Sandstone Mine (North Tunnel)', room: 'Sandstone Mine Tunnel 12/1090' }
   - { code: 'SMWB', name: 'Sandstone Mine {South Tunnel )', room: 'Sandstone Mine Tunnel 12/1124' }
   - { code: 'SCSQ', name: 'Sandstone Quarry', room: 'Sandstone Quarry 12/1086' }
+  - { code: 'SHSC', name: 'Saracen Commander', room: 'Lavish Living Quarters 12/2144', stopBefore: true }
   - { code: 'SHEH', name: 'Saracen Hideout, Entrance Hall', room: 'Entrance Hall 12/2099', avoid: true }
   - { code: 'SDFG', name: 'Saracen Hideout, Fortress Gates', room: 'Fortress Gates 12/1041', avoid: true }
   - { code: 'SHGF', name: 'Saracen Hideout, Guardroom Fork', room: 'Plaster Hallway 12/2109', hidden: true }
@@ -1218,7 +1235,7 @@ rooms:
   - { code: 'TTSD', name: 'Thieves Town, Eastern Doors', room: 'Thieves Town, Eastern Doors 5/323' }
   - { code: 'TTEN', name: 'Thieves Town, Entrance', room: 'Thieves Town, Entrance 5/304' }
   - { code: 'TTTD', name: 'Thieves Town, Temple Doors', room: 'Temple Doors 5/382' }
-  - { code: 'TTFK', name: 'Thieves Town', room: 'Temple Doors 5/382', hidden: true }
+  - { code: 'TTFK', name: 'Thieves Town', room: 'Thieves Town 5/341', hidden: true }
   - { code: 'SHT1', name: 'Thieves Town', room: 'Thieves Town 5/515', hidden: true }
   - { code: 'WDTD', name: 'Warehouse District, Twin Docks', room: 'Warehouse District 5/1604' }
   - { code: 'TTWS', name: 'Warehouse, Stairwell', room: 'Warehouse, Stairwell 5/1438' }
@@ -1260,6 +1277,7 @@ rooms:
   - { code: 'BWCE', name: 'Broken Wastes, Cliff Edge', room: 'Broken Wastes, Cliff Edge 16/10506' }
   - { code: 'BWLG', name: 'Broken Wastes, Ledge', room: 'Broken Wastes, Ledge 16/10441' }
   - { code: 'SECI', name: 'Chaotic Isle, Ledge', room: 'Chaotic Isle, Ledge 16/11028' }
+  - { code: 'FMDR', name: 'Dark Revenant', room: 'Fractured Moor, Ruined Tower 16/10635', stopBefore: true }
   - { code: 'SEDS', name: 'Desecrated Shrine, Altar', room: 'Desecrated Shrine, Altar 16/10248', minLevel: 80 }
   - { code: 'SEEL', name: 'Eldrezeth', room: 'Broken Courtyard, Platform 16/11076', stopBefore: true }
   - { code: 'ASRS', name: 'Empyrean Dragon', room: 'Abyssal Shelf, Ruined Shrine 16/10863', stopBefore: true }
@@ -1306,6 +1324,7 @@ rooms:
   - { code: 'SEN3', name: 'Sentara''s Clothing (Head/Feet)', room: 'Sentara''s Clothing, Basement 1/2154' }
   - { code: 'SEN1', name: 'Sentara''s Clothing (Robes)', room: 'Sentara''s Clothing, Front Room 1/309' }
   - { code: 'SEN2', name: 'Sentara''s Clothing (Torso/Legs/Hands)', room: 'Sentara''s Clothing, Back Room 1/310' }
+  - { code: 'SISO', name: 'Sheriff''s Office', room: 'Sheriff''s Office 1/372' }
   - { code: 'SRBS', name: 'Silvermere, River St. & Bridge St.', room: 'Intersection of River St. & Bridge St. 1/14', hidden: true }
   - { code: 'SKA3', name: 'Skali''s Back Room (Shields)', room: 'Skali''s Fine Armour, Back Room 1/2153' }
   - { code: 'SKA1', name: 'Skali''s Front Room (Accessories)', room: 'Skali''s Fine Armour, Front Room 1/305' }
@@ -1385,6 +1404,7 @@ rooms:
   - { code: 'ARC2', name: 'Arden Rock, Cliff', room: 'Arden Rock, Cliff 14/5454', avoid: true }
   - { code: 'THBD', name: 'Blighted Wilds, Decline', room: 'Blighted Wilds, Decline 14/5323' }
   - { code: 'BWHS', name: 'Blighted Wilds, Hillside', room: 'Blighted Wilds, Hillside 14/5317' }
+  - { code: 'JSHN', name: 'Bloodwing', room: 'Jagged Spire, Huge Nest 14/4597' }
   - { code: 'BACE', name: 'Bone-strewn Aerie, Cliff Edge', room: 'Bone-strewn Aerie, Cliff Edge 14/4598' }
   - { code: 'BSA2', name: 'Bone-strewn Aerie', room: 'Bone-strewn Aerie 14/4616' }
   - { code: 'BSA3', name: 'Bone-strewn Aerie', room: 'Bone-strewn Aerie 14/4640', hidden: true }
@@ -1463,7 +1483,7 @@ rooms:
   - { code: 'SBSE', name: 'Shoreline, Sandy Beach South End=', room: 'Shoreline, Sandy Beach 13/468' }
   - { code: 'TFBE', name: 'Shoreline, Sandy Beach {east}', room: 'Shoreline, Sandy Beach 13/359' }
   - { code: 'SSSB', name: 'Shoreline, Sandy Beach', room: 'Shoreline, Sandy Beach 14/1812' }
-  - { code: 'TFSP', name: 'Shoreline, Small Pier', room: 'Swamp of Tharollok, Overgrown Path 13/3790' }
+  - { code: 'TFSP', name: 'Shoreline, Small Pier', room: 'Shoreline, Small Pier 13/413' }
   - { code: 'CICE', name: 'Carved Ice Catacombs (east side)', room: 'Carved Ice Catacombs 13/8017' }
   - { code: 'CICW', name: 'Carved Ice Catacombs (west side)', room: 'Carved Ice Catacombs 13/8007' }
   - { code: 'CISR', name: 'Carved Ice Shrine', room: 'Carved Ice Shrine 13/8015' }
@@ -1472,7 +1492,7 @@ rooms:
   - { code: 'IMFP', name: 'Frozen Pavillion, Entrance', room: 'Frozen Pavillion, Entrance 13/865' }
   - { code: 'FWCS', name: 'Frozen Wasteland, Cliffside', room: 'Frozen Wasteland, Cliffside 13/1487' }
   - { code: 'TITC', name: 'Ice Troll Chieftan', room: 'Icy Seat 13/2506', stopBefore: true }
-  - { code: 'IMP1', name: 'Icy Mountain Path Level 1', room: 'Icy Mountain Path, Beginning 13/1171' }
+  - { code: 'IMP1', name: 'Icy Mountain Path Level 1', room: 'Icy Mountain Path 13/1130' }
   - { code: 'IMP2', name: 'Icy Mountain Path Level 2', room: 'Icy Mountain Path 13/1095' }
   - { code: 'IMP3', name: 'Icy Mountain Path Level 3', room: 'Icy Mountain Path, Rockslide 13/1031' }
   - { code: 'IMP4', name: 'Icy Mountain Path Level 4', room: 'Icy Mountain Path 13/975' }
@@ -1498,6 +1518,7 @@ rooms:
   - { code: 'ETOD', name: 'Easy Trainer, outside demon imp', room: 'Grand Hallway 17/3302', hidden: true }
   - { code: 'AFGC', name: 'EasyTrainer, Key Shop (76+)', room: 'Grand Chamber 17/3247' }
   - { code: 'ETRA', name: 'Elven Trainer (21-50)', room: 'Training Area 3/542', minLevel: 20, maxLevel: 49 }
+  - { code: 'TIME', name: 'Ethereal Prison (Timelord) (41-54)', room: 'Ethereal Prison 8/1041' }
   - { code: 'GYPX', name: 'Gypsy Spirit (11)', room: 'Large Tomb 1/2300', minLevel: 10, maxLevel: 10 }
   - { code: 'GYPT', name: 'Gypsy Trainer (2-10)', room: 'Back Room, Gypsy Trainer 1/384', maxLevel: 9 }
   - { code: 'KPTH', name: 'Kingsport Training Hall (50-75)', room: 'Training Hall 14/1792', stopBefore: true }

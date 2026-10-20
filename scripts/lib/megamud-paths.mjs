@@ -5,6 +5,7 @@
  */
 import path from 'node:path';
 
+import { movementEffect } from '../../src/shared/commands.ts';
 import { WorldGraph } from '../../src/main/world/WorldGraph.ts';
 import { RealmLibrary } from '../../src/main/world/RealmLibrary.ts';
 
@@ -87,19 +88,24 @@ export function stepLines(lines) {
 
 /**
  * Every room the recorded commands walk through (`rooms`, the start first),
- * and the room each command was given in (`stood`, one per command), or null
- * where they do not fit the realm.
+ * the room each command was given in (`stood`, one per command), and the
+ * steps that are neither a game command nor anything the room offers
+ * (`unread`, by index), or null where they do not fit the realm.
  */
 export function replay(world, from, commands) {
   const rooms = [from];
   const stood = [];
+  const unread = [];
   let here = from;
-  for (const step of commands) {
+  for (const [at, step] of commands.entries()) {
     stood.push(here);
     // `w[use dragon key w]` — the bracket is MegaMUD's extra commands for the
     // same move, which the route planner and walker handle themselves — and
-    // `e -- comment` is an annotation. Both are shed before reading the move.
+    // `e -- comment` is an annotation. Both are shed before reading the move,
+    // as is `@party `, which sends the command for the whole party
+    // (`@party go hole`).
     let command = step
+      .replace(/^@party\s+/i, '')
       .replace(/\[.*\]\s*$/, '')
       .replace(/\s+--.*$/, '')
       .trim()
@@ -108,6 +114,15 @@ export function replay(world, from, commands) {
     const exit = DIRECTIONS.has(command)
       ? here.exits.find((entry) => entry.direction === command)
       : here.exits.find((entry) => entry.requirement?.commands?.includes(command));
+    // A portal is a room command with a destination (`enter portal`), not an exit.
+    const portal = exit ? undefined : here.commands?.find((entry) => entry.to && entry.say.includes(command));
+    if (portal) {
+      const next = world.byId(portal.to);
+      if (!next) return null;
+      rooms.push(next);
+      here = next;
+      continue;
+    }
     if (!exit) {
       /*
        * Not every recorded step is a move: the corpus stashes loot
@@ -115,15 +130,18 @@ export function replay(world, from, commands) {
        * and talks to NPCs mid-loop. A step that is not a direction and not a
        * text exit of this room is an in-place action — the character stays
        * put and the replay carries on. A *direction* that does not fit is
-       * still a real mismatch and fails the loop.
+       * still a real mismatch and fails the loop. A word the realm's command
+       * table lacks, or a teleport, may have moved the character where the
+       * realm data cannot follow.
        */
-      if (!DIRECTIONS.has(command)) continue;
-      return null;
+      if (DIRECTIONS.has(command)) return null;
+      if (movementEffect(command) !== 'stays') unread.push(at);
+      continue;
     }
     const next = world.byId(`${exit.map}/${exit.room}`);
     if (!next) return null;
     rooms.push(next);
     here = next;
   }
-  return { rooms, stood };
+  return { rooms, stood, unread };
 }
