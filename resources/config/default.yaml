@@ -439,6 +439,11 @@ ui:
   # since it shares the row of the put-away cards' chip.
   showLogo: true
 
+  # After a fight two or more of your party struck, a few lines in the console:
+  # each member's damage and share, hits, misses, crits, backstabs, biggest
+  # blow, and who landed the killing blow. Off prints nothing.
+  partyRecap: true
+
   # What the console draws in place of what the realm printed: a list of
   # designs, each naming what it redraws -- the prompt row, the pack, the
   # roster, a shop's shelf, the party, the experience line -- and the template

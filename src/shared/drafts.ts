@@ -251,6 +251,7 @@ export interface GlobalDraft {
     tabs: TabsPreference;
     showHud: boolean;
     showLogo: boolean;
+    partyRecap: boolean;
     /** Which sixteen the console paints with, or `theme` to follow the chrome. */
     consolePalette: ConsolePalette;
     /** Keep the console dark while the chrome is light. See `ConsoleUiConfig`. */
@@ -1429,6 +1430,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
+      partyRecap: ui['partyRecap'] !== false,
       consolePalette: isConsolePalette(consoleUi['palette'])
         ? consoleUi['palette']
         : DEFAULT_CONSOLE_PALETTE,

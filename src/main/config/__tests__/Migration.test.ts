@@ -649,6 +649,38 @@ describe('the teleport below the retreat', () => {
   });
 });
 
+describe('the party recap switch', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated after the mark, with the template’s paragraph, in a file that lacks it', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  showHud: true\n  showLogo: true\n  density: auto\n',
+      'utf8'
+    );
+    migrate(true);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['partyRecap']).toBe(true);
+    expect(text.indexOf('partyRecap')).toBeGreaterThan(text.indexOf('showLogo'));
+    expect(text.indexOf('partyRecap')).toBeLessThan(text.indexOf('density'));
+    const ui = parseDocument(text).get('ui', true);
+    const key = isMap(ui)
+      ? ui.items.find((item) => isScalar(item.key) && item.key.value === 'partyRecap')?.key
+      : undefined;
+    expect(isScalar(key) ? (key.commentBefore ?? '') : '').not.toBe('');
+  });
+
+  it('leaves a file that already states it alone, however it was answered', () => {
+    fs.writeFileSync(home.options, 'ui:\n  showLogo: true\n  partyRecap: false\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['partyRecap']).toBe(false);
+    expect(text.match(/partyRecap/g)).toHaveLength(1);
+  });
+});
+
 describe('the mark at the head of the card rail', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });

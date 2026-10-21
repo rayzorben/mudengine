@@ -53,6 +53,20 @@ export function wornGear(
     .map((item) => ({ name: item.name, slot: item.slot }));
 }
 
+/** One attacker's swings at one monster: what the sentence frames tell apart. */
+export interface Strikes {
+  hits: number;
+  /** Of `hits`, `critically`. */
+  crits: number;
+  /** Of `hits`, `surprise`. */
+  backstabs: number;
+  misses: number;
+  /** The biggest single blow, or null before one landed. */
+  most: number | null;
+}
+
+export const NO_STRIKES: Strikes = { hits: 0, crits: 0, backstabs: 0, misses: 0, most: null };
+
 /** One fight, as it ended. */
 export interface FightRecord {
   /** Epoch ms of the last blow. */
@@ -93,6 +107,16 @@ export interface FightRecord {
    * where nobody named struck it.
    */
   struckBy?: Record<string, number>;
+  /**
+   * How each attacker's swings went, this character's included under its own
+   * name, by name in lower case (todo 20261020-1654-01). The damage stays in
+   * `mine` and `struckBy`. Absent where nobody named swung at it.
+   */
+  strikes?: Record<string, Strikes>;
+  /** Who landed the last blow on a monster that died, in lower case. Absent where it lived. */
+  killingBlow?: string;
+  /** The party at the end of the fight, this character excluded, as the server spells them. Absent with no party. */
+  party?: string[];
   /** Blows exchanged, both ways, as the classifier counted them. */
   blows: number;
   /** The last wound word a `look` reported, when one ever did. */
@@ -183,6 +207,22 @@ export interface FightSink {
 
 /** The one that writes nothing, for a session with nowhere to write. */
 export const NO_FIGHTS: FightSink = { record: () => {} };
+
+/**
+ * `sink` with `also` told of every fight it records. The recap rides on the
+ * record whether or not `logging.fights` keeps it.
+ */
+export function alsoTold(sink: FightSink, also: (fight: FightRecord) => void): FightSink {
+  return {
+    record: (fight) => {
+      sink.record(fight);
+      also(fight);
+    },
+    ...(sink.measured ? { measured: sink.measured.bind(sink) } : {}),
+    ...(sink.timing ? { timing: sink.timing.bind(sink) } : {}),
+    ...(sink.memberMeasured ? { memberMeasured: sink.memberMeasured.bind(sink) } : {})
+  };
+}
 
 /**
  * What the record says about one monster, added up — and nothing that is not

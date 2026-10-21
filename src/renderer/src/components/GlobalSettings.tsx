@@ -576,6 +576,12 @@ export default function GlobalSettings({
               name="global-show-logo"
               onChange={(value) => patch('ui', { showLogo: value })}
             />
+            <CheckField
+              checked={draft.ui.partyRecap}
+              label={t('settings.client.appearance.partyRecap')}
+              name="global-party-recap"
+              onChange={(value) => patch('ui', { partyRecap: value })}
+            />
 
             {/*
             The console's own colours, above the pair below because it outranks

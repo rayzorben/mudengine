@@ -8,7 +8,7 @@
  */
 import { standingOf, type CharacterState, type PartyFight } from '../../shared/character';
 import { occupantAttacksOnSight } from '../../shared/mobRules';
-import { mobKey } from '../../shared/world';
+import { mobKey, withoutArticle } from '../../shared/world';
 
 /**
  * The attacker a combat line names, held to what the client can vouch for.
@@ -156,7 +156,7 @@ export function claimedBy(
   at: number
 ): CharacterState | null {
   if (!attacker || !target || /^you$/i.test(attacker) || /^you$/i.test(target)) return null;
-  const who = attacker.trim().replace(/^(?:The|A|An) /, '');
+  const who = withoutArticle(attacker.trim());
   const own = s.name?.toLowerCase() ?? null;
   if (own !== null && who.toLowerCase() === own) return null;
   if (s.party.members.some((entry) => entry.name.toLowerCase() === who.toLowerCase())) return null;
@@ -169,10 +169,7 @@ export function claimedBy(
       .reduce<CharacterState>((was, there) => claim(was, who, there.name, at) ?? was, s);
     return claimed === s ? null : claimed;
   }
-  const mob = target
-    .trim()
-    .replace(/^(?:The|A|An) /, '')
-    .replace(/[.!]+$/, '');
+  const mob = withoutArticle(target.trim()).replace(/[.!]+$/, '');
   if (
     s.room.occupants.some(
       (there) => there.kind === 'player' && there.name.toLowerCase() === mob.toLowerCase()

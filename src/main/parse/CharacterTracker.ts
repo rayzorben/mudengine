@@ -40,7 +40,7 @@ import { coinsPickedUp, Ledger, takenByAnother, trained, wealthStated } from './
 import { resolveFromCoordinates } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world';
-import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
+import { mobKey, nameAnswersTo, roomId, withoutArticle } from '../../shared/world';
 import { deathNamed, type Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
 import { NO_LORE, type MobLore } from '../../shared/lore';
@@ -2365,7 +2365,7 @@ export class CharacterTracker {
        * dropped; a name already listed is left exactly as it was.
        */
       case 'player-misses': {
-        const attacker = g['attacker']?.replace(/^(?:The|A|An) /, '');
+        const attacker = g['attacker'] === undefined ? undefined : withoutArticle(g['attacker']);
         const target = g['target'];
         let next = s;
         if (attacker) next = { ...next, room: this.room.withOccupant(next, attacker) };

@@ -232,6 +232,7 @@ function migrateAll(options: MigrationOptions): void {
   theDatabasesWereZipped(home, note);
   theWorldsAreBundled(home, note);
   statedTheMark(home, note);
+  statedThePartyRecap(home, note, options.template);
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
@@ -4222,6 +4223,36 @@ function statedTheMark(home: Home, note: (message: string) => void): void {
 
   if (!stated) return;
   note(t('notices.migration.markStated', { file: home.options }));
+}
+
+/**
+ * States `ui.partyRecap` in an options file that already has a `ui:` block
+ * (todo 20261020-1654-01), for the reason `statedTheMark` gives: a key added
+ * inside `ui:` after the file was copied reaches nobody. After `showLogo`,
+ * where the template puts it, with the template's own paragraph.
+ */
+function statedThePartyRecap(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'ui');
+  let stated = false;
+  edit(home.options, (document) => {
+    const ui = document.getIn(['ui'], true);
+    if (!isMap(ui) || ui.has('partyRecap')) return false;
+    const pair = document.createPair('partyRecap', DEFAULT_CONFIG.ui.partyRecap) as Pair;
+    const lead = comments.get('ui.partyRecap');
+    if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
+    const at = ui.items.findIndex((item) => keyText(item) === 'showLogo');
+    if (at === -1) ui.items.push(pair);
+    else ui.items.splice(at + 1, 0, pair);
+    stated = true;
+    return true;
+  });
+
+  if (!stated) return;
+  note(t('notices.migration.partyRecapStated', { file: home.options }));
 }
 
 /**
