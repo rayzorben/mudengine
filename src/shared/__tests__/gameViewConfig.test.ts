@@ -23,3 +23,18 @@ describe('the tutorial setting', () => {
     expect(normalizeGameView({ tutorial: false }).tutorial).toBe(false);
   });
 });
+
+describe('the room art opacity setting', () => {
+  it('is 85% unless a file says otherwise', () => {
+    expect(DEFAULT_GAME_VIEW.roomArtOpacity).toBe(0.85);
+    expect(normalizeGameView({}).roomArtOpacity).toBe(0.85);
+    expect(normalizeGameView({ roomArtOpacity: 'dim' }).roomArtOpacity).toBe(0.85);
+  });
+
+  it('reads a fraction or a percent, and 0 hides the picture', () => {
+    expect(normalizeGameView({ roomArtOpacity: 0.4 }).roomArtOpacity).toBe(0.4);
+    expect(normalizeGameView({ roomArtOpacity: 60 }).roomArtOpacity).toBe(0.6);
+    expect(normalizeGameView({ roomArtOpacity: 0 }).roomArtOpacity).toBe(0);
+    expect(normalizeGameView({ roomArtOpacity: 150 }).roomArtOpacity).toBe(1);
+  });
+});

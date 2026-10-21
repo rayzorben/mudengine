@@ -107,6 +107,8 @@ export interface WorldCanvasProps {
   rounds: RoundAnchor | null;
   /** The room's picture, decoded, under the arena's tokens (todo 20261020-2015-01). */
   picture: CanvasImageSource | null;
+  /** How opaque the picture is drawn, 0 to 1 (`gameView.roomArtOpacity`). */
+  roomArtOpacity: number;
   onFoe(name: string): void;
   onExit(direction: Direction): void;
   onWalk(cell: GameCell): void;
@@ -309,7 +311,8 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
           docked: d.dock > 0.5,
           counts: namesakeCounts(p.character),
           detached: d.dock > 0.5 ? t('game.arena.detached') : null,
-          picture: p.picture
+          picture: p.picture,
+          pictureOpacity: p.roomArtOpacity
         },
         fighting
       );

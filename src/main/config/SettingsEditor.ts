@@ -1263,6 +1263,7 @@ export class SettingsEditor {
         set(['gameView', 'opacity'], draft.gameView.opacity);
         set(['gameView', 'combatZoom'], draft.gameView.combatZoom);
         set(['gameView', 'tutorial'], draft.gameView.tutorial);
+        set(['gameView', 'roomArtOpacity'], draft.gameView.roomArtOpacity);
         set(['art', 'enabled'], draft.art.enabled);
         set(['art', 'rooms'], draft.art.rooms);
         set(['art', 'server'], artServer);

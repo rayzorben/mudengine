@@ -1,6 +1,7 @@
 /**
- * The game view's settings (todo 140): the console's dock and opacity, an
- * options-file block of its own, and the two HUD thresholds its steppers move.
+ * The game view's settings (todo 140): the console's dock and opacity, how
+ * much of the room's picture shows in the arena, an options-file block of its
+ * own, and the two HUD thresholds its steppers move.
  * Beside `config.ts` rather than in it, which composes them into `AppConfig`.
  */
 import { isGameDock, type GameDock } from './gameMap';
@@ -22,6 +23,8 @@ export interface GameViewConfig {
   combatZoom: number;
   /** Whether the tutorial opens the first time the game view comes up in a launch. */
   tutorial: boolean;
+  /** How opaque the room's picture is in the arena, 0 (hidden) to 1 (todo 20261020-2015-01). */
+  roomArtOpacity: number;
 }
 
 /** The combat zooms offered: off, then 10% to 90% bigger in tenths. */
@@ -50,7 +53,8 @@ export function normalizeGameView(raw: unknown): GameViewConfig {
       fraction(block['opacity'], DEFAULT_GAME_VIEW.opacity)
     ),
     combatZoom: asCombatZoom(block['combatZoom']),
-    tutorial: bool(block['tutorial'], DEFAULT_GAME_VIEW.tutorial)
+    tutorial: bool(block['tutorial'], DEFAULT_GAME_VIEW.tutorial),
+    roomArtOpacity: fraction(block['roomArtOpacity'], DEFAULT_GAME_VIEW.roomArtOpacity)
   };
 }
 
@@ -58,7 +62,8 @@ export const DEFAULT_GAME_VIEW: GameViewConfig = {
   dock: 'bottom',
   opacity: 0.55,
   combatZoom: 0,
-  tutorial: true
+  tutorial: true,
+  roomArtOpacity: 0.85
 };
 
 /**
