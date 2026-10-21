@@ -105,6 +105,8 @@ export interface WorldCanvasProps {
   combatZoom: number;
   /** The room's beat, drawn as the ring round the arena (todo 154); null for no ring. */
   rounds: RoundAnchor | null;
+  /** The room's picture, decoded, under the arena's tokens (todo 20261020-2015-01). */
+  picture: CanvasImageSource | null;
   onFoe(name: string): void;
   onExit(direction: Direction): void;
   onWalk(cell: GameCell): void;
@@ -306,7 +308,8 @@ function WorldCanvas(props: WorldCanvasProps, ref: ForwardedRef<WorldCanvasHandl
           engaged: p.character.combat.engaged,
           docked: d.dock > 0.5,
           counts: namesakeCounts(p.character),
-          detached: d.dock > 0.5 ? t('game.arena.detached') : null
+          detached: d.dock > 0.5 ? t('game.arena.detached') : null,
+          picture: p.picture
         },
         fighting
       );

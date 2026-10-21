@@ -565,6 +565,9 @@ tuning:
     # Portraits kept on disk, the newest.
     portraitsKept: 100
 
+    # Room drawings kept on disk, the newest, about 20 kB each.
+    roomsKept: 1000
+
     # How long registering's proof of work may take, in milliseconds.
     workMs: 60000
 

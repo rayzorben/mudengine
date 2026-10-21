@@ -202,6 +202,9 @@ notices:
     artServerStated: '"art" was added to {file}: the character panel asks the art server for
       your character''s portrait. Turn it off or change the server under Realm on the Global
       settings page.'
+    roomArtStated: "Send Unknown Room Descriptions for Artwork was added to {file} and is on.
+      The client sends the art server the description of a room it ships no picture of, for the
+      game view's arena. Turn it off under Realm on the Global settings page."
     fightsSegmented:
       one: '{file} was moved into {dir} as one file of up to {per} fights, {fights} fights in
         all. The old file is kept as {backup}.'
@@ -4745,6 +4748,11 @@ settings:
       enabledHint: The character panel asks the art server to draw your character from its look and
         the gear it wears, once and again when either changes. It applies to every character; no
         realm or character keeps its own copy.
+      rooms: Send Unknown Room Descriptions for Artwork
+      roomsHint: For a room the client ships no picture of, the client sends the art server the
+        map and room numbers, the room's name and its description as the game printed it, and
+        keeps the picture that comes back for the game view's arena. Nothing about you is sent.
+        With brief on, the client sends l once in such a room, only while nothing moves you.
       server: Art Server
       serverHint: The art server's address, starting https://.
     saved: Settings saved.
@@ -7518,6 +7526,7 @@ automation:
     reasonProfile: checking which status line the game has
     reasonStatAll: reading the game's own figures for what you wear and have up
     reasonSelfLook: looking at yourself for your hair, eyes and gender, which the portrait is drawn from
+    reasonRoomLook: reading this room's description, which its picture is drawn from
     selfLookOff: Portraits are off, so the client does not look at you on the way in. Draw Portraits
       is on the Global settings page, under Realm.
     statAllGaveUp: The game answered {command} {count} times with no figures; not asking again until
@@ -7689,6 +7698,9 @@ art:
   noBuildSecret: This build was made without the art server's secret, so the character panel shows
     the race and class picture and draws no portrait.
   portraitNot: 'Portrait: {message}'
+  roomNot: 'Room picture: {message}'
+  roomIndexUnread: "The shipped room pictures could not be indexed, so the art server is asked for
+    every room's picture: {message}"
 
 # A character is down to its last few lives with automation on, and the client
 # asks before logging it in.

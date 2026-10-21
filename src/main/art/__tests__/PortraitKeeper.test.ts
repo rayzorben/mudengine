@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PortraitKeeper } from '../PortraitKeeper';
-import { lastPortraitAt, PortraitCache } from '../portraitCache';
+import { lastPortraitAt, PictureCache } from '../pictureCache';
 import { factsHash, portraitFactsOf } from '../portraitFacts';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { PortraitChange, PortraitFacts, PortraitResult } from '../../../shared/portrait';
@@ -120,7 +120,7 @@ describe('when a portrait is asked for', () => {
           return answer;
         }
       },
-      cache: new PortraitCache(path.join(dir, 'portraits'), () => 10),
+      cache: new PictureCache(path.join(dir, 'portraits'), () => 10),
       last: lastPortraitAt(path.join(dir, 'portrait', 'probe.json')),
       enabled: () => enabled,
       publish: (view) => ownPublished.push(view),

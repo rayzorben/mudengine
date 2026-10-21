@@ -8,7 +8,7 @@ import { Invoke, type SavedFile, type SessionId } from '../../shared/ipc';
 import { writeChosenFile } from '../app/chosenFile';
 import { t } from '../app/i18n';
 import type { Host } from '../host/Host';
-import type { Picture } from './portraitCache';
+import type { Picture } from './pictureCache';
 
 export interface PortraitFilesDeps {
   host: Pick<Host, 'transport' | 'chooseSaveFile' | 'deliver'>;

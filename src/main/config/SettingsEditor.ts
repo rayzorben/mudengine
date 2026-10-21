@@ -1264,6 +1264,7 @@ export class SettingsEditor {
         set(['gameView', 'combatZoom'], draft.gameView.combatZoom);
         set(['gameView', 'tutorial'], draft.gameView.tutorial);
         set(['art', 'enabled'], draft.art.enabled);
+        set(['art', 'rooms'], draft.art.rooms);
         set(['art', 'server'], artServer);
         // Only when changed, so a hand-written list keeps its layout and comments.
         const rooms = document.get('rooms', true);

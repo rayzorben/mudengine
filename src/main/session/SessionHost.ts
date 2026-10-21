@@ -157,6 +157,8 @@ export interface SessionHostOptions {
   loopShelf?(): readonly Loop[];
   /** The room a MegaMUD code names on this character's realm (`RoomNicknames`), or null. */
   roomCoded?(id: SessionId, code: string): RoomReference | null;
+  /** Whether the bundled room pictures have one for this realm's map and room (todo 20261020-2015-01). */
+  roomArtShipped?(realm: RealmWord | null, map: number, room: number): boolean;
   /**
    * What is known about the monsters and attack spells on *this character's* realm.
    *
@@ -591,6 +593,10 @@ export class SessionHost {
         switchAutomationNow: (name, on) => this.switchNow(id, name, on),
         keys: () => this.options.configFor(id).keys,
         portraits: () => this.options.configFor(id).art.enabled,
+        roomLook: {
+          wanted: () => this.options.configFor(id).art.rooms,
+          shipped: (realm, map, room) => this.options.roomArtShipped?.(realm, map, room) ?? false
+        },
         aliasFile: () => this.aliasFile(id),
         loopShelf: () => this.options.loopShelf?.() ?? [],
         roomCoded: (code) => this.options.roomCoded?.(id, code) ?? null,

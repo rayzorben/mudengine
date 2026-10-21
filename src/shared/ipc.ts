@@ -28,6 +28,7 @@ import type { CharacterState } from './character';
 import type { DecisionKind } from './decisionSettings';
 import type { PlayerRegistry } from './players';
 import type { PortraitChange, PortraitView } from './portrait';
+import type { RoomArtView } from './roomArt';
 import type { DebugRecord } from './debug';
 import type { UnreadLine } from './unread';
 import type { GearAction, Wearer } from './gear';
@@ -797,6 +798,8 @@ export const Invoke = {
   portrait: 'art:portrait',
   /** The character's portrait written to a file the player picks. */
   savePortrait: 'art:save-portrait',
+  /** The picture of the room the character is in, for a game view that opens (todo 20261020-2015-01). */
+  roomArt: 'art:room',
   /** Stop waiting for the party behind a portal and walk on (todo 849). */
   walkOnWithoutParty: 'move:without-party',
   /**
@@ -1213,6 +1216,8 @@ export const Push = {
   players: 'session:players',
   /** The character's portrait, when it or why it is what it is changed (todo 20261019-0931-01). */
   portrait: 'art:portrait-changed',
+  /** The picture of the room the character is in, when it changed (todo 20261020-2015-01). */
+  roomArt: 'art:room-changed',
   /** Route-walk progress, on change. */
   walk: 'walk:progress',
   loop: 'loop:progress',
@@ -1422,6 +1427,8 @@ export interface IpcApi {
   portrait(session: SessionId): Promise<PortraitView>;
   /** The character's portrait, saved where the player picks (a browser tab downloads it). */
   savePortrait(session: SessionId): Promise<SavedFile>;
+  /** The picture of the room the character is in, as main holds it; asks the art server nothing. */
+  roomArt(session: SessionId): Promise<RoomArtView>;
   /** Stop waiting for the party behind a portal and walk on; nothing while not waiting. */
   walkOnWithoutParty(session: SessionId): Promise<void>;
   /**
@@ -1837,6 +1844,7 @@ export interface IpcApi {
   onCharacter(handler: (message: Addressed<CharacterState>) => void): () => void;
   onPlayers(handler: (message: Addressed<PlayerRegistry>) => void): () => void;
   onPortrait(handler: (message: Addressed<PortraitChange>) => void): () => void;
+  onRoomArt(handler: (message: Addressed<RoomArtView>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;
@@ -1878,6 +1886,7 @@ export const PUSH_METHODS = [
   'onCharacter',
   'onPlayers',
   'onPortrait',
+  'onRoomArt',
   'onWalk',
   'onLoop',
   'onAutomation',

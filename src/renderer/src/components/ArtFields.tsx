@@ -9,8 +9,9 @@ export interface ArtFieldsProps {
 
 /**
  * The art server's fieldset on the Global page (todo 20261019-0931-01): the
- * switch for portraits and the server's address, the one setting on the page
- * that no new realm or character copies, which its hint says.
+ * switch for portraits, the switch for sending unknown room descriptions for
+ * artwork (todo 20261020-2015-01) and the server's address, the one setting
+ * on the page that no new realm or character copies, which its hint says.
  */
 export default function ArtFields({ value, onChange }: ArtFieldsProps): React.JSX.Element {
   return (
@@ -25,8 +26,16 @@ export default function ArtFields({ value, onChange }: ArtFieldsProps): React.JS
           setting="art.enabled"
           onChange={(checked) => onChange({ enabled: checked })}
         />
+        <CheckField
+          checked={value.rooms}
+          hint={t('settings.global.art.roomsHint')}
+          label={t('settings.global.art.rooms')}
+          name="global-art-rooms"
+          setting="art.rooms"
+          onChange={(checked) => onChange({ rooms: checked })}
+        />
       </div>
-      {value.enabled && (
+      {(value.enabled || value.rooms) && (
         <TextField
           hint={t('settings.global.art.serverHint')}
           label={t('settings.global.art.server')}

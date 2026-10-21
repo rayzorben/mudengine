@@ -1,13 +1,16 @@
 /**
  * The art server's client (todo 20261019-0931-01), as its README sets out:
  * register once with a proof of work and the build's signature, keep the token
- * and secret, sign every request, ask for a portrait by its facts and poll a
- * job the server is still drawing. Every answer is parsed here into a picture
- * or a typed refusal carrying the server's own reason.
+ * and secret, sign every request, ask for a portrait by its facts or a room by
+ * its description (todo 20261020-2015-01, `POST /v1/room`, polled at
+ * `/v1/room/<job>` like a portrait) and poll a job the server is still
+ * drawing. Every answer is parsed here into a picture or a typed refusal
+ * carrying the server's own reason.
  */
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 
 import type { PortraitFacts, PortraitResult, PortraitSource } from '../../shared/portrait';
+import type { RoomArtRequest, RoomArtResult, RoomArtSource } from '../../shared/roomArt';
 import { errorMessage, isRecord } from '../../shared/values';
 import { asArtToken, type ArtToken, type ArtTokens } from './artToken';
 
@@ -49,7 +52,10 @@ class Declined extends Error {
   }
 }
 
-export class ArtClient implements PortraitSource {
+/** The two drawings the server makes, each at its own path. */
+type Drawing = '/v1/portrait' | '/v1/room';
+
+export class ArtClient implements PortraitSource, RoomArtSource {
   /** One registration at a time, shared by every character asking at once. */
   private registering: Promise<ArtToken> | null = null;
   private readonly fetch: typeof fetch;
@@ -62,16 +68,29 @@ export class ArtClient implements PortraitSource {
     this.wait = deps.wait ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
-  async portraitOf(facts: PortraitFacts, cancelled: () => boolean): Promise<PortraitResult> {
+  portraitOf(facts: PortraitFacts, cancelled: () => boolean): Promise<PortraitResult> {
+    return this.drawing('/v1/portrait', facts, cancelled);
+  }
+
+  roomArtOf(request: RoomArtRequest, cancelled: () => boolean): Promise<RoomArtResult> {
+    return this.drawing('/v1/room', request, cancelled);
+  }
+
+  /** One drawing asked for under the kept token, registering once more if the server lost it. */
+  private async drawing(
+    path: Drawing,
+    request: PortraitFacts | RoomArtRequest,
+    cancelled: () => boolean
+  ): Promise<PortraitResult> {
     if (this.deps.buildSecret === null) return { kind: 'unavailable' };
-    const body = new TextEncoder().encode(JSON.stringify(facts));
+    const body = new TextEncoder().encode(JSON.stringify(request));
     try {
       const token = await this.token();
-      const first = await this.ask(token, body, cancelled);
+      const first = await this.ask(token, path, body, cancelled);
       if (first !== UNKNOWN_TOKEN) return first;
       // The server lost the token (a revoke, a wiped database): register once more, then say so.
       await this.deps.tokens.forget();
-      const again = await this.ask(await this.token(), body, cancelled);
+      const again = await this.ask(await this.token(), path, body, cancelled);
       return again === UNKNOWN_TOKEN
         ? { kind: 'refused', reason: 'the art server does not know this install after registering' }
         : again;
@@ -81,19 +100,15 @@ export class ArtClient implements PortraitSource {
     }
   }
 
-  /** One portrait asked for and polled to its picture, or the server's reason it is not one. */
+  /** One drawing asked for and polled to its picture, or the server's reason it is not one. */
   private async ask(
     token: ArtToken,
+    path: Drawing,
     body: Uint8Array,
     cancelled: () => boolean
   ): Promise<PortraitResult | typeof UNKNOWN_TOKEN> {
     const deadline = this.now() + this.deps.limits().drawMs;
-    let answer = await this.send(
-      'POST',
-      '/v1/portrait',
-      body,
-      this.signed(token, 'POST', '/v1/portrait', body)
-    );
+    let answer = await this.send('POST', path, body, this.signed(token, 'POST', path, body));
     for (;;) {
       if (answer.status === 'none') return { kind: 'unreachable', reason: answer.reason };
       const picture = pictureOf(answer);
@@ -110,12 +125,12 @@ export class ArtClient implements PortraitSource {
         return { kind: 'unreachable', reason: 'the art server took too long to draw it' };
       }
       await this.wait(job.retryMs);
-      const path = `/v1/portrait/${job.id}`;
+      const poll = `${path}/${job.id}`;
       answer = await this.send(
         'GET',
-        path,
+        poll,
         new Uint8Array(),
-        this.signed(token, 'GET', path, new Uint8Array())
+        this.signed(token, 'GET', poll, new Uint8Array())
       );
     }
   }

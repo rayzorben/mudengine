@@ -1,6 +1,7 @@
 /**
  * The room you stand in, as the game view draws it (todo 140): a see-through
- * round arena over its tile. The character stands on its own room's square at
+ * round arena over its tile, filled with the room's picture where there is one
+ * (todo 20261020-2015-01). The character stands on its own room's square at
  * the middle, see-through; the party in a half circle behind it to the left and
  * monsters in one to the right. Each ring is its health (a monster's its wound
  * band, the target's only; others are unknown, never full), an inner ring for
@@ -28,6 +29,8 @@ export interface ArenaRoom {
   counts: string | null;
   /** The line under the facts while the map is detached. */
   detached: string | null;
+  /** The room's picture, decoded, or null for the plain disc. */
+  picture: CanvasImageSource | null;
 }
 
 export interface Disc {
@@ -409,6 +412,15 @@ export function drawFloor(
   ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+  if (room.picture !== null) {
+    // Under everything else on the disc: the dark, the rim, the square, the tokens.
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(room.picture, disc.x - disc.r, disc.y - disc.r, disc.r * 2, disc.r * 2);
+    ctx.restore();
+  }
   if (room.dark) {
     const dark = ctx.createRadialGradient(disc.x, disc.y, disc.r * 0.45, disc.x, disc.y, disc.r);
     dark.addColorStop(0, hexA(pal.shade, 0));
@@ -431,7 +443,8 @@ export function drawFloor(
   ctx.shadowBlur = 16;
   ctx.beginPath();
   ctx.roundRect(disc.x - half, disc.y - half, half * 2, half * 2, half * 0.35);
-  ctx.fillStyle = hexA(room.area.palette.ground, 0.9);
+  // Over a picture the square is a frame, so the middle of the room still shows through it.
+  ctx.fillStyle = hexA(room.area.palette.ground, room.picture === null ? 0.9 : 0.3);
   ctx.fill();
   ctx.strokeStyle = pal.accent;
   ctx.lineWidth = 2;

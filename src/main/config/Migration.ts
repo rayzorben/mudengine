@@ -46,6 +46,7 @@ import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
 import { DEFAULT_CONFIG, normalizeBands } from '../../shared/config';
+import { DEFAULT_ART } from '../../shared/artConfig';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
   NOTICE_CHANNELS,
@@ -302,6 +303,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheExtensionSwitches(home, note, options.template);
   statedTheRoomNames(home, note, options.template);
   statedTheArtServer(home, note, options.template);
+  statedTheRoomArt(home, note, options.template);
   statedTheCombatZoom(home, note, options.template);
   statedTheTutorial(home, note, options.template);
   statedResistGear(home, note, options.template);
@@ -5317,6 +5319,20 @@ function statedTheArtServer(
   if (stateTemplateBlock(home, template, [], 'art', 'rooms')) {
     note(t('notices.migration.artServerStated', { file: home.options }));
   }
+}
+
+/**
+ * `art.rooms` (todo 20261020-2015-01) into an options file that states `art:`
+ * without it, after `enabled`, on as shipped: a file from before the room
+ * pictures would otherwise read as on while showing no switch.
+ */
+function statedTheRoomArt(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateKeysIn(home, template, ['art'], 'enabled', [['rooms', DEFAULT_ART.rooms]]);
+  for (const file of stated) note(t('notices.migration.roomArtStated', { file }));
 }
 
 /**

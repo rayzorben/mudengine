@@ -6,12 +6,13 @@
 import type { CharacterState } from '../../shared/character';
 import type { SessionId } from '../../shared/ipc';
 import type { PortraitChange, PortraitSource, PortraitView } from '../../shared/portrait';
-import type { LastPortrait, Picture, PortraitCache } from './portraitCache';
+import type { LastPortrait, Picture, PictureCache } from './pictureCache';
 import { PortraitKeeper } from './PortraitKeeper';
+import { SessionKeepers } from './SessionKeepers';
 
 export interface PortraitsDeps {
   source: PortraitSource;
-  cache: PortraitCache;
+  cache: PictureCache;
   /** The character's own record of its last portrait. */
   lastFor(id: SessionId): LastPortrait;
   enabled(): boolean;
@@ -20,16 +21,28 @@ export interface PortraitsDeps {
 }
 
 export class Portraits {
-  private readonly keepers = new Map<SessionId, PortraitKeeper>();
+  private readonly keepers: SessionKeepers<PortraitKeeper>;
 
-  constructor(private readonly deps: PortraitsDeps) {}
+  constructor(deps: PortraitsDeps) {
+    this.keepers = new SessionKeepers(
+      (id) =>
+        new PortraitKeeper({
+          source: deps.source,
+          cache: deps.cache,
+          last: deps.lastFor(id),
+          enabled: () => deps.enabled(),
+          publish: (change) => deps.publish(id, change),
+          say: (message) => deps.say(id, message)
+        })
+    );
+  }
 
   observe(id: SessionId, state: CharacterState): void {
-    this.keeperOf(id).observe(state);
+    this.keepers.of(id).observe(state);
   }
 
   view(id: SessionId): PortraitView {
-    return this.keeperOf(id).current();
+    return this.keepers.of(id).current();
   }
 
   /** The picture shown for a character already kept, or null. */
@@ -38,23 +51,6 @@ export class Portraits {
   }
 
   remove(id: SessionId): void {
-    this.keepers.get(id)?.dispose();
-    this.keepers.delete(id);
-  }
-
-  private keeperOf(id: SessionId): PortraitKeeper {
-    let keeper = this.keepers.get(id);
-    if (keeper === undefined) {
-      keeper = new PortraitKeeper({
-        source: this.deps.source,
-        cache: this.deps.cache,
-        last: this.deps.lastFor(id),
-        enabled: () => this.deps.enabled(),
-        publish: (change) => this.deps.publish(id, change),
-        say: (message) => this.deps.say(id, message)
-      });
-      this.keepers.set(id, keeper);
-    }
-    return keeper;
+    this.keepers.remove(id);
   }
 }

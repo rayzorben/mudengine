@@ -654,6 +654,8 @@ const TUNING_DEFAULTS = {
     drawMs: 300_000,
     /** Portraits kept on disk, the newest; a character changing gear often comes back to one. */
     portraitsKept: 100,
+    /** Room drawings kept on disk, the newest, about 20 kB each (todo 20261020-2015-01). */
+    roomsKept: 1000,
     /**
      * How long the registration's proof of work may take on its worker: 20
      * bits measured a median 3.1 s and at most 5.8 s (todo 20261019-0931-01).

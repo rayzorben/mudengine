@@ -49,6 +49,8 @@
  */
 import { PARTY_LISTING_KEY, PartyListing } from './PartyListing';
 import { SelfLook } from './SelfLook';
+import { BriefLook } from './BriefLook';
+import type { RoomLook } from '../../shared/roomArt';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
@@ -91,6 +93,10 @@ export interface RoutineEvents {
   onTheGround(): boolean;
   /** Whether this install draws portraits (`art.enabled`), which the look at this character is for. */
   portraits?(): boolean;
+  /** What the look at a room shown without its description asks first (todo 20261020-2015-01). */
+  roomLook?: RoomLook;
+  /** Whether the client is taking the character nowhere; absent reads as busy, so no room look goes. */
+  idle?(): boolean;
 }
 
 export class Routines implements SessionModule {
@@ -176,6 +182,8 @@ export class Routines implements SessionModule {
   private readonly statAll: StatAllAsk;
   /** `l <name>` once on the way in, for the portrait (todo 20261019-0931-01). See `SelfLook`. */
   private readonly selfLook: SelfLook;
+  /** `l` once in a room shown without its description, for its picture. See `BriefLook`. */
+  private readonly briefLook: BriefLook;
 
   constructor(
     private config: AutomationConfig,
@@ -193,6 +201,7 @@ export class Routines implements SessionModule {
       () => this.events.portraits?.() ?? false,
       (message, decision) => this.events.notice?.(message, decision)
     );
+    this.briefLook = new BriefLook(queue, events.roomLook, () => events.idle?.() ?? false);
   }
 
   configure(config: AutomationConfig): void {
@@ -224,6 +233,7 @@ export class Routines implements SessionModule {
     this.searcher.reset();
     this.statAll.reset();
     this.selfLook.reset();
+    this.briefLook.reset();
     this.stopIdle();
   }
 
@@ -293,6 +303,7 @@ export class Routines implements SessionModule {
       this.inRealm = false;
       this.stopIdle();
       this.selfLook.left();
+      this.briefLook.left();
       return;
     }
     if (!this.inRealm) {
@@ -368,6 +379,7 @@ export class Routines implements SessionModule {
       else this.stale.ask();
       if (this.config.asks.statAll) this.statAll.onCharacter(state);
       this.selfLook.onCharacter(state);
+      this.briefLook.onCharacter(state);
     }
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);

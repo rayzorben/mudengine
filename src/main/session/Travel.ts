@@ -1262,7 +1262,7 @@ export class Travel implements SessionModule {
    * (2026-10-02: one stood in a fight at login before its first step and was
    * killed with the run set at 30%).
    */
-  private goingSomewhere(): boolean {
+  goingSomewhere(): boolean {
     return (
       this.ranThisFight ||
       this.session.driven() ||
