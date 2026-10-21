@@ -1,7 +1,7 @@
 import type { ItemRarity, RarityFrom, RarityGate, RaritySource } from '@shared/rarity';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
-import { clockText } from './LairList';
+import { clockText } from '../lib/clockText';
 
 /** Hours to one copy: the lair clock's letters, and days past two of them. */
 function rarityClock(hours: number): string {

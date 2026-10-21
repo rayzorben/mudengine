@@ -4,6 +4,7 @@ import EntityNumber from './EntityNumber';
 import MobAsks from './MobAsks';
 import MobFactRow from './MobFactRow';
 import RarityRows from './RarityRows';
+import { regenClockText } from '../lib/clockText';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
@@ -252,6 +253,7 @@ function MobDetail({
   onAsk: ((word: string) => void) | null;
 }) {
   const word = mob.disposition === null ? null : DISPOSITION_WORD[mob.disposition];
+  const ownClock = regenClockText(mob);
   /*
    * Split at the point of display rather than in two fields on the wire: it is
    * one index and one cap over the realm's placements, and which of the two
@@ -501,6 +503,19 @@ function MobDetail({
         the second as the first would promise a monster that is one of five the
         room might have up.
       */}
+      {ownClock !== null && (
+        <>
+          <dt>{t('cards.reference.mob.respawnLabel')}</dt>
+          {/*
+            The monster's own clock, `Monsters.RegenTime` (format 36): a placed
+            resident comes back this long after it is killed (`NPCRegenSlot`),
+            and a limited monster in a lair waits on it before the room's own
+            clock applies (`RegenSlot`). A monster with no clock of its own
+            comes back with its room, so it has no row here.
+          */}
+          <dd>{t('cards.reference.mob.respawnFigure', { clock: ownClock })}</dd>
+        </>
+      )}
       {residents.length > 0 && (
         <>
           <dt>{t('cards.reference.mob.livesLabel')}</dt>

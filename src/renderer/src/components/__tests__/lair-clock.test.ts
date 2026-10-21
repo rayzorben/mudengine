@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { clockText, lairCopyText } from '../LairList';
+import { lairCopyText } from '../LairList';
+import { clockText, regenClockText } from '../../lib/clockText';
 import type { WorldLair, WorldMob } from '@shared/world';
 import { t } from '../../lib/i18n';
 
@@ -41,6 +42,18 @@ describe('a lair says how often it fills', () => {
     expect(clockText(3600)).toBe('1h');
     expect(clockText(5400)).toBe('1h 30m');
     expect(clockText(86_400)).toBe('24h');
+  });
+
+  /*
+   * Whether a monster has a clock of its own is decided once, for the Room
+   * card's lair chip and the monster card's regen row alike: Daeron Darksong
+   * states 3 hours (pmud row 2307); a kobold thief states none and comes back
+   * with its room, so it gets no clock and no row.
+   */
+  it('reads a monster’s own clock, and none where it comes back with the room', () => {
+    expect(regenClockText({ regenHours: 3 })).toBe('3h');
+    expect(regenClockText({ regenHours: 0 })).toBeNull();
+    expect(regenClockText({})).toBeNull();
   });
 
   /*
