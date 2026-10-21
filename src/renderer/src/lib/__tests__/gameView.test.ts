@@ -9,7 +9,7 @@ import {
 } from '@shared/character';
 import type { WoundBand } from '@shared/wounds';
 import type { ExitEntity } from '@shared/entities';
-import { arenaTokensOf, gaugeOf, namesakeCounts } from '../gameArena';
+import { arenaTokensOf, gaugeOf, namesakeCounts, wrapWords } from '../gameArena';
 import { blowOf, SELF } from '../gameBlows';
 import {
   commandFor,
@@ -415,6 +415,23 @@ const block = (
     groups,
     text
   }) as Block;
+
+describe("a token's label", () => {
+  const perChar = (line: string) => line.length * 6;
+
+  it("wraps a name by word to the label's width, and never cuts a word", () => {
+    expect(wrapWords('horned spider', perChar, 60)).toEqual(['horned', 'spider']);
+    expect(wrapWords('giant black widow', perChar, 70)).toEqual(['giant black', 'widow']);
+    expect(wrapWords('Festus', perChar, 60)).toEqual(['Festus']);
+    expect(wrapWords('Blackguard', perChar, 30)).toEqual(['Blackguard']);
+  });
+
+  it('keeps a name that fits on one line, and drops stray spaces', () => {
+    expect(wrapWords('horned spider', perChar, 100)).toEqual(['horned spider']);
+    expect(wrapWords('  horned   spider ', perChar, 100)).toEqual(['horned spider']);
+    expect(wrapWords('', perChar, 100)).toEqual([]);
+  });
+});
 
 describe('a blow on the arena', () => {
   const names = [
