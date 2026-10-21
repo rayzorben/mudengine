@@ -3,10 +3,11 @@
  * a square per worn slot round it, each with a line to where it is worn, in
  * its region's colour. Once the art server has drawn the character, the
  * drawing takes the body's place and the lines run dotted to it (todo
- * 20261019-0931-01); a press on it shows it whole. The layout is
+ * 20261019-0931-01); a press on it shows it whole. Each worn item is named
+ * beside its square (todo 20261019-2034-01). The layout is
  * `lib/paperDoll.ts`; what fills a square is `lib/wornSlots.ts`.
  */
-import { memo, useMemo } from 'react';
+import { Fragment, memo, useMemo } from 'react';
 
 import type { RealmFamily } from '@shared/character';
 import { t } from '../../lib/i18n';
@@ -18,7 +19,10 @@ import {
   DRAWING_BOX,
   DRAWING_GEOMETRY,
   layoutDoll,
-  type DollRegion
+  nameBoxOf,
+  type DollGeometry,
+  type DollRegion,
+  type PlacedSlot
 } from '../../lib/paperDoll';
 import type { WornSlots as Worn } from '../../lib/wornSlots';
 import ItemPicture from './ItemPicture';
@@ -50,6 +54,38 @@ function Figure() {
       <path d="M60 378 h30 l4 14 h-40 z" data-region="lower" />
       <path d="M110 378 h30 l10 14 h-40 z" data-region="lower" />
     </g>
+  );
+}
+
+/** The item's name beside its square, and the slot's word under it in a column. */
+function ItemName({
+  slot,
+  geometry,
+  name
+}: {
+  slot: PlacedSlot;
+  geometry: DollGeometry;
+  name: string;
+}) {
+  const box = nameBoxOf(slot, geometry);
+  const n = geometry.name;
+  const row = slot.side === 'below';
+  return (
+    <span
+      className="gv-slot-name"
+      data-side={slot.side}
+      style={{
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        lineHeight: `${row ? n.rowLine : n.line}px`
+      }}
+    >
+      <span className="gv-slot-name-text" style={{ WebkitLineClamp: row ? n.rowLines : n.lines }}>
+        {name}
+      </span>
+      {!row && <small style={{ lineHeight: `${n.word}px` }}>{slot.word}</small>}
+    </span>
   );
 }
 
@@ -128,23 +164,25 @@ function WornSlots({
           const item = worn?.bySlot.get(slot.id) ?? null;
           const state = worn === null ? 'unknown' : item === null ? 'empty' : 'worn';
           return (
-            <div
-              className="gv-slot"
-              data-region={slot.region}
-              data-state={state}
-              key={slot.id}
-              style={{ left: slot.x, top: slot.y, width: geometry.size, height: geometry.size }}
-              title={item === null ? slot.word : `${item.name} (${slot.word})`}
-            >
-              {item !== null && (
-                <ItemPicture
-                  name={item.name}
-                  src={art === null ? null : pictureOf(art, realm, item)}
-                />
-              )}
-              {state === 'unknown' && <span className="gv-slot-unknown">?</span>}
-              <span className="gv-slot-word">{slot.word}</span>
-            </div>
+            <Fragment key={slot.id}>
+              <div
+                className="gv-slot"
+                data-region={slot.region}
+                data-state={state}
+                style={{ left: slot.x, top: slot.y, width: geometry.size, height: geometry.size }}
+                title={item === null ? slot.word : `${item.name} (${slot.word})`}
+              >
+                {item !== null && (
+                  <ItemPicture
+                    name={item.name}
+                    src={art === null ? null : pictureOf(art, realm, item)}
+                  />
+                )}
+                {state === 'unknown' && <span className="gv-slot-unknown">?</span>}
+                {item === null && <span className="gv-slot-word">{slot.word}</span>}
+              </div>
+              {item !== null && <ItemName geometry={geometry} name={item.name} slot={slot} />}
+            </Fragment>
           );
         })}
       </div>

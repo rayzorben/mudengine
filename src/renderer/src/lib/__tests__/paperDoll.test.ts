@@ -3,12 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { placesIn, WORN_SLOT } from '@shared/items';
 import {
   crossings,
+  DOLL_BOX,
   DOLL_GEOMETRY,
   DOLL_SLOTS,
   DRAWING_GEOMETRY,
   layoutDoll,
+  nameBoxOf,
   packColumn
 } from '../paperDoll';
+
+const overlaps = (
+  a: { left: number; top: number; width: number; height: number },
+  b: { left: number; top: number; width: number; height: number }
+): boolean =>
+  a.left < b.left + b.width &&
+  b.left < a.left + a.width &&
+  a.top < b.top + b.height &&
+  b.top < a.top + a.height;
 
 describe('the paper doll', () => {
   it('has a square for every place of every worn slot', () => {
@@ -41,6 +52,29 @@ describe('the paper doll', () => {
     const placed = layoutDoll(DRAWING_GEOMETRY);
     expect(placed).toHaveLength(DOLL_SLOTS.length);
     expect(crossings(placed.map((slot) => slot.line))).toBe(0);
+  });
+
+  it('writes every name inside the box, clear of every other name and square', () => {
+    for (const geometry of [DOLL_GEOMETRY, DRAWING_GEOMETRY]) {
+      const placed = layoutDoll(geometry);
+      const names = placed.map((slot) => nameBoxOf(slot, geometry));
+      const squares = placed.map((slot) => ({
+        left: slot.x,
+        top: slot.y,
+        width: geometry.size,
+        height: geometry.size
+      }));
+      // The positive control: two boxes that do overlap are caught.
+      expect(overlaps(names[0]!, { ...names[0]!, left: names[0]!.left + 1 })).toBe(true);
+      for (const [i, name] of names.entries()) {
+        expect(name.left).toBeGreaterThanOrEqual(0);
+        expect(name.left + name.width).toBeLessThanOrEqual(DOLL_BOX.width);
+        expect(name.top + name.height).toBeLessThanOrEqual(DOLL_BOX.height);
+        for (const [j, other] of names.entries())
+          if (i !== j) expect(overlaps(name, other)).toBe(false);
+        for (const square of squares) expect(overlaps(name, square)).toBe(false);
+      }
+    }
   });
 
   it('keeps squares apart and inside the column', () => {

@@ -6,19 +6,21 @@
  * the body, and each square sits level with its point as far as spacing
  * allows, so no two lines cross (the user, 2026-10-18). With the art
  * server's drawing in the body's place the squares stay and the lines run
- * dotted to the same places on it (the user, 2026-10-19). Pure; `WornSlots`
- * draws it.
+ * dotted to the same places on it (the user, 2026-10-19). Each worn item's
+ * name sits on the far side of its square, the columns closed in on the body
+ * to make room (todo 20261019-2034-01, the user's pick of A2). Pure;
+ * `WornSlots` draws it.
  */
 import { placesIn, WORN_SLOT } from '@shared/items';
 
 export type DollRegion = 'head' | 'torso' | 'arms' | 'held' | 'lower';
 export const DOLL_REGIONS: readonly DollRegion[] = ['head', 'torso', 'arms', 'held', 'lower'];
 
-type Side = 'left' | 'right' | 'below';
+export type DollSide = 'left' | 'right' | 'below';
 
 interface Mount {
   region: DollRegion;
-  side: Side;
+  side: DollSide;
   /** Where the line lands, in the figure's own 200 x 400 box (`FIGURE`). */
   at: readonly [number, number];
 }
@@ -75,6 +77,22 @@ export const DOLL_SLOTS: readonly DollSlot[] = Object.entries(WORN_SLOT).flatMap
   }));
 });
 
+/** Line heights for the font sizes `game.css` gives `.gv-slot-name` (10 px, 8.5 px for the row and the word). */
+export interface DollNames {
+  /** A column's name: its width beside the square, the space between, how far down from the square's top. */
+  width: number;
+  gap: number;
+  inset: number;
+  /** A column's name runs to `lines` of `line` px, with the slot word under it in `word` px. */
+  line: number;
+  lines: number;
+  word: number;
+  /** The row's name under its square: the space above, and `rowLines` of `rowLine` px. */
+  rowGap: number;
+  rowLine: number;
+  rowLines: number;
+}
+
 export interface DollGeometry {
   /** The figure's top-left and scale, in the panel's pixels. */
   figure: { x: number; y: number; scale: number };
@@ -87,21 +105,38 @@ export interface DollGeometry {
   bottom: number;
   /** The row under the feet: its y and the span it shares. */
   below: { y: number; from: number; to: number };
+  /** The item names, which `WornSlots` writes with these line heights and clamps. */
+  name: DollNames;
 }
 
-/** The doll's box, in pixels, as the accepted prototype measured it (2026-10-18). */
-export const DOLL_BOX = { width: 500, height: 480 } as const;
+/**
+ * The doll's box, in pixels, as prototype A2 measured it (todo
+ * 20261019-2034-01): 100 px of names each side, and three short lines under
+ * the row by the feet.
+ */
+export const DOLL_BOX = { width: 610, height: 516 } as const;
 
 /** Where the panel lays the doll out inside `DOLL_BOX`. */
 export const DOLL_GEOMETRY: DollGeometry = {
-  figure: { x: 196, y: 16, scale: 0.96 },
+  figure: { x: 236, y: 16, scale: 0.96 },
   size: 48,
   gap: 8,
-  left: 44,
-  right: 438,
+  left: 116,
+  right: 448,
   top: 12,
   bottom: 478,
-  below: { y: 432, from: 120, to: 420 }
+  below: { y: 424, from: 150, to: 470 },
+  name: {
+    width: 100,
+    gap: 6,
+    inset: 4,
+    line: 12,
+    lines: 2,
+    word: 11,
+    rowGap: 3,
+    rowLine: 10.5,
+    rowLines: 3
+  }
 };
 
 /**
@@ -127,7 +162,7 @@ const FIGURE = { width: 200, height: 400 } as const;
 const DOLL_CENTRE = DOLL_GEOMETRY.figure.x + (FIGURE.width / 2) * DOLL_GEOMETRY.figure.scale;
 
 /** The drawing's height in `DOLL_BOX`: its feet end above the row under them. */
-const DRAWN_HEIGHT = 420;
+const DRAWN_HEIGHT = 412;
 const DRAWN_TOP = 4;
 const DRAWN_WIDTH = (DRAWN_HEIGHT * DRAWING.width) / DRAWING.height;
 
@@ -151,6 +186,7 @@ export const DRAWING_GEOMETRY: DollGeometry = {
 };
 
 export interface PlacedSlot extends DollSlot {
+  side: DollSide;
   x: number;
   y: number;
   /** The line from the square's edge to the body. */
@@ -195,13 +231,40 @@ export function crossings(lines: readonly PlacedSlot['line'][]): number {
   return count;
 }
 
+export interface NameBox {
+  left: number;
+  top: number;
+  width: number;
+  /** The most it takes, every line filled. */
+  height: number;
+}
+
+/**
+ * Where a square's item name is written: away from the body beside a
+ * column's square, under the row's, no wider than the row's pitch so
+ * neighbours never touch.
+ */
+export function nameBoxOf(slot: PlacedSlot, g: DollGeometry): NameBox {
+  const n = g.name;
+  const top = slot.y + n.inset;
+  const height = n.lines * n.line + n.word;
+  if (slot.side === 'left') return { left: slot.x - n.gap - n.width, top, width: n.width, height };
+  if (slot.side === 'right') return { left: slot.x + g.size + n.gap, top, width: n.width, height };
+  return {
+    left: slot.x - n.rowGap,
+    top: slot.y + g.size + n.rowGap,
+    width: g.size + 2 * n.rowGap,
+    height: n.rowLines * n.rowLine
+  };
+}
+
 /** Every square placed, with its line. */
 export function layoutDoll(g: DollGeometry): PlacedSlot[] {
   const landing = (slot: DollSlot): [number, number] => {
     const [x, y] = MOUNTS[slot.code]![slot.place]!.at;
     return [g.figure.x + x * g.figure.scale, g.figure.y + y * g.figure.scale];
   };
-  const sideOf = (slot: DollSlot): Side => MOUNTS[slot.code]![slot.place]!.side;
+  const sideOf = (slot: DollSlot): DollSide => MOUNTS[slot.code]![slot.place]!.side;
   const half = g.size / 2;
   const out: PlacedSlot[] = [];
   for (const side of ['left', 'right', 'below'] as const) {
@@ -220,7 +283,7 @@ export function layoutDoll(g: DollGeometry): PlacedSlot[] {
       const y = side === 'below' ? g.below.y : at[i]!;
       const start: [number, number] =
         side === 'below' ? [x + half, y] : [side === 'left' ? x + g.size : x, y + half];
-      out.push({ ...slot, x, y, line: [start, end] });
+      out.push({ ...slot, side, x, y, line: [start, end] });
     });
   }
   return out;
