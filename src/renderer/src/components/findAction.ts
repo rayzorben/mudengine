@@ -12,12 +12,15 @@ export function findAction(
   label: string,
   finding: boolean,
   setFinding: (open: boolean) => void,
-  returnFocus?: () => void
+  returnFocus?: () => void,
+  /** Also on while what the row set up still holds after it folded (the Map card's picked room). */
+  holding = false
 ): CardAction {
   return {
     id: 'find',
     label,
     icon: 'search',
+    pressed: finding || holding,
     run: () => {
       if (!finding) {
         setFinding(true);

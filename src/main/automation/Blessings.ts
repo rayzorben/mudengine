@@ -259,10 +259,11 @@ export class Blessings implements SessionModule {
    * it is the only record of who cast it.
    */
   onBlock(block: Block, before: CharacterState): void {
-    if (!this.enabled) return;
+    // The clocks below are facts about the realm and run whatever the switch
+    // says; only the telepath to the caster is a send, so only it is withheld.
     if (block.type === 'user-buff-expired') {
       const spell = block.groups['spell']?.trim();
-      if (spell) this.notifyCaster(spell, before);
+      if (spell && this.enabled) this.notifyCaster(spell, before);
       return;
     }
     /*
@@ -337,7 +338,7 @@ export class Blessings implements SessionModule {
    * the words, because the other end says the spelling *its* wire printed.
    */
   onPeerExpired(from: string, spell: string): void {
-    if (!this.enabled) return;
+    // Recorded with the switch off too; `check` proposes nothing while it is.
     for (const entry of this.entries()) {
       if (entry.target !== 'party') continue;
       if (!this.same(spell, entry.spell)) continue;

@@ -141,16 +141,23 @@ export class BlessingChoice
     return config.enabled && config.spells.autoChooseBlessings ? this.items : null;
   }
 
-  /** The last choice or refusal while the switch is on; null while it is off. */
+  /**
+   * The last choice or refusal, shown with the master switch off as well: the
+   * choice is a reading of the fight, and only the invoke (`chosenItems`) is
+   * the action the switch holds. Null while the chooser's own switch is off.
+   */
   view(): BlessingChoiceView | null {
     const config = this.session.config();
-    return config.enabled && config.spells.autoChooseBlessings ? this.shown : null;
+    return config.spells.autoChooseBlessings ? this.shown : null;
   }
 
-  /** Every character change, beside the odds book: nothing runs while the switch is off. */
+  /**
+   * Every character change, beside the odds book. The mana sample and the
+   * choice are kept with the master switch off too; nothing here sends.
+   */
   refresh(state: CharacterState): void {
     const config = this.session.config();
-    if (!config.enabled || !config.spells.autoChooseBlessings) return;
+    if (!config.spells.autoChooseBlessings) return;
     this.mana = watchMana(this.mana, sampleOf(state), tuning().spells.manaRegenGapSeconds);
     const world = this.world;
     if (world === undefined || state.phase !== 'in-game') return;

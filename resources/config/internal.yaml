@@ -2153,6 +2153,11 @@ tuning:
     # stopped, rather than one per wheel event.
     mapZoomSettleMs: 400
 
+    # How long the Map card stays on a room picked in its finder, or a page
+    # turned to ahead of a walk, with no hand on the finder before it follows
+    # the character again.
+    mapFinderIdleMs: 60000
+
     # How often a card redraws a running clock — the uptime readout, and how
     # long a loop has been going. A second, because that is the unit shown.
     clockTickMs: 1000

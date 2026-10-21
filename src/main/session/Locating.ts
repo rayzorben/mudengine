@@ -55,7 +55,9 @@ export class Locating implements SessionModule {
     if (roomAddress(state.room) !== null) return Promise.resolve(true);
     if (state.phase !== 'in-game') return Promise.resolve(false);
     if (this.waiting !== null) return this.waiting.placed;
-    const ask = this.parts.claims.askWhereIAm();
+    // Asked for a press of play or Goto, which is a person's command: with
+    // the master switch off it still goes, as the walk it is for will (todo 03).
+    const ask = this.parts.claims.askWhereIAm(undefined, 'user');
     if ('refused' in ask) {
       if (ask.refused !== 'unavailable') this.sink.notice(notAsked(ask.refused));
       return Promise.resolve(false);
@@ -85,7 +87,7 @@ export class Locating implements SessionModule {
   ask(): boolean {
     // Never at a menu: a press racing a phase change would send `rm` there.
     if (this.parts.tracker.current.phase !== 'in-game') return false;
-    const ask = this.parts.claims.askWhereIAm(t('session.probe.askedFromCard'));
+    const ask = this.parts.claims.askWhereIAm(t('session.probe.askedFromCard'), 'user');
     if ('asked' in ask) return true;
     this.sink.notice(notAsked(ask.refused));
     return false;

@@ -646,6 +646,45 @@ describe('reacting to a player', () => {
     });
   });
 
+  /*
+   * The switch holds the alert and the run, and what it held is written down
+   * like any other refusal; the blow itself is the fight record's. One record
+   * per attacker per window, as the gang is told once.
+   */
+  it('records the alert as refused with automation off, once per window', () => {
+    const state = standing([]);
+    const config = { ...reacting('retreat'), enabled: false };
+    const { safety, ran, decisions, notices } = build(config, state);
+    safety.onPvpBlow('Rayzor', 10_000);
+    safety.onPvpBlow('Rayzor', 20_000);
+    expect(ran).toEqual([]);
+    expect(notices).toEqual([]);
+    expect(decisions).toEqual([
+      {
+        at: 10_000,
+        action: 'pvp-alert',
+        because: t('session.safety.whyPvp', { attacker: 'Rayzor' }),
+        acted: false,
+        refused: t('session.safety.refusalSwitchedOff')
+      }
+    ]);
+    // Positive control: with the switch on the same blow runs, and the gang is
+    // told at once; the refusal's clock is not the alert's.
+    config.enabled = true;
+    config.safety.pvp = { notifyGang: true, action: 'retreat' };
+    safety.onPvpBlow('Rayzor', 30_000);
+    expect(ran).toHaveLength(1);
+    expect(decisions.at(-1)).toMatchObject({ action: 'pvp-alert', acted: true });
+  });
+
+  it('records no refusal where the settings would have done nothing anyway', () => {
+    const state = standing([]);
+    const config = { ...reacting('none'), enabled: false };
+    const { safety, decisions } = build(config, state);
+    safety.onPvpBlow('Rayzor', 10_000);
+    expect(decisions).toEqual([]);
+  });
+
   it('does not hang up once the setting is changed back', () => {
     vi.useFakeTimers({ now: 10_000 });
     const state = standing([]);

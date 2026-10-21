@@ -6,6 +6,7 @@ import { findAction } from './findAction';
 import type { TeleportPress } from './MapPlan';
 import MapView from './MapView';
 import RouteSheetView from './RouteSheetView';
+import { useIdleReset } from '../hooks/useIdleReset';
 import { useRoutePreview } from '../hooks/useRoutePreview';
 import { useWalkPages } from '../hooks/useWalkPages';
 import { t } from '../lib/i18n';
@@ -213,23 +214,42 @@ function MapCard({
   const fit = useMemo(() => (leg === null ? null : new Set(leg.rooms)), [leg]);
   const legEnd = useMemo(() => (leg === null ? [] : leg.rooms.slice(-1)), [leg]);
   const centre = leg?.rooms[0] ?? preview.to?.id ?? preview.from?.id ?? here;
+  /*
+   * Held: the picture is on a room the player picked or a page turned to
+   * ahead, so the character's steps no longer move it. Said on the glyph and
+   * in the badge, and let go after `mapFinderIdleMs` with no hand on the
+   * finder, since a map that stopped following with nothing on screen saying
+   * why read as a map that had stopped updating.
+   */
+  const held = preview.from !== null || preview.to !== null || walking.shown !== null;
   const [home, setHome] = useState(0);
   const { clear } = preview;
   const { follow } = walking;
-  const locate = useCallback((): void => {
-    clear();
-    follow();
-    setHome((count) => count + 1);
-  }, [clear, follow]);
   /*
    * The start and destination fields stay folded until the search glyph asks
    * for them, so the map keeps the row. A route already planned keeps its
-   * pager when they fold; the pager's own close ends it.
+   * pager when they fold; the pager's own close, the locate button or the
+   * idle clock ends it.
    */
   const [finding, setFinding] = useState(false);
   const { returnFocus } = chrome;
+  // Center on my room ends the hold whole: the preview, the page ahead and the fields.
+  const locate = useCallback((): void => {
+    clear();
+    follow();
+    setFinding(false);
+    setHome((count) => count + 1);
+  }, [clear, follow]);
+  // The idle fold is the glyph's fold: a caret left in a field goes back to the terminal.
+  const letGo = useCallback((): void => {
+    locate();
+    returnFocus?.();
+  }, [locate, returnFocus]);
+  const touch = useIdleReset(held || finding, () => tuning().mapFinderIdleMs, letGo);
+  // Picking, paging and folding are the hand on it too; `preview.leg` is the page.
+  useEffect(touch, [touch, preview.from, preview.to, preview.leg, walking.shown, finding]);
   const actions = useMemo((): CardAction[] => {
-    const find = findAction(t('cards.map.finder.open'), finding, setFinding, returnFocus);
+    const find = findAction(t('cards.map.finder.open'), finding, setFinding, returnFocus, held);
     const recentre: CardAction[] =
       here === null
         ? []
@@ -239,7 +259,7 @@ function MapCard({
         ? []
         : [{ id: 'build', label: t('cards.map.buildAction'), icon: 'flag', run: onBuild }];
     return [find, ...recentre, ...build];
-  }, [finding, here, locate, onBuild, returnFocus]);
+  }, [finding, held, here, locate, onBuild, returnFocus]);
 
   /* One element for as long as the reason holds, so the view's memo holds too. */
   const empty = useMemo(
@@ -274,7 +294,19 @@ function MapCard({
       <span className="chip off">{t('cards.map.badgeRoomCount', { roomCount: shown.placed })}</span>
     );
   const badge =
-    here === null ? (
+    held && here !== null ? (
+      <>
+        <span
+          className="chip warn map-held"
+          title={t('cards.map.heldTooltip', {
+            seconds: Math.round(tuning().mapFinderIdleMs / 1000)
+          })}
+        >
+          {t('cards.map.held')}
+        </span>
+        {count}
+      </>
+    ) : here === null ? (
       <>
         <span className="chip warn map-unknown" title={t('cards.map.roomUnknownTooltip')}>
           {t('cards.map.roomUnknown')}
@@ -317,6 +349,7 @@ function MapCard({
        */}
       <MapRouteFinder
         finding={finding}
+        onActivity={touch}
         onDone={returnFocus}
         placed={here !== null}
         preview={preview}

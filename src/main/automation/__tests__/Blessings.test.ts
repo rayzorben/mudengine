@@ -537,6 +537,28 @@ describe('blessing the party', () => {
     blessings.dispose();
   });
 
+  /*
+   * Automation off holds the cast, not the reading: a member's client saying
+   * the spell wore off is a fact about the party, kept so the switch coming
+   * back casts at once. The control is the same stretch with no expiry heard.
+   */
+  it('keeps a peer expiry heard with automation off, and casts on it when switched back on', () => {
+    for (const expired of [false, true]) {
+      sent.length = 0;
+      const blessings = new Blessings(spells([bless]), true, queue, standing);
+      blessings.onCharacter(state({ party: party('Soul') }));
+      expect(sent).toEqual(['bless Soul']);
+      blessings.configure(spells([bless]), false);
+      vi.advanceTimersByTime(10_000);
+      if (expired) blessings.onPeerExpired('Soul', 'bless');
+      expect(sent).toEqual(['bless Soul']);
+      blessings.configure(spells([bless]), true);
+      blessings.onCharacter(state({ party: party('Soul') }));
+      expect(sent).toEqual(expired ? ['bless Soul', 'bless Soul'] : ['bless Soul']);
+      blessings.dispose();
+    }
+  });
+
   it('ignores a peer expiry naming no configured blessing', () => {
     const blessings = new Blessings(spells([bless]), true, queue, standing);
     blessings.onCharacter(state({ party: party('Soul') }));

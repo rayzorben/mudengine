@@ -7284,6 +7284,12 @@ button.quest-tile-name:hover:not(:disabled) {
   color: var(--accent);
 }
 
+/* A glyph that is a switch, on: the find row is out, or the map is held on a picked room. */
+.card-action[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
+}
+
 /* Putting away and forgetting cost something, and say so with the tone. */
 .card-action.card-close:hover,
 .card-action[data-danger='true']:hover {

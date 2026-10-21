@@ -979,11 +979,16 @@ describe('what it will not be driven by', () => {
     expect(sent).toEqual([]);
   });
 
-  it('is off with automation off, whatever its own switch says', () => {
+  /* The master switch holds the answer; the remote is still read, recorded and refused out loud. */
+  it('is off with automation off, whatever its own switch says, and says so', () => {
     peers.configure({ ...config, enabled: false });
     peers.onBlock(said('conversation-telepath', 'Rend', '@join'), who());
     drain();
     expect(sent).toEqual([]);
+    expect(commanded).toEqual(['Rend:join']);
+    expect(notices).toContain(
+      t('automation.remotes.refusedSwitchedOff', { from: 'Rend', raw: 'join' })
+    );
   });
 
   /* This character's own words come back on the local channel. */
@@ -1932,6 +1937,38 @@ describe('talking to another one of these clients', () => {
     expect(notices).toContain(
       t('automation.remotes.extendedLapsed', { who: 'Rand', name: 'where' })
     );
+  });
+
+  /*
+   * Every telepath here goes at `user`, so the queue does not hold it: the
+   * module's own guard does. The silence is still recorded; the plain wording
+   * waits. The case above is the positive control with the switch on.
+   */
+  it('records the lapse with automation off, and sends the plain wording to nobody', () => {
+    knowing('Rand', 'yes');
+    peers.ask('Rand', 'where', who());
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+    peers.configure({ ...config, enabled: false });
+    vi.advanceTimersByTime(30_000);
+    peers.onCharacter(who());
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+    expect(clients).toEqual(['Rand:-:no']);
+    expect(notices).toContain(t('automation.remotes.followUpHeld', { who: 'Rand', name: 'where' }));
+  });
+
+  it('reads MegaMUD’s refusal with automation off, and sends the plain wording to nobody', () => {
+    knowing('Rand', 'yes');
+    peers.ask('Rand', 'where', who());
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+    peers.configure({ ...config, enabled: false });
+    peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+    expect(clients).toEqual(['Rand:-:no']);
+    expect(notices).toContain(t('automation.remotes.followUpHeld', { who: 'Rand', name: 'where' }));
   });
 
   it('answers @where-room with the realm’s own address and the room’s name', () => {

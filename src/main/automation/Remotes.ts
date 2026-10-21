@@ -532,11 +532,21 @@ export class Remotes implements SessionModule {
     this.invites.onBlock(block, state);
     this.leaderDoors.onBlock(block, state);
     this.hands.onBlock(block, state);
-    if (!this.config.enabled || !this.config.remotes.enabled) return;
+    if (!this.config.remotes.enabled) return;
+    /*
+     * The master switch holds what is sent (`askJoined`, `answer`), never
+     * what is read: a remote is still recorded as commanded, a reply still
+     * read, a refusal still said, and `act` gives a notice that automation is
+     * off instead of answering. `AutoJoin` reads the switch itself;
+     * `HealthAsks.onBlock` only remembers the party list. Every telepath here
+     * goes at `user`, which the queue's own gate exempts, so this module's
+     * guards are the only thing holding them.
+     */
     this.autoJoin.onBlock(block, state);
     this.healthAsks.onBlock(block, state);
     if (block.type === 'party-joined') {
-      this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
+      if (this.config.enabled)
+        this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
       return;
     }
     const channel = CHANNELS.get(block.type);
@@ -642,7 +652,7 @@ export class Remotes implements SessionModule {
      * (todo 118): then a grant decides them like any other.
      */
     if (!judgedByGrant(command.name, this.config.remotes.allowKillAndHangup)) {
-      if (reachable) this.answer(from, command, state, prefix, block.type);
+      if (reachable) this.act(from, command, state, prefix, block.type);
       return;
     }
 
@@ -652,7 +662,29 @@ export class Remotes implements SessionModule {
       return;
     }
 
-    this.answer(from, command, state, prefix, block.type);
+    this.act(from, command, state, prefix, block.type);
+  }
+
+  /**
+   * A remote past every gate but the master switch: answered, or a notice
+   * that automation is off. A realm-wide channel is never answered whatever
+   * the switch says, so it gets `answer`'s own sentence first.
+   */
+  private act(
+    from: string,
+    command: RemoteCall,
+    state: CharacterState,
+    prefix: string | null,
+    channelType: string
+  ): void {
+    if (prefix !== null && !this.config.enabled) {
+      this.events.notice?.(
+        t('automation.remotes.refusedSwitchedOff', { from, raw: command.raw }),
+        STANDING
+      );
+      return;
+    }
+    this.answer(from, command, state, prefix, channelType);
   }
 
   /**
@@ -801,9 +833,10 @@ export class Remotes implements SessionModule {
     this.regroup.onCharacter(state);
     this.invites.onCharacter(state);
     this.autoInvite.onCharacter(state);
-    // A changed sheet goes out under the gate its first answer did (todo 118).
+    // An ask left unanswered is closed whatever the master switch says; the
+    // sheet and the health asks go out under the gate their first answer did (todo 118).
+    if (this.config.remotes.enabled) this.sweep(Date.now());
     if (this.config.enabled && this.config.remotes.enabled) {
-      this.sweep(Date.now());
       this.sheets.onCharacter(state);
       this.healthAsks.onCharacter(state);
     }
@@ -899,6 +932,13 @@ export class Remotes implements SessionModule {
       this.events.clientNamed?.(outstanding.who, undefined, 'no');
       const plain = plainRemote(outstanding.name);
       if (plain === null) continue;
+      // The plain wording is a send; with the master switch off it is held, and said.
+      if (!this.config.enabled) {
+        this.events.notice?.(
+          t('automation.remotes.followUpHeld', { who: outstanding.who, name: plain })
+        );
+        continue;
+      }
       this.events.notice?.(
         t('automation.remotes.extendedLapsed', { who: outstanding.who, name: plain })
       );
@@ -941,8 +981,13 @@ export class Remotes implements SessionModule {
           ? t('automation.remotes.peerIsOurs', { who: from, client: named })
           : t('automation.remotes.peerIsOther', { who: from, client: named })
       );
-      // A member's sheet decides who goes at a trap or a door (todo 86).
-      if (mine && partyMembers(state).some((name) => playerKey(name) === key)) {
+      // A member's sheet decides who goes at a trap or a door (todo 86). Asking
+      // for it is a send, so it waits on the master switch.
+      if (
+        this.config.enabled &&
+        mine &&
+        partyMembers(state).some((name) => playerKey(name) === key)
+      ) {
         this.ask(from, 'stats', state);
       }
       return true;
@@ -967,6 +1012,11 @@ export class Remotes implements SessionModule {
       this.events.clientNamed?.(from, undefined, 'no');
       const plain = plainRemote(outstanding.name);
       if (plain === null) return true;
+      // Read and recorded with the master switch off; the plain wording is a send, held and said.
+      if (!this.config.enabled) {
+        this.events.notice?.(t('automation.remotes.followUpHeld', { who: from, name: plain }));
+        return true;
+      }
       this.events.notice?.(t('automation.remotes.extendedRefused', { who: from, name: plain }));
       this.send(from, plain);
       return true;
