@@ -8,10 +8,10 @@
  * › parts/walking.md.
  */
 import { tuning } from '../../app/tuning';
-import { median } from '../../../shared/median';
+import { AnswerTimes } from '../../../shared/answerTimes';
 
 export class StepTimes {
-  private answers: number[] = [];
+  private readonly answers = new AnswerTimes();
   /** When the step outstanding reached the wire, or null. */
   private sentAt: number | null = null;
 
@@ -22,10 +22,8 @@ export class StepTimes {
   /** A room answered; ignored when nothing was timed, since an unmeasured wait is not zero. */
   answered(at: number): void {
     if (this.sentAt === null) return;
-    this.answers.push(at - this.sentAt);
+    this.answers.record(at - this.sentAt, tuning().walk.nudgeSamples);
     this.sentAt = null;
-    const keep = tuning().walk.nudgeSamples;
-    if (this.answers.length > keep) this.answers.splice(0, this.answers.length - keep);
   }
 
   /** The step will not be answered as this step: the walk ended under it. */
@@ -33,19 +31,18 @@ export class StepTimes {
     this.sentAt = null;
   }
 
-  /** The slowest recent answer, or null before the first. */
-  get slowest(): number | null {
-    return this.answers.length === 0 ? null : Math.max(...this.answers);
+  /** The nudge's deadline: `AnswerTimes.after`, over the walk's own answers. */
+  after(margin: number, floor: number, ceiling: number): number {
+    return this.answers.after(margin, floor, ceiling);
   }
 
   /** A step's usual length, or null until `walk.offRoundStepSamples` are measured. */
   get usual(): number | null {
-    if (this.answers.length < tuning().walk.offRoundStepSamples) return null;
-    return median(this.answers);
+    return this.answers.usual(tuning().walk.offRoundStepSamples);
   }
 
   reset(): void {
-    this.answers = [];
+    this.answers.reset();
     this.sentAt = null;
   }
 }

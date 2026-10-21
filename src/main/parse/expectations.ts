@@ -28,6 +28,7 @@ import type { Direction, RoomId } from '../../shared/world';
 import { mobKey } from '../../shared/world';
 import { commandOf, movementEffect, type RereadClaim } from '../../shared/commands';
 import type { Block } from '../../shared/blocks';
+import { AnswerTimes } from '../../shared/answerTimes';
 import { tuning } from '../app/tuning';
 import { answeringAfter, EchoSince } from './echo';
 import { ROOM_EXITS } from './patterns';
@@ -120,6 +121,14 @@ type Claim = Expectation & { at: number; probedAt?: number };
  */
 export function isPortalClaim(claim: Expectation | null | undefined): boolean {
   return claim?.kind === 'move' && claim.direction === null && claim.landing === undefined;
+}
+
+/** The head claim named for a probe, and the clock it was named on. */
+export interface StaleProbe {
+  /** The command that asked for it, or '' for a move nobody typed. */
+  command: string;
+  /** How long it had gone unanswered when it was named, in ms. */
+  afterMs: number;
 }
 
 /** One claim the client has given up on, and whether anything waited on it. */
@@ -270,6 +279,16 @@ export class Expectations {
    * unanswered while it waited its turn. A write-off is not an answer.
    */
   private answeredAt = 0;
+  /**
+   * How long this realm has lately taken to answer a move, from the server
+   * reaching the claim to the room that answered it. The probe clock is the
+   * slowest of these plus the walk's margin, never under `staleProbeMs`: the
+   * server's move delay grows with the pack's weight (`MoveCommand.cs`,
+   * 1,100 ms plus up to 2,000 by encumbrance), so a Heavy character's every
+   * step answers past a flat three seconds and was named as unanswered, with
+   * an `rm` spent on each (todo 20261020-2037-01).
+   */
+  private readonly moveTimes = new AnswerTimes();
   /**
    * The player's half-typed line, until it is written off. `TGSSocket.Send`
    * backlogs every byte while `CurrentCommand` is non-empty and flushes it at
@@ -746,21 +765,37 @@ export class Expectations {
   }
 
   /**
-   * The head claim, unanswered past `staleProbeMs` and not yet probed: marked
-   * probed and named, so the caller sends the locate word (todo 10). Null
-   * when there is nothing to probe. Once per claim, because one `rm` answers
-   * the question and a second only spends from the budget.
+   * The head claim, unanswered past the probe clock and not yet probed: marked
+   * probed and named with the clock, so the caller sends the locate word and
+   * says how long it waited (todo 10). Null when there is nothing to probe.
+   * Once per claim, because one `rm` answers the question and a second only
+   * spends from the budget.
    *
    * The caller sends the probe only where the realm has the word; on a realm
    * without one nothing is marked and the flat clock stands.
    */
-  staleProbe(now: number): string | null {
+  staleProbe(now: number): StaleProbe | null {
     const head = this.pending[0];
     if (head === undefined || head.probedAt !== undefined) return null;
     if (this.typingHolds(now)) return null;
-    if (now - this.reachedAt(head) < tuning().parse.staleProbeMs) return null;
+    const afterMs = this.probeAfterMs();
+    if (now - this.reachedAt(head) < afterMs) return null;
     head.probedAt = now;
-    return head.command ?? '';
+    return { command: head.command ?? '', afterMs };
+  }
+
+  /**
+   * How long the head may go unanswered before it is probed: the slowest move
+   * this realm has lately answered plus the walk's margin (`walk.nudgeAfterMs`,
+   * the same headroom the nudge puts over its own times for the same moves), never under
+   * `staleProbeMs` and never past `staleMoveMs`, where the write-off would
+   * beat the probe to it. Before a move has been answered the floor is the
+   * whole clock, as on the first step the walk's nudge has nothing to measure
+   * against either.
+   */
+  private probeAfterMs(): number {
+    const { staleProbeMs, staleMoveMs } = tuning().parse;
+    return this.moveTimes.after(tuning().walk.nudgeAfterMs, staleProbeMs, staleMoveMs);
   }
 
   /**
@@ -875,7 +910,16 @@ export class Expectations {
   /** The command a room block, or a refused direction, has just answered. */
   shift(): Expectation | null {
     const answered = this.pending.shift() ?? null;
-    if (answered !== null) this.answeredAt = Date.now();
+    if (answered !== null) {
+      const now = Date.now();
+      // A room answering a move is the realm's move delay, from when the
+      // server reached the claim; a refusal or a hold answers at once and has
+      // its own shift, so neither is measured.
+      if (answered.kind === 'move') {
+        this.moveTimes.record(now - this.reachedAt(answered), tuning().walk.nudgeSamples);
+      }
+      this.answeredAt = now;
+    }
     return answered;
   }
 
@@ -1180,6 +1224,7 @@ export class Expectations {
   /** A new session, or the realm left: nothing sent is still waiting on anything. */
   forget(): void {
     this.pending = [];
+    this.moveTimes.reset();
     this.reread = null;
     this.leaving = false;
     this.teleport = null;

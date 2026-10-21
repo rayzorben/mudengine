@@ -333,8 +333,10 @@ tuning:
     # -- so a `Location:` arriving with the step still unanswered proves the
     # step produced nothing and it is dropped at once, while a probe still
     # unanswered proves the server is slow and the step waits, up to
-    # staleMoveMaxMs. Three seconds is two movement rounds; thirty is a link
-    # that has gone, not a server that is slow.
+    # staleMoveMaxMs. Thirty seconds is a link that has gone. Three seconds is
+    # the floor of the probe clock: the game takes longer to move a heavy pack
+    # (a Heavy step is about three seconds), so the clock is the slowest recent
+    # move plus the walk's margin, never under this and never past staleMoveMs.
     staleProbeMs: 3000
 
     staleMoveMaxMs: 30000
@@ -1145,7 +1147,8 @@ tuning:
     # the headroom on top. It is also the whole deadline until a move has been
     # answered once, which is the only moment there is nothing to measure
     # against. One per step; the full stepTimeoutMs runs behind it before the
-    # walk gives up.
+    # walk gives up. The stale-step probe (parse.staleProbeMs) reads the same
+    # margin over its own times for the same moves, so changing this moves it too.
     nudgeAfterMs: 1000
 
     # How many recent move answers that deadline is measured over.

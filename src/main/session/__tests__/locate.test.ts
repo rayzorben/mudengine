@@ -9,6 +9,7 @@ import { Vocabulary } from '../Vocabulary';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import type { StaleProbe } from '../../parse/expectations';
 import type { LocateWord } from '../../../shared/locate';
 
 /**
@@ -30,7 +31,8 @@ function rig(initial: LocateWord, enabled = true) {
   let word = initial;
   const sent: Intent[] = [];
   const notice = vi.fn();
-  const staleProbe = vi.fn((_now: number): string | null => 'n');
+  // Past the flat clock on purpose: the notice quotes the clock the claim was named on.
+  const staleProbe = vi.fn((_now: number): StaleProbe | null => ({ command: 'n', afterMs: 4030 }));
   const tracker = {
     current: UNPLACED,
     useFamily: vi.fn(),
@@ -111,6 +113,9 @@ describe('the realm’s word for where am I', () => {
     positive.claims.settle();
     expect(positive.sent).toContainEqual(
       expect.objectContaining({ command: 'rm', coalesceKey: 'stale-probe' })
+    );
+    expect(positive.notice).toHaveBeenCalledWith(
+      t('session.walk.claimProbed', { command: 'n', seconds: 4 })
     );
 
     const { claims, sent, staleProbe } = rig('none');
