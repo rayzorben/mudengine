@@ -138,7 +138,18 @@ export interface WalkProgress {
    * set off to wait. False for an idle walker.
    */
   stoppedShort: boolean;
+  /**
+   * When the walk is expected to end, projected at the last confirmed step
+   * from the average a step has taken since the walk began, fights on the way
+   * included (`ArrivalClock`). The card counts down to it. Null until a step
+   * is confirmed, and for a walk that is not walking.
+   */
+  arrivalAt: number | null;
 }
+
+/** The rooms a run of steps passes through, starting where the first leaves. */
+export const pathOf = (steps: RouteStep[]): RoomId[] =>
+  steps.length === 0 ? [] : [steps[0]!.from, ...steps.map((leg) => leg.to)];
 
 /**
  * MegaMUD's two words for one movement, `Walking to %s` and `Running to %s`:
@@ -330,7 +341,8 @@ export const IDLE_WALK: WalkProgress = {
   reason: null,
   hold: null,
   pace: 'walking',
-  stoppedShort: false
+  stoppedShort: false,
+  arrivalAt: null
 };
 
 /**

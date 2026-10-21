@@ -90,23 +90,22 @@ function NavigationCard({
   const face = navigationFace(walk, loop);
   const running = loop.status === 'running';
   const live = face === 'loop';
+  const walking = walk.status === 'walking';
 
   /*
-   * A one-second tick, only while there is something to count: how long the
-   * loop has run moves on its own, and a card that showed it frozen at the
-   * last push would be a card lying about the time.
-   *
-   * Keyed on `running` rather than on the lap being the movement, because a
-   * stopped lap is not running for anything — a clock still counting under a
-   * character standing still is the same lie the other way round.
+   * A one-second tick while a loop runs or a route is walked, since the
+   * loop's run time and the time to arrival both move between pushes. It
+   * stops with the movement, so a character standing still shows no clock
+   * counting.
    */
+  const ticking = running || walking;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!running) return;
+    if (!ticking) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), tuning().clockTickMs);
     return () => window.clearInterval(id);
-  }, [running]);
+  }, [ticking]);
 
   /*
    * **The picker is what play will move**, which is one control and one
@@ -186,8 +185,6 @@ function NavigationCard({
       </button>
     );
   };
-
-  const walking = walk.status === 'walking';
 
   /*
    * The transport, which is the movement's and not the lap's.
@@ -337,6 +334,20 @@ function NavigationCard({
           </dd>
           <dt>{t('cards.navigation.route.towardLabel')}</dt>
           <dd>{place(walk.step.name, walk.step.to)}</dd>
+          {/*
+            Counting down to the arrival the walker projected at the last
+            confirmed step (`WalkProgress.arrivalAt`). Not shown while the
+            walk holds: the chip says why it is standing still, and a
+            countdown stuck at zero under a fight would read as a broken
+            clock. It is clamped at zero in `duration`, since a step slower
+            than the average runs past the figure.
+          */}
+          {walk.arrivalAt !== null && walk.hold === null && (
+            <>
+              <dt>{t('cards.navigation.route.arrivingLabel')}</dt>
+              <dd>{duration(walk.arrivalAt - now)}</dd>
+            </>
+          )}
           {walk.step.note !== null && (
             <>
               <dt>{t('cards.navigation.route.gatedLabel')}</dt>

@@ -3098,6 +3098,7 @@ cards:
       sendingLabel: Sending
       title: Route
       towardLabel: Heading
+      arrivingLabel: Arriving in
     title: Navigation
   party:
     badge:
