@@ -5726,6 +5726,12 @@ button.quest-tile-name:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* What main said of the laps, under the list and over the destination chips. */
+.loops-modal .loops-laps {
+  flex: 0 0 auto;
+  padding: 6px 16px 0;
+}
+
 /* A row already walked states so; the count still reads last in the row. */
 .loops-modal li .chip {
   flex: 0 0 auto;

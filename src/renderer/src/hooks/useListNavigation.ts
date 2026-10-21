@@ -21,6 +21,8 @@ export interface ListNavigation<T> {
    * left the pointer).
    */
   hover(index: number): { onMouseMove(): void };
+  /** Highlight an option and scroll it into view, as an arrow key would. */
+  point(index: number): void;
   /**
    * Attach to the text input.
    *
@@ -45,6 +47,20 @@ export interface ListNavigationOptions<T> {
   onChoose(item: T): void;
   /** Escape, when the surface has somewhere to go. */
   onCancel?(): void;
+  /**
+   * What makes the old highlight meaningless: the query, for a list that also
+   * grows when a group is opened. Opening a group lengthens the list without
+   * re-asking anything, and resetting on the length sent the highlight and
+   * the scroll back to the first row. Defaults to the list's length.
+   */
+  resetOn?: unknown;
+  /**
+   * Who a row is, for a list that changes under the highlight without being
+   * re-asked: a group shut above it, a row moved into a section. With it the
+   * highlight stays on the same row wherever that row moves; without it the
+   * highlight is a position.
+   */
+  keyOf?(item: T): string;
 }
 
 /**
@@ -74,34 +90,74 @@ export interface ListNavigationOptions<T> {
 export function useListNavigation<T>({
   items,
   onChoose,
-  onCancel
+  onCancel,
+  resetOn,
+  keyOf
 }: ListNavigationOptions<T>): ListNavigation<T> {
   const [cursor, setCursor] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
+  // The row the highlight was put on, so a list that moves keeps it there.
+  const pointed = useRef<string | null>(null);
 
   // A shorter list must not leave the highlight past its end.
-  const at = items.length === 0 ? 0 : Math.min(cursor, items.length - 1);
+  const clamped = items.length === 0 ? 0 : Math.min(cursor, items.length - 1);
+  const followed =
+    keyOf === undefined || pointed.current === null
+      ? -1
+      : items.findIndex((item) => keyOf(item) === pointed.current);
+  const at = followed >= 0 ? followed : clamped;
+
+  // Hold what the highlight is on now, and the position it is at.
+  useEffect(() => {
+    const item = items[at];
+    pointed.current = item === undefined || keyOf === undefined ? null : keyOf(item);
+    if (at !== cursor) setCursor(at);
+  }, [at, cursor, items, keyOf]);
+
+  const reset = resetOn === undefined ? items.length : resetOn;
 
   // Re-filtering starts again at the top: the old position meant something
   // about a list that no longer exists.
   useEffect(() => {
+    pointed.current = null;
     setCursor(0);
-  }, [items.length]);
+  }, [reset]);
 
   useEffect(() => {
     const node = listRef.current?.querySelector('[data-active="true"]');
     if (node) node.scrollIntoView({ block: 'nearest' });
-  }, [at, items.length]);
+  }, [at, reset]);
+
+  // Pointed at by hand, so the row is held by key from here: the sync effect
+  // above runs only when the position moves, and a pointer resting on the
+  // highlighted row moves nothing.
+  const hold = useCallback(
+    (index: number) => {
+      const item = items[index];
+      pointed.current = item === undefined || keyOf === undefined ? null : keyOf(item);
+    },
+    [items, keyOf]
+  );
 
   const move = useCallback(
     (delta: number) => {
       if (items.length === 0) return;
       setCursor((current) => {
-        const from = Math.min(current, items.length - 1);
-        return (from + delta + items.length) % items.length;
+        const next = (Math.min(current, items.length - 1) + delta + items.length) % items.length;
+        hold(next);
+        return next;
       });
     },
-    [items.length]
+    [items.length, hold]
+  );
+
+  const point = useCallback(
+    (index: number) => {
+      const next = Math.max(0, index);
+      hold(next);
+      setCursor(next);
+    },
+    [hold]
   );
 
   const onKeyDown = useCallback(
@@ -117,11 +173,11 @@ export function useListNavigation<T>({
           return;
         case 'Home':
           event.preventDefault();
-          setCursor(0);
+          point(0);
           return;
         case 'End':
           event.preventDefault();
-          setCursor(Math.max(0, items.length - 1));
+          point(items.length - 1);
           return;
         case 'Enter': {
           const chosen = items[at];
@@ -140,13 +196,14 @@ export function useListNavigation<T>({
           return;
       }
     },
-    [at, items, move, onCancel, onChoose]
+    [at, items, move, onCancel, onChoose, point]
   );
 
   return {
     cursor: at,
     active: items[at],
-    hover: (index: number) => ({ onMouseMove: () => setCursor(index) }),
+    hover: (index: number) => ({ onMouseMove: () => point(index) }),
+    point,
     onKeyDown,
     listRef,
     isActive: (index: number) => index === at

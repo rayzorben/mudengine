@@ -6,6 +6,7 @@
  * (`ranksToPay`), paced one route a turn. See `mudengine-world` ›
  * `parts/quests.md` (todo 132).
  */
+import { nextTurn } from '../app/nextTurn';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import {
@@ -135,7 +136,7 @@ export async function reachAll(
   // Keyed by block and rank: the blue and red books are one block at two ranks.
   const steps = new Map<string, { quest: number; rank: number; of: number; level: number }>();
   for (const leg of legs) {
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await nextTurn();
     if (superseded()) return null;
     const level = openingLevel(router, from, leg.room, traveller, tries) ?? 0;
     const key = `${leg.block}/${leg.rank}`;

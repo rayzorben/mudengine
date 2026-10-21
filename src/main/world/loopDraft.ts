@@ -218,7 +218,7 @@ export class LoopDraftCache {
 
   draft(graph: WorldGraph, picks: readonly RoomId[], traveller: Traveller = {}): LoopDraft {
     if (picks.length === 0) return EMPTY_LOOP_DRAFT;
-    const stamp = fingerprint(traveller);
+    const stamp = travellerFingerprint(traveller);
     const hit = this.get(graph, stamp, picks);
     if (hit !== null) return hit.draft;
 
@@ -257,7 +257,7 @@ export class LoopDraftCache {
 }
 
 /**
- * The parts of a traveller a remembered draft depends on.
+ * The parts of a traveller a remembered draft, or a lap index, depends on.
  *
  * **Not the purse, and not the pack**: both move with every coin looted and
  * every rope bought, and a toll or an item gate on a draft is priced again
@@ -270,7 +270,7 @@ export class LoopDraftCache {
  * character is refused at. Unlike the purse these settle once and stay put,
  * which is exactly what makes them safe to key a cache on.
  */
-function fingerprint(traveller: Traveller): string {
+export function travellerFingerprint(traveller: Traveller): string {
   return [
     traveller.level ?? '',
     traveller.strength ?? '',
@@ -332,25 +332,15 @@ export function preferredEdges(
 
   for (const loop of loops) {
     if (loop.prefer !== true) continue;
-    const rooms: RoomId[] = [];
-    let settled = true;
-    for (const stop of loop.stops) {
-      const room = resolve(splitStop(stop));
-      if (room === null) {
-        settled = false;
-        break;
-      }
-      rooms.push(room);
-    }
-    if (!settled || rooms.length < 2) {
+    const routes = lapRoutes(loop, resolve, (from, to) => {
+      const route = lapLeg(graph, from, to, plain);
+      return route.blocked ? null : route;
+    });
+    if (routes === null) {
       unresolved.push(loop.name);
       continue;
     }
-    const legs: Array<[RoomId, RoomId]> = rooms.slice(1).map((to, at) => [rooms[at]!, to]);
-    if (loop.bounce !== true) legs.push([rooms[rooms.length - 1]!, rooms[0]!]);
-    for (const [from, to] of legs) {
-      const route = lapLeg(graph, from, to, plain);
-      if (route.blocked) continue;
+    for (const route of routes) {
       for (const step of route.steps) {
         edges.add(`${step.from}|${step.to}`);
         edges.add(`${step.to}|${step.from}`);
@@ -358,4 +348,44 @@ export function preferredEdges(
     }
   }
   return { edges, unresolved };
+}
+
+/**
+ * Every leg of one lap, stop to stop, as rooms: a ring closed with the leg
+ * from its last stop to its first, a bounce left open. Null when a stop the
+ * realm cannot settle leaves the lap unstated, or when it has fewer than two
+ * stops.
+ */
+export function lapLegs(
+  loop: Loop,
+  resolve: (stop: StopPlace) => RoomId | null
+): Array<[RoomId, RoomId]> | null {
+  const rooms: RoomId[] = [];
+  for (const stop of loop.stops) {
+    const room = resolve(splitStop(stop));
+    if (room === null) return null;
+    rooms.push(room);
+  }
+  if (rooms.length < 2) return null;
+  const legs: Array<[RoomId, RoomId]> = rooms.slice(1).map((to, at) => [rooms[at]!, to]);
+  if (loop.bounce !== true) legs.push([rooms[rooms.length - 1]!, rooms[0]!]);
+  return legs;
+}
+
+/**
+ * The legs of one lap planned by `leg`, the draft's plain leg for
+ * `preferredEdges`; a leg `leg` finds no way along is left out. Null as
+ * `lapLegs` is. The lap index plans the same legs itself, one per turn.
+ */
+export function lapRoutes(
+  loop: Loop,
+  resolve: (stop: StopPlace) => RoomId | null,
+  leg: (from: RoomId, to: RoomId) => Route | null
+): Route[] | null {
+  const legs = lapLegs(loop, resolve);
+  if (legs === null) return null;
+  return legs.flatMap(([from, to]) => {
+    const route = leg(from, to);
+    return route === null ? [] : [route];
+  });
 }

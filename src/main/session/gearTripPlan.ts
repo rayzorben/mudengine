@@ -8,6 +8,7 @@
  * one per turn, since a route is an A* on the socket's thread.
  */
 import { t } from '../app/i18n';
+import { nextTurn } from '../app/nextTurn';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import { chargedInCopper } from '../../shared/coins';
@@ -174,7 +175,7 @@ export async function planGearTrip(
   let from: RoomId = here;
   let moves = 0;
   for (const stop of stops) {
-    await new Promise<void>((next) => setImmediate(next));
+    await nextTurn();
     const route = parts.errands.routeBetween(from, stop.room as RoomId, 'walk');
     const leg = legOf(route);
     moves += leg.steps ?? 0;

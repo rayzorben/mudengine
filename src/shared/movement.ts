@@ -204,3 +204,18 @@ export type LoopJoin =
   | { joins: WorldRoom; route: Route }
   | { unshown: string | null }
   | { refused: string };
+
+/**
+ * The loops whose lap walks through the room the character stands in, stops
+ * included (`loop:through`), for the Loops modal's Passes through here. A
+ * loop is kept as its fewest waypoints, so a room between two stops is in no
+ * stop list; main plans every lap once and answers from that. `unresolved`
+ * names the loops left out because a stop the world data cannot pin down
+ * leaves their lap unstated. Both empty with no realm, no session or no room.
+ */
+export interface LoopsThrough {
+  names: string[];
+  unresolved: string[];
+}
+
+export const NO_LOOPS_THROUGH: LoopsThrough = { names: [], unresolved: [] };

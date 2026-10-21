@@ -23,6 +23,7 @@ import {
   type FightRecord
 } from '../../shared/fights';
 import { isRecord } from '../../shared/values';
+import { nextTurn } from '../app/nextTurn';
 import { tuning } from '../app/tuning';
 import { appendJsonLines, segmentPath, segmentsIn as segmentsInDir } from './segmentFiles';
 
@@ -118,7 +119,7 @@ export async function foldSegment(file: string, bytes?: number): Promise<FoldedR
     if (end > start) {
       foldLine(into, text.slice(start, end));
       parsed += 1;
-      if (parsed % slice === 0) await new Promise<void>((next) => setImmediate(next));
+      if (parsed % slice === 0) await nextTurn();
     }
     start = end + 1;
   }

@@ -24,6 +24,7 @@ import { partyPlan, withParty } from '../../shared/partyFight';
 import type { WalkKind } from '../../shared/walk';
 import { routePricesOf } from '../../shared/walkChoices';
 import { t } from '../app/i18n';
+import { nextTurn } from '../app/nextTurn';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
 import { RealmSpeed } from '../automation/RealmSpeed';
@@ -1670,7 +1671,7 @@ export class Errands implements SessionModule {
       if (planned.at !== undefined && world.byId(planned.at.room) !== undefined)
         at = planned.at.room;
       rank = step.to ?? rank;
-      await new Promise<void>((next) => setImmediate(next));
+      await nextTurn();
       if (asked !== this.planAsked) return null;
     }
     /*

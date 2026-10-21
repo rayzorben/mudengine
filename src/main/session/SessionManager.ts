@@ -3195,12 +3195,9 @@ export class SessionManager {
     return this.automationConfig.loops.find((entry) => entry.name === name);
   }
 
-  /** The palette's view: each loop by name, with how many stops it visits. */
-  get loopList(): Array<{ name: string; stops: number }> {
-    return this.automationConfig.loops.map((entry) => ({
-      name: entry.name,
-      stops: entry.stops.length
-    }));
+  /** The loops this character's options define. */
+  get heldLoops(): readonly Loop[] {
+    return this.automationConfig.loops;
   }
 
   /** What this character costs to move, as the router prices it. See `Errands.travellerNow`. */

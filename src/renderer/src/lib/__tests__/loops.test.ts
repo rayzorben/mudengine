@@ -9,6 +9,7 @@ import {
   LOOP_SECTIONS,
   loopOwner,
   loopRows,
+  NO_LAPS,
   NOWHERE
 } from '../loops';
 
@@ -363,5 +364,31 @@ describe('who a filed loop belongs to', () => {
   /* Unknown is not the reassuring answer: no summary, no realm to file under. */
   it('names no realm for a character whose summary has not arrived', () => {
     expect(loopOwner('server', hero, [])).toBeNull();
+  });
+});
+
+describe('a loop whose lap walks through this room between stops', () => {
+  const rows = loopRows(
+    [
+      {
+        name: 'Rugged Plateau: Dire Grizzlys',
+        stops: [{ room: 'Cave Den 2/10939' }, { room: 'Cave Den 2/10931' }]
+      }
+    ],
+    []
+  );
+  const inDen = { ...NOWHERE, at: { map: 2, room: 10932 } };
+
+  it('passes through here when main planned its lap through the room', () => {
+    const groups = groupLoops(rows, '', {
+      ...inDen,
+      laps: { ...NO_LAPS, names: new Set(['rugged plateau: dire grizzlys']) }
+    });
+    expect(groups[0]?.section).toBe('waypoint');
+  });
+
+  it('stays in its area when no lap was planned through the room', () => {
+    const groups = groupLoops(rows, '', inDen);
+    expect(groups.map((group) => group.section)).toEqual(['area']);
   });
 });
