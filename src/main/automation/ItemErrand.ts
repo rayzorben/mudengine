@@ -75,6 +75,8 @@ export interface ItemPlanner {
   buy(row: SupplyItem): string | null;
   /** Whether the shopping errand is still on this row. */
   buying(): boolean;
+  /** End the shopping errand: the pack got the item on the way, so the counter is not needed. */
+  stopBuying(reason: string): void;
   /** Run a loop filed nowhere, as the hunt does. */
   runLoop(loop: Loop): string | null;
   looping(): boolean;
@@ -336,6 +338,14 @@ export class ItemErrand implements SessionModule {
       };
       const refused = this.planner.buy(row);
       if (refused !== null) return this.refuse(item, refused);
+      /*
+       * Taken off the floor on the way too: a `search` on the road to the
+       * Gypsy Man listed `rope and grapple here`, the character stepped over
+       * it and walked on to the counter (reported 2026-10-20). The name is on
+       * the take list for as long as the trip runs, as a hunt's is, and the
+       * pack holding it ends the trip (`deliver`).
+       */
+      this.planner.alsoTake(item.name);
       this.phase = { kind: 'buying', item, rest, owes, run };
       /*
        * Two literal calls rather than one sentence with a figure that is
@@ -493,6 +503,7 @@ export class ItemErrand implements SessionModule {
      * walked, which is the fact the player is waiting on.
      */
     if (this.phase.kind === 'buying' && !this.planner.buying()) {
+      this.give();
       this.phase = { kind: 'idle' };
       this.refuse(item, t('automation.collect.refusalNotBought', { item: item.name }));
       return;
@@ -511,13 +522,23 @@ export class ItemErrand implements SessionModule {
    */
   private deliver(item: Wanted, owes: Route | null, run: boolean, state: CharacterState): void {
     const hunting = this.phase.kind === 'hunting';
+    const buying = this.phase.kind === 'buying';
     const rest =
       this.phase.kind === 'buying' || this.phase.kind === 'hunting' || this.phase.kind === 'asking'
         ? this.phase.rest
         : [];
     this.give();
     this.phase = { kind: 'idle' };
-    if (hunting) this.planner.stopLoop(t('automation.collect.stoppedGotIt', { item: item.name }));
+    const gotIt = t('automation.collect.stoppedGotIt', { item: item.name });
+    if (hunting) this.planner.stopLoop(gotIt);
+    /*
+     * A trip still walking to the counter is ended before the way is walked:
+     * left running, the walk below would supersede its leg and the trip would
+     * plan another leg back to the shop over the route just started. A trip
+     * that has already finished (the `buy` is what put the item in the pack)
+     * is left to its own sentence.
+     */
+    if (buying && this.planner.buying()) this.planner.stopBuying(gotIt);
     /*
      * **Which happened is worth saying.** A key the player's own supply list
      * names is kept — `supplies.items` lists `black star key` as *found* — and

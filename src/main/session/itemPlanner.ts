@@ -19,6 +19,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { AutomationConfig } from '../../shared/config';
 import { nameAnswersTo, roomAddress } from '../../shared/world';
 import type { Errands } from './Errands';
+import { stopErrandLeg } from './legPlanner';
 import type { QuestWatch } from './QuestWatch';
 import type { Travel } from './Travel';
 
@@ -30,11 +31,11 @@ const COLLECT_AFTER_KEY = 'collect:after';
 export interface ItemPlannerModules {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<Errands, 'itemSources' | 'plannedSources'>;
-  supplies: Pick<Supplies, 'fetch' | 'current'>;
+  supplies: Pick<Supplies, 'fetch' | 'current' | 'abandon'>;
   loops: Pick<LoopRunner, 'progress'>;
-  travel: Pick<Travel, 'startLoop' | 'walkAfterCollecting' | 'walkLegTo'>;
+  travel: Pick<Travel, 'startLoop' | 'walkAfterCollecting' | 'walkLegTo' | 'walkIsAsked'>;
   loot: Pick<AutoLoot, 'alsoTake' | 'stopTaking'>;
-  walker: Pick<Walker, 'walking'>;
+  walker: Pick<Walker, 'walking' | 'stop'>;
   queue: Pick<CommandQueue, 'enqueue' | 'queued' | 'cancel'>;
   questWatch: Pick<QuestWatch, 'noteSaid'>;
   combat: Pick<AutoCombat, 'switchedOn' | 'alsoFight' | 'stopFighting'>;
@@ -55,6 +56,14 @@ export function itemPlanner(parts: ItemPlannerParts): ItemPlanner {
     sourcesFrom: (planned) => m().errands.plannedSources(planned),
     buy: (row) => m().supplies.fetch(row, m().tracker.current),
     buying: () => m().supplies.current !== null,
+    stopBuying: (reason) => {
+      const trip = m().supplies.current;
+      m().supplies.abandon(reason);
+      // `Supplies.abandon` lets the errand go and leaves its leg stepping to
+      // the counter; with it still walking, the owed way could be refused for
+      // the move in flight until the character stood at the shop.
+      if (trip !== null) stopErrandLeg(m(), reason);
+    },
     runLoop: (loop) => {
       // `startLoop` replaces whatever lap was running, which is right — one
       // movement at a time — and worth saying, because the lap it replaces
