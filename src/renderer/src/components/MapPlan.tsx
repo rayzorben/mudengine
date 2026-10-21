@@ -29,18 +29,22 @@
  */
 import {
   memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
 } from 'react';
 
+import Popup from './Popup';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { viewBoxFor, type Box, type MapDetail, type MapView } from '../lib/mapView';
 import {
+  DEFAULT_MAP_LEGEND,
   layoutMap,
   MAP_CELL,
   NO_TRAIL,
@@ -48,6 +52,7 @@ import {
   type LocalMap,
   type MapAway,
   type MapDrawing,
+  type MapLegendLayout,
   type MapNode,
   type MapTrail,
   type RoomKind
@@ -1039,16 +1044,15 @@ function VortexGlyph({ size, x, y }: { size: number; x: number; y: number }) {
 }
 
 /**
- * What the shapes mean, listed whether or not one of them is in view.
+ * The keys themselves, in three groups, whether or not one of them is in view.
  *
  * A legend that gained an entry only when a door was on screen changed the
  * card's height as the character walked, and every control below it moved
  * under the pointer — which is the whole reason the map card is a fixed box.
+ * The builder's own rings replace the route and the lap's stops; a key for a
+ * mark the picture never makes is a legend to nothing.
  */
-export function MapLegend({
-  builder = false,
-  plain = false
-}: { builder?: boolean; plain?: boolean } = {}) {
+function LegendKeys({ builder }: { builder: boolean }) {
   const lairKeys: Array<{ odds: SurvivalLevel | undefined; label: string }> = [
     { odds: 'safe', label: t('cards.map.legendLairSafe') },
     { odds: 'risky', label: t('cards.map.legendLairRisky') },
@@ -1056,7 +1060,8 @@ export function MapLegend({
     { odds: undefined, label: t('cards.map.legendLair') }
   ];
   return (
-    <div className="map-legend from-medium">
+    <>
+      <span className="map-legend-group">{t('cards.map.legendGroupHere')}</span>
       <span data-kind="here">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <circle className="map-you" cx="0" cy="0" r="5.2" />
@@ -1064,22 +1069,6 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendYou')}
       </span>
-      {/* Always laid out, shown only zoomed out past the dense end, so the
-          legend keeps its height as the wheel crosses it (todo 130). */}
-      <span data-kind="plain" data-shown={plain ? 'true' : 'false'}>
-        {t('cards.map.legendPlain')}
-      </span>
-      {/*
-        The route and the lap, listed like every other symbol whether or not
-        anything is being walked. A key that appeared when a route was planned
-        would change the card's height mid-walk, which is the churn the fixed
-        box exists to prevent.
-      */}
-      {/*
-        The builder draws neither the halo nor a lap's stops; its own keys
-        below say what its rings mean, and a key for a mark the picture never
-        makes is a legend to nothing.
-      */}
       {!builder && (
         <>
           <span data-kind="route">
@@ -1105,11 +1094,52 @@ export function MapLegend({
           </span>
         </>
       )}
-      {/*
-        Listed whether or not one is in view, like every key here: the absence
-        of a symbol is itself a fact, and a legend that changed as the character
-        walked would change the card's height while it was being read.
-      */}
+      {builder && (
+        <>
+          <span data-kind="start">
+            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+              <circle className="map-start" cx="0" cy="0" r="5.2" />
+              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
+            </svg>
+            {t('cards.map.legendStart')}
+          </span>
+          <span data-kind="pick">
+            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+              <circle className="map-pick" cx="0" cy="0" r="4.8" />
+              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
+            </svg>
+            {t('cards.map.legendPick')}
+          </span>
+          <span data-kind="through">
+            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+              <g className="map-trail">
+                <line x1="-5" x2="5" y1="0" y2="0" />
+                <polygon
+                  className="map-trail-arrow"
+                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
+                />
+              </g>
+              <circle className="map-through" cx="0" cy="0" r="4.8" />
+              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
+            </svg>
+            {t('cards.map.legendThrough')}
+          </span>
+          {/* The way doubling back over itself: the one thing a lap does that a route does not. */}
+          <span data-kind="again">
+            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+              <g className="map-trail" data-band="1">
+                <line x1="-5" x2="5" y1="0" y2="0" />
+                <polygon
+                  className="map-trail-arrow"
+                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
+                />
+              </g>
+            </svg>
+            {t('cards.map.legendAgain')}
+          </span>
+        </>
+      )}
+      <span className="map-legend-group">{t('cards.map.legendGroupRooms')}</span>
       <span data-kind="find">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
@@ -1148,11 +1178,8 @@ export function MapLegend({
           {label}
         </span>
       ))}
-      {/*
-        A way up or down: the chevrons where the controls sit beside the room,
-        keyed with what a press does. The same glyph in the same place as on
-        the picture, so the key looks like the thing it names.
-      */}
+      <span className="map-legend-group">{t('cards.map.legendGroupWays')}</span>
+      {/* The chevrons where the controls sit beside the room, so the key looks like the thing it names. */}
       <span data-kind="look">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <rect className="map-shape" height="6" rx="1.1" width="6" x="-5" y="-3" />
@@ -1163,10 +1190,7 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendLook')}
       </span>
-      {/*
-        A teleport, on every map since todo 147: listed always, like the door,
-        and pressed like up and down except on the builder's map.
-      */}
+      {/* A teleport, on every map since todo 147. */}
       <span data-kind="teleport">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <g className="map-away">
@@ -1175,7 +1199,6 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendTeleport')}
       </span>
-      {/* A way out with something in it — listed always, like the door. */}
       <span data-kind="gated">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <g className="map-away" data-gated="door">
@@ -1185,12 +1208,6 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendGated')}
       </span>
-      {/*
-        Always, even where nothing is shut. A key that appears and
-        disappears as you walk changes the card's height with it, and the
-        controls below move under the pointer — which is the whole reason
-        this card is a fixed box.
-      */}
       <span data-kind="door">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <g className="map-blocks">
@@ -1200,11 +1217,6 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendShut')}
       </span>
-      {/*
-        A trap, listed for the same reason as the door: the realm has 305 of
-        them and a key that appeared only when one was in view would move the
-        card's picture as the character walked.
-      */}
       <span data-kind="trap">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <g className="map-blocks">
@@ -1215,61 +1227,62 @@ export function MapLegend({
         </svg>
         {t('cards.map.legendTrap')}
       </span>
-      {/*
-        The builder's own marks, on the builder's map only: a legend on the
-        Map card for rings that card never draws would be a key to nothing.
-        Listed always while the builder is open, for the reason every other
-        key is.
-      */}
-      {builder && (
-        <>
-          <span data-kind="start">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <circle className="map-start" cx="0" cy="0" r="5.2" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendStart')}
-          </span>
-          <span data-kind="pick">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <circle className="map-pick" cx="0" cy="0" r="4.8" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendPick')}
-          </span>
-          <span data-kind="through">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-trail">
-                <line x1="-5" x2="5" y1="0" y2="0" />
-                <polygon
-                  className="map-trail-arrow"
-                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-                />
-              </g>
-              <circle className="map-through" cx="0" cy="0" r="4.8" />
-              <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            </svg>
-            {t('cards.map.legendThrough')}
-          </span>
-          {/*
-            The way doubling back over itself, which is the one thing a lap
-            does that a route does not — so the key is here and not on the Map
-            card, where a legend for a colour that picture can never draw would
-            be a key to nothing.
-          */}
-          <span data-kind="again">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-trail" data-band="1">
-                <line x1="-5" x2="5" y1="0" y2="0" />
-                <polygon
-                  className="map-trail-arrow"
-                  points={arrowAt({ x1: -5, y1: 0, x2: 5, y2: 0 }, 2.4)}
-                />
-              </g>
-            </svg>
-            {t('cards.map.legendAgain')}
-          </span>
-        </>
+    </>
+  );
+}
+
+/**
+ * What the shapes mean, drawn where the Map card's setting says (user,
+ * 2026-10-21): `key`, a chip in the picture's corner that opens the keys in
+ * a popup over it, so the picture takes the whole box; `column`, every key
+ * beside the picture. Either way the box never changes size with what is
+ * drawn: the chip and the zoomed-out line are over the picture, always laid
+ * out, and the column is listed whole.
+ */
+export function MapLegend({
+  builder = false,
+  plain = false,
+  layout = DEFAULT_MAP_LEGEND
+}: { builder?: boolean; plain?: boolean; layout?: MapLegendLayout } = {}) {
+  const [opened, setOpened] = useState<HTMLElement | null>(null);
+  const close = useCallback(() => setOpened(null), []);
+  if (layout === 'column') {
+    return (
+      <div className="map-legend map-keys from-medium" data-layout="column">
+        {/* Always laid out, shown only zoomed out past the dense end, so the
+            column keeps its height as the wheel crosses it (todo 130). */}
+        <span data-kind="plain" data-shown={plain ? 'true' : 'false'}>
+          {t('cards.map.legendPlain')}
+        </span>
+        <LegendKeys builder={builder} />
+      </div>
+    );
+  }
+  return (
+    <div className="map-legend from-medium" data-layout="key">
+      <span data-kind="plain" data-shown={plain ? 'true' : 'false'}>
+        {t('cards.map.legendPlain')}
+      </span>
+      <button
+        aria-expanded={opened !== null}
+        aria-pressed={opened !== null}
+        className="chip pick map-key"
+        onClick={(event) => setOpened(opened === null ? event.currentTarget : null)}
+        onMouseDown={keepFocus}
+        type="button"
+      >
+        {t('cards.map.legendKey')}
+      </button>
+      {opened !== null && (
+        <Popup
+          at={opened}
+          className="map-key-panel map-keys"
+          label={t('cards.map.legendPanel')}
+          onDismiss={close}
+          role="dialog"
+        >
+          <LegendKeys builder={builder} />
+        </Popup>
       )}
     </div>
   );

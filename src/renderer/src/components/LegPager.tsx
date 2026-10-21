@@ -39,6 +39,11 @@ function LegPager({ legs, at, first, page, destination, close }: LegPagerProps) 
         : t('cards.map.preview.continues', { roomName: arriving });
   return (
     <div className="map-legs" data-leg={at}>
+      {/* The jump this page ends in on the left, the pager on the right: two
+          pills over the picture's top edge (user, 2026-10-21). */}
+      <div className="map-leg-text" title={onward}>
+        {onward}
+      </div>
       <div className="map-legs-row">
         <button
           aria-label={t('cards.map.preview.previous')}
@@ -82,9 +87,6 @@ function LegPager({ legs, at, first, page, destination, close }: LegPagerProps) 
             <Icon name="close" />
           </button>
         )}
-      </div>
-      <div className="map-leg-text" title={onward}>
-        {onward}
       </div>
     </div>
   );

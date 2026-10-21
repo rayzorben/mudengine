@@ -209,6 +209,19 @@ export const MAP_CELL = 10;
 export const DEFAULT_MAP_DENSITY = 0.79;
 
 /**
+ * Where a map's key is drawn (user, 2026-10-21): `key` is a chip in the
+ * picture's corner that opens the key over it, so the picture takes the whole
+ * box; `column` lists every key beside the picture. A card setting of the Map
+ * card, read by every surface that card draws.
+ */
+export const MAP_LEGENDS = ['key', 'column'] as const;
+export type MapLegendLayout = (typeof MAP_LEGENDS)[number];
+export const DEFAULT_MAP_LEGEND: MapLegendLayout = 'key';
+export function isMapLegendLayout(value: unknown): value is MapLegendLayout {
+  return typeof value === 'string' && (MAP_LEGENDS as readonly string[]).includes(value);
+}
+
+/**
  * How many pixels one room may have, at this density.
  *
  * The slider's two ends are the tuning file's (`view.mapRoomPixelsSparse` and

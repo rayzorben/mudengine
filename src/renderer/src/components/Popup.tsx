@@ -105,7 +105,11 @@ export default function Popup({ at, onDismiss, role, label, className, children 
   useEffect(() => {
     if (position === null || focused.current) return;
     focused.current = true;
-    ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    // A panel with nothing to press (the map's key) takes the caret itself,
+    // or its Escape would go to the game.
+    (
+      ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])') ?? ref.current
+    )?.focus();
   }, [position]);
 
   useEffect(() => {
@@ -190,6 +194,7 @@ export default function Popup({ at, onDismiss, role, label, className, children 
       }}
       ref={ref}
       role={role}
+      tabIndex={-1}
       style={{
         top: position?.top ?? 0,
         left: position?.left ?? 0,

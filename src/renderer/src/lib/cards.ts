@@ -8,6 +8,7 @@
  * importing a hook. See `mudengine-ui` › `parts/cards.md`.
  */
 import { t } from './i18n';
+import type { MapLegendLayout } from '@shared/map';
 import type { Appearance, ThemeId } from '@shared/themes';
 import type { TalkLayout, TalkStamp } from '@shared/talk';
 import type { StatsGraph } from '@shared/tally';
@@ -339,6 +340,8 @@ export interface CardSettings {
    * `roomPixelsFor` is where the two ends live.
    */
   mapDensity?: number;
+  /** Map card: the key in the picture's corner, or a column beside it. See `MAP_LEGENDS`. */
+  mapLegend?: MapLegendLayout;
   /**
    * Room card, Finds face: how many days back the log is shown, `0` for all.
    *

@@ -6762,10 +6762,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
               evaluate(`
                 (() => {
                   const ways = document.querySelectorAll(${JSON.stringify(vortex)});
-                  return {
-                    vortices: ways.length,
-                    keyed: !!document.querySelector('.map-card .map-legend [data-kind="teleport"]')
-                  };
+                  return { vortices: ways.length };
                 })()
               `),
             (state) => state.vortices > 0,
@@ -6776,7 +6773,32 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
             'standing in it, the Map card draws the teleport as a vortex beside the room',
             JSON.stringify(drawn)
           );
-          check(drawn?.keyed === true, 'and the legend keys the vortex', JSON.stringify(drawn));
+          // The key is a chip over the picture's corner (the shipped layout,
+          // 2026-10-21); pressed, it lists every mark in a popup, and pressed
+          // again it closes, so the vortex pressed below is not under it.
+          const keyed = await readUntil(
+            () =>
+              evaluate(`
+                (() => {
+                  const chip = document.querySelector('.map-card .map-legend .map-key');
+                  if (chip && !document.querySelector('.map-key-panel')) chip.click();
+                  return {
+                    chip: !!chip,
+                    keyed: !!document.querySelector('.map-key-panel [data-kind="teleport"]')
+                  };
+                })()
+              `),
+            (state) => state.keyed,
+            40
+          );
+          check(keyed?.keyed === true, 'and the legend keys the vortex', JSON.stringify(keyed));
+          await evaluate(`document.querySelector('.map-card .map-legend .map-key')?.click()`);
+          const closed = await readUntil(
+            () => evaluate(`!document.querySelector('.map-key-panel')`),
+            (gone) => gone === true,
+            40
+          );
+          check(closed === true, 'and pressing the chip again closes the key');
           // No panel before the press, so the head polled below is the press's.
           const noPanel = !(await evaluate(`!!document.querySelector('.route-panel')`));
           check(noPanel, 'with no route panel open before the press');

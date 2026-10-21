@@ -14,6 +14,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { FLOOR_PAD, layoutSheet, type SheetJoin } from '../lib/routeSheet';
 import { tuning } from '../lib/tuning';
+import { DEFAULT_MAP_LEGEND, type MapLegendLayout } from '@shared/map';
 import type { RouteSheet } from '@shared/routeLegs';
 import type { RoomId } from '@shared/world';
 
@@ -27,6 +28,8 @@ export interface RouteSheetViewProps {
   finds: readonly RoomId[];
   onPeek?: (room: RoomId, at: SVGGElement, settled: boolean) => void;
   onPeekEnd?: () => void;
+  /** Where the key is drawn: the Map card's setting. */
+  legend?: MapLegendLayout;
 }
 
 /**
@@ -73,13 +76,21 @@ function JoinMark({ join }: { join: SheetJoin }) {
   );
 }
 
-function RouteSheetView({ sheet, you, stops, finds, onPeek, onPeekEnd }: RouteSheetViewProps) {
+function RouteSheetView({
+  sheet,
+  you,
+  stops,
+  finds,
+  onPeek,
+  onPeekEnd,
+  legend = DEFAULT_MAP_LEGEND
+}: RouteSheetViewProps) {
   const layout = useMemo(() => layoutSheet(sheet, stops, tuning().mapTrailBands), [sheet, stops]);
   const found = useMemo(() => new Set(finds), [finds]);
   const { x, y, width, height } = layout.box;
   const room = tuning().mapRoomRadius;
   return (
-    <div className="map-box">
+    <div className="map-box" data-legend={legend}>
       <div className="map-view map-sheet" onMouseDown={keepFocus}>
         <svg
           aria-label={t('cards.map.sheet.ariaLabel', { count: sheet.stretches.length })}
@@ -125,7 +136,7 @@ function RouteSheetView({ sheet, you, stops, finds, onPeek, onPeekEnd }: RouteSh
           </g>
         </svg>
       </div>
-      <MapLegend />
+      <MapLegend layout={legend} />
     </div>
   );
 }
