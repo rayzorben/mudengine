@@ -1405,9 +1405,10 @@ button.gv-portrait {
   font-weight: 600;
 }
 
+/* The doll's names take the width, and the stats keep the rest (todo 20261019-2034-01, A2). */
 .gv-character-body {
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -1521,6 +1522,36 @@ button.gv-portrait {
   transform: translateX(-50%);
 }
 
+/* A worn item's name: away from the body beside a column's square, under the row's.
+ * Its line heights and clamps are `DollGeometry.name`, set inline. */
+.gv-slot-name {
+  position: absolute;
+  color: var(--game-muted);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.gv-slot-name[data-side='left'] {
+  text-align: right;
+}
+
+.gv-slot-name[data-side='below'] {
+  font-size: 8.5px;
+  text-align: center;
+}
+
+.gv-slot-name-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.gv-slot-name small {
+  display: block;
+  color: var(--game-faint);
+  font-size: 8.5px;
+}
+
 .gv-slot[data-state='empty'] .gv-slot-word {
   position: static;
   transform: none;
@@ -1543,10 +1574,11 @@ button.gv-portrait {
   text-transform: uppercase;
 }
 
+/* Two columns, since the doll's names leave the stats a narrow column (todo 20261019-2034-01). */
 .gv-attributes {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 8px;
 }
 
 .gv-attributes div {
@@ -1554,7 +1586,7 @@ button.gv-portrait {
 }
 
 .gv-attributes b {
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
@@ -1563,8 +1595,8 @@ button.gv-portrait {
 
 .gv-attributes span {
   color: var(--game-muted);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: 9px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
