@@ -288,3 +288,26 @@ const PLACE_LABEL: Record<ShopIcon, () => string> = {
 export function placeLabel(icon: ShopIcon): string {
   return PLACE_LABEL[icon]();
 }
+
+/**
+ * A token's name in lines no wider than `maxWidth` (user, 2026-10-20: "horned
+ * spider  660/660" under the target ran into "Festus" under the character).
+ * Greedy by word; a word wider than that stands alone, never cut.
+ */
+export function wrapWords(
+  text: string,
+  measure: (line: string) => number,
+  maxWidth: number
+): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/).filter((one) => one !== '')) {
+    const joined = line === '' ? word : `${line} ${word}`;
+    if (line !== '' && measure(joined) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else line = joined;
+  }
+  if (line !== '') lines.push(line);
+  return lines;
+}

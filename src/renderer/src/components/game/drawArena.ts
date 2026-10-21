@@ -12,7 +12,7 @@ import type { MapArea } from '@shared/gameMap';
 import { STEP } from '@shared/map';
 import type { Direction } from '@shared/world';
 import type { Blow } from '../../lib/gameBlows';
-import type { ArenaExit, ArenaToken } from '../../lib/gameArena';
+import { wrapWords, type ArenaExit, type ArenaToken } from '../../lib/gameArena';
 import { hexA, icon, PATHS, type GamePalette } from './drawWorld';
 
 export interface ArenaRoom {
@@ -240,7 +240,8 @@ function drawToken(
   at: { x: number; y: number },
   radius: number,
   struck: number,
-  named: boolean
+  named: boolean,
+  labelWidth: number
 ): void {
   ctx.save();
   ctx.translate(at.x, at.y);
@@ -296,7 +297,7 @@ function drawToken(
       ctx.stroke(disc);
       ctx.restore();
       icon(ctx, PATHS.player, at.x, at.y, radius * 1.1, colour);
-      label(ctx, pal, token.name, at.x, at.y + radius + 4, colour);
+      label(ctx, pal, token.name, at.x, at.y + radius + 4, colour, labelWidth);
       return;
     }
     ring(
@@ -344,25 +345,49 @@ function drawToken(
     icon(ctx, PATHS.drop, at.x + radius * 0.8, at.y - radius * 0.8, 12, pal.poison);
   } else ctx.restore();
   if (named)
-    label(ctx, pal, token.name, at.x, at.y + radius + (token.side === 'foe' ? 10 : 12), pal.text);
+    label(
+      ctx,
+      pal,
+      token.name,
+      at.x,
+      at.y + radius + (token.side === 'foe' ? 10 : 12),
+      pal.text,
+      labelWidth
+    );
 }
 
+/**
+ * How wide a token's label may be, as a share of the arena's radius (user,
+ * 2026-10-20: "horned spider  660/660" ran into "Festus"). The tightest pair
+ * is the character at the middle and a lone party member at 0.52 in a fight
+ * (0.55 at rest), level with it, so two labels this wide keep 0.06 of the
+ * radius between them.
+ */
+const LABEL_WIDTH = 0.46;
+/** A label's line pitch: the 11 px face plus its 3 px halo, so one line's halo clears the next. */
+const LABEL_LINE_PX = 13;
+
+/** Centred text under a token in word-wrapped lines; returns the y under the last line. */
 function label(
   ctx: CanvasRenderingContext2D,
   pal: GamePalette,
   text: string,
   x: number,
   y: number,
-  colour: string
-): void {
+  colour: string,
+  maxWidth: number
+): number {
   ctx.font = `500 11px ${pal.font}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.lineWidth = 3;
   ctx.strokeStyle = hexA(pal.shade, 0.75);
-  ctx.strokeText(text, x, y);
   ctx.fillStyle = colour;
-  ctx.fillText(text, x, y);
+  const lines = wrapWords(text, (line) => ctx.measureText(line).width, maxWidth);
+  // Every halo first, then every line, so a halo never clips the descenders above it.
+  lines.forEach((line, index) => ctx.strokeText(line, x, y + index * LABEL_LINE_PX));
+  lines.forEach((line, index) => ctx.fillText(line, x, y + index * LABEL_LINE_PX));
+  return y + lines.length * LABEL_LINE_PX;
 }
 
 /** The arena's floor, rim, banner and facts; under the tokens. */
@@ -571,8 +596,9 @@ export function drawTokens(
     if (!p) continue;
     const role = roleOf(token, fighting);
     const radius = tokenRadius(token, disc, fighting);
+    const labelWidth = disc.r * LABEL_WIDTH;
     // In a fight a monster behind the target is its initials and gauge alone,
-    // and the target's name and hit points are one line under it.
+    // and the target's name and hit points are the lines under it.
     drawToken(
       ctx,
       pal,
@@ -580,11 +606,20 @@ export function drawTokens(
       p,
       radius,
       struck.get(token.key) ?? 0,
-      role !== 'behind' && role !== 'target'
+      role !== 'behind' && role !== 'target',
+      labelWidth
     );
     if (role === 'target') {
-      const line = token.points === null ? token.name : `${token.name}  ${token.points}`;
-      label(ctx, pal, line, p.x, p.y + radius + TARGET_RING_GAP + 3, pal.text);
+      const under = label(
+        ctx,
+        pal,
+        token.name,
+        p.x,
+        p.y + radius + TARGET_RING_GAP + 3,
+        pal.text,
+        labelWidth
+      );
+      if (token.points !== null) label(ctx, pal, token.points, p.x, under, pal.text, labelWidth);
     }
   }
 }
