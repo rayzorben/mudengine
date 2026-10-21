@@ -61,6 +61,7 @@ describe('what a portrait request says', () => {
       charm: 'hostile and rather unappealing',
       intellect: 'intelligent',
       willpower: 'has a worldly air',
+      stats: { health: 60, strength: 62, agility: 55, charm: 34, intellect: 51, willpower: 74 },
       gear: [{ slot: 'Weapon Hand', item: 'quarterstaff' }]
     });
   });
@@ -81,6 +82,13 @@ describe('what a portrait request says', () => {
       portraitFactsOf({ ...PROBE, inventory: { ...PROBE.inventory, listedAt: null } })
     ).toBeNull();
     expect(portraitFactsOf({ ...PROBE, progress: { ...PROBE.progress, charm: null } })).toBeNull();
+  });
+
+  it('names a trained stat point as new facts, though its phrase is unchanged', () => {
+    const a = portraitFactsOf(PROBE)!;
+    const b = portraitFactsOf({ ...PROBE, progress: { ...PROBE.progress, strength: 63 } })!;
+    expect(b.strength).toBe(a.strength);
+    expect(factsHash(b)).not.toBe(factsHash(a));
   });
 
   it('names one set of facts one way, whatever order the gear came in', () => {
@@ -119,11 +127,14 @@ describe('when a portrait is asked for', () => {
       say: (message) => ownSaid.push(message)
     });
   };
-  /** Until `done` holds, or fails the test after a second. */
+  /**
+   * Polls `done` and fails the test after four seconds, inside vitest's default five. One second
+   * was too short for the disk under the full suite's load.
+   */
   const until = async (done: () => boolean): Promise<void> => {
-    const deadline = Date.now() + 1000;
+    const deadline = Date.now() + 4000;
     while (!done()) {
-      if (Date.now() > deadline) throw new Error('waited a second for the keeper');
+      if (Date.now() > deadline) throw new Error('waited four seconds for the keeper');
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
   };

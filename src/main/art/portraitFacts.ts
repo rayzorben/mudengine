@@ -1,6 +1,6 @@
 /**
  * What a portrait request says about the character (todo 20261019-0931-01):
- * race and class, the look's phrase for each of the six stats, gender, hair
+ * race and class, the look's phrase and the number for each of the six stats, gender, hair
  * and eyes where the look said them, and what is worn where a listing printed
  * the slot. Never the name, and never the wounds: health moves all the time
  * and each change would be a new drawing against the server's ten an hour.
@@ -22,10 +22,13 @@ export function portraitFactsOf(state: CharacterState): PortraitFacts | null {
   if (race === null || className === null || appearance === null) return null;
   if (inventory.listedAt === null) return null;
   const phrases: Partial<Record<LookStat, string>> = {};
+  const stats: Partial<Record<LookStat, number>> = {};
   for (const stat of LOOK_STATS) {
-    const phrase = bandOf(stat, progress[stat]);
-    if (phrase === null) return null;
+    const value = progress[stat];
+    const phrase = bandOf(stat, value);
+    if (value === null || phrase === null) return null;
     phrases[stat] = phrase;
+    stats[stat] = value;
   }
   const gear: PortraitGear[] = inventory.items
     // A slot guessed from the realm's data is not one the listing printed, and
@@ -43,6 +46,7 @@ export function portraitFactsOf(state: CharacterState): PortraitFacts | null {
     ...(appearance.hair === null ? {} : { hair: hairWords(appearance.hair) }),
     ...(appearance.eyes === null ? {} : { eyes: appearance.eyes }),
     ...(phrases as Record<LookStat, string>),
+    stats: stats as Record<LookStat, number>,
     gear
   };
 }
