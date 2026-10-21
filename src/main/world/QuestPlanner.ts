@@ -479,8 +479,19 @@ export class QuestPlanner {
         hunts.push(way);
         cursor = to;
       }
+      // The stoppers are bought below, at the counter least off the first casting room (`supplyFor`).
       const towards = (stoppers: readonly number[]): Plan =>
-        plan(this.navigable, odds, cursor, at.room, this.quietened(traveller, stoppers));
+        plan(
+          this.navigable,
+          odds,
+          cursor,
+          at.room,
+          this.quietened(traveller, stoppers),
+          {},
+          {
+            stoppers: false
+          }
+        );
       const first = towards(inHand);
       if (first.kind === 'refused') {
         reachable = false;
@@ -504,9 +515,7 @@ export class QuestPlanner {
             if (!this.worthNaming(hazard)) continue;
             if (this.stopperOf(hazard.id, carrying, [...supplies, ...spent]) !== undefined)
               continue;
-            const before =
-              this.firstCasting(way.steps, hazard.id) ?? way.steps.at(-1)?.to ?? at.room;
-            const supply = this.supplyFor(hazard, from, before, carrying, traveller);
+            const supply = this.supplyFor(hazard, from, way.steps, carrying, traveller);
             if (supply === undefined) continue;
             bought.push(supply);
             spent.push(supply.id);
@@ -675,13 +684,6 @@ export class QuestPlanner {
     };
   }
 
-  /** The first room on the way that casts the spell, where a supply must be in hand by. */
-  private firstCasting(steps: readonly RouteStep[], spell: number): RoomId | undefined {
-    return steps.find(
-      (step) => step.scatter === undefined && this.rooms.get(step.to)?.spell === spell
-    )?.to;
-  }
-
   /**
    * The name of a stopper already in hand: in the pack, or on a `Get` row of
    * an earlier leg of the same plan. Undefined where the walk would meet the
@@ -699,9 +701,9 @@ export class QuestPlanner {
   }
 
   /**
-   * The stopper to buy for a leg, as a `Get` row: of every item the realm
-   * says stops the spell, the one whose counter is least off this leg
-   * (`buyingPlaces`, the petrol-station price), with how many
+   * The stopper to buy for a leg, as a `Get` row: the engine's choice of
+   * item and counter (`PlanRealm.stopperPlace`, least off the way to the
+   * first room casting the spell), with how many
    * (`tuning.world.hazardSupplyCount` for a thing that is spent, one for a
    * thing that is not). Undefined where no counter stocks any of them, and
    * the snag then says what it would have taken.
@@ -709,25 +711,17 @@ export class QuestPlanner {
   private supplyFor(
     hazard: RouteHazard,
     from: RoomId,
-    to: RoomId,
+    steps: readonly RouteStep[],
     carrying: readonly number[] | null,
     traveller: Traveller
   ): PlanItem | undefined {
-    const stoppers = this.catalogue.stoppersOf(hazard.id);
-    const place = this.index.stockingPlaces(
-      stoppers.map((item) => item.id),
-      from,
-      to,
-      traveller
-    )[0];
-    const item = place === undefined ? undefined : stoppers.find((each) => each.id === place.item);
-    if (place === undefined || item === undefined) return undefined;
-    const at = this.planPlace(roomId(place.map, place.room));
-    const spent = item.uses !== undefined && item.uses > 0;
+    const place = this.navigable.stopperPlace(hazard.id, from, steps, traveller);
+    if (place === null) return undefined;
+    const at = this.planPlace(place.room);
     return {
-      id: item.id,
-      name: item.name,
-      held: packHolds(carrying, item.id),
+      id: place.item.id,
+      name: place.item.name,
+      held: packHolds(carrying, place.item.id),
       hand: false,
       source: {
         how: 'buy',
@@ -735,7 +729,7 @@ export class QuestPlanner {
         ...(at === undefined ? {} : { at }),
         detour: place.detour
       },
-      ...(spent ? { count: tuning().world.hazardSupplyCount } : {}),
+      ...(place.item.spent ? { count: tuning().world.hazardSupplyCount } : {}),
       stops: hazard.spell
     };
   }

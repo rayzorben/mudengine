@@ -3463,6 +3463,7 @@ export class Router {
          * and what stops it are still worth saying.
          */
         share: step.hazard ?? null,
+        ...(hazard.damage === undefined ? {} : { damage: hazard.damage }),
         unread: hazard.unread === true,
         summons: hazard.summons === true,
         relocates: hazard.relocates === true,

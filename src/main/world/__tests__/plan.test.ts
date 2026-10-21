@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import type { NavigationOracle } from '../../../shared/navigation';
 import type { FightOdds, Route, RouteStep } from '../../../shared/world';
+import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { boughtOffer, leg, plan, type PlanRealm } from '../navigation/plan';
 import type { ItemSource } from '../navigation/sources';
@@ -66,7 +67,8 @@ const realm: PlanRealm = {
   standing: () => [],
   roomName: (room) => room,
   keysNamed: () => [1, 2],
-  itemName: (item) => KEYS[item]
+  itemName: (item) => KEYS[item],
+  stopperPlace: () => null
 };
 const odds = (fight: FightOdds, purse: boolean | null = true): NavigationOracle => ({
   fight: () => fight,
@@ -187,6 +189,88 @@ describe('a plan made whole before the first step', () => {
     const { survivalCost } = tuning().world;
     const far = 5 + survivalCost + 10;
     expect(killed(plan(ogreOrTroll(far), ogreLoses, 'here', 'goal', nobody))).toBe('ogre');
+  });
+});
+
+/* Todo 20261021-1200-01: the Silver River without a raft. */
+describe('a way through a room spell an item stops', () => {
+  const RAFT = { id: 690, name: 'log raft' };
+  /** The engine's pick, pinned to the counter least off the way. */
+  const PLANNED = { ...RAFT, at: 'launch' };
+  const river = (keys: readonly number[]): Route => ({
+    steps: [step('here', 'water')],
+    cost: 5,
+    blocked: false,
+    hazards: [
+      {
+        id: 753,
+        spell: 'river damage',
+        rooms: 1,
+        share: 0.12,
+        damage: 15,
+        unread: false,
+        summons: false,
+        relocates: false,
+        needs: keys.includes(690) ? [] : [RAFT],
+        needsSpell: []
+      }
+    ]
+  });
+  const wet: PlanRealm = {
+    ...realm,
+    route: (from, to, traveller: Traveller) =>
+      to === 'water' ? river(traveller.keys ?? []) : way(from, to),
+    sources: (item): ItemSource[] => (item === 690 ? [{ kind: 'buy', room: 'launch' }] : []),
+    keysNamed: () => [],
+    itemName: (item) => (item === 690 ? 'log raft' : undefined),
+    stopperPlace: (spell) =>
+      spell === 753
+        ? { item: { ...RAFT, spent: false }, room: 'launch', shop: 'Boat Launch', detour: 0 }
+        : null
+  };
+
+  it('buys the raft at the launch before the walk, and the walk then wants nothing', () => {
+    const made = plan(wet, odds(WON), 'here', 'water', nobody);
+    expect(made.kind).toBe('plan');
+    const acts = made.kind === 'plan' ? made.steps.filter((s) => s.kind !== 'walk') : [];
+    expect(acts).toEqual([{ kind: 'buy', item: PLANNED, room: 'launch' }]);
+    const last = made.kind === 'plan' ? made.steps.at(-1) : undefined;
+    expect(last?.kind === 'walk' && last.route.hazards?.[0]?.needs).toEqual([]);
+  });
+
+  it('refuses the leg naming the spell and the raft, offering the way with it bought', () => {
+    const walked = leg(wet, odds(WON), 'here', 'water', nobody);
+    expect(walked.blocked).toBe(true);
+    expect(walked.reason).toBe(
+      t('navigation.needsStopper', { spell: 'river damage', items: 'log raft' })
+    );
+    expect(walked.unlocks?.needs).toEqual([PLANNED]);
+    expect(walked.unlocks?.hazards?.[0]?.needs).toEqual([RAFT]);
+    // Carrying one, the walk is the router's own route.
+    expect(leg(wet, odds(WON), 'here', 'water', { keys: [690], packKnown: true }).blocked).toBe(
+      false
+    );
+  });
+
+  it('refuses for the purse where the raft cannot be paid for, and a counter across the water', () => {
+    const made = plan(wet, odds(WON, false), 'here', 'water', nobody);
+    expect(made).toEqual({ kind: 'refused', refusals: [{ kind: 'purse', item: PLANNED }] });
+    const beyond: PlanRealm = {
+      ...wet,
+      route: (from, to, traveller: Traveller) =>
+        to === 'water' || to === 'docks' ? river(traveller.keys ?? []) : way(from, to),
+      sources: (): ItemSource[] => [{ kind: 'buy', room: 'docks' }],
+      stopperPlace: () => ({
+        item: { ...RAFT, spent: false },
+        room: 'docks',
+        shop: 'Albion Docks',
+        detour: 0
+      })
+    };
+    expect(plan(beyond, odds(WON), 'here', 'water', nobody)).toEqual({
+      kind: 'refused',
+      refusals: [{ kind: 'out-of-reach', item: { ...RAFT, at: 'docks' } }]
+    });
   });
 });
 

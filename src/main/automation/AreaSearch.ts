@@ -166,6 +166,7 @@ export class AreaSearch implements SessionModule {
         steps: plan.steps,
         lose: names(plan.lose),
         unread: names(plan.unread),
+        hazard: hazardsOf(plan, names),
         behind: names(plan.behind),
         stranded: names(plan.stranded)
       }
@@ -442,4 +443,18 @@ export class AreaSearch implements SessionModule {
     });
     return why;
   }
+}
+
+/** The rooms left out for their spell, folded per spell for the dialog. */
+function hazardsOf(
+  plan: AreaPlan,
+  names: (rooms: readonly RoomId[]) => string[]
+): Extract<AreaSearchPreview['plan'], { rooms: number }>['hazard'] {
+  const bySpell = new Map<string, { items: string[]; rooms: RoomId[] }>();
+  for (const { room, spell, items } of plan.hazard) {
+    const seen = bySpell.get(spell) ?? { items, rooms: [] };
+    seen.rooms.push(room);
+    bySpell.set(spell, seen);
+  }
+  return [...bySpell].map(([spell, { items, rooms }]) => ({ spell, items, rooms: names(rooms) }));
 }

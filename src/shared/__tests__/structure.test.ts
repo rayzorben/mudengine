@@ -64,13 +64,15 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the rest and poison comments, condensed as the fight signs came (todo 131).
   // Lowered by the realm's word for its data, out whole (`RealmWordWatch`), as the marks' book came (todo 143).
   // Lowered by the blessings' deps on one line, as the room look came (todo 20261020-2015-01).
-  'src/main/session/SessionManager.ts': 3348,
+  // Lowered by the rest comments, condensed as the river's stoppers came (todo 20261021-1200-01).
+  'src/main/session/SessionManager.ts': 3344,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
   // Lowered by the room's own fields on one line, as the protected room came (todo 87).
   // Lowered by `banks`, one filter over `counters` (todo 70).
   // Lowered by the draw count's comment, one line as `hasWayIn` came (todo 20261019-1059-01).
+  // Lowered by the exits' comment, condensed as `stoppersOf` came (todo 20261021-1200-01).
   'src/main/world/WorldGraph.ts': 2365,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).

@@ -38,6 +38,8 @@ export interface NavigationParts {
         | 'item'
         | 'namedExitItems'
         | 'withinSteps'
+        | 'stoppersOf'
+        | 'stockingPlaces'
       >
     | undefined;
   tracker: Pick<CharacterTracker, 'current'>;

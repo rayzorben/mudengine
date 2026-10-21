@@ -86,11 +86,13 @@ function travel(
       travellerNow: vi.fn(),
       lapTraveller: vi.fn(),
       askCountersFor: vi.fn(),
-      findStop: vi.fn(),
+      findStop: vi.fn(() => 'unplaced'),
       shun: vi.fn(),
       boughtTo: vi.fn(() => null),
-      priceAt: vi.fn(() => null)
+      priceAt: vi.fn(() => null),
+      legsThrough: vi.fn(() => null)
     },
+    roomHazards: { stoppersAlong: vi.fn(() => []), counterFor: vi.fn(() => null) },
     queue: {
       enqueue: (intent) => {
         sent.push(intent.command);
@@ -123,7 +125,11 @@ function travel(
       place: null
     },
     combat: { willFight: true, alsoFight: vi.fn(), stopFighting: vi.fn() },
-    supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn() },
+    supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn(), fetch: vi.fn() },
+    remotes: {
+      stoppers: { settle: vi.fn(), askWealth: vi.fn(), purseOf: vi.fn(), forget: vi.fn() },
+      ask: vi.fn(() => true)
+    },
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },
     recoverGear: { busy: false, deciding: () => false },

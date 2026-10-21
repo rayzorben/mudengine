@@ -49,7 +49,11 @@ import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
 import { PartyWait } from './PartyWait';
 import { KeyBuying } from './KeyBuying';
+import { StopperOutfit, type OutfitVerdict, type StopperOutfitParts } from './StopperOutfit';
+import type { Remotes } from '../automation/Remotes';
+import type { RoomHazards } from './RoomHazards';
 import { packHolds } from '../../shared/quests';
+import { playerKey } from '../../shared/players';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
 import type { CarriedRoute } from '../../shared/underway';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
@@ -165,7 +169,10 @@ export interface TravelParts {
     | 'shun'
     | 'boughtTo'
     | 'priceAt'
+    | 'legsThrough'
   >;
+  /** A room's spell against the character: what a way wants carried, and where it is sold. */
+  readonly roomHazards: Pick<RoomHazards, 'stoppersAlong' | 'counterFor'>;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly walker: Pick<
     Walker,
@@ -187,7 +194,9 @@ export interface TravelParts {
     | 'place'
   >;
   readonly combat: Pick<AutoCombat, 'willFight' | 'alsoFight' | 'stopFighting'>;
-  readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon'>;
+  readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon' | 'fetch'>;
+  /** The leader's question to each member about a room's spell on the way, and `@do` (todo 20261021-1200-01). */
+  readonly remotes: Pick<Remotes, 'ask'> & { stoppers: StopperOutfitParts['stoppers'] };
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
   readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
@@ -253,6 +262,8 @@ export class Travel implements SessionModule {
   private readonly loops: TravelParts['loops'];
   private readonly combat: TravelParts['combat'];
   private readonly supplies: TravelParts['supplies'];
+  private readonly remotes: TravelParts['remotes'];
+  private readonly roomHazards: TravelParts['roomHazards'];
   private readonly trainLevel: TravelParts['trainLevel'];
   private readonly outgrown: TravelParts['outgrown'];
   private readonly recoverGear: TravelParts['recoverGear'];
@@ -448,6 +459,8 @@ export class Travel implements SessionModule {
   private readonly partyWait: PartyWait;
   /** Auto-Rest put back on at each walk, loop, arrival and connection (todo 148). */
   private readonly autoRest: AutoRestBack;
+  /** Everyone walking a way carries what stops its room spells first. See `StopperOutfit`. */
+  private readonly outfit: StopperOutfit;
 
   constructor(
     parts: TravelParts,
@@ -461,6 +474,8 @@ export class Travel implements SessionModule {
     this.loops = parts.loops;
     this.combat = parts.combat;
     this.supplies = parts.supplies;
+    this.remotes = parts.remotes;
+    this.roomHazards = parts.roomHazards;
     this.trainLevel = parts.trainLevel;
     this.outgrown = parts.outgrown;
     this.recoverGear = parts.recoverGear;
@@ -493,6 +508,61 @@ export class Travel implements SessionModule {
         }),
       notice: (message) => this.session.notice(message, 'key-buy')
     });
+    this.outfit = new StopperOutfit({
+      stoppers: this.remotes.stoppers,
+      counterFor: (items) => this.roomHazards.counterFor(items),
+      priceAt: (name, room) => this.errands.priceAt(name, room),
+      fetch: (row, state) => this.supplies.fetch(row, state),
+      fetching: () => this.supplies.current !== null,
+      give: (item, who) =>
+        this.queue.enqueue({
+          command: `give ${item} to ${who}`,
+          priority: 'probe',
+          coalesceKey: `give:${playerKey(who)}`,
+          decision: 'party-stoppers',
+          expiresAt: Date.now() + tuning().remotes.replyMs,
+          reason: t('automation.stoppers.reasonGive', { who, item })
+        }),
+      tellDo: (who, command) =>
+        this.remotes.ask(who, 'do', this.tracker.current, command, 'party-stoppers'),
+      walkTo: (room) => this.walkLegTo(room),
+      walking: () => this.walker.walking,
+      notice: (message, decision) => this.session.notice(message, decision),
+      decided: (decision) => this.session.decided(decision)
+    });
+  }
+
+  /** The outfit's clocks and errand, each state (`StopperOutfit.onCharacter`). */
+  outfitTick(state: CharacterState): void {
+    this.outfit.onCharacter(state);
+  }
+
+  /** A hand-over the server echoed (`StopperOutfit.onBlock`). */
+  outfitBlock(block: Block): void {
+    this.outfit.onBlock(block);
+  }
+
+  /**
+   * Before a route or a lap: what its rooms' spells want carried, and whether
+   * everyone walking it has one (`StopperOutfit.consider`). Null where the
+   * walk may go; else the outfit has the character and `retry` is called
+   * once it is done.
+   */
+  private outfitFor(rooms: readonly RoomId[], self: boolean, retry: () => void): OutfitVerdict {
+    const way = this.roomHazards.stoppersAlong(rooms);
+    return this.outfit.consider(way, this.tracker.current, self, retry);
+  }
+
+  /** A lap's rooms, through every stop from here, as it would walk them (`legsThrough`); null unplanned. */
+  private lapRooms(loop: Loop): RoomId[] | null {
+    const stops: RoomId[] = [];
+    for (const stop of loop.stops) {
+      const found = this.errands.findStop(splitStop(stop));
+      if (typeof found === 'string') return null;
+      stops.push(roomId(found.map, found.room));
+    }
+    const legs = this.errands.legsThrough(stops, true);
+    return legs === null ? null : legs.flatMap((leg) => leg.steps.map((step) => step.to));
   }
 
   private get automationConfig(): AutomationConfig {
@@ -515,6 +585,7 @@ export class Travel implements SessionModule {
     this.saidWaitingToBePlaced = false;
     this.autoRest.backOn('connected');
     this.keyBuying.reset();
+    this.outfit.reset();
   }
 
   /**
@@ -1287,7 +1358,8 @@ export class Travel implements SessionModule {
       this.hostTrips.busy ||
       this.areaSearch.busy ||
       this.itemErrand.running ||
-      this.questRunner.running
+      this.questRunner.running ||
+      this.outfit.busy
     );
   }
 
@@ -2192,9 +2264,27 @@ export class Travel implements SessionModule {
       this.loops.stop(t('session.loop.stoppedForRoute'));
     }
     this.errandOwes = null;
+    const last = route.steps.at(-1);
+    /*
+     * The party first (todo 20261021-1200-01): a member without a raft is
+     * bought one and handed it, or the walk is refused naming them. This
+     * character's own is the plan's (`leg` fetches it first). The route is
+     * owed back and planned again from wherever the outfitting ends.
+     */
+    const outfitted = this.outfitFor(
+      route.steps.map((step) => step.to),
+      false,
+      () => this.walkOnAfterErrand()
+    );
+    if (outfitted.kind === 'refused') return outfitted.why;
+    if (outfitted.kind === 'held') {
+      if (last !== undefined) {
+        this.errandOwes = { to: last.to, name: last.name, run, crossing: crossedWords(route) };
+      }
+      return null;
+    }
     const errand = this.supplies.considerBeforeRoute(this.tracker.current);
     if (errand === null) return this.walkOrBuy(route, run);
-    const last = route.steps.at(-1);
     if (last !== undefined) {
       this.errandOwes = { to: last.to, name: last.name, run, crossing: crossedWords(route) };
     }
@@ -2446,6 +2536,21 @@ export class Travel implements SessionModule {
     this.journey = null;
     this.errandOwes = null;
     this.keyBuying.drop();
+    /*
+     * A lap is refused at its start, once, for a stopper anyone walking it
+     * lacks (the user, 2026-10-21): this character's own copy is bought with
+     * the members', and the lap is asked for again once everyone has one.
+     */
+    const rooms = this.lapRooms(loop);
+    const outfitted: OutfitVerdict =
+      rooms === null
+        ? { kind: 'go' }
+        : this.outfitFor(rooms, true, () => {
+            const again = this.startLoop(loop);
+            if ('refused' in again) this.session.notice(again.refused, 'loop-advance');
+          });
+    if (outfitted.kind === 'refused') return { refused: outfitted.why };
+    if (outfitted.kind === 'held') return { started: true };
     const refused = this.autoRest.around('loop', () =>
       this.loops.start(loop, this.tracker.current)
     );
@@ -2644,6 +2749,8 @@ export class Travel implements SessionModule {
     // And the choice to cross on the way there: the next journey asks again.
     this.crossing = null;
     this.supplies.abandon(t('session.supplies.abandonedDied'));
+    // And the party's outfitting: the counter and the members are elsewhere now.
+    this.outfit.abandon(t('automation.stoppers.abandonedDied'));
     // And the walk to a trainer, on exactly the same terms (todo 21).
     this.trainLevel.abandon();
     // And the walk to the ganghouse or a counter with outgrown gear (todo 12).

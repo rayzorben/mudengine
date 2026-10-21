@@ -343,6 +343,20 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     expect(sent).toEqual(['/Rand {no}']);
   });
 
+  /* Todo 20261021-1200-01: which of the rows asked the listed pack holds, in the asker's order. */
+  it('answers @stoppers with the first row carried, {no} for none, and says so for an unlisted pack', () => {
+    const listed = { ...EMPTY_CHARACTER.inventory, listedAt: 1, rows: [5, 1181] };
+    asked('@stoppers 690,691,1181', who({ inventory: listed }));
+    expect(sent).toEqual(['/Rand {yes: 1181}']);
+    sent.length = 0;
+    asked('@stoppers 690,691', who({ inventory: listed }));
+    expect(sent).toEqual(['/Rand {no}']);
+    sent.length = 0;
+    asked('@stoppers 690', who());
+    expect(sent).toEqual([]);
+    expect(notices).toContain(t('automation.remotes.stoppersUnlisted', { from: 'Rand' }));
+  });
+
   it("answers @settings with this client's switches, on then off", () => {
     asked('@settings', who());
     expect(sent).toHaveLength(2);

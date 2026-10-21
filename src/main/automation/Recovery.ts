@@ -112,8 +112,10 @@ import {
   type PartyConfig
 } from '../../shared/config';
 import type { MobRule } from '../../shared/mobRules';
+import type { SafetyDecision } from '../../shared/automation';
 import { tuning } from '../app/tuning';
 import { holdsMeditate } from '../../shared/abilities';
+import { roomAddress } from '../../shared/world';
 import type { SessionModule } from './Module';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 
@@ -198,6 +200,9 @@ export type RecoverySettings = Pick<AutomationConfig, 'health' | 'enabled' | 'pa
 /** Every rest or meditate beside a resting leader is one setting's decision. */
 const LEADER: DecisionKind = 'rest-with-leader';
 
+/** The key a rest refused in a room nobody has placed is said once under. */
+const UNPLACED = '?';
+
 export class Recovery implements SessionModule {
   private state: CharacterState | null = null;
   /**
@@ -276,6 +281,8 @@ export class Recovery implements SessionModule {
    * the character's situation, not a lesson about the realm.
    */
   private saidPoisoned = false;
+  /** The room a rest was refused in for its spell, said once per room. */
+  private saidHurtsIn: string | null = null;
   /**
    * The verb this module last proposed and how long an answer to it is still
    * expected. A refusal is honoured only against this: the server answers in
@@ -308,6 +315,15 @@ export class Recovery implements SessionModule {
       beforeRest?(state: CharacterState, restTo: number): void;
       /** A fight the state stopped showing (`fightSigned`); omitted, the state alone. */
       signs?: FightSigns;
+      /**
+       * The room's own spell that hurts the character as it stands, named,
+       * or null (`RoomHazards.hurtsHere`): no rest is taken where the room takes
+       * more than the rest gives back (todo 20261021-1200-01, Rayzor rested
+       * four times in the Silver River and died).
+       */
+      roomHurts?(state: CharacterState): string | null;
+      /** A rest refused for the room, for the trace. */
+      decided?(decision: SafetyDecision): void;
     } = {}
   ) {}
 
@@ -351,6 +367,7 @@ export class Recovery implements SessionModule {
     this.needed = null;
     this.refused.clear();
     this.saidPoisoned = false;
+    this.saidHurtsIn = null;
     this.proposed = null;
   }
 
@@ -505,6 +522,29 @@ export class Recovery implements SessionModule {
     if (countThreats(state, this.mobRules) > 0) return;
 
     const restWanted = this.wantsRest(hp, hpMax) && !this.refused.has('rest');
+    /*
+     * Never in a room whose own spell hurts and nothing carried stops: the
+     * rest's three health ticks lose to the river's fifteen a tick, and the
+     * river takes them sitting as standing. Said once per room; the way out
+     * is `RestAway`'s where the client is taking the character somewhere,
+     * and the player's where it is not.
+     */
+    const hurts = this.events.roomHurts?.(state) ?? null;
+    if (hurts !== null && (restWanted || this.wantsMana(mana, manaMax))) {
+      const room = roomAddress(state.room) ?? UNPLACED;
+      if (this.saidHurtsIn !== room) {
+        this.saidHurtsIn = room;
+        this.events.notice?.(t('automation.recovery.restHurts', { spell: hurts }), 'rest-health');
+        this.events.decided?.({
+          at: Date.now(),
+          action: 'rest',
+          because: t('automation.recovery.becauseHurts', { spell: hurts }),
+          acted: false,
+          refused: t('automation.recovery.refusalHurts')
+        });
+      }
+      return;
+    }
     // A rest the poison refuses does not stand in mana's way.
     const restTakes = restWanted && !this.restIsPoisoned(state);
     /*

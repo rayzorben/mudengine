@@ -24,6 +24,8 @@ import {
   parseRemoteCall,
   isRemoteTalk,
   parseRemoteReply,
+  formatStoppers,
+  readStoppersAsked,
   formatRoomAddress,
   parseRoomAddress,
   isExtended,
@@ -117,6 +119,20 @@ describe('reading another client’s reply', () => {
       resting: false
     });
     expect(parseRemoteReply('{ok}')).toEqual({ kind: 'ok' });
+  });
+
+  /* `@have`'s captured pair, `@stoppers`' id in the same frame, and `@wealth`'s copper (todo 20261021-1200-01). */
+  it('reads {no}, {yes: n} and {n copper}', () => {
+    expect(parseRemoteReply('{no}')).toEqual({ kind: 'no' });
+    expect(parseRemoteReply('{yes: 1}')).toEqual({ kind: 'yes', figure: 1 });
+    expect(parseRemoteReply('{yes: 690}')).toEqual({ kind: 'yes', figure: 690 });
+    expect(parseRemoteReply('{1234 copper}')).toEqual({ kind: 'wealth', copper: 1234 });
+    expect(formatStoppers([5, 1181, 690], [690, 691, 1181])).toBe('{yes: 690}');
+    expect(formatStoppers([5], [690])).toBe('{no}');
+    expect(formatStoppers(null, [690])).toBeNull();
+    expect(readStoppersAsked('690, 691,1181')).toEqual([690, 691, 1181]);
+    expect(readStoppersAsked('raft')).toBeNull();
+    expect(readStoppersAsked(null)).toBeNull();
   });
 
   /* The mana field is optional for the same reason it is in the status line. */

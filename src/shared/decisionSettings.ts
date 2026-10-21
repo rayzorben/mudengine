@@ -542,6 +542,8 @@ export const DECISION_SETTINGS = {
     'automation.party.manageParty'
   ],
   'remote-moves': ['automation.remotes.enabled', 'automation.remotes.party'],
+  // The leader asks each member what they carry against a room's spell on the way, and outfits them.
+  'party-stoppers': ['automation.remotes.enabled', 'automation.remotes.party'],
   'route-keep-out': ['automation.movement.keepOutOf'],
   'route-forcing': [
     'automation.movement.pickLocks',

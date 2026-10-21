@@ -124,6 +124,7 @@ import { areaSearchTrip, gearRecoveryTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
+import { RoomHazards } from './RoomHazards';
 import { droppedNotice } from './macros';
 import { MacroRunner } from './MacroRunner';
 import { roomNamed, walkTo } from './roomWalk';
@@ -431,6 +432,7 @@ export class SessionManager {
   /** Keeping the pack stocked. See `Supplies`. */
   readonly supplies: Supplies;
   private readonly remotes: Remotes;
+  private readonly roomHazards: RoomHazards;
   readonly statsBaseline: StatsBaseline;
   private readonly attendance: Attendance;
   private readonly afk: Afk;
@@ -544,6 +546,8 @@ export class SessionManager {
         notice
       }
     );
+    // A room's own spell against this character: a way's stoppers, a rest refused, a room walled.
+    this.roomHazards = new RoomHazards({ world, tracker: this.tracker, errands: this.errands });
     this.vocabulary = new Vocabulary(
       { tracker: this.tracker, errands: this.errands, world, words },
       {
@@ -893,13 +897,7 @@ export class SessionManager {
       },
       automation.spells,
       (name) => this.world?.spellNamed(name) ?? null,
-      /*
-       * The character's own side of the combat arithmetic, read at the point
-       * of use: the class is not known until a stat sheet has been read.
-       * `Vocabulary.family`, not the realm data's: this decides which formulas
-       * run, the server's, and the two differ on the shipped configuration
-       * (`Vocabulary.noteFamily`).
-       */
+      // The class, read at use (a sheet names it), on the server's family (`Vocabulary.noteFamily`).
       () => this.errands.realmClass(),
       lore,
       (id) => this.world?.spellById(id) ?? null,
@@ -909,14 +907,13 @@ export class SessionManager {
     // Sitting down: the run is `emergency` and this `probe`, so under both it runs, then rests.
     this.recovery = new Recovery(automation, this.queue, {
       notice,
-      /*
-       * GreaterMUD refuses `rest` while poisoned unless immune (`RestCommand.cs:28`), as a
-       * Kang is by race (todo 22). The family, not the database: it is the server's branch,
-       * so a MajorMUD server on a converted GreaterMUD realm has none; null is not `greatermud`.
-       */
+      // GreaterMUD refuses `rest` while poisoned unless immune (`RestCommand.cs:28`; a Kang
+      // is, todo 22): the server's branch, so a MajorMUD server on its realm has none.
       poisonRefusesRest: () =>
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family),
       beforeRest: (state, restTo) => this.restSpell.beforeRest(state, restTo),
+      roomHurts: (state) => this.roomHazards.hurtsHere(state),
+      decided: reports.decided,
       signs
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
@@ -1072,7 +1069,12 @@ export class SessionManager {
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
       ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light },
       ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot },
-      ...{ deposit: this.deposit, questWatch: this.questWatch, signs }
+      ...{
+        deposit: this.deposit,
+        questWatch: this.questWatch,
+        signs,
+        roomHazards: this.roomHazards
+      }
     });
     const config = () => this.automationConfig;
     const charges = (this.charges = new ItemCharges(this.queue, () => this.world, config));
@@ -1180,13 +1182,8 @@ export class SessionManager {
       },
       { ...reports, progress: (progress) => this.sink.questRun?.(progress) }
     );
-    /*
-     * And where a rest is taken: not in a room that makes monsters on a short
-     * clock, when a neighbour the realm holds no lair in can be looked into
-     * and found empty. The clock is the realm's own (`Rooms.Delay`, read the
-     * way `huntingGrounds` reads it); the neighbours are the room's exits
-     * into rooms with no lair and no resident, plain exits first.
-     */
+    // And where a rest is taken: next door to a lair on a short clock (`Rooms.Delay`, as
+    // `huntingGrounds` reads it) or a room whose spell hurts, in a neighbour looked into first.
     this.restAway = new RestAway(
       automation,
       this.queue,
@@ -1194,6 +1191,7 @@ export class SessionManager {
         here: () => roomAddress(this.tracker.current.room),
         lairClock: (room) => this.errands.lairClock(room),
         neighbours: (room) => this.errands.neighbours(room),
+        roomHurts: (room) => this.roomHazards.roomHurts(room),
         moveInFlight,
         walking: () => this.walker.walking && this.walker.holding === null,
         looping: () => this.loops.progress.status === 'running',
@@ -1202,13 +1200,8 @@ export class SessionManager {
       },
       reports
     );
-    /*
-     * And the character points, on the one screen the queue stands down for.
-     * The driver is handed a write past the queue because the hold refuses
-     * every intent while the form is up, and the form is what it is typing
-     * into; its keystrokes are reported as the arbiter's are. Whether the room
-     * is a trainer's is the resolved room's own shop, as the bank's is below.
-     */
+    // And the character points, on the one screen the queue stands down for: the driver
+    // writes past the queue, since the hold refuses every intent while the form is up.
     this.statScreen = new StatScreen(
       automation.train,
       automation.enabled,
@@ -1511,7 +1504,8 @@ export class SessionManager {
         combat: this.combat,
         supplies: this.supplies,
         trainLevel: this.trainLevel,
-        ...{ outgrown: this.outgrown, recoverGear: this.recoverGear },
+        ...{ outgrown: this.outgrown, recoverGear: this.recoverGear, remotes: this.remotes },
+        roomHazards: this.roomHazards,
         ...{ hostTrips: this.hostTrips, areaSearch: this.areaSearch },
         hunt: this.hunt,
         itemErrand: this.itemErrand,
@@ -2688,6 +2682,7 @@ export class SessionManager {
     this.light.onBlock(block, this.tracker.current);
     this.supplies.onBlock(block, this.tracker.current);
     this.remotes.onBlock(block, this.tracker.current);
+    this.travel.outfitBlock(block);
     this.afk.onBlock(block, this.tracker.current);
     /*
      * The spellbook ask correcting itself (a wrong-book refusal names the right
@@ -2925,6 +2920,7 @@ export class SessionManager {
       // Telling a leader this character sat down or stood up; and, leading, whom to wait for.
       this.remotes.onCharacter(state);
       this.travel.watchParty(state);
+      this.travel.outfitTick(state);
       // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);

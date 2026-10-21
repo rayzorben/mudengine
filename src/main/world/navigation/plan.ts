@@ -4,9 +4,12 @@
  * it (`sources.ts`) in the order they can be had, so a key behind an earlier
  * key's door comes after it; the fights it takes, each carrying this
  * character's odds and never a reason to refuse (the user, 2026-10-03); and
- * the rooms a way wants empty, cleared. A route that crosses a wall is never
- * a way, and every leg is planned before the first is walked, so a one-way
- * move is only planned where the plan from its far side exists.
+ * the rooms a way wants empty, cleared; and what a room's own spell on the
+ * way wants carried (`stoppersWanted`), bought before the walk, since a way
+ * down the Silver River without a raft is fifteen hit points a tick (todo
+ * 20261021-1200-01). A route that crosses a wall is never a way, and every
+ * leg is planned before the first is walked, so a one-way move is only
+ * planned where the plan from its far side exists.
  * `mudengine-world` › *There is one navigation engine*.
  */
 import { t } from '../../app/i18n';
@@ -29,12 +32,24 @@ import {
   walkable,
   type FightOdds,
   type RoomId,
-  type Route
+  type Route,
+  type RouteHazard,
+  type RouteStep
 } from '../../../shared/world';
 import type { RouteOptions, Traveller } from '../Router';
 import { routePrices } from '../../../shared/walkChoices';
 import type { ItemSource } from './sources';
 import { standingRequirement } from './exitFamily';
+import { hurts } from './stoppers';
+
+/** Which stopper a way buys for a room spell, and at which counter (`PlanRealm.stopperPlace`). */
+export interface StopperPlace {
+  item: { id: number; name: string; spent: boolean };
+  room: RoomId;
+  shop: string;
+  /** What the counter is off the way, in moves. */
+  detour: number;
+}
 
 /** What the planner reads of the realm. */
 export interface PlanRealm {
@@ -54,6 +69,16 @@ export interface PlanRealm {
   keysNamed(): readonly number[];
   /** An item's name, for a reader. */
   itemName(item: number): string | undefined;
+  /**
+   * The stopper a way through `steps` buys for `spell`, at the counter least
+   * off the way to the first room casting it, or null where none is sold.
+   */
+  stopperPlace(
+    spell: number,
+    from: RoomId,
+    steps: readonly RouteStep[],
+    traveller: Traveller
+  ): StopperPlace | null;
 }
 
 /** Why a route is no way: the router's reason, or the walls it crosses in its own words. */
@@ -95,6 +120,77 @@ function keysWanted(
     if (held !== null && held.needs.length > 0) return held.needs;
   }
   return [];
+}
+
+/** Whether a fetch gets the stoppers a way wants first; a quest's plan buys its own (`QuestPlanner.supplyFor`). */
+export interface Fetching {
+  stoppers: boolean;
+}
+
+const FETCHES_ALL: Fetching = { stoppers: true };
+
+/** A room spell on a way that hurts (`hurts`) and that an item the pack lacks stops. */
+function hurtsWithout(hazard: RouteHazard): boolean {
+  return hazard.corridor === undefined && hazard.needs.length > 0 && hurts(hazard);
+}
+
+/**
+ * What a walkable way's room spells that hurt want carried that the pack
+ * lacks (`Route.hazards[].needs`, each spell's stoppers filtered against the
+ * pack by the router): one item per spell, since any one of its stoppers
+ * stops it. The one a counter least off the way sells, pinned to that
+ * counter (`stopperPlace`), else the first the realm names, so the refusal
+ * names it. The router already priced the way round: a way still through
+ * the river is one with no cheaper way round.
+ */
+function stoppersWanted(
+  realm: PlanRealm,
+  way: Route,
+  from: RoomId,
+  traveller: Traveller
+): PlannedItem[] {
+  const wanted = new Map<number, PlannedItem>();
+  for (const hazard of way.hazards ?? []) {
+    if (!hurtsWithout(hazard)) continue;
+    if (hazard.needs.some((item) => wanted.has(item.id))) continue;
+    const place = realm.stopperPlace(hazard.id, from, way.steps, traveller);
+    const item =
+      place === null
+        ? { id: hazard.needs[0]!.id, name: hazard.needs[0]!.name }
+        : { id: place.item.id, name: place.item.name, at: place.room };
+    wanted.set(item.id, item);
+  }
+  return [...wanted.values()];
+}
+
+/** The stoppers a walkable way still wants, in words, for the walk's refusal. */
+function stopperWords(direct: Route): string {
+  return (direct.hazards ?? [])
+    .filter(hurtsWithout)
+    .map((hazard) =>
+      t('navigation.needsStopper', {
+        spell: hazard.spell,
+        items: hazard.needs.map((item) => item.name).join(', ')
+      })
+    )
+    .join('; ');
+}
+
+/** The stoppers a leg's walks still want (`stoppersWanted`), each once. */
+function legStoppers(
+  realm: PlanRealm,
+  leg: Extract<Leg, { kind: 'leg' }>,
+  from: RoomId,
+  traveller: Traveller
+): PlannedItem[] {
+  const wanted = new Map<number, PlannedItem>();
+  for (const step of leg.steps) {
+    if (step.kind !== 'walk') continue;
+    for (const item of stoppersWanted(realm, step.route, from, traveller)) {
+      wanted.set(item.id, item);
+    }
+  }
+  return [...wanted.values()];
 }
 
 /**
@@ -276,10 +372,11 @@ export function plan(
   from: RoomId,
   to: RoomId,
   traveller: Traveller,
-  options: RouteOptions = {}
+  options: RouteOptions = {},
+  fetching: Fetching = FETCHES_ALL
 ): Plan {
   const direct = realm.route(from, to, traveller, options);
-  return planAfter(realm, oracle, direct, from, to, traveller);
+  return planAfter(realm, oracle, direct, from, to, traveller, fetching);
 }
 
 /**
@@ -301,7 +398,16 @@ export function leg(
   const made = planAfter(realm, oracle, direct, from, to, traveller);
   if (made.kind === 'refused') return refusedLeg(direct, planRefusalsWords(made.refusals, t));
   const keyed = keyedRoute(made);
-  if (keyed !== null) return { ...refusedLeg(direct, noWayWords(direct)), unlocks: keyed };
+  if (keyed !== null) {
+    // A walkable way that fetches first wants a stopper; a blocked one, its
+    // keys. The way's spells ride on the offer, so a reader can tick the
+    // stopper (`itemsWanted`): the plan's own last walk holds it and names none.
+    if (walkable(direct)) {
+      const unlocks = direct.hazards === undefined ? keyed : { ...keyed, hazards: direct.hazards };
+      return { ...refusedLeg(direct, stopperWords(direct)), unlocks };
+    }
+    return { ...refusedLeg(direct, noWayWords(direct)), unlocks: keyed };
+  }
   const fights = planFights(made);
   const fought = fights.length === 0 ? direct : { ...direct, fights };
   // Fetching nothing, the plan walked the direct route as it was. For a
@@ -424,12 +530,17 @@ function planAfter(
   direct: Route,
   from: RoomId,
   to: RoomId,
-  traveller: Traveller
+  traveller: Traveller,
+  fetching: Fetching = FETCHES_ALL
 ): Plan {
-  if (walkable(direct)) return finish(realm, oracle, from, to, traveller, [], 0, direct);
+  if (walkable(direct)) {
+    const stoppers = fetching.stoppers ? stoppersWanted(realm, direct, from, traveller) : [];
+    if (stoppers.length === 0) return finish(realm, oracle, from, to, traveller, [], 0, direct);
+    return planKeys(realm, oracle, from, to, traveller, stoppers);
+  }
   const needs = keysWanted(realm, from, to, traveller, direct);
   if (needs.length === 0) return { kind: 'refused', refusals: [noWay(direct)] };
-  return planKeys(realm, oracle, from, to, traveller, needs);
+  return planKeys(realm, oracle, from, to, traveller, needs, fetching);
 }
 
 /** The plan that fetches these keys, cheapest first, else in every order of a few. */
@@ -439,9 +550,10 @@ function planKeys(
   from: RoomId,
   to: RoomId,
   traveller: Traveller,
-  needs: readonly PlannedItem[]
+  needs: readonly PlannedItem[],
+  fetching: Fetching = FETCHES_ALL
 ): Plan {
-  const greedy = acquire(realm, oracle, from, to, traveller, needs, null);
+  const greedy = acquire(realm, oracle, from, to, traveller, needs, null, fetching);
   if (greedy.kind === 'plan' || needs.length > ORDERS_TRIED) return greedy;
   /*
    * The cheapest key first can lead past a one-way move that strands the next
@@ -479,7 +591,8 @@ function acquire(
   to: RoomId,
   traveller: Traveller,
   needs: readonly PlannedItem[],
-  order: readonly PlannedItem[] | null
+  order: readonly PlannedItem[] | null,
+  fetching: Fetching = FETCHES_ALL
 ): Plan {
   const held = [...(traveller.keys ?? [])];
   let at = from;
@@ -505,7 +618,10 @@ function acquire(
     const fetched = needs.length - wanted.length;
     const next = order === null ? wanted : wanted.filter((item) => item.id === order[fetched]?.id);
     for (const item of next) {
-      const sources = realm.sources(item.id);
+      // A stopper is pinned to the counter least off the way (`stopperPlace`).
+      const sources = realm
+        .sources(item.id)
+        .filter((source) => item.at === undefined || source.room === item.at);
       if (sources.length === 0) refuse({ kind: 'no-source', item });
       const reach = realm.sweep(at, new Set(sources.map((source) => source.room)), holding);
       for (const source of sources) {
@@ -535,19 +651,46 @@ function acquire(
       price: number;
       step: PlanStep;
     } | null = null;
+    // The stoppers a leg to a source wants first, fetched in a later round.
+    const stoppers: PlannedItem[] = [];
     for (const candidate of candidates) {
       const leg = walk(realm, oracle, at, candidate.source.room, holding);
-      if (leg.kind === 'leg') {
-        best = {
-          ...candidate,
-          leg,
-          price: leg.cost + sourceFights(candidate.source, candidate.step, holding)
-        };
-        break;
+      if (leg.kind === 'refused') {
+        refuse({ kind: 'out-of-reach', item: candidate.item });
+        continue;
       }
-      refuse({ kind: 'out-of-reach', item: candidate.item });
+      /*
+       * A leg across a room spell nothing held stops is no way to fetch
+       * anything (todo 20261021-1200-01): its stopper is wanted first where
+       * the realm gives one, so the raft is bought before the key across the
+       * water; a counter across the water is out of reach.
+       */
+      const crossed = fetching.stoppers ? legStoppers(realm, leg, at, holding) : [];
+      const fresh = crossed.filter(
+        (item) =>
+          !held.includes(item.id) &&
+          !wanted.some((each) => each.id === item.id) &&
+          !stoppers.some((each) => each.id === item.id)
+      );
+      if (crossed.length > 0) {
+        const unsourced = fresh.find((item) => realm.sources(item.id).length === 0);
+        if (unsourced !== undefined) refuse({ kind: 'no-source', item: unsourced });
+        else if (fresh.length === 0) refuse({ kind: 'out-of-reach', item: candidate.item });
+        else stoppers.push(...fresh);
+        continue;
+      }
+      best = {
+        ...candidate,
+        leg,
+        price: leg.cost + sourceFights(candidate.source, candidate.step, holding)
+      };
+      break;
     }
     if (best === null) {
+      if (stoppers.length > 0 && order === null) {
+        wanted = [...wanted, ...stoppers];
+        continue;
+      }
       return {
         kind: 'refused',
         refusals: wanted.map((item) => why.get(item.id) ?? { kind: 'out-of-reach', item })

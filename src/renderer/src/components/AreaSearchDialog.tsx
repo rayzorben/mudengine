@@ -77,6 +77,12 @@ export default function AreaSearchDialog({
             rooms: found.unread,
             say: (rooms: string) => t('areaSearch.leftUnread', { rooms })
           },
+          ...found.hazard.map((each) => ({
+            id: `hazard:${each.spell}`,
+            rooms: each.rooms,
+            say: (rooms: string) =>
+              t('areaSearch.leftHazard', { spell: each.spell, items: each.items.join(', '), rooms })
+          })),
           {
             id: 'behind',
             rooms: found.behind,
