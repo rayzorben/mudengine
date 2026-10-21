@@ -32,6 +32,8 @@ export interface MapRouteFinderProps {
   walk: WalkPager;
   /** Where the walk ends, for its last page. */
   walkingTo: string;
+  /** A key or a press on the finder: the hand is still on it (`useIdleReset`). */
+  onActivity?: () => void;
 }
 
 function MapRouteFinder({
@@ -41,7 +43,8 @@ function MapRouteFinder({
   finding,
   onDone,
   walk,
-  walkingTo
+  walkingTo,
+  onActivity
 }: MapRouteFinderProps) {
   const note = preview.planning ? (
     <div className="map-finder-note quiet">{t('cards.map.preview.planning')}</div>
@@ -68,7 +71,7 @@ function MapRouteFinder({
   ) : null;
   if (!finding && note === null) return null;
   return (
-    <div className="map-finder">
+    <div className="map-finder" onKeyDownCapture={onActivity} onPointerDownCapture={onActivity}>
       {finding && (
         <div className="map-finder-fields">
           <RoomField

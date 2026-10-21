@@ -11,7 +11,7 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { AutoCombat } from '../automation/AutoCombat';
-import type { CommandQueue, QueueRefusal } from '../automation/CommandQueue';
+import type { CommandQueue, Intent, QueueRefusal } from '../automation/CommandQueue';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Vocabulary } from './Vocabulary';
 
@@ -80,12 +80,15 @@ export class Claims {
    * held screen or no socket send nothing either, where reporting them asked
    * had `Locating` wait out its window to say *asked* about nothing.
    */
-  askWhereIAm(reason = t('session.loop.locateReason')): LocateAsk {
+  askWhereIAm(
+    reason = t('session.loop.locateReason'),
+    priority: Extract<Intent['priority'], 'probe' | 'user'> = 'probe'
+  ): LocateAsk {
     const word = this.vocabulary.locateWord;
     if (word === null) return { refused: 'unavailable' };
     const offered = this.queue.offer({
       command: word,
-      priority: 'probe',
+      priority,
       coalesceKey: 'loop-locate',
       expiresAt: Date.now() + tuning().session.locateExpiresMs,
       reason,

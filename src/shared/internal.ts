@@ -2802,6 +2802,13 @@ const TUNING_DEFAULTS = {
      */
     mapZoomSettleMs: 400,
     /**
+     * How long the Map card stays on a room the player picked in its finder,
+     * or a page turned to ahead of a walk, with no hand on the finder before
+     * it goes back to following the character. A picture held on a far room
+     * with the finder folded read as a map that had stopped updating.
+     */
+    mapFinderIdleMs: 60_000,
+    /**
      * How often a card redraws a running clock — the uptime readout, and how
      * long a loop has been going. A second, because that is the unit shown.
      */

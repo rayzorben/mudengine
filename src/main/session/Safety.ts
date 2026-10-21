@@ -80,6 +80,8 @@ export class Safety implements SessionModule {
    * server's own window, because that is the clock the alert is about.
    */
   private readonly pvpSaid = new Map<string, number>();
+  /** When each attacker's held-back alert was last written down, with the switch off. */
+  private readonly pvpRefused = new Map<string, number>();
   /** The last refusal reported, so it is said once rather than per status line. */
   private lastHangUpRefusal: string | null = null;
   /**
@@ -136,6 +138,7 @@ export class Safety implements SessionModule {
   /** On connect and on leaving the realm: what was said was said to the character that was. */
   reset(): void {
     this.pvpSaid.clear();
+    this.pvpRefused.clear();
     this.lastHangUpRefusal = null;
     this.stalkerSaid = null;
     this.protectedSaid = null;
@@ -164,15 +167,27 @@ export class Safety implements SessionModule {
    */
   onPvpBlow(attacker: string, at: number): void {
     const pvp = this.automationConfig.safety.pvp;
-    if (!this.automationConfig.enabled) return;
     const state = this.tracker.current;
     if (state.phase !== 'in-game') return;
+    if (!this.automationConfig.enabled) {
+      // The blow is a fact the fight record keeps; what the switch holds back
+      // is the alert and the run, and a refusal is written down like any other,
+      // where the settings would have acted at all. Its clock is its own, so a
+      // refusal recorded never stands in for the gang having been told.
+      if (!pvp.notifyGang && pvp.action === 'none') return;
+      if (!firstInWindow(this.pvpRefused, attacker, at)) return;
+      this.publisher.noteSafety({
+        at,
+        action: 'pvp-alert',
+        because: t('session.safety.whyPvp', { attacker }),
+        acted: false,
+        refused: t('session.safety.refusalSwitchedOff')
+      });
+      return;
+    }
 
     if (pvp.notifyGang) {
-      const key = attacker.toLowerCase();
-      const said = this.pvpSaid.get(key);
-      if (said === undefined || at - said >= PVP_WINDOW_MS) {
-        this.pvpSaid.set(key, at);
+      if (firstInWindow(this.pvpSaid, attacker, at)) {
         /*
          * Off a gang, `bg` has nobody to reach: the server refuses and a
          * record claiming the gang was told would be a claimed action that
@@ -663,4 +678,17 @@ function whyStalker(state: CharacterState, name: string): string {
 function caughtAfter(landedHp: number, state: CharacterState): boolean {
   const hp = state.vitals.hp;
   return state.combat.attackers.length > 0 || hp === null || hp < landedHp;
+}
+
+/**
+ * Once per attacker per PvP window: true, and the clock set, when nothing
+ * was recorded for them inside it. The gang alert and the switched-off
+ * refusal each keep their own map, so neither stands in for the other.
+ */
+function firstInWindow(clock: Map<string, number>, attacker: string, at: number): boolean {
+  const key = attacker.toLowerCase();
+  const last = clock.get(key);
+  if (last !== undefined && at - last < PVP_WINDOW_MS) return false;
+  clock.set(key, at);
+  return true;
 }

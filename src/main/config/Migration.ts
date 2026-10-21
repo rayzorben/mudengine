@@ -8516,6 +8516,8 @@ function theTuningBlockGainedKeys(
     addKey('world', 'directLonger', DEFAULT_INTERNAL.tuning.world.directLonger);
     // How far a party member's damage moves before its lairs are run again (todo 152, 2026-10-16).
     addKey('hunting', 'partyDamageStep', DEFAULT_INTERNAL.tuning.hunting.partyDamageStep);
+    // How long the Map card holds a picked room before following again (2026-10-20).
+    addKey('view', 'mapFinderIdleMs', DEFAULT_INTERNAL.tuning.view.mapFinderIdleMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

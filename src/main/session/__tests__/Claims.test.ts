@@ -82,6 +82,18 @@ describe('Claims.askWhereIAm', () => {
   });
 
   /*
+   * The master switch holds automation's own locate; a person's press (the
+   * Room card's button, play before a Goto) is a command for the realm and goes.
+   */
+  it('sends a person’s ask with automation off, and refuses the probe’s', () => {
+    const { claims, sent } = rig({ enabled: false });
+    expect(claims.askWhereIAm()).toEqual({ refused: 'switched-off' });
+    expect(claims.askWhereIAm(undefined, 'user')).toEqual({ asked: 'rm' });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ command: 'rm', priority: 'user' });
+  });
+
+  /*
    * Todo 762: a word the queue refused as one this realm lacks was reported as
    * asked, so `Locating` waited out its window and then said *Asked the realm
    * where you are with “rm”* about a command that never left.

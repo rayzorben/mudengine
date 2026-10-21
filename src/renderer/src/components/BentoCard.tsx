@@ -115,6 +115,12 @@ export interface CardAction {
   run(anchor: HTMLElement): void;
   /** Costs something, and says so with the tone — forgetting a record, not copying one. */
   danger?: boolean;
+  /**
+   * A switch, and whether it is on: a find row out, a picture held on a room
+   * the player picked. Drawn as `aria-pressed`, so a mode the card is in is
+   * visible on the glyph that put it there and not only in what it hides.
+   */
+  pressed?: boolean;
 }
 
 export interface BentoCardProps {
@@ -964,6 +970,7 @@ function ActionGlyph({ action, className }: { action: CardAction; className: str
   return (
     <button
       aria-label={action.label}
+      aria-pressed={action.pressed}
       className={className}
       data-action={action.id}
       data-danger={action.danger ? 'true' : undefined}

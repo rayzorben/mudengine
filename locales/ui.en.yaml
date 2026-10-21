@@ -389,13 +389,16 @@ notices:
     extensionSwitches: '"extensions" was added to {file}: a switch for each installed extension,
       all on as they were. One can be switched off from the MudEngine settings page.'
     combatZoom:
-      one: 'Combat Zoom was added to {fileList}, off: the game view''s arena keeps its size in a fight.'
-      many: 'Combat Zoom was added to {count} files ({fileList}), off: the game view''s arena keeps its
-        size in a fight.'
+      one: "Combat Zoom was added to {fileList}, off: the game view's arena keeps its size in a fight."
+      many:
+        "Combat Zoom was added to {count} files ({fileList}), off: the game view's arena keeps its
+        size in a fight."
     gameTutorial:
-      one: 'Game View Tutorial was added to {fileList}, on: the game view shows how it works the first
+      one:
+        'Game View Tutorial was added to {fileList}, on: the game view shows how it works the first
         time it opens in each window.'
-      many: 'Game View Tutorial was added to {count} files ({fileList}), on: the game view shows how it
+      many:
+        'Game View Tutorial was added to {count} files ({fileList}), on: the game view shows how it
         works the first time it opens in each window.'
     killAndHangup:
       one: 'Allow @kill and @hangup was added to {fileList}, off: @kill, @hangup, @relog and
@@ -1185,23 +1188,27 @@ game:
       statline: '[HP=48/MA=12]:'
     map:
       title: Your room is the circle
-      body: The map is the realm around you. The circle in the middle is the room you are in, with its
+      body:
+        The map is the realm around you. The circle in the middle is the room you are in, with its
         exits round the rim and what is here inside it. Click another room to walk there.
       viewSwitch: The button at the upper right goes back to the classic view.
     keys:
       title: Letters act at once
-      body: The game view is in command mode. A letter goes to the realm as soon as you press it, with
+      body:
+        The game view is in command mode. A letter goes to the realm as soon as you press it, with
         no Enter. The bar along the bottom holds only what works here now, each with its key.
       sent: sent at once
     moving:
       title: Walking
-      body: n, s, e, w, u and d take an exit. For a diagonal press n or s, then e or w. Drag the map to
+      body:
+        n, s, e, w, u and d take an exit. For a diagonal press n or s, then e or w. Drag the map to
         look around; Esc or ◎ brings it back to you.
       diagonal: '{first} then {second}'
       click: Click a room to walk there
     console:
       title: The console is a key away
-      body: Enter opens the console, where you type anything as in the classic view. Esc goes back to
+      body:
+        Enter opens the console, where you type anything as in the classic view. Esc goes back to
         the map. Clicking the thumbnail in the corner opens it too, and its bar sets where it sits and
         how much of the map shows through.
       open: opens the console
@@ -1216,7 +1223,8 @@ game:
       party: Sends party
     fight:
       title: Fighting
-      body: Every monster wears a gauge of its health. The glow round the room fills once a round, and
+      body:
+        Every monster wears a gauge of its health. The glow round the room fills once a round, and
         the bar puts what the fight needs first.
       attack: Attack the target
       next: Next monster
@@ -2890,6 +2898,10 @@ cards:
     roomUnknownTooltip: The client does not know which room this character is in.
     lastKnown: Last known room
     lastKnownTooltip: Where this character last stood. The first room the server prints after login confirms or replaces it.
+    # The picture is on a room picked in the finder or a page turned to ahead,
+    # so the character's steps do not move it.
+    held: Not following
+    heldTooltip: The map is on a room you picked and stays there as the character moves. Press Center on my room, or leave the finder alone for {seconds} seconds.
     # The finder over the map: a start and a destination, opened from the
     # search glyph in the action column beside the button back to the
     # character's room.
@@ -6128,6 +6140,7 @@ session:
     pvpHangUpLater: "Hanging up in {minutes} min, once {attacker}'s PvP timer runs out."
     pvpNoGang: 'Not telling anyone about {attacker}: the who list shows you in no gang.'
     pvpNoGangReason: the who list shows no gang to tell
+    refusalSwitchedOff: automation is off
     whyHealth: health at {percent}
     whyMana: mana at {percent}
     whyAttackers: '{count} attackers'
@@ -7424,6 +7437,9 @@ automation:
       @{raw}.{unresolvedClause}'
     refusedRealmWide: '{from} sent @{raw} on a realm-wide channel; ignored, because a message to
       everyone online is not a message to this character. Ask by telepath.'
+    refusedSwitchedOff: '{from} sent @{raw}; nothing was done, because automation is off.'
+    followUpHeld: '{who} did not answer the question the MudEngine way. Not asking @{name} instead,
+      because automation is off.'
     refusedUnsupported: '{from} sent @{raw}; refused: {reason}. Allow @kill and @hangup on the
       Remotes settings lets it through to whoever it is granted to.'
     unread: Unsupported remote command @{raw} from {from}.

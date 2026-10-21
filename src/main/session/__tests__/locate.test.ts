@@ -167,19 +167,16 @@ describe('the realm’s word for where am I', () => {
     });
 
     /*
-     * Todo 767: with Automation off the queue refuses the ask, and the press
-     * answered as if it had gone and said nothing. The first case above is the
-     * positive control: the same press with Automation on sends `rm`.
+     * The press is a person's command, so Automation off does not hold it
+     * (2026-10-20): it goes at `user`, which the master switch exempts. Todo
+     * 767's refusal path still answers the queue's other refusals above.
      */
-    it('is refused out loud where Automation is switched off, and nothing waits', async () => {
+    it('sends the press with Automation switched off, as the person’s own command', () => {
       const { locating, sent, notice } = rig('rm', false);
-      expect(locating.ask()).toBe(false);
-      expect(sent).toEqual([]);
-      expect(notice).toHaveBeenCalledWith(t('session.loop.locateSwitchedOff'));
-      notice.mockClear();
-      expect(await locating.placed()).toBe(false);
-      expect(vi.getTimerCount()).toBe(0);
-      expect(notice).toHaveBeenCalledWith(t('session.loop.locateSwitchedOff'));
+      expect(locating.ask()).toBe(true);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ command: 'rm', priority: 'user' });
+      expect(notice).not.toHaveBeenCalled();
     });
   });
 });

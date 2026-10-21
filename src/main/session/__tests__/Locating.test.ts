@@ -23,7 +23,7 @@ const NO_WORD: LocateAsk = { refused: 'unavailable' };
 
 function rig(ask: LocateAsk = asked('rm'), state: CharacterState = UNPLACED) {
   const tracker = { current: state };
-  const askWhereIAm = vi.fn((_reason?: string) => ask);
+  const askWhereIAm = vi.fn((_reason?: string, _priority?: 'probe' | 'user') => ask);
   const notice = vi.fn();
   const locating = new Locating({ tracker, claims: { askWhereIAm } }, { notice });
   /** The character published, as `SessionManager.publishCharacter` does. */
@@ -53,6 +53,8 @@ describe('Locating', () => {
     const first = locating.placed();
     const second = locating.placed();
     expect(askWhereIAm).toHaveBeenCalledTimes(1);
+    // A press of play or Goto, so the ask goes out with the master switch off.
+    expect(askWhereIAm).toHaveBeenCalledWith(undefined, 'user');
     expect(await peek(first)).toBe('pending');
 
     vi.advanceTimersByTime(tuning().session.locateResolveMs - 1);
@@ -122,8 +124,9 @@ describe('Locating', () => {
       expect(notice).toHaveBeenCalledWith(said);
     }
     // The positive control: an ask that went is a press that worked, and says nothing.
-    const { locating, notice } = rig();
+    const { locating, askWhereIAm, notice } = rig();
     expect(locating.ask()).toBe(true);
+    expect(askWhereIAm).toHaveBeenCalledWith(expect.any(String), 'user');
     expect(notice).not.toHaveBeenCalled();
   });
 
