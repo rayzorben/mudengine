@@ -213,6 +213,31 @@ describe('a step out of a fight', () => {
     expect(records.map((one) => [one.mob, one.mine, one.followed])).toEqual([['orc', 50, true]]);
   });
 
+  /*
+   * Todo 20261020-1654-01: one record for a fight across two rooms carries
+   * both rooms' swings, and the killing blow is the later room's last blow.
+   * The orc already being fought here when the followed one walks in is the
+   * other half of `joined`: its later blow is the one kept.
+   */
+  it('merges the swings of a monster that followed, and keeps the later last blow', () => {
+    const { tracker, records, s } = fightingIn();
+    tracker.walked(s, 'e');
+    let there = nextRoom(s);
+    there = tracker.hit(there, 2_050, 'orc', 'Rand', 5)!;
+    tracker.heard(arrives(2_060, 'west'), there);
+    there = tracker.hit(there, 2_100, 'orc', 'Grimjaw', 10)!;
+    // The kill names what this character was fighting; written down at the step out.
+    const fighting = { ...there, combat: { ...there.combat, target: 'orc', attackers: ['orc'] } };
+    tracker.walked(tracker.died(fighting, 2_500), 'e');
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ mob: 'orc', killed: true, killingBlow: 'grimjaw' });
+    expect(records[0]?.strikes).toMatchObject({
+      rand: { hits: 1, most: 5 },
+      grimjaw: { hits: 1, most: 10 }
+    });
+    expect(records[0]?.struckBy).toMatchObject({ rand: 5, grimjaw: 10 });
+  });
+
   it('lets go of a monster that did not follow, written down under the room it was fought in', () => {
     const { tracker, records, s } = fightingIn();
     tracker.walked(s, 'e');

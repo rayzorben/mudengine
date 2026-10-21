@@ -414,6 +414,11 @@ export interface UiConfig {
    * room: it shares the band the put-away chip already takes.
    */
   showLogo: boolean;
+  /**
+   * A notice after a fight two or more of the party struck: each member's
+   * damage, swings and the killing blow (todo 20261020-1654-01).
+   */
+  partyRecap: boolean;
   /** How the console is painted when the chrome is light. See `ConsoleUiConfig`. */
   console: ConsoleUiConfig;
   /** Where the HUD meters turn yellow and red. */
@@ -2468,6 +2473,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     tabs: 'left',
     showHud: true,
     showLogo: true,
+    partyRecap: true,
     console: { palette: DEFAULT_CONSOLE_PALETTE, keepDark: true, darkTheme: DEFAULT_THEME },
     // Half and a quarter, as `megamind-client` shipped `restIfBelow` / `runIfBelow`
     // and a MajorMUD player already has in mind. Fractions, so they hold at every level.
@@ -2937,6 +2943,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       theme: isThemePreference(ui['theme']) ? ui['theme'] : DEFAULT_CONFIG.ui.theme,
       showHud: bool(ui['showHud'], DEFAULT_CONFIG.ui.showHud),
       showLogo: bool(ui['showLogo'], DEFAULT_CONFIG.ui.showLogo),
+      partyRecap: bool(ui['partyRecap'], DEFAULT_CONFIG.ui.partyRecap),
       console: normalizeConsoleUi(ui['console']),
       vitals: normalizeVitals(ui['vitals']),
       alerts: normalizeAlerts(ui['alerts']),

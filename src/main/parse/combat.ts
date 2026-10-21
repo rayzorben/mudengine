@@ -28,25 +28,34 @@ import {
   type Combat,
   type Damage,
   type Room,
-  type TargetHealth
+  type TargetHealth,
+  partyMembers
 } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
-import { wornGear, type FightRecord, type FightSink } from '../../shared/fights';
+import {
+  NO_STRIKES,
+  wornGear,
+  type FightRecord,
+  type FightSink,
+  type Strikes
+} from '../../shared/fights';
 import type { HarmSink } from '../../shared/harm';
 import type { MobLore } from '../../shared/lore';
 import {
   mobKey,
   nameAnswersTo,
   roomAddress,
+  withoutArticle,
   type Direction,
   type RoomId
 } from '../../shared/world';
+import { blowKind, type BlowKind } from '../../shared/tally';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
 import { leavesRoom } from './departs';
 import { FightClock, type FightTiming } from './fightClock';
 import { harmOf, HarmLedger } from './harm';
-import { listedMobs } from './engagements';
+import { listedMobs, vouchedFor } from './engagements';
 import { LeftOff, type Resumed } from './leftOff';
 import { OwedAttacks } from './owed';
 import { Pursuit } from './pursuit';
@@ -73,6 +82,10 @@ interface Ledger {
   others: number;
   /** Of `others`, what each attacker the sentence named dealt, by name in lower case. */
   struckBy: Map<string, number>;
+  /** How each attacker's swings went, this character's included, by name in lower case. */
+  strikes: Map<string, Strikes>;
+  /** Who landed the last blow that did damage, in lower case; null when the sentence named nobody. */
+  lastBy: string | null;
   /** Epoch ms of the first blow, so a record can say how long it took. */
   startedAt: number;
   /** And of the last. */
@@ -132,6 +145,8 @@ function newLedger(key: string, byMe: boolean, at = 0): Ledger {
     mine: 0,
     others: 0,
     struckBy: new Map(),
+    strikes: new Map(),
+    lastBy: null,
     startedAt: at,
     lastAt: at,
     blows: 0,
@@ -230,6 +245,8 @@ export class FightTracker {
   private readonly pursuit = new Pursuit<{ ledger: Ledger; left: CharacterState }>();
   /** The time of the latest block heard: when a step happened, which the room's port does not carry. */
   private heardAt = 0;
+  /** The latest block's `line` group: a blow's frame says crit or backstab, and `hit` is not handed it. */
+  private heardLine: string | undefined;
 
   /**
    * The attacks sent and not yet answered (`owed.ts`), one consumed per
@@ -361,6 +378,8 @@ export class FightTracker {
    */
   heard(block: Pick<Block, 'type' | 'text' | 'groups' | 'at'>, s: CharacterState): void {
     this.heardAt = block.at;
+    this.heardLine = block.groups['line'];
+    this.missedOn(block, s);
     this.owed.heard(block);
     // A monster that followed walks in with what it took in the room left. A
     // namesake already fought here shares one total with it, as namesakes do.
@@ -584,6 +603,7 @@ export class FightTracker {
   missed(s: CharacterState, at: number, target: string | undefined): CharacterState | null {
     this.fell = null;
     this.clock.swung(at);
+    this.missCounted(target, s.name);
     if (!target || mobKey(target) === mobKey(s.combat.target ?? '')) return null;
     const combat = struck(s.combat, at, { at: target });
     return { ...s, combat: this.judged(s, combat, at) };
@@ -664,6 +684,11 @@ export class FightTracker {
      * start a second fight in a room already holding one.
      */
     const ledger = this.recordDamage(target, damage, mine, at, mine ? undefined : attacker);
+    const striker = mine ? s.name?.toLowerCase() : attacker?.toLowerCase();
+    if (damage > 0) ledger.lastBy = striker ?? null;
+    // A proc counts in `mine` and as no swing (`BlowKind`): it counts in `mine` and not here.
+    if (striker !== undefined && !(proc && !named))
+      struckOnce(ledger, striker, { kind: blowKind(this.heardLine), damage });
     if (!mine) {
       // Another's blow moves the gauge of the target or whatever the room lists.
       if (!judges(s, ledger.key)) return null;
@@ -743,6 +768,24 @@ export class FightTracker {
     }
     this.fell = key;
     return leavesRoom(s, key, true);
+  }
+
+  /**
+   * Another player's swing that missed a monster already in a ledger, the
+   * attacker vouched for as a hit's is. A miss before the first blow landed
+   * opens nothing: the ledger opens on damage, as `opened` is decided by it.
+   */
+  private missedOn(block: Pick<Block, 'type' | 'groups'>, s: CharacterState): void {
+    if (block.type !== 'player-misses') return;
+    const attacker = vouchedFor(s, block.groups);
+    if (attacker !== undefined) this.missCounted(block.groups['target'], withoutArticle(attacker));
+  }
+
+  /** One miss by `who` on `target`'s ledger, when it has one. */
+  private missCounted(target: string | undefined, who: string | null): void {
+    if (target === undefined || who === null) return;
+    const ledger = this.ledgers.get(mobKey(target));
+    if (ledger) struckOnce(ledger, who.toLowerCase(), null);
   }
 
   /**
@@ -980,6 +1023,9 @@ export class FightTracker {
       mine: ledger.mine,
       others: ledger.others,
       ...(ledger.struckBy.size === 0 ? {} : { struckBy: Object.fromEntries(ledger.struckBy) }),
+      ...(ledger.strikes.size === 0 ? {} : { strikes: Object.fromEntries(ledger.strikes) }),
+      ...(killed && ledger.lastBy !== null ? { killingBlow: ledger.lastBy } : {}),
+      ...partyOf(s),
       blows: ledger.blows,
       wound: ledger.observed,
       opened: ledger.opened,
@@ -1170,14 +1216,59 @@ function mayFollow(s: CharacterState, moved: Direction | null): ReadonlySet<stri
 function joined(here: Ledger, came: Ledger): Ledger {
   const struckBy = new Map(here.struckBy);
   for (const [who, damage] of came.struckBy) struckBy.set(who, (struckBy.get(who) ?? 0) + damage);
+  const strikes = new Map(here.strikes);
+  for (const [who, theirs] of came.strikes)
+    strikes.set(who, strikesSummed(strikes.get(who) ?? NO_STRIKES, theirs));
   return {
     ...here,
     mine: here.mine + came.mine,
     others: here.others + came.others,
     blows: here.blows + came.blows,
     struckBy,
+    strikes,
+    // Whoever struck the later of the two last blows.
+    lastBy:
+      came.lastAt >= here.lastAt ? (came.lastBy ?? here.lastBy) : (here.lastBy ?? came.lastBy),
     startedAt: Math.min(here.startedAt || came.startedAt, came.startedAt || here.startedAt),
     opened: here.opened || came.opened,
     followed: here.followed || came.followed
   };
+}
+
+/** One more swing on a ledger by `who`: landed for `damage` of `kind`, or missed (null). */
+function struckOnce(
+  ledger: Ledger,
+  who: string,
+  landed: { kind: BlowKind; damage: number } | null
+): void {
+  const was = ledger.strikes.get(who) ?? NO_STRIKES;
+  ledger.strikes.set(
+    who,
+    landed === null
+      ? { ...was, misses: was.misses + 1 }
+      : {
+          hits: was.hits + 1,
+          crits: was.crits + (landed.kind === 'critical' ? 1 : 0),
+          backstabs: was.backstabs + (landed.kind === 'backstab' ? 1 : 0),
+          misses: was.misses,
+          most: was.most === null ? landed.damage : Math.max(was.most, landed.damage)
+        }
+  );
+}
+
+/** Two counts of one attacker's swings as one. */
+function strikesSummed(a: Strikes, b: Strikes): Strikes {
+  return {
+    hits: a.hits + b.hits,
+    crits: a.crits + b.crits,
+    backstabs: a.backstabs + b.backstabs,
+    misses: a.misses + b.misses,
+    most: a.most === null ? b.most : b.most === null ? a.most : Math.max(a.most, b.most)
+  };
+}
+
+/** The party's names other than this character's, as `FightRecord.party` keeps them; an invitation is not membership. */
+function partyOf(s: CharacterState): { party?: string[] } {
+  const party = partyMembers(s);
+  return party.length === 0 ? {} : { party };
 }

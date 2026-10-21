@@ -46,7 +46,9 @@ import type { RealmLoreView } from '../../shared/lore';
 import type { SpellLore } from '../../shared/spell-messages';
 import type { ShippedSentences } from '../../shared/sentences';
 import type { FightSimulator } from '../../shared/simulator';
-import type { FightSink } from '../../shared/fights';
+import { alsoTold, type FightRecord, type FightSink } from '../../shared/fights';
+import { partyRecap } from '../../shared/partyRecap';
+import { recapLines } from './partyRecap';
 import type { HarmSink } from '../../shared/harm';
 import type { RealmMemory } from '../../shared/memory';
 import type { RealmFinds } from '../../shared/finds';
@@ -659,7 +661,7 @@ export class SessionHost {
         login: config.connection.login,
         lore: this.options.loreFor(id),
         memory: this.options.memoryFor(id),
-        fights: this.options.fightsFor(id),
+        fights: alsoTold(this.options.fightsFor(id), (fight) => this.recap(id, fight)),
         harm: this.options.harmFor?.(id),
         players: this.options.playersFor(id),
         spellLore: this.options.spellLoreFor?.(id),
@@ -782,6 +784,14 @@ export class SessionHost {
     slot.reconnect.cancel();
     await this.dial(slot, asked.target);
     return true;
+  }
+
+  /** A fight two or more of the party struck, said in the console when `ui.partyRecap` is on. */
+  private recap(id: SessionId, fight: FightRecord): void {
+    if (!this.options.configFor(id).ui.partyRecap) return;
+    const recap = partyRecap(fight);
+    if (recap === null) return;
+    for (const line of recapLines(recap)) this.options.notice(noticeOf(id, line));
   }
 
   /** A character's own aliases, live as soon as written, as a switch is (`switchNow`). */

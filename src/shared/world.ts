@@ -2189,6 +2189,11 @@ export function mobKey(name: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/** A name as the server spelled it with its leading article dropped, case kept: `The thief` is `thief`. */
+export function withoutArticle(name: string): string {
+  return name.replace(/^(?:The|A|An) /, '');
+}
+
 /**
  * Whether a name the room printed answers to what the player typed.
  *

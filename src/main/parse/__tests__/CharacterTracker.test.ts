@@ -6649,6 +6649,41 @@ describe('what a fight is written down as', () => {
     expect(fought('You punch giant rat for 8 damage!')[0]?.struckBy).toBeUndefined();
   });
 
+  /* Todo 20261020-1654-01: the party recap's swings, and who landed the last blow. */
+  it("records each attacker's swings and the killing blow", () => {
+    const [fight] = fought(
+      'The following people are in your travel party:',
+      '  Vaelor                        (Mystic)              [H:100%]  - Frontrank',
+      '  Grimjaw                       (Warrior)             [H:100%]  - Frontrank',
+      '[HP=30/MA=12]:',
+      'You punch giant rat for 3 damage!',
+      'Grimjaw critically slashes the giant rat for 20 damage!',
+      'Grimjaw swings at the giant rat!',
+      'You critically punch giant rat for 9 damage!',
+      'You gain 9 experience.'
+    );
+    expect(fight?.strikes).toEqual({
+      vaelor: { hits: 2, crits: 1, backstabs: 0, misses: 0, most: 9 },
+      grimjaw: { hits: 1, crits: 1, backstabs: 0, misses: 1, most: 20 }
+    });
+    expect(fight).toMatchObject({ killed: true, killingBlow: 'vaelor', party: ['Grimjaw'] });
+  });
+
+  /* An invitation is not membership: the invited player's blows count outside the party. */
+  it('keeps an invited player out of the party it writes down', () => {
+    const [fight] = fought(
+      'The following people are in your travel party:',
+      '  Vaelor                        (Mystic)              [H:100%]  - Frontrank',
+      '  Grimjaw                       (Warrior)             [H:100%]  - Frontrank',
+      '  Soul Guardian                 (Warrior)    [Invited]',
+      '[HP=30/MA=12]:',
+      'You punch giant rat for 3 damage!',
+      'Grimjaw slashes the giant rat for 5 damage!',
+      'You gain 9 experience.'
+    );
+    expect(fight?.party).toEqual(['Grimjaw']);
+  });
+
   it('writes nothing for a fight in which nothing was hit', () => {
     expect(fought('The giant rat swings at you.')).toEqual([]);
   });
