@@ -31,6 +31,8 @@ export interface ArenaRoom {
   detached: string | null;
   /** The room's picture, decoded, or null for the plain disc. */
   picture: CanvasImageSource | null;
+  /** How opaque the picture is drawn, 0 to 1; the floor's colour shows through the rest. */
+  pictureOpacity: number;
 }
 
 export interface Disc {
@@ -412,9 +414,10 @@ export function drawFloor(
   ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
-  if (room.picture !== null) {
+  if (room.picture !== null && room.pictureOpacity > 0) {
     // Under everything else on the disc: the dark, the rim, the square, the tokens.
     ctx.save();
+    ctx.globalAlpha = room.pictureOpacity;
     ctx.beginPath();
     ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
     ctx.clip();

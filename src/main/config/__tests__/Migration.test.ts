@@ -8773,6 +8773,56 @@ describe('the game view tutorial is stated, on', () => {
   });
 });
 
+describe('the room art opacity is stated, at 85%', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const gameViewOf = (file: string): Record<string, unknown> =>
+    parse(fs.readFileSync(file, 'utf8')).gameView as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-roomartopacity-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds the opacity after tutorial, at 0.85, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'gameView:\n  dock: bottom\n  opacity: 0.55\n  combatZoom: 0\n  tutorial: true\n',
+      'utf8'
+    );
+    migrate();
+    const keys = Object.keys(gameViewOf(home.options));
+    expect(keys[keys.indexOf('tutorial') + 1]).toBe('roomArtOpacity');
+    expect(gameViewOf(home.options)['roomArtOpacity']).toBe(0.85);
+    expect(notesOf(said, 'notices.migration.roomArtOpacityStated')).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(notesOf(said, 'notices.migration.roomArtOpacityStated')).toHaveLength(0);
+  });
+
+  it('leaves a figure the player chose', () => {
+    fs.writeFileSync(home.options, 'gameView:\n  tutorial: true\n  roomArtOpacity: 0.4\n', 'utf8');
+    migrate();
+    expect(gameViewOf(home.options)['roomArtOpacity']).toBe(0.4);
+    expect(notesOf(said, 'notices.migration.roomArtOpacityStated')).toHaveLength(0);
+  });
+});
+
 describe('a switch per installed extension is stated (todo 118)', () => {
   let home: Home;
   let dir: string;

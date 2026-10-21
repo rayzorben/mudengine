@@ -2930,6 +2930,9 @@ gameView:
   # Show the game view's tutorial the first time the view comes up in each
   # window. Its own checkbox changes this for the window; ? reopens it.
   tutorial: true
+  # How much of the room's picture shows in the arena, 0 to 1: 0 hides it,
+  # 1 draws it solid. The floor's own colour shows through the rest.
+  roomArtOpacity: 0.85
 
 # Your own room names, as MegaMUD's goto list has them: a code, a name, and the
 # realm's room as a loop stop names it (`Darkwood Forest 3/784`). The room

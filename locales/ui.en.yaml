@@ -205,6 +205,9 @@ notices:
     roomArtStated: "Send Unknown Room Descriptions for Artwork was added to {file} and is on.
       The client sends the art server the description of a room it ships no picture of, for the
       game view's arena. Turn it off under Realm on the Global settings page."
+    roomArtOpacityStated: "Room Picture Opacity was added to {file} at {percent}%: the floor
+      shows through the room's picture in the game view's arena. Change it under Appearance on
+      the MudEngine settings page."
     fightsSegmented:
       one: '{file} was moved into {dir} as one file of up to {per} fights, {fights} fights in
         all. The old file is kept as {backup}.'
@@ -4486,6 +4489,8 @@ settings:
       combatZoomHint: How much bigger the game view's arena grows in a fight. Off keeps it the same size.
       combatZoomOff: 'Off'
       combatZoomBigger: '{percent}% bigger'
+      roomArtOpacityLabel: Room Picture Opacity, %
+      roomArtOpacityHint: How much of the room's picture shows in the game view's arena, from 0 (hidden) to 100.
       gameTutorial: Show The Game View Tutorial On Startup
       scrollbackLabel: Scrollback, Lines
       showHud: Show Cards Beside Console

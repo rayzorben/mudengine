@@ -95,7 +95,7 @@ export interface GameViewProps {
   /** The key bindings, and where a vital bar turns yellow and red for the party's gauges. */
   config: Pick<AppConfig, 'keys'> & {
     ui: Pick<UiConfig, 'vitals'>;
-    gameView: Pick<GameViewConfig, 'combatZoom' | 'tutorial'>;
+    gameView: Pick<GameViewConfig, 'combatZoom' | 'tutorial' | 'roomArtOpacity'>;
   };
   /** Whether the options file has arrived, so its `gameView.tutorial` is the player's. */
   configKnown: boolean;
@@ -420,6 +420,7 @@ function GameView({
         onWalk={onWalk}
         picked={picked}
         picture={picture}
+        roomArtOpacity={config.gameView.roomArtOpacity}
         players={players}
         ref={canvas}
         rounds={rounds}

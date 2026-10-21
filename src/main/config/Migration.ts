@@ -306,6 +306,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheRoomArt(home, note, options.template);
   statedTheCombatZoom(home, note, options.template);
   statedTheTutorial(home, note, options.template);
+  statedTheRoomArtOpacity(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -5377,6 +5378,23 @@ function statedTheTutorial(
       ? t('notices.migration.gameTutorial.one', params)
       : t('notices.migration.gameTutorial.many', params)
   );
+}
+
+/**
+ * `gameView.roomArtOpacity` (todo 20261020-2015-01) into every file that
+ * states `gameView:`, after `tutorial`, at the shipped default: the room's
+ * picture shipped solid, and the player asked for the floor to show through it.
+ */
+function statedTheRoomArtOpacity(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateKeysIn(home, template, ['gameView'], 'tutorial', [
+    ['roomArtOpacity', DEFAULT_CONFIG.gameView.roomArtOpacity]
+  ]);
+  const percent = Math.round(DEFAULT_CONFIG.gameView.roomArtOpacity * 100);
+  for (const file of stated) note(t('notices.migration.roomArtOpacityStated', { file, percent }));
 }
 
 /**

@@ -291,6 +291,7 @@ import {
   joinNames,
   percentOf as percent,
   RETREAT_OPTIONS,
+  shareOf,
   splitNames,
   wholeOf as whole
 } from '../lib/form';
@@ -531,13 +532,21 @@ export default function GlobalSettings({
                 label={t('settings.client.appearance.gameOpacityLabel')}
                 name="global-game-opacity"
                 onChange={(value) => {
-                  const percent = Number.parseInt(value, 10);
-                  if (Number.isFinite(percent))
-                    patch('gameView', {
-                      opacity: Math.max(GAME_VIEW_OPACITY_FLOOR, Math.min(1, percent / 100))
-                    });
+                  const share = shareOf(value);
+                  if (share !== undefined)
+                    patch('gameView', { opacity: Math.max(GAME_VIEW_OPACITY_FLOOR, share) });
                 }}
-                value={Math.round(draft.gameView.opacity * 100)}
+                value={percent(draft.gameView.opacity)}
+              />
+              <NumberField
+                hint={t('settings.client.appearance.roomArtOpacityHint')}
+                label={t('settings.client.appearance.roomArtOpacityLabel')}
+                name="global-room-art-opacity"
+                onChange={(value) => {
+                  const share = shareOf(value);
+                  if (share !== undefined) patch('gameView', { roomArtOpacity: share });
+                }}
+                value={percent(draft.gameView.roomArtOpacity)}
               />
               <SelectField
                 hint={t('settings.client.appearance.combatZoomHint')}
