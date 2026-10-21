@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { SessionId } from '@shared/ipc';
+import { isMapLegendLayout } from '@shared/map';
 import { isThemeId, type Appearance, type ThemeId } from '@shared/themes';
 import { isTalkLayout, isTalkStamp } from '@shared/talk';
 import { isStatsGraph, STATS_WINDOW_HOURS } from '@shared/tally';
@@ -544,6 +545,7 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
       ...(typeof found['mapDensity'] === 'number' && Number.isFinite(found['mapDensity'])
         ? { mapDensity: Math.max(0, Math.min(1, found['mapDensity'])) }
         : {}),
+      ...(isMapLegendLayout(found['mapLegend']) ? { mapLegend: found['mapLegend'] } : {}),
       ...(isCount(found['findDays']) ? { findDays: found['findDays'] } : {}),
       ...((STATS_WINDOW_HOURS as readonly number[]).includes(found['statsHours'] as number)
         ? { statsHours: found['statsHours'] as number }

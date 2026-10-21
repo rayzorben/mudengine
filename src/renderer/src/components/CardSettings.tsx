@@ -9,7 +9,12 @@ import {
   type Appearance,
   type ThemeId
 } from '@shared/themes';
-import { DEFAULT_MAP_DENSITY } from '@shared/map';
+import {
+  DEFAULT_MAP_DENSITY,
+  DEFAULT_MAP_LEGEND,
+  isMapLegendLayout,
+  MAP_LEGENDS
+} from '@shared/map';
 import {
   DEFAULT_STATS_GRAPH,
   DEFAULT_STATS_HOURS,
@@ -317,34 +322,59 @@ export default function CardSettingsPopup({
       )}
 
       {cardId === 'map' && (
-        <label className="card-settings-field">
-          <span>{t('cards.settings.map.density')}</span>
-          {/*
+        <>
+          <label className="card-settings-field">
+            <span>{t('cards.settings.map.density')}</span>
+            {/*
             No number beside it, which is what was asked for and is also the
             honest offer: what the slider chooses is how small a room may be
             drawn, and the rooms that then fit depend on how big this card is.
             A figure would name one of those and be read as the other.
           */}
-          <input
-            aria-valuetext={t('cards.settings.map.densityValue', {
-              percent: Math.round((value.mapDensity ?? DEFAULT_MAP_DENSITY) * 100)
-            })}
-            max={1}
-            min={0}
-            onChange={(event) => {
-              const density = Number(event.target.value);
-              // Cleared back to nothing where it agrees with the shipped
-              // answer: the auto-hide toggle's rule, and the reason a default
-              // that changes in a later build still reaches somebody.
-              onChange({
-                mapDensity: density === DEFAULT_MAP_DENSITY ? undefined : density
-              });
-            }}
-            step={0.05}
-            type="range"
-            value={value.mapDensity ?? DEFAULT_MAP_DENSITY}
-          />
-        </label>
+            <input
+              aria-valuetext={t('cards.settings.map.densityValue', {
+                percent: Math.round((value.mapDensity ?? DEFAULT_MAP_DENSITY) * 100)
+              })}
+              max={1}
+              min={0}
+              onChange={(event) => {
+                const density = Number(event.target.value);
+                // Cleared back to nothing where it agrees with the shipped
+                // answer: the auto-hide toggle's rule, and the reason a default
+                // that changes in a later build still reaches somebody.
+                onChange({
+                  mapDensity: density === DEFAULT_MAP_DENSITY ? undefined : density
+                });
+              }}
+              step={0.05}
+              type="range"
+              value={value.mapDensity ?? DEFAULT_MAP_DENSITY}
+            />
+          </label>
+          {/* Where the key is drawn (user, 2026-10-21): a chip over the picture's
+            corner, or a column beside it. Stored only where it differs. */}
+          <label className="card-settings-field">
+            <span>{t('cards.settings.map.legend')}</span>
+            <select
+              onChange={(event) => {
+                const chosen = event.target.value;
+                onChange({
+                  mapLegend:
+                    !isMapLegendLayout(chosen) || chosen === DEFAULT_MAP_LEGEND ? undefined : chosen
+                });
+              }}
+              value={value.mapLegend ?? DEFAULT_MAP_LEGEND}
+            >
+              {MAP_LEGENDS.map((layout) => (
+                <option key={layout} value={layout}>
+                  {layout === 'key'
+                    ? t('cards.settings.map.legends.key')
+                    : t('cards.settings.map.legends.column')}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
       )}
 
       {cardId === 'room' && (

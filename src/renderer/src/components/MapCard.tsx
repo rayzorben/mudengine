@@ -13,6 +13,7 @@ import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
 import {
   DEFAULT_MAP_DENSITY,
+  DEFAULT_MAP_LEGEND,
   EMPTY_MAP,
   roomPixelsFor,
   type LocalMap,
@@ -141,6 +142,7 @@ function MapCard({
    * shows more of the realm at every setting.
    */
   const density = chrome.settings?.value.mapDensity ?? DEFAULT_MAP_DENSITY;
+  const legend = chrome.settings?.value.mapLegend ?? DEFAULT_MAP_LEGEND;
 
   /*
    * The zoom, and the setting are one number read two ways. The wheel moves
@@ -325,6 +327,7 @@ function MapCard({
       {leg?.sheet ? (
         <RouteSheetView
           finds={foundRooms}
+          legend={legend}
           onPeek={onPeek ?? undefined}
           onPeekEnd={onPeekEnd ?? undefined}
           sheet={leg.sheet}
@@ -338,6 +341,7 @@ function MapCard({
           finds={foundRooms}
           fit={fit}
           home={home}
+          legend={legend}
           load={load}
           name="map"
           onLoaded={setMap}

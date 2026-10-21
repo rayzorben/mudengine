@@ -96,9 +96,11 @@ import {
 } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
 import {
+  DEFAULT_MAP_LEGEND,
   EMPTY_MAP,
   type LocalMap,
   type MapAway,
+  type MapLegendLayout,
   type MapLoader,
   type MapWindow
 } from '@shared/map';
@@ -139,6 +141,8 @@ export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport' | 'o
    * not changed: the Map card's locate button, after a pan or a look.
    */
   home?: number;
+  /** Where the key is drawn: the Map card's setting, else the shipped answer. */
+  legend?: MapLegendLayout;
 }
 
 /** The fit in progress: which rooms, and the zoom it has reached. */
@@ -174,6 +178,7 @@ function MapView({
   onLook,
   fit = null,
   home = 0,
+  legend = DEFAULT_MAP_LEGEND,
   ...picture
 }: MapViewProps) {
   const box = useRef<HTMLDivElement>(null);
@@ -450,7 +455,7 @@ function MapView({
      * rather than the same rooms drawn larger. The surface around it places
      * this element; it never sizes it.
      */
-    <div className="map-box">
+    <div className="map-box" data-legend={legend}>
       <div
         className="map-view"
         data-panning={panning ? 'true' : undefined}
@@ -492,7 +497,11 @@ function MapView({
       {/* The builder's own keys where the builder's own marks are, which is
           the one thing the legend asks of the surface — and it asks the
           picture's props rather than the surface, so the two cannot disagree. */}
-      <MapLegend builder={picture.marks !== undefined} plain={drawn && detail === 'plain'} />
+      <MapLegend
+        builder={picture.marks !== undefined}
+        layout={legend}
+        plain={drawn && detail === 'plain'}
+      />
     </div>
   );
 }

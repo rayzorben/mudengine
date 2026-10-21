@@ -2678,6 +2678,9 @@ kbd {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* The finder and the pager hang over the picture's top edge, measured
+     against the body (user, 2026-10-21: the picture gets every row). */
+  position: relative;
 }
 
 /*
@@ -2717,13 +2720,13 @@ kbd {
   user-select: none;
 }
 
-/* The way home after looking up or down: over the picture's corner, where
-   the picture never puts anything the reader needs. */
+/* The way home after looking up or down: over the picture's bottom-left
+   corner, the one corner the pager's pills and the key's chip leave. */
 .map-back {
   background: var(--glass-fill-strong);
+  bottom: calc(var(--gap) / 2);
   left: calc(var(--gap) / 2);
   position: absolute;
-  top: calc(var(--gap) / 2);
 }
 
 .map-view[data-panning] {
@@ -2737,9 +2740,21 @@ kbd {
  */
 .map-finder {
   display: flex;
-  flex: 0 0 auto;
   flex-direction: column;
   gap: 4px;
+  left: calc(var(--gap) / 2);
+  /* Over the picture rather than above it (user, 2026-10-21): the fields and
+     the pager are glass pills on the top edge, and the picture keeps every
+     row. The container lets the drag through; each pill takes the pointer. */
+  pointer-events: none;
+  position: absolute;
+  right: calc(var(--gap) / 2);
+  top: calc(var(--gap) / 2);
+  z-index: 2;
+}
+
+.map-finder > * {
+  pointer-events: auto;
 }
 
 .map-finder-fields,
@@ -2749,10 +2764,38 @@ kbd {
   gap: 4px;
 }
 
+.map-finder-fields {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-chip);
+  padding: 2px;
+}
+
+/* The jump this page ends in on the left, the pager on the right, each its
+   own pill; a long jump yields to the pager. */
+.map-legs {
+  align-items: flex-start;
+  display: flex;
+  gap: 4px;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.map-legs > * {
+  pointer-events: auto;
+}
+
+.map-legs-row {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-chip);
+  flex: 0 0 auto;
+  padding: 0 4px;
+}
+
 .map-legs-row > .map-leg-steps {
   color: var(--text-lo);
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   font-size: var(--font-micro);
+  padding: 0 2px;
 }
 
 .room-field {
@@ -2783,16 +2826,26 @@ kbd {
 
 /* One line, cut short; the whole sentence is its tooltip. */
 .map-leg-text {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-chip);
   color: var(--text-lo);
+  flex: 0 1 auto;
   font-size: var(--font-micro);
+  line-height: var(--control-h);
+  min-width: 0;
   overflow: hidden;
+  padding: 0 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .map-finder-note {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-chip);
   font-size: var(--font-micro);
   margin: 0;
+  padding: 2px 8px;
+  width: fit-content;
 }
 
 /*
@@ -3100,26 +3153,26 @@ kbd {
 }
 
 .map-room[data-kind='lair'] > .map-shape,
-.map-legend [data-kind='lair'] .key .map-shape {
+.map-keys [data-kind='lair'] .key .map-shape {
   fill: color-mix(in srgb, var(--text-lo) 40%, transparent);
   stroke: var(--text-lo);
 }
 
 /* A lair by how its fight goes for this character (todo 03): the meter's hues. */
 .map-room[data-kind='lair'][data-odds='safe'] > .map-shape,
-.map-legend [data-kind='lair'][data-odds='safe'] .key .map-shape {
+.map-keys [data-kind='lair'][data-odds='safe'] .key .map-shape {
   fill: color-mix(in srgb, var(--ok) 55%, transparent);
   stroke: var(--ok);
 }
 
 .map-room[data-kind='lair'][data-odds='risky'] > .map-shape,
-.map-legend [data-kind='lair'][data-odds='risky'] .key .map-shape {
+.map-keys [data-kind='lair'][data-odds='risky'] .key .map-shape {
   fill: color-mix(in srgb, var(--pending) 55%, transparent);
   stroke: var(--pending);
 }
 
 .map-room[data-kind='lair'][data-odds='deadly'] > .map-shape,
-.map-legend [data-kind='lair'][data-odds='deadly'] .key .map-shape {
+.map-keys [data-kind='lair'][data-odds='deadly'] .key .map-shape {
   fill: color-mix(in srgb, var(--danger) 55%, transparent);
   stroke: var(--danger);
 }
@@ -3165,22 +3218,93 @@ kbd {
   stroke-width: 1.2;
 }
 
-.map-legend {
+/*
+ * The key, where the Map card's setting puts it (user, 2026-10-21). `key`:
+ * the legend is a chip over the picture's bottom-right corner and the keys
+ * open in a popup, so the box is the picture. `column`: the keys stand in a
+ * column beside the picture, every one listed. The box is `position:
+ * relative` so the chip is measured against it on every surface.
+ */
+.map-box {
+  position: relative;
+}
+
+.map-box[data-legend='column'] {
+  flex-direction: row;
+  gap: var(--gap);
+}
+
+.map-legend,
+.map-keys {
   color: var(--text-lo);
-  display: flex;
-  flex-wrap: wrap;
   font-size: var(--font-micro);
-  gap: 10px;
-  justify-content: center;
-  margin-top: 10px;
+}
+
+.map-legend[data-layout='key'] {
+  align-items: center;
+  bottom: calc(var(--gap) / 2);
+  display: flex;
+  gap: 6px;
+  position: absolute;
+  right: calc(var(--gap) / 2);
+}
+
+.map-legend[data-layout='key'] [data-kind='plain'] {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-chip);
+  padding: 2px 8px;
+}
+
+.map-key {
+  background: var(--glass-fill-strong);
+}
+
+.map-legend[data-layout='column'] {
+  border-left: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden auto;
+  padding-left: calc(var(--gap) / 2);
+}
+
+.map-key-panel {
+  column-gap: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 5px;
+}
+
+/* A group's heading: the settings screen's register, quiet and spaced. */
+.map-legend-group {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-key-panel .map-legend-group {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+.map-key-panel .map-legend-group:first-child,
+.map-legend[data-layout='column'] .map-legend-group:first-of-type {
+  margin-top: 0;
+}
+
+.map-legend[data-layout='column'] .map-legend-group {
+  margin-top: 8px;
 }
 
 /*
  * The legend names every shape. That is what keeps the hues from being the only
  * thing saying what a room is -- §6, and the reason shape carries the meaning
- * here rather than colour.
+ * here rather than colour. `.map-keys` is the list wherever it is drawn, the
+ * column beside the picture or the popup over it, so each key's rule is one.
  */
-.map-legend span {
+.map-keys span {
   align-items: center;
   display: flex;
   gap: 4px;
@@ -3191,34 +3315,34 @@ kbd {
   visibility: hidden;
 }
 
-.map-legend .key {
+.map-keys .key {
   height: 12px;
   width: 12px;
 }
 
-.map-legend .key .map-shape {
+.map-keys .key .map-shape {
   fill: var(--map-room);
   stroke: var(--map-room-edge);
   stroke-width: 0.5;
 }
 
 /* The key has to look like the thing it names, or it is a second legend. */
-.map-legend [data-kind='here'] .key .map-shape {
+.map-keys [data-kind='here'] .key .map-shape {
   fill: var(--accent);
   stroke: var(--accent);
 }
 
-.map-legend [data-kind='shop'] .key .map-shape {
+.map-keys [data-kind='shop'] .key .map-shape {
   fill: color-mix(in srgb, var(--pending) 55%, transparent);
   stroke: var(--pending);
 }
 
-.map-legend [data-kind='bank'] .key .map-shape {
+.map-keys [data-kind='bank'] .key .map-shape {
   fill: color-mix(in srgb, var(--mark-bank) 30%, transparent);
   stroke: var(--mark-bank);
 }
 
-.map-legend [data-kind='bank'] .key .map-bank {
+.map-keys [data-kind='bank'] .key .map-bank {
   font-size: 4.2px;
 }
 
@@ -3226,7 +3350,7 @@ kbd {
  * The route in the legend, at the weight the map draws it — a corridor stroke
  * is a hairline at 12px, and the key has to look like the thing it names.
  */
-.map-legend [data-kind='route'] .key .map-trail line {
+.map-keys [data-kind='route'] .key .map-trail line {
   stroke-width: 1.6;
 }
 
@@ -5085,7 +5209,7 @@ button.quest-tile-name:hover:not(:disabled) {
   fill: var(--accent);
 }
 
-.map-legend [data-kind='teleport'] .key .map-away-glyph {
+.map-keys [data-kind='teleport'] .key .map-away-glyph {
   stroke-width: 1;
 }
 

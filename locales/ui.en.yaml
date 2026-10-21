@@ -2936,6 +2936,13 @@ cards:
     centreFallback: the center
     legendBank: bank
     legendGated: gated
+    # The chip over the picture's corner that opens the key, and the panel it opens.
+    legendKey: key
+    legendPanel: Map key
+    # The key's three groups.
+    legendGroupHere: You and the way
+    legendGroupRooms: Rooms
+    legendGroupWays: Ways out
     # A lair whose fight for this character has not been run yet.
     legendLair: lair, not rated
     # A lair by the share of its fights this character survives: over 60%,
@@ -3814,6 +3821,10 @@ cards:
     map:
       density: Density
       densityValue: '{percent}% dense'
+      legend: Key
+      legends:
+        key: a button in the corner
+        column: beside the map
     room:
       findDays: Show finds from the last (days)
       findDaysAll: all
