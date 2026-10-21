@@ -131,7 +131,8 @@ export function hostTrips(
       routeTo: (room) => parts.modules().errands.planFromHere(room, {}, 'walk'),
       walk: (route, run) => {
         const { walker, tracker } = parts.modules();
-        const leg = { ...ERRAND_LEG, kind: 'walk' as const, offRounds: run };
+        // A run's start line is the trip's (`GearTrip.leg`), said once the switch has answered.
+        const leg = { ...ERRAND_LEG, kind: 'walk' as const, offRounds: run, startSaid: !run };
         return walker.start(route, tracker.current, leg);
       },
       busy: parts.busy,

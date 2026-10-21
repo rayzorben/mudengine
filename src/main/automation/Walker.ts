@@ -481,8 +481,7 @@ export class Walker implements SessionModule {
    *   to know the leg is over. Holding here instead would mean `ended` never
    *   fires and the lap never takes another step.
    *
-   * Named options rather than positional booleans from the moment there were
-   * two, because `start(route, state, true)` no longer said which.
+   * Named options, because `start(route, state, true)` no longer said which.
    */
   start(
     route: Route,
@@ -495,7 +494,8 @@ export class Walker implements SessionModule {
       whileFighting = true,
       resumeAfterLoss = true,
       kind = 'walk',
-      offRounds = false
+      offRounds = false,
+      startSaid = true
     }: {
       quiet?: boolean;
       asked?: boolean;
@@ -506,6 +506,8 @@ export class Walker implements SessionModule {
       kind?: WalkKind;
       /** A run: steps out of an empty room are timed to the rounds. */
       offRounds?: boolean;
+      /** False where the caller says the start line itself, once the combat switch has answered. */
+      startSaid?: boolean;
     } = {}
   ): string | null {
     if (!this.config.enabled) return t('automation.walk.refusalDisabled');
@@ -700,10 +702,8 @@ export class Walker implements SessionModule {
     const stepCount = route.steps.length;
     const arrival = route.steps.at(-1)!;
     const destination = arrival.name;
-    if (!quiet) {
-      const pace = paceOf(this.config);
-      this.events.notice?.(walkStarted(stepCount, destination, pace));
-    }
+    if (!quiet && startSaid)
+      this.events.notice?.(walkStarted(stepCount, destination, paceOf(this.config)));
     // After the refusals above, so a walk that was declined is not written down
     // as a place this character went: every `return` before this point is the
     // walk not happening.

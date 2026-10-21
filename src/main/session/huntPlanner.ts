@@ -42,11 +42,12 @@ export function huntPlanner(parts: HuntPlannerParts): HuntPlanner {
     noteRate: (key, rate) => m().belongings.rememberHuntRate(key, rate),
     routeTo: (room) => m().errands.planFromHere(room),
     // A run is timed to the rounds with combat off for the way, as *Run it* is (todo 15).
-    // Not asked: the hunt set off, so landing at the lair raises no arrival.
+    // Not asked: the hunt set off, so landing at the lair raises no arrival. A run's
+    // start line is `AutoHunt`'s, said once the switch has answered.
     walk: (route, run) => {
       const { walker, tracker, travel } = m();
       const refused =
-        walker.start(route, tracker.current, { asked: false, offRounds: run }) ??
+        walker.start(route, tracker.current, { asked: false, offRounds: run, startSaid: !run }) ??
         travel.stoppedAtStart();
       if (refused !== null) return refused;
       const off = run ? travel.beginRun() : false;

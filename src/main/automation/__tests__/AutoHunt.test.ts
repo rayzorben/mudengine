@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AutoHunt, type HuntPlanner } from '../AutoHunt';
 import { t } from '../../app/i18n';
+import { runStarted } from '../walk/startWords';
 import { setTuning } from '../../app/tuning';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { DEFAULT_CONFIG, type HuntingAutomationConfig } from '../../../shared/config';
@@ -958,6 +959,8 @@ describe('a hunt order', () => {
     auto.steer({ ...order(), run: true });
     auto.onCharacter(at(1_000));
     expect(runs).toEqual([true]);
+    // The run's one start line, said here once the switch answered.
+    expect(notices).toContain(runStarted(ROUTE, true));
     expect(combatOn).toBe(0);
     here = '1/816';
     auto.onWalkEnded(true, null, at(1_000));

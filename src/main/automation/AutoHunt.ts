@@ -44,6 +44,7 @@ import {
 import { expRateSince, type Loop, type LoopExpected } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
 import type { SessionModule } from './Module';
+import { runStarted } from './walk/startWords';
 
 export interface HuntPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -950,6 +951,8 @@ export class AutoHunt implements SessionModule {
       return;
     }
     this.phase = { kind: 'walking', to: first.id, target, combatOff: walk.combatOff };
+    // The run's one start line, in place of the walker's (it started quiet).
+    if (target.run) this.events.notice?.(runStarted(route, walk.combatOff));
     // Said once the walk is actually going: a refusal used to arrive under
     // *Walking 40 steps to …*, which is the client narrating what it did not do.
     const far = route.steps.length > this.walkConfig.resumeAskSteps;

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../app/i18n';
+import { runStarted } from '../walk/startWords';
 import { tuning } from '../../app/tuning';
 import { CommandQueue } from '../CommandQueue';
 import { GearTrip, type GearTripPlanner } from '../GearTrip';
@@ -186,6 +187,28 @@ describe('a gear trip', () => {
       done: true
     });
     expect(notices.at(-1)).toBe(t('automation.gearTrip.done', { bought: 2, wanted: 2 }));
+  });
+
+  /* The run's one start line is the trip's, said for a walk that is going, the switch's clause once. */
+  it('says one start line for a run, naming the switch once', () => {
+    const shopOnly: GearTripPlan = { ...PLAN, stops: [PLAN.stops[1]!] };
+    // The walker is going once a leg has been handed to it, as the real one answers.
+    let going = false;
+    const trip = make({
+      walk: () => {
+        going = true;
+        return null;
+      },
+      walking: () => going
+    });
+    trip.start(shopOnly, true, current);
+    expect(notices.filter((line) => line === runStarted(ROUTE, true))).toHaveLength(1);
+    // A leg planned again after a fight on the way says the run, and the switch no more.
+    const fighting = { ...carrying(), inCombat: true };
+    trip.onWalkEnded(false, 'combat', fighting);
+    trip.onCharacter(carrying());
+    expect(notices).toContain(runStarted(ROUTE, false));
+    expect(notices.filter((line) => line === runStarted(ROUTE, true))).toHaveLength(1);
   });
 
   it('runs with auto-combat off and turns it on at the end, stopped short as well', () => {

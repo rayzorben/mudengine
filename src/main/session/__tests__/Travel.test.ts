@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../app/i18n';
 import { personStop } from '../../automation/personStop';
+import { runStarted } from '../../automation/walk/startWords';
 import { Travel, type TravelParts, type TravelSession } from '../Travel';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { DecisionKind } from '../../../shared/decisionSettings';
@@ -493,9 +494,13 @@ describe('a route run with auto-combat off', () => {
     const { travel: moving, combat, notices, parts } = running(fighting);
     expect(moving.walkRoute(ROUTE, true)).toBeNull();
     expect(combat.flips).toEqual([false]);
-    expect(notices).toContain(t('automation.combat.runningCombatOff'));
+    // One line, said here once the switch answered; the walker started quiet.
+    expect(notices).toContain(runStarted(ROUTE, true));
     // And its steps are timed to the rounds (todo 00).
-    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, expect.anything(), { offRounds: true });
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, expect.anything(), {
+      offRounds: true,
+      startSaid: false
+    });
     moving.walkEnded(true);
     expect(combat.flips).toEqual([false, true]);
     expect(notices).toContain(t('automation.combat.onAfterRun'));
@@ -617,7 +622,8 @@ describe('a route run with auto-combat off', () => {
     // Positive control: the run started, and found it already off.
     expect(moving.walkRoute(ROUTE, true)).toBeNull();
     expect(moving.walkIsAsked).toBe(true);
-    expect(notices).not.toContain(t('automation.combat.runningCombatOff'));
+    expect(notices).toContain(runStarted(ROUTE, false));
+    expect(notices).not.toContain(runStarted(ROUTE, true));
     moving.walkEnded(false);
     expect(combat.flips).toEqual([]);
   });
@@ -730,7 +736,10 @@ describe('a light bought before the dark', () => {
     expect(parts.walker.start).not.toHaveBeenCalled();
     parts.light.beforeRoute = () => false;
     moving.walkRoute(ROUTE);
-    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, state, { offRounds: false });
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, state, {
+      offRounds: false,
+      startSaid: true
+    });
   });
 
   it('asks for a lap once it has started, and not for one refused', () => {
@@ -981,7 +990,10 @@ describe('a walk that buys its key on the way', () => {
     const { travel: moving, parts } = walking(off);
     moving.walkRoute(ROUND);
     expect(parts.itemErrand.collect).not.toHaveBeenCalled();
-    expect(parts.walker.start).toHaveBeenCalledWith(ROUND, expect.anything(), { offRounds: false });
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUND, expect.anything(), {
+      offRounds: false,
+      startSaid: true
+    });
   });
 });
 
@@ -1021,7 +1033,8 @@ describe('a walk held for the inventory', () => {
     expect(parts.walker.start).not.toHaveBeenCalled();
     moving.walkOnceListed(listed([942]));
     expect(parts.walker.start).toHaveBeenCalledWith(DOOR, expect.anything(), {
-      offRounds: false
+      offRounds: false,
+      startSaid: true
     });
   });
 

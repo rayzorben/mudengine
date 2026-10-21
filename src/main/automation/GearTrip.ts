@@ -11,6 +11,7 @@
  * death; every ending said. See `mudengine-automation` › *Errands*.
  */
 import { offerEach, type CommandQueue } from './CommandQueue';
+import { runStarted } from './walk/startWords';
 import { Handover, type HandoverEnd } from './Handover';
 import type { SessionModule } from './Module';
 import { tripRefusal, type TripPlanner } from './askedTrip';
@@ -65,6 +66,8 @@ interface Trip {
   held: boolean;
   /** Whether this trip turned auto-combat off, and so turns it on at the end. */
   combatOff: boolean;
+  /** Whether a leg's start line has said so yet; the clause is said once a trip. */
+  combatOffSaid: boolean;
   stop: number;
   stage: GearTripStage;
   /** Walking, or waiting out a fight before the leg is planned again. */
@@ -156,6 +159,7 @@ export class GearTrip implements SessionModule {
       run,
       held,
       combatOff,
+      combatOffSaid: false,
       stop: 0,
       stage: 'walking',
       waiting: false,
@@ -233,7 +237,18 @@ export class GearTrip implements SessionModule {
   private leg(trip: Trip): void {
     const stop = trip.plan.stops[trip.stop]!;
     trip.legs += 1;
-    const walker = { ...this.planner, walk: (route: Route) => this.planner.walk(route, trip.run) };
+    const walker = {
+      ...this.planner,
+      walk: (route: Route): string | null => {
+        const refused = this.planner.walk(route, trip.run);
+        // A run's one start line, for a walk that is going; the switch's clause once a trip.
+        if (refused === null && trip.run && this.planner.walking()) {
+          this.events.notice?.(runStarted(route, trip.combatOff && !trip.combatOffSaid));
+          trip.combatOffSaid = trip.combatOffSaid || trip.combatOff;
+        }
+        return refused;
+      }
+    };
     const refused = walkLeg(
       walker,
       stop.room as RoomId,
