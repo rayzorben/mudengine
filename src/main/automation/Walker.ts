@@ -55,7 +55,7 @@
  */
 import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
-import { paceOf, portalLeftUnseen } from '../../shared/walk';
+import { paceOf, pathOf, portalLeftUnseen } from '../../shared/walk';
 import type { HandAnswer } from '../../shared/barrierHands';
 import {
   roomAddress,
@@ -84,6 +84,7 @@ import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { RoomCommands, scriptGated } from './walk/RoomCommands';
 import type { StepTimes } from './walk/StepTimes';
+import type { ArrivalClock } from './walk/ArrivalClock';
 import { OffRounds } from './walk/OffRounds';
 import { walkTimes, type WalkTimesRead } from './walk/WalkTimes';
 import { FoughtPath } from './walk/FoughtPath';
@@ -97,10 +98,6 @@ import { walkStarted } from './walk/startWords';
  * exempt every direction from its damper.
  */
 const NUDGE_KEY = 'walk:nudge';
-
-/** The rooms a run of steps passes through, starting where the first leaves. */
-const pathOf = (steps: RouteStep[]): RoomId[] =>
-  steps.length === 0 ? [] : [steps[0]!.from, ...steps.map((leg) => leg.to)];
 
 export class Walker implements SessionModule {
   private route: Route | null = null;
@@ -177,6 +174,7 @@ export class Walker implements SessionModule {
   private readonly clocks = walkTimes(() => this.events.realmSpeed?.() ?? 1);
   readonly times: WalkTimesRead = this.clocks;
   private readonly stepTimes: StepTimes = this.clocks.steps;
+  private readonly arrival: ArrivalClock = this.clocks.arrival;
   private readonly fought = new FoughtPath();
   private readonly offRounds: OffRounds; // a run's steps out of an empty room, timed to the rounds
   /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
@@ -402,7 +400,8 @@ export class Walker implements SessionModule {
       // walk that reported one would be drawn as recovering rather than ended.
       hold: this.holding,
       pace: paceOf(this.config),
-      stoppedShort: this.route?.stopsBefore !== undefined
+      stoppedShort: this.route?.stopsBefore !== undefined,
+      arrivalAt: this.arrival.arrivalAt(this.walked + this.index, ahead.length)
     };
   }
 
@@ -621,6 +620,7 @@ export class Walker implements SessionModule {
     this.route = route;
     this.index = 0;
     this.walked = 0;
+    this.arrival.begin(Date.now());
     this.reason = null;
     this.status = 'walking';
     this.fought.clear();
@@ -705,8 +705,7 @@ export class Walker implements SessionModule {
     if (!quiet && startSaid)
       this.events.notice?.(walkStarted(stepCount, destination, paceOf(this.config)));
     // After the refusals above, so a walk that was declined is not written down
-    // as a place this character went: every `return` before this point is the
-    // walk not happening.
+    // as a place this character went: every `return` above is the walk not happening.
     this.events.destination?.(arrival.to, destination);
 
     /*
@@ -1136,6 +1135,7 @@ export class Walker implements SessionModule {
 
     const wasLeaving = this.stepAnswered();
     this.index += 1;
+    this.arrival.stepped(Date.now());
     if (this.index >= this.route.steps.length) {
       this.arrive(state, step.name);
       return;

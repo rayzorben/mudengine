@@ -7485,7 +7485,8 @@ describe('starting and stopping a movement', () => {
     expect(manager!.walker.progress).toMatchObject({
       status: 'walking',
       total: 5,
-      stoppedShort: false
+      stoppedShort: false,
+      arrivalAt: null
     });
     // Said out loud: the steps walked are not the steps that were read.
     expect(notices.some(composes('session.walk.replanned'))).toBe(true);

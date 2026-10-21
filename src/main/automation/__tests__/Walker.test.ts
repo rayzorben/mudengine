@@ -561,6 +561,25 @@ describe('one step at a time', () => {
     expect(walker.progress.done).toBe(1);
   });
 
+  it('projects the arrival from the average step since the walk began, holds included', () => {
+    // The clock is set for this case alone, so the tests after it keep the real one.
+    vi.setSystemTime(10_000);
+    try {
+      walker.start(ROUTE, at(1, 1));
+      expect(walker.progress.arrivalAt).toBeNull();
+      // The first step took 2 s, so the one left is projected at the same.
+      vi.setSystemTime(12_000);
+      walker.onCharacter(at(1, 2));
+      expect(walker.progress.arrivalAt).toBe(14_000);
+      vi.setSystemTime(13_000);
+      walker.onCharacter(at(1, 3));
+      expect(walker.progress.status).toBe('arrived');
+      expect(walker.progress.arrivalAt).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   /**
    * The rooms still to travel, which is what the map draws the route with.
    *
