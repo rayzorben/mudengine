@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { artKeyId, artSecret } from './lib/art-key.mjs';
 import { buildStamp } from './lib/build-stamp.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -71,6 +72,24 @@ function run(command, args) {
     process.exit(1);
   }
   if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+/**
+ * The art server's secret from this shell's `ART_BUILD_SECRET`, as a build
+ * secret plus the fingerprint the Dockerfile keys its build layer on. Unset,
+ * the image is built without it, draws no portraits, and this says so.
+ */
+function artSecretArgs() {
+  if (artSecret() === null) {
+    console.warn('ART_BUILD_SECRET is not set, so this image draws no portraits.');
+    return [];
+  }
+  return [
+    '--secret',
+    'id=art_build_secret,env=ART_BUILD_SECRET',
+    '--build-arg',
+    `MUDENGINE_ART_KEY_ID=${artKeyId()}`
+  ];
 }
 
 /**
@@ -184,6 +203,7 @@ if (action === 'build') {
   const { commit, dirty } = buildStamp(root);
   run('docker', [
     'build',
+    ...artSecretArgs(),
     '--build-arg',
     `MUDENGINE_COMMIT=${commit ?? ''}`,
     '--build-arg',
