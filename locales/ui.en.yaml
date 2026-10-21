@@ -6504,8 +6504,8 @@ automation:
       most 95, while hiding uses the full value, so Stealth above {ceiling} only helps while
       standing still.'
   combat:
-    # Todo 06: *Run it* is turn off, go, and on again when the run arrives.
-    runningCombatOff: 'Running it: auto-combat is off until you arrive.'
+    # Todo 06: *Run it* is turn off, go, and on again when the run arrives. The
+    # run's start line says it (`walk.startedRunningCombatOff`).
     onAfterRun: 'Arrived: auto-combat back on.'
     onAfterRunRefused: "Arrived, but auto-combat could not be turned on in the character's file."
     onAfterRunEnded: 'The run stopped short: auto-combat back on.'
@@ -7639,6 +7639,10 @@ automation:
     startedRunning:
       many: Running {stepCount} steps to {destination}.
       one: Running {stepCount} step to {destination}.
+    # *Run it* turned auto-combat off for the way; the walk's start line says so.
+    startedRunningCombatOff:
+      many: Running {stepCount} steps to {destination} (auto-combat off).
+      one: Running {stepCount} step to {destination} (auto-combat off).
     stopped: 'Walk stopped: {reason}'
     superseded: Dropped the walk to {destination}; something else is moving the character now.
     fallbackMove: the move

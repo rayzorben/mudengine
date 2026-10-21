@@ -10,6 +10,7 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { AutoCombat } from '../automation/AutoCombat';
+import { runStarted } from '../automation/walk/startWords';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import { wantedFrom, type ItemErrand } from '../automation/ItemErrand';
@@ -2078,8 +2079,9 @@ export class Travel implements SessionModule {
     this.startingAsked = true;
     let refused: string | null;
     try {
-      // *Run it* times its steps to the rounds (todo 00).
-      refused = this.walker.start(route, this.tracker.current, { offRounds: run });
+      // *Run it* times its steps to the rounds (todo 00), and its start line is
+      // said below once the combat switch has answered, so it is one line.
+      refused = this.walker.start(route, this.tracker.current, { offRounds: run, startSaid: !run });
     } finally {
       this.startingAsked = false;
     }
@@ -2109,7 +2111,9 @@ export class Travel implements SessionModule {
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
     this.clearFor(route);
     const off = run ? this.beginRun() : false;
-    return typeof off === 'string' ? off : null;
+    if (typeof off === 'string') return off;
+    if (run) this.session.notice(runStarted(route, off));
+    return null;
   }
 
   /** Null where the walk `Walker.start` just answered for is going; otherwise why it stopped inside `start`. */
@@ -2140,7 +2144,6 @@ export class Travel implements SessionModule {
     if (!this.session.config().combat.enabled) return false;
     if (!this.session.switchAutomation('combat', false)) return t('automation.combat.runRefused');
     this.combatHeldOff = true;
-    this.session.notice(t('automation.combat.runningCombatOff'));
     return true;
   }
 
