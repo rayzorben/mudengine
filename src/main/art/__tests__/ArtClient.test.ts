@@ -23,6 +23,7 @@ const FACTS: PortraitFacts = {
   charm: 'hostile and rather unappealing',
   intellect: 'intelligent',
   willpower: 'has a worldly air',
+  stats: { health: 60, strength: 62, agility: 55, charm: 34, intellect: 51, willpower: 74 },
   gear: [{ slot: 'Weapon Hand', item: 'quarterstaff' }]
 };
 

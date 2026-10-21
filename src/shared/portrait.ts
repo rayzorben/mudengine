@@ -12,23 +12,29 @@ export interface PortraitGear {
   item: string;
 }
 
-/** Field names as the art server takes them; `class` is the server's word. */
+/**
+ * Field names as the art server takes them; `class` is the server's word. Each stat goes twice:
+ * the look's phrase, and the number from `st`. The server places the number in one of seven steps
+ * between the lowest and highest any race can have, and draws from the step even where the phrase
+ * says otherwise. The phrases stop at 100 or 110, so 110 and 137 strength read alike.
+ */
 export type PortraitFacts = {
   race: string;
   class: string;
   gender?: string;
   hair?: string;
   eyes?: string;
+  stats: Record<LookStat, number>;
   gear: PortraitGear[];
 } & Record<LookStat, string>;
 
 export type PortraitResult =
   | { kind: 'picture'; bytes: Uint8Array; type: 'image/webp' | 'image/png' }
-  /** The server said no to these facts, and why: a word it does not know. */
+  /** The server said no (any status below 500 but 429), and why; not asked again this session. */
   | { kind: 'refused'; reason: string }
   /**
-   * No answer, a broken one, the server down, or one of its limits for now (a 429 or a full
-   * queue): asked again on the next entry. The reason is ours or its.
+   * No answer, a broken one, the server down, over one of its limits (a 429) or with a full
+   * queue (a 5xx): asked again on the next entry. The reason is ours or its.
    */
   | { kind: 'unreachable'; reason: string }
   /** This build carries no build secret, so it cannot register. */
