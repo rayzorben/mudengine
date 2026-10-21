@@ -62,10 +62,18 @@ COPY . .
 ARG MUDENGINE_COMMIT=
 ARG MUDENGINE_DIRTY=
 
+# The art server's secret (`src/main/art/buildSecret.ts`) arrives as a build
+# secret, `--secret id=art_build_secret,env=ART_BUILD_SECRET`, so it stays out
+# of the build history and the cache metadata. The built client holds it, as
+# the desktop builds do. Without one the build draws no portraits. A secret is not part of the layer cache key, so the caller passes
+# a fingerprint of it here: a cached build made without the secret, or with an
+# old one, is then built again.
+ARG MUDENGINE_ART_KEY_ID=
+
 # `npm run build` is typecheck + electron-vite build: `out/main` (the client
 # and both hosts), `out/preload` (unused here, and a few kilobytes) and
 # `out/renderer` (what the browser is served).
-RUN npm run build
+RUN --mount=type=secret,id=art_build_secret,env=ART_BUILD_SECRET npm run build
 
 # ================================================================ deps ======
 #

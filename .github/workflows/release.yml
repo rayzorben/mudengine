@@ -123,6 +123,9 @@ jobs:
           # APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID for notarization.
           # Unset, electron-builder builds unsigned rather than failing.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The art server's secret (`src/main/art/buildSecret.ts`). Unset, the
+          # build draws no portraits and says so.
+          ART_BUILD_SECRET: ${{ secrets.ART_BUILD_SECRET }}
 
       # Only the installable files. `dist/` also holds unpacked application
       # directories, which are the same bytes again and hundreds of megabytes of
@@ -177,6 +180,13 @@ jobs:
         id: v
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
+      # The Dockerfile keys its build layer on this (`scripts/lib/art-key.mjs`).
+      - name: The art secret's fingerprint
+        id: art
+        run: echo "key=$(node scripts/lib/art-key.mjs)" >> "$GITHUB_OUTPUT"
+        env:
+          ART_BUILD_SECRET: ${{ secrets.ART_BUILD_SECRET }}
+
       - uses: docker/setup-buildx-action@v3
 
       # No credentials, no login, and the build below still runs. A fork's pull
@@ -207,6 +217,9 @@ jobs:
           # `.git` is not in the context, so the build is told its commit.
           build-args: |
             MUDENGINE_COMMIT=${{ github.sha }}
+            MUDENGINE_ART_KEY_ID=${{ steps.art.outputs.key }}
+          secrets: |
+            art_build_secret=${{ secrets.ART_BUILD_SECRET }}
           push: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && env.DOCKERHUB_USERNAME != '' }}
           tags: |
             ${{ env.IMAGE }}:${{ steps.v.outputs.version }}
