@@ -1072,6 +1072,11 @@ loops:
   startedKept: Started {loopName} and saved it.
   startedOnly: 'Started {loopName}.'
   joinUnshown: 'No route to show for this loop ({reason}). Starting it anyway.'
+  lapsPlanning: Working out which loops pass through this room…
+  lapsLeftOut:
+    one: "{name} is left out: one of its stops can't be found in the world database."
+    many: "{count} loops are left out: each has a stop that can't be found in the world database."
+  throughFailed: 'Which loops pass through this room could not be worked out: {reason}'
   paletteLabel: 'Loops: find one to walk'
 # Command palette: entries, groups, hints and chrome.
 # The game view (todo 140): the world map, the arena and the HUD, from the palette.

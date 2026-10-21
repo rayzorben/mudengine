@@ -131,10 +131,9 @@ export interface LoopRow {
    *
    * Empty for a `by-name` row, and that emptiness is a fact rather than a gap:
    * `loop:list` answers with a name and a stop *count*, so a held-only loop's
-   * places are genuinely not known here. It is therefore never hoisted as a
-   * loop starting or passing through this room — the alternative is claiming
-   * a route the client has not read, which is the one thing
-   * {@link LoopChoice} exists to have stopped once already.
+   * places are not known here. It is never hoisted as starting here; it is
+   * hoisted as passing through only when main, which holds its stops, planned
+   * its lap through this room ({@link LapsHere.names}).
    */
   stopsAt: LoopStopPlace[];
 }
@@ -161,10 +160,29 @@ export interface LoopHere {
   roomName: string | null;
   /** The room the client resolved, or null while it has not. */
   at: { map: number; room: number } | null;
+  /** What main planned of every lap through this room. */
+  laps: LapsHere;
 }
 
+/**
+ * Main's answer to `loop:through` for this room, as the modal reads it. A
+ * room between two stops is in no stop list, so which laps walk it is known
+ * only to main, which plans every lap once per session.
+ */
+export interface LapsHere {
+  /** The loops, lower-cased, whose lap walks this room. Empty until main has answered. */
+  names: ReadonlySet<string>;
+  /** True while main is still planning the laps, so the modal can say so. */
+  planning: boolean;
+  /** Loops left out because a stop the world data cannot pin down leaves the lap unstated. */
+  unresolved: readonly string[];
+}
+
+/** No answer yet, or no room to answer for. */
+export const NO_LAPS: LapsHere = { names: new Set(), planning: false, unresolved: [] };
+
 /** A group that is nothing here has nothing to say and is not drawn. */
-export const NOWHERE: LoopHere = { recent: null, roomName: null, at: null };
+export const NOWHERE: LoopHere = { recent: null, roomName: null, at: null, laps: NO_LAPS };
 
 /**
  * Why a group is above the areas, or `area` for one that is not.
@@ -312,6 +330,8 @@ function sectionOf(row: LoopRow, here: LoopHere): LoopSection | null {
   const first = row.stopsAt[0];
   if (first !== undefined && stopIsHere(first, here)) return 'start';
   if (row.stopsAt.some((stop) => stopIsHere(stop, here))) return 'waypoint';
+  // A room between two stops is in no stop list; main planned the lap.
+  if (here.laps.names.has(row.name.toLowerCase())) return 'waypoint';
   return null;
 }
 

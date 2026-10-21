@@ -1704,6 +1704,11 @@ export class LoopRunner implements SessionModule {
   /** The room a stop of `loop` names, or null where the realm cannot settle it. */
   stopRoom(loop: Loop, stop: number): RoomId | null {
     const named = loop.stops[stop];
-    return named === undefined ? null : this.planner.roomOf(splitStop(named));
+    return named === undefined ? null : this.roomOf(splitStop(named));
+  }
+
+  /** Where a lap places a stop: the room its name and coordinates pick out, or null. */
+  roomOf(stop: Parameters<LoopPlanner['roomOf']>[0]): RoomId | null {
+    return this.planner.roomOf(stop);
   }
 }

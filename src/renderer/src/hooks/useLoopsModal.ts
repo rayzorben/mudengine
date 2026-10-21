@@ -9,7 +9,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { t } from '../lib/i18n';
-import { loopRows, type HeldLoop, type LoopHere, type LoopRow } from '../lib/loops';
+import {
+  loopRows,
+  NO_LAPS,
+  type HeldLoop,
+  type LapsHere,
+  type LoopHere,
+  type LoopRow
+} from '../lib/loops';
 import type { CharacterState } from '@shared/character';
 import { NO_SESSION, type IpcApi, type SessionId } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
@@ -26,7 +33,7 @@ export interface LoopsModalState {
 }
 
 export interface LoopsModalInputs {
-  api: Pick<IpcApi, 'loopCatalogue'>;
+  api: Pick<IpcApi, 'loopCatalogue' | 'loopThrough'>;
   /** The character the modal is for: the shown one, or `NO_SESSION`. */
   session: SessionId;
   /** This character's own loops, as `loop:list` answers them. */
@@ -141,6 +148,45 @@ export function useLoopsModal({
   const rows = useMemo(() => loopRows(catalogue ?? [], loops), [catalogue, loops]);
 
   /*
+   * Which loops' laps walk through this room, asked of main when the modal
+   * opens and again when the room changes under it. A room between two stops
+   * is in no stop list, so the renderer cannot tell from the rows. Main's
+   * first answer plans every lap (about 14 s on the shipped shelf) and the
+   * modal says it is still planning until it lands; a later room's ask makes
+   * the earlier one stale, since the answer is for wherever the character
+   * stands when it is read.
+   */
+  const [laps, setLaps] = useState<LapsHere>(NO_LAPS);
+  useEffect(() => {
+    if (!open || session === NO_SESSION || room.map === null || room.number === null) {
+      setLaps(NO_LAPS);
+      return;
+    }
+    let stale = false;
+    // The last room's answer goes first: it would hoist its loops into this room while the ask runs.
+    setLaps({ ...NO_LAPS, planning: true });
+    void api
+      .loopThrough(session)
+      .then((answer) => {
+        if (stale) return;
+        setLaps({
+          names: new Set(answer.names.map((name) => name.toLowerCase())),
+          planning: false,
+          unresolved: answer.unresolved
+        });
+      })
+      .catch((error: unknown) => {
+        // Said, like the shelf: a section that stays empty with nothing saying why looks broken.
+        if (stale) return;
+        setLaps(NO_LAPS);
+        say(session, t('loops.throughFailed', { reason: String(error) }));
+      });
+    return () => {
+      stale = true;
+    };
+  }, [api, open, session, room.map, room.number, say]);
+
+  /*
    * Where this character is, for the sections the modal draws above the areas.
    *
    * `recent` outlives the run it named — `stopped` keeps it, which is the same
@@ -161,9 +207,10 @@ export function useLoopsModal({
     () => ({
       recent,
       roomName: room.name,
-      at: room.map === null || room.number === null ? null : { map: room.map, room: room.number }
+      at: room.map === null || room.number === null ? null : { map: room.map, room: room.number },
+      laps
     }),
-    [recent, room.name, room.map, room.number]
+    [recent, room.name, room.map, room.number, laps]
   );
 
   return { open, toggle, close, loading: catalogue === null, rows, here };

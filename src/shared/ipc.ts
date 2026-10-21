@@ -99,7 +99,7 @@ import type { LowLivesAnswer } from './lives';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
-import type { LoopJoin, MovementStart, WalkStart } from './movement';
+import type { LoopJoin, LoopsThrough, MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
 import type { CombatTally } from './tally';
 import type {
@@ -825,6 +825,11 @@ export const Invoke = {
    * modal shows the way in the route panel first (`LoopJoin`).
    */
   loopJoin: 'loop:join',
+  /**
+   * The loops whose lap walks through the room the character stands in, for
+   * the Loops modal's Passes through here (`LoopsThrough`).
+   */
+  loopThrough: 'loop:through',
   /** Turn a bounce loop round. Refused for a plain loop. */
   reverseLoop: 'loop:reverse',
   /** The loops the client ships, for the settings screen to offer. */
@@ -1453,6 +1458,14 @@ export interface IpcApi {
    * game. See `LoopJoin`.
    */
   loopJoin(session: SessionId, loop: Loop | string): Promise<LoopJoin>;
+  /**
+   * The loops, shipped and this character's own, whose lap walks through the
+   * room it stands in. The first ask plans every lap (about 14 s on the
+   * shipped shelf, sliced so nothing stalls) and later asks answer at once
+   * until the realm, the loops or the character's stats change. See
+   * `LoopsThrough`.
+   */
+  loopThrough(session: SessionId): Promise<LoopsThrough>;
   /** Resolves to a refusal — nothing looping, or not a bounce loop — or null. */
   reverseLoop(session: SessionId): Promise<string | null>;
   /**

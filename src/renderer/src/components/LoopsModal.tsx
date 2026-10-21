@@ -2,6 +2,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -209,8 +210,25 @@ export default function LoopsModal({
   const nav = useListNavigation<LoopRow>({
     items: visible,
     onChoose: choose,
-    onCancel: onClose
+    onCancel: onClose,
+    resetOn: query,
+    keyOf: rowKey
   });
+
+  /*
+   * The group just opened, so its heading can be brought to the top of the
+   * list once its rows are drawn and before they are painted. Without it a
+   * group opened at the bottom draws its rows below the fold.
+   */
+  const opened = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const id = opened.current;
+    if (id === null) return;
+    opened.current = null;
+    nav.listRef.current
+      ?.querySelector(`[data-group="${CSS.escape(id)}"]`)
+      ?.scrollIntoView({ block: 'start' });
+  }, [visible, nav.listRef]);
 
   /**
    * The set is the *deviation*, not the state.
@@ -222,13 +240,24 @@ export default function LoopsModal({
    * group changes kind: walking into a room hoists a loop out of its area, and
    * an area's open flag is not an answer to whether `Starts here` is open.
    */
-  const toggle = (id: string): void => {
+  const toggle = (group: LoopGroup): void => {
+    // While searching every group is open and a click changes nothing seen.
+    if (searching) return;
+    const opening = !isOpen(group);
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(group.id)) next.delete(group.id);
+      else next.add(group.id);
       return next;
     });
+    if (!opening) return;
+    // The highlight goes to the group's first row, where the arrows go next.
+    const first = group.loops[0];
+    const before = groups
+      .slice(0, groups.indexOf(group))
+      .reduce((sum, earlier) => sum + (isOpen(earlier) ? earlier.loops.length : 0), 0);
+    if (first !== undefined) nav.point(before);
+    opened.current = group.id;
   };
 
   /*
@@ -303,12 +332,13 @@ export default function LoopsModal({
                   <li
                     aria-hidden="true"
                     className="palette-group-label"
+                    data-group={group.id}
                     data-section={group.section}
                     role="presentation"
                   >
                     <button
                       className="palette-group-toggle"
-                      onClick={() => toggle(group.id)}
+                      onClick={() => toggle(group)}
                       onMouseDown={keepFocus}
                       tabIndex={-1}
                       type="button"
@@ -357,6 +387,21 @@ export default function LoopsModal({
         )}
 
         {/*
+          Passes through here is main's to fill, and the first fill takes
+          seconds: said while it is pending, and said again when a loop was
+          left out of it, so an empty section is never a silent one.
+        */}
+        {here.laps.planning ? (
+          <div className="loops-laps hint">{t('loops.lapsPlanning')}</div>
+        ) : here.laps.unresolved.length > 0 ? (
+          <div className="loops-laps hint" title={here.laps.unresolved.join('\n')}>
+            {here.laps.unresolved.length === 1
+              ? t('loops.lapsLeftOut.one', { name: here.laps.unresolved[0] ?? '' })
+              : t('loops.lapsLeftOut.many', { count: here.laps.unresolved.length })}
+          </div>
+        ) : null}
+
+        {/*
           Where the chosen loop is kept, in the shape the permission grid uses
           for allow beside deny — and in its colours: `--ok` for the two that
           keep the loop, `--danger` for the one that refuses to. The refusal
@@ -394,6 +439,9 @@ export default function LoopsModal({
     </div>
   );
 }
+
+/** A row's identity for the highlight: where it is in the list it came from. */
+const rowKey = (row: LoopRow): string => row.key;
 
 /**
  * What a group's heading says.

@@ -92,6 +92,7 @@ const api: WireApi = {
   addLoop: (scope, owner, loop) => ipcRenderer.invoke(Invoke.addLoop, scope, owner, loop),
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),
   loopJoin: (session, loop) => ipcRenderer.invoke(Invoke.loopJoin, session, loop),
+  loopThrough: (session) => ipcRenderer.invoke(Invoke.loopThrough, session),
   getWalk: (session) => ipcRenderer.invoke(Invoke.getWalk, session),
   getAutomation: (session) => ipcRenderer.invoke(Invoke.getAutomation, session),
   listExtensions: () => ipcRenderer.invoke(Invoke.listExtensions),

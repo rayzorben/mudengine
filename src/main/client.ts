@@ -128,7 +128,13 @@ import { NO_PORTRAIT } from '../shared/portrait';
 import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
-import type { LoopJoin, MovementStart, WalkStart } from '../shared/movement';
+import {
+  NO_LOOPS_THROUGH,
+  type LoopJoin,
+  type LoopsThrough,
+  type MovementStart,
+  type WalkStart
+} from '../shared/movement';
 import { areaLimits, type AreaSearchPreview } from '../shared/areaSearch';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
@@ -204,6 +210,7 @@ import {
   type Route,
   type ShopPlace
 } from '../shared/world';
+import { LapIndexCache } from './world/lapIndex';
 import { LoopDraftCache } from './world/loopDraft';
 import {
   NO_WALK_PAGES,
@@ -776,6 +783,8 @@ function splitMemoryFor(id: SessionId): RealmMemory | undefined {
  * turned off.
  */
 const fightLogs = new Map<SessionId, FightLog>();
+/** Each session's index of which loops' laps walk which rooms (`loop:through`), dropped with it. */
+const lapIndexes = new Map<SessionId, LapIndexCache>();
 /**
  * The startup split of every old one-file fight log into segments (todo 13).
  * Each log waits for it before touching its record; it never rejects.
@@ -1750,6 +1759,8 @@ function createHost(): SessionHost {
     removed: (id) => {
       mapPlacements.forget(id);
       portraits?.remove(id);
+      lapIndexes.get(id)?.dispose();
+      lapIndexes.delete(id);
     },
     characterSeen: (id, state) => portraits?.observe(id, state),
     // Per window: which characters have tabs where is the one roster question
@@ -2390,7 +2401,11 @@ function registerIpc(): void {
    */
   handle(
     Invoke.listLoops,
-    (_caller, session: SessionId) => host?.get(session)?.manager.loopList ?? []
+    (_caller, session: SessionId) =>
+      host?.get(session)?.manager.heldLoops.map((loop) => ({
+        name: loop.name,
+        stops: loop.stops.length
+      })) ?? []
   );
   handle(Invoke.startLoop, async (_caller, session: SessionId, name: unknown) => {
     if (typeof name !== 'string') return t('app.loop.invalidName');
@@ -2467,6 +2482,45 @@ function registerIpc(): void {
     if (joins === undefined) return { unshown: t('app.route.noRealmData') };
     const route = manager.leg(here, at, { lap: true });
     return typeof route === 'string' ? { unshown: route } : { joins, route };
+  });
+  /*
+   * The loops whose lap walks through the room the character stands in. One
+   * index per session over the shelf and the character's own loops, each leg
+   * the session's own lap leg, so a room is listed when the running lap would
+   * walk it. Read again after the wait: the build takes seconds, and the
+   * room, like the session, may have moved on.
+   */
+  handle(Invoke.loopThrough, async (_caller, session: SessionId): Promise<LoopsThrough> => {
+    const world = worldFor(session);
+    const slot = await placedFirst(session);
+    if (!slot || !world || world.size === 0) return NO_LOOPS_THROUGH;
+    const { manager } = slot;
+    let cache = lapIndexes.get(session);
+    if (cache === undefined) {
+      cache = new LapIndexCache();
+      lapIndexes.set(session, cache);
+    }
+    // A shelf loop the character already holds is planned once, as its own.
+    const held = new Set(manager.heldLoops.map((loop) => loop.name.toLowerCase()));
+    const index = await cache.index({
+      graph: world,
+      loops: [
+        ...manager.heldLoops,
+        ...loopCatalogue()
+          .all()
+          .filter((loop) => !held.has(loop.name.toLowerCase()))
+      ],
+      traveller: lapTravellerOf(session),
+      resolve: (stop) => manager.loops.roomOf(stop),
+      leg: (from, to) => {
+        const route = manager.leg(from, to, { lap: true });
+        return typeof route === 'string' ? null : route;
+      }
+    });
+    const room = host?.get(session)?.manager.character.room;
+    const here = room === undefined ? null : roomAddress(room);
+    if (index === null || here === null) return NO_LOOPS_THROUGH;
+    return { names: [...index.through(here)], unresolved: [...index.unresolved] };
   });
   handle(Invoke.reverseLoop, (_caller, session: SessionId) => {
     const slot = host?.get(session);
