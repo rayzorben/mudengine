@@ -63,7 +63,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the destination hook's comment, one line as only asked walks are recent (todo 28).
   // Lowered by the rest and poison comments, condensed as the fight signs came (todo 131).
   // Lowered by the realm's word for its data, out whole (`RealmWordWatch`), as the marks' book came (todo 143).
-  'src/main/session/SessionManager.ts': 3350,
+  // Lowered by the blessings' deps on one line, as the room look came (todo 20261020-2015-01).
+  'src/main/session/SessionManager.ts': 3348,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

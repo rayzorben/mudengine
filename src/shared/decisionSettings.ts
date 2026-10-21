@@ -639,6 +639,7 @@ export const DECISION_SETTINGS = {
   ],
   'stat-all': ['automation.asks.statAll'],
   'look-at-self': ['art.enabled'],
+  'look-for-room-art': ['art.rooms'],
   'look-at-player': ['automation.talk.lookAtPlayers'],
   'keep-alive': [
     'automation.idle.enabled',

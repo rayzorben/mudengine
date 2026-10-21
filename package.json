@@ -22,6 +22,7 @@
     "start": "npm run build && electron-vite preview --skipBuild",
     "build": "npm run typecheck && electron-vite build",
     "build:item-art": "node scripts/build-item-art.mjs",
+    "build:room-art": "node --import ./scripts/lib/register.mjs scripts/build-room-art.mjs",
     "build:world": "node --import ./scripts/lib/register.mjs scripts/build-world.mjs",
     "build:loops": "node --import ./scripts/lib/register.mjs scripts/build-loops.mjs",
     "build:megamud": "node --import ./scripts/lib/register.mjs scripts/build-megamud.mjs",

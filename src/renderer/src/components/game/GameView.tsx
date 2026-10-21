@@ -36,6 +36,7 @@ import { roomsWithFinds } from '@shared/finds';
 import { isFoundWay } from '@shared/memory';
 import type { GameViewState } from '../../hooks/useGameView';
 import { useGameMap } from '../../hooks/useGameMap';
+import { useRoomArt } from '../../hooks/useRoomArt';
 import { useGameTutorial } from '../../hooks/useGameTutorial';
 import { useRoundAnchor } from '../../hooks/useRoundAnchor';
 import type { SessionView } from '../../hooks/useSessionViews';
@@ -85,6 +86,8 @@ export interface GameViewProps {
     | 'onPortrait'
     | 'copyImage'
     | 'savePortrait'
+    | 'roomArt'
+    | 'onRoomArt'
   >;
   session: SessionId;
   view: SessionView;
@@ -127,6 +130,7 @@ function GameView({
   const here = roomAddress(character.room);
   const [detached, setDetached] = useState(false);
   const map = useGameMap(api, session, character.room.map, character.room.number, detached);
+  const picture = useRoomArt(api, session);
   const canvas = useRef<WorldCanvasHandle>(null);
   const going = character.combat.engaged || view.walk.status === 'walking';
   const rounds = useRoundAnchor(view.automation.rounds, going);
@@ -415,6 +419,7 @@ function GameView({
         onFoe={onFoe}
         onWalk={onWalk}
         picked={picked}
+        picture={picture}
         players={players}
         ref={canvas}
         rounds={rounds}

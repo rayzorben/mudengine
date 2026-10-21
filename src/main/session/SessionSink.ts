@@ -12,6 +12,7 @@ import type { Block } from '../../shared/blocks';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { CharacterState, RealmFamily as RealmWord } from '../../shared/character';
 import type { AutomationSwitch } from '../../shared/config';
+import type { RoomLook } from '../../shared/roomArt';
 import type { KeyBindings } from '../../shared/keys';
 import type { Find } from '../../shared/finds';
 import type { Shelf } from '../../shared/shops';
@@ -194,4 +195,6 @@ export interface SessionSink {
   roomCoded?(code: string): RoomReference | null;
   /** Whether this install draws portraits (`art.enabled`); absent is no. */
   portraits?(): boolean;
+  /** What the look at a room shown without its description asks first (todo 20261020-2015-01). */
+  roomLook?: RoomLook;
 }

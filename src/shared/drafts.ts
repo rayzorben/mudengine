@@ -1358,6 +1358,7 @@ function artDraft(value: unknown): ArtConfig {
   const block = isRecord(value) ? value : {};
   return {
     enabled: typeof block['enabled'] === 'boolean' ? block['enabled'] : DEFAULT_ART.enabled,
+    rooms: typeof block['rooms'] === 'boolean' ? block['rooms'] : DEFAULT_ART.rooms,
     server: text(block['server']).slice(0, 400)
   };
 }

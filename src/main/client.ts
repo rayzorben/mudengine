@@ -115,16 +115,13 @@ import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import { SimulatorPool } from './app/simulatorPool';
-import { ArtClient } from './art/ArtClient';
-import { ART_TOKEN_FILE, artTokensAt } from './art/artToken';
 import { ART_BUILD_SECRET } from './art/buildSecret';
-import { lastPortraitAt, PortraitCache } from './art/portraitCache';
-import { Portraits } from './art/Portraits';
-import { solveOnWorker } from './art/proofOfWork';
 import { pngOfDataUrl } from './art/pngOfDataUrl';
 import { handlePortraitFiles } from './art/portraitFiles';
+import { wireArt, type Art } from './art/wiring';
 import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
 import { NO_PORTRAIT } from '../shared/portrait';
+import { NO_ROOM_ART } from '../shared/roomArt';
 import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
@@ -358,8 +355,8 @@ let simulators: SimulatorPool | null = null;
 let simulatorWorker = '';
 /** Where the art server's proof of work was built, the same way. */
 let artWorker = '';
-/** Every character's portrait from the art server (todo 20261019-0931-01). */
-let portraits: Portraits | null = null;
+/** Every character's portrait and room picture from the art server (todo 20261019-0931-01, 20261020-2015-01). */
+let art: Art | null = null;
 
 /**
  * The realm knowledge base, loaded once.
@@ -1669,31 +1666,26 @@ function settingsStores(): SettingsStores | undefined {
 }
 
 /**
- * The art server's client, the store on disk and a keeper per character (todo
- * 20261019-0931-01). A build made without the registration secret says so once
- * while portraits are on.
+ * The art server's client, the stores on disk and a keeper per character for
+ * portraits and room pictures (todo 20261019-0931-01, 20261020-2015-01). A
+ * build made without the registration secret says so once while either is on.
  */
-function createPortraits(): Portraits {
-  const art = (): ArtConfig => config?.config.art ?? DEFAULT_ART;
-  if (ART_BUILD_SECRET === null && art().enabled) {
+function createArt(): Art {
+  const settings = (): ArtConfig => config?.config.art ?? DEFAULT_ART;
+  if (ART_BUILD_SECRET === null && (settings().enabled || settings().rooms)) {
     announce('art', t('art.noBuildSecret'), 'log');
   }
-  return new Portraits({
-    source: new ArtClient({
-      server: () => art().server,
-      buildSecret: ART_BUILD_SECRET,
-      tokens: artTokensAt(home.state(ART_TOKEN_FILE)),
-      solve: (challenge, bits) => solveOnWorker(artWorker, challenge, bits, tuning().art.workMs),
-      limits: () => {
-        const { requestMs, drawMs, mostBits, pollMs, pollMostMs, pollLeastMs } = tuning().art;
-        return { requestMs, drawMs, mostBits, pollMs, pollMostMs, pollLeastMs };
-      }
-    }),
-    cache: new PortraitCache(home.state('art', 'portraits'), () => tuning().art.portraitsKept),
-    lastFor: (id) => lastPortraitAt(home.record('portrait', id)),
-    enabled: () => art().enabled,
-    publish: (id, view) => windows.toAll(Push.portrait, { session: id, payload: view }),
-    say: (id, message) => pushNotice({ session: id, message: t('art.portraitNot', { message }) })
+  return wireArt({
+    home,
+    settings,
+    tuning,
+    buildSecret: ART_BUILD_SECRET,
+    worker: artWorker,
+    roomIndex: path.join(resourcesDir(), 'art', 'room-index.json'),
+    publishPortrait: (id, view) => windows.toAll(Push.portrait, { session: id, payload: view }),
+    publishRoom: (id, view) => windows.toAll(Push.roomArt, { session: id, payload: view }),
+    say: (id, message) => pushNotice({ session: id, message }),
+    announce: (message) => announce('art', message, 'log')
   });
 }
 
@@ -1758,11 +1750,18 @@ function createHost(): SessionHost {
     onConnected: keepSignalsWorking,
     removed: (id) => {
       mapPlacements.forget(id);
-      portraits?.remove(id);
+      art?.portraits.remove(id);
+      art?.rooms.remove(id);
       lapIndexes.get(id)?.dispose();
       lapIndexes.delete(id);
     },
-    characterSeen: (id, state) => portraits?.observe(id, state),
+    characterSeen: (id, state) => {
+      art?.portraits.observe(id, state);
+      art?.rooms.observe(id, state);
+    },
+    // Before the index is read it is taken to have the room, so no look is spent on one it has.
+    roomArtShipped: (realm, map, room) =>
+      art !== null && (!art.shipped.ready || art.shipped.keyOf(realm, map, room) !== null),
     // Per window: which characters have tabs where is the one roster question
     // that differs between them.
     publishRoster: publishRosters,
@@ -2366,9 +2365,14 @@ function registerIpc(): void {
   });
   // Only a loaded character's: a stray id makes no keeper.
   handle(Invoke.portrait, (_caller, session: unknown) =>
-    typeof session === 'string' && host?.has(session) && portraits !== null
-      ? portraits.view(session)
+    typeof session === 'string' && host?.has(session) && art !== null
+      ? art.portraits.view(session)
       : NO_PORTRAIT
+  );
+  handle(Invoke.roomArt, (_caller, session: unknown) =>
+    typeof session === 'string' && host?.has(session) && art !== null
+      ? art.rooms.view(session)
+      : NO_ROOM_ART
   );
   // Parsed: a scope the form did not send reads nothing.
   handle(Invoke.inheritedMobRules, (_caller, scope: unknown, realm: unknown) => {
@@ -3460,7 +3464,7 @@ function registerIpc(): void {
   });
   handlePortraitFiles({
     host: platform,
-    picture: (id) => portraits?.picture(id) ?? null,
+    picture: (id) => art?.portraits.picture(id) ?? null,
     nameOf: (id) => labelOf(id).name
   });
 
@@ -3887,7 +3891,7 @@ function build(): void {
     (message) => announce('simulator', message),
     () => new SlicedSimulator()
   );
-  portraits = createPortraits();
+  art = createArt();
   lore = createLore();
   playerBook = createPlayerBook();
   destinations = createDestinations();

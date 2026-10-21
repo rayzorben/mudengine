@@ -2954,4 +2954,11 @@ rooms: []
 # every character, so a character's file has no say.
 art:
   enabled: true
+  # Room pictures (the arena in the game view): the client ships a picture for
+  # most rooms, found by the room's description. For a room it has none for,
+  # rooms: true sends the map and room numbers, the room's name and its
+  # description as the game printed it, and shows and keeps what comes back.
+  # Nothing about you is sent. With brief on, the client sends l once in such a
+  # room to read the description, only while nothing moves you.
+  rooms: true
   server: https://art.150-136-117-176.sslip.io

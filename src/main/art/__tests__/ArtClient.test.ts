@@ -5,6 +5,7 @@ import { ArtClient } from '../ArtClient';
 import type { ArtToken, ArtTokens } from '../artToken';
 import { leadingZeroBits, solveProofOfWork } from '../proofOfWork';
 import type { PortraitFacts } from '../../../shared/portrait';
+import type { RoomArtRequest } from '../../../shared/roomArt';
 
 const BUILD = 'build-secret-for-tests';
 const SERVER = 'https://art.example';
@@ -27,10 +28,17 @@ const FACTS: PortraitFacts = {
   gear: [{ slot: 'Weapon Hand', item: 'quarterstaff' }]
 };
 
+const ROOM: RoomArtRequest = {
+  map: 1,
+  room: 1710,
+  name: 'Darkwood Forest',
+  description: 'Tall trees crowd in on every side.'
+};
+
 /**
  * The art gateway as `server.py` answers: a challenge, a registration that
- * checks the build's signature and the work, and a portrait that checks the
- * request's signature and answers 202 until the drawing is done.
+ * checks the build's signature and the work, and a portrait or a room that
+ * checks the request's signature and answers 202 until the drawing is done.
  */
 class FakeGateway {
   readonly tokens = new Map<string, string>();
@@ -196,6 +204,18 @@ describe('the art server client', () => {
     const result = await client('a guess').portraitOf(FACTS, () => false);
     expect(result).toEqual({ kind: 'refused', reason: 'registering: not a mudengine build' });
     expect(tokens.held).toBeNull();
+  });
+
+  it('asks for a room at its own path, polled there, and takes the server’s refusal of it', async () => {
+    gateway.pending = 1;
+    const result = await client().roomArtOf(ROOM, () => false);
+    expect(result).toEqual({ kind: 'picture', bytes: PICTURE, type: 'image/webp' });
+    expect(gateway.seen.slice(-2)).toEqual(['POST /v1/room', `GET /v1/room/${'f'.repeat(24)}`]);
+    gateway.refuse = { status: 409, error: 'the build has this picture' };
+    expect(await client().roomArtOf(ROOM, () => false)).toEqual({
+      kind: 'refused',
+      reason: 'the build has this picture'
+    });
   });
 
   it('calls a server that does not answer unreachable', async () => {

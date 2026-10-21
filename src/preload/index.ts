@@ -70,6 +70,7 @@ const api: WireApi = {
   inheritedMobRules: (scope, realm) => ipcRenderer.invoke(Invoke.inheritedMobRules, scope, realm),
   portrait: (session) => ipcRenderer.invoke(Invoke.portrait, session),
   savePortrait: (session) => ipcRenderer.invoke(Invoke.savePortrait, session),
+  roomArt: (session) => ipcRenderer.invoke(Invoke.roomArt, session),
   treatMonster: (session, mob, treat) =>
     ipcRenderer.invoke(Invoke.treatMonster, session, mob, treat),
   walkOnWithoutParty: (session) => ipcRenderer.invoke(Invoke.walkOnWithoutParty, session),
@@ -187,6 +188,7 @@ const api: WireApi = {
   onCharacter: (handler) => subscribe(Push.character, handler),
   onPlayers: (handler) => subscribe(Push.players, handler),
   onPortrait: (handler) => subscribe(Push.portrait, handler),
+  onRoomArt: (handler) => subscribe(Push.roomArt, handler),
   onWalk: (handler) => subscribe(Push.walk, handler),
   onLoop: (handler) => subscribe(Push.loop, handler),
   onAutomation: (handler) => subscribe(Push.automation, handler),

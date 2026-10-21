@@ -741,7 +741,10 @@ export class SessionManager {
       monsterSwung: (at) => this.hangUp.monsterSwung(at),
       quarry: (state) => this.combat.quarry(state)
     };
-    this.routines = new Routines(automation, this.queue, { notice, onTheGround, portraits });
+    this.routines = new Routines(automation, this.queue, {
+      ...{ notice, onTheGround, portraits, roomLook: sink.roomLook },
+      idle: () => !this.travel.goingSomewhere()
+    });
 
     // `abandon` is a loss: `close` reports `graceful` false, so the loop is held.
     this.link = new LinkWatch({
@@ -1557,13 +1560,8 @@ export class SessionManager {
     } = blessingsFor(
       { tracker: this.tracker, world, errands: this.errands, ...book, hunt: this.hunt },
       {
-        queue: this.queue,
-        realmSpell,
-        onTheGround,
-        castGate: this.castRound,
+        ...{ queue: this.queue, realmSpell, onTheGround, castGate: this.castRound, signs, charges },
         due: this.hostTrips,
-        signs,
-        charges,
         durations: () => this.belongings.recallSpellDurations()
       },
       { ...reports, config: () => this.automationConfig },

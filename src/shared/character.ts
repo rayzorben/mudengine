@@ -283,6 +283,13 @@ export function listedSum(listing: AbilitySums | null, id: number): number | nul
  */
 export type RealmFamily = 'majormud' | 'greatermud' | 'paradigm';
 
+/** The runtime list beside the type, for a family read off a file. */
+export const REALM_FAMILIES_PLAYED: readonly RealmFamily[] = ['majormud', 'greatermud', 'paradigm'];
+
+export function asRealmFamilyPlayed(value: unknown): RealmFamily | null {
+  return REALM_FAMILIES_PLAYED.find((family) => family === value) ?? null;
+}
+
 export interface Vitals {
   hp: number | null;
   /** Null when the class has none at all, which is not the same as zero. */

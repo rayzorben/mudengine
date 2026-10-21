@@ -15,12 +15,13 @@ import {
   type PortraitView
 } from '../../shared/portrait';
 import { errorMessage } from '../../shared/values';
-import type { LastPortrait, Picture, PortraitCache } from './portraitCache';
+import { AskLedger } from './AskLedger';
+import { dataUrlOf, type LastPortrait, type Picture, type PictureCache } from './pictureCache';
 import { factsHash, portraitFactsOf } from './portraitFacts';
 
 export interface PortraitKeeperDeps {
   source: PortraitSource;
-  cache: PortraitCache;
+  cache: PictureCache;
   last: LastPortrait;
   /** `art.enabled`, read through. */
   enabled(): boolean;
@@ -34,11 +35,8 @@ export class PortraitKeeper {
   private view: PortraitView = NO_PORTRAIT;
   /** The bytes behind `view.picture`, for a save. */
   private shown: Picture | null = null;
-  /** The facts each ask was for, done or under way: never asked twice for the same. */
-  private readonly asked = new Set<string>();
-  /** Of those, the ones the server did not answer: asked again on the next entry to the realm. */
-  private readonly unanswered = new Set<string>();
-  private inRealm = false;
+  /** The facts each ask was for, and which the server did not answer. */
+  private readonly ledger = new AskLedger();
   private inFlight = false;
   private latest: CharacterState | null = null;
   /** The parts of the state the facts are made of, as last seen, so a line that moved none of them costs nothing. */
@@ -59,12 +57,7 @@ export class PortraitKeeper {
   }
 
   observe(state: CharacterState): void {
-    const entered = state.phase === 'in-game' && !this.inRealm;
-    this.inRealm = state.phase === 'in-game';
-    if (entered) {
-      for (const hash of this.unanswered) this.asked.delete(hash);
-      this.unanswered.clear();
-    }
+    const entered = this.ledger.entered(state.phase);
     const parts = [
       entered,
       this.deps.enabled(),
@@ -92,7 +85,7 @@ export class PortraitKeeper {
     if (state === null || this.inFlight || this.disposed) return;
     if (!this.deps.enabled()) {
       // Turned back on, the same facts may be asked again.
-      this.asked.clear();
+      this.ledger.clear();
       this.status({ kind: 'off' });
       return;
     }
@@ -102,8 +95,8 @@ export class PortraitKeeper {
       return;
     }
     const hash = factsHash(facts);
-    if (this.asked.has(hash)) return;
-    this.asked.add(hash);
+    if (this.ledger.has(hash)) return;
+    this.ledger.begin(hash);
     this.inFlight = true;
     void this.draw(hash, () => this.pictureFor(facts, hash)).finally(() => {
       this.inFlight = false;
@@ -134,14 +127,14 @@ export class PortraitKeeper {
         this.show(got);
         await this.deps.last.write(hash);
       } else {
-        if (got.kind === 'unreachable') this.unanswered.add(hash);
+        if (got.kind === 'unreachable') this.ledger.failed(hash);
         this.status(got);
       }
     } catch (error) {
       // The disk, not the server: said, and asked again on the next entry.
       const reason = errorMessage(error);
       this.deps.say(reason);
-      this.unanswered.add(hash);
+      this.ledger.failed(hash);
       this.status({ kind: 'unreachable', reason });
     }
   }
@@ -159,9 +152,8 @@ export class PortraitKeeper {
 
   private show(picture: Picture, drawn = true): void {
     this.shown = picture;
-    const url = `data:${picture.type};base64,${Buffer.from(picture.bytes).toString('base64')}`;
     const status: PortraitStatus = drawn ? { kind: 'drawn' } : this.view.status;
-    this.set({ picture: url, status });
+    this.set({ picture: dataUrlOf(picture), status });
   }
 
   private status(status: PortraitStatus): void {
