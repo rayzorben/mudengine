@@ -11,7 +11,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Pace } from '../../shared/walk';
 import { roomAddress, type RoomId, type Route } from '../../shared/world';
 import type { Errands } from './Errands';
-import { ERRAND_LEG } from './Travel';
+import { ERRAND_LEG, type Travel } from './Travel';
 
 /** The modules, read when a trip asks: several are built after it. */
 export interface LegModules {
@@ -43,4 +43,16 @@ export function legPlanner(m: () => LegModules): LegPlanner {
     looping: () => m().loops.progress.status === 'running',
     hold: () => m().loops.noteErrand()
   };
+}
+
+/**
+ * End the walker's leg when the walk is a trip's own (the quest run's stalled
+ * leg, a supply trip whose item the pack got on the way). A route the player
+ * asked for keeps walking.
+ */
+export function stopErrandLeg(
+  m: { walker: Pick<Walker, 'walking' | 'stop'>; travel: Pick<Travel, 'walkIsAsked'> },
+  reason: string
+): void {
+  if (m.walker.walking && !m.travel.walkIsAsked) m.walker.stop(reason);
 }

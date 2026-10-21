@@ -115,7 +115,7 @@ import { RemoteMoves } from './RemoteMoves';
 import { remoteHangUps } from './remoteHangUps';
 import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
-import { legPlanner } from './legPlanner';
+import { legPlanner, stopErrandLeg } from './legPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
 import { questKeep } from './questKeep';
@@ -1156,9 +1156,7 @@ export class SessionManager {
          */
         printsCounters: () =>
           this.vocabulary.family === 'greatermud' || this.tracker.current.abilities !== null,
-        stopWalking: (reason) => {
-          if (this.walker.walking && !this.travel.walkIsAsked) this.walker.stop(reason);
-        },
+        stopWalking: (reason) => stopErrandLeg(legs(), reason),
         busy: () => this.travel.escaping,
         release: () => this.loops.noteErrandOver(),
         buy: (row) => this.supplies.fetch(row, this.tracker.current),

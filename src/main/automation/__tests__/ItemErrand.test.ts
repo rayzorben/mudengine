@@ -49,6 +49,7 @@ let loops: Loop[];
 let walked: Route[];
 let taking: string[];
 let buying: boolean;
+let stoppedBuying: string[];
 let looping: boolean;
 let keptNames: string[];
 let walkedTo: string[];
@@ -70,6 +71,10 @@ function errand(over: Partial<ItemPlanner> = {}, now?: () => number): ItemErrand
       return null;
     },
     buying: () => buying,
+    stopBuying: (reason) => {
+      buying = false;
+      stoppedBuying.push(reason);
+    },
     runLoop: (loop) => {
       loops.push(loop);
       looping = true;
@@ -126,6 +131,7 @@ beforeEach(() => {
   notices = [];
   decisions = [];
   bought = [];
+  stoppedBuying = [];
   loops = [];
   walked = [];
   taking = [];
@@ -568,6 +574,48 @@ describe('collecting what a route needs', () => {
   });
 
   /* And what it was taking is given back when the errand is abandoned. */
+  /*
+   * A `search` on the road to the counter listed the item (reported
+   * 2026-10-20): it is taken, the shop trip ends, and the way is walked.
+   */
+  it('takes it off the floor on the way, and ends the shop trip once the pack holds it', () => {
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand();
+    expect(auto.collect([KEY], OWED, ready())).toBeNull();
+    expect(taking).toEqual(['black star key']);
+    auto.onCharacter(carrying());
+    expect(stoppedBuying).toEqual([
+      t('automation.collect.stoppedGotIt', { item: 'black star key' })
+    ]);
+    expect(taking).toEqual([]);
+    expect(walked).toEqual([OWED]);
+  });
+
+  it('leaves a shop trip that bought it to say so itself', () => {
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand();
+    expect(auto.collect([KEY], OWED, ready())).toBeNull();
+    // The `buy` is what put it in the pack: the trip has already finished.
+    buying = false;
+    auto.onCharacter(carrying());
+    expect(stoppedBuying).toEqual([]);
+    expect(walked).toEqual([OWED]);
+  });
+
+  it('stops taking the item when the shop trip ends without it', () => {
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand();
+    expect(auto.collect([KEY], OWED, ready())).toBeNull();
+    expect(taking).toEqual(['black star key']);
+    buying = false;
+    auto.onCharacter(ready());
+    expect(taking).toEqual([]);
+    expect(notices.at(-1)).toBe(
+      t('automation.collect.refusalNotBought', { item: 'black star key' })
+    );
+    expect(walked).toHaveLength(0);
+  });
+
   it('stops taking the item when it gives up', () => {
     sources = {
       shops: [],
