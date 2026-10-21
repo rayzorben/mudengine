@@ -1771,9 +1771,7 @@ export class Walker implements SessionModule {
    */
   private nudgeAfter(): number {
     const margin = tuning().walk.nudgeAfterMs;
-    const slowest = this.stepTimes.slowest;
-    if (slowest === null) return margin;
-    return Math.max(margin, Math.min(slowest + margin, this.config.walk.stepTimeoutMs));
+    return this.stepTimes.after(margin, margin, this.config.walk.stepTimeoutMs);
   }
 
   /**

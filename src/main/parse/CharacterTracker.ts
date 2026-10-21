@@ -58,7 +58,7 @@ import { freeLoadout, releaseSlots } from '../../shared/gearLocks';
 import { placeOf, withHidden, withTaken } from '../../shared/stash';
 import { isWoundBand } from '../../shared/wounds';
 import { FightTracker, playerDies } from './combat';
-import { Expectations, MOVE_COMMANDS, type LapsedClaim } from './expectations';
+import { Expectations, MOVE_COMMANDS, type LapsedClaim, type StaleProbe } from './expectations';
 import { roomsNameCanBe } from './nameLine';
 import {
   coinsDropped,
@@ -520,8 +520,8 @@ export class CharacterTracker {
     return this.expect.expire(now);
   }
 
-  /** The head claim to probe, marked as probed; null when none is due. See `Expectations.staleProbe`. */
-  staleProbe(now: number): string | null {
+  /** The head claim to probe, marked as probed, with its clock; null when none is due. See `Expectations.staleProbe`. */
+  staleProbe(now: number): StaleProbe | null {
     return this.expect.staleProbe(now);
   }
 

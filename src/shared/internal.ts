@@ -364,8 +364,16 @@ const TUNING_DEFAULTS = {
      * the step produced nothing and it is dropped at once, while a probe
      * still unanswered proves the server is slow and the step waits, up to
      * `staleMoveMaxMs` (todo 10: a `n` answered after nine seconds cost a
-     * loop its place). Three seconds is two movement rounds; thirty is a
-     * link that has gone, not a server that is slow.
+     * loop its place). Thirty seconds is a link that has gone.
+     *
+     * This is the floor of the probe clock. The server's move delay is
+     * 1,100 ms plus up to 2,000 by the pack's weight (`MoveCommand.cs`), and
+     * measured on paramud.mudinfo.net 2026-10-21 (todo 20261020-2037-01) a
+     * Medium step answered in 1,649 ms median and a Heavy one at 0.97 of the
+     * limit in 3,026 ms, so three seconds named every one of them. The claim
+     * queue measures the realm's moves and probes at the slowest recent one
+     * plus `walk.nudgeAfterMs`, never under this and never past
+     * `staleMoveMs` (`Expectations.probeAfterMs`).
      */
     staleProbeMs: 3000,
     staleMoveMaxMs: 30_000,

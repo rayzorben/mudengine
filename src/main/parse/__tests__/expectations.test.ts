@@ -444,7 +444,7 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     const at = Date.now();
     memory.observeCommand('n', inGame);
     expect(memory.staleProbe(at + probe - 1)).toBeNull();
-    expect(memory.staleProbe(at + probe)).toBe('n');
+    expect(memory.staleProbe(at + probe)).toMatchObject({ command: 'n' });
     // Once: a second probe only spends from the budget.
     expect(memory.staleProbe(at + probe + 1)).toBeNull();
     // Probed, the flat clock no longer drops it; the ceiling does.
@@ -452,6 +452,87 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     expect(memory.moves).toBe(1);
     expect(memory.expire(at + most)).toEqual([{ command: 'n', moved: true }]);
     expect(memory.moves).toBe(0);
+  });
+
+  /*
+   * The probe clock is the realm's own slowest move plus the walk's margin,
+   * floored at the flat clock (todo 20261020-2037-01). The server's move delay
+   * is 1,100 ms plus up to 2,000 by the pack's weight (`MoveCommand.cs`):
+   * measured on paramud, a Medium step answers in 1,649 ms and a Heavy one
+   * in 3,026 ms, so the flat clock named every Heavy step and spent an `rm`.
+   */
+  it('probes a slow realm later: the slowest recent move plus the margin', () => {
+    const margin = DEFAULT_INTERNAL.tuning.walk.nudgeAfterMs;
+    const memory = new Expectations();
+    memory.observeCommand('w', inGame);
+    vi.advanceTimersByTime(3030);
+    expect(memory.shift()).toMatchObject({ kind: 'move', direction: 'w' });
+    const at = Date.now();
+    memory.observeCommand('w', inGame);
+    // Positive control: the flat clock would have named it here.
+    expect(memory.staleProbe(at + probe)).toBeNull();
+    expect(memory.staleProbe(at + 3030 + margin - 1)).toBeNull();
+    expect(memory.staleProbe(at + 3030 + margin)).toEqual({ command: 'w', afterMs: 3030 + margin });
+  });
+
+  it('keeps the flat clock as the floor on a quick realm, and the write-off as the ceiling', () => {
+    const quick = new Expectations();
+    quick.observeCommand('e', inGame);
+    vi.advanceTimersByTime(200);
+    quick.shift();
+    let at = Date.now();
+    quick.observeCommand('e', inGame);
+    expect(quick.staleProbe(at + probe - 1)).toBeNull();
+    expect(quick.staleProbe(at + probe)).toEqual({ command: 'e', afterMs: probe });
+
+    const lagged = new Expectations();
+    lagged.observeCommand('n', inGame);
+    vi.advanceTimersByTime(life + 5000);
+    lagged.shift();
+    at = Date.now();
+    lagged.observeCommand('n', inGame);
+    expect(lagged.staleProbe(at + life - 1)).toBeNull();
+    expect(lagged.staleProbe(at + life)).toEqual({ command: 'n', afterMs: life });
+    // Named on the same tick the flat write-off would have dropped it, so the
+    // probe wins and the claim lives to the ceiling.
+    expect(lagged.expire(at + life)).toEqual([]);
+  });
+
+  it('measures a move from when the server reached it, not from the send', () => {
+    // Two steps typed at once answer a movement round apart: each is the
+    // round, and the second is not the wait behind the first as well.
+    const memory = new Expectations();
+    memory.observeCommand('e', inGame);
+    memory.observeCommand('e', inGame);
+    vi.advanceTimersByTime(1600);
+    memory.shift();
+    vi.advanceTimersByTime(1600);
+    memory.shift();
+    const at = Date.now();
+    memory.observeCommand('n', inGame);
+    // Measured from the send the second step would read 3,200 and push the
+    // clock to 4,200; measured from the server reaching it, the floor stands.
+    expect(memory.staleProbe(at + probe - 1)).toBeNull();
+    expect(memory.staleProbe(at + probe)).toEqual({ command: 'n', afterMs: probe });
+  });
+
+  it('a refusal is not a move time, and a new session forgets the measurement', () => {
+    const memory = new Expectations();
+    memory.observeCommand('w', inGame);
+    vi.advanceTimersByTime(3030);
+    memory.shift();
+    memory.observeCommand('s', inGame);
+    vi.advanceTimersByTime(5000);
+    // `There is no exit in that direction!`: answered at once by the server,
+    // late only because it queued; it must not raise the clock.
+    memory.shiftRefused();
+    let at = Date.now();
+    memory.observeCommand('w', inGame);
+    expect(memory.staleProbe(at + 4030)).toEqual({ command: 'w', afterMs: 4030 });
+    memory.forget();
+    at = Date.now();
+    memory.observeCommand('w', inGame);
+    expect(memory.staleProbe(at + probe)).toEqual({ command: 'w', afterMs: probe });
   });
 
   it('drops every claim older than the locate its answer proves was processed', () => {
@@ -493,7 +574,7 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     answerAt(4835);
     // Positive control: the last step, a probe clock after the server reached it.
     expect(memory.staleProbe(at + 4835 + probe - 1)).toBeNull();
-    expect(memory.staleProbe(at + 4835 + probe)).toBe('n');
+    expect(memory.staleProbe(at + 4835 + probe)).toMatchObject({ command: 'n' });
   });
 
   it('does not count a write-off as the server reaching the claim behind it', () => {
@@ -529,7 +610,7 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     memory.noteTyping(false);
     // Positive control: the clock starts again at the commit.
     expect(memory.staleProbe(at + 12_000 + probe - 1)).toBeNull();
-    expect(memory.staleProbe(at + 12_000 + probe)).toBe('n');
+    expect(memory.staleProbe(at + 12_000 + probe)).toMatchObject({ command: 'n' });
   });
 
   it('writes an abandoned line off on the queue’s clock, and times the claim from there', () => {
@@ -540,7 +621,7 @@ describe('a step unanswered is probed, and an ordered answer settles it', () => 
     memory.noteTyping(true);
     expect(memory.staleProbe(at + abandoned - 1)).toBeNull();
     expect(memory.staleProbe(at + abandoned + probe - 1)).toBeNull();
-    expect(memory.staleProbe(at + abandoned + probe)).toBe('n');
+    expect(memory.staleProbe(at + abandoned + probe)).toMatchObject({ command: 'n' });
   });
 
   it('settles nothing when no locate went out', () => {

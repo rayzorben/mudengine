@@ -165,11 +165,14 @@ export class Claims {
           expiresAt: Date.now() + tuning().parse.staleMoveMaxMs,
           reason: t('session.walk.probeReason')
         });
-        const seconds = Math.round(tuning().parse.staleProbeMs / 1000);
+        // The clock the claim was named on: the realm's slowest recent move
+        // plus `walk.nudgeAfterMs` (`Expectations.probeAfterMs`). A Heavy
+        // step takes about three seconds and is not late.
+        const seconds = Math.round(probed.afterMs / 1000);
         this.session.notice(
-          probed.length === 0
+          probed.command.length === 0
             ? t('session.walk.claimProbedUntyped', { seconds })
-            : t('session.walk.claimProbed', { command: probed, seconds })
+            : t('session.walk.claimProbed', { command: probed.command, seconds })
         );
       }
     }
