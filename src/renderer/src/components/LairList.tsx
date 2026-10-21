@@ -13,6 +13,7 @@
 import { Fragment } from 'react';
 
 import EntityNumber, { entityNumberText } from './EntityNumber';
+import { clockText, regenClockText } from '../lib/clockText';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { attacksOnSight, DISPOSITION_WORD, type Standing } from '@shared/mobs';
@@ -33,30 +34,6 @@ export interface LairListProps {
    * is worse than none.
    */
   inspect?(name: string, anchor: HTMLElement): void;
-}
-
-/**
- * A clock, in the shortest reading that rounds no real difference away.
- *
- * The realm states `Rooms.Delay` in whole minutes (1–120 across both shipped
- * worlds) and `Monsters.RegenTime` in whole hours, so minutes and hours are
- * what a reader recognises — but GreaterMUD's thirty-second offset lands a
- * two-minute lair on 90 seconds, and `2m` there would be the client rounding
- * away the half of the clock the player is standing about waiting for.
- *
- * Bare unit letters rather than dictionary keys, as the Hunting card's own
- * figures are: a suffix on a numeral is not a word the chrome is saying.
- */
-export function clockText(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) {
-    const minutes = Math.floor(seconds / 60);
-    const rest = Math.round(seconds % 60);
-    return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
-  }
-  const hours = Math.floor(seconds / 3600);
-  const rest = Math.round((seconds % 3600) / 60);
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
 /** The realm's figure, or its range where rows sharing the name disagree. */
@@ -140,6 +117,7 @@ export default function LairList({ lair, standing, inspect }: LairListProps) {
       <dl className="readout lair-list">
         {lair.mobs.map((mob) => {
           const sure = attacksOnSight(mob.disposition, mob.abilities, standing);
+          const ownClock = regenClockText(mob);
           return (
             /*
              * Keyed by the row, not the name: a descriptor naming two rows of
@@ -194,9 +172,9 @@ export default function LairList({ lair, standing, inspect }: LairListProps) {
                     each shipped world hold one, up to a day, and a monster
                     that comes back tomorrow inside a lair that fills every two
                     minutes is the one thing about the room worth knowing. */}
-                {mob.regenHours !== undefined && mob.regenHours > 0 && (
+                {ownClock !== null && (
                   <span className="chip quiet" title={t('cards.room.lair.mobRespawnHint')}>
-                    {t('cards.room.lair.respawn', { clock: clockText(mob.regenHours * 3600) })}
+                    {t('cards.room.lair.respawn', { clock: ownClock })}
                   </span>
                 )}
               </dd>

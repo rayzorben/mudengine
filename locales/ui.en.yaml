@@ -3370,6 +3370,10 @@ cards:
       magicResistLabel: Magic resist
       regenFigure: '{hp} hp'
       regenLabel: HP Regen (per tick)
+      # `Monsters.RegenTime`: how long after a kill this one comes back. Shown only for a
+      # monster with a clock of its own; the others come back with their room.
+      respawnFigure: '{clock} after it is killed'
+      respawnLabel: Regen time
       undeadLabel: Undead
       undeadYes: 'yes'
       healthRange: '{low}–{high} hp'
