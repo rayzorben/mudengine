@@ -328,6 +328,7 @@ function migrateAll(options: MigrationOptions): void {
   statedAutoRest(home, note, options.template);
   pinTheAutoRestSwitch(home, note);
   statedKeyBuying(home, note, options.template);
+  stoppersFollowHave(home, note);
 }
 
 /**
@@ -2351,6 +2352,23 @@ function pathFollowsStatus(home: Home, note: (message: string) => void): void {
     });
   }
   if (added > 0) note(t('notices.migration.pathFollowsStatus', { count: added }));
+}
+
+/**
+ * `stoppers` granted wherever `have` is (todo 20261021-1200-01): both say
+ * what the pack holds, and a leader asks `@stoppers` before walking a way a
+ * room spell hurts on. In the global options and every character's file.
+ */
+function stoppersFollowHave(home: Home, note: (message: string) => void): void {
+  let added = 0;
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const count = grantBeside(document, 'have', 'stoppers');
+      added += count;
+      return count > 0;
+    });
+  }
+  if (added > 0) note(t('notices.migration.stoppersFollowHave', { count: added }));
 }
 
 /**

@@ -6891,6 +6891,7 @@ describe('what a room does to whoever stands in it prices the way through it', (
         spell: 'river damage',
         rooms: 2,
         share: 15 / 100_000,
+        damage: 15,
         unread: false,
         summons: false,
         relocates: false,

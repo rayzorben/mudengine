@@ -710,6 +710,8 @@ notices:
         you add one.'
     pathFollowsStatus: '@path was added next to @status in {count} permission lists. Both say
       where the character is going.'
+    stoppersFollowHave: '@stoppers was added next to @have in {count} permission lists. Both say
+      what the pack holds; a party leader asks it before walking a way a room spell hurts on.'
     roomRemoteFollowsWhere: "@where-room was added next to @where in {count} permission lists in
       {file}. It answers the same question with the room's map number instead of its name, and the
       person asking chooses which to send. @comeback-room was not added anywhere, because it lets
@@ -6325,6 +6327,40 @@ automation:
   avoid:
     noExperience: gives no exp, so automation avoids it unless it or the party starts the fight
     noAttacks: has no attacks, so automation avoids it unless it or the party starts the fight
+  # Everyone walking a way carries what stops its room spells first (todo
+  # 20261021-1200-01): the leader asks each member, buys and hands over, or
+  # has the member buy, and refuses the walk naming who lacks what.
+  stoppers:
+    asking: 'Asking {who} whether they carry {items} before walking: {spell} is on the way.'
+    askingWealth: 'Asking {who} what they carry in coin: {item} costs {price} and this character
+      cannot cover it for them.'
+    buying: 'Buying {count} {item} at {shop} ({price}) for {who} before walking.'
+    membersBuy: 'Walking {who} to {shop} to buy {item} there.'
+    toldToBuy: 'Told {who} to buy {item} (@do).'
+    handed: 'Gave {item} to {who}.'
+    settled: Everyone carries what the way wants. Walking on.
+    self: this character
+    busy: Still buying for the party before the last walk.
+    refused: 'Not walking: {why}'
+    because: a room spell on the way hurts anyone without an item that stops it
+    refusalSilent:
+      '{who} did not say whether they carry {items} against {spell}. Grant @stoppers (or
+      @have) to this character on their client, or give them one, and try again.'
+    refusalStillLacks: '{who} still has none of {items} for {spell} after being given one.'
+    refusalNoCounter: 'nothing within reach sells {items}, which stop {spell}'
+    refusalUnpriced: 'the price of {item} at {shop} is not known'
+    refusalPurse: 'the cash on hand and in the bank does not cover {item} at {price}'
+    refusalErrand: 'the walk to buy {item} did not start: {why}'
+    refusalNotBought: '{item} was not bought'
+    refusalNotHere: '{who} did not arrive to be handed {item} in time'
+    refusalNotTaken: 'the game did not confirm handing {item} to {who}'
+    refusalWealthSilent: '{who} did not answer @wealth, so whether they can buy {item} is not known'
+    refusalMemberPurse: '{who} cannot cover {item} at {price}'
+    lapsed: '{who} did not answer about {spell} in time.'
+    abandoned: 'Stopped buying for the party: {reason}'
+    abandonedDied: the character died
+    abandonedLeftRealm: the character left the realm
+    reasonGive: 'giving {item} to {who} for the way ahead'
   # Going and getting what a route needs -- `ItemErrand` (todo 07). The route
   # says what the door wants; the realm says where it comes from.
   collect:
@@ -7379,6 +7415,10 @@ automation:
       nothing was sent."
     answerUnknown: '{from} asked @{raw}, but this client does not have that number yet, so nothing
       was sent.'
+    # A listed pack answers `@stoppers`; an unlisted one is said here, never `{no}` (todo 20261021-1200-01).
+    stoppersUnlisted:
+      '{from} asked @stoppers, and the inventory has not been listed yet; nothing was
+      sent back. Type i.'
     haveUncaptured: '{from} asked @have {item}; {count} carried, but MegaMUD has only ever been seen
       answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
@@ -7485,6 +7525,9 @@ automation:
     refusalNoSafeRoom: no neighboring room is empty and free of lairs
     staying: 'Resting here though this room spawns monsters every {seconds}s: {why}.'
     becauseClock: the room spawns monsters every {seconds}s
+    # The room's own spell hurts and nothing carried stops it (todo 20261021-1200-01).
+    refusingHereHurts: 'Not resting here: {spell} hurts in this room. Checking {name} first.'
+    becauseHurts: '{spell} hurts in this room'
     becauseStepped: 'stepped {direction} out of the lair to rest'
     notSafe: 'Not resting in {name}: {who} standing there.'
     peekUnanswered: Nothing described {name} in time; not stepping into a room without seeing it.
@@ -7502,6 +7545,12 @@ automation:
     # character that cannot rest and has no cure set cannot recover at all.
     restPoisoned: This realm does not let a poisoned character rest. Set a poison cure in the Spells
       settings, or cure it by hand.
+    # The room's own spell takes more than a rest gives back (todo 20261021-1200-01).
+    restHurts:
+      'Not resting here: {spell} hurts in this room and nothing carried stops it. Move out of
+      it first.'
+    becauseHurts: '{spell} hurts in this room'
+    refusalHurts: nothing carried stops the room's spell
     reasonMana: 'recovery: mana is low'
     verbRefused: The game answered {verb} with "Your command had no effect."; not trying it again
       this session.
@@ -7737,6 +7786,7 @@ areaSearch:
   plan: '{rooms} rooms to search, about {steps} steps of walking.'
   leftLose: 'Left out, a fight there is lost: {rooms}'
   leftUnread: 'Left out, the odds there are not worked out yet: {rooms}'
+  leftHazard: 'Left out, {spell} hurts there and you carry none of {items}: {rooms}'
   leftBehind: 'Left out, reached only through those: {rooms}'
   leftStranded: 'Left out, no way on from there: {rooms}'
   combatOff: Auto-combat is off, so a monster that attacks on the way is not fought, and the search
@@ -7935,6 +7985,8 @@ navigation:
   noSource: nothing in the world data gives {item}
   noWay: no way there
   noWayBecause: 'no way there: {why}'
+  # A walkable way whose rooms cast a spell an item stops, with none carried (todo 20261021-1200-01).
+  needsStopper: 'the way crosses {spell}, which hurts without {items}; collect one first'
   oddsUnread: the fight with {monster} is still being worked out
   outOfReach: everywhere that gives {item} is out of reach
   purse: '{item} costs more than you carry'

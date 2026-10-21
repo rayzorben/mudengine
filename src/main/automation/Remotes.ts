@@ -50,7 +50,13 @@
 import type { LoopProgress } from '../../shared/loops';
 import type { WalkProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
-import { inAParty, joinedMembers, partyMembers, type CharacterState } from '../../shared/character';
+import {
+  inAParty,
+  joinedMembers,
+  packRows,
+  partyMembers,
+  type CharacterState
+} from '../../shared/character';
 import {
   readAutomationSwitch,
   type AutomationConfig,
@@ -63,6 +69,8 @@ import {
   formatEncumbrance,
   formatExp,
   formatHave,
+  formatStoppers,
+  readStoppersAsked,
   formatMoveAnswer,
   formatPath,
   formatLevel,
@@ -130,6 +138,7 @@ import { SheetReports } from './SheetReports';
 import { STANDING, StandingRemotes, type StandingRemoteEvents } from './StandingRemotes';
 import { FollowerPacing } from './FollowerPacing';
 import { HealthAsks } from './HealthAsks';
+import { PartyStoppers } from './PartyStoppers';
 import { ParOnWord } from './ParOnWord';
 import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
@@ -361,6 +370,8 @@ const PARTY_CMD: DecisionKind = 'remote-party-cmd';
 const ITEMS: DecisionKind = 'remote-item-commands';
 const MOVE: DecisionKind = 'remote-move';
 const SWITCH: DecisionKind = 'remote-switch';
+/** The leader's question about a room's spell, and what came of it (todo 20261021-1200-01). */
+const STOPPERS: DecisionKind = 'party-stoppers';
 const WAIT: DecisionKind = 'remote-wait';
 const ASK_HEAL: DecisionKind = 'party-ask-heal';
 
@@ -442,6 +453,8 @@ export class Remotes implements SessionModule {
   private readonly healthAsks: HealthAsks;
   /** `par` on a member's `@wait` or `@heal`. See `ParOnWord`. */
   private readonly parOnWord: ParOnWord;
+  /** What each member carries against a room's spell on the way, asked and answered. See `PartyStoppers`. */
+  readonly stoppers: PartyStoppers;
 
   constructor(
     private config: AutomationConfig,
@@ -474,6 +487,12 @@ export class Remotes implements SessionModule {
     this.hands = new BarrierRemotes(config, queue, { notice });
     this.sheets = new SheetReports(queue);
     this.standing = new StandingRemotes(queue, events);
+    this.stoppers = new PartyStoppers({
+      // A send, so it waits on the master switch like every other telepath here.
+      ask: (who, name, argument) => this.config.enabled && this.send(who, name, argument, STOPPERS),
+      runsThisClient: (who) => this.runsThisClient(who),
+      notice
+    });
     this.pacing = new FollowerPacing(config, {
       tell: (leader, name, state, argument) =>
         void this.ask(leader, name, state, argument, 'follower-wait')
@@ -547,6 +566,11 @@ export class Remotes implements SessionModule {
     if (block.type === 'party-joined') {
       if (this.config.enabled)
         this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
+      return;
+    }
+    if (block.type === 'party-left') {
+      const who = block.groups['player'] ?? block.groups['leader'];
+      if (who !== undefined) this.stoppers.forget(who);
       return;
     }
     const channel = CHANNELS.get(block.type);
@@ -836,6 +860,7 @@ export class Remotes implements SessionModule {
     // An ask left unanswered is closed whatever the master switch says; the
     // sheet and the health asks go out under the gate their first answer did (todo 118).
     if (this.config.remotes.enabled) this.sweep(Date.now());
+    this.stoppers.sweep(Date.now());
     if (this.config.enabled && this.config.remotes.enabled) {
       this.sheets.onCharacter(state);
       this.healthAsks.onCharacter(state);
@@ -962,6 +987,8 @@ export class Remotes implements SessionModule {
       this.events.handAnswered?.(from, answer);
       return true;
     }
+    // The leader's own question about the way, before the player's answers.
+    if (this.stoppers.heard(from, reply)) return true;
     const heard = this.answers.heard(from, reply, Date.now());
     if (heard !== null) {
       this.events.notice?.(heard);
@@ -1043,6 +1070,7 @@ export class Remotes implements SessionModule {
     this.handsAsked.clear();
     this.healthAsks.reset();
     this.parOnWord.reset();
+    this.stoppers.reset();
   }
 
   /** The regroup's and the invitation's clocks are what here outlive a call. */
@@ -1286,6 +1314,18 @@ export class Remotes implements SessionModule {
             t('automation.remotes.haveUncaptured', { from, item: command.argument, count }),
             ANSWER
           );
+          return;
+        }
+        this.reply(from, body, prefix);
+        return;
+      }
+      case 'stoppers': {
+        const asked = readStoppersAsked(command.argument);
+        if (asked === null) return;
+        // Which of the rows the listed pack holds; an unlisted pack is said, not `{no}`.
+        const body = formatStoppers(packRows(state.inventory), asked);
+        if (body === null) {
+          this.events.notice?.(t('automation.remotes.stoppersUnlisted', { from }), ANSWER);
           return;
         }
         this.reply(from, body, prefix);

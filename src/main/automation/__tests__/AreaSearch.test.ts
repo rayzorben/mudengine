@@ -42,6 +42,7 @@ const PLAN: AreaPlan = {
   steps: 2,
   lose: [],
   unread: [],
+  hazard: [],
   behind: [],
   walled: [],
   stranded: []

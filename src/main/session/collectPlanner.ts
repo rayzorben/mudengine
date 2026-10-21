@@ -26,6 +26,7 @@ import type { Errands } from './Errands';
 import { legPlanner, type LegModules, type LegPlanner } from './legPlanner';
 import { ERRAND_LEG, type Travel } from './Travel';
 import type { Vocabulary } from './Vocabulary';
+import type { RoomHazards } from './RoomHazards';
 
 /** The leg's modules, the realm's coin words, and what holds a search or a walk on. */
 export interface CollectModules extends LegModules {
@@ -35,6 +36,7 @@ export interface CollectModules extends LegModules {
   /** A fight the state stopped showing (`fightHere`). */
   signs: FightSigns;
   errands: LegModules['errands'] & Pick<Errands, 'tripReach' | 'monstersIn'>;
+  roomHazards: Pick<RoomHazards, 'stopperFor'>;
   world: Pick<WorldGraph, 'byId'> | undefined;
   travel: Pick<Travel, 'escaping'>;
 }
@@ -118,7 +120,11 @@ export function areaSearchTrip(
       routeAround: (room, walled) =>
         m().errands.tripReach(walled)?.leg(room) ?? t('session.loop.noRealmData'),
       fightsBack: () => m().combat.willFight,
-      plan: (radius) => planArea({ here: planner.here, errands: m().errands }, radius),
+      plan: (radius) =>
+        planArea(
+          { here: planner.here, errands: m().errands, roomHazards: m().roomHazards },
+          radius
+        ),
       nameOf: (room) => m().world?.byId(room)?.name ?? room,
       escaping: () => m().travel.escaping,
       taking: () => m().loot.taking()

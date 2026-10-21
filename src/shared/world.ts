@@ -2972,6 +2972,8 @@ export interface RouteHazard {
    * on `Route.carrying`, whose rooms are priced as if the item were carried.
    */
   share: number | null;
+  /** Hit points a tick the realm states it costs, where it states a figure: what makes it a spell that hurts. */
+  damage?: number;
   /** Whether the reader is walking it because the chain could not be followed. */
   unread: boolean;
   /** Whether the spell can put a monster in the room. */

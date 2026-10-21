@@ -137,6 +137,14 @@ export const REMOTE_NAMES = [
   'pick',
   'bash',
   /*
+   * Also mudengine's own (todo 20261021-1200-01): a leader asks a member
+   * whether they carry any of the items that stop a room's spell on the way,
+   * by realm row id: `@stoppers 690,691,1181,3609` for the Silver River's
+   * raft, skiff, canoe and punt. `{yes: 690}` names the first carried,
+   * `{no}` none. A MegaMUD member is asked `@have <name>` per item instead.
+   */
+  'stoppers',
+  /*
    * The extended pair, and the reason there is such a thing as an extended
    * remote at all.
    *
@@ -460,6 +468,8 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   disarm: { name: 'disarm', support: 'acted' },
   pick: { name: 'pick', support: 'acted' },
   bash: { name: 'bash', support: 'acted' },
+  // Answered in a frame this client chose, from `@have`'s captured `{yes: 1}` / `{no}`.
+  stoppers: { name: 'stoppers', support: 'answered' },
   /*
    * `@where` with the ambiguity taken out, and `@comeback` made possible by
    * the same fact. See the note beside them in `REMOTE_NAMES`.
@@ -680,7 +690,17 @@ export type RemoteReply =
   /** `{failed}`: matched, and could not start. */
   | { kind: 'failed' }
   /** `{STR=60,…,CHA=40,LVL=12,TRA=40,PIC=35}`: a member's `@stats` (`formatStats`). */
-  | { kind: 'stats'; sheet: MemberSheet };
+  | { kind: 'stats'; sheet: MemberSheet }
+  /** `{no}`: the answer to `@have` and `@stoppers` for nothing carried (captures/217). */
+  | { kind: 'no' }
+  /**
+   * `{yes: 1}`: `@have`'s captured answer, the count; `{yes: 690}`:
+   * `@stoppers`' answer, the item's row id (`formatStoppers`). Which it is
+   * is the question's, so the reader keeps the figure and the asker reads it.
+   */
+  | { kind: 'yes'; figure: number }
+  /** `{1234 copper}`: the answer to `@wealth` (`formatWealth`). */
+  | { kind: 'wealth'; copper: number };
 
 /**
  * The words MegaMUD 2.1 may append to its `@health` answer, each after `, `
@@ -719,6 +739,11 @@ export function parseRemoteReply(message: string): RemoteReply | null {
   if (REFUSED.test(text)) return { kind: 'refused' };
   if (/^\{\s*none\s*\}$/i.test(text)) return { kind: 'none' };
   if (/^\{\s*failed\s*\}$/i.test(text)) return { kind: 'failed' };
+  if (/^\{\s*no\s*\}$/i.test(text)) return { kind: 'no' };
+  const yes = /^\{\s*yes:\s*(?<figure>\d+)\s*\}$/i.exec(text);
+  if (yes?.groups) return { kind: 'yes', figure: Number(yes.groups['figure']) };
+  const wealth = /^\{\s*(?<copper>\d+)\s+copper\s*\}$/i.exec(text);
+  if (wealth?.groups) return { kind: 'wealth', copper: Number(wealth.groups['copper']) };
   const unknown = UNKNOWN.exec(text);
   if (unknown?.groups) {
     const list = unknown.groups['list'];
@@ -931,6 +956,32 @@ export function formatHave(count: number): string | null {
   if (count === 0) return '{no}';
   if (count === 1) return '{yes: 1}';
   return null;
+}
+
+/**
+ * `@stoppers 690,691,1181,3609` read: the realm row ids asked about, in the
+ * asker's order, or null where the argument is not a list of numbers.
+ */
+export function readStoppersAsked(argument: string | null): number[] | null {
+  if (argument === null) return null;
+  const ids = argument.split(',').map((word) => word.trim());
+  if (ids.length === 0 || ids.some((word) => !/^\d+$/.test(word))) return null;
+  return [...new Set(ids.map(Number))];
+}
+
+/**
+ * `{yes: 690}` for the first of the asked rows a listed pack holds, in the
+ * asker's order, else `{no}`: `@have`'s frame with the row id in place of the
+ * count, since the asker wants to know which. Null for a pack nobody has
+ * listed, which is not `{no}`: the responder says so instead.
+ */
+export function formatStoppers(
+  carrying: readonly number[] | null,
+  asked: readonly number[]
+): string | null {
+  if (carrying === null) return null;
+  const held = asked.find((id) => carrying.includes(id));
+  return held === undefined ? '{no}' : `{yes: ${held}}`;
 }
 
 /**

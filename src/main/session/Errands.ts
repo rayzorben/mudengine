@@ -296,6 +296,7 @@ export type ErrandsWorld = Pick<
   | 'spellById'
   | 'spellNamed'
   | 'stockingPlaces'
+  | 'stoppersOf'
   | 'trainersTaking'
   | 'withinSteps'
 >;
@@ -686,19 +687,33 @@ export class Errands implements SessionModule {
    * `@path` (todo 32); nothing is asked of a counter or said.
    */
   stepsThrough(rooms: readonly RoomId[]): number | null {
+    const legs = this.legsThrough(rooms);
+    return legs === null ? null : legs.reduce((steps, leg) => steps + leg.steps.length, 0);
+  }
+
+  /**
+   * The legs from here through `rooms` in order, as a lap walks them
+   * (`lapTraveller`), or null where any leg cannot be planned. With
+   * `offered`, a leg refused for what it wants fetched first counts as the
+   * way it offers (`Route.unlocks`), so a lap's rooms can be read before the
+   * lap is started (todo 20261021-1200-01).
+   */
+  legsThrough(rooms: readonly RoomId[], offered = false): Route[] | null {
     const state = this.tracker.current;
     let from = roomAddress(state.room);
     if (from === null) return null;
     const traveller = this.lapTraveller(state);
-    let steps = 0;
+    const legs: Route[] = [];
     for (const to of rooms) {
       if (to === from) continue;
       const leg = this.navigation.leg(from, to, traveller);
-      if (leg === null || leg.blocked) return null;
-      steps += leg.steps.length;
+      const way =
+        leg === null ? null : leg.blocked ? (offered ? (leg.unlocks ?? null) : null) : leg;
+      if (way === null) return null;
+      legs.push(way);
       from = to;
     }
-    return steps;
+    return legs;
   }
 
   /** `planFromHere` for a traveller already made, with the counters asked and a room run from said. */
@@ -1059,7 +1074,7 @@ export class Errands implements SessionModule {
    * of the Silver River from a wall into a corridor — and the bar, and both
    * are read at the call.
    */
-  private roomHazard(
+  roomHazard(
     room: WorldRoom,
     state: CharacterState,
     carrying: readonly number[],

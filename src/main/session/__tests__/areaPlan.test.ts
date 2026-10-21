@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { planArea, type AreaPlanParts } from '../areaPlan';
+import type { WayStopper } from '../../world/navigation/stoppers';
 import type { FightOdds, RoomId } from '../../../shared/world';
 
 /**
@@ -30,7 +31,11 @@ function within(walled: ReadonlySet<RoomId>) {
   };
 }
 
-function parts(monsters: Record<string, string[]>, odds: Record<string, FightOdds>): AreaPlanParts {
+function parts(
+  monsters: Record<string, string[]>,
+  odds: Record<string, FightOdds>,
+  stoppers: Record<string, WayStopper> = {}
+): AreaPlanParts {
   return {
     here: () => 'a',
     errands: {
@@ -40,9 +45,17 @@ function parts(monsters: Record<string, string[]>, odds: Record<string, FightOdd
         odds: { fight: (name) => odds[name] ?? { kind: 'win', survives: 1 }, affords: () => null }
       }),
       monstersIn: (room) => monsters[room] ?? []
-    }
+    },
+    roomHazards: { stopperFor: (room) => stoppers[room] ?? null }
   };
 }
+
+/** The Silver River's spell, stopped by a log raft the pack lacks. */
+const RIVER: WayStopper = {
+  spell: 753,
+  name: 'river damage',
+  items: [{ id: 690, name: 'log raft' }]
+};
 
 describe('the rooms an area search walks', () => {
   it('walls a room whose fight is lost, and the room only reached through it', () => {
@@ -81,6 +94,23 @@ describe('the rooms an area search walks', () => {
     );
     if (typeof plan === 'string') throw new Error(plan);
     expect(plan.unread).toEqual(['e']);
+  });
+
+  it('walls a room whose spell hurts without an item the pack lacks, and lists it', () => {
+    const plan = planArea(parts({}, {}, { c: RIVER }), 3);
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.hazard).toEqual([{ room: 'c', spell: 'river damage', items: ['log raft'] }]);
+    expect(plan.walled).toContain('c');
+    expect(plan.behind).toEqual(['d']);
+    expect([...plan.tour].sort()).toEqual(['a', 'b', 'e']);
+  });
+
+  it('tours the same room once the pack stops its spell', () => {
+    // `stopperFor` answers null for a carried raft: the positive control.
+    const plan = planArea(parts({}, {}, {}), 3);
+    if (typeof plan === 'string') throw new Error(plan);
+    expect(plan.hazard).toEqual([]);
+    expect(plan.tour).toContain('c');
   });
 
   it('searches the room the character stands in whatever lives there', () => {

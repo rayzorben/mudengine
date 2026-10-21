@@ -521,6 +521,11 @@ export class WorldGraph {
     return this.catalogue.hazardOf(room, level);
   }
 
+  /** Every item that stops a room spell, in the realm's order (`Catalogue.stoppersOf`). */
+  stoppersOf(spell: number): WorldItem[] {
+    return this.catalogue.stoppersOf(spell);
+  }
+
   namedClasses(): Record<number, string> {
     return this.catalogue.namedClasses();
   }
@@ -597,14 +602,9 @@ export class WorldGraph {
   }
 
   /**
-   * The room's ways out, joined to where each one goes.
-   *
-   * The wire's directions lead: an exit the server printed is real whatever the
-   * realm says, and one the realm knows that the server did not print is not
-   * added — the server is the authority on what is *there now*. What the join
-   * adds is the destination, its name, what the passage demands and the item
-   * that opens it, which is what lets a card draw an obstacle badge and name a
-   * key without a round trip.
+   * The room's ways out, joined to where each goes. The wire's directions lead
+   * (an exit the server did not print is not added); the join adds the
+   * destination, its name, what the passage demands and the item that opens it.
    */
   buildExitEntities(exits: ReadonlyArray<RoomExit>, from?: WorldRoom | null): ExitEntity[] {
     const known = new Map<string, WorldExit>();

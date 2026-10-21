@@ -119,6 +119,26 @@ const make = (config: HealthConfig, enabled = true): Recovery =>
 const drain = (): void => void vi.advanceTimersByTime(500);
 
 describe('sitting down', () => {
+  it('never rests in a room whose spell hurts, said once per room, and rests once it stops', () => {
+    const said: string[] = [];
+    let hurts: string | null = 'river damage';
+    const auto = new Recovery(settings(health({ restBelow: 0.5 })), queue, {
+      notice: (message) => void said.push(message),
+      roomHurts: () => hurts
+    });
+    const river = state({ hp: 20, hpMax: 100 });
+    auto.onCharacter(river);
+    auto.onCharacter(river);
+    drain();
+    expect(sent).toEqual([]);
+    expect(said).toEqual([t('automation.recovery.restHurts', { spell: 'river damage' })]);
+    // The raft in the pack: the positive control.
+    hurts = null;
+    auto.onCharacter(river);
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
   it('rests below the threshold it was given', () => {
     make(health({ restBelow: 0.5 })).onCharacter(state({ hp: 20, hpMax: 100 }));
     drain();

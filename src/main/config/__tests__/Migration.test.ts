@@ -5975,6 +5975,49 @@ describe('path follows status', () => {
   });
 });
 
+/* Todo 20261021-1200-01: `@stoppers` goes wherever `@have` is granted. */
+describe('stoppers follow have', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+  const remotesIn = (file: string): Record<string, unknown> =>
+    (parse(fs.readFileSync(file, 'utf8')).automation as Record<string, unknown>)[
+      'remotes'
+    ] as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-stoppers-remote-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('grants it beside @have in the options and a character’s file, once', () => {
+    fs.writeFileSync(home.options, 'automation:\n  remotes:\n    party: [health, have]\n', 'utf8');
+    const character = home.profile('rayzor').file;
+    fs.mkdirSync(path.dirname(character), { recursive: true });
+    fs.writeFileSync(
+      character,
+      'name: Rayzor\nautomation:\n  remotes:\n    players:\n      brakkle:\n' +
+        '        allow: ["@have", goto]\n        deny: []\n',
+      'utf8'
+    );
+    migrate();
+    expect(remotesIn(home.options)['party']).toEqual(['health', 'have', 'stoppers']);
+    const players = remotesIn(character)['players'] as Record<string, { allow: string[] }>;
+    expect(players['brakkle']?.allow).toEqual(['@have', 'goto', '@stoppers']);
+    expect(notesOf(said, 'notices.migration.stoppersFollowHave')).toHaveLength(1);
+    const after = fs.readFileSync(character, 'utf8');
+    migrate();
+    expect(fs.readFileSync(character, 'utf8')).toBe(after);
+  });
+});
+
 /*
  * `automation.party.askForHealBelow` is a key inside a block the file may
  * already state, which `reconcileWithTemplate` never reaches.

@@ -19,9 +19,11 @@ export interface AreaPlan {
   lose: RoomId[];
   /** Rooms within reach where those odds are not worked out yet. */
   unread: RoomId[];
-  /** Rooms reached only through a room in `lose` or `unread`. */
+  /** Rooms within reach whose own spell hurts, and the items the pack lacks that would stop it. */
+  hazard: Array<{ room: RoomId; spell: string; items: string[] }>;
+  /** Rooms reached only through a room in `lose`, `unread` or `hazard`. */
   behind: RoomId[];
-  /** Every room no walk of this search enters: `lose`, `unread` and the ring past the radius. */
+  /** Every room no walk of this search enters: `lose`, `unread`, `hazard` and the ring past the radius. */
   walled: RoomId[];
   /** Rooms reached from where the character stands that no later room gets back to. */
   stranded: RoomId[];
@@ -141,6 +143,8 @@ export interface AreaSearchPreview extends AreaLimits {
         /** The names of the rooms left out, by why. */
         lose: string[];
         unread: string[];
+        /** Each spell that hurts, the items that would stop it, and the rooms casting it. */
+        hazard: Array<{ spell: string; items: string[]; rooms: string[] }>;
         behind: string[];
         stranded: string[];
       }

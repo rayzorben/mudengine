@@ -94,6 +94,9 @@ export class RemoteAnswers {
       case 'version':
       case 'room':
       case 'refused':
+      case 'no':
+      case 'yes':
+      case 'wealth':
         return null;
       default: {
         const never: never = reply;

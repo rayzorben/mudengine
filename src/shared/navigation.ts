@@ -19,6 +19,8 @@ export interface NavigationOracle {
 export interface PlannedItem {
   id: number;
   name: string;
+  /** The one room the plan gets it in, where the engine chose the counter (a stopper); any source otherwise. */
+  at?: RoomId;
 }
 
 export type PlanStep =

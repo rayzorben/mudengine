@@ -79,6 +79,7 @@ const planner = (over: Partial<RestAwayPlanner> = {}): RestAwayPlanner => ({
           { direction: 'e', to: '8/916', name: 'Ancient Stronghold, Hall' }
         ]
       : [],
+  roomHurts: () => null,
   moveInFlight: () => false,
   walking: () => false,
   looping: () => looping,
@@ -314,6 +315,35 @@ describe('everywhere else', () => {
   it('steps out of a lair whose clock is within the setting', () => {
     const hourly = make(health({ restNextDoorMinutes: 60 }), { lairClock: () => 3600 });
     expect(hourly.consider(hurtInTheLair(), true)).not.toBe('not-mine');
+  });
+
+  it('steps out of a room whose spell hurts, into a neighbour whose does not', () => {
+    const river = make(health(), {
+      lairClock: () => null,
+      roomHurts: (room) => (room === '8/915' || room === '8/914' ? 'river damage' : null)
+    });
+    expect(river.consider(hurtInTheLair(), true)).toBe('took-over');
+    drain();
+    expect(sent).toEqual(['l e']);
+    expect(notices[0]).toBe(
+      t('automation.restAway.refusingHereHurts', {
+        spell: 'river damage',
+        name: 'Ancient Stronghold, Hall'
+      })
+    );
+  });
+
+  it('leaves a hurting room with no safe neighbour, or a stopped character in one, to Recovery', () => {
+    const hurting = { lairClock: () => null, roomHurts: () => 'river damage' };
+    expect(make(health(), hurting).consider(hurtInTheLair(), true)).toBe('not-mine');
+    expect(decisions.at(-1)?.because).toBe(
+      t('automation.restAway.becauseHurts', { spell: 'river damage' })
+    );
+    expect(
+      make(health(), { ...hurting, stayingReason: () => 'stopped' }).consider(hurtInTheLair(), true)
+    ).toBe('not-mine');
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
   });
 
   it('waits out a move in flight, a marching walk and an escape rather than stepping', () => {
