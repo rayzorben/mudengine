@@ -48,6 +48,7 @@ import type {
   RoomAsk
 } from './quests';
 import type { AreaSearchPreview } from './areaSearch';
+import type { MobFindPreview } from './mobFind';
 import type { NearPlace, PlaceKind } from './places';
 import type { CashRunAsk, CashRunToken } from './cashRun';
 import type { SupplyCounters } from './supplies';
@@ -776,6 +777,10 @@ export const Invoke = {
    * it could not start, or null. See `AreaSearch.start`.
    */
   searchArea: 'area:search',
+  /** The walk a find of the monster named would take, for the dialog (`MobFinder.preview`). */
+  previewMobFind: 'find:preview',
+  /** Walk the monster's lairs until it is seen. Returns why it could not start, or null. */
+  findMob: 'find:start',
   /** The tokens the character carries that a cash run can use, for the dialog. */
   cashRunTokens: 'cash:tokens',
   /** Start a cash run (`CashRun.start`). Returns why it could not start, or null. */
@@ -1406,6 +1411,10 @@ export interface IpcApi {
   previewAreaSearch(session: SessionId, radius: number | null): Promise<AreaSearchPreview>;
   /** Search every room within `radius` steps, `searches` times each; why not, or null. */
   searchArea(session: SessionId, radius: number, searches: number): Promise<string | null>;
+  /** What finding the monster named would walk: its lairs in order, or why there is no find. */
+  previewMobFind(session: SessionId, name: string): Promise<MobFindPreview>;
+  /** Walk the monster's lairs until it is seen; why not, or null. */
+  findMob(session: SessionId, name: string): Promise<string | null>;
   /** The tokens the character carries that take it to a town from anywhere. */
   cashRunTokens(session: SessionId): Promise<CashRunToken[]>;
   /** Start a cash run; why not, or null. */

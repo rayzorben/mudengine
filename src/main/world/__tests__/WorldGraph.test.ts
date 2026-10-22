@@ -3821,6 +3821,7 @@ describe('where the realm puts a monster', () => {
     const places = world.mobPlaces(world.mob('wounded messenger')!);
     expect(places).toEqual({
       rooms: 1,
+      lairRooms: 0,
       more: 0,
       spawns: [
         {
@@ -3843,6 +3844,12 @@ describe('where the realm puts a monster', () => {
     const places = world.mobPlaces(world.mob('snow cat')!)!;
     expect(places.rooms).toBe(4);
     expect(places.more).toBe(0);
+    // Every lair room, for the find; the messenger's room is its home, not a lair of it.
+    expect(places.lairRooms).toBe(4);
+    expect(world.lairRoomsOf(world.mob('snow cat')!).sort()).toEqual(['2/1', '2/2', '2/3', '2/9']);
+    expect(world.lairRoomsOf(world.mob('healer')!)).toEqual(['1/527']);
+    expect(world.lairRoomsOf(world.mob('wounded messenger')!)).toEqual([]);
+    expect(world.mobPlaces(world.mob('wounded messenger')!)?.lairRooms).toBe(0);
     expect(places.spawns.map((spawn) => [spawn.roomName, spawn.count])).toEqual([
       // Widest spread first: it is where the thing is most likely to be.
       ['Snowy Plains', 3],

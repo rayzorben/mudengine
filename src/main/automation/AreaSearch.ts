@@ -34,6 +34,7 @@ import type { CharacterState } from '../../shared/character';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import { roomAddress, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
+import { tripEndedBy, tripHeld, tripRefusal, type TripEnd, type TripRefusal } from './tripGuards';
 
 /** The master switch, and the bounds the settings put on the dialog. */
 export type AreaSearchSettings = Pick<AutomationConfig, 'enabled'> & {
@@ -230,13 +231,13 @@ export class AreaSearch implements SessionModule {
     const run = this.run;
     if (run === null) return;
     this.reread(run, state);
-    const ended = this.endedBy(state);
+    const ended = tripEndedBy(this.planner, state);
     if (ended !== null) {
-      this.finish(ended.ending, ended.why);
+      this.finish(ended, this.endWords(ended));
       return;
     }
     this.collect.onCharacter(state);
-    if (this.run !== run || !run.between || this.held(state)) return;
+    if (this.run !== run || !run.between || tripHeld(this.planner, state)) return;
     run.between = false;
     this.next(state);
   }
@@ -245,43 +246,46 @@ export class AreaSearch implements SessionModule {
     this.collect.onWalkEnded(arrived, reason, state);
   }
 
-  /** What ends the search whatever room it is in, or null. */
-  private endedBy(state: CharacterState): { ending: AreaSearchEnding; why: string } | null {
-    if (state.phase !== 'in-game') {
-      return { ending: 'left-realm', why: t('automation.areaSearch.endedLeftRealm') };
+  /** The search's words for what ended it (`tripEndedBy`). */
+  private endWords(end: TripEnd): string {
+    switch (end) {
+      case 'left-realm':
+        return t('automation.areaSearch.endedLeftRealm');
+      case 'ran-away':
+        return t('automation.areaSearch.endedRanAway');
+      case 'attacked':
+        return t('automation.areaSearch.endedAttacked');
+      default: {
+        const never: never = end;
+        return never;
+      }
     }
-    if (this.planner.escaping()) {
-      return { ending: 'ran-away', why: t('automation.areaSearch.endedRanAway') };
-    }
-    // Nothing fights back, so the next room is only further into whatever is here.
-    if (this.planner.fighting() && !this.planner.fightsBack()) {
-      return { ending: 'attacked', why: t('automation.areaSearch.endedAttacked') };
-    }
-    return null;
-  }
-
-  /** What keeps the character in this room a while longer, between two rooms. */
-  private held(state: CharacterState): boolean {
-    return (
-      this.planner.fighting() ||
-      state.vitals.resting ||
-      state.vitals.meditating ||
-      this.planner.moveInFlight() ||
-      this.planner.walking() ||
-      this.planner.taking()
-    );
   }
 
   private whyNot(state: CharacterState): string | null {
     if (!this.settings.enabled) return t('automation.areaSearch.refusalSwitchedOff');
-    if (state.phase !== 'in-game') return t('automation.areaSearch.refusalNotInRealm');
-    if (this.run !== null) return t('automation.areaSearch.refusalRunning');
-    if (this.planner.fighting()) return t('automation.areaSearch.refusalFighting');
-    if (this.planner.looping()) return t('automation.areaSearch.refusalLooping');
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) {
-      return t('automation.areaSearch.refusalBusy');
+    const why = tripRefusal(this.planner, state, this.run !== null);
+    return why === null ? null : this.refusalWords(why);
+  }
+
+  /** The search's words for why it cannot start (`tripRefusal`). */
+  private refusalWords(why: TripRefusal): string {
+    switch (why) {
+      case 'not-in-realm':
+        return t('automation.areaSearch.refusalNotInRealm');
+      case 'running':
+        return t('automation.areaSearch.refusalRunning');
+      case 'fighting':
+        return t('automation.areaSearch.refusalFighting');
+      case 'looping':
+        return t('automation.areaSearch.refusalLooping');
+      case 'busy':
+        return t('automation.areaSearch.refusalBusy');
+      default: {
+        const never: never = why;
+        return never;
+      }
     }
-    return null;
   }
 
   /**

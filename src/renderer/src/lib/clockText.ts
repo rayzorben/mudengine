@@ -1,3 +1,4 @@
+import { hasOwnClock } from '@shared/mobFind';
 import type { WorldMob } from '@shared/world';
 
 /**
@@ -30,11 +31,9 @@ export function clockText(seconds: number): string {
 /**
  * A monster's own clock, `Monsters.RegenTime` (format 36), as text; null where
  * it has none and comes back with its room. The Room card's lair chip and the
- * monster card's regen row both read it from here, so "has a clock of its own"
- * is decided once.
+ * monster card's regen row both read it from here; "has a clock of its own" is
+ * `hasOwnClock`, shared with the find that walks such a monster's lairs.
  */
 export function regenClockText(mob: Pick<WorldMob, 'regenHours'>): string | null {
-  return mob.regenHours !== undefined && mob.regenHours > 0
-    ? clockText(mob.regenHours * 3600)
-    : null;
+  return hasOwnClock(mob) ? clockText(mob.regenHours * 3600) : null;
 }

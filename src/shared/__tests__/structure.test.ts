@@ -73,7 +73,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `banks`, one filter over `counters` (todo 70).
   // Lowered by the draw count's comment, one line as `hasWayIn` came (todo 20261019-1059-01).
   // Lowered by the exits' comment, condensed as `stoppersOf` came (todo 20261021-1200-01).
-  'src/main/world/WorldGraph.ts': 2365,
+  // Lowered by the placements' comments, condensed as `lairRoomsOf` came (the monster find).
+  'src/main/world/WorldGraph.ts': 2364,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).

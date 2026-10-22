@@ -1808,6 +1808,8 @@ export interface MobPlaces {
   spawns: MobSpawn[];
   /** Rooms in all, across every group including the ones the cap left out. */
   rooms: number;
+  /** Rooms whose lair lists it, every one, residents left out: what a find walks (`findable`). */
+  lairRooms: number;
   /** Groups the cap left out, so a truncated list says it is one. */
   more: number;
 }

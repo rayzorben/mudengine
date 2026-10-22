@@ -8,7 +8,7 @@ import type { FoundRoom } from '@shared/destinations';
 import type { SessionId } from '@shared/ipc';
 import type { WalkStart } from '@shared/movement';
 import type { NearPlace } from '@shared/places';
-import { NO_LOOKUP, roomId, type Route, type WorldLookup } from '@shared/world';
+import { NO_LOOKUP, roomId, type Route, type WorldLookup, type WorldMob } from '@shared/world';
 
 const HERO = 'hero' as SessionId;
 
@@ -50,6 +50,7 @@ function deps(
 ) {
   const openRouteOn = vi.fn<PaletteFindDeps['openRouteOn']>();
   const inspect = vi.fn<PaletteFindDeps['inspect']>();
+  const findMob = vi.fn<PaletteFindDeps['findMob']>();
   const walkRoute = vi.fn(async () => answers.walk ?? { started: true as const });
   const handed: PaletteFindDeps = {
     api: {
@@ -65,9 +66,10 @@ function deps(
     },
     session: HERO,
     openRouteOn,
-    inspect
+    inspect,
+    findMob
   };
-  return { handed, openRouteOn, inspect, walkRoute };
+  return { handed, openRouteOn, inspect, walkRoute, findMob };
 }
 
 describe('the palette query, as found blocks', () => {
@@ -155,6 +157,33 @@ describe('what the realm knows by the query', () => {
     }));
     const { handed } = deps({ lookup: { ...NOTHING, items: many } });
     expect(await realmRows('ring', handed)).toHaveLength(tuning().paletteFoundRows);
+  });
+
+  it('offers a find beside a monster with a regen time of its own and more than one lair', async () => {
+    const places = (count: number) => ({
+      spawns: [{ roomName: 'Graveyard', count, rooms: [], via: 'lair' as const, max: null }],
+      rooms: count,
+      lairRooms: count,
+      more: 0
+    });
+    const mob = (name: string, regenHours?: number) => ({ name, hp: 100, regenHours }) as WorldMob;
+    const { handed, findMob } = deps({
+      lookup: {
+        ...NOTHING,
+        mobs: [mob('gravedigger', 1), mob('giant rat', 1), mob('ghoul')],
+        mobPlaces: { gravedigger: places(4), 'giant rat': places(1), ghoul: places(6) }
+      }
+    });
+    const rows = await realmRows('g', handed);
+    // Only the gravedigger: the rat has one lair, the ghoul no clock of its own.
+    expect(rows.map((row) => row.id)).toEqual([
+      'lookup:mob:0',
+      'find:mob:0',
+      'lookup:mob:1',
+      'lookup:mob:2'
+    ]);
+    rows[1]?.run();
+    expect(findMob).toHaveBeenCalledWith('gravedigger');
   });
 
   it('opens the quick view where the palette stood', async () => {

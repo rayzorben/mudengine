@@ -938,6 +938,14 @@ tuning:
     collectMs: 8000
     expiresMs: 6000
 
+  # Walking a monster's lairs until it is seen -- `MobFinder`. A monster in
+  # more than `maxRooms` lair rooms is refused; up to `exactStops` stops are
+  # ordered exactly; `missedInARow` rooms with no way there end the find.
+  mobFind:
+    maxRooms: 24
+    exactStops: 8
+    missedInARow: 3
+
   # Searching every room near the character -- `AreaSearch`. The dialog opens
   # on `firstRadius` and `firstSearches`, bounded by `automation.search` in the
   # options file; `collectMs` waits for a search's answer; `missedInARow`

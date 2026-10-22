@@ -1223,6 +1223,15 @@ const TUNING_DEFAULTS = {
     /** A `get` for the stash still queued after this is for a room already left. */
     expiresMs: 6000
   },
+  /** Walking a monster's lairs until it is seen — `MobFinder`. */
+  mobFind: {
+    /** The most lair rooms a find walks; a monster in more is refused, said. */
+    maxRooms: 24,
+    /** The most stops ordered exactly (`tour`); past it, nearest first and then shortened. */
+    exactStops: 8,
+    /** Rooms missed in a row (no way there, or the walk ended short twice) before the find ends. */
+    missedInARow: 3
+  },
   /** Searching every room near the character — `AreaSearch`. */
   areaSearch: {
     /** What the dialog offers first: the rooms a few steps away, each searched once. */

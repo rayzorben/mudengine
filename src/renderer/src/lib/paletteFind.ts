@@ -24,6 +24,7 @@ import { walkTo } from './walkTo';
 import { wasVisited, type FoundRoom } from '@shared/destinations';
 import { entityNumber } from '@shared/entities';
 import type { IpcApi, SessionId } from '@shared/ipc';
+import { findable } from '@shared/mobFind';
 import { roomId, type WorldRoom } from '@shared/world';
 
 export interface PaletteFindDeps {
@@ -34,6 +35,8 @@ export interface PaletteFindDeps {
   openRouteOn(room: WorldRoom, search: null): void;
   /** The quick view a clicked name opens, beside where the palette stood. */
   inspect(name: string, anchor: PopoverAnchor): void;
+  /** The Find a monster dialog, opened on the monster named. */
+  findMob(name: string): void;
 }
 
 /**
@@ -99,7 +102,7 @@ function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
 export async function realmRows(query: string, deps: PaletteFindDeps): Promise<Command[]> {
   const { api, session, inspect } = deps;
   const entries = flattenLookup(await api.lookup(session, query));
-  return entries.slice(0, tuning().paletteFoundRows).map((entry, index) => {
+  return entries.slice(0, tuning().paletteFoundRows).flatMap((entry, index) => {
     const kindWord = entryWord(entry);
     const number = entityNumber(entryNumber(entry));
     const icon: IconName =
@@ -110,7 +113,7 @@ export async function realmRows(query: string, deps: PaletteFindDeps): Promise<C
           : entry.kind === 'item'
             ? 'bag'
             : 'users';
-    return {
+    const row: Command = {
       // Position, not name: the realm holds two `maelstrom` rows and four
       // `void sphere` rows, and a keyed list handed a duplicate keeps a corpse.
       id: `lookup:${entry.kind}:${index}`,
@@ -137,6 +140,27 @@ export async function realmRows(query: string, deps: PaletteFindDeps): Promise<C
         );
       }
     };
+    const lairs = entry.kind === 'mob' ? (entry.places?.lairRooms ?? 0) : 0;
+    /*
+     * A monster a find looks for (`findable`: a regen time of its own,
+     * more than one lair) is offered one beside its quick view (`MobFinder`):
+     * where it is is the question somebody typing its name has.
+     */
+    const find: Command[] =
+      entry.kind === 'mob' && findable(entry.mob, lairs).ok
+        ? [
+            {
+              id: `find:mob:${index}`,
+              icon: 'route',
+              transient: true,
+              label: t('palette.navigate.findMobRow', { name: entry.name }),
+              hint: t('palette.navigate.findMobHint', { count: String(lairs) }),
+              movesFocus: true,
+              run: () => deps.findMob(entry.name)
+            }
+          ]
+        : [];
+    return [row, ...find];
   });
 }
 

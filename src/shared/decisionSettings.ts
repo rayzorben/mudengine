@@ -531,6 +531,7 @@ export const DECISION_SETTINGS = {
     since: '2026-10-13'
   },
   'area-search': ['automation.search.areaMaxSteps', 'automation.search.areaMaxSearches'],
+  'mob-find': { exempt: 'the player asked for the monster to be found', since: '2026-10-22' },
   'quest-run': ['automation.quests.enabled', 'automation.quests.rollTries'],
   'travel-replan': {
     exempt: 'bookkeeping: the character is off the route it planned',
