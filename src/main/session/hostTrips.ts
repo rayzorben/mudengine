@@ -14,6 +14,7 @@ import type { AutoLoot } from '../automation/AutoLoot';
 import { CashRun, type CashRunEvents, type CashRunPlanner } from '../automation/CashRun';
 import type { ChargeLedger } from '../automation/ItemCharges';
 import { GearTrip, type GearTripEvents } from '../automation/GearTrip';
+import { MobFinder, type MobFinderEvents, type MobFinderPlanner } from '../automation/MobFinder';
 import { SellTrip, type SellTripEvents } from '../automation/SellTrip';
 import type { StashFetch, StashFetchEvents } from '../automation/StashFetch';
 import type { Block } from '../../shared/blocks';
@@ -22,7 +23,13 @@ import type { AutomationConfig } from '../../shared/config';
 import type { OutgrownPlannerModules } from './outgrownPlanner';
 import { NO_SALE, saleOnTheWay, saleReadsOf, type SaleModules } from './saleOnTheWay';
 import type { WorldGraph } from '../world/WorldGraph';
-import { stashFetchTrip, type CollectModules, type CollectParts } from './collectPlanner';
+import {
+  collectPlanner,
+  stashFetchTrip,
+  type CollectModules,
+  type CollectParts
+} from './collectPlanner';
+import { planMobFind } from './mobFindPlan';
 import { legPlanner } from './legPlanner';
 import { nearestOf } from './placeDesk';
 import { wearPlan } from '../../shared/gear';
@@ -31,6 +38,7 @@ import type { QuestKeep } from '../../shared/questKeep';
 import { counterIn, landsFromAnywhere, roomAddress, roomId } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import type { Walker } from '../automation/Walker';
 import type { Travel } from './Travel';
 import { ERRAND_LEG } from './Travel';
 
@@ -39,11 +47,12 @@ export class HostTrips implements SessionModule {
     readonly stash: StashFetch,
     readonly sell: SellTrip,
     readonly gear: GearTrip,
-    readonly cash: CashRun
+    readonly cash: CashRun,
+    readonly find: MobFinder
   ) {}
 
   get busy(): boolean {
-    return this.stash.busy || this.sell.busy || this.gear.busy || this.cash.busy;
+    return this.trips.some((trip) => trip.busy);
   }
 
   /** A token that casts negate magic is next (`CashRun.negateDue`). */
@@ -51,9 +60,10 @@ export class HostTrips implements SessionModule {
     return this.cash.negateDue;
   }
 
-  /** The player's Stop: a cash run ends with the lap it walks. */
-  stop(): void {
+  /** The player's Stop: a cash run ends with the lap it walks, a find with its walk. */
+  stop(reason: string): void {
     this.cash.stop();
+    this.find.stop(reason);
   }
 
   configure(enabled: boolean): void {
@@ -83,8 +93,8 @@ export class HostTrips implements SessionModule {
     for (const trip of this.trips) trip.onWalkEnded(arrived, reason, state);
   }
 
-  private get trips(): ReadonlyArray<StashFetch | SellTrip | GearTrip | CashRun> {
-    return [this.stash, this.sell, this.gear, this.cash];
+  private get trips(): ReadonlyArray<StashFetch | SellTrip | GearTrip | CashRun | MobFinder> {
+    return [this.stash, this.sell, this.gear, this.cash, this.find];
   }
 }
 
@@ -98,8 +108,10 @@ export interface HostTripParts extends CollectParts {
     errands: SaleModules['errands'];
     world:
       | (Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried' | 'spellById'> &
+          Pick<WorldGraph, 'mob' | 'lairRoomsOf' | 'sweepTo'> &
           NonNullable<OutgrownPlannerModules['world']>)
       | undefined;
+    walker: CollectModules['walker'] & Pick<Walker, 'stop'>;
     travel: Pick<
       Travel,
       'escaping' | 'combatOffForRun' | 'combatOnAfterRun' | 'switchedOnFor' | 'startMoving'
@@ -116,7 +128,7 @@ export interface HostTripParts extends CollectParts {
 export function hostTrips(
   automation: AutomationConfig,
   queue: CommandQueue,
-  events: StashFetchEvents & SellTripEvents & GearTripEvents & CashRunEvents,
+  events: StashFetchEvents & SellTripEvents & GearTripEvents & CashRunEvents & MobFinderEvents,
   parts: HostTripParts
 ): HostTrips {
   const legs = legPlanner(parts.modules);
@@ -171,7 +183,40 @@ export function hostTrips(
     events
   );
   const cash = new CashRun(automation.enabled, queue, cashRunPlanner(parts), parts.charges, events);
-  return new HostTrips(stashFetchTrip(automation, queue, events, parts), sell, gear, cash);
+  const find = new MobFinder(automation.enabled, mobFinderPlanner(parts), events);
+  return new HostTrips(stashFetchTrip(automation, queue, events, parts), sell, gear, cash, find);
+}
+
+/**
+ * The find's planner: the leg, the plan from where the character stands, and
+ * whether the monster looked for is in the room, read off the occupants the
+ * realm named (`RoomOccupant.mob`, hydrated once as the room completed).
+ */
+export function mobFinderPlanner(parts: HostTripParts): MobFinderPlanner {
+  const m = parts.modules;
+  const legs = collectPlanner(parts);
+  return {
+    ...legs,
+    stopWalk: (reason) => m().walker.stop(reason),
+    switchedOnFor: (start) => m().travel.switchedOnFor(start),
+    plan: (name) =>
+      planMobFind(
+        {
+          here: legs.here,
+          world: () => m().world,
+          traveller: () => m().errands.travellerNow(m().tracker.current)
+        },
+        name
+      ),
+    nameOf: (room) => m().world?.byId(room)?.name ?? room,
+    // By the realm's name for it; a monster the room did not hydrate is asked of the realm by its printed name.
+    present: (mob, state) =>
+      state.room.occupants.some(
+        (who) => who.kind === 'mob' && (who.mob?.name ?? m().world?.mob(who.name)?.name) === mob
+      ),
+    fightsBack: () => m().combat.willFight,
+    escaping: () => m().travel.escaping
+  };
 }
 
 /** The cash run's planner: the leg, the loop as Play starts it, the tokens carried and the banks. */

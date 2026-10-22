@@ -2463,7 +2463,7 @@ export class Travel implements SessionModule {
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
     // Before the walk, so the leg's end is not read as a room to pass over.
     this.areaSearch.stop(reason);
-    this.hostTrips.stop();
+    this.hostTrips.stop(reason);
     this.walker.stop(reason);
     // The one door a person's stop comes through, so it is the one place that
     // can tell a hunt it was stopped *by somebody* rather than by the realm.

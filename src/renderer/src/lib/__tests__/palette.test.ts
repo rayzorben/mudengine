@@ -94,7 +94,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     toggleDebug: vi.fn(),
     toggleHelp: vi.fn(),
     toggleLoops: vi.fn(),
-    trips: { areaSearch: vi.fn(), cashRun: vi.fn() },
+    trips: { areaSearch: vi.fn(), cashRun: vi.fn(), findMob: vi.fn() },
     reveal: vi.fn(),
     terminal: () => null,
     say: vi.fn(),

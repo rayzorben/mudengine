@@ -122,6 +122,8 @@ app:
       one: '{name} is still in the realm.'
   area:
     invalid: The steps and the searches must each be a whole number in range.
+  mobFind:
+    invalid: Type the monster's name.
   cashRun:
     invalid: 'Pick a loop, at least one coin, at least one token and how full.'
   remotes:
@@ -1472,6 +1474,9 @@ palette:
     searchLabel: Search the console
     areaSearchLabel: Search the area…
     cashRunLabel: Cash run…
+    findMobLabel: Find a monster…
+    findMobRow: 'Find {name}'
+    findMobHint: '{count} lairs'
   noMatches: No matching command, and nothing in the realm by that name.
   pin:
     pinTitle: Pin to the top ({chord})
@@ -7058,6 +7063,36 @@ automation:
     endedLeftRealm: 'Area search stopped: the character left the realm.'
     endedAttacked: 'Area search stopped: something attacked, and auto-combat is off.'
     endedMissed: 'Area search stopped: the last {missed} rooms could not be searched.'
+  mobFind:
+    starting: 'Looking for {mob} in {rooms} lairs (about {steps} steps of walking).'
+    found: 'Found {mob} in {room}.'
+    foundHere: 'Found {mob}.'
+    notThere: '{mob} is not in {room} ({done} of {rooms}).'
+    missedNoWay: 'Passed over {room}: no way there.'
+    missed: 'Passed over {room}: {why}'
+    whyStopped: '{mob} is here'
+    because: 'the player asked for {mob} to be found'
+    refused: 'Not looking for {mob}: {why}'
+    refusalSwitchedOff: automation is off
+    refusalNotInRealm: the character is not in the realm
+    refusalRunning: a monster is already being looked for
+    refusalFighting: the character is fighting
+    refusalLooping: a loop is running; stop it first
+    refusalBusy: the character is walking, or already on another trip
+    refusalNoSuchMonster: 'the realm has no monster called {name}'
+    refusalNoClock: '{mob} has no regen time of its own; it comes back with its room, so its lair says where it is'
+    refusalNoLair: 'the realm places {mob} in no lair'
+    refusalOneLair: '{mob} lairs in one room only, {room}. Go to it instead.'
+    refusalTooMany: '{mob} lairs in {rooms} rooms, more than the {most} a find walks'
+    refusalNoWay: 'no way from here reaches a lair of {mob}'
+    endedSwitchedOff: 'Find stopped: automation was turned off.'
+    endedStopped: 'Find stopped: {why}'
+    endedDied: 'Find stopped: the character died.'
+    endedLeftRealm: 'Find stopped: the character left the realm.'
+    endedRanAway: 'Find stopped: the character ran away.'
+    endedAttacked: 'Find stopped: something attacked, and auto-combat is off.'
+    endedNotFound: '{mob} was not in any of its lairs.'
+    endedMissed: 'Find stopped: the last {missed} lairs could not be reached.'
   gear:
     capped: Only {max} were sent; {more} more were left. Each is a command from the same budget as
       fighting.
@@ -7795,6 +7830,23 @@ areaSearch:
     kept in the room log and picked up as your loot settings say. Stop ends the search.'
   cancel: Cancel
   start: Search
+
+# Finding a monster: its lairs walked in order until it is seen.
+mobFind:
+  title: 'Find a monster: {name}'
+  monster: Monster
+  placeholder: gravedigger
+  typeOne: Type a monster's name to see where it lairs.
+  measuring: Planning the walk…
+  none: 'No find: {why}'
+  plan: '{mob} comes back {clock} after a kill and lairs in {rooms} rooms, about {steps} steps of walking.'
+  rooms: 'In walking order: {rooms}'
+  unreached: 'No way from here: {rooms}'
+  combatOff: Auto-combat is off, so a monster that attacks on the way is not fought, and the find stops.
+  whatHappens: 'Walks to each lair in turn and stops in the first room the monster is in. What happens
+    then is up to auto-combat and your monster rules. Stop ends the walk.'
+  cancel: Cancel
+  start: Find
 
 # The cash run: a loop walked collecting coins, banked by token each time the
 # character is full.

@@ -134,13 +134,21 @@ export interface PaletteDeps {
   toggleDebug(): void;
   toggleHelp(): void;
   toggleLoops(): void;
-  /** The Search the area and Cash run dialogs, for the shown character. */
-  trips: { areaSearch(): void; cashRun(): void };
+  /** The Search the area, Cash run and Find a monster dialogs, for the shown character. */
+  trips: TripOpens;
   reveal(ask: () => Promise<Revealed>): void;
   /** The console on screen, read when a command runs. */
   terminal(): PaletteTerminal | null;
   /** A sentence into one character's console: a refusal, said where it applies. */
   say(session: SessionId, message: string): void;
+}
+
+/** The trip dialogs' openers, each for the shown character; nothing without one. */
+export interface TripOpens {
+  areaSearch(): void;
+  cashRun(): void;
+  /** On the monster named, or empty for the bare command. */
+  findMob(name?: string): void;
 }
 
 /**
@@ -516,6 +524,19 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       keywords: ['area', 'rooms', 'hidden', 'secret', 'explore', 'nearby', 'sweep'],
       movesFocus: true,
       run: deps.trips.areaSearch
+    },
+    /*
+     * Walking a monster's lairs until it is seen (`MobFinder`). A typed
+     * monster's name also offers it as a *Found* row (`paletteFind`).
+     */
+    {
+      id: 'find:mob',
+      icon: 'sword' as const,
+      label: t('palette.navigate.findMobLabel'),
+      group: 'navigate' as const,
+      keywords: ['find', 'monster', 'mob', 'lair', 'where', 'regen', 'boss', 'look for'],
+      movesFocus: true,
+      run: () => deps.trips.findMob()
     },
     {
       id: 'cash:run',

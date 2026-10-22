@@ -791,8 +791,8 @@ export default function App() {
 
   /** What a typed query reaches past the commands (`lib/paletteFind.ts`). */
   const findFromPalette = useCallback(
-    (query: string) => paletteFind(query, { api, session, openRouteOn, inspect }),
-    [api, session, openRouteOn, inspect]
+    (query: string) => paletteFind(query, { api, session, openRouteOn, inspect, ...trips.opens }),
+    [api, session, openRouteOn, inspect, trips.opens]
   );
 
   /** The console's own name index, per character. */

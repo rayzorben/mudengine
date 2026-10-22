@@ -49,7 +49,8 @@ export interface CollectParts {
   release(): void;
 }
 
-function collectPlanner(
+/** The leg, the coin word and whether a fight holds a search: what every collect trip's planner starts from. */
+export function collectPlanner(
   parts: CollectParts
 ): RecoveryPlanner & LegPlanner & { fighting(): boolean } {
   const fighting = (): boolean => {

@@ -133,6 +133,7 @@ import {
   type WalkStart
 } from '../shared/movement';
 import { areaLimits, type AreaSearchPreview } from '../shared/areaSearch';
+import type { MobFindPreview } from '../shared/mobFind';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
 import { decorate, pageMapsOf, type LairLevel } from './world/localMap';
@@ -216,7 +217,7 @@ import {
   type RoutePages,
   type WalkPages
 } from '../shared/routeLegs';
-import { errorMessage } from '../shared/values';
+import { errorMessage, str } from '../shared/values';
 import { BUILD, versionWithCommit } from '../shared/build';
 import { fileSlug } from '../shared/files';
 import { configuredSecrets } from '../shared/secrets';
@@ -2348,6 +2349,23 @@ function registerIpc(): void {
       return manager.areaSearch.start(steps, times, manager.character);
     }
   );
+  // Finding a monster (`MobFinder`): the name parsed at the boundary; blank is no name.
+  handle(Invoke.previewMobFind, (_caller, session: SessionId, name: unknown): MobFindPreview => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined) return { refused: t('app.session.notConnected') };
+    const asked = str(name, '');
+    return asked === ''
+      ? { refused: t('app.mobFind.invalid') }
+      : manager.hostTrips.find.preview(asked);
+  });
+  handle(Invoke.findMob, (_caller, session: SessionId, name: unknown): string | null => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined) return t('app.session.notConnected');
+    const asked = str(name, '');
+    return asked === ''
+      ? t('app.mobFind.invalid')
+      : manager.hostTrips.find.start(asked, manager.character);
+  });
   // A cash run (`CashRun`): the tokens for the dialog, and its ask parsed at the boundary.
   handle(Invoke.cashRunTokens, (_caller, session: SessionId): CashRunToken[] => {
     const manager = host?.get(session)?.manager;

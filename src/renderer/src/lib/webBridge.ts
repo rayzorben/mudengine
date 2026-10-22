@@ -187,6 +187,8 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
       invoke(Invoke.collectThenWalk, session, items, route, run),
     previewAreaSearch: (session, radius) => invoke(Invoke.previewAreaSearch, session, radius),
     searchArea: (session, radius, searches) => invoke(Invoke.searchArea, session, radius, searches),
+    previewMobFind: (session, name) => invoke(Invoke.previewMobFind, session, name),
+    findMob: (session, name) => invoke(Invoke.findMob, session, name),
     cashRunTokens: (session) => invoke(Invoke.cashRunTokens, session),
     startCashRun: (session, ask) => invoke(Invoke.startCashRun, session, ask),
     stopMoving: (session) => invoke(Invoke.stopMoving, session),

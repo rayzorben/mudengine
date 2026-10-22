@@ -995,24 +995,16 @@ export class WorldGraph {
   }
 
   /**
-   * Where the realm spawns a monster, grouped by the name of the room.
-   *
-   * The reverse of the two columns the world file has always carried and only
-   * ever read forwards — `Rooms.NPC` and `Rooms.Lair`. The Room card could say
-   * *this lair holds a snow cat*; nothing could answer *where is a snow cat*,
-   * which is the question somebody asking about a monster actually has, and
-   * MMUD Explorer's own monster page has answered it for twenty years.
-   *
-   * **Grouped by room name, and the addresses kept underneath.** `snow cat` is
-   * in 236 rooms bearing 25 names: a list of addresses is not somewhere a
-   * person can decide to go, and a button that walked to one of the 236 would
-   * be the guess `shopPlace` refuses. So a group of one is a place, a group of
-   * several is a choice, and the count is stated either way.
-   *
-   * Undefined for a monster the realm places in no room — 153 of the shipped
-   * realm's 1,514 names — rather than an empty list, which reads as a claim
-   * that it is nowhere when what the data says is that it is summoned or
-   * scripted in.
+   * Where the realm spawns a monster, grouped by the name of the room: the
+   * reverse of `Rooms.NPC` and `Rooms.Lair`, which the Room card only ever
+   * read forwards. It is grouped by room name, the addresses kept underneath:
+   * `snow cat` is in 236 rooms bearing 25 names, a list of addresses is not
+   * somewhere a person can decide to go, and a button walking to one of the
+   * 236 would be the guess `shopPlace` refuses. A group of one is a place, a
+   * group of several a choice, and the count is stated either way. Undefined
+   * for a monster the realm places in no room (153 of the shipped realm's
+   * 1,514 names) rather than an empty list, which reads as a claim it is
+   * nowhere when the data says it is summoned or scripted in.
    */
   mobPlaces(mob: WorldMob, groups = 12, perGroup = 12): MobPlaces | undefined {
     const found = this.spawnRoomsOf(mob);
@@ -1083,25 +1075,32 @@ export class WorldGraph {
     return {
       spawns: all.slice(0, groups),
       rooms: byRoom.size,
+      lairRooms: this.lairRoomsOf(mob).length,
       more: Math.max(0, all.length - groups)
     };
   }
 
   /**
+   * Every room whose lair lists this monster, each once, in no order: the
+   * rooms a find walks (`MobFinder`). A resident (`Rooms.NPC`) is left out,
+   * since it is one creature in one room and *Go to* is the way there.
+   */
+  lairRoomsOf(mob: WorldMob): RoomId[] {
+    const rooms = new Set<RoomId>();
+    for (const entry of this.spawnRoomsOf(mob)) {
+      if (entry.via === 'lair') rooms.add(roomId(entry.room.map, entry.room.room));
+    }
+    return [...rooms];
+  }
+
+  /**
    * Every placement of this monster, one entry per room and slot, uncapped.
-   *
-   * A name can hold several of the realm's rows — five `cocoon`s — and each
-   * row is placed separately, so every id behind the name contributes. The
-   * mob index is keyed by name and `Catalogue.mobById` maps the ids onto it, so this
-   * asks the id index which of its entries *is* this mob rather than keeping
-   * a third index of name → ids.
-   *
-   * Through the fold and not through the argument, because `mobAt` hands
-   * back a *copy* re-answered by one row and an identity test against that
-   * copy matches nothing: the card lost its whole `spawns in` list the day
-   * the room began resolving the name. And where one row was resolved, only
-   * that row's rooms are places this monster is — the other row's are where
-   * its namesake lives, which is the confusion the resolution exists to end.
+   * A name can hold several of the realm's rows (five `cocoon`s), each placed
+   * separately, so every id behind the name contributes, asked of the id
+   * index. Through the fold, not the argument: `mobAt` hands back a copy
+   * re-answered by one row, and an identity test against it matches nothing
+   * (the card lost its `spawns in` list the day rooms began resolving names).
+   * Where one row was resolved, only that row's rooms are this monster's.
    */
   private spawnRoomsOf(mob: WorldMob): MobSpawnRoom[] {
     const found: MobSpawnRoom[] = [];

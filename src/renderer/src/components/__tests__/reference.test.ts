@@ -139,6 +139,7 @@ describe("where a monster is found rides beside the realm's answer", () => {
       mobPlaces: {
         'wounded messenger': {
           rooms: 1,
+          lairRooms: 0,
           more: 0,
           spawns: [
             {
