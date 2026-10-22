@@ -8223,8 +8223,15 @@ button.quest-tile-name:hover:not(:disabled) {
  * identity — order, name, spell, target — and the numbers and switches under
  * it. The list keeps the steps' rhythm; the second line is quieter and
  * inset past the reorder column so it reads as belonging to the row above.
+ *
+ * A banded monster row is the same shape (todo 816): the monster and its
+ * treatment, then how it is fought. `.settings-steps li` lays a row out as a
+ * flex row, so without this the two lines sat side by side and the name field
+ * (`minmax(0, 1fr)`) was squeezed to nothing once the second line grew its
+ * hints and Stop to kill (2026-10-22).
  */
-.settings-blessings li {
+.settings-blessings li,
+.settings-mob-rules li {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
@@ -8232,7 +8239,8 @@ button.quest-tile-name:hover:not(:disabled) {
   border-bottom: 1px solid var(--ink-line);
 }
 
-.settings-blessings li:last-child {
+.settings-blessings li:last-child,
+.settings-mob-rules li:last-child {
   border-bottom: none;
 }
 
@@ -8509,12 +8517,12 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /* How a banded row fights its monster (todo 816): the spell, its casts, no
-   backstab — the blessing row's detail line, laid out as one. */
+   backstab — the blessing row's detail line, laid out as one. The row's own
+   column gap keeps the two lines apart. */
 .settings-mob-rules .mob-rule-detail {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
 }
 
 .settings-mob-rules .mob-rule-detail .spell-picker {

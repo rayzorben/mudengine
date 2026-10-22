@@ -12203,6 +12203,70 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and a row offers never-attack ahead of the five bands, in the order they are attacked',
     ranked
   );
+  /*
+   * A banded row draws how it is fought on a second line under the monster
+   * (todo 816). `.settings-steps li` is a flex row, so without the column rule
+   * the two lines sat side by side and the name field was squeezed to nothing
+   * (2026-10-22, a gravedigger row with no gravedigger on it). Measured, since
+   * the DOM was right the whole time.
+   */
+  await evaluate(`
+    (() => {
+      const box = document.querySelector('.settings-form fieldset[data-fieldset="combat-mob-rules"]');
+      const select = box?.querySelector('.mob-rule-line select');
+      if (!select) return false;
+      const set = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+      set.call(select, 'last');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    })()
+  `);
+  const banded = await readUntil(
+    () =>
+      evaluate(`
+    (() => {
+      const box = document.querySelector('.settings-form fieldset[data-fieldset="combat-mob-rules"]');
+      const li = box?.querySelector('.settings-mob-rules li');
+      const line = li?.querySelector('.mob-rule-line');
+      const detail = li?.querySelector('.mob-rule-detail');
+      const name = line?.querySelector('input[role="combobox"]');
+      const select = line?.querySelector('select');
+      if (!line || !detail || !name || !select) return JSON.stringify({ detail: !!detail });
+      const l = line.getBoundingClientRect();
+      const d = detail.getBoundingClientRect();
+      return JSON.stringify({
+        detail: true,
+        nameWidth: Math.round(name.getBoundingClientRect().width),
+        selectWidth: Math.round(select.getBoundingClientRect().width),
+        lineWidth: Math.round(l.width),
+        liWidth: Math.round(li.getBoundingClientRect().width),
+        detailBelow: d.top >= l.bottom - 1
+      });
+    })()
+  `),
+    (read) => /"detail":true/.test(read)
+  );
+  const bandedRow = (() => {
+    try {
+      return JSON.parse(banded);
+    } catch {
+      return {};
+    }
+  })();
+  check(
+    bandedRow.detail === true &&
+      bandedRow.detailBelow === true &&
+      bandedRow.lineWidth === bandedRow.liWidth,
+    'and a banded row draws how it is fought on a line of its own, under the monster',
+    banded
+  );
+  // The name takes the row's leftover (`minmax(0, 1fr)`), the select only its
+  // own words; squeezed, the name was 0 wide beside a full select.
+  check(
+    bandedRow.nameWidth >= bandedRow.selectWidth,
+    'and the monster name field is at least as wide as the treatment beside it',
+    banded
+  );
   // Taken back off, like the switch below: this run does not save, and a later
   // assertion reads the same form.
   await evaluate(`
