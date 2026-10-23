@@ -5,7 +5,8 @@
  * gear or of the effects up. Only out of a fight and once the change has held
  * `tuning.statAll.settleMs`, and once per basis a session: the answer is kept
  * per basis (`keepSheet`), so a set of blessings that comes round again needs
- * no second ask. See `mudengine-automation` › *`stat a` once per basis*.
+ * no second ask. Never on a stock realm. See `mudengine-automation` ›
+ * *`stat a` once per basis*.
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -29,6 +30,8 @@ export class StatAllAsk {
   private lastSentAt = 0;
   /** The realm answered `tuning.statAll.unansweredAsks` asks with no sheet: not asked again. */
   private givenUp = false;
+  /** A stock realm was told it is not asked, once a session. */
+  private saidStock = false;
 
   constructor(
     private readonly queue: Pick<CommandQueue, 'offer'>,
@@ -38,6 +41,7 @@ export class StatAllAsk {
 
   onCharacter(state: CharacterState): void {
     if (this.givenUp || state.phase !== 'in-game') return;
+    if (this.onStock(state)) return;
     // The basis is not known until `st` and `i` have answered; asking before is asking twice.
     if (state.progress.level === null || state.inventory.listedAt === null) return;
     if (this.unansweredTooOften()) return;
@@ -70,6 +74,21 @@ export class StatAllAsk {
     this.unanswered = 0;
     this.lastSentAt = 0;
     this.givenUp = false;
+    this.saidStock = false;
+  }
+
+  /*
+   * `[MAJORMUD]:` is the stock module's menu (bearfather's wire); Paradigm's
+   * prints its own name (`GMUDMenu.cs:49`, `MUD_NAME`). Stock has no `stat
+   * all`, so it is not asked at all there (issue #5).
+   */
+  private onStock(state: CharacterState): boolean {
+    if (state.realm !== 'majormud') return false;
+    if (!this.saidStock) {
+      this.saidStock = true;
+      this.notice(t('automation.routines.statAllStock', { command: STAT_ALL }), 'stat-all');
+    }
+    return true;
   }
 
   /*

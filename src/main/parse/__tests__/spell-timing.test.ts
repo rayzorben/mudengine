@@ -392,3 +392,60 @@ describe("a renamed spell, through the shipped table and the realm's message rec
     );
   });
 });
+
+/*
+ * Stock MajorMUD's self-cast confirmations carry a flavour clause the frames
+ * above did not allow (issue #4: a druid's and a mage's blessings recast on
+ * the retry floor). Each line is verbatim from the named capture.
+ */
+describe('a stock MajorMUD self cast with a flavour clause', () => {
+  const STOCK: readonly (readonly [string, string, string])[] = [
+    // captures/056-mudcentral-status-quests-quest-gy.txt:100
+    [
+      'Gypsy',
+      'You cast magic armour on yourself. A glimmering shield surrounds you!',
+      'magic armour'
+    ],
+    // captures/188-mudcentral-captures-lotd-cap.txt:53
+    ['Lotd', 'You cast mageshield, surrounding yourself in a shimmering field!', 'mageshield'],
+    // captures/056-mudcentral-status-quests-quest-gy.txt:121
+    ['Gypsy', 'You cast shadowform, transforming yourself into a shadow!', 'shadowform'],
+    // captures/076-mudinfo-script-kill-with-some-goodies.txt:277
+    ['Ranger', 'You cast camouflage, blending into your surroundings!', 'camouflage'],
+    // captures/004-mudcentral-status-quests-quest-dr.txt:193, Techno's own sheet at :208
+    [
+      'Techno',
+      'You cast resist cold at Techno, surrounding him with a pale blue glow.',
+      'resist cold'
+    ],
+    // captures/020-mudcentral-status-quests-quest-wl.txt:6, JeamHadar's own sheet at :235
+    [
+      'JeamHadar',
+      'You cast resist fire on JeamHadar, surrounding him with a pale red glow.',
+      'resist fire'
+    ]
+  ];
+
+  for (const [name, line, spell] of STOCK) {
+    it(`establishes ${spell}`, () => {
+      const { tracker, feed } = feeder(shippedSpellLore());
+      feed('[HP=83/MA=61]:', 'flush');
+      feed(`Name: ${name} Treeman                   Lives/CP:      5/1`);
+      feed('[HP=83/MA=61]:', 'flush');
+      expect(feed(line)).toBe('spell-cast');
+      expect(tracker.current.buffs.map((buff) => buff.spell)).toContain(spell);
+    });
+  }
+
+  it('leaves a flavoured cast on somebody else off this character', () => {
+    const { tracker, feed } = feeder(shippedSpellLore());
+    feed('[HP=83/MA=61]:', 'flush');
+    feed('Name: Techno Treeman                   Lives/CP:      5/1');
+    feed('[HP=83/MA=61]:', 'flush');
+    // captures/005-mudcentral-module5-m5-walkthrough.txt:1143
+    expect(feed('You cast resist fire on Someone, surrounding him with a pale red glow.')).toBe(
+      'spell-cast'
+    );
+    expect(tracker.current.buffs).toEqual([]);
+  });
+});
