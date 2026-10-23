@@ -114,8 +114,11 @@ import {
   peaceOf,
   stanceHere,
   stopsToKill,
+  waitOf,
+  waitShort,
   type LeavingStance,
   type MobStance,
+  type MobWait,
   type RowNamed
 } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
@@ -221,8 +224,15 @@ export interface AutoCombatEvents extends AttackSpellEvents {
  * decision to explain — an empty room.
  */
 type Choice =
-  | { target: string; because: string; considered?: undefined; why?: undefined }
-  | { target: null; because?: undefined; considered: string; why: string };
+  | { target: string; because: string; considered?: undefined; why?: undefined; waited?: undefined }
+  | {
+      target: null;
+      because?: undefined;
+      considered: string;
+      why: string;
+      /** The first monster held back only by its row's wait, and the wait (`waitingOn`). */
+      waited?: { name: string; wait: MobWait };
+    };
 
 /** The leader's fight to join: one monster, or the whole room when the leader attacked everyone in it. */
 type Assist = { kind: 'mob'; name: string; leader: string } | { kind: 'room'; leader: string };
@@ -342,6 +352,21 @@ function stanceRefusal(stance: MobStance, target: string): string {
       return t('automation.combat.refusedHangupRow', { target });
     default: {
       const unreachable: never = stance;
+      return unreachable;
+    }
+  }
+}
+
+/** Why a row's monster waits for the character's health or mana before it is opened on. */
+function waitRefusal(short: keyof MobWait, wait: MobWait, target: string): string {
+  const percent = Math.round(wait[short] * 100);
+  switch (short) {
+    case 'health':
+      return t('automation.combat.refusedWaitHealth', { target, percent });
+    case 'mana':
+      return t('automation.combat.refusedWaitMana', { target, percent });
+    default: {
+      const unreachable: never = short;
       return unreachable;
     }
   }
@@ -1796,13 +1821,47 @@ export class AutoCombat implements SessionModule {
     };
     // The reason reported is the first monster the room listed, which is the
     // one somebody looking at the console is looking at.
+    // A monster every other refusal let through, held back by its row's wait.
+    const waits = new Map<RoomOccupant, MobWait>();
     const none = (): Choice | null => {
       const first = mobs.find((who) => reasons.has(who));
+      // Not one a refused guard protects: the rest would end in `refusedGuarded`.
+      const guarded = (who: RoomOccupant): boolean =>
+        mobs.some(
+          (guard) =>
+            reasons.has(guard) &&
+            !waits.has(guard) &&
+            !bystanders.has(guard) &&
+            protects(guard, who) !== false
+        );
+      const waited = mobs.find((who) => waits.has(who) && !guarded(who));
       return first === undefined
         ? null
-        : { target: null, considered: first.name, why: reasons.get(first)! };
+        : {
+            target: null,
+            considered: first.name,
+            why: reasons.get(first)!,
+            ...(waited === undefined
+              ? {}
+              : { waited: { name: waited.name, wait: waits.get(waited)! } })
+          };
     };
     const willing: RoomOccupant[] = [];
+    /*
+     * The row's wait is asked last, so a monster held back by it is one that
+     * would be fought, and `Recovery` rests for nothing else. A fight once
+     * opened is fought out below it: only opening asks.
+     */
+    const take = (who: RoomOccupant): void => {
+      const wait = waitOf(mobRuleFor(this.config.mobRules, who));
+      const short = wait === null ? null : waitShort(wait, state.vitals);
+      if (wait === null || short === null) {
+        willing.push(who);
+        return;
+      }
+      decline(who, waitRefusal(short, wait, who.name));
+      waits.set(who, wait);
+    };
     /*
      * Refused only because the realm does not say it starts fights: still in
      * the fight if it protects one that is attacked, since the server turns it
@@ -1859,7 +1918,7 @@ export class AutoCombat implements SessionModule {
        * stand.
        */
       if (this.isWanted(who.name)) {
-        willing.push(who);
+        take(who);
         continue;
       }
       /*
@@ -1939,7 +1998,7 @@ export class AutoCombat implements SessionModule {
         if (this.config.engage !== 'all' && occupantAttacksOnSight(who, me) !== true) {
           listed.add(who);
         }
-        willing.push(who);
+        take(who);
         continue;
       }
       /*
@@ -1960,7 +2019,7 @@ export class AutoCombat implements SessionModule {
         bystanders.add(who);
         continue;
       }
-      willing.push(who);
+      take(who);
     }
 
     if (willing.length === 0) {
@@ -2073,6 +2132,22 @@ export class AutoCombat implements SessionModule {
    */
   pick(state: CharacterState): string | null {
     return this.choose(state)?.target ?? null;
+  }
+
+  /**
+   * What a monster here waits for (`waitOf`) while that wait is all that
+   * keeps a fight from being opened, so `Recovery` rests up to it; null
+   * otherwise. Asked of `choose` only where some row waits at all.
+   */
+  waitingOn(state: CharacterState): MobWait | null {
+    if (!this.acting) return null;
+    const rows = this.config.mobRules;
+    const waits = (who: RoomOccupant): boolean =>
+      who.kind === 'mob' && waitOf(mobRuleFor(rows, who)) !== null;
+    if (!state.room.occupants.some(waits)) return null;
+    const waited = this.choose(state)?.waited;
+    if (waited === undefined) return null;
+    return this.whyNot(state, false, waited.name) === null ? waited.wait : null;
   }
 
   /**

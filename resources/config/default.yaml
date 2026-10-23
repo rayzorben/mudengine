@@ -2295,12 +2295,17 @@ automation:
     # `engage: all`, and the Room and Reference cards show both words;
     # `stopToKill` is MegaMUD's Stop to kill if able: it is attacked in a room
     # with fewer than `minMobs` and when someone outside the party is fighting
-    # it (`politeAttacks`), and every other refusal still stands:
+    # it (`politeAttacks`), and every other refusal still stands;
+    # `waitHealth` and `waitMana` are the share of maximum health and mana it
+    # waits for before it is attacked, resting until then; once the fight is
+    # on it is fought to the kill however low they fall, and it is still hit
+    # back if it attacks first:
     #
     #     - { mob: gnoll shaman, treat: first, cast: { spell: harm, times: 2 } }
     #     - { mob: black bear, treat: default, noBackstab: true }
     #     - { mob: old hermit, treat: default, notHostile: true }
     #     - { mob: cave bear, treat: high, stopToKill: true }
+    #     - { mob: gravedigger, treat: default, cast: { spell: harm, times: 0 }, waitMana: 0.5 }
     #
     # Where a banded monster is in the room the band decides outright and the
     # client's own weighing is skipped -- which is the point: a ranking the
