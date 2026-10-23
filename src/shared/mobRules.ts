@@ -5,9 +5,9 @@
  * thing everywhere. The rules: `mudengine-automation` › `parts/combat.md` ›
  * *One list per monster, not two* and *A row may say what a monster is*.
  */
-import type { RoomOccupant } from './character';
+import type { RoomOccupant, Vitals } from './character';
 import { attacksOnSight, type MobAvoid, type Standing } from './mobs';
-import { int, isRecord, str } from './values';
+import { fraction, int, isRecord, str } from './values';
 import { mobKey } from './world';
 
 /**
@@ -53,6 +53,13 @@ export type MobRule =
        * (`politeAttacks`); every other refusal still stands.
        */
       stopToKill?: boolean;
+      /**
+       * Not opened on until health is at least this share of maximum
+       * (`waitShort`). Once the fight is on it is fought to the end below it.
+       */
+      waitHealth?: number;
+      /** The same for mana: rested back to it, then the fight is opened. */
+      waitMana?: number;
     };
 
 /**
@@ -404,6 +411,35 @@ export function stopsToKill(rules: readonly MobRule[], who: RowNamed): boolean {
   return row !== undefined && isBanded(row) && row.stopToKill === true;
 }
 
+/** The shares of maximum health and mana a row waits for before opening on its monster; 0 waits for neither. */
+export interface MobWait {
+  health: number;
+  mana: number;
+}
+
+/** What a row waits for, or null where it waits for nothing. */
+export function waitOf(row: MobRule | undefined): MobWait | null {
+  if (row === undefined || !isBanded(row)) return null;
+  const health = row.waitHealth ?? 0;
+  const mana = row.waitMana ?? 0;
+  return health > 0 || mana > 0 ? { health, mana } : null;
+}
+
+/**
+ * The figure a wait is still short of, or null once both are reached. An
+ * unknown figure or maximum is short: opening the fight is the unsafe side.
+ */
+export function waitShort(
+  wait: MobWait,
+  vitals: Pick<Vitals, 'hp' | 'hpMax' | 'mana' | 'manaMax'>
+): keyof MobWait | null {
+  const reached = (value: number | null, max: number | null, share: number): boolean =>
+    share <= 0 || (value !== null && max !== null && max > 0 && value / max >= share);
+  if (!reached(vitals.hp, vitals.hpMax, wait.health)) return 'health';
+  if (!reached(vitals.mana, vitals.manaMax, wait.mana)) return 'mana';
+  return null;
+}
+
 /**
  * The first occupant whose row takes this stance, in the room's spelling, or
  * null. A leaving stance (`escape`, `hangup`) reaches a player named in a row
@@ -472,15 +508,21 @@ function fightingOf(entry: Record<string, unknown>): {
   noBackstab?: boolean;
   notHostile?: boolean;
   stopToKill?: boolean;
+  waitHealth?: number;
+  waitMana?: number;
 } {
   const raw = isRecord(entry['cast']) ? entry['cast'] : {};
   const spell = str(raw['spell'], '').trim();
   const times = int(raw['times'], 0, 0, MOB_CAST_MOST);
+  const waitHealth = fraction(entry['waitHealth'], 0);
+  const waitMana = fraction(entry['waitMana'], 0);
   return {
     ...(spell.length > 0 ? { cast: { spell, times } } : {}),
     ...(entry['noBackstab'] === true ? { noBackstab: true } : {}),
     ...(entry['notHostile'] === true ? { notHostile: true } : {}),
-    ...(entry['stopToKill'] === true ? { stopToKill: true } : {})
+    ...(entry['stopToKill'] === true ? { stopToKill: true } : {}),
+    ...(waitHealth > 0 ? { waitHealth } : {}),
+    ...(waitMana > 0 ? { waitMana } : {})
   };
 }
 

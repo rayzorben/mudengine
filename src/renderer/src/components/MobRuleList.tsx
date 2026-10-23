@@ -4,6 +4,7 @@ import Icon from './Icon';
 import InheritedMobRules from './InheritedMobRules';
 import NameCombo from './NameCombo';
 import { SpellCombo } from './SpellPicker';
+import { fractionOf, percentOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import { TREATMENT_WORD } from '../lib/mobRuleWords';
 import {
@@ -11,6 +12,7 @@ import {
   MOB_CAST_MOST,
   MOB_TREATMENTS,
   treated,
+  type BandedRule,
   type MobRule,
   type MobRuleScope,
   type MobTreatment
@@ -213,6 +215,22 @@ export default function MobRuleList({
                       {t('settings.combat.mobRuleStopToKillHint')}
                     </Hint>
                   </label>
+                  <WaitField
+                    field="waitHealth"
+                    label={t('settings.combat.mobRuleWaitHealth')}
+                    aria={t('settings.combat.mobRuleWaitHealthAria', { number: index + 1 })}
+                    name={`${namePrefix}-${index}-wait-health`}
+                    row={row}
+                    onChange={(next) => replace(index, next)}
+                  />
+                  <WaitField
+                    field="waitMana"
+                    label={t('settings.combat.mobRuleWaitMana')}
+                    aria={t('settings.combat.mobRuleWaitManaAria', { number: index + 1 })}
+                    name={`${namePrefix}-${index}-wait-mana`}
+                    row={row}
+                    onChange={(next) => replace(index, next)}
+                  />
                 </div>
               )}
             </li>
@@ -235,5 +253,45 @@ export default function MobRuleList({
         scope={inherits.scope}
       />
     </div>
+  );
+}
+
+/**
+ * A row's wait before its monster is opened on, as the whole percent a person
+ * types (`waitHealth`, `waitMana`); 0 waits for nothing and drops the key.
+ */
+function WaitField({
+  field,
+  label,
+  aria,
+  name,
+  row,
+  onChange
+}: {
+  field: 'waitHealth' | 'waitMana';
+  label: string;
+  aria: string;
+  name: string;
+  row: BandedRule;
+  onChange(row: BandedRule): void;
+}): React.JSX.Element {
+  return (
+    <label>
+      <span>{label}</span>
+      <input
+        aria-describedby={fieldHintId(name)}
+        aria-label={aria}
+        className="number"
+        inputMode="numeric"
+        name={name}
+        onChange={(event) => {
+          const share = fractionOf(event.target.value);
+          const { [field]: _, ...rest } = row;
+          onChange(share > 0 ? { ...rest, [field]: share } : rest);
+        }}
+        value={percentOf(row[field] ?? 0)}
+      />
+      <Hint id={fieldHintId(name)}>{t('settings.combat.mobRuleWaitHint')}</Hint>
+    </label>
   );
 }

@@ -907,12 +907,12 @@ export class SessionManager {
     // Sitting down: the run is `emergency` and this `probe`, so under both it runs, then rests.
     this.recovery = new Recovery(automation, this.queue, {
       notice,
-      // GreaterMUD refuses `rest` while poisoned unless immune (`RestCommand.cs:28`; a Kang
-      // is, todo 22): the server's branch, so a MajorMUD server on its realm has none.
+      // GreaterMUD's refusal while poisoned unless immune (`RestCommand.cs:28`; a Kang is, todo 22).
       poisonRefusesRest: () =>
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family),
       beforeRest: (state, restTo) => this.restSpell.beforeRest(state, restTo),
       roomHurts: (state) => this.roomHazards.hurtsHere(state),
+      waitingOn: (state) => this.combat.waitingOn(state),
       decided: reports.decided,
       signs
     });

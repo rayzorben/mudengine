@@ -15,6 +15,8 @@ import {
   stanceHere,
   stopsToKill,
   treated,
+  waitOf,
+  waitShort,
   laidFromTable,
   ownRow,
   type MobRule
@@ -69,6 +71,32 @@ describe('a row may say what a monster is', () => {
     };
     expect(treated(banded, 'friend')).toEqual({ mob: 'rat', treat: 'friend' });
     expect(treated(banded, 'last')).toEqual({ ...banded, treat: 'last' });
+  });
+
+  it('reads a wait off a banded row only, a percent as a share', () => {
+    const rows = normalizeMobRules([
+      { mob: 'gravedigger', treat: 'default', waitMana: 50, waitHealth: 0.25 },
+      { mob: 'town guard', treat: 'never', waitMana: 0.5 },
+      { mob: 'rat', treat: 'low', waitMana: 0 }
+    ]);
+    expect(rows).toEqual([
+      { mob: 'gravedigger', treat: 'default', waitHealth: 0.25, waitMana: 0.5 },
+      { mob: 'town guard', treat: 'never' },
+      { mob: 'rat', treat: 'low' }
+    ]);
+    expect(waitOf(rows[0])).toEqual({ health: 0.25, mana: 0.5 });
+    expect(waitOf(rows[1])).toBeNull();
+    expect(waitOf(rows[2])).toBeNull();
+  });
+
+  it('is short of a wait until both figures reach it, and short while one is unknown', () => {
+    const wait = { health: 0.25, mana: 0.5 };
+    const vitals = { hp: 100, hpMax: 100, mana: 11, manaMax: 100 };
+    expect(waitShort(wait, vitals)).toBe('mana');
+    expect(waitShort(wait, { ...vitals, mana: 50 })).toBeNull();
+    expect(waitShort(wait, { ...vitals, mana: 50, hp: 20 })).toBe('health');
+    expect(waitShort(wait, { ...vitals, mana: 50, manaMax: null })).toBe('mana');
+    expect(waitShort({ health: 0.25, mana: 0 }, { ...vitals, manaMax: null })).toBeNull();
   });
 
   it('reads stop to kill off a banded row only', () => {

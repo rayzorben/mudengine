@@ -4,6 +4,7 @@ import { CommandQueue } from '../CommandQueue';
 import { fightIsHere, Recovery, type RecoverySettings } from '../Recovery';
 import { HangUpWatch, MOB_ENGAGED_MS } from '../HangUp';
 import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type FightSigns } from '../../../shared/character';
 import type { MobRule } from '../../../shared/mobRules';
@@ -119,6 +120,28 @@ const make = (config: HealthConfig, enabled = true): Recovery =>
 const drain = (): void => void vi.advanceTimersByTime(500);
 
 describe('sitting down', () => {
+  /* A monster row's wait (the gravedigger): rested up to it, and no further. */
+  it('rests to the mana a monster here waits for, and stands at it', () => {
+    let wait: { health: number; mana: number } | null = { health: 0, mana: 0.5 };
+    const auto = new Recovery(settings(health({ useMeditate: false })), queue, {
+      waitingOn: () => wait
+    });
+    auto.onCharacter(state({ mana: 11, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+    // Control: nothing waiting, the same mana sits nobody down.
+    sent.length = 0;
+    wait = null;
+    vi.advanceTimersByTime(tuning().rest.askedMs);
+    auto.onCharacter(state({ mana: 11, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(auto.wouldRest(state({ mana: 11, manaMax: 100 }))).toBe(false);
+    wait = { health: 0, mana: 0.5 };
+    expect(auto.wouldRest(state({ mana: 49, manaMax: 100 }))).toBe(true);
+    expect(auto.wouldRest(state({ mana: 50, manaMax: 100 }))).toBe(false);
+  });
+
   it('never rests in a room whose spell hurts, said once per room, and rests once it stops', () => {
     const said: string[] = [];
     let hurts: string | null = 'river damage';

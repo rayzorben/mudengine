@@ -111,7 +111,7 @@ import {
   type HealthConfig,
   type PartyConfig
 } from '../../shared/config';
-import type { MobRule } from '../../shared/mobRules';
+import type { MobRule, MobWait } from '../../shared/mobRules';
 import type { SafetyDecision } from '../../shared/automation';
 import { tuning } from '../app/tuning';
 import { holdsMeditate } from '../../shared/abilities';
@@ -324,6 +324,11 @@ export class Recovery implements SessionModule {
       roomHurts?(state: CharacterState): string | null;
       /** A rest refused for the room, for the trace. */
       decided?(decision: SafetyDecision): void;
+      /**
+       * The health and mana a monster's row waits for before auto-combat
+       * opens on it (`AutoCombat.waitingOn`), rested up to; null for none.
+       */
+      waitingOn?(state: CharacterState): MobWait | null;
     } = {}
   ) {}
 
@@ -433,13 +438,16 @@ export class Recovery implements SessionModule {
     if (!this.enabled || state.phase !== 'in-game') return false;
     if (this.fighting(state) || this.refused.has('rest')) return false;
     const { hp, hpMax, mana, manaMax, resting } = state.vitals;
+    const wait = this.waitOf(state);
     if (this.needed !== null && hp !== null && hp < this.needed) return true;
     if (this.below(hp, hpMax, this.config.restBelow)) return true;
+    if (this.below(hp, hpMax, wait.health)) return true;
     const { restTo, restBelowMana, restToMana } = this.config;
     if (restTo > 0 && (this.sitting || resting) && this.below(hp, hpMax, restTo)) return true;
     // And mana, where a rest is how it comes back.
     if (this.meditates(state)) return false;
     if (this.below(mana, manaMax, restBelowMana)) return true;
+    if (this.below(mana, manaMax, wait.mana)) return true;
     return (
       restToMana > 0 && (this.restingForMana || resting) && this.below(mana, manaMax, restToMana)
     );
@@ -521,7 +529,8 @@ export class Recovery implements SessionModule {
      */
     if (countThreats(state, this.mobRules) > 0) return;
 
-    const restWanted = this.wantsRest(hp, hpMax) && !this.refused.has('rest');
+    const wait = this.waitOf(state);
+    const restWanted = this.wantsRest(hp, hpMax, wait.health) && !this.refused.has('rest');
     /*
      * Never in a room whose own spell hurts and nothing carried stops: the
      * rest's three health ticks lose to the river's fifteen a tick, and the
@@ -530,7 +539,7 @@ export class Recovery implements SessionModule {
      * and the player's where it is not.
      */
     const hurts = this.events.roomHurts?.(state) ?? null;
-    if (hurts !== null && (restWanted || this.wantsMana(mana, manaMax))) {
+    if (hurts !== null && (restWanted || this.wantsMana(mana, manaMax, wait.mana))) {
       const room = roomAddress(state.room) ?? UNPLACED;
       if (this.saidHurtsIn !== room) {
         this.saidHurtsIn = room;
@@ -554,7 +563,7 @@ export class Recovery implements SessionModule {
      * health needs no rest; otherwise with `rest`, which is how a class
      * without the Meditate ability gets its mana back (the user, 2026-10-03).
      */
-    const manaWanted = this.wantsMana(mana, manaMax);
+    const manaWanted = this.wantsMana(mana, manaMax, wait.mana);
     if (manaWanted && this.meditates(state) && (this.config.meditateFirst || !restTakes)) {
       this.propose('med', t('automation.recovery.reasonMana'), 'med-mana');
       return;
@@ -699,11 +708,13 @@ export class Recovery implements SessionModule {
    * neither sat down nor kept down, and the stretch is ended rather than left
    * open on a figure nothing has restated.
    */
-  private wantsRest(hp: number | null, hpMax: number | null): boolean {
+  private wantsRest(hp: number | null, hpMax: number | null, waitFor: number): boolean {
     // A walk standing still for a trap: rest to the figure it names, which
     // is a floor in hit points rather than a share, and above `restBelow`.
     if (this.needed !== null && hp !== null && hp < this.needed) return true;
     if (this.below(hp, hpMax, this.config.restBelow)) return true;
+    // A monster here waits for this share (`waitingOn`): rested up to it, no stretch after.
+    if (this.below(hp, hpMax, waitFor)) return true;
     const { restTo } = this.config;
     if (restTo <= 0 || !this.sitting) return false;
     if (this.below(hp, hpMax, restTo)) return true;
@@ -723,8 +734,9 @@ export class Recovery implements SessionModule {
   private switchTo(state: CharacterState, resting: boolean): 'rest' | 'med' | null {
     const { hp, hpMax, mana, manaMax } = state.vitals;
     const canRest = !this.refused.has('rest') && !this.restIsPoisoned(state);
-    const rest = this.wantsRest(hp, hpMax) && canRest;
-    const short = this.wantsMana(mana, manaMax);
+    const wait = this.waitOf(state);
+    const rest = this.wantsRest(hp, hpMax, wait.health) && canRest;
+    const short = this.wantsMana(mana, manaMax, wait.mana);
     const med = short && this.meditates(state);
     if (resting) return med && (!rest || this.config.meditateFirst) ? 'med' : null;
     return rest && (!med || !this.config.meditateFirst) ? 'rest' : null;
@@ -742,13 +754,19 @@ export class Recovery implements SessionModule {
   }
 
   /** `wantsRest` for mana: `restBelowMana` starts a stretch and `restToMana` carries it (todo 825). */
-  private wantsMana(mana: number | null, manaMax: number | null): boolean {
+  private wantsMana(mana: number | null, manaMax: number | null, waitFor: number): boolean {
     if (this.below(mana, manaMax, this.config.restBelowMana)) return true;
+    if (this.below(mana, manaMax, waitFor)) return true;
     const { restToMana } = this.config;
     if (restToMana <= 0 || !this.restingForMana) return false;
     if (this.below(mana, manaMax, restToMana)) return true;
     this.restingForMana = false;
     return false;
+  }
+
+  /** What a monster here waits for (`events.waitingOn`), 0 for each figure nothing waits on. */
+  private waitOf(state: CharacterState): MobWait {
+    return this.events.waitingOn?.(state) ?? { health: 0, mana: 0 };
   }
 
   /**

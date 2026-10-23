@@ -4137,6 +4137,63 @@ describe('the size of the room and the size of the monster', () => {
   });
 
   /*
+   * A row's wait (the gravedigger at 11 mana): the bat beside it is fought,
+   * then the gravedigger waits for half the mana, and nothing stops the fight
+   * once it is opened.
+   */
+  describe('a row that waits for mana', () => {
+    const rules = [{ mob: 'gravedigger', treat: 'default' as const, waitMana: 0.5 }];
+    const at = (mana: number, ...who: RoomOccupant[]): CharacterState =>
+      state({
+        room: { ...EMPTY_CHARACTER.room, occupants: who },
+        vitals: { ...EMPTY_CHARACTER.vitals, mana, manaMax: 100, manaType: 'MA' }
+      });
+
+    it('fights the rest of the room, then waits for its mana and opens on it there', () => {
+      const auto = make(combat({ engage: 'all', mobRules: rules }));
+      const both = at(11, mob('gravedigger', 'passive'), mob('bat', 'hostile'));
+      expect(auto.waitingOn(both)).toBeNull();
+      auto.onCharacter(both);
+      drain();
+      expect(sent).toEqual(['a bat']);
+
+      sent.length = 0;
+      const alone = make(combat({ engage: 'all', mobRules: rules }));
+      const low = at(11, mob('gravedigger', 'passive'));
+      expect(alone.quarry(low)).toBe(false);
+      expect(alone.waitingOn(low)).toEqual({ health: 0, mana: 0.5 });
+      alone.onCharacter(low);
+      drain();
+      expect(sent).toEqual([]);
+      expect(refusals()[0]).toBe(
+        `gravedigger — ${t('automation.combat.refusedWaitMana', { target: 'gravedigger', percent: 50 })}`
+      );
+
+      const ready = at(50, mob('gravedigger', 'passive'));
+      expect(alone.waitingOn(ready)).toBeNull();
+      alone.onCharacter(ready);
+      drain();
+      expect(sent).toEqual(['a gravedigger']);
+    });
+
+    it('asks for no rest for a monster another refusal holds back', () => {
+      const auto = make(combat({ engage: 'all', politeAttacks: true, mobRules: rules }));
+      const low = at(11, mob('gravedigger', 'passive'));
+      expect(auto.waitingOn(low)).toEqual({ health: 0, mana: 0.5 });
+      const claimed = {
+        ...low,
+        combat: { ...low.combat, claimed: { gravedigger: { by: 'Rend', at: Date.now() } } }
+      };
+      expect(auto.waitingOn(claimed)).toBeNull();
+    });
+
+    it('asks for no rest with auto-combat off', () => {
+      const off = make(combat({ enabled: false, engage: 'all', mobRules: rules }));
+      expect(off.waitingOn(at(11, mob('gravedigger', 'passive')))).toBeNull();
+    });
+  });
+
+  /*
    * MegaMUD's *Stop to kill if able* (todo 819): a row's `stopToKill` is not
    * walked past for want of company or for a stranger's claim, and nothing
    * else about the room changes.

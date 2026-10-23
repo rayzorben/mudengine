@@ -4608,6 +4608,14 @@ settings:
     mobRuleSpellAria: 'Spell for monster {number}'
     mobRuleSpellPlaceholder: Attack spell (blank for the usual one)
     mobRuleTimes: Casts (0 = no limit)
+    mobRuleWaitHealth: Wait for health %
+    mobRuleWaitHealthAria: 'Health % to wait for before attacking monster {number}'
+    mobRuleWaitMana: Wait for mana %
+    mobRuleWaitManaAria: 'Mana % to wait for before attacking monster {number}'
+    mobRuleWaitHint: It is not attacked until health and mana are at least this much of maximum,
+      and the character rests until they are. Once the fight starts it goes on to the kill, however
+      low they fall. 0 does not wait. Auto-combat still hits it back if it attacks first. A
+      character with no mana never meets a mana wait.
     mobRuleTimesAria: 'Most casts at monster {number}'
     mobRuleNote: One row per monster you care about. Never Attack, Friend, Run and Hang Up are never
       attacked; Run and Hang Up take effect through Auto-Run and Auto-Hangup. The other five set the
@@ -6631,6 +6639,8 @@ automation:
     refusedFledUnknown: you ran from {target}; it is left alone until your level is read
     refusedMaxMobs: '{here} monsters here, over the Max Monsters in Room of {max}'
     refusedMinMobs: only {here} monsters here, under the Min Monsters in Room of {min}
+    refusedWaitHealth: the monster rule for {target} waits for {percent}% health
+    refusedWaitMana: the monster rule for {target} waits for {percent}% mana
     refusedTooRich: '{target} is worth {exp} exp, over the Max Monster Exp of {cap}'
     refusedMovePending: a step is still waiting for its room
     refusedPlayerCast: your {spell} is still waiting for an answer
