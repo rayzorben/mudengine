@@ -55,6 +55,7 @@
  */
 import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
+import type { MobWaited } from '../../shared/mobRules';
 import { paceOf, pathOf, portalLeftUnseen } from '../../shared/walk';
 import type { HandAnswer } from '../../shared/barrierHands';
 import {
@@ -246,7 +247,10 @@ export class Walker implements SessionModule {
       publish: () => this.publish(),
       stop: (reason, decision) => this.stop(reason, false, decision),
       stepAgain: () => this.sendCurrent(false),
-      stepWhenFree: () => this.retry(this.events.stateNow?.(), false)
+      stepWhenFree: () => this.retry(this.events.stateNow?.(), false),
+      kind: () => this.kind,
+      destination: () => this.route?.steps.at(-1),
+      detour: (route, state, ahead) => this.detour(route, state, ahead)
     };
     this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere, inFlight, this.clock);
     this.hands = new PartyHands(events, inFlight, this.clock);
@@ -268,9 +272,6 @@ export class Walker implements SessionModule {
     );
     this.levers = new Levers(queue, events, {
       ...inFlight,
-      kind: () => this.kind,
-      destination: () => this.route?.steps.at(-1),
-      detour: (route, state, ahead) => this.detour(route, state, ahead),
       movement: () => this.config.movement
     });
     this.barriers = new Barriers(
@@ -407,27 +408,22 @@ export class Walker implements SessionModule {
 
   /**
    * Why the walk is waiting, or null when it is moving or not walking at all.
-   *
-   * Read by `SessionManager.mayRest`, which is the whole point of publishing
-   * it: a walk that is standing still for health must let `Recovery` sit the
-   * character down, and a walk that is *marching* must not — those two were
-   * one condition (`walker.walking`) until a route learned to wait.
-   *
-   * A `fight` hold answers the same way, and it is the one that matters most
-   * often: the fight ends, the character is standing in the room it was won
-   * in, and the health hold underneath has not been reached yet because the
-   * status line has not arrived. Refusing the rest there would put the route
-   * back to marching at whatever health the fight left it.
+   * `SessionManager.mayRest` reads it: a walk standing still lets `Recovery`
+   * sit the character down and a marching one does not. A `fight` hold too,
+   * since the fight ends before the status line shows the health it left.
    */
   get holding(): WalkHold {
     return this.walking ? this.holds.current : null;
   }
 
+  /** The monster's row this walk waits on (`Holds.holdForWait`), resting next door included. */
+  get waitingFor(): MobWaited | null {
+    return this.walking ? this.holds.waitingFor : null;
+  }
+
   /**
-   * The hit points the walk is resting towards before the trap ahead, or
-   * null when it is not standing still for one. `Recovery.needAtLeast` reads
-   * it, so the rest that ends this hold is proposed by the module that owns
-   * resting rather than by a second `rest` sender.
+   * The hit points the walk rests towards before the trap ahead, or null;
+   * `Recovery.needAtLeast` reads it, so resting has one sender.
    */
   get restingFor(): number | null {
     return this.walking ? this.holds.restingFor : null;

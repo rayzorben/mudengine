@@ -30,7 +30,7 @@ import { isLeverPull, type IntentFilter, type WalkerEvents, type WalkInFlight } 
 /** What the holds ask of the walk they stand still, answered by `Walker`. */
 export interface HoldsWalk extends Pick<
   WalkInFlight,
-  'walking' | 'quiet' | 'step' | 'publish' | 'stop'
+  'walking' | 'quiet' | 'step' | 'publish' | 'stop' | 'kind' | 'destination' | 'detour'
 > {
   /** In `ms`, the holds asked again against the state then (or `state`), and the step. */
   retryAfter(ms: number, state: CharacterState): void;
@@ -61,6 +61,11 @@ function waitNotice(short: keyof MobWait, { name, wait }: MobWaited): string {
   }
 }
 
+/** Two legs' lists as one, or undefined where neither leg has one. */
+function joined<T>(a: T[] | undefined, b: T[] | undefined): T[] | undefined {
+  return a === undefined && b === undefined ? undefined : [...(a ?? []), ...(b ?? [])];
+}
+
 /** Whether the figure a wait is short of, and its maximum, have been read. */
 function known(short: keyof MobWait, { vitals }: CharacterState): boolean {
   const [value, max] =
@@ -82,6 +87,8 @@ export type HoldsEvents = Pick<
   | 'spellsHold'
   | 'onTheGround'
   | 'waitingOn'
+  | 'replan'
+  | 'routeBetween'
 >;
 
 export class Holds {
@@ -94,6 +101,8 @@ export class Holds {
    * says the route still has somewhere to be when the fight ends.
    */
   private hold: WalkHold = null;
+  /** The wait `holdForWait` took for this walk, and the room it was taken in. */
+  private waitedFor: { waited: MobWaited; room: RoomId | null } | null = null;
   /**
    * When the walk began waiting for a light, or null while it is not.
    *
@@ -375,6 +384,7 @@ export class Holds {
     // asking again, from here, with that already taken into account.
     this.escaped = false;
     this.otherMove = null;
+    this.waitedFor = null;
     this.holdWhenHurt = holdWhenHurt;
     this.resumeAfterFight = resumeAfterFight;
     this.leavingAFight = fighting && (!this.resumeAfterFight || !this.canEndAFight());
@@ -383,6 +393,7 @@ export class Holds {
   /** A new connection: forget everything. */
   reset(): void {
     this.hold = null;
+    this.waitedFor = null;
     this.trapFloor = null;
     this.fightClearedAt = null;
     this.fightHeldSince = null;
@@ -842,28 +853,92 @@ export class Holds {
    * (`WalkerEvents.waitingOn`): the walk stands beside it, a lap's leg too,
    * since the wait is about the room as the quarry beat is and not about the
    * character's fitness to travel (`holdWhenHurt`). Its own slot, so the
-   * floors' hysteresis never reads it. Lifted once nothing waits; the quarry
-   * beat then holds for the fight. Rayzor walked past the gravedigger at
+   * floors' hysteresis never reads it. Rayzor walked past the gravedigger at
    * 20/111 mana (2026-10-23).
+   *
+   * Kept for the walk (`waitedFor`), so a rest taken next door to a lair
+   * (`RestAway`) is a rest for the wait too; met there, the walk goes back to
+   * the monster's room before the rest of the way, and the quarry beat holds
+   * for the fight. Unknown never takes a wait: a walk pinned for want of a stat
+   * sheet never arrives. Once taken, it holds away from the room until met.
    */
   holdForWait(state: CharacterState): boolean {
-    const asked = this.goesOnThrough(state) ? null : (this.events.waitingOn?.(state) ?? null);
-    // Unknown never holds: a walk pinned for want of a stat sheet never arrives.
-    const short = asked === null ? null : waitShort(asked.wait, state.vitals);
-    const waited = short !== null && known(short, state) ? asked : null;
-    if (waited === null || short === null) {
-      if (this.hold === 'waiting') {
-        this.hold = null;
-        this.walk.publish();
-      }
-      return false;
+    if (this.goesOnThrough(state)) return this.waitOver();
+    const here = roomAddress(state.room);
+    const asked = this.events.waitingOn?.(state) ?? null;
+    // Taken only on figures read: beside it, an unread one never holds and is not kept.
+    const askedShort = asked === null ? null : waitShort(asked.wait, state.vitals);
+    const taken = askedShort !== null && known(askedShort, state) ? asked : null;
+    const fresh = taken !== null && taken.name !== this.waitedFor?.waited.name;
+    if (taken !== null) this.waitedFor = { waited: taken, room: here };
+    const kept = this.waitedFor;
+    if (kept === null) return this.waitOver();
+    // Beside the monster, nothing taken is the answer; a room not placed is not beside it.
+    const away = here === null || here !== kept.room;
+    if (taken === null && !away) return this.waitOver();
+    const short = waitShort(kept.waited.wait, state.vitals);
+    if (short === null) {
+      this.waitOver();
+      if (!away || here === null || kept.room === null) return false;
+      return this.backTo(kept.waited.name, kept.room, state);
     }
     if (this.hold === null || this.hold === 'party') {
       this.hold = 'waiting';
       this.walk.publish();
-      this.events.notice?.(waitNotice(short, waited));
     }
+    if (fresh) this.events.notice?.(waitNotice(short, kept.waited));
     this.walk.retryAfter(tuning().walk.holdMs, state);
+    return true;
+  }
+
+  /** The wait let go: forgotten, and its hold lifted. */
+  private waitOver(): false {
+    this.waitedFor = null;
+    if (this.hold === 'waiting') {
+      this.hold = null;
+      this.walk.publish();
+    }
+    return false;
+  }
+
+  /** The monster's row the walk is waiting on, kept while it steps out to rest. */
+  get waitingFor(): MobWaited | null {
+    return this.waitedFor?.waited ?? null;
+  }
+
+  /**
+   * The rest of the journey by way of `room`, where `target` was waited for:
+   * the way back, then on to the destination from it, with what both cross.
+   * Where either cannot be planned the walk goes on from where it stands, said.
+   */
+  private backTo(target: string, room: RoomId, state: CharacterState): boolean {
+    const end = this.walk.destination()?.to;
+    const kind = this.walk.kind();
+    const back = this.events.replan?.(room, kind);
+    const on = end === undefined ? undefined : this.events.routeBetween?.(room, end, kind);
+    if (typeof back !== 'object' || back.blocked || typeof on !== 'object' || on.blocked) {
+      const refused = [back, on].find((way) => typeof way === 'string' || way?.blocked === true);
+      const reason =
+        (typeof refused === 'string' ? refused : refused?.reason) ??
+        t('automation.walk.refusalNoRoute');
+      this.events.notice?.(t('automation.walk.waitBackRefused', { target, reason }));
+      return false;
+    }
+    this.events.notice?.(t('automation.walk.waitBack', { target }));
+    const walls = joined(back.walls, on.walls);
+    const blocks = joined(back.blocks, on.blocks);
+    const hazards = joined(back.hazards, on.hazards);
+    this.walk.detour(
+      {
+        ...on,
+        steps: [...back.steps, ...on.steps],
+        cost: back.cost + on.cost,
+        ...(walls === undefined ? {} : { walls }),
+        ...(blocks === undefined ? {} : { blocks }),
+        ...(hazards === undefined ? {} : { hazards })
+      },
+      state
+    );
     return true;
   }
 

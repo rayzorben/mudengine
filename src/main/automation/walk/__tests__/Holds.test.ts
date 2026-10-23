@@ -253,7 +253,10 @@ describe('Holds, put down', () => {
       },
       onward: () => {},
       cancelQueued: () => {},
-      trapDisarmed: () => false
+      trapDisarmed: () => false,
+      kind: () => 'walk' as const,
+      destination: () => undefined,
+      detour: () => {}
     };
     return walk;
   };
@@ -332,7 +335,10 @@ describe('the floor read waking the walk', () => {
       carryOn: () => undefined,
       onward: () => undefined,
       cancelQueued: () => undefined,
-      trapDisarmed: () => false
+      trapDisarmed: () => false,
+      kind: () => 'walk',
+      destination: () => undefined,
+      detour: () => undefined
     };
     const clock = new WalkClock();
     const holds = new Holds(
