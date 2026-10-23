@@ -12,7 +12,7 @@ import { t } from '../app/i18n';
 import { standingOf, type CharacterState } from '../../shared/character';
 import type { AutomationConfig, CombatConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
-import { occupantAttacksOnSight, rowPeaceFor, type RowPeace } from '../../shared/mobRules';
+import { occupantAttacksOnSight, rowName, rowPeaceFor, type RowPeace } from '../../shared/mobRules';
 import { mobKey } from '../../shared/world';
 import type { SessionModule } from './Module';
 
@@ -72,7 +72,7 @@ export class RowOverrides implements SessionModule {
       if (who.kind !== 'mob') continue;
       const peace = rowPeaceFor(rules, who);
       if (peace === null || occupantAttacksOnSight(who, standing) !== true) continue;
-      const key = mobKey(who.name);
+      const key = mobKey(rowName(who));
       if (this.said.has(key)) continue;
       this.said.add(key);
       this.events.notice(overrideWords(peace, who.name), PEACE_DECISION[peace]);

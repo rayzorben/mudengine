@@ -43,7 +43,7 @@ import { healthFraction, percentText, type SafetyDecision } from '../../shared/a
 import type { Block } from '../../shared/blocks';
 import type { AutomationConfig, AutomationSwitch } from '../../shared/config';
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
-import { stanceHere } from '../../shared/mobRules';
+import { mobListed, rowName, stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
@@ -62,7 +62,6 @@ import {
   crossedWords,
   DIRECTION_NAME,
   itemDemanded,
-  mobKey,
   newDemands,
   OPPOSITE,
   roomAddress,
@@ -1258,9 +1257,11 @@ export class Travel implements SessionModule {
 
   /** The monsters swinging at the character as it runs for its health (`src/shared/fled.ts`). */
   private noteFled(state: CharacterState): void {
-    const fled = state.combat.attackers.filter((name) =>
-      state.room.occupants.some((who) => who.kind === 'mob' && mobKey(who.name) === mobKey(name))
-    );
+    // Under the realm's row, so the next spawn is known whatever word it wears.
+    const fled = state.combat.attackers.flatMap((name) => {
+      const who = mobListed(state.room.occupants, name);
+      return who === undefined ? [] : [rowName(who)];
+    });
     if (fled.length === 0) return;
     const { level } = state.progress;
     const forgetMs = fledForgetMs(this.automationConfig.combat.fledForgetMinutes);

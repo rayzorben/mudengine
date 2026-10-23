@@ -128,6 +128,14 @@ describe('the order a death sentence is learned in', () => {
     expect(lessons).toEqual([`orc | ${SENTENCE} | ${T + 2}`]);
   });
 
+  // 2026-10-22: Paradigm's lore had `large quickling` filed by a build that kept the word.
+  it('names the target by a sentence filed under another spawn of its row', () => {
+    const { lessons, learner } = rig();
+    learner.heard(blockOf('mob-dies', SENTENCE, { mobs: 'thin kobold' }, T));
+    expect(learner.before(fighting('big kobold'), T + 1)).toBe('sentence');
+    expect(lessons).toEqual([`big kobold | ${SENTENCE} | ${T + 1}`]);
+  });
+
   it('lets go of the line at a death the room settled, and when forgotten', () => {
     const settled = rig();
     settled.learner.heard(unread(SENTENCE));

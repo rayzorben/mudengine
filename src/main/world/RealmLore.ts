@@ -209,8 +209,8 @@ export class RealmLore {
     const key = realmKey(realm);
     const playing = (): string => playedKey(realm, played());
     // The realm's own row, so `large cave bear` is `cave bear` (`rowNameOf`).
-    const rowOf = (name: string): string =>
-      rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined);
+    const known = (who: string): boolean => world?.mob(who) !== undefined;
+    const rowOf = (name: string): string => rowNameOf(mobKey(name), known);
     return {
       maximumFor: (name, at) => this.maximumFor(key, world, name, at ?? null),
       observe: (name, outcome) => this.observe(key, name, outcome),
@@ -233,7 +233,7 @@ export class RealmLore {
        * auto-combat went on attacking it. `rowNameOf` is that one rule, shared
        * now with the kill a quest step names.
        */
-      observeDeath: (name, text, at) => this.observeDeath(key, rowOf(name), text, at),
+      observeDeath: (name, text, at) => this.observeDeath(key, rowOf(name), text, at, known),
       isInstantSpell: (spell) => this.isInstant(key, spell),
       observeInstantSpell: (spell, at) => this.observeInstant(key, spell, at),
       forgetInstantSpell: (spell) => this.forgetInstant(key, spell),
@@ -375,7 +375,13 @@ export class RealmLore {
    * write: it says nothing the row does not, and every one of them is a
    * sentence the classifier could resolve to one instance of four.
    */
-  private observeDeath(realm: string, name: string, text: string, at: number): void {
+  private observeDeath(
+    realm: string,
+    name: string,
+    text: string,
+    at: number,
+    isRow: (name: string) => boolean
+  ): void {
     const key = mobKey(name);
     const sentence = text.trim();
     if (key.length === 0 || sentence.length === 0) return;
@@ -389,7 +395,7 @@ export class RealmLore {
     let dropped = false;
     for (const [filed, entry] of table) {
       if (filed === key || entry.text !== sentence) continue;
-      if (!isModifierOf(filed, key)) continue;
+      if (!isModifierOf(filed, key, isRow)) continue;
       table.delete(filed);
       dropped = true;
     }
@@ -954,9 +960,8 @@ const EMPTY_ANSWER = { max: null, source: null, span: null } as const;
  * Dropped only when it carries the same sentence, which is the only reading
  * under which it says nothing the row does not.
  */
-function isModifierOf(filed: string, row: string): boolean {
-  const space = filed.indexOf(' ');
-  return space > 0 && filed.slice(space + 1) === row;
+function isModifierOf(filed: string, row: string, known: (name: string) => boolean): boolean {
+  return filed !== row && rowNameOf(filed, known) === row;
 }
 
 /**

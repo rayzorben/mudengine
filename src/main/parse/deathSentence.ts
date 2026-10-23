@@ -43,8 +43,8 @@ function looksLikeDeathSentence(text: string): boolean {
  * and the realm's death sentence reads `The kobold falls to the ground with a
  * shriek!`, because `MobNameModifierType.Before` hangs the word on the room's
  * spelling and the message record never carries it (live, 2026-09-12; the
- * kill went unlearned and cost a stat sheet). The drop is `answersTo`'s: one
- * word, and only where the realm knows the shorter name and not the longer —
+ * kill went unlearned and cost a stat sheet). The row is `rowNameOf`'s: words
+ * off either end, and only where the realm does not know the longer name —
  * `kobold thief` is a row of its own, and the thief's sentence would
  * otherwise be written down as its death for good.
  *
@@ -56,10 +56,8 @@ function namesMob(text: string, name: string, known: (name: string) => boolean):
   const key = mobKey(name);
   if (key.length === 0) return false;
   if (saysKey(text, key)) return true;
-  const space = key.indexOf(' ');
-  if (space <= 0) return false;
-  const rest = key.slice(space + 1);
-  return answersTo(key, rest, known) && saysKey(text, rest);
+  const row = rowNameOf(key, known);
+  return row !== key && saysKey(text, row);
 }
 
 /**

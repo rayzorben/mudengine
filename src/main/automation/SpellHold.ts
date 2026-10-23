@@ -25,6 +25,11 @@ import { mobKey, type WorldSpell } from '../../shared/world';
 /** Why the spell is held back, with the figures. */
 export type SpellHeld = { kind: 'melee'; finish: MeleeFinish } | { kind: 'worth'; held: ManaHeld };
 
+/** The realm's row behind a spell's target, else its printed name: a notice holds for every spawn. */
+export function spellTargetRow(target: Pick<SpellTarget, 'name' | 'entity'>): string {
+  return target.entity?.name ?? target.name;
+}
+
 export class SpellHold {
   /** The holds said this fight, by kind and monster. */
   private readonly said = new Set<string>();
@@ -72,8 +77,9 @@ export class SpellHold {
   }
 
   /** Says the hold that stopped a cast at `target`, once a fight per monster and kind. */
-  say(held: SpellHeld, target: string, swing: string): void {
-    const key = `${held.kind}\u0000${mobKey(target)}`;
+  say(held: SpellHeld, spellTarget: SpellTarget, swing: string): void {
+    const target = spellTarget.name;
+    const key = `${held.kind}\u0000${mobKey(spellTargetRow(spellTarget))}`;
     if (this.said.has(key)) return;
     this.said.add(key);
     this.notice(

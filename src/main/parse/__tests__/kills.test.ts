@@ -23,6 +23,14 @@ describe('what the register keeps', () => {
     expect(kills.take()).toEqual([]);
   });
 
+  // 2026-10-22: the server's words go on either end, and may be several.
+  it('files a death under the row whatever words the server put on its name', () => {
+    const kills = new Kills((name) => name === 'kobold thief' || name === 'kobold');
+    kills.noted('kobold thief warrior');
+    kills.noted('big fat kobold');
+    expect(kills.take()).toEqual(['kobold thief', 'kobold']);
+  });
+
   it('keeps the whole spelling where the realm does not know the shorter one', () => {
     const kills = new Kills(() => false);
     kills.noted('thin giant rat');

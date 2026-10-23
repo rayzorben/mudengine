@@ -163,6 +163,11 @@ export function mobRuleFor(rules: readonly MobRule[], who: RowNamed): MobRule | 
   return printed !== undefined || who.mob === undefined ? printed : index.get(mobKey(who.mob.name));
 }
 
+/** The realm's row name for an occupant, else the name the room printed. */
+export function rowName(who: Pick<RoomOccupant, 'name' | 'mob'>): string {
+  return who.mob?.name ?? who.name;
+}
+
 /** The monster the room lists under a printed name, by `mobKey`, or undefined. */
 export function mobListed<T extends Pick<RoomOccupant, 'name' | 'kind'>>(
   occupants: readonly T[],
@@ -170,6 +175,15 @@ export function mobListed<T extends Pick<RoomOccupant, 'name' | 'kind'>>(
 ): T | undefined {
   const key = mobKey(name);
   return occupants.find((who) => who.kind === 'mob' && mobKey(who.name) === key);
+}
+
+/** The realm's row behind a name the room lists, else the name. */
+export function rowListed(
+  occupants: readonly Pick<RoomOccupant, 'name' | 'kind' | 'mob'>[],
+  name: string
+): string {
+  const who = mobListed(occupants, name);
+  return who === undefined ? name : rowName(who);
 }
 
 function indexOf(rules: readonly MobRule[]): Map<string, MobRule> {

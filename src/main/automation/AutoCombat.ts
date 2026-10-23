@@ -106,6 +106,8 @@ import {
   leavesAlone,
   mobListed,
   mobRuleFor,
+  rowListed,
+  rowName,
   LEAVING_STANCES,
   occupantAttacksOnSight,
   ownRow,
@@ -1082,7 +1084,7 @@ export class AutoCombat implements SessionModule {
       case 'attack-ineffective': {
         const target = this.focus;
         if (target === null || this.state === null || this.inAFight() !== null) return;
-        this.noEffect.heard(target, weaponInHand(this.state));
+        this.noEffect.heard(this.rowOf(this.state, target), weaponInHand(this.state));
         this.answeredNo(null);
         return;
       }
@@ -1879,7 +1881,7 @@ export class AutoCombat implements SessionModule {
        * times (2026-10-04).
        */
       const fled =
-        occupantAttacksOnSight(who, me) === false ? this.fledFrom(state, who.name) : null;
+        occupantAttacksOnSight(who, me) === false ? this.fledFrom(state, rowName(who)) : null;
       if (fled !== null) {
         decline(who, fled);
         continue;
@@ -2496,7 +2498,7 @@ export class AutoCombat implements SessionModule {
    * is taken up, and the hand cannot.
    */
   private reachOf(state: CharacterState, target: string): WeaponReach {
-    const refused = this.noEffect.refuses(target, weaponInHand(state));
+    const refused = this.noEffect.refuses(this.rowOf(state, target), weaponInHand(state));
     const said = this.events.reach?.(state, target, refused) ?? REACH_UNKNOWN;
     if (said.kind === 'swap' && !this.config.swapWeapons) return { kind: 'cannot' };
     return refused && said.kind !== 'swap' ? { kind: 'cannot' } : said;
@@ -2825,6 +2827,11 @@ export class AutoCombat implements SessionModule {
   /** The monster listed here under a name, which carries the realm's row name, else the bare name. */
   private named(state: CharacterState | null, name: string): RowNamed {
     return (state === null ? undefined : mobListed(state.room.occupants, name)) ?? name;
+  }
+
+  /** The realm's row behind a name listed here, else the name: a refusal holds for every spawn. */
+  private rowOf(state: CharacterState, name: string): string {
+    return rowListed(state.room.occupants, name);
   }
 
   /**

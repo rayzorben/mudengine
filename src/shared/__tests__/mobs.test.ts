@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   alignmentCost,
   answersTo,
+  rowNameOf,
   attacksOnSight,
   classifyOccupant,
   costsAlignment,
@@ -440,10 +441,31 @@ describe('answersTo', () => {
     expect(answersTo('thin kobold', 'kobold', known)).toBe(true);
   });
 
-  it('refuses a row of its own, a shorter name the realm lacks, and more than one word', () => {
+  it('refuses a row of its own and a shorter name the realm lacks', () => {
     expect(answersTo('kobold thief', 'thief', known)).toBe(false);
+    expect(answersTo('kobold thief', 'kobold', known)).toBe(false);
     expect(answersTo('thin rat', 'rat', known)).toBe(false);
-    expect(answersTo('big thin kobold', 'kobold', known)).toBe(false);
     expect(answersTo('kobold', 'thief', known)).toBe(false);
+  });
+
+  // 2026-10-22, the user: the words the server hangs on a name never matter.
+  it('answers under several words, and under words after the name', () => {
+    expect(answersTo('big thin kobold', 'kobold', known)).toBe(true);
+    expect(answersTo('kobold the brave', 'kobold', known)).toBe(true);
+    expect(answersTo('kobold thief warrior', 'kobold thief', known)).toBe(true);
+  });
+});
+
+describe('rowNameOf', () => {
+  const rows = new Set(['gravedigger', 'kobold', 'kobold thief']);
+  const known = (name: string): boolean => rows.has(name);
+
+  it("is the realm's row behind any words on either end, the full name first", () => {
+    expect(rowNameOf('large gravedigger', known)).toBe('gravedigger');
+    expect(rowNameOf('angry old gravedigger', known)).toBe('gravedigger');
+    expect(rowNameOf('gravedigger of doom', known)).toBe('gravedigger');
+    expect(rowNameOf('kobold thief', known)).toBe('kobold thief');
+    expect(rowNameOf('fat kobold thief', known)).toBe('kobold thief');
+    expect(rowNameOf('unheard of thing', known)).toBe('unheard of thing');
   });
 });

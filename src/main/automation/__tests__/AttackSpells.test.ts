@@ -334,13 +334,21 @@ describe('a spell the world database says has no effect', () => {
     // Still ruled out on the next fight with one, without saying it again.
     expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toHaveLength(1);
-    // Another monster is said once in its turn.
+    // Another spawn of the row is the same monster, whatever word it wears (2026-10-22).
     expect(
       spells.opening(fighting, { ...zombie(true), name: 'small zombie' }, 'in the room', 'a')
     ).toBeNull();
+    expect(notices).toHaveLength(1);
+    // Another monster is said once in its turn.
+    const ghoul = {
+      ...zombie(true),
+      name: 'ghoul',
+      entity: { ...zombie(true).entity, name: 'ghoul' }
+    };
+    expect(spells.opening(fighting, ghoul, 'in the room', 'a')).toBeNull();
     expect(notices).toEqual([
       t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'big zombie' }),
-      t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'small zombie' })
+      t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'ghoul' })
     ]);
     // A new connection says it again.
     spells.reset();

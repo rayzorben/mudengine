@@ -4693,6 +4693,36 @@ describe('opening a fight whatever the odds', () => {
     expect(sent).toEqual(['aa stone golem']);
   });
 
+  // 2026-10-22, the user: the word the server puts on a name never matters.
+  it('leaves alone another spawn of the row it ran from, whatever word it wears', () => {
+    const golem = fighter('stone golem', 300, [bite(40, 110)], { disposition: 'passive' });
+    const small: RoomOccupant = {
+      ...golem,
+      name: 'small stone golem',
+      disposition: 'passive',
+      mob: { ...golem.mob!, name: 'stone golem', rawName: 'small stone golem' }
+    };
+    const auto = make(
+      combat({ attack: 'aa', engage: 'all' }),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard([{ name: 'stone golem', level: 27, at: Date.now() }])
+    );
+    auto.onCharacter({
+      ...at(319),
+      progress: { ...EMPTY_CHARACTER.progress, level: 27 },
+      room: { ...at(319).room, occupants: [small] }
+    });
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `small stone golem — ${t('automation.combat.refusedFled', { target: 'stone golem', level: 27, until: 29 })}`
+    ]);
+  });
+
   it('reads the levels and the minutes from the combat settings', () => {
     const golem: RoomOccupant = {
       ...fighter('stone golem', 300, [bite(40, 110)], { disposition: 'passive' }),
