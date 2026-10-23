@@ -24,6 +24,8 @@
  */
 import { median } from './median';
 import type { CharacterState } from './character';
+import { mobNameCandidates } from './mobs';
+import { rowName } from './mobRules';
 import { mobKey, roomAddress, type RoomId } from './world';
 
 /**
@@ -158,15 +160,12 @@ export function refillCount(state: CharacterState): RefillHeld | null {
   const room = roomAddress(state.room);
   if (room === null) return null;
   const lair = new Set((state.room.lair?.mobs ?? []).map((mob) => mobKey(mob.name)));
-  const ofLair = (name: string): boolean => {
-    const key = mobKey(name);
-    // A room prints a modifier on the row's name (`big giant rat`).
-    for (const own of lair) if (key === own || key.endsWith(` ${own}`)) return true;
-    return false;
-  };
+  // A room prints words on either end of the row's name (`big giant rat`).
+  const ofLair = (name: string): boolean =>
+    mobNameCandidates(mobKey(name)).some((candidate) => lair.has(candidate));
   const names = state.room.occupants
     .filter((who) => who.kind === 'mob')
-    .map((who) => who.mob?.name ?? who.name)
+    .map(rowName)
     .filter((name) => lair.size === 0 || ofLair(name));
   return {
     room,

@@ -10,6 +10,7 @@
  * card's lair colours, the hunting grounds and the Combat card read it. See
  * mudengine-automation › *The verdict is also run as a fight*.
  */
+import { mobRowName } from '../world/rowNames';
 import { tuning } from '../app/tuning';
 import { roundMsAt } from '../automation/RoundBeat';
 import type { SessionModule } from '../automation/Module';
@@ -173,9 +174,10 @@ export class OddsBook implements SessionModule {
   /** One monster fought alone. */
   mob(name: string): Odds {
     if (this.book === null) return UNREAD;
-    const known = this.book.mobs.get(name);
+    const row = this.rowOf(name);
+    const known = this.book.mobs.get(row);
     if (known !== undefined) return known;
-    const job: Job = { kind: 'mob', name };
+    const job: Job = { kind: 'mob', name: row };
     this.promote(idOf(job), job, true);
     return PENDING;
   }
@@ -187,7 +189,12 @@ export class OddsBook implements SessionModule {
    */
   mobKnown(name: string): Odds {
     if (this.book === null) return UNREAD;
-    return this.book.mobs.get(name) ?? PENDING;
+    return this.book.mobs.get(this.rowOf(name)) ?? PENDING;
+  }
+
+  /** The realm's row behind a printed name, so one fight is run for every spelling. */
+  private rowOf(name: string): string {
+    return mobRowName(this.world, name);
   }
 
   /**

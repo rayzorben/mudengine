@@ -480,45 +480,31 @@ export function mobNameCandidates(name: string): string[] {
 }
 
 /**
- * Whether the room's spelling of a name answers to a table's name: exactly,
- * or with the one leading word the server hangs on it dropped — and only
- * where the realm knows the shorter name and not the longer, which is what
- * says the word is a modifier (`MobNameModifierType.Before`) rather than the
- * start of a different monster's name. `thin kobold` answers to `kobold`;
- * `kobold thief`, a row of its own, does not, and its own sentence is its own.
- * Narrower than `mobNameCandidates` on purpose: a hit here names a monster as
- * dead, where a miss there only fails a lookup. Both names in `mobKey`
- * spelling; `known` is the realm's monster table, exact.
+ * Whether two spellings are one monster: the same name, or the same realm row
+ * behind both (`rowNameOf`). `large gravedigger` answers to `gravedigger` and
+ * to `small gravedigger`, so a sentence an older build filed under a modified
+ * name still names the row; `kobold thief`, a row of its own, does not answer
+ * to `kobold`. Both names in `mobKey` spelling; `known` is the realm's monster
+ * table, exact.
  */
 export function answersTo(
   spelling: string,
   key: string,
   known: (name: string) => boolean
 ): boolean {
-  if (spelling === key) return true;
-  const space = spelling.indexOf(' ');
-  if (space <= 0) return false;
-  return spelling.slice(space + 1) === key && !known(spelling) && known(key);
+  return spelling === key || rowNameOf(spelling, known) === rowNameOf(key, known);
 }
 
 /**
- * The realm's own row name behind the spelling a room printed.
- *
- * `answersTo` asked the other way round: it is handed both names and says
- * whether one wears the other's modifier. This is handed only the spelling and
- * answers *which row that is*, which is what a caller holding a name off the
- * wire and a table keyed by row actually has. Shared rather than written twice
- * because what counts as a modifier is one decision — `RealmLore` files a
- * learned death sentence under the row, and `CharacterTracker` matches a kill
- * against the row a quest step names, and the two must agree or a quest step
- * credits the wrong monster for the same reason a death sentence did
- * (2026-09-14). A realm this client does not hold normalises nothing.
+ * The realm's own row name behind the spelling a room printed: the first of
+ * `mobNameCandidates` the realm knows, so the full name wins where it is a
+ * row of its own. The server hangs any words its description block lists on
+ * either end of the name at spawn (`MobTypeManager.GetMobNameModifier`), and
+ * the word never matters (the user, 2026-10-22). A spelling the realm cannot
+ * place, or a realm this client does not hold, is kept as it is.
  */
 export function rowNameOf(spelling: string, known: (name: string) => boolean): string {
-  const space = spelling.indexOf(' ');
-  if (space <= 0) return spelling;
-  const shorter = spelling.slice(space + 1);
-  return answersTo(spelling, shorter, known) ? shorter : spelling;
+  return mobNameCandidates(spelling).find(known) ?? spelling;
 }
 
 /** The realm's row for a name, allowing for a modifier on either end. */

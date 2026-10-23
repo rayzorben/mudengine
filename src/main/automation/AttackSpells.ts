@@ -18,7 +18,7 @@ import { countMobs, countThreats } from './RuleEngine';
 import { DrainWhenHurt } from './DrainWhenHurt';
 import { killCasting } from './killCasting';
 import { RoomSpells } from './RoomSpells';
-import { SpellHold } from './SpellHold';
+import { SpellHold, spellTargetRow } from './SpellHold';
 import { t } from '../app/i18n';
 import { castAimedAt, typedCast } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
@@ -661,7 +661,7 @@ export class AttackSpells {
         (own !== undefined && !spent) ||
         this.spells.autoChoose ||
         this.spells.attack.trim().length > 0;
-      if (wouldCast) this.hold.say(held, target.name, swing);
+      if (wouldCast) this.hold.say(held, target, swing);
       return null;
     }
     // *Auto Choose Best Spell*: the round spell is derived, not typed (todo 09).
@@ -751,7 +751,7 @@ export class AttackSpells {
     const known = this.knownNoEffect(spell, target);
     if (known === null) return false;
     this.ineffective.add(this.keyOf(spell));
-    const pair = `${this.keyOf(spell)}\u0000${mobKey(target.name)}`;
+    const pair = `${this.keyOf(spell)}\u0000${mobKey(spellTargetRow(target))}`;
     if (this.saidNoEffect.has(pair)) return true;
     this.saidNoEffect.add(pair);
     this.events.notice?.(

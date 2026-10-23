@@ -7,6 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
+import { mobRowName } from '../world/rowNames';
 import {
   fetchAct,
   type NavigationOracle,
@@ -276,6 +277,7 @@ export type ErrandsWorld = Pick<
   | 'lairEntities'
   | 'wandererEntities'
   | 'mob'
+  | 'mobAsPrinted'
   | 'namedClasses'
   | 'namedRaces'
   | 'planStep'
@@ -777,7 +779,9 @@ export class Errands implements SessionModule {
         ? []
         : [...world.lairOf(room), ...world.residentEntities(room)].map((mob) => mob.name);
     const standing = standingOf(this.tracker.current);
-    return [...new Set([...stated, ...this.clocks.seenIn(id)])].filter((name) => {
+    // A refill seen under a printed name is the realm's row.
+    const seen = this.clocks.seenIn(id).map((name) => mobRowName(world, name));
+    return [...new Set([...stated, ...seen])].filter((name) => {
       const mob = world?.mob(name);
       return !waitsToBeStruck(
         { disposition: mob?.disposition ?? null, abilities: mob?.abilities },
