@@ -912,7 +912,7 @@ export class SessionManager {
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family),
       beforeRest: (state, restTo) => this.restSpell.beforeRest(state, restTo),
       roomHurts: (state) => this.roomHazards.hurtsHere(state),
-      waitingOn: (state) => this.combat.waitingOn(state),
+      waitingOn: (state) => this.combat.waitingOn(state) ?? this.walker.waitingFor,
       decided: reports.decided,
       signs
     });

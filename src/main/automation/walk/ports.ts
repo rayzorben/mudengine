@@ -336,6 +336,16 @@ export interface WalkInFlight {
   stepAgain(): void;
   /** The step again unless a hold (a fight, health, a rest) takes the walk first. */
   stepWhenFree(): void;
+  /** What this walk is for, which its re-plans are planned as. */
+  kind(): WalkKind;
+  /** The journey's last step: where a detour comes back to. */
+  destination(): RouteStep | undefined;
+  /**
+   * `route` in place of the plan, at a fresh step, and carried on from there.
+   * `ahead` is queued after the old plan's unsent commands are dropped and
+   * before the first step: the levers pulled where the route begins.
+   */
+  detour(route: Route, state: CharacterState, ahead?: () => void): void;
 }
 
 /** Which queued intents a cancel keeps. */

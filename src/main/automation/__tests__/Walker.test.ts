@@ -3879,6 +3879,66 @@ describe('a rest whose answer has not come back', () => {
     walk.dispose();
   });
 
+  /*
+   * Rayzor, 2026-10-23: held beside the gravedigger, the rest step took him
+   * next door out of the lair, and the walk stepped straight back in at 21/111.
+   * The wait goes with the walk: it rests next door, then walks back in.
+   */
+  it('keeps the wait next door, and walks back to the monster once it is met', async () => {
+    const waiting = { name: 'gravedigger', wait: { health: 0, mana: 0.5 } };
+    const manaAt = (x: number, y: number, mana: number): CharacterState => {
+      const room = at(x, y);
+      return { ...room, vitals: { ...room.vitals, hp: 100, hpMax: 100, mana, manaMax: 100 } };
+    };
+    let pending = 0;
+    let now = manaAt(1, 1, 40);
+    const planned: string[] = [];
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      pendingMoves: () => pending,
+      stateNow: () => now,
+      waitingOn: (state) => (state.room.number === 1 ? waiting : null),
+      replan: (to) => {
+        planned.push(`to ${to}`);
+        return to === '1/1'
+          ? {
+              cost: 1,
+              blocked: false,
+              steps: [{ ...ROUTE.steps[0]!, from: '1/9', to: '1/1', command: 's', direction: 's' }]
+            }
+          : { cost: 1, blocked: false, steps: [] };
+      },
+      routeBetween: (from, to) => {
+        planned.push(`${from} to ${to}`);
+        return ROUTE;
+      }
+    });
+    walk.start(ROUTE, now, { holdWhenHurt: false });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(walk.progress.hold).toBe('waiting');
+    // The rest step goes next door; the walk keeps the wait there.
+    pending = 1;
+    walk.onCharacter(now);
+    pending = 0;
+    now = manaAt(1, 9, 40);
+    await vi.advanceTimersByTimeAsync(tuning().walk.holdMs * 3);
+    expect(sent).toEqual([]);
+    expect(walk.waitingFor).toEqual(waiting);
+    // A room not placed is not the monster's room: the wait stands.
+    now = { ...at(null, null), vitals: now.vitals };
+    await vi.advanceTimersByTimeAsync(tuning().walk.holdMs * 2);
+    expect(sent).toEqual([]);
+    expect(walk.waitingFor).toEqual(waiting);
+    // Met next door: the way back in first, then the rest of the route.
+    now = manaAt(1, 9, 50);
+    await vi.advanceTimersByTimeAsync(tuning().walk.holdMs + 50);
+    expect(planned).toContain('to 1/1');
+    expect(planned).toContain(`1/1 to ${ROUTE.steps.at(-1)!.to}`);
+    expect(sent).toEqual(['s']);
+    expect(notices).toContain(t('automation.walk.waitBack', { target: 'gravedigger' }));
+    walk.dispose();
+  });
+
   it('never holds a walk beside a waiting monster while the maximum is unread', async () => {
     const base = at(1, 1);
     const current: CharacterState = {
@@ -3892,6 +3952,8 @@ describe('a rest whose answer has not come back', () => {
     expect(walk.start(ROUTE, current, { holdWhenHurt: false })).toBeNull();
     await vi.advanceTimersByTimeAsync(50);
     expect(sent).toEqual(['e']);
+    // Nor is it kept to hold the walk once past the monster.
+    expect(walk.waitingFor).toBeNull();
     walk.dispose();
   });
 

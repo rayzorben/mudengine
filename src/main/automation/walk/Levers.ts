@@ -20,24 +20,16 @@ import {
 } from '../../../shared/world';
 import type { CharacterState } from '../../../shared/character';
 import type { MovementConfig } from '../../../shared/config';
-import type { WalkKind } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
 import { LEVER_PULL, type WalkerEvents, type WalkInFlight } from './ports';
 
 /** What the lever errand asks of the walk it interrupts, answered by `Walker`. */
-export interface LeversWalk extends Pick<WalkInFlight, 'quiet' | 'stop' | 'stepAgain'> {
-  /** What this walk is for, which its re-plans are planned as. */
-  kind(): WalkKind;
-  /** The journey's last step: where an errand comes back to. */
-  destination(): RouteStep | undefined;
-  /**
-   * `route` in place of the plan, at a fresh step, and carried on from there.
-   * `ahead` is queued after the old plan's unsent commands are dropped and
-   * before the first step: the levers pulled where the route begins.
-   */
-  detour(route: Route, state: CharacterState, ahead?: () => void): void;
+export interface LeversWalk extends Pick<
+  WalkInFlight,
+  'quiet' | 'stop' | 'stepAgain' | 'kind' | 'destination' | 'detour'
+> {
   /** *Auto-Pull Levers* and its rounds, as the walk's settings stand now. */
   movement(): Pick<MovementConfig, 'pullLevers' | 'leverTries'>;
 }
