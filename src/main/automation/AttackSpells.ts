@@ -616,7 +616,10 @@ export class AttackSpells {
     }
 
     const held = this.hold.of(state, target, swing, this.rules, this.spells.minMana);
-    const row = mobRuleFor(this.rules, target.name);
+    const row = mobRuleFor(
+      this.rules,
+      target.entity === null ? target.name : { name: target.name, mob: target.entity }
+    );
     const own: MobCast | undefined = row !== undefined && isBanded(row) ? row.cast : undefined;
     const spent = own !== undefined && !this.usable(own.spell, own.times);
     if (

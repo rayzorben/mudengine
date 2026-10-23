@@ -20,6 +20,7 @@ import {
   type MobRule
 } from '../mobRules';
 import type { RoomOccupant } from '../character';
+import type { MobEntity } from '../entities';
 import type { Standing } from '../mobs';
 
 /**
@@ -201,6 +202,31 @@ describe('the monster lists beneath a form', () => {
     expect(sourcesBeneath('global')).toEqual(['megamud']);
     expect(sourcesBeneath('realm')).toEqual(['megamud', 'global']);
     expect(sourcesBeneath('character')).toEqual(['megamud', 'global', 'realm']);
+  });
+});
+
+const ENTITY: MobEntity = {
+  name: '',
+  rawName: '',
+  source: 'hybrid',
+  charmed: false,
+  disposition: 'passive',
+  uncertain: false,
+  costly: 'never'
+};
+
+describe('mobRuleFor', () => {
+  // 2026-10-23: the room prints `large gravedigger` for the realm's `gravedigger`.
+  it("finds an occupant's row by the realm's name when its printed name has none", () => {
+    const rules: MobRule[] = [
+      { mob: 'gravedigger', treat: 'first' },
+      { mob: 'fat gravedigger', treat: 'never' }
+    ];
+    const as = (name: string) => ({ name, mob: { ...ENTITY, name: 'gravedigger', rawName: name } });
+    expect(mobRuleFor(rules, as('large gravedigger'))?.treat).toBe('first');
+    expect(mobRuleFor(rules, as('fat gravedigger'))?.treat).toBe('never');
+    expect(mobRuleFor(rules, 'large gravedigger')).toBeUndefined();
+    expect(mobRuleFor(rules, { name: 'large gravedigger' })).toBeUndefined();
   });
 });
 

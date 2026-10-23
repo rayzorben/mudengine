@@ -70,7 +70,7 @@ export class RowOverrides implements SessionModule {
     const standing = standingOf(state);
     for (const who of state.room.occupants) {
       if (who.kind !== 'mob') continue;
-      const peace = rowPeaceFor(rules, who.name);
+      const peace = rowPeaceFor(rules, who);
       if (peace === null || occupantAttacksOnSight(who, standing) !== true) continue;
       const key = mobKey(who.name);
       if (this.said.has(key)) continue;

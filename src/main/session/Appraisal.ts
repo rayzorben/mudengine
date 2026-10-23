@@ -20,7 +20,7 @@ import {
 } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { inTheFight } from '../../shared/guards';
-import { attacksFirst, rowPeaceFor } from '../../shared/mobRules';
+import { attacksFirst, mobListed, rowPeaceFor } from '../../shared/mobRules';
 import { asksHere, type QuestWatched, type RoomAsk } from '../../shared/quests';
 import { simulateFight, type Survival } from '../../shared/survival';
 import {
@@ -140,7 +140,7 @@ export class Appraisal {
     const rules = this.session.config().combat.mobRules;
     // And each one fought alone, rested, out of the odds book.
     const monsters = appraisal.monsters.map((entry) => {
-      const peace = rowPeaceFor(rules, entry.name);
+      const peace = rowPeaceFor(rules, mobListed(state.room.occupants, entry.name) ?? entry.name);
       const alone = this.odds.mob(entry.name);
       return peace === null ? { ...entry, alone } : { ...entry, peace, alone };
     });
