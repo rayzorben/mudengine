@@ -220,6 +220,8 @@ export type WalkHold =
   | 'dark'
   /** Leading, on the far side of a portal, until the party rejoins (todo 839). */
   | 'party'
+  /** Beside a monster whose row waits for health or mana before it is fought (`waitingOn`). */
+  | 'waiting'
   | null;
 
 /**
@@ -228,7 +230,13 @@ export type WalkHold =
  * asked for a beat ago.
  */
 export function walkIsResting(hold: WalkHold): boolean {
-  return hold === 'health' || hold === 'mana' || hold === 'trap' || hold === 'resting';
+  return (
+    hold === 'health' ||
+    hold === 'mana' ||
+    hold === 'trap' ||
+    hold === 'resting' ||
+    hold === 'waiting'
+  );
 }
 
 /** Leading, on the far side of a portal until the party rejoins or the player walks on (todos 839, 849). */

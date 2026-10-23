@@ -3879,6 +3879,22 @@ describe('a rest whose answer has not come back', () => {
     walk.dispose();
   });
 
+  it('never holds a walk beside a waiting monster while the maximum is unread', async () => {
+    const base = at(1, 1);
+    const current: CharacterState = {
+      ...base,
+      vitals: { ...base.vitals, hp: 100, hpMax: 100, mana: 40, manaMax: null }
+    };
+    const walk = new Walker(config, queue, {
+      stateNow: () => current,
+      waitingOn: () => ({ name: 'gravedigger', wait: { health: 0, mana: 0.5 } })
+    });
+    expect(walk.start(ROUTE, current, { holdWhenHurt: false })).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
   /* Nothing claimed where nobody is counting: the behaviour before this. */
   it('does not hold at all where the session answers nothing', async () => {
     const walk = new Walker(config, queue, { stateNow: () => at(1, 1) });
@@ -4241,6 +4257,42 @@ describe('walking while hurt', () => {
     current = drained(null);
     await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
     expect(sent).toEqual(['e']);
+    walk.dispose();
+  });
+
+  /*
+   * A monster row's wait (Rayzor's lap walked past the gravedigger at 20/111
+   * mana, 2026-10-23): a lap's leg, which leaves health to the loop, stands
+   * beside it in its own hold, and the floors' line never takes the hold over.
+   */
+  it('stands a leg beside a monster waiting on mana, and walks on once nothing waits', async () => {
+    const waiting = { name: 'gravedigger', wait: { health: 0, mana: 0.5 } };
+    let wait: typeof waiting | null = waiting;
+    const base = at(1, 1);
+    const current: CharacterState = {
+      ...base,
+      vitals: { ...base.vitals, hp: 100, hpMax: 100, mana: 40, manaMax: 100 }
+    };
+    const health = { ...config.health, restBelowMana: 0.3, restToMana: 0.9 };
+    const walk = new Walker({ ...config, health }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => current,
+      waitingOn: () => wait
+    });
+    expect(walk.start(ROUTE, current, { holdWhenHurt: false })).toBeNull();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('waiting');
+    expect(notices).toContain(
+      t('automation.walk.waitMana', { target: 'gravedigger', percent: 50 })
+    );
+    await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs * 4);
+    expect(sent).toEqual([]);
+    // Met at 50, under the 90 the floors rest to: nothing holds the step.
+    wait = null;
+    await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+    expect(sent).toEqual(['e']);
+    expect(walk.progress.hold).toBeNull();
     walk.dispose();
   });
 });

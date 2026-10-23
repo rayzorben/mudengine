@@ -8,6 +8,7 @@
  */
 import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
+import type { MobWaited } from '../../../shared/mobRules';
 import type { BarrierJob, HandAsk } from '../../../shared/barrierHands';
 import type { Intent } from '../CommandQueue';
 import type { DecisionKind, NoticeSink } from '../../../shared/decisionSettings';
@@ -159,6 +160,13 @@ export interface WalkerEvents {
    * walk forever.
    */
   holdAt?(state: CharacterState): boolean;
+  /**
+   * The monster here that auto-combat holds back for its row's wait, and the
+   * wait (`AutoCombat.waitingOn`), or null. The walk stands beside it until
+   * the wait is met, resting if `automation.health` rests, and the quarry
+   * beat then holds for the fight.
+   */
+  waitingOn?(state: CharacterState): MobWaited | null;
   /**
    * Whether the spells a `spell-onset` names hold the character in place, off
    * the realm's own rows — `true`, `false`, or `null` where the realm cannot

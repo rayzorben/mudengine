@@ -19,6 +19,7 @@ import { roomAddress, trapOn, type RoomId, type RouteStep } from '../../../share
 import type { Block } from '../../../shared/blocks';
 import { fightIsRunning, type CharacterState } from '../../../shared/character';
 import { stillFor, type AutomationConfig } from '../../../shared/config';
+import { waitShort, type MobWait, type MobWaited } from '../../../shared/mobRules';
 import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -45,6 +46,28 @@ export interface HoldsWalk extends Pick<
   trapDisarmed(step: RouteStep): boolean;
 }
 
+/** The notice a wait's hold says once, naming the monster and the figure still short. */
+function waitNotice(short: keyof MobWait, { name, wait }: MobWaited): string {
+  const percent = Math.round(wait[short] * 100);
+  switch (short) {
+    case 'health':
+      return t('automation.walk.waitHealth', { target: name, percent });
+    case 'mana':
+      return t('automation.walk.waitMana', { target: name, percent });
+    default: {
+      const unreachable: never = short;
+      return unreachable;
+    }
+  }
+}
+
+/** Whether the figure a wait is short of, and its maximum, have been read. */
+function known(short: keyof MobWait, { vitals }: CharacterState): boolean {
+  const [value, max] =
+    short === 'health' ? [vitals.hp, vitals.hpMax] : [vitals.mana, vitals.manaMax];
+  return value !== null && max !== null && max > 0;
+}
+
 export type HoldsEvents = Pick<
   WalkerEvents,
   | 'notice'
@@ -58,6 +81,7 @@ export type HoldsEvents = Pick<
   | 'pendingMoves'
   | 'spellsHold'
   | 'onTheGround'
+  | 'waitingOn'
 >;
 
 export class Holds {
@@ -793,7 +817,12 @@ export class Holds {
     }
 
     // The party's hold is asked after this one, so a vital takes the word from it.
-    if (this.hold === null || this.hold === 'party' || (mine && this.hold !== wanted)) {
+    if (
+      this.hold === null ||
+      this.hold === 'party' ||
+      this.hold === 'waiting' ||
+      (mine && this.hold !== wanted)
+    ) {
       this.hold = wanted;
       this.walk.publish();
     }
@@ -804,6 +833,36 @@ export class Holds {
      * health arrives on every status line anyway, so the answer is never more
      * than one tick stale.
      */
+    this.walk.retryAfter(tuning().walk.holdMs, state);
+    return true;
+  }
+
+  /**
+   * A monster here whose row waits for health or mana before it is fought
+   * (`WalkerEvents.waitingOn`): the walk stands beside it, a lap's leg too,
+   * since the wait is about the room as the quarry beat is and not about the
+   * character's fitness to travel (`holdWhenHurt`). Its own slot, so the
+   * floors' hysteresis never reads it. Lifted once nothing waits; the quarry
+   * beat then holds for the fight. Rayzor walked past the gravedigger at
+   * 20/111 mana (2026-10-23).
+   */
+  holdForWait(state: CharacterState): boolean {
+    const asked = this.goesOnThrough(state) ? null : (this.events.waitingOn?.(state) ?? null);
+    // Unknown never holds: a walk pinned for want of a stat sheet never arrives.
+    const short = asked === null ? null : waitShort(asked.wait, state.vitals);
+    const waited = short !== null && known(short, state) ? asked : null;
+    if (waited === null || short === null) {
+      if (this.hold === 'waiting') {
+        this.hold = null;
+        this.walk.publish();
+      }
+      return false;
+    }
+    if (this.hold === null || this.hold === 'party') {
+      this.hold = 'waiting';
+      this.walk.publish();
+      this.events.notice?.(waitNotice(short, waited));
+    }
     this.walk.retryAfter(tuning().walk.holdMs, state);
     return true;
   }

@@ -7640,6 +7640,8 @@ automation:
       that instead.
   walk:
     alreadyThere: Already there.
+    waitHealth: Waiting here until health is {percent}%, then attacking {target}.
+    waitMana: Waiting here until mana is {percent}%, then attacking {target}.
     arrived: Arrived at {stepName}.
     darkLightSpent: '{stepName} is dark and your {lightName} is burned out.'
     barrierHeld: Door bash failed (door held).

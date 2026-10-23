@@ -4161,7 +4161,10 @@ describe('the size of the room and the size of the monster', () => {
       const alone = make(combat({ engage: 'all', mobRules: rules }));
       const low = at(11, mob('gravedigger', 'passive'));
       expect(alone.quarry(low)).toBe(false);
-      expect(alone.waitingOn(low)).toEqual({ health: 0, mana: 0.5 });
+      expect(alone.waitingOn(low)).toEqual({
+        name: 'gravedigger',
+        wait: { health: 0, mana: 0.5 }
+      });
       alone.onCharacter(low);
       drain();
       expect(sent).toEqual([]);
@@ -4179,7 +4182,7 @@ describe('the size of the room and the size of the monster', () => {
     it('asks for no rest for a monster another refusal holds back', () => {
       const auto = make(combat({ engage: 'all', politeAttacks: true, mobRules: rules }));
       const low = at(11, mob('gravedigger', 'passive'));
-      expect(auto.waitingOn(low)).toEqual({ health: 0, mana: 0.5 });
+      expect(auto.waitingOn(low)?.name).toBe('gravedigger');
       const claimed = {
         ...low,
         combat: { ...low.combat, claimed: { gravedigger: { by: 'Rend', at: Date.now() } } }
