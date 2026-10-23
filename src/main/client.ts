@@ -248,6 +248,8 @@ import {
   asLoop,
   asProfileDraft,
   asProfileId,
+  readProfileId,
+  type ProfileIdFault,
   asServerDraft,
   LOOP_LIMITS
 } from '../shared/drafts';
@@ -3487,8 +3489,9 @@ function registerIpc(): void {
   });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
-    const id = asProfileId(rawId);
-    if (id === null) return t('app.profiles.invalidId');
+    const read = readProfileId(rawId);
+    if (!read.ok) return idRefusal(read.fault);
+    const id = read.id;
     const draft = asProfileDraft(rawDraft);
     if (draft === null) return t('app.profiles.incompleteDraft');
     profiles?.ensureDirectory();
@@ -3673,6 +3676,20 @@ function registerIpc(): void {
     }
     return platform.clipboard.read();
   });
+}
+
+/** What the form is told when a new character's File Name is refused. */
+function idRefusal(fault: ProfileIdFault): string {
+  switch (fault) {
+    case 'missing':
+      return t('app.profiles.missingId');
+    case 'unsafe':
+      return t('app.profiles.invalidId');
+    default: {
+      const never: never = fault;
+      return never;
+    }
+  }
 }
 
 /** Sessions this launch has already dialled on its own. See `clientReady`. */

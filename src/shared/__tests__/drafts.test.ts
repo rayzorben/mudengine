@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { asProfileDraft, asProfileId, asServerDraft } from '../drafts';
+import { asProfileDraft, asProfileId, asServerDraft, readProfileId } from '../drafts';
 import { UNCATEGORISED } from '../loops';
 import { DEFAULT_MOVEMENT_CHOICES } from '../walkChoices';
 import { DEFAULT_CONFIG } from '../config';
@@ -41,6 +41,17 @@ describe('a name a character can be filed under', () => {
     expect(asProfileId('x'.repeat(49))).toBeNull();
     expect(asProfileId(null)).toBeNull();
     expect(asProfileId(42)).toBeNull();
+  });
+
+  // Issue #3: a blank File Name was refused as bad characters, which sent the
+  // player hunting through the password for the fault.
+  it('says a blank one is missing, apart from one with characters a file cannot hold', () => {
+    expect(readProfileId('')).toEqual({ ok: false, fault: 'missing' });
+    expect(readProfileId('   ')).toEqual({ ok: false, fault: 'missing' });
+    expect(readProfileId(undefined)).toEqual({ ok: false, fault: 'missing' });
+    expect(readProfileId('thorn@home')).toEqual({ ok: false, fault: 'unsafe' });
+    expect(readProfileId('x'.repeat(49))).toEqual({ ok: false, fault: 'unsafe' });
+    expect(readProfileId(' Thorn ')).toEqual({ ok: true, id: 'thorn' });
   });
 });
 

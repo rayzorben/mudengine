@@ -813,10 +813,21 @@ function encoding(value: unknown): StreamEncoding | null {
  * rather than sanitised, because a sanitised path is one nobody can predict.
  */
 export function asProfileId(value: unknown): string | null {
+  const read = readProfileId(value);
+  return read.ok ? read.id : null;
+}
+
+/** Why a file name was refused: left blank, or holding what a file cannot. */
+export type ProfileIdFault = 'missing' | 'unsafe';
+
+/** `asProfileId`, saying which fault, so a blank field is not reported as bad characters. */
+export function readProfileId(
+  value: unknown
+): { ok: true; id: string } | { ok: false; fault: ProfileIdFault } {
   const id = text(value).toLowerCase();
-  if (id.length === 0 || id.length > 48) return null;
-  if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) return null;
-  return id;
+  if (id.length === 0) return { ok: false, fault: 'missing' };
+  if (id.length > 48 || !/^[a-z0-9][a-z0-9_-]*$/.test(id)) return { ok: false, fault: 'unsafe' };
+  return { ok: true, id };
 }
 
 export function asServerDraft(value: unknown): ServerDraft | null {
