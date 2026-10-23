@@ -834,11 +834,11 @@ export class SessionManager {
       // whole: which walks engage is `whileWalking` and `looping`, and stating
       // half of that here left the two able to disagree. See `quarry`.
       holdAt: (state) => this.combat.quarry(state),
+      waitingOn: (state) => this.combat.waitingOn(state),
       // Whether an onset that landed behind a step is a hold at all is the
       // realm's to say, and the realm is here. See `spellsHold`.
       spellsHold: (spells) => this.errands.spellsHold(spells),
-      // The beat is re-asked on a timer, by which time the state it began with
-      // is a second and a half old.
+      // The beat is re-asked on a timer, when the state it began with is 1.5 s old.
       stateNow: () => this.tracker.current,
       // Which of the things in the pack is a light is realm data, so the
       // question is answered here where the world graph is and not in the

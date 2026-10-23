@@ -119,6 +119,7 @@ import {
   type LeavingStance,
   type MobStance,
   type MobWait,
+  type MobWaited,
   type RowNamed
 } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
@@ -230,8 +231,8 @@ type Choice =
       because?: undefined;
       considered: string;
       why: string;
-      /** The first monster held back only by its row's wait, and the wait (`waitingOn`). */
-      waited?: { name: string; wait: MobWait };
+      /** The first monster held back only by its row's wait (`waitingOn`). */
+      waited?: MobWaited;
     };
 
 /** The leader's fight to join: one monster, or the whole room when the leader attacked everyone in it. */
@@ -2135,11 +2136,11 @@ export class AutoCombat implements SessionModule {
   }
 
   /**
-   * What a monster here waits for (`waitOf`) while that wait is all that
-   * keeps a fight from being opened, so `Recovery` rests up to it; null
-   * otherwise. Asked of `choose` only where some row waits at all.
+   * The monster here whose row's wait (`waitOf`) is all that keeps a fight
+   * from being opened, and the wait: the walk stands beside it and `Recovery`
+   * rests up to it. Null otherwise. Asked of `choose` only where some row waits.
    */
-  waitingOn(state: CharacterState): MobWait | null {
+  waitingOn(state: CharacterState): MobWaited | null {
     if (!this.acting) return null;
     const rows = this.config.mobRules;
     const waits = (who: RoomOccupant): boolean =>
@@ -2147,7 +2148,7 @@ export class AutoCombat implements SessionModule {
     if (!state.room.occupants.some(waits)) return null;
     const waited = this.choose(state)?.waited;
     if (waited === undefined) return null;
-    return this.whyNot(state, false, waited.name) === null ? waited.wait : null;
+    return this.whyNot(state, false, waited.name) === null ? waited : null;
   }
 
   /**

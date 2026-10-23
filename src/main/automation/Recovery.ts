@@ -111,7 +111,7 @@ import {
   type HealthConfig,
   type PartyConfig
 } from '../../shared/config';
-import type { MobRule, MobWait } from '../../shared/mobRules';
+import type { MobRule, MobWait, MobWaited } from '../../shared/mobRules';
 import type { SafetyDecision } from '../../shared/automation';
 import { tuning } from '../app/tuning';
 import { holdsMeditate } from '../../shared/abilities';
@@ -328,7 +328,7 @@ export class Recovery implements SessionModule {
        * The health and mana a monster's row waits for before auto-combat
        * opens on it (`AutoCombat.waitingOn`), rested up to; null for none.
        */
-      waitingOn?(state: CharacterState): MobWait | null;
+      waitingOn?(state: CharacterState): MobWaited | null;
     } = {}
   ) {}
 
@@ -766,7 +766,7 @@ export class Recovery implements SessionModule {
 
   /** What a monster here waits for (`events.waitingOn`), 0 for each figure nothing waits on. */
   private waitOf(state: CharacterState): MobWait {
-    return this.events.waitingOn?.(state) ?? { health: 0, mana: 0 };
+    return this.events.waitingOn?.(state)?.wait ?? { health: 0, mana: 0 };
   }
 
   /**

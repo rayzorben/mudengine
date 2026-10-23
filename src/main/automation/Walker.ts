@@ -1332,8 +1332,8 @@ export class Walker implements SessionModule {
      * because a rest is only ever asked for with nothing swinging.
      */
     if (this.holds.holdForRest(state) || this.holds.holdForFloor(state)) return true;
-    // Health, and outside the beat's budget — see `Holds.holdForHealth`.
-    if (this.holds.holdForHealth(state)) return true;
+    // Health, then a monster's row waiting on health and mana, outside the beat's budget (`Holds`).
+    if (this.holds.holdForHealth(state) || this.holds.holdForWait(state)) return true;
     // Then a condition the server has stated, on the same terms.
     if (this.holds.holdForAffliction(state)) return true;
     // Then the trap the step ahead fires, and the party rejoining, on the same terms again.

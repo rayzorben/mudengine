@@ -122,7 +122,8 @@ const drain = (): void => void vi.advanceTimersByTime(500);
 describe('sitting down', () => {
   /* A monster row's wait (the gravedigger): rested up to it, and no further. */
   it('rests to the mana a monster here waits for, and stands at it', () => {
-    let wait: { health: number; mana: number } | null = { health: 0, mana: 0.5 };
+    const waiting = { name: 'gravedigger', wait: { health: 0, mana: 0.5 } };
+    let wait: typeof waiting | null = waiting;
     const auto = new Recovery(settings(health({ useMeditate: false })), queue, {
       waitingOn: () => wait
     });
@@ -137,7 +138,7 @@ describe('sitting down', () => {
     drain();
     expect(sent).toEqual([]);
     expect(auto.wouldRest(state({ mana: 11, manaMax: 100 }))).toBe(false);
-    wait = { health: 0, mana: 0.5 };
+    wait = waiting;
     expect(auto.wouldRest(state({ mana: 49, manaMax: 100 }))).toBe(true);
     expect(auto.wouldRest(state({ mana: 50, manaMax: 100 }))).toBe(false);
   });

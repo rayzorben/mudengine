@@ -417,6 +417,12 @@ export interface MobWait {
   mana: number;
 }
 
+/** A monster here held back only by its row's wait, and the wait (`AutoCombat.waitingOn`). */
+export interface MobWaited {
+  name: string;
+  wait: MobWait;
+}
+
 /** What a row waits for, or null where it waits for nothing. */
 export function waitOf(row: MobRule | undefined): MobWait | null {
   if (row === undefined || !isBanded(row)) return null;
