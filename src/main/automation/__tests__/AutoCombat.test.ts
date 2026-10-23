@@ -26,7 +26,7 @@ import {
   type RoomOccupant
 } from '../../../shared/character';
 import { classifyOccupant, type AlignmentCost, type MobDisposition } from '../../../shared/mobs';
-import { laidFromTable } from '../../../shared/mobRules';
+import { laidFromTable, mergeMobRules } from '../../../shared/mobRules';
 import type { Block } from '../../../shared/blocks';
 import type { ItemEntity, MobEntity } from '../../../shared/entities';
 import { GUARDED_BY_ABILITY } from '../../../shared/guards';
@@ -3906,6 +3906,22 @@ describe('saying why it did not open a fight', () => {
       expect(refusals()).toEqual([
         `storm giant — ${t('automation.combat.refusedUncertain', { target: 'storm giant' })}`
       ]);
+    });
+
+    /* 2026-10-23: Rayzor's `gravedigger` row never reached the room's `large
+       gravedigger`, the server's modifier on the row's name, so he stood beside it. */
+    it("is attacked under the server's modifier on its name", () => {
+      const digger: RoomOccupant = {
+        ...mob('large gravedigger', 'passive'),
+        mob: { ...giant().mob!, name: 'gravedigger', rawName: 'large gravedigger' }
+      };
+      const rules = mergeMobRules(laidFromTable([{ mob: 'gravedigger', treat: 'never' }]), [
+        { mob: 'gravedigger', treat: 'first' }
+      ]);
+      const auto = make(combat({ engage: 'likely', mobRules: rules }));
+      auto.onCharacter(inRoom(digger));
+      drain();
+      expect(sent).toEqual(['a large gravedigger']);
     });
 
     it('is still refused by the experience cap', () => {

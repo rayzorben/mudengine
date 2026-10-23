@@ -144,8 +144,35 @@ export const MOB_CAST_MOST = 99;
 /** Each list's rows by monster, built once: MegaMUD's scope makes a list of hundreds (todo 817). */
 const indexed = new WeakMap<readonly MobRule[], Map<string, MobRule>>();
 
-/** The row for a monster, in the wire's spelling or the room's, or undefined. */
-export function mobRuleFor(rules: readonly MobRule[], name: string): MobRule | undefined {
+/**
+ * A monster a row is looked up for: a bare name, or the room's occupant, which
+ * also carries the realm's row name behind the printed one.
+ */
+export type RowNamed = string | Pick<RoomOccupant, 'name' | 'mob'>;
+
+/**
+ * The row for a monster, or undefined. An occupant is looked up by its printed
+ * name, then by the realm's row name: the server hangs a modifier on the row's
+ * name (`large gravedigger`, `MobNameModifierType`) and a player writes the
+ * row for the realm's monster, so a `gravedigger` row never matched one (2026-10-23).
+ */
+export function mobRuleFor(rules: readonly MobRule[], who: RowNamed): MobRule | undefined {
+  const index = indexOf(rules);
+  if (typeof who === 'string') return index.get(mobKey(who));
+  const printed = index.get(mobKey(who.name));
+  return printed !== undefined || who.mob === undefined ? printed : index.get(mobKey(who.mob.name));
+}
+
+/** The monster the room lists under a printed name, by `mobKey`, or undefined. */
+export function mobListed<T extends Pick<RoomOccupant, 'name' | 'kind'>>(
+  occupants: readonly T[],
+  name: string
+): T | undefined {
+  const key = mobKey(name);
+  return occupants.find((who) => who.kind === 'mob' && mobKey(who.name) === key);
+}
+
+function indexOf(rules: readonly MobRule[]): Map<string, MobRule> {
   let index = indexed.get(rules);
   if (index === undefined) {
     index = new Map();
@@ -156,7 +183,7 @@ export function mobRuleFor(rules: readonly MobRule[], name: string): MobRule | u
     }
     indexed.set(rules, index);
   }
-  return index.get(mobKey(name));
+  return index;
 }
 
 /**
@@ -176,8 +203,8 @@ export function laidFromTable(rows: readonly MobRule[]): LaidMobRule[] {
  * The row for a monster when the player wrote it, in any of their three
  * scopes; undefined for none, and for a row MegaMUD's table laid.
  */
-export function ownRow(rules: readonly MobRule[], name: string): MobRule | undefined {
-  const row = mobRuleFor(rules, name);
+export function ownRow(rules: readonly MobRule[], who: RowNamed): MobRule | undefined {
+  const row = mobRuleFor(rules, who);
   return row === undefined || ('laid' in row && row.laid === 'megamud') ? undefined : row;
 }
 
@@ -317,8 +344,8 @@ export function peaceOf(row: MobRule | undefined): RowPeace | null {
 }
 
 /** The claim the row for a monster makes, in the wire's spelling or the room's, or null. */
-export function rowPeaceFor(rules: readonly MobRule[], name: string): RowPeace | null {
-  return peaceOf(mobRuleFor(rules, name));
+export function rowPeaceFor(rules: readonly MobRule[], who: RowNamed): RowPeace | null {
+  return peaceOf(mobRuleFor(rules, who));
 }
 
 /**
@@ -333,7 +360,7 @@ export function attacksFirst(
   standing: Standing,
   rules: readonly MobRule[]
 ): boolean | null {
-  return rowPeaceFor(rules, who.name) === null ? occupantAttacksOnSight(who, standing) : false;
+  return rowPeaceFor(rules, who) === null ? occupantAttacksOnSight(who, standing) : false;
 }
 
 /** `attacksOnSight` for a monster the room listed: its disposition and its row's effects. */
@@ -354,12 +381,12 @@ export function avoidedFor(
   rules: readonly MobRule[]
 ): MobAvoid | null {
   const avoid = who.mob?.avoid;
-  return avoid === undefined || mobRuleFor(rules, who.name) !== undefined ? null : avoid;
+  return avoid === undefined || mobRuleFor(rules, who) !== undefined ? null : avoid;
 }
 
 /** Whether the row for a monster says it is stopped for and killed (`stopToKill`). */
-export function stopsToKill(rules: readonly MobRule[], name: string): boolean {
-  const row = mobRuleFor(rules, name);
+export function stopsToKill(rules: readonly MobRule[], who: RowNamed): boolean {
+  const row = mobRuleFor(rules, who);
   return row !== undefined && isBanded(row) && row.stopToKill === true;
 }
 
@@ -371,14 +398,14 @@ export function stopsToKill(rules: readonly MobRule[], name: string): boolean {
  * reach monsters only.
  */
 export function stanceHere(
-  occupants: readonly Pick<RoomOccupant, 'name' | 'kind'>[],
+  occupants: readonly Pick<RoomOccupant, 'name' | 'kind' | 'mob'>[],
   rules: readonly MobRule[],
   stance: MobStance
 ): string | null {
   if (rules.length === 0) return null;
   const anyone = (LEAVING_STANCES as readonly MobStance[]).includes(stance);
   const found = occupants.find(
-    (who) => (anyone || who.kind === 'mob') && mobRuleFor(rules, who.name)?.treat === stance
+    (who) => (anyone || who.kind === 'mob') && mobRuleFor(rules, who)?.treat === stance
   );
   return found?.name ?? null;
 }

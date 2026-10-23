@@ -15,7 +15,7 @@ import {
   type ReachWeapon,
   type WeaponReach
 } from '../../shared/reach';
-import { mobKey } from '../../shared/world';
+import { mobListed } from '../../shared/mobRules';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import type { GearReads } from './gearReads';
@@ -31,8 +31,7 @@ export function handReach(
   gear: () => Pick<GearReads, 'attacks' | 'wearing'>
 ): (state: CharacterState, target: string, handRefused: boolean) => WeaponReach {
   return (state, target, handRefused) => {
-    const key = mobKey(target);
-    const mob = state.room.occupants.find((who) => who.kind === 'mob' && mobKey(who.name) === key);
+    const mob = mobListed(state.room.occupants, target);
     const items = state.inventory.items;
     if (mob?.mob === undefined || state.inventory.listedAt === null) return REACH_UNKNOWN;
     const hand = heldWeapon(items);

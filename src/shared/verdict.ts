@@ -37,8 +37,10 @@ import {
   DEFAULT_MOB_PRIORITY,
   isBanded,
   MOB_PRIORITIES,
+  mobRuleFor,
   type MobPriorityBand,
   type MobRule,
+  type RowNamed,
   type RowPeace
 } from './mobRules';
 import { mobKey, type WorldSpell } from './world';
@@ -632,24 +634,18 @@ export function rankByVerdict(verdicts: ReadonlyArray<Verdict>): number[] {
  * the realm's arithmetic on the strength of a monster nobody is fighting.
  */
 export function rankByPriority(
-  names: readonly string[],
+  names: readonly RowNamed[],
   rows: readonly MobRule[]
 ): number[] | null {
   if (rows.length === 0) return null;
-  /*
-   * Both sides through `mobKey`. The normalizer keys a row on the way in, but
-   * a row still being typed on the settings screen has not been through it —
-   * and a list that quietly did nothing until the file was reloaded would be
-   * the control lying about itself while somebody watched it.
-   */
-  const bands = new Map<string, MobPriorityBand>();
-  for (const row of rows) {
-    if (isBanded(row)) bands.set(mobKey(row.mob), row.treat);
-  }
+  // `mobRuleFor` keys both sides, so a row still being typed on the settings
+  // screen ranks before the normalizer has seen it.
   const middle = MOB_PRIORITIES.indexOf(DEFAULT_MOB_PRIORITY);
   let listed = false;
   const scored = names.map((name, index) => {
-    const band = bands.get(mobKey(name));
+    const row = mobRuleFor(rows, name);
+    const band: MobPriorityBand | undefined =
+      row !== undefined && isBanded(row) ? row.treat : undefined;
     if (band !== undefined) listed = true;
     return { index, rank: band === undefined ? middle : MOB_PRIORITIES.indexOf(band) };
   });

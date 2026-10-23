@@ -104,6 +104,7 @@ import {
   hitsBack,
   isBanded,
   leavesAlone,
+  mobListed,
   mobRuleFor,
   LEAVING_STANCES,
   occupantAttacksOnSight,
@@ -112,7 +113,8 @@ import {
   stanceHere,
   stopsToKill,
   type LeavingStance,
-  type MobStance
+  type MobStance,
+  type RowNamed
 } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
 import { sameItem } from '../../shared/items';
@@ -632,11 +634,8 @@ export class AutoCombat implements SessionModule {
     const seen = key === undefined ? undefined : state.party.engaged[key];
     if (!seen || Date.now() - seen.at > tuning().combat.assistFreshMs) return null;
     if (seen.kind === 'room') return { kind: 'room', leader };
-    const wanted = mobKey(seen.target);
-    const there = state.room.occupants.find(
-      (who) => who.kind === 'mob' && mobKey(who.name) === wanted
-    );
-    if (!there || this.leftAlone(wanted) || this.isPlayer(state, there.name)) return null;
+    const there = mobListed(state.room.occupants, seen.target);
+    if (!there || this.leftAlone(there) || this.isPlayer(state, there.name)) return null;
     return { kind: 'mob', name: there.name, leader };
   }
 
@@ -677,11 +676,8 @@ export class AutoCombat implements SessionModule {
     let best: { name: string; member: string; at: number } | null = null;
     for (const [member, seen] of Object.entries(state.party.threatened)) {
       if (Date.now() - seen.at > tuning().combat.assistFreshMs) continue;
-      const wanted = mobKey(seen.target);
-      const there = state.room.occupants.find(
-        (who) => who.kind === 'mob' && mobKey(who.name) === wanted
-      );
-      if (!there || this.leftAlone(wanted) || this.isPlayer(state, there.name)) {
+      const there = mobListed(state.room.occupants, seen.target);
+      if (!there || this.leftAlone(there) || this.isPlayer(state, there.name)) {
         continue;
       }
       if (best === null || seen.at > best.at) best = { name: there.name, member, at: seen.at };
@@ -902,7 +898,7 @@ export class AutoCombat implements SessionModule {
    */
   private claimOn(state: CharacterState, name: string): { by: string } | null {
     if (!this.config.politeAttacks) return null;
-    if (stopsToKill(this.config.mobRules, name)) return null;
+    if (stopsToKill(this.config.mobRules, this.named(state, name))) return null;
     const claim = state.combat.claimed[mobKey(name)];
     if (claim === undefined || Date.now() - claim.at > tuning().combat.assistFreshMs) return null;
     return claim;
@@ -923,7 +919,7 @@ export class AutoCombat implements SessionModule {
     );
     if (
       held === undefined ||
-      !hitsBack(mobRuleFor(this.config.mobRules, held.name)) ||
+      !hitsBack(mobRuleFor(this.config.mobRules, held)) ||
       this.isPlayer(state, held.name)
     ) {
       return null;
@@ -1265,14 +1261,14 @@ export class AutoCombat implements SessionModule {
       ...this.broken.owedIn(state)
     ]
       .filter(
-        (name) => !this.isPlayer(state, name) && hitsBack(mobRuleFor(this.config.mobRules, name))
+        (name) =>
+          !this.isPlayer(state, name) &&
+          hitsBack(mobRuleFor(this.config.mobRules, this.named(state, name)))
       )
-      .map((name) => ({
-        name,
-        mob: state.room.occupants.find(
-          (who) => who.kind === 'mob' && mobKey(who.name) === mobKey(name)
-        )?.mob
-      }));
+      .map((name) => {
+        const there = this.named(state, name);
+        return { name, mob: typeof there === 'string' ? undefined : there.mob };
+      });
     /*
      * A blow at a protected attacker lands on its guard, whether that guard
      * has swung yet or not (`choose`). A certain guard standing here is hit
@@ -1308,14 +1304,14 @@ export class AutoCombat implements SessionModule {
       (who) =>
         this.config.engage !== 'none' &&
         !beside &&
-        !this.leftAlone(who.name) &&
+        !this.leftAlone(who) &&
         !this.isPlayer(state, who.name) &&
         !who.uncertain &&
         who.costly === 'never' &&
         attacksFirst(who, me, this.config.mobRules) === true &&
         avoidedFor(who, this.config.mobRules) === null &&
         this.claimOn(state, who.name) === null &&
-        !standing.some((guard) => this.leftAlone(guard.name) && protects(guard, who) !== false) &&
+        !standing.some((guard) => this.leftAlone(guard) && protects(guard, who) !== false) &&
         !(worth > 0 && who.mob?.experience !== undefined && who.mob.experience > worth) &&
         !(cap > 0 && who.mob?.hp !== undefined && who.mob.hp > cap)
     );
@@ -1327,11 +1323,11 @@ export class AutoCombat implements SessionModule {
       [
         ...swinging.filter(
           (hit) =>
-            !standing.some((guard) => this.leftAlone(guard.name) && protects(guard, hit) !== false)
+            !standing.some((guard) => this.leftAlone(guard) && protects(guard, hit) !== false)
         ),
         ...joining,
         ...standing
-          .filter((who) => !this.leftAlone(who.name) && who.costly === 'never')
+          .filter((who) => !this.leftAlone(who) && who.costly === 'never')
           .filter((who) => !certain.includes(who))
       ],
       (who) => swinging.includes(who) || joining.includes(who),
@@ -1467,12 +1463,12 @@ export class AutoCombat implements SessionModule {
    * way. Names the band, which is the thing the player wrote down and the only
    * fact that chose this monster.
    */
-  private whyRanked(target: string, count: number, others: readonly string[]): string {
+  private whyRanked(target: RoomOccupant, count: number, others: readonly RoomOccupant[]): string {
     const band = mobRuleFor(this.config.mobRules, target)?.treat;
     if (band !== undefined) {
       return count <= 1
-        ? t('automation.combat.whyRankedAlone', { target, band })
-        : t('automation.combat.whyRanked', { target, band, count });
+        ? t('automation.combat.whyRankedAlone', { target: target.name, band })
+        : t('automation.combat.whyRanked', { target: target.name, band, count });
     }
     /*
      * The winner is a monster no row names, which is the ordinary case: the
@@ -1482,13 +1478,13 @@ export class AutoCombat implements SessionModule {
      * route -- so the sentence names the listed monster that was pushed past
      * instead, which is the fact that actually decided.
      */
-    const demoted = others.find((name) => mobRuleFor(this.config.mobRules, name) !== undefined);
+    const demoted = others.find((who) => mobRuleFor(this.config.mobRules, who) !== undefined);
     if (demoted === undefined) return t('automation.combat.whyInRoom');
     const its = mobRuleFor(this.config.mobRules, demoted);
     return t('automation.combat.whyRankedOver', {
-      target,
+      target: target.name,
       count,
-      other: demoted,
+      other: demoted.name,
       band: its?.treat ?? DEFAULT_MOB_PRIORITY
     });
   }
@@ -1740,7 +1736,11 @@ export class AutoCombat implements SessionModule {
      * (MegaMUD's *Stop to kill if able*); `choose` offers no other.
      */
     const few = this.tooFew(state);
-    if (few !== null && !(target !== null && stopsToKill(this.config.mobRules, target))) return few;
+    if (
+      few !== null &&
+      !(target !== null && stopsToKill(this.config.mobRules, this.named(state, target)))
+    )
+      return few;
     return null;
   }
 
@@ -1813,7 +1813,7 @@ export class AutoCombat implements SessionModule {
     const listed = new Set<RoomOccupant>();
 
     for (const who of mobs) {
-      const row = mobRuleFor(this.config.mobRules, who.name);
+      const row = mobRuleFor(this.config.mobRules, who);
       if (row !== undefined && !isBanded(row)) {
         decline(who, stanceRefusal(row.treat, who.name));
         continue;
@@ -1931,7 +1931,7 @@ export class AutoCombat implements SessionModule {
        * on the passive monsters a Paramud priority names. A possible alignment
        * cost is not the monster's temper, so it still goes to the coin toss below.
        */
-      const own = ownRow(this.config.mobRules, who.name);
+      const own = ownRow(this.config.mobRules, who);
       const mayCost = who.costly === 'sometimes' && this.config.engage === 'hostile';
       if (own !== undefined && isBanded(own) && this.config.engage !== 'none' && !mayCost) {
         if (this.config.engage !== 'all' && occupantAttacksOnSight(who, me) !== true) {
@@ -2028,10 +2028,7 @@ export class AutoCombat implements SessionModule {
      * all on this path, and the trace says the band rather than a menace
      * figure that did not make the decision.
      */
-    const ranked = rankByPriority(
-      candidates.map((who) => who.name),
-      this.config.mobRules
-    );
+    const ranked = rankByPriority(candidates, this.config.mobRules);
     /*
      * The realm's guards outrank either order: the server hands the blow to
      * the guard whichever is named, so what it protects waits for it.
@@ -2056,9 +2053,9 @@ export class AutoCombat implements SessionModule {
     const why =
       ranked !== null
         ? this.whyRanked(
-            pick.name,
+            pick,
             candidates.length,
-            candidates.filter((_, at) => at !== index).map((who) => who.name)
+            candidates.filter((_, at) => at !== index)
           )
         : this.explain(pick.name, kept[index] ?? null, candidates.length, false);
     return {
@@ -2408,7 +2405,7 @@ export class AutoCombat implements SessionModule {
     if (opener.length === 0) return { held: 'other' };
     if (this.isRefused(opener)) return { held: 'other' };
     if (answersTo('backstab', opener)) {
-      const row = mobRuleFor(this.config.mobRules, target);
+      const row = mobRuleFor(this.config.mobRules, this.named(state, target));
       if (row !== undefined && isBanded(row) && row.noBackstab === true) return { held: 'row' };
       /*
        * **A class that cannot hide will never land one** (todo 28,
@@ -2821,8 +2818,13 @@ export class AutoCombat implements SessionModule {
    * the normalizer yet and the list must mean the same thing while it is being
    * written as after it is saved.
    */
-  private leftAlone(name: string): boolean {
-    return leavesAlone(mobRuleFor(this.config.mobRules, name));
+  private leftAlone(who: RowNamed): boolean {
+    return leavesAlone(mobRuleFor(this.config.mobRules, who));
+  }
+
+  /** The monster listed here under a name, which carries the realm's row name, else the bare name. */
+  private named(state: CharacterState | null, name: string): RowNamed {
+    return (state === null ? undefined : mobListed(state.room.occupants, name)) ?? name;
   }
 
   /**

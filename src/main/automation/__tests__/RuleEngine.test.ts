@@ -157,7 +157,7 @@ describe('reading state', () => {
   it('leaves out a guardian whose item the pack holds', () => {
     const guardian: RoomOccupant = {
       ...mob('onyx guardian', 'hostile'),
-      mob: { abilities: [[185, 1042]] } as MobEntity
+      mob: { name: 'onyx guardian', abilities: [[185, 1042]] } as MobEntity
     };
     const room = { ...EMPTY_CHARACTER.room, occupants: [guardian] };
     const packed = (rows: number[], listedAt: number | null): CharacterState => ({
