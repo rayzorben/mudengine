@@ -142,4 +142,23 @@ describe('asking stat all', () => {
     expect(offered).toEqual([]);
     expect(notices).toHaveLength(1);
   });
+
+  /* Issue #5: `[MAJORMUD]:` is the stock module's menu, and stock has no `stat all`. */
+  it('never asks on a realm whose menu said [MAJORMUD], and says so once', () => {
+    const stock: CharacterState = { ...READ, realm: 'majormud' };
+    ask.onCharacter(stock);
+    settle();
+    ask.onCharacter(stock);
+    ask.onCharacter({ ...stock, progress: { ...stock.progress, level: 13 } });
+    settle();
+    ask.onCharacter({ ...stock, progress: { ...stock.progress, level: 13 } });
+    expect(offered).toEqual([]);
+    expect(notices).toHaveLength(1);
+    // Positive control: the same character on a Paradigm menu is asked about.
+    const paradigm: CharacterState = { ...READ, realm: 'paradigm' };
+    ask.onCharacter(paradigm);
+    settle();
+    ask.onCharacter(paradigm);
+    expect(offered.map((intent) => intent.command)).toEqual([STAT_ALL]);
+  });
 });
