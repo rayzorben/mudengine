@@ -7624,6 +7624,7 @@ automation:
       is on the Global settings page, under Realm.
     statAllGaveUp: The game answered {command} {count} times with no figures; not asking again until
       you reconnect.
+    statAllStock: Not asking {command}; stock MajorMUD has no stat all.
     spellbookCorrected: Asked for the wrong spellbook; the game says to list {book}, so asking for
       that instead.
   walk:

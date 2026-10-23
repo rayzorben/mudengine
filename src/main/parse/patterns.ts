@@ -925,10 +925,28 @@ export const RULES: Rule[] = [
   },
   {
     /*
+     * The same confirmation with the spell's own flavour after the target,
+     * which stock MajorMUD prints for many buffs: `You cast magic armour on
+     * yourself. A glimmering shield surrounds you!` (captures/056), and `at`
+     * for some: `You cast resist cold at Techno, surrounding him with a pale
+     * blue glow.` is Techno's own cast (captures/004:193, sheet at :208).
+     * Unread, the buff never reached the list and `Blessings` recast it on
+     * its retry floor (issue #4). An amount after the comma is the frame
+     * above, so it is kept out of this one.
+     */
+    type: 'spell-cast',
+    pattern:
+      /^(?<caster>You) cast (?<spell>[\w' -]+?) (?:on|at) (?<target>yourself|[A-Z][\w'-]*)(?:, |\. )(?!(?:for|healing|regenerating) \d).+[.!]$/
+  },
+  {
+    /*
      * The self-cast confirmation that has no `on <target>` frame at all:
      * `You cast protection from evil, and Festus is surrounded in a white
      * glow!` (live, 22 times), `You cast ethereal shield, and a shimmering
-     * field forms about you.` (corpus). The spell is bounded by `, and`; the
+     * field forms about you.` (corpus), and stock MajorMUD's clauses with no
+     * `and`: `You cast mageshield, surrounding yourself in a shimmering
+     * field!` (captures/188), `You cast camouflage, blending into your
+     * surroundings!` (captures/076). The spell is bounded by the comma; the
      * flavour after it is per-spell realm message data and is not read. No
      * target group — the cast landed on the caster, which is what a targetless
      * confirmation means — so `CharacterTracker` treats an absent target from
@@ -937,7 +955,7 @@ export const RULES: Rule[] = [
      * `You cast X, and it explodes!` off the buff list.
      */
     type: 'spell-cast',
-    pattern: /^(?<caster>You) cast (?<spell>[\w' -]+?), and .+[.!]$/
+    pattern: /^(?<caster>You) cast (?<spell>[\w' -]+?), (?!(?:for|healing|regenerating) \d).+[.!]$/
   },
   /*
    * A kai power's confirmation does not say `cast` at all. `You invoke the
