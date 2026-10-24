@@ -23,7 +23,13 @@
  * is realm data, and captures/024's realm renames the runic coin outright. A
  * denomination this table does not name yields null — unknown, never zero.
  */
-import { coinNamed, DENOMINATIONS, type Coins, type Denomination } from './character';
+import {
+  coinNamed,
+  DENOMINATIONS,
+  type CharacterState,
+  type Coins,
+  type Denomination
+} from './character';
 import type { CurrencyEntity } from './entities';
 import { escapeRegExp } from './regex';
 
@@ -337,4 +343,14 @@ export function coveredBy(
 /** Every bank on record, in copper. */
 export function bankedCopper(banks: ReadonlyArray<{ copper: number }>): number {
   return banks.reduce((sum, bank) => sum + bank.copper, 0);
+}
+
+/**
+ * Copper carried and banked, what a fare is weighed against (todo
+ * 20261024-0804-01): a ship's passage of 2 runic at a 10% share wants 20
+ * runic between purse and banks. Null while the purse is unread.
+ */
+export function wealthOf(state: Pick<CharacterState, 'inventory' | 'banks'>): number | null {
+  const purse = state.inventory.wealth;
+  return purse === null ? null : purse + bankedCopper(state.banks);
 }

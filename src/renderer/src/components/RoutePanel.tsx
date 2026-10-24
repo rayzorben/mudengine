@@ -4,6 +4,7 @@ import MapView from './MapView';
 import ClearField from './ClearField';
 import Icon from './Icon';
 import PlanFights from './PlanFights';
+import FareAsk from './FareAsk';
 import { commandsOf, keptOutRooms, runsOf, stepDanger, stepSignature } from '../lib/route';
 import { percent } from '../lib/outlook';
 import { useHotkeys } from '../hooks/useHotkeys';
@@ -19,6 +20,9 @@ import { CLIENT_KEYS } from '@shared/keys';
 import {
   asRoomReference,
   chosenWay,
+  farePaid,
+  fareOverShare,
+  fareShortOfPurse,
   crossedWords,
   describeBlock,
   DIRECTION_NAME,
@@ -416,6 +420,8 @@ export default function RoutePanel({
    * and a default would be the client making it. Dropped with the plan.
    */
   const [crossing, setCrossing] = useState<'through' | 'round' | null>(null);
+  /** Whether the reader said to pay a way's fares over their share (`Route.fare`). */
+  const [paying, setPaying] = useState(false);
   /**
    * Whether to go and get what the way needs before walking it (todo 07).
    *
@@ -609,6 +615,7 @@ export default function RoutePanel({
     setPicked(null);
     setChosen('plan');
     setCrossing(null);
+    setPaying(false);
     setOffering(false);
     setUnfolded(new Set());
     setCollectFirst(false);
@@ -699,6 +706,10 @@ export default function RoutePanel({
         setRefused(t('cards.route.keptOut.chooseFirst'));
         return;
       }
+      if (route?.fare !== undefined && fareOverShare(route.fare) && !paying) {
+        setRefused(t('cards.route.fare.payFirst'));
+        return;
+      }
       /*
        * *Collect it first* is a different press: main goes and gets every
        * item the way asks for, one after another, and walks it once the pack
@@ -748,7 +759,9 @@ export default function RoutePanel({
        */
       // And the kept-out choice taken off: it has been made, and main walks
       // no route still carrying one (todo 806).
-      const walked: Route = chosenWay(trimmed ?? plan);
+      // And the fare's answer with it: main walks no way over the share unanswered.
+      const way = chosenWay(trimmed ?? plan);
+      const walked: Route = paying ? farePaid(way) : way;
       /*
        * The errand answers in the older shape: it walks to a shop and plans the
        * way on from there itself, so a plan handed to it cannot be stale and
@@ -782,7 +795,18 @@ export default function RoutePanel({
         })
         .catch((error) => setRefused(errorMessage(error)));
     },
-    [collectFirst, crossing, forLoop, stopping, onCollectThenWalk, onWalk, onClose, route, shown]
+    [
+      collectFirst,
+      crossing,
+      paying,
+      forLoop,
+      stopping,
+      onCollectThenWalk,
+      onWalk,
+      onClose,
+      route,
+      shown
+    ]
   );
 
   /**
@@ -818,7 +842,10 @@ export default function RoutePanel({
   );
 
   /** Whether a kept-out choice is still waiting on the reader. See `crossing`. */
-  const choosing = route?.keptOut !== undefined && crossing === null;
+  const fare = route?.fare;
+  const choosing =
+    (route?.keptOut !== undefined && crossing === null) ||
+    (fare !== undefined && ((fareOverShare(fare) && !paying) || fareShortOfPurse(fare)));
   /** True when there is a plan on screen that could actually be walked. */
   const walkable = shown !== null && !shown.blocked && shown.steps.length > 0 && !choosing;
 
@@ -1118,6 +1145,9 @@ export default function RoutePanel({
                   is expected to cost, and nothing walks until one is picked.
                   A choice the client would otherwise make for them. */}
                   <PlanFights fights={route.fights} />
+                  {route.fare !== undefined && (
+                    <FareAsk fare={route.fare} onPay={() => setPaying(true)} paying={paying} />
+                  )}
                   {route.keptOut !== undefined &&
                     (() => {
                       const { words, round } = route.keptOut;

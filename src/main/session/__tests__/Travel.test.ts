@@ -90,7 +90,9 @@ function travel(
       shun: vi.fn(),
       boughtTo: vi.fn(() => null),
       priceAt: vi.fn(() => null),
-      legsThrough: vi.fn(() => null)
+      legsThrough: vi.fn(() => null),
+      // A way that charges nothing, or within the share (`Errands.fareOf`).
+      fareOf: vi.fn(() => null)
     },
     roomHazards: { stoppersAlong: vi.fn(() => []), counterFor: vi.fn(() => null) },
     queue: {

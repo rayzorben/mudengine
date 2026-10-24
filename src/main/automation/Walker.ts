@@ -84,6 +84,7 @@ import { PartyHands } from './walk/PartyHands';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { RoomCommands, scriptGated } from './walk/RoomCommands';
+import type { ChanceWaysWalk } from './walk/ChanceWays';
 import type { StepTimes } from './walk/StepTimes';
 import type { ArrivalClock } from './walk/ArrivalClock';
 import { OffRounds } from './walk/OffRounds';
@@ -292,7 +293,9 @@ export class Walker implements SessionModule {
       this.hands
     );
     const onward = (state: CharacterState, here: RoomId): void => this.onward(state, here);
-    this.roomCommands = new RoomCommands(events, { ...inFlight, onward }, this.clock);
+    const chanceTries: ChanceWaysWalk['chanceTries'] = () => this.config.movement.chanceTries;
+    const commands = { ...inFlight, onward, chanceTries };
+    this.roomCommands = new RoomCommands(queue, events, commands, this.clock);
   }
 
   configure(config: AutomationConfig): void {
@@ -770,9 +773,8 @@ export class Walker implements SessionModule {
     this.clock.clear();
     this.route = null;
     this.index = 0;
-    // And the journey's own counter with it: `walked` survives a redrawn plan
-    // by design, so a reconnect that did not clear it published a finished
-    // journey — `done: 20, total: 20` — for a walker walking nothing.
+    // And the journey's own counter: `walked` survives a redrawn plan, so a reconnect
+    // that kept it published `done: 20, total: 20` for a walker walking nothing.
     this.walked = 0;
     this.status = 'idle';
     this.reason = null;
@@ -1118,7 +1120,7 @@ export class Walker implements SessionModule {
      */
     if ((step.scatter !== undefined || scriptGated(step)) && here !== step.to) {
       this.stepAnswered();
-      this.scattered(state, step, here);
+      if (!this.roomCommands.waitsOut(step, here)) this.scattered(state, step, here);
       return;
     }
 
@@ -1476,9 +1478,8 @@ export class Walker implements SessionModule {
       this.arrive(state, destination.name);
       return;
     }
-    // Through `carryOn`: the two gates that outrank a step — the rest below
-    // `restBelow`, and the monster standing in the room it left the character
-    // in — get their say before the next command.
+    // Through `carryOn`: the rest below `restBelow` and a monster standing in
+    // the room it left the character in get their say before the next command.
     this.redraw(replanned, state);
   }
 
@@ -1627,8 +1628,7 @@ export class Walker implements SessionModule {
       return;
     }
 
-    // Only when it has not already gone out from inside `enqueue`: the send
-    // is synchronous whenever the queue is idle, which is most of the time.
+    // Only when it has not gone out inside `enqueue`: an idle queue sends at once.
     if (!this.stepSent) this.waitForSend(command);
     this.publish();
   }

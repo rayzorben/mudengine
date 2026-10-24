@@ -69,9 +69,22 @@ export function* offPlaneWays(graph: LeapGraph, room: WorldRoom): Generator<OffP
 
 /**
  * The ways off the plane the game view's layout follows (`realmLayout`): up and
- * down change the floor, a teleport sets its landing beside the room.
+ * down change the floor, a teleport sets its landing beside the room. A
+ * chance landing, a draw, a ship's passage and a monster's ask are left out
+ * of the layout (format 73).
  */
 export function* leapSteps(graph: LeapGraph, room: WorldRoom): Generator<OffPlaneWay> {
-  for (const way of offPlaneWays(graph, room))
-    if (way.kind === 'teleport' || way.exit.requirement?.spellEffect !== 'scatters') yield way;
+  for (const way of offPlaneWays(graph, room)) {
+    const requirement = way.exit.requirement;
+    if (way.kind !== 'teleport') {
+      if (requirement?.spellEffect !== 'scatters') yield way;
+    } else if (
+      requirement?.spellEffect !== 'scatters' &&
+      requirement?.tries === undefined &&
+      requirement?.waits === undefined &&
+      requirement?.asks === undefined
+    ) {
+      yield way;
+    }
+  }
 }

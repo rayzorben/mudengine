@@ -33,6 +33,7 @@ import {
   type CharacterState
 } from '../../shared/character';
 import type { WalkKind } from '../../shared/walk';
+import type { WayLeftOut } from '../automation/walk/ports';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
@@ -60,7 +61,10 @@ import { landed, stillFled, type FledRoom } from '../../shared/walk';
 import {
   asDirection,
   crossedWords,
+  coinWords,
   DIRECTION_NAME,
+  fareOverShare,
+  fareShortOfPurse,
   itemDemanded,
   newDemands,
   OPPOSITE,
@@ -155,7 +159,7 @@ export interface TravelParts {
     CharacterTracker,
     'current' | 'pendingMoves' | 'trail' | 'wayBackFrom' | 'retraced'
   >;
-  readonly world: Pick<WorldGraph, 'byId'> | undefined;
+  readonly world: Pick<WorldGraph, 'byId' | 'item'> | undefined;
   readonly errands: Pick<
     Errands,
     | 'planFromHere'
@@ -169,6 +173,7 @@ export interface TravelParts {
     | 'boughtTo'
     | 'priceAt'
     | 'legsThrough'
+    | 'fareOf'
   >;
   /** A room's spell against the character: what a way wants carried, and where it is sold. */
   readonly roomHazards: Pick<RoomHazards, 'stoppersAlong' | 'counterFor'>;
@@ -686,13 +691,32 @@ export class Travel implements SessionModule {
    * the character: lent the choice to cross only for a walk the player asked
    * for, and never for a lap's leg, which plans by distance.
    */
-  replan(to: RoomId, kind: WalkKind): Route | string {
+  replan(to: RoomId, kind: WalkKind, without?: WayLeftOut): Route | string {
     return this.errands.planFromHere(
       to,
       {},
       kind,
-      this.walkAsked && kind !== 'lap' ? this.allowingFor(to) : []
+      this.walkAsked && kind !== 'lap' ? this.allowingFor(to) : [],
+      without
     );
+  }
+
+  /**
+   * What a way's try took (the shovel broke), fetched again and the journey
+   * to `to` walked after (`WalkerEvents.fetchAgain`), as the route panel's
+   * collect-then-walk does. Never for a lap or an errand's walk, which plans
+   * its own items: whether the fetch started.
+   */
+  fetchAgain(items: readonly number[], to: RoomId, kind: WalkKind): boolean {
+    if (kind !== 'walk') return false;
+    const route = this.errands.planFromHere(to, {}, kind);
+    if (typeof route === 'string') return false;
+    const wanted = items.flatMap((id) => {
+      const name = this.world?.item(id)?.name;
+      return name === undefined ? [] : [{ id, name }];
+    });
+    if (wanted.length !== items.length) return false;
+    return this.collectThenWalk(wanted, route.blocked ? (route.unlocks ?? route) : route) === null;
   }
 
   /**
@@ -2004,6 +2028,32 @@ export class Travel implements SessionModule {
   }
 
   /**
+   * Why a way whose fares are over the share cannot be walked yet, or null
+   * (todo 20261024-0804-01): the panel asks first, and a walk the player
+   * pressed there carries the answer (`Route.fare.accepted`) for at least
+   * what the way charges now. Go to and `@goto` say what it costs and where
+   * to answer.
+   */
+  private fareUnpaid(route: Route): string | null {
+    const fare = this.errands.fareOf(route);
+    const over = fare !== null && fareOverShare(fare);
+    const accepted = route.fare?.accepted === true && route.fare.copper >= (fare?.copper ?? 0);
+    if (fare !== null && over && !accepted) {
+      const words = { fare: coinWords(fare.copper), share: fare.share };
+      return fare.wealth === null
+        ? t('session.walk.fareUnread', words)
+        : t('session.walk.fareOverShare', { ...words, wealth: coinWords(fare.wealth) });
+    }
+    // The server takes a fare from the purse (`TextBlockPart.cs` `price`), so banked money is drawn first.
+    if (fare === null || !fareShortOfPurse(fare) || fare.purse === null) return null;
+    return t('session.walk.fareDrawFirst', {
+      fare: coinWords(fare.copper),
+      purse: coinWords(fare.purse),
+      short: coinWords(fare.copper - fare.purse)
+    });
+  }
+
+  /**
    * Why a way through what the player keeps out of cannot be walked yet, or
    * null (todo 806). The panel drops `keptOut` once the player picks between
    * the way through and the way round, so a route still carrying it is one
@@ -2247,6 +2297,11 @@ export class Travel implements SessionModule {
    * when the errand lets go (`walkOnAfterErrand`).
    */
   walkRoute(route: Route, run = false): string | null {
+    const fare = this.fareUnpaid(route);
+    if (fare !== null) {
+      this.session.notice(fare, 'walk-fare');
+      return fare;
+    }
     // The counters, if this way turns on one nobody has read yet.
     this.errands.askCountersFor(route);
     /*

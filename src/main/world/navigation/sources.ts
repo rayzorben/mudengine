@@ -7,6 +7,7 @@
  */
 import {
   asRoomReference,
+  commandMoves,
   roomId,
   type ItemHandover,
   type RoomId,
@@ -163,7 +164,7 @@ export class ItemSources {
       const room = roomId(known.map, known.room);
       for (const command of known.commands ?? []) {
         const say = command.say[0];
-        if (say === undefined || command.gates !== undefined || command.to) continue;
+        if (say === undefined || command.gates !== undefined || commandMoves(command)) continue;
         for (const id of command.summons ?? []) {
           const held = index.get(id);
           if (held === undefined) index.set(id, [{ room, say }]);

@@ -28,7 +28,7 @@
  * ask*: it was searching 55,806 rooms for something that had to be next door.
  */
 import type { Direction, RoomId, WorldRoom } from '../../shared/world';
-import { roomId } from '../../shared/world';
+import { commandRooms, roomId } from '../../shared/world';
 import type { WorldGraph } from './WorldGraph';
 
 /** The three lookups resolution makes: a name, an address, a placed room. */
@@ -335,7 +335,7 @@ function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[
   consider(origin);
   for (const exit of origin.exits) consider(graph.get(exit.map, exit.room));
   for (const command of origin.commands ?? []) {
-    if (command.to !== undefined) consider(graph.byId(command.to));
+    for (const landing of commandRooms(command)) consider(graph.byId(landing));
   }
   return found;
 }

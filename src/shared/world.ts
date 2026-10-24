@@ -517,6 +517,20 @@ export interface Requirement {
    * and the router cannot disagree about it.
    */
   usableBy?: ItemUseGate;
+  /**
+   * A room command's chance landing (format 73, `RoomCommand.landings`): the
+   * tries it is expected to take, one over the share of tries that land here
+   * (or in the draw this room is one of). `dig grave` is about fourteen.
+   */
+  tries?: number;
+  /** A ship's passage's wait before it lands (`CommandWait`). */
+  waits?: CommandWait;
+  /** What a try that moves nobody can take, and on what share of tries: the shovel, 2%. */
+  breaks?: readonly CommandBreak[];
+  /** Items passing it takes for good: the sceptre at the nexus. */
+  takes?: readonly number[];
+  /** The monster row asked, where a monster's answer is the way (`RoomCommand.asks`). */
+  asks?: number;
 }
 
 /**
@@ -2478,6 +2492,79 @@ export interface RoomCommand {
    * lever can be found. See `RemoteLever.item`.
    */
   opens?: { room: RoomId; direction: string; item?: number };
+  /**
+   * Where it may put you when no one room takes every try (format 73): a roll
+   * table's lines, a spell that draws its room, a ship's passage that lands once its
+   * spells run out. `to` is the room every try lands in; this is the rest.
+   * `dig grave` is 7% to Musty Grottos, and `secure passage to terra fuego`
+   * lands on the beach after the Swiftwind's three spells.
+   */
+  landings?: CommandLanding[];
+  /**
+   * A spell's own roll of rooms it may put you in (`jump west` off the bridge
+   * into one of five Silver River rooms): planned to, never through, as a
+   * scatter exit is.
+   */
+  draws?: CommandDraw[];
+  /** Items the run takes on its way to a landing: the sceptre at the nexus. */
+  takes?: number[];
+  /** An item a try that moves nobody can take, and the share of tries it does: the shovel, 2%. */
+  breaks?: CommandBreak[];
+  /** The monster row it asks, for a way a monster's `ask` table opens (`askWays.ts`). */
+  asks?: number;
+}
+
+/** One room a command's run may land in, and the share of tries that land there. */
+export interface CommandLanding {
+  to: RoomId;
+  /** Above 0 and at most 1. */
+  chance: number;
+  /** Where the room is one of a spell's draw, the share of tries that land in the draw at all. */
+  draw?: number;
+  /** What the roll's own line wants beyond the command's gates: the dig's `minlevel 10`. */
+  gates?: Gate[];
+  /** A ship's passage: where it is waited out, and for how long. */
+  waits?: CommandWait;
+}
+
+/** The rooms a ship's passage is waited out in, and the ticks of its spells before it lands. */
+export interface CommandWait {
+  in: readonly RoomId[];
+  ticks: number;
+}
+
+/** A draw a command's run makes, the share of tries that reach it, and its roll line's gates. */
+export interface CommandDraw {
+  landing: Landing;
+  chance: number;
+  gates?: Gate[];
+}
+
+export interface CommandBreak {
+  item: number;
+  chance: number;
+}
+
+/** Every room a command can put the character in: its landing, its chance landings and draws, and where a ship's passage waits. */
+export function commandRooms(command: Pick<RoomCommand, 'to' | 'landings' | 'draws'>): RoomId[] {
+  const rooms = new Set<RoomId>();
+  if (command.to !== undefined) rooms.add(command.to);
+  for (const landing of command.landings ?? []) {
+    rooms.add(landing.to);
+    for (const id of landing.waits?.in ?? []) rooms.add(id);
+  }
+  for (const draw of command.draws ?? [])
+    for (const id of landingRooms(draw.landing)) rooms.add(id);
+  return [...rooms];
+}
+
+/** Whether a command can move whoever says it. */
+export function commandMoves(command: Pick<RoomCommand, 'to' | 'landings' | 'draws'>): boolean {
+  return (
+    command.to !== undefined ||
+    (command.landings?.length ?? 0) > 0 ||
+    (command.draws?.length ?? 0) > 0
+  );
 }
 
 /** Whether a script line moves whoever runs it; `'unread'` where its chain cannot be followed. */
@@ -2513,9 +2600,100 @@ export function asRoomCommand(value: unknown): RoomCommand | null {
   if (typeof value !== 'object' || value === null) return null;
   const command = value as RoomCommand;
   if (!Array.isArray(command.say) || command.say.length === 0) return null;
-  if (command.gates === undefined) return command;
-  const gates = asGates(command.gates);
-  return gates === null ? null : { ...command, gates };
+  const gates = command.gates === undefined ? undefined : asGates(command.gates);
+  if (gates === null) return null;
+  const landings =
+    command.landings === undefined ? undefined : asList(command.landings, asCommandLanding);
+  if (landings === null) return null;
+  const breaks = command.breaks === undefined ? undefined : asList(command.breaks, asCommandBreak);
+  if (breaks === null) return null;
+  const draws = command.draws === undefined ? undefined : asList(command.draws, asCommandDraw);
+  if (draws === null) return null;
+  return {
+    ...command,
+    ...(gates === undefined ? {} : { gates }),
+    ...(landings === undefined ? {} : { landings }),
+    ...(draws === undefined ? {} : { draws }),
+    ...(breaks === undefined ? {} : { breaks })
+  };
+}
+
+function asList<T>(value: unknown, each: (entry: unknown) => T | null): T[] | null {
+  if (!Array.isArray(value)) return null;
+  const read = value.map(each);
+  return read.every((entry): entry is T => entry !== null) ? read : null;
+}
+
+const isRoomId = (value: unknown): value is RoomId =>
+  typeof value === 'string' && asRoomReference(value) !== null;
+
+const isShare = (value: unknown): value is number =>
+  typeof value === 'number' && value > 0 && value <= 1;
+
+function asCommandLanding(value: unknown): CommandLanding | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const { to, chance, draw } = record;
+  if (!isRoomId(to) || !isShare(chance) || (draw !== undefined && !isShare(draw))) return null;
+  const gates = record['gates'] === undefined ? undefined : asGates(record['gates']);
+  if (gates === null) return null;
+  const waits = record['waits'] === undefined ? undefined : asCommandWait(record['waits']);
+  if (waits === null) return null;
+  return {
+    to,
+    chance,
+    ...(draw === undefined ? {} : { draw }),
+    ...(gates === undefined ? {} : { gates }),
+    ...(waits === undefined ? {} : { waits })
+  };
+}
+
+function asCommandWait(value: unknown): CommandWait | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { in: rooms, ticks } = value as Record<string, unknown>;
+  if (!Array.isArray(rooms) || !rooms.every(isRoomId)) return null;
+  return typeof ticks === 'number' && ticks >= 0 ? { in: rooms, ticks } : null;
+}
+
+function asCommandDraw(value: unknown): CommandDraw | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  const landing = record['landing'] as Record<string, unknown> | undefined;
+  const whole = (figure: unknown): figure is number =>
+    typeof figure === 'number' && Number.isInteger(figure);
+  if (
+    typeof landing !== 'object' ||
+    landing === null ||
+    !whole(landing['spell']) ||
+    typeof landing['name'] !== 'string' ||
+    !whole(landing['map']) ||
+    !whole(landing['low']) ||
+    !whole(landing['high']) ||
+    !isShare(record['chance'])
+  ) {
+    return null;
+  }
+  const gates = record['gates'] === undefined ? undefined : asGates(record['gates']);
+  if (gates === null) return null;
+  return {
+    landing: {
+      spell: landing['spell'],
+      name: landing['name'],
+      map: landing['map'],
+      low: landing['low'],
+      high: landing['high']
+    },
+    chance: record['chance'],
+    ...(gates === undefined ? {} : { gates })
+  };
+}
+
+function asCommandBreak(value: unknown): CommandBreak | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { item, chance } = value as Record<string, unknown>;
+  return typeof item === 'number' && Number.isInteger(item) && isShare(chance)
+    ? { item, chance }
+    : null;
 }
 
 /**
@@ -3168,9 +3346,13 @@ export type RouteBlock =
        *
        * Both are optional because both can be genuinely unknown: a gate whose
        * price the realm did not record, and a purse no listing has stated.
+       * The purse is what the plan pays from (cash and banks for a player's
+       * walk, the purse for a lap or errand), and `ceilingCopper` the most a
+       * fare may be for a lap or an errand (`movement.fareShare`).
        */
       tollCopper?: number;
       purseCopper?: number;
+      ceilingCopper?: number;
     }
   | {
       /**
@@ -3414,7 +3596,10 @@ export function describeBlock(block: RouteBlock): string {
       const price = coinWords(block.tollCopper);
       // The shortfall, when both numbers are known: "5 gold, and you have 2" is
       // something to act on in a way that "you cannot afford it" is not.
-      return block.purseCopper === undefined
+      // A purse that covers it was walled by the fare share, and "you have" would read as enough.
+      const covered =
+        block.ceilingCopper !== undefined && (block.purseCopper ?? 0) >= block.tollCopper;
+      return block.purseCopper === undefined || covered
         ? `${block.name} charges a toll of ${price}`
         : `${block.name} charges a toll of ${price}, and you have ${coinWords(block.purseCopper)}`;
     }
@@ -3753,6 +3938,48 @@ export interface Route {
    * Absent where the way meets none.
    */
   ranFrom?: { round: boolean; rooms: Array<{ id: RoomId; name: string }> };
+  /**
+   * What this way's fares come to where that is over the player's share
+   * (`movement.fareShare`), more than the purse holds, or their cash is
+   * unread: the panel says so before it is walked, and `accepted` is the
+   * answer to the share (todo 20261024-0804-01).
+   */
+  fare?: RouteFare;
+}
+
+/** A way's fares against the share a fare may be, in copper. */
+export interface RouteFare {
+  copper: number;
+  /** The most a fare may be; null while the purse is unread. */
+  ceiling: number | null;
+  /** Cash carried and banked; null while unread. */
+  wealth: number | null;
+  /** Cash carried, which the server takes a fare from; null while unread. */
+  purse: number | null;
+  share: number;
+  accepted?: true;
+}
+
+/** Whether a way's fares are over the share, or the cash to weigh them is unread: the player is asked. */
+export function fareOverShare(fare: RouteFare): boolean {
+  return fare.ceiling === null || fare.copper > fare.ceiling;
+}
+
+/** Whether the purse cannot pay a way's fares: the server takes them from cash on hand. */
+export function fareShortOfPurse(fare: RouteFare): boolean {
+  return fare.purse !== null && fare.purse < fare.copper;
+}
+
+/** What a way charges, in copper: its tolls and every room command's `price` (a ship's passage). */
+export function routeFares(route: Pick<Route, 'steps'>): number {
+  let copper = 0;
+  for (const step of route.steps) {
+    const requirement = step.requirement ?? null;
+    if (requirement === null) continue;
+    if (requirement.kind === 'toll') copper += requirement.tollCopper ?? 0;
+    for (const gate of requirement.gates ?? []) if (gate.kind === 'copper') copper += gate.copper;
+  }
+  return copper;
 }
 
 /**
@@ -3775,7 +4002,7 @@ export interface Route {
 export function demandsOf(route: Route): Map<string, string> {
   const demands = new Map<string, string>();
   for (const step of route.steps) {
-    const requirement = step.requirement;
+    const requirement = step.requirement ?? null;
     if (requirement === null) continue;
     demands.set(`${requirement.kind}|${requirement.raw}`, step.obstacle?.label ?? requirement.kind);
   }
@@ -3875,6 +4102,11 @@ export function chosenWay(route: Route): Route {
   const way = { ...route };
   delete way.keptOut;
   return way;
+}
+
+/** The way with its fare paid: the player said to walk it (`Route.fare`). */
+export function farePaid(route: Route): Route {
+  return route.fare === undefined ? route : { ...route, fare: { ...route.fare, accepted: true } };
 }
 
 /**
@@ -4011,6 +4243,22 @@ export function asRoute(value: unknown): Route | null {
     const before: unknown = candidate.stopsBefore;
     if (typeof before !== 'string' || asRoomReference(before) === null) return null;
   }
+  // The fare the panel asked about, and the player's answer to it.
+  if (candidate.fare !== undefined && !isRouteFare(candidate.fare)) return null;
 
   return candidate as Route;
+}
+
+function isRouteFare(value: unknown): value is RouteFare {
+  if (typeof value !== 'object' || value === null) return false;
+  const { copper, ceiling, wealth, purse, share, accepted } = value as Record<string, unknown>;
+  const figure = (each: unknown): boolean => typeof each === 'number' && Number.isFinite(each);
+  return (
+    figure(copper) &&
+    figure(share) &&
+    (ceiling === null || figure(ceiling)) &&
+    (wealth === null || figure(wealth)) &&
+    (purse === null || figure(purse)) &&
+    (accepted === undefined || accepted === true)
+  );
 }

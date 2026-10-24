@@ -49,6 +49,17 @@ export interface MovementChoices {
   buyKeys: boolean;
   /** The most, in gold, those keys may cost together. */
   buyKeysMaxGold: number;
+  /**
+   * How many times the expected tries a way that lands only sometimes is
+   * said before the walk takes another way (`dig grave`, 7%: about 14 tries
+   * expected). A way that is the only way is said until it lands.
+   */
+  chanceTries: number;
+  /**
+   * The most a fare may be, as a percent of the cash carried and banked: a
+   * ship's passage or a toll above it asks first (todo 20261024-0804-01).
+   */
+  fareShare: number;
 }
 
 /** What the router prices a way by, handed in per request (`Traveller.prices`). */
@@ -74,7 +85,9 @@ export const DEFAULT_MOVEMENT_CHOICES: MovementChoices = {
   anotherWayPenalty: 3,
   anotherWayLonger: 0.5,
   buyKeys: true,
-  buyKeysMaxGold: 500
+  buyKeysMaxGold: 500,
+  chanceTries: 3,
+  fareShare: 10
 };
 
 /** The whole-number choices' bounds, one statement for the file and the settings screen. */
@@ -89,7 +102,9 @@ export const MOVEMENT_RANGES = {
   dangerCost: [0, 10_000],
   // 1 finds the plan again and offers nothing.
   anotherWayPenalty: [1, 20],
-  buyKeysMaxGold: [0, 1_000_000]
+  buyKeysMaxGold: [0, 1_000_000],
+  chanceTries: [1, 100],
+  fareShare: [1, 100]
 } as const satisfies Partial<Record<keyof MovementChoices, readonly [number, number]>>;
 
 /** The movement choices out of a raw block, each defaulted and bounded. */
@@ -115,7 +130,9 @@ export function movementChoices(raw: Record<string, unknown>): MovementChoices {
     anotherWayPenalty: whole('anotherWayPenalty'),
     anotherWayLonger: fraction(raw['anotherWayLonger'], d.anotherWayLonger),
     buyKeys: bool(raw['buyKeys'], d.buyKeys),
-    buyKeysMaxGold: whole('buyKeysMaxGold')
+    buyKeysMaxGold: whole('buyKeysMaxGold'),
+    chanceTries: whole('chanceTries'),
+    fareShare: whole('fareShare')
   };
 }
 

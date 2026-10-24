@@ -293,9 +293,18 @@ export interface WalkerEvents {
    *
    * `kind` is the walk's own `start` option, handed back so a lap's leg is
    * re-planned by distance and a trip round a room run from, as each was
-   * first planned.
+   * first planned. `without` is a way left out, to ask whether there is
+   * another (`ChanceWays`: a chance way that is the only way is tried until
+   * it lands).
    */
-  replan?(to: RoomId, kind: WalkKind): Route | string;
+  replan?(to: RoomId, kind: WalkKind, without?: WayLeftOut): Route | string;
+  /**
+   * The items a way's try took (the shovel broke), fetched again and the
+   * journey to `to` walked after (`Travel.collectThenWalk`), for a walk of
+   * this `kind`. Whether the fetch started; absent or false, the walk plans
+   * on from where it stands.
+   */
+  fetchAgain?(items: readonly number[], to: RoomId, kind: WalkKind): boolean;
   /**
    * Every lever the realm says opens this exit, and where each is pulled.
    *
@@ -320,6 +329,12 @@ export interface WalkerEvents {
    * journey is not one to start. `kind` as for `replan`.
    */
   routeBetween?(from: RoomId, to: RoomId, kind: WalkKind): Route | string;
+}
+
+/** One way a replan leaves out: the step from `from` by `direction`. */
+export interface WayLeftOut {
+  from: RoomId;
+  direction: Direction | 'portal';
 }
 
 /** The walk in flight, as the units `Walker` asks see it. */

@@ -1704,8 +1704,9 @@ describe('the shipped realm data', () => {
     }
     // The cheapest to reach first: the Entrance Hall before the quarters behind it.
     expect(found.lairs[0]).toMatchObject({ id: roomId(12, 2099), name: 'Entrance Hall' });
-    // A room nothing leads out of: placed all the same, and nowhere to go.
-    const shut = realm!.droppingPlaces(head, roomId(17, 2020), festus, ring);
+    // A room nothing leads out of: placed all the same, and nowhere to go. (The
+    // Filthy Room, 17/2020, has the old man's `portal` since format 73.)
+    const shut = realm!.droppingPlaces(head, roomId(12, 1172), festus, ring);
     expect(shut).toEqual({ droppers: [{ mob: 'saracen raider', placed: 16 }], lairs: [] });
     // Nothing drops a thing nobody drops, and it is said as that.
     expect(
@@ -7677,8 +7678,10 @@ describe('an item that teleports is an edge the router may walk', () => {
       { alternatives: true }
     );
     expect(route.blocked).toBe(true);
+    // Since format 73 the cheaper walk is down the Sandbar's dig, which wants
+    // the king crab claw, and out by `ask Seher'Sahham home`.
     expect(route.blocks).toEqual([
-      expect.objectContaining({ kind: 'carry', itemName: 'rope and grapple' }),
+      expect.objectContaining({ kind: 'carry', itemName: 'king crab claw' }),
       expect.objectContaining({
         kind: 'level',
         name: 'token of Silvermere',

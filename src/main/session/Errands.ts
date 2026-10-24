@@ -33,7 +33,7 @@ import { RoundCount } from '../automation/RoundCount';
 import type { KeyedWay } from '../automation/AutoKeys';
 import type { RestAwayPlanner } from '../automation/RestAway';
 import type { WardSources } from '../automation/Wards';
-import type { WalkerEvents } from '../automation/walk/ports';
+import type { WalkerEvents, WayLeftOut } from '../automation/walk/ports';
 import type { ItemSources } from '../automation/ItemErrand';
 import type { OddsPeeker } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
@@ -62,7 +62,7 @@ import {
   type CarriedItem,
   type CharacterState
 } from '../../shared/character';
-import { chargedInCopper, expectedCopper } from '../../shared/coins';
+import { chargedInCopper, expectedCopper, wealthOf } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import { type AutomationConfig } from '../../shared/config';
 import { type SupplyItem } from '../../shared/packConfig';
@@ -175,11 +175,13 @@ import {
   edgeKey,
   roomAddress,
   roomId,
+  routeFares,
   type BuyingPlace,
   type Requirement,
   type RoomId,
   type RoomReference,
   type Route,
+  type RouteFare,
   type TrainerChoice,
   type WorldRoom,
   type WorldSpell
@@ -677,10 +679,16 @@ export class Errands implements SessionModule {
      * The kept-out words this plan may cross: nothing, unless the caller is
      * planning the player's own journey again (`allowingFor`).
      */
-    allowing: readonly string[] = []
+    allowing: readonly string[] = [],
+    /** A way left out, to ask whether there is another (`ChanceWays`). */
+    without?: WayLeftOut
   ): Route | string {
     const traveller = this.travellerFor(kind, this.tracker.current, allowing);
-    return this.planFromHereAs(to, traveller, options);
+    const left = without === undefined ? null : edgeKey(without.from, without.direction);
+    const avoidEdges =
+      left === null ? {} : { avoidEdges: new Set([...(traveller.avoidEdges ?? []), left]) };
+    const plan = this.planFromHereAs(to, { ...traveller, ...avoidEdges }, options);
+    return typeof plan === 'string' ? plan : this.withFare(plan, kind, options);
   }
 
   /**
@@ -812,11 +820,18 @@ export class Errands implements SessionModule {
     state: CharacterState,
     allowing: readonly string[] = []
   ): Traveller {
+    // A walk nobody is asked about never pays past the fare share, and pays
+    // from the purse: it draws no cash (todo 20261024-0804-01).
+    const fares = { fareCeiling: this.fareCeiling(state), wealth: state.inventory.wealth };
     switch (kind) {
       case 'lap':
-        return this.lapTraveller(state);
+        return { ...this.lapTraveller(state), ...fares };
       case 'trip':
-        return { ...this.travellerNow(state, true, allowing), shunned: this.shunnedNow() };
+        return {
+          ...this.travellerNow(state, true, allowing),
+          shunned: this.shunnedNow(),
+          ...fares
+        };
       case 'walk':
         return this.travellerNow(state, true, allowing);
       default: {
@@ -824,6 +839,39 @@ export class Errands implements SessionModule {
         return unreached;
       }
     }
+  }
+
+  /** The most a fare may be: `movement.fareShare` of the cash carried and banked; null while unread. */
+  fareCeiling(state: CharacterState): number | null {
+    const wealth = wealthOf(state);
+    const share = this.automationConfig.movement.fareShare;
+    return wealth === null ? null : Math.floor((wealth * share) / 100);
+  }
+
+  /**
+   * What `route`'s fares come to, where the player is asked before it is
+   * walked: over the share, or with the cash unread (unknown asks). Null
+   * where it charges nothing, or within the share.
+   */
+  fareOf(
+    route: Pick<Route, 'steps'>,
+    state: CharacterState = this.tracker.current
+  ): RouteFare | null {
+    const copper = routeFares(route);
+    if (copper === 0) return null;
+    const ceiling = this.fareCeiling(state);
+    const purse = state.inventory.wealth;
+    // Within the share and in the purse: nothing to ask or draw.
+    if (ceiling !== null && copper <= ceiling && purse !== null && purse >= copper) return null;
+    const share = this.automationConfig.movement.fareShare;
+    return { copper, ceiling, wealth: wealthOf(state), purse, share };
+  }
+
+  /** A walk planned for the panel, carrying the fare it asks about (`Route.fare`). */
+  private withFare(route: Route, kind: WalkKind, options: RouteOptions): Route {
+    if (kind !== 'walk' || options.alternatives !== true) return route;
+    const fare = this.fareOf(route);
+    return fare === null ? route : { ...route, fare };
   }
 
   /**
@@ -938,7 +986,8 @@ export class Errands implements SessionModule {
       // And the ways and places routes keep out of (todo 806): pruned for a
       // walk nobody watches, offered beside the way round on the panel.
       keepOut: { words: this.automationConfig.movement.keepOutOf, allowed: allowing },
-      wealth: state.inventory.wealth,
+      // Cash and banks, so a player's walk is offered; one the purse cannot pay is refused until the cash is drawn.
+      wealth: wealthOf(state),
       /*
        * The join between the sheet's word and the realm's row id, made here
        * for the reason every other figure on this object is: one statement,
@@ -3220,7 +3269,8 @@ export class Errands implements SessionModule {
     if (way === null) return t('session.loop.noRealmData');
     // A route planned to be read carries each way's chance for its buttons (todo 23).
     const parts = options.alternatives === true ? this.runParts(this.tracker.current) : null;
-    return parts === null ? way : withChances(way, parts);
+    const read = this.withFare(way, kind, options);
+    return parts === null ? read : withChances(read, parts);
   }
 }
 

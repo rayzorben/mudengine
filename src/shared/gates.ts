@@ -244,7 +244,14 @@ export interface GateFacts {
   counters?: { sums: Readonly<Record<number, number>>; complete: boolean } | null;
   spellsUp?: readonly number[];
   lives?: number | null;
+  /** Copper the walk pays a fare from: carried and banked for a player's walk, carried for a lap or errand. */
   wealth?: number | null;
+  /**
+   * The most a fare may be, in copper (`movement.fareShare` of `wealth`), for
+   * a walk nobody is asked about: a fare above it is shut to a lap or an
+   * errand as surely as one the purse cannot cover. Absent asks nothing.
+   */
+  fareCeiling?: number | null;
   stats?: Partial<Record<TbStat, number | null>> | null;
 }
 
@@ -329,7 +336,10 @@ export function judge(gate: Gate, facts: GateFacts): Verdict {
     case 'copper': {
       const wealth = facts.wealth;
       if (wealth === null || wealth === undefined) return 'unknown';
-      return wealth >= gate.copper ? 'pass' : { needs: { kind: 'copper', copper: gate.copper } };
+      const ceiling = facts.fareCeiling ?? Infinity;
+      return wealth >= gate.copper && gate.copper <= ceiling
+        ? 'pass'
+        : { needs: { kind: 'copper', copper: gate.copper } };
     }
     case 'roll': {
       const chance = rollChance(gate, facts);

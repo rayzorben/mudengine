@@ -1073,6 +1073,20 @@ automation:
     buyKeys: true
     buyKeysMaxGold: 500
 
+    # A way that only sometimes takes you through: `dig grave` in the
+    # graveyard reaches Musty Grottos on about one dig in fourteen. The walk
+    # says it until it works. Where there is another way, it gives up after
+    # `chanceTries` times the tries it should take; where it is the only way,
+    # it never gives up. A try that breaks what the way needs (the shovel)
+    # fetches another first.
+    chanceTries: 3
+
+    # The most a fare may be, as a percent of the cash you carry and have in
+    # banks: a ship's passage costs 2 runic to Terra Fuego, so at 10 the
+    # character needs 20 runic between purse and banks. Above it, a walk you
+    # send asks first; a loop or an errand stops and says so.
+    fareShare: 10
+
     # The key to the door in front of you.
     #
     # A keyed exit with no key and nothing a picklock can do about it is a wall

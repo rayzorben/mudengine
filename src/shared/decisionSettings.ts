@@ -412,6 +412,8 @@ export const DECISION_SETTINGS = {
   },
   'walk-step': { exempt: 'the server answers one step at a time', since: '2026-10-13' },
   'walk-sneak': ['automation.movement.sneak', 'automation.movement.sneakGiveUp'],
+  'walk-chance-try': ['automation.movement.chanceTries'],
+  'walk-fare': ['automation.movement.fareShare'],
   'walk-off-round': ['automation.movement.runBetweenRounds'],
   'walk-quarry-hold': {
     exempt: 'bookkeeping: the monster it means to fight is here',

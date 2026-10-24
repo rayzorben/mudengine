@@ -329,6 +329,7 @@ function migrateAll(options: MigrationOptions): void {
   pinTheAutoRestSwitch(home, note);
   statedKeyBuying(home, note, options.template);
   stoppersFollowHave(home, note);
+  statedChanceWaysAndFares(home, note, options.template);
 }
 
 /**
@@ -4964,6 +4965,35 @@ function statedKeyBuying(
     stated.length === 1
       ? t('notices.migration.keyBuying.one', params)
       : t('notices.migration.keyBuying.many', params)
+  );
+}
+
+/**
+ * `automation.movement.chanceTries` and `fareShare` into every file that
+ * states `movement:` without them, after `buyKeysMaxGold`, at the shipped
+ * values with the template's comment (todo 20261024-0804-01).
+ */
+function statedChanceWaysAndFares(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const d = DEFAULT_CONFIG.automation.movement;
+  const stated = stateKeysIn(home, template, MOVEMENT_BLOCK, 'buyKeysMaxGold', [
+    ['chanceTries', d.chanceTries],
+    ['fareShare', d.fareShare]
+  ]);
+  if (stated.length === 0) return;
+  const params = {
+    count: stated.length,
+    fileList: stated.join(', '),
+    tries: d.chanceTries,
+    share: d.fareShare
+  };
+  note(
+    stated.length === 1
+      ? t('notices.migration.chanceWays.one', params)
+      : t('notices.migration.chanceWays.many', params)
   );
 }
 

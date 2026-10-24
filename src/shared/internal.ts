@@ -1321,6 +1321,11 @@ const TUNING_DEFAULTS = {
     trapRearmMs: 290_000,
     /** How long one hold lasts before the walk tries the step again. */
     holdMs: 1_500,
+    /**
+     * A spell's tick, which a ship's passage is waited out in (format 73):
+     * `TimedEventManager.EffectSpellTickTime` is 3 on a 1,000 ms game timer.
+     */
+    passageTickMs: 3_000,
     /** How many holds run back to back before it walks on regardless. */
     maxHolds: 3,
     /**
@@ -2141,6 +2146,13 @@ const TUNING_DEFAULTS = {
      * usually across maps, which is what most of them are for.
      */
     portalPenalty: 3,
+    /**
+     * How long a walked step takes, which a ship's passage is priced in
+     * (format 73): Festus walked a step every 1.86 s on his loops (2026-10-03
+     * captures), so the Swiftwind's 100 ticks of `walk.passageTickMs` are
+     * about 161 steps.
+     */
+    walkedStepMs: 1_860,
     /**
      * The most a planned fight's odds add on top of `automation.movement.fightCost`, in steps:
      * all of it for a fight never survived, nothing at `combat.openAbove`.

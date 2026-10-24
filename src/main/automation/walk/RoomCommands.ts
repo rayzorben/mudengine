@@ -17,6 +17,8 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { countMobs } from '../RuleEngine';
 import type { WalkClock } from './clock';
+import type { CommandQueue } from '../CommandQueue';
+import { byChance, ChanceWays, type ChanceWaysEvents, type ChanceWaysWalk } from './ChanceWays';
 import type { WalkerEvents, WalkInFlight } from './ports';
 
 /**
@@ -28,7 +30,11 @@ import type { WalkerEvents, WalkInFlight } from './ports';
  * character where it was: `RoomCommands` answers that.
  */
 export function scriptGated(step: RouteStep): boolean {
-  return (step.requirement?.gates?.length ?? 0) > 0;
+  return (
+    (step.requirement?.gates?.length ?? 0) > 0 ||
+    byChance(step) ||
+    step.requirement?.waits !== undefined
+  );
 }
 
 /** Whether the realm runs this step's command only in a room no monster stands in. */
@@ -64,15 +70,11 @@ function worthRetrying(step: RouteStep): boolean {
   return (step.requirement?.gates ?? []).some((gate) => CAN_PASS_LATER[gate.kind]);
 }
 
-export type RoomCommandsEvents = Pick<WalkerEvents, 'notice' | 'refused' | 'stateNow'>;
+export type RoomCommandsEvents = Pick<WalkerEvents, 'notice' | 'refused' | 'stateNow'> &
+  ChanceWaysEvents;
 
-export interface RoomCommandsWalk extends Pick<
-  WalkInFlight,
-  'walking' | 'quiet' | 'step' | 'stepWhenFree'
-> {
-  /** The journey planned again from `here` (`Walker.onward`). */
-  onward(state: CharacterState, here: RoomId): void;
-}
+export interface RoomCommandsWalk
+  extends Pick<WalkInFlight, 'walking' | 'quiet' | 'step' | 'stepWhenFree'>, ChanceWaysWalk {}
 
 export class RoomCommands {
   /**
@@ -80,12 +82,21 @@ export class RoomCommands {
    * Keyed on the step itself, so a replan or a landing needs no reset.
    */
   private retried: RouteStep | null = null;
+  private readonly chance: ChanceWays;
 
   constructor(
+    queue: Pick<CommandQueue, 'enqueue'>,
     private readonly events: RoomCommandsEvents,
     private readonly walk: RoomCommandsWalk,
     private readonly clock: Pick<WalkClock, 'afterHold' | 'clear'>
-  ) {}
+  ) {
+    this.chance = new ChanceWays(queue, events, walk, clock);
+  }
+
+  /** Where a ship's passage is waited out, which is the step working (`ChanceWays.waitsOut`). */
+  waitsOut(step: RouteStep, here: RoomId): boolean {
+    return this.chance.waitsOut(step, here);
+  }
 
   /**
    * In place of the step, once every hold has had its say: a monster still
@@ -118,6 +129,8 @@ export class RoomCommands {
     const state = this.events.stateNow?.();
     if (step === undefined || state === undefined || !scriptGated(step)) return false;
     if (roomAddress(state.room) !== step.from) return false;
+    // A try that moved nobody is a chance way's ordinary answer.
+    if (this.chance.stayed(step, state)) return true;
     this.refuse(step, state);
     return true;
   }

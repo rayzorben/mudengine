@@ -4,10 +4,11 @@
  * reader (`navigation/textblock.ts`); this keeps a room's view of them.
  *
  * `gates` is what a command wants, in the one vocabulary (`gatesOf`); a line
- * stops at the first step the server cannot run. `to` is the `teleport` step,
- * written room first, or the landing of a `cast` step's spell.
+ * stops at the first step the server cannot run. `to` is the room every try
+ * lands in and `landings` the rest, read by `navigation/scriptLandings.ts`.
  */
 import type { ParsedAction } from './instructions';
+import { askPhrase } from './mobAsks';
 import { gatesOf, nameGate, type GateNames } from './navigation/stepGates';
 import {
   itemOf,
@@ -20,6 +21,7 @@ import {
   type Textblock
 } from './navigation/textblock';
 import type { RoomCommand } from '../../shared/world';
+import { landingsOf, runEnds, type LandingRealm } from './navigation/scriptLandings';
 
 /**
  * The levers a room's script pulls — `remoteaction`, which is a lever in the
@@ -193,7 +195,7 @@ export function leversAsked(
      * and a lever reached with nothing said is one nobody can pull on purpose.
      */
     if (next.words.length > 0) {
-      const phrases = next.words.map((word) => `ask ${who} ${word}`);
+      const phrases = next.words.map((word) => askPhrase(who, word));
       for (const lever of foldLevers(
         here.lines.map((line) => ({ say: phrases[0]!, steps: untilUnrun(line.steps) }))
       )) {
@@ -233,7 +235,7 @@ export function itemsInScripts(blocks: Iterable<Pick<Textblock, 'lines'>>): Set<
 export function parseRoomScript(
   action: string,
   names: GateNames,
-  spellLanding: (id: number) => string | undefined = () => undefined
+  realm: LandingRealm = { here: null, blocks: new Map(), spell: () => undefined }
 ) {
   const bySteps = new Map<string, RoomCommand>();
 
@@ -249,23 +251,14 @@ export function parseRoomScript(
       continue;
     }
 
-    const command: RoomCommand = { say: [say] };
+    const command: RoomCommand = { say: [say], ...landingsOf(runEnds(steps, realm), names) };
     const summons: number[] = [];
     for (const step of steps) {
-      if (step.verb === 'teleport') command.to = `${step.map}/${step.room}`;
       if (step.verb === 'summon') summons.push(step.monster);
-      if (step.verb !== 'cast') continue;
-      /*
-       * `cast <spell>` moves the character as surely as `teleport` does when
-       * the spell carries a landing: the holes down from Dragon's Teeth Hills
-       * are `cast 336` and nothing else (format 29). A `teleport` step in the
-       * same phrase is the realm's own word and wins. And what it puts on the
-       * character either way (format 43): the dive's `cast 512` is *holding
-       * breath*.
-       */
-      const landing = spellLanding(step.spell);
-      if (landing !== undefined && command.to === undefined) command.to = landing;
-      if (step.spell > 0 && command.casts === undefined) command.casts = step.spell;
+      // What saying it puts on the character (format 43): the dive's `cast 512` is *holding breath*.
+      if (step.verb === 'cast' && step.spell > 0 && command.casts === undefined) {
+        command.casts = step.spell;
+      }
     }
     const gates = gatesOf(steps).map((gate) => nameGate(gate, names));
     if (gates.length > 0) command.gates = gates;

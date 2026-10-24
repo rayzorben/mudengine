@@ -8,7 +8,7 @@ import type { ArchiveIdentity, ShippedWorld } from '../../shared/worlds';
 import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from './roomScript';
 import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
-import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
+import { MIN_LEVEL_ABILITY } from '../../shared/abilities';
 import type { Quest } from '../../shared/quests';
 import {
   blocksInReach,
@@ -25,6 +25,8 @@ import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
 import { spellNegates, type NegateRow } from './navigation/scriptNegates';
 import { readTextblocks } from './navigation/textblock';
+import type { LandingSpell } from './navigation/scriptLandings';
+import { AskWays, askingMonsters } from './askWays';
 import { askTable, type BuiltAsk } from './mobAsks';
 import {
   indexSupply,
@@ -36,6 +38,7 @@ import {
 } from './supplyIndex';
 import { groupedRooms, groupWanderers } from './monsterGroups';
 import {
+  parseLair,
   roomId,
   type MobAttack,
   type MobCast,
@@ -152,8 +155,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 70 | **`failroomitem` is a gate on the room, not an item to carry.** The server checks the room's floor, visible or hidden, for it (`TextBlockPart.cs:998`), and `spellHazard.ts` put it in `hz.av` beside `failitem`, which every reader takes as *carry this*: `rock check` (the rock outcropping its own script drops), `branch check` (the withered tree) and stock's `hydra boss check` (the great hydra statue). It is now followed at full weight as `roomitem` is (todo 135) |
  * | 71 | **The ways a quest counter lets through.** A room command or exit whose gate wants a counter at a rank (`Quest.opens`, `questOpenings.ts`), with its own level gate, less the ways the quest's own steps go on to use: a step, a command that gives an item a step takes back, a way into a step's room. A quest that pays nothing kept counts one its last rank goes through as its reward, at that way's level: MerchantCaptain's `secure passage to talkiran` at Blackwater Harbor, Wharf (14/759), level 65 on pmud.zip and 70 on gmud.zip (todo 155) |
  * | 72 | **What a monster answers to.** `Monsters.GreetTXT` was walked three times at build time (quests, levers, supply) and each kept only the words leading to its own kind of thing, so a monster's information could not list what it can be asked. `BuiltMob.ak` and `BuiltMobRow.ak` are its `ask` table (`mobAsks.ts`): every word, those running the same steps under the longest, with the items given and taken, spells taught and copper charged. The wounded messenger (243) answers eight in gmud.zip. The fold carries it only where every row's table agrees (todo 01) |
+ * | 73 | **Where a command's run lands, and how often.** `parseRoomScript` took `to` from a `teleport` or a cast naming its map, and never followed `random`, a shown block's link or `EndCast`, so `dig grave` (7% to Musty Grottos behind `random 9121`, the shovel breaking on 2%) and every ship's `secure passage` (a draw into the Swiftwind, then three timed spells to the beach) led nowhere: 5,408 of pmud.zip's rooms were unreached with every gate open, Terra Fuego, Terra Ista and Tal'kiran among them. `navigation/scriptLandings.ts` follows the run; `RoomCommand.landings` carries each chance landing with its draw, its roll line's gates and a ship's passage's wait, `breaks` what a try that moves nobody takes, `takes` what passing takes. A monster's ask that moves somebody is a command of each room it stands in (`askWays.ts`), behind `monster-here`. Todo 20261024-0804-01 |
  */
-export const REALM_FORMAT = 72;
+export const REALM_FORMAT = 73;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1235,34 +1239,6 @@ function compactProfile(profile: MobProfile): BuiltProfile {
   return out;
 }
 
-/**
- * Every spell that moves whoever it lands on to one fixed room, as
- * `map/room` by spell number — format 29.
- *
- * `TeleportRoom` and `TeleportMap` are two ability slots on the spell row,
- * and a room script's `cast <spell>` step is how three of Paradigm's holes
- * are walked: `go hole:message 774:cast 336:message 766:text 306`, where
- * spell 336 (*fall*) carries `140 → 1306`, `141 → 2`. Eighteen spells on the
- * Paradigm database and twelve on stock state both halves; a spell stating
- * one half, or a zero, moves nobody anywhere this reader can name and is
- * left out. The same pair `resolveSpells` reads for a `Cast:` exit.
- */
-export function spellLandings(source: RealmSource): Map<number, string> {
-  const landings = new Map<number, string>();
-  for (const row of source.table('Spells')?.rows ?? []) {
-    const id = number(row['Number']);
-    if (id === null) continue;
-    let room: number | null = null;
-    let map: number | null = null;
-    for (const [which, value] of abilityPairs(row)) {
-      if (which === HAZARD_ABILITY.teleportRoom) room = value;
-      else if (which === HAZARD_ABILITY.teleportMap) map = value;
-    }
-    if (room !== null && map !== null && room > 0 && map > 0) landings.set(id, `${map}/${room}`);
-  }
-  return landings;
-}
-
 export class RealmBuildError extends Error {}
 
 /**
@@ -1306,10 +1282,6 @@ export function buildRealm(
    * router is deliberately not given its thousand teleports yet.
    */
   const blocks = readTextblocks(source);
-  // Where a script's `cast` lands, for the phrases whose only movement is a
-  // spell (format 29). Read here, once, because the spell index is built
-  // after the rooms and a room's commands are converted inside the room loop.
-  const landings = spellLandings(source);
   const scriptedRooms = new Set<number>();
   for (const row of rooms.rows) {
     const cmd = number(row['CMD']);
@@ -1615,6 +1587,24 @@ export function buildRealm(
       }
     ])
   );
+  // Where a command's run lands (format 73): every spell's landing, scripts and chain.
+  const landingSpells = new Map(
+    spells.map((spell): [number, LandingSpell] => [
+      spell.id,
+      {
+        abilities: spell.ab ?? [],
+        ...(spell.pw === undefined ? {} : { power: spell.pw }),
+        ...(spell.dur === undefined ? {} : { duration: spell.dur }),
+        name: spell.n
+      }
+    ])
+  );
+  const asking = askingMonsters(source);
+  const askWays = new AskWays(
+    (id) => asking.get(id),
+    { blocks, spell: (id) => landingSpells.get(id) },
+    names
+  );
   for (const spell of spells) {
     if (spellNegates(spell.id, (id) => abilitiesOf.get(id), blocks)) spell.ng = 1;
     const lines = scriptLines(spell.id, (id) => abilitiesOf.get(id), blocks);
@@ -1684,11 +1674,19 @@ export function buildRealm(
   const counterWays: CounterOpening[] = [];
   for (const { room, cmd } of drafts) {
     const action = cmd === null ? undefined : blocks.get(cmd)?.action;
-    const answers =
-      action === undefined ? [] : parseRoomScript(action, names, (id) => landings.get(id));
+    const here = roomId(room['m'] as number, room['r'] as number);
+    const standing = [
+      ...(typeof room['npc'] === 'number' ? [room['npc']] : []),
+      ...(typeof room['lair'] === 'string' ? parseLair(room['lair']).ids : [])
+    ];
+    const answers = [
+      ...(action === undefined
+        ? []
+        : parseRoomScript(action, names, { here, blocks, spell: (id) => landingSpells.get(id) })),
+      ...askWays.in(standing)
+    ];
     if (answers.length > 0) scripted += 1;
 
-    const here = `${room['m'] as number}/${room['r'] as number}`;
     /*
      * The levers pulled *in* this room become words it answers, each saying
      * which exit it opens. A lever whose exit is somewhere else says so with

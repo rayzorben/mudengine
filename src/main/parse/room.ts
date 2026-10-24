@@ -35,7 +35,7 @@ import { classifyOccupant, type MobFacts } from '../../shared/mobs';
 import { playerEntity, playerKey, type PlayerRegistry } from '../../shared/players';
 import type { RealmFamily } from '../../shared/realm';
 import type { Direction, RoomId, WorldRoom } from '../../shared/world';
-import { mobKey, roomAddress, roomId } from '../../shared/world';
+import { commandRooms, mobKey, roomAddress, roomId } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import { resolveByDeadReckoning, resolveRoom, type ResolveGraph } from '../world/resolve';
 import { namedStoppers } from '../world/stoppers';
@@ -1389,7 +1389,7 @@ export class RoomTracker {
       // A room-script teleport is the data knowing the way out exactly as an
       // exit is — format 13 put it on the room. Without this, every walked or
       // typed `dive pool` wrote a "discovery" of a way the realm records.
-      if (previous.commands?.some((entry) => entry.to === to)) return;
+      if (previous.commands?.some((entry) => commandRooms(entry).includes(to))) return;
     } else if (candidates > 0) {
       // Several rooms match: unresolved, not unknown. Nothing is learned from
       // "it could be any of these".

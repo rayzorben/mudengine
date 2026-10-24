@@ -82,8 +82,10 @@ export interface Traveller {
    */
   preferred?: ReadonlySet<string>;
   level?: number | null;
-  /** Copper farthings, for tolls. */
+  /** Copper farthings the walk pays tolls and fares from: carried and banked for a player's walk, carried for a lap or errand. */
   wealth?: number | null;
+  /** The most a fare may be, for a walk nobody is asked about (`GateFacts.fareCeiling`). */
+  fareCeiling?: number | null;
   /**
    * The `Items` row ids the pack holds, for a keyed door and an item gate.
    *
@@ -377,7 +379,7 @@ interface ScatterSpell {
   landing: Landing;
   /** The rooms in the range that the realm actually holds. */
   rooms: RoomId[];
-  doors: Array<{ at: RoomId; exit: WorldExit }>;
+  doors: Array<{ at: RoomId; exit: WorldExit | PortalExit }>;
 }
 
 /** One move, seen from the room it arrives in. */
@@ -1142,12 +1144,23 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
   }
 }
 
-/** Binary min-heap. The original re-sorted the open list every iteration. */
-class MinHeap<T> {
+/**
+ * Binary min-heap. The original re-sorted the open list every iteration.
+ * Equal keys pop in room order, so a tie between two ways is settled by the
+ * rooms and never by what else was pushed: a portal added at the far end of
+ * the realm must not change which of two equal ways a route takes.
+ */
+class MinHeap<T extends string> {
   private readonly items: Array<{ key: number; value: T }> = [];
 
   get size(): number {
     return this.items.length;
+  }
+
+  private before(a: number, b: number): boolean {
+    const left = this.items[a]!;
+    const right = this.items[b]!;
+    return left.key < right.key || (left.key === right.key && left.value < right.value);
   }
 
   push(key: number, value: T): void {
@@ -1155,7 +1168,7 @@ class MinHeap<T> {
     let i = this.items.length - 1;
     while (i > 0) {
       const parent = (i - 1) >> 1;
-      if (this.items[parent]!.key <= this.items[i]!.key) break;
+      if (!this.before(i, parent)) break;
       [this.items[parent], this.items[i]] = [this.items[i]!, this.items[parent]!];
       i = parent;
     }
@@ -1172,12 +1185,8 @@ class MinHeap<T> {
         const left = 2 * i + 1;
         const right = left + 1;
         let smallest = i;
-        if (left < this.items.length && this.items[left]!.key < this.items[smallest]!.key) {
-          smallest = left;
-        }
-        if (right < this.items.length && this.items[right]!.key < this.items[smallest]!.key) {
-          smallest = right;
-        }
+        if (left < this.items.length && this.before(left, smallest)) smallest = left;
+        if (right < this.items.length && this.before(right, smallest)) smallest = right;
         if (smallest === i) break;
         [this.items[smallest], this.items[i]] = [this.items[i]!, this.items[smallest]!];
         i = smallest;
@@ -2247,7 +2256,8 @@ export class Router {
     if (this.draws !== null) return this.draws;
     const found = new Map<number, ScatterSpell>();
     for (const [at, room] of this.rooms) {
-      for (const exit of room.exits) {
+      // A room command's draw is a door too (format 73): `jump west` off the bridge.
+      for (const exit of [...room.exits, ...this.portalsFrom(at)]) {
         const landing = exit.requirement?.landing;
         if (landing === undefined || exit.requirement?.spellEffect !== 'scatters') continue;
         let spell = found.get(landing.spell);
@@ -2762,8 +2772,11 @@ export class Router {
      * above the figure that makes a route report itself as crossing a wall.
      */
     const requirement = standingRequirement(exit.requirement, from, exit.direction, traveller);
+    // A room command's draw keeps its own gates, a fare or an item (format 73).
     const priced =
-      requirement?.spellEffect === 'scatters' ? 0 : edgePenalty(requirement, traveller);
+      requirement?.spellEffect === 'scatters' && requirement.kind !== 'text'
+        ? 0
+        : edgePenalty(requirement, traveller);
     // A gate held open is still the worst edge on the map, so the path this
     // finds is the one that was *nearly* walkable rather than a detour
     // through every locked door in the realm.
@@ -2847,7 +2860,19 @@ export class Router {
       traveller.penalised!.has(`${from}|${roomId(into.map, into.room)}`)
         ? anotherWayPenalty
         : 1;
-    return (1 + penalty + surcharge + risk + room) * along * dearer + wall;
+    // A chance way is said until it lands, each try a step and a portal's
+    // surcharge, and a ship's passage is waited out (format 73).
+    const tries = exit.requirement?.tries ?? 1;
+    const ticks = exit.requirement?.waits?.ticks ?? 0;
+    const waited = (ticks * tuning().walk.passageTickMs) / tuning().world.walkedStepMs;
+    // And what passing takes, or the tries are expected to break, is fetched
+    // again, at what spending an item's charge costs: the sceptre, the shovel.
+    const broken = (exit.requirement?.breaks ?? []).reduce((sum, item) => sum + item.chance, 0);
+    const spent =
+      ((exit.requirement?.takes?.length ?? 0) + broken * tries) * tuning().world.itemLandingCost;
+    return (
+      ((1 + surcharge) * tries + penalty + waited + spent + risk + room) * along * dearer + wall
+    );
   }
 
   /**
@@ -3109,7 +3134,10 @@ export class Router {
             ...(requirement.tollCopper === undefined ? {} : { tollCopper: requirement.tollCopper }),
             ...(traveller.wealth === null || traveller.wealth === undefined
               ? {}
-              : { purseCopper: traveller.wealth })
+              : { purseCopper: traveller.wealth }),
+            ...(traveller.fareCeiling === null || traveller.fareCeiling === undefined
+              ? {}
+              : { ceilingCopper: traveller.fareCeiling })
           });
         } else if (blocked.kind === 'ability') {
           /*

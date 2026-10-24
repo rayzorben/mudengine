@@ -106,6 +106,8 @@ import { readActions, readRows } from './roomColumns';
 import { headerOf, NO_HEADER, type RealmHeader } from './realmHeader';
 import { QuestPlanner } from './QuestPlanner';
 import type { PlannerRooms } from './PlannerRooms';
+import { commandWays } from './navigation/commandWays';
+import { spellLanding } from './navigation/spellLanding';
 
 // Read only by `WorldGraph.test.ts`, which todo 710 kept unchanged; goes when a router-only test exists.
 export { dangerPenalty, edgeBlock, edgePenalty, edgeWall, runPenalty } from './Router';
@@ -121,45 +123,6 @@ function leverKey(room: RoomId, direction: string): string {
 
 /** Handed back for an exit nothing opens, so no caller allocates to say "none". */
 const NO_LEVERS: readonly RemoteLever[] = [];
-
-/**
- * Where one spell's `TeleportRoom` puts the character, as the server works it out.
- *
- * `Spell.cs` `ApplySpellAbilities`, `GMUDAbilityType.TeleportRoom`:
- *
- * ```
- * int tempTeleportRoomID = abil.Modifiers[0].Modifier;
- * if (tempTeleportRoomID == 0) tempTeleportRoomID = inMainValue;
- * ```
- *
- * `inMainValue` is `Globals.Rand.GetRandomNumber(GetSpellMin, GetSpellMax)` —
- * the spell's own `MinBase`–`MaxBase` (`RollAndApplySpellAbilities`). So a
- * stated modifier is an address and a zero is a draw, and the *shape* of the
- * answer is the same either way: a range, which is a room when it is one wide.
- *
- * The map is `TeleportMap` where the row states one and the character's own
- * map where it does not (`plyrTarget.Room.Map.MapID`) — which for an exit's
- * cast is the map the exit table names, because `TryMoveThroughExit` moves
- * first and casts second.
- *
- * `null` for a row this cannot turn into a room: a zero modifier with no
- * power range is a draw between room 0 and room 0, and room 0 is not a room.
- * That is unread rather than harmless, and the caller prices it as a script.
- */
-function landingOf(spell: WorldSpell, stated: number, onMap: number): Landing | null {
-  const [min, max] = spell.power ?? [0, 0];
-  const low = stated > 0 ? stated : min;
-  const high = stated > 0 ? stated : max;
-  if (low <= 0 || high < low) return null;
-  const map = spell.abilities?.find(([id]) => id === HAZARD_ABILITY.teleportMap)?.[1];
-  return {
-    spell: spell.id,
-    name: spell.name,
-    map: map !== undefined && map > 0 ? map : onMap,
-    low,
-    high
-  };
-}
 
 /**
  * What a counter is worth stopping at — lower is better, and nothing else.
@@ -1591,32 +1554,20 @@ export class WorldGraph {
   private linkPortals(): void {
     for (const [id, room] of this.rooms) {
       for (const command of room.commands ?? []) {
-        if (command.to === undefined) continue;
-        const destination = this.rooms.get(command.to);
-        // A teleport out of the dataset is a hole in the data, not a route.
-        if (!destination) continue;
-        const phrase = command.say[0]?.trim();
-        if (!phrase) continue;
-
-        const corridor = this.corridorFrom(command, command.to);
-        // A `Text:` exit in everything but the table it came from: a different
-        // command, its conditions judged as any exit's (`exitGates`).
-        const requirement: Requirement = {
-          kind: 'text',
-          raw: phrase,
-          commands: [...command.say],
-          ...(command.gates === undefined ? {} : { gates: command.gates }),
-          ...(corridor === null ? {} : { corridor })
-        };
-        const edge: PortalExit = {
-          direction: 'portal',
-          map: destination.map,
-          room: destination.room,
-          requirement
-        };
-        const held = this.portals.get(id);
-        if (held) held.push(edge);
-        else this.portals.set(id, [edge]);
+        for (const way of commandWays(command, (to) => this.corridorFrom(command, to))) {
+          const destination = this.rooms.get(way.to);
+          // A teleport out of the dataset is a hole in the data, not a route.
+          if (!destination) continue;
+          const edge: PortalExit = {
+            direction: 'portal',
+            map: destination.map,
+            room: destination.room,
+            requirement: way.requirement
+          };
+          const held = this.portals.get(id);
+          if (held) held.push(edge);
+          else this.portals.set(id, [edge]);
+        }
       }
     }
   }
@@ -2067,7 +2018,7 @@ export class WorldGraph {
       const mean = Math.abs(low + high) / 2;
       for (const [ability, value] of spell.abilities ?? []) {
         /*
-         * The map half of a teleport says nothing on its own — `landingOf`
+         * The map half of a teleport says nothing on its own — `spellLanding`
          * reads it off the same row when it needs it.
          */
         if (ability === HAZARD_ABILITY.teleportMap) continue;
@@ -2077,11 +2028,11 @@ export class WorldGraph {
            * as one flag and threw the address away, so 49 exits that land in
            * exactly one known room were priced as walls to a room the
            * character never sees, and the 168 that draw one were walked as
-           * though the exit table's room were the answer. `landingOf` is
+           * though the exit table's room were the answer. `spellLanding` is
            * `Spell.cs`'s own arithmetic; `null` is a row this reader cannot
            * turn into a room, which is unread and not harmless.
            */
-          const where = landingOf(spell, value, onMap);
+          const where = spellLanding(spell, value, onMap);
           if (where === null) {
             if (effect === 'plain') effect = 'script';
             continue;

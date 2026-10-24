@@ -806,11 +806,9 @@ export class SessionManager {
       restInFlight: () => this.recovery.restInFlight,
       floorInFlight: () => this.loot.floorInFlight,
       onTheGround,
-      /*
-       * A route that stood still for a fight plans again from wherever the fight left the
-       * character: the answer needs the realm graph, the purse and the refused edges.
-       */
-      replan: (to, kind) => this.travel.replan(to, kind),
+      // A replan (a fight moved the character) and a refetch need the realm, the purse, the refusals.
+      replan: (to, kind, without) => this.travel.replan(to, kind, without),
+      fetchAgain: (items, to, kind) => this.travel.fetchAgain(items, to, kind),
       moveOnly,
       // Where a draw put the character, when the room cannot say (`WalkerEvents.locate`).
       locate: () => this.claims.askWhereIAm(),

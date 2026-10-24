@@ -450,6 +450,9 @@ notices:
     keyBuying:
       many: 'Buy a Key on the Way was added, on, to {count} files: {fileList}'
       one: 'Buy a Key on the Way was added, on, to {fileList}'
+    chanceWays:
+      many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
+      one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
     restSpell:
       many: 'Cast Before Resting was added, empty, to {count} files: {fileList}'
       one: 'Cast Before Resting was added, empty, to {fileList}'
@@ -3773,6 +3776,15 @@ cards:
     spendsUses: '{useCount} uses'
     spendsForever: unlimited uses
     collectFirst: Collect {itemName} first
+    fare:
+      ask: 'This way pays {fare} in fares, more than {share}% of the {wealth} you carry and have in
+        banks.'
+      askUnread: 'This way pays {fare} in fares, and your cash has not been read yet to weigh it
+        against {share}%.'
+      pay: 'Pay {fare} and walk it'
+      payFirst: Say to pay the fare first.
+      drawFirst: 'The fare is taken from what you carry, {purse}: withdraw {short} at a bank before
+        walking it.'
     keptOut:
       ask: 'This way crosses {wordList}, which you avoid. Choose a way:'
       groupAria: The way through {wordList}, or the way around it
@@ -5111,6 +5123,13 @@ settings:
       shop sells, buying it first. Loops and errands never do.
     buyKeysMaxGold: Most for Keys, Gold
     buyKeysMaxGoldHint: The most the keys on one walk may cost together. 0 never buys one.
+    chanceTries: Tries Before Another Way, Times Expected
+    chanceTriesHint: A command that only sometimes takes you through, like dig grave at the
+      graveyard, is said again until it does. Where there is another way, the walk gives up after
+      this many times the tries it should take. Where it is the only way, it never gives up.
+    fareShare: Highest Fare, Percent of Cash
+    fareShareHint: A ship's passage or a toll is paid only when it is at most this share of the cash
+      you carry and have in banks. Above it, a walk you send asks first; a loop or an errand stops.
     doorsLegend: Doors
     stealthLegend: Sneaking and Running
     lightLegend: Light
@@ -6280,6 +6299,13 @@ session:
       overCeiling: 'Not buying {items} on the way: {price} is more than your {ceiling} gold for keys.'
       buying: 'Buying {items} on the way for {price}: {moves} moves instead of {instead}.'
     keptOutDemand: crossing {word}, which you avoid
+    fareOverShare: This way pays {fare} in fares, more than {share}% of the {wealth} you carry and
+      have in banks. Open it on the route panel and say to pay it, or raise Highest Fare.
+    fareDrawFirst: This way pays {fare} in fares and you carry {purse}. The fare is taken from what
+      you carry, so withdraw {short} at a bank first.
+    fareUnread: This way pays {fare} in fares, and your cash has not been read yet to weigh it
+      against {share}%. Look at your inventory first, or open it on the route panel and say to pay
+      it.
     keptOutChoose: This way crosses {wordList}, which you avoid. Choose the way through or the way
       around in the route panel.
     claimLapsed: Nothing answered "{command}" in {seconds}s, so the client stopped waiting and is
@@ -7741,6 +7767,7 @@ automation:
       The world data says the way to {stepName} is hidden here, and Auto-Search Hidden
       Exits is off. The route stops here.
     reasonSneak: sneaking before the route
+    reasonChancePack: checking the inventory, since the last try could have taken what the way needs
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
     sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after
       a level or a reconnect.'
@@ -7752,6 +7779,11 @@ automation:
     reasonTimeout: nothing came back after {command}
     # Todo 65: a room command's own check refused it; once more after a beat, then another way.
     roomCommandRetry: The game would not run {command} here yet; trying it once more.
+    chanceTry: '{command} only works some of the time (about one try in {expected}); saying it
+      until it does.'
+    chanceGaveUp: '{command} did not work after {count} tries; taking another way.'
+    chanceItemGone: '{command} needs {missing}, and the last try took it; getting another.'
+    passageWaiting: 'Waiting out the passage {command} paid for.'
     # A step on the wire when the character dropped: refused there, and handed
     # no state, so not a silence (todo 764).
     reasonGrounded: you fell to the ground with {command} still unanswered, and nothing is walked

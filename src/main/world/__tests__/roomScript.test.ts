@@ -117,7 +117,17 @@ describe('what a room answers to', () => {
       'go hole:message 774:cast 336:message 766:text 306\n' +
       'enter hole:message 774:cast 336:message 766:text 306\n' +
       'crawl hole:message 774:cast 336:message 766:text 306';
-    const landing = (id: number): string | undefined => (id === 336 ? '2/1306' : undefined);
+    const fall = {
+      abilities: [
+        [140, 1306],
+        [141, 2]
+      ] as Array<[number, number]>
+    };
+    const landing = {
+      here: '2/487' as const,
+      blocks: new Map(),
+      spell: (id: number) => (id === 336 ? fall : undefined)
+    };
     const [answer, ...rest] = parseRoomScript(HOLE, named, landing);
     expect(rest).toEqual([]);
     expect(answer?.say).toEqual(['go hole', 'enter hole', 'crawl hole']);

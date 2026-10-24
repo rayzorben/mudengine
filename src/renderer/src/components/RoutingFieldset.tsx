@@ -2,7 +2,8 @@
  * What a route pays for what it walks through (todo 118), one fieldset for the
  * character form and the options page beside Avoiding: a fight and a lair in
  * steps, how Another way is looked for, and how long a trip goes round a room
- * this character ran from, and whether a walk buys a key on the way (todo 02).
+ * this character ran from, whether a walk buys a key on the way (todo 02), how
+ * long a chance way is tried and the most a fare may be (todo 20261024-0804-01).
  * The router reads them per request, so each character's own figures price
  * its own routes.
  */
@@ -12,7 +13,13 @@ import { t } from '../lib/i18n';
 import { movementChoices, type MovementChoices } from '@shared/walkChoices';
 
 type RoutePrice =
-  'fightCost' | 'dangerCost' | 'anotherWayPenalty' | 'anotherWayLonger' | 'avoidRanFromMinutes';
+  | 'fightCost'
+  | 'dangerCost'
+  | 'anotherWayPenalty'
+  | 'anotherWayLonger'
+  | 'avoidRanFromMinutes'
+  | 'chanceTries'
+  | 'fareShare';
 
 export interface RoutingFieldsetProps {
   choices: MovementChoices;
@@ -58,6 +65,20 @@ function rows(): ReadonlyArray<ChoiceRow<RoutePrice>> {
       setting: 'automation.movement.avoidRanFromMinutes',
       label: t('settings.movement.avoidRanFrom'),
       hint: t('settings.movement.avoidRanFromHint')
+    },
+    {
+      field: 'chanceTries',
+      name: 'chance-tries',
+      setting: 'automation.movement.chanceTries',
+      label: t('settings.movement.chanceTries'),
+      hint: t('settings.movement.chanceTriesHint')
+    },
+    {
+      field: 'fareShare',
+      name: 'fare-share',
+      setting: 'automation.movement.fareShare',
+      label: t('settings.movement.fareShare'),
+      hint: t('settings.movement.fareShareHint')
     }
   ];
 }

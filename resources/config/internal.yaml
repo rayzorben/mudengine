@@ -1014,6 +1014,11 @@ tuning:
     # How long one hold lasts before the walk tries the step again.
     holdMs: 1500
 
+    # A spell's tick, which a ship's passage is waited out in: 3 s on the
+    # game's timer. The walk waits the passage's ticks twice over before it
+    # plans again from where it stands.
+    passageTickMs: 3000
+
     # How many holds run back to back before it walks on regardless.
     maxHolds: 3
 
@@ -1643,6 +1648,11 @@ tuning:
     # prefers plain corridors unless the portal genuinely shortens the way —
     # usually across maps, which is what most of them are for.
     portalPenalty: 3
+
+    # How long a walked step takes, which a ship's passage is priced in: a
+    # step every 1.86 s on Festus's loops, so the Swiftwind's 100 ticks of 3 s
+    # are about 161 steps.
+    walkedStepMs: 1860
 
     # The most a fight's odds add on top of its fightCost, in steps: all of it
     # for a fight never survived, none at `openAbove`. About what resting the

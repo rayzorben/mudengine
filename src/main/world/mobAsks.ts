@@ -45,10 +45,23 @@ export function askTable(
   blocks: ReadonlyMap<number, Textblock>,
   names: AskNames
 ): BuiltAsk[] {
+  return askLines(greet, blocks).map(({ words, steps }) =>
+    answerOf(longest(words), stepsReached(steps, blocks), names)
+  );
+}
+
+/**
+ * The words the block `greet` answers, those whose lines run the same steps
+ * as one, with the steps: the server runs the first line a word matches, and
+ * a later line for it never runs.
+ */
+export function askLines(
+  greet: number,
+  blocks: ReadonlyMap<number, Pick<Textblock, 'lines'>>
+): Array<{ words: string[]; steps: readonly TbStep[] }> {
   const block = blocks.get(greet);
   if (block === undefined || isRollTable(block)) return [];
   const answers = new Map<string, { words: string[]; steps: readonly TbStep[] }>();
-  // The server runs the first line a word matches; a later line for it never runs.
   const claimed = new Set<string>();
   for (const line of block.lines) {
     const word = phraseOf(line);
@@ -60,12 +73,15 @@ export function askTable(
     if (held === undefined) answers.set(key, { words: [word], steps });
     else if (!held.words.includes(word)) held.words.push(word);
   }
-  return [...answers.values()].map(({ words, steps }) =>
-    answerOf(longest(words), stepsReached(steps, blocks), names)
-  );
+  return [...answers.values()];
 }
 
-function longest(words: readonly string[]): string {
+/** What a player types to ask a monster something: `ask <name> <word>`, the name whole (`Misc.GetPossibleTargets` matches it). */
+export function askPhrase(who: string, word: string): string {
+  return `ask ${who} ${word}`;
+}
+
+export function longest(words: readonly string[]): string {
   return words.reduce((best, word) => (word.length > best.length ? word : best));
 }
 
