@@ -108,9 +108,9 @@ describe('a place every way into crosses a kept-out word', () => {
 });
 
 /*
- * Todo 145: the route panel offers the fewest moves beside a plan more than a
- * fifth longer (`Route.direct`), the 20% counted in moves (the user,
- * 2026-10-15).
+ * Todo 145: the route panel offers the fewest moves beside any plan that
+ * takes more (`Route.direct`; a fifth longer from 2026-10-15, every time from
+ * the user, 2026-10-23).
  */
 describe('the most direct way', () => {
   /** From 1/1, `short` steps east through a scalding pool, or `long` steps south round it. */
@@ -134,27 +134,25 @@ describe('the most direct way', () => {
   // Another way priced as the plan, so it re-finds the plan and the direct way is the one offered.
   const prices = { ...DEFAULT_MOVEMENT_CHOICES, anotherWayPenalty: 1 };
 
-  it('is offered past a fifth longer, with what it walks through', () => {
-    const route = fork(100, 121).route('1/1', '1/2', { hazard, prices }, { alternatives: true });
-    expect(route.steps).toHaveLength(121);
+  it('is offered beside a plan one move longer, with what it walks through', () => {
+    const route = fork(100, 101).route('1/1', '1/2', { hazard, prices }, { alternatives: true });
+    expect(route.steps).toHaveLength(101);
     expect(route.direct?.steps).toHaveLength(100);
     expect(route.direct?.steps[0]?.hazard).toBeGreaterThan(0);
   });
 
-  it('is not offered at a fifth longer or less', () => {
-    const route = fork(100, 120).route('1/1', '1/2', { hazard, prices }, { alternatives: true });
-    // Positive control: the plan still goes round, and there is a shorter way.
-    expect(route.steps).toHaveLength(120);
-    expect(route.direct).toBeUndefined();
-  });
-
-  it('is not the plan again, nor an alternative already offered', () => {
+  it('is not the plan again', () => {
     const plain = fork(100, 121).route('1/1', '1/2', {}, { alternatives: true });
     expect(plain.steps).toHaveLength(100);
     expect(plain.direct).toBeUndefined();
-    const another = fork(100, 121).route('1/1', '1/2', { hazard }, { alternatives: true });
-    expect(another.another?.steps).toHaveLength(100);
-    expect(another.direct).toBeUndefined();
+  });
+
+  it('is offered in place of another way with the same steps', () => {
+    const route = fork(100, 121).route('1/1', '1/2', { hazard }, { alternatives: true });
+    // Positive control: the plan goes round, and the other way is the direct one.
+    expect(route.steps).toHaveLength(121);
+    expect(route.direct?.steps).toHaveLength(100);
+    expect(route.another).toBeUndefined();
   });
 
   it('is not looked for on a walk nobody reads', () => {

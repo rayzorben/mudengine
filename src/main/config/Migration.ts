@@ -8595,8 +8595,6 @@ function theTuningBlockGainedKeys(
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
     // The level walls the quest book climbs on the way to a step (todo 132, 2026-10-14).
     addKey('world', 'questReachTries', DEFAULT_INTERNAL.tuning.world.questReachTries);
-    // When the route panel offers the most direct way (todo 145, 2026-10-16).
-    addKey('world', 'directLonger', DEFAULT_INTERNAL.tuning.world.directLonger);
     // How far a party member's damage moves before its lairs are run again (todo 152, 2026-10-16).
     addKey('hunting', 'partyDamageStep', DEFAULT_INTERNAL.tuning.hunting.partyDamageStep);
     // How long the Map card holds a picked room before following again (2026-10-20).
@@ -8676,6 +8674,8 @@ function theTuningBlockGainedKeys(
     // region and asks for the window it shows, so nothing keeps a radius.
     dropKey('view', 'mapRadiusMin');
     dropKey('view', 'mapRadiusMax');
+    // Retired 2026-10-23: the route panel offers the most direct way whenever the plan is longer.
+    dropKey('world', 'directLonger');
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);

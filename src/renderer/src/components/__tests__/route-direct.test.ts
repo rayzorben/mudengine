@@ -76,15 +76,14 @@ describe('the route panel offering the most direct way', () => {
   const button = (where: (node: ReactTestInstance) => boolean): ReactTestInstance =>
     panel.root().find((node) => node.type === 'button' && where(node));
 
-  it('lists it, and walking it walks its steps', async () => {
+  it('shows it outside the fold, and walking it walks its steps', async () => {
     const walked = await drawn();
-    const offered = panel
-      .root()
-      .find((node) => node.type === 'div' && node.props.className === 'route-alternatives');
-    act(() => offered.find((node) => node.type === 'button').props.onClick());
+    // No disclosure is opened: the row is on screen as drawn.
     const row = panel
       .root()
-      .find((node) => node.type === 'li' && node.props['data-way'] === 'direct');
+      .find(
+        (node) => node.props.className === 'route-direct' && node.props['data-way'] === 'direct'
+      );
     act(() => row.find((node) => node.type === 'button').props.onClick());
     act(() => button((node) => node.props.className === 'route-run').props.onClick());
     expect(walked.map((route) => route.steps.map((each) => each.to))).toEqual([['3/781', '3/782']]);

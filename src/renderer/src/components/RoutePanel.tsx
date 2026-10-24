@@ -403,7 +403,8 @@ export default function RoutePanel({
    * the worst of it (`Route.otherWay`), the way with the right items
    * (`Route.carrying`), the way that spends a charge to skip the walk
    * (`Route.viaItem`), a way that is simply not the plan
-   * (`Route.another`), or the way through a door once its key is fetched
+   * (`Route.another`), the fewest moves (`Route.direct`), or the way
+   * through a door once its key is fetched
    * (`Route.unlocks`). A choice among routes main already planned, never a
    * re-plan: the panel is a reader, and *Show it* swaps what is read.
    */
@@ -1204,7 +1205,7 @@ export default function RoutePanel({
                     chose it from the list below, and the list closes behind
                     the choice. */}
                     {chosen !== 'plan' && (
-                      <span className="chip off">
+                      <span className={chosen === 'direct' ? 'chip direct' : 'chip off'}>
                         {chosen === 'round'
                           ? t('cards.route.showing.round')
                           : chosen === 'viaItem'
@@ -1668,22 +1669,6 @@ export default function RoutePanel({
                         })
                       });
                     }
-                    // And the fewest moves, where the plan is longer by more than
-                    // `directLonger`, naming what it crosses that the player keeps out of.
-                    if (route.direct !== undefined && chosen !== 'direct') {
-                      const words = crossedWords(route.direct);
-                      const stepCount = route.direct.steps.length;
-                      items.push({
-                        key: 'direct',
-                        sentence:
-                          words.length === 0
-                            ? t('cards.route.alternative.direct', { stepCount })
-                            : t('cards.route.alternative.directThrough', {
-                                stepCount,
-                                wordList: words.join(', ')
-                              })
-                      });
-                    }
                     /*
                      * And through the door, once what opens it is fetched,
                      * named with what is fetched: its steps are the plan's
@@ -1698,38 +1683,76 @@ export default function RoutePanel({
                         })
                       });
                     }
-                    if (items.length === 0) return null;
+                    /*
+                     * And the fewest moves, whenever the plan takes more (the
+                     * user, 2026-10-23): on its own row, outside the fold and
+                     * tinted, with how many moves it saves and what it crosses
+                     * that the player keeps out of.
+                     */
+                    // *Show it*, which puts a way on screen and closes the list behind it.
+                    const showButton = (key: Way) => (
+                      <button
+                        className="quiet"
+                        onClick={() => {
+                          setChosen(key);
+                          setOffering(false);
+                        }}
+                        onMouseDown={keepFocus}
+                        title={t('cards.route.otherWayTooltip')}
+                        type="button"
+                      >
+                        {t('cards.route.otherWayButton')}
+                      </button>
+                    );
+                    const direct = route.direct;
+                    const directRow =
+                      direct !== undefined && chosen !== 'direct'
+                        ? (() => {
+                            const words = crossedWords(direct);
+                            const counts = {
+                              stepCount: direct.steps.length,
+                              savedCount: route.steps.length - direct.steps.length
+                            };
+                            return (
+                              <div className="route-direct" data-way="direct">
+                                <Icon name="route" />
+                                <span>
+                                  {words.length === 0
+                                    ? t('cards.route.alternative.direct', counts)
+                                    : t('cards.route.alternative.directThrough', {
+                                        ...counts,
+                                        wordList: words.join(', ')
+                                      })}
+                                </span>
+                                {showButton('direct')}
+                              </div>
+                            );
+                          })()
+                        : null;
+                    if (items.length === 0 && directRow === null) return null;
                     return (
                       <div className="route-alternatives">
-                        <button
-                          aria-expanded={offering}
-                          className="quiet"
-                          onClick={() => setOffering((open) => !open)}
-                          onMouseDown={keepFocus}
-                          type="button"
-                        >
-                          <Icon name={offering ? 'chevronUp' : 'chevronDown'} />
-                          {items.length === 1
-                            ? t('cards.route.alternatives.one')
-                            : t('cards.route.alternatives.many', { count: items.length })}
-                        </button>
-                        {offering && (
+                        {directRow}
+                        {items.length > 0 && (
+                          <button
+                            aria-expanded={offering}
+                            className="quiet"
+                            onClick={() => setOffering((open) => !open)}
+                            onMouseDown={keepFocus}
+                            type="button"
+                          >
+                            <Icon name={offering ? 'chevronUp' : 'chevronDown'} />
+                            {items.length === 1
+                              ? t('cards.route.alternatives.one')
+                              : t('cards.route.alternatives.many', { count: items.length })}
+                          </button>
+                        )}
+                        {offering && items.length > 0 && (
                           <ul>
                             {items.map((item) => (
                               <li data-way={item.key} key={item.key}>
                                 <span>{item.sentence}</span>
-                                <button
-                                  className="quiet"
-                                  onClick={() => {
-                                    setChosen(item.key);
-                                    setOffering(false);
-                                  }}
-                                  onMouseDown={keepFocus}
-                                  title={t('cards.route.otherWayTooltip')}
-                                  type="button"
-                                >
-                                  {t('cards.route.otherWayButton')}
-                                </button>
+                                {showButton(item.key)}
                               </li>
                             ))}
                           </ul>

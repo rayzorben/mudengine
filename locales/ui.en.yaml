@@ -3757,8 +3757,8 @@ cards:
       carrying: 'Carrying {itemList}, {stepCount} steps'
       viaItem: Using {itemList}, {stepCount} steps, saving {savedCount}
       another: A different way, {stepCount} steps, {freshCount} rooms not on the plan
-      direct: The most direct way, {stepCount} steps
-      directThrough: The most direct way, {stepCount} steps, through {wordList}
+      direct: The most direct way, {stepCount} steps, {savedCount} fewer
+      directThrough: The most direct way, {stepCount} steps, {savedCount} fewer, through {wordList}
       keyed: 'Fetching {itemList} first, then {stepCount} steps'
     showing:
       round: the way around

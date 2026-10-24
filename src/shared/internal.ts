@@ -2238,13 +2238,6 @@ const TUNING_DEFAULTS = {
      */
     alternativeMinSteps: 10,
     /**
-     * How much longer than the fewest moves a route planned for a reader may
-     * be before the most direct way is offered beside it (`Route.direct`, todo
-     * 145): the user's 20%. Counted in moves, the fewest the character can walk
-     * with walls and gates judged and no item spent.
-     */
-    directLonger: 0.2,
-    /**
      * The most a walk to a door's lever in another room and back may cost
      * before the door is priced as the wall it was (todo 837). The Grand
      * Stair door's detour to 7/152 prices at about 57, with a hidden exit and

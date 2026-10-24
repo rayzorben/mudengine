@@ -8890,6 +8890,38 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
+ * The most direct way, outside the fold whenever the plan takes more moves
+ * (the user, 2026-10-23): an accent tint, the one alternative read without
+ * opening the list. The same tint marks it in the head once it is shown.
+ */
+.route-direct {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  display: flex;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 3px 4px 3px 8px;
+}
+
+.route-direct > svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.route-direct > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chip.direct {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  color: var(--accent);
+}
+
+/*
  * *Collect the key first* (todo 07) and *Stop before entering* (todo 03), in
  * the head beside the press they change. Both are `.chip.pick` — the row's own
  * control register, drawn from `aria-pressed` — rather than a checkbox and its
