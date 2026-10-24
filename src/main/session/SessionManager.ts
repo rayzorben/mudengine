@@ -1377,12 +1377,13 @@ export class SessionManager {
      */
     this.loops = new LoopRunner(
       {
-        routeTo: (stop) => {
+        routeTo: (stop, kind) => {
           if (roomAddress(this.tracker.current.room) === null) return t('session.loop.unknownRoom');
           const found = this.errands.findStop(stop);
           if (typeof found === 'string') return found;
-          return this.errands.planFromHere(roomId(found.map, found.room), {}, 'lap');
+          return this.errands.planFromHere(roomId(found.map, found.room), {}, kind);
         },
+        onLeg: (from, to) => this.errands.standsOnLeg(from, to),
         /*
          * Quietly: the loop is what is happening, and the loop narrates it.
          *
@@ -1410,7 +1411,7 @@ export class SessionManager {
          * instead would never call `ended`, and the lap would stand in the room
          * it won and never take another step.
          */
-        walk: (route) =>
+        walk: (route, kind) =>
           this.walker.start(route, this.tracker.current, {
             quiet: true,
             asked: false,
@@ -1427,11 +1428,10 @@ export class SessionManager {
              * the coins its own kill dropped.
              */
             whileFighting: false,
-            // A leg is the loop's to plan again, from wherever the character
-            // is when it is back — the same recovery a fight gets.
+            // Planned again from wherever the character is when it is back, as after a fight.
             resumeAfterLoss: false,
-            // And by distance, however the walker comes to re-plan it.
-            kind: 'lap'
+            // And as the loop planned it, however the walker comes to re-plan it.
+            kind
           }),
         moveInFlight,
         // A rest this client asked for a millisecond ago. The lap waits a beat

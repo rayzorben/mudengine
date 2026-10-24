@@ -2504,7 +2504,9 @@ function registerIpc(): void {
     if (at === null) return { unshown: null };
     const joins = worldFor(session)?.byId(at);
     if (joins === undefined) return { unshown: t('app.route.noRealmData') };
-    const route = manager.leg(here, at, { lap: true });
+    // Planned as the lap will walk it: the way out to a loop is priced.
+    const lap = manager.loops.legKind(parsed, stop) === 'lap';
+    const route = manager.leg(here, at, lap ? { lap } : {});
     return typeof route === 'string' ? { unshown: route } : { joins, route };
   });
   /*

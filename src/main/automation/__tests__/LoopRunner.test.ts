@@ -43,6 +43,7 @@ function planner(over: Partial<LoopPlanner> = {}) {
     // without a realm behind it.
     roomOf: (stop) => (stop.name === 'Arena' ? '1/10' : stop.name === 'Road' ? '1/11' : null),
     hereNow: () => '1/1',
+    onLeg: () => true,
     onTheGround: () => false,
     ...over
   };
@@ -97,6 +98,65 @@ describe('starting a loop', () => {
     expect(runner.retime({ ...loop, stops: [{ room: 'Arena' }] })).toBe(false);
     expect(runner.retime({ ...loop, bounce: true })).toBe(false);
     expect(new LoopRunner(p, {}).retime(loop)).toBe(false);
+  });
+
+  /* 2026-10-23: Festus walked out to the Webbed Lair by distance, through the Graveyard. */
+  it('plans the way out to the loop as a walk, and the lap by distance', () => {
+    let at = '1/1';
+    const kinds: string[] = [];
+    const { planner: p } = planner({
+      hereNow: () => at,
+      onLeg: () => false,
+      routeTo: (stop, kind) => {
+        kinds.push(`route ${kind}`);
+        return route(stop.name);
+      },
+      walk: (_route, kind) => {
+        kinds.push(`walk ${kind}`);
+        return null;
+      }
+    });
+    const runner = new LoopRunner(p, {});
+    expect(runner.legKind(loop, 0)).toBe('walk');
+    runner.start(loop, state());
+    expect(kinds).toEqual(['route walk', 'walk walk']);
+    at = '1/10';
+    reachNext(runner);
+    expect(kinds.slice(2)).toEqual(['route lap', 'walk lap']);
+  });
+
+  it('plans a leg by distance from a room on the lap between two stops', () => {
+    const asked: Array<[string, string]> = [];
+    const { planner: p } = planner({
+      onLeg: (from, to) => {
+        asked.push([from, to]);
+        return from === '1/11';
+      }
+    });
+    expect(new LoopRunner(p, {}).legKind(loop, 0)).toBe('lap');
+    expect(asked).toEqual([['1/11', '1/10']]);
+  });
+
+  it('asks the legs into a stop from the stops beside it, round a ring and not past a bounce’s end', () => {
+    const asked: string[] = [];
+    const rooms: Record<string, string> = { Arena: '1/10', Road: '1/11', Gate: '1/12' };
+    const { planner: p } = planner({
+      roomOf: (stop) => rooms[stop.name] ?? null,
+      onLeg: (from, to) => {
+        asked.push(`${from}>${to}`);
+        return false;
+      }
+    });
+    const ring: Loop = {
+      name: 'Ring',
+      stops: [{ room: 'Arena' }, { room: 'Road' }, { room: 'Gate' }]
+    };
+    const runner = new LoopRunner(p, {});
+    expect(runner.legKind(ring, 0)).toBe('walk');
+    expect(asked).toEqual(['1/12>1/10', '1/11>1/10']);
+    asked.length = 0;
+    expect(runner.legKind({ ...ring, bounce: true }, 0)).toBe('walk');
+    expect(asked).toEqual(['1/11>1/10']);
   });
 
   it('starts from the stop it is already standing in', () => {
@@ -238,6 +298,7 @@ describe('starting a loop', () => {
       walking: () => false,
       roomOf: () => null,
       hereNow: () => '1/1',
+      onLeg: () => true,
       onTheGround: () => false
     };
     const runner = new LoopRunner(p, {});

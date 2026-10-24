@@ -718,6 +718,17 @@ export class Errands implements SessionModule {
     return legs;
   }
 
+  /**
+   * Whether the character stands on the lap's leg from `from` to `to`, as
+   * the lap plans it (`lapTraveller`); false while it cannot be placed.
+   */
+  standsOnLeg(from: RoomId, to: RoomId): boolean {
+    const here = roomAddress(this.tracker.current.room);
+    if (here === null) return false;
+    const leg = this.routeBetween(from, to, 'lap');
+    return typeof leg !== 'string' && !leg.blocked && leg.steps.some((step) => step.to === here);
+  }
+
   /** `planFromHere` for a traveller already made, with the counters asked and a room run from said. */
   private planFromHereAs(
     to: RoomId,
