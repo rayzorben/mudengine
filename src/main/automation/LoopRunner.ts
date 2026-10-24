@@ -60,7 +60,7 @@ import {
   type WalkConfig
 } from '../../shared/config';
 import { expRateGraceMs } from '../../shared/walkChoices';
-import { afflictionHolding, type AfflictionHold } from '../../shared/walk';
+import { afflictionHolding, type AfflictionHold, type WalkKind } from '../../shared/walk';
 import type { CarriedLap } from '../../shared/underway';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { RoomId, Route } from '../../shared/world';
@@ -109,10 +109,15 @@ export interface LoopEvents {
 }
 
 export interface LoopPlanner {
-  /** A route from where the character is to this stop, or a reason there is none. */
-  routeTo(stop: { name: string; at: { map: number; room: number } | null }): Route | string;
-  /** Hand a route to the walker. Returns the walker's refusal, or null. */
-  walk(route: Route): string | null;
+  /** A route from where the character is to this stop, planned as `kind`, or a reason there is none. */
+  routeTo(
+    stop: { name: string; at: { map: number; room: number } | null },
+    kind: WalkKind
+  ): Route | string;
+  /** Hand a route to the walker, re-planned as `kind`. Returns the walker's refusal, or null. */
+  walk(route: Route, kind: WalkKind): string | null;
+  /** Whether the character stands on the lap's own leg from `from` to `to`, planned by distance. */
+  onLeg(from: RoomId, to: RoomId): boolean;
   /**
    * Whether a move this client sent is still waiting for the room it reaches.
    *
@@ -466,7 +471,7 @@ export class LoopRunner implements SessionModule {
   start(loop: Loop, state: CharacterState): string | null {
     if (state.phase !== 'in-game') return t('automation.loops.refusalNotInRealm');
     this.loop = loop;
-    this.stopRooms = loop.stops.map((stop) => this.planner.roomOf(splitStop(stop)));
+    this.stopRooms = this.roomsOf(loop);
     this.laps = 0;
     this.cameRound = false;
     this.failures = 0;
@@ -807,7 +812,7 @@ export class LoopRunner implements SessionModule {
   carry(lap: CarriedLap): void {
     if (this.status !== 'idle') return;
     this.loop = lap.loop;
-    this.stopRooms = lap.loop.stops.map((stop) => this.planner.roomOf(splitStop(stop)));
+    this.stopRooms = this.roomsOf(lap.loop);
     this.index = lap.index;
     this.forward = lap.forward;
     this.laps = lap.laps;
@@ -1250,7 +1255,8 @@ export class LoopRunner implements SessionModule {
       }
       return null;
     }
-    const route = this.planner.routeTo(target);
+    const kind = this.kindInto(this.stopRooms, this.index, loop.bounce === true);
+    const route = this.planner.routeTo(target, kind);
     if (typeof route === 'string') {
       /*
        * Lost, not blocked: the plan failed for want of a location, which is a
@@ -1269,7 +1275,7 @@ export class LoopRunner implements SessionModule {
       }
       return this.fail(route);
     }
-    const refused = this.planner.walk(route);
+    const refused = this.planner.walk(route, kind);
     if (refused !== null) {
       /*
        * The walker refusing over combat is the fighting guard above losing a
@@ -1699,6 +1705,47 @@ export class LoopRunner implements SessionModule {
   joining(loop: Loop): { stop: number; standing: boolean } {
     const at = loop.stops.findIndex((stop) => this.planner.here(splitStop(stop)));
     return at === -1 ? { stop: 0, standing: false } : { stop: at, standing: true };
+  }
+
+  /**
+   * How the leg to stop `to` of `loop` is planned: by distance, as a lap, when
+   * the character stands on the loop (a stop beside `to`, or the lap's own leg
+   * from one into it); from anywhere else it is the way out to the loop,
+   * priced as the player's own walk (2026-10-23). By distance, Festus walked
+   * from the Frozen Cavern through the Graveyard and six Blackwood Forest
+   * lairs to the Webbed Lair and died; the priced walk takes MegaMUD's
+   * eastern road. `advance`, the resume's measure and the route panel's
+   * preview ask the same question.
+   */
+  legKind(loop: Loop, to: number): WalkKind {
+    return this.kindInto(this.roomsOf(loop), to, loop.bounce === true);
+  }
+
+  /** The kind of the leg the running lap is heading along, or null with no lap. */
+  get headingKind(): WalkKind | null {
+    if (this.loop === null || this.status === 'idle') return null;
+    return this.kindInto(this.stopRooms, this.index, this.loop.bounce === true);
+  }
+
+  private kindInto(rooms: ReadonlyArray<RoomId | null>, to: number, bounce: boolean): WalkKind {
+    const here = this.planner.hereNow();
+    const target = rooms[to] ?? null;
+    if (here === null || target === null) return 'walk';
+    const count = rooms.length;
+    const beside = new Set(
+      [to - 1, to + 1]
+        .map((at) => (bounce ? at : (at + count) % count))
+        .filter((at) => at >= 0 && at < count && at !== to)
+        .map((at) => rooms[at] ?? null)
+        .filter((room): room is RoomId => room !== null)
+    );
+    if (beside.has(here)) return 'lap';
+    return [...beside].some((from) => this.planner.onLeg(from, target)) ? 'lap' : 'walk';
+  }
+
+  /** Where each stop of `loop` is, by stop index; null where the realm cannot settle it. */
+  private roomsOf(loop: Loop): Array<RoomId | null> {
+    return loop.stops.map((stop) => this.roomOf(splitStop(stop)));
   }
 
   /** The room a stop of `loop` names, or null where the realm cannot settle it. */

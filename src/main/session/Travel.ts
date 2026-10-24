@@ -189,6 +189,7 @@ export interface TravelParts {
     | 'noteOnline'
     | 'carried'
     | 'heading'
+    | 'headingKind'
     | 'strayedFrom'
     | 'place'
   >;
@@ -2591,9 +2592,10 @@ export class Travel implements SessionModule {
     if (heading !== null) {
       // Measured the way the lap will walk it, or the prompt quotes a detour
       // the leg will never take.
-      const plan = this.errands.planFromHere(heading, {}, 'lap');
+      const kind = this.loops.headingKind ?? 'lap';
+      const plan = this.errands.planFromHere(heading, {}, kind);
       if (typeof plan !== 'string') {
-        const owed = this.stepsFromStop(heading);
+        const owed = this.stepsFromStop(heading, kind);
         const wandered = plan.steps.length - (owed ?? 0);
         if (this.tooFar(wandered, confirmed)) {
           return {
@@ -2664,10 +2666,10 @@ export class Travel implements SessionModule {
    * distance rather than treating an unknown baseline as *it was standing on
    * the stop*, which would be the one reading that never asks.
    */
-  private stepsFromStop(heading: RoomId): number | null {
+  private stepsFromStop(heading: RoomId, kind: WalkKind): number | null {
     const from = this.loops.strayedFrom;
     if (from === null) return null;
-    const route = this.errands.routeBetween(from, heading, 'lap');
+    const route = this.errands.routeBetween(from, heading, kind);
     return typeof route === 'string' || route.blocked ? null : route.steps.length;
   }
 

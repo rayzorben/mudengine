@@ -121,6 +121,7 @@ function travel(
       noteOnline: vi.fn(),
       carried: false,
       heading: null,
+      headingKind: null,
       strayedFrom: null,
       place: null
     },
