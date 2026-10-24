@@ -3701,14 +3701,14 @@ export interface Route {
    */
   another?: Route;
   /**
-   * The most direct way, where the plan is longer than it by more than
-   * `tuning.world.directLonger` in moves (todo 145): the fewest moves the
+   * The most direct way, wherever the plan takes more moves (todo 145; every
+   * time, the user, 2026-10-23): the fewest moves the
    * character can walk, doors, keys and level gates judged as for the plan,
    * the `movement.keepOutOf` words allowed, the lair, run and spell prices left
    * out and no item spent. Its steps carry their `keptOut`, lair and danger
-   * flags, so the panel shows what it walks through. Absent where it is the
-   * plan's own steps or an alternative's already carried, and on any route
-   * not planned for a reader.
+   * flags, so the panel shows what it walks through. `another` with the same
+   * steps is not carried beside it. Absent where the plan is no longer,
+   * and on any route not planned for a reader.
    */
   direct?: Route;
   /**

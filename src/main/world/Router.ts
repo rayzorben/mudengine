@@ -1665,22 +1665,19 @@ export class Router {
       // See `Route.another`.
       const different =
         options.alternatives === true ? this.another(from, to, goal, route, others, draws) : null;
-      // And the fewest moves, where the plan is longer by `directLonger`. See `Route.direct`.
+      // And the fewest moves, whenever the plan takes more. See `Route.direct`.
       const direct =
-        options.alternatives === true
-          ? this.direct(from, to, goal, route, traveller, draws, [
-              other,
-              equipped,
-              invoked,
-              different
-            ])
-          : null;
+        options.alternatives === true ? this.direct(from, to, goal, route, traveller, draws) : null;
+      // A different way with the same steps as the most direct way is offered once, as the most
+      // direct way. The way round and the way with the items stay: each says why it is walked.
+      const differing =
+        different !== null && direct !== null && sameSteps(different, direct) ? null : different;
       const planned: Route = {
         ...route,
         ...(other === null ? {} : { otherWay: other }),
         ...(equipped === null ? {} : { carrying: equipped }),
         ...(invoked === null ? {} : { viaItem: invoked }),
-        ...(different === null ? {} : { another: different }),
+        ...(differing === null ? {} : { another: differing }),
         ...(direct === null ? {} : { direct }),
         // A door it holds no key for, which the engine may plan a way through.
         ...(walkable.keysAhead ? { keysAhead: true as const } : {})
@@ -2046,11 +2043,11 @@ export class Router {
    * The fewest moves this character can walk to `to` — `Route.direct` (todo
    * 145): doors, keys and level gates judged as for the plan, the kept-out
    * words allowed and flagged, the lair, run and spell prices left out, no
-   * item spent and no draw taken (`countsMoves`). Offered when the plan is
-   * longer than it by more than `tuning.world.directLonger`, and not when it
-   * is the plan's own steps or an alternative's already carried. The search
-   * stops at the length that would not be offered, so a short plan costs
-   * little; priced and flagged again on the traveller as it stands.
+   * item spent and no draw taken (`countsMoves`). Offered whenever the plan
+   * takes more moves (the user, 2026-10-23); a different way (`another`) with
+   * the same steps is dropped for it. The search stops short of the plan's length, so a
+   * short plan costs little; priced and flagged again on the traveller as it
+   * stands.
    */
   private direct(
     from: RoomId,
@@ -2058,12 +2055,10 @@ export class Router {
     goal: WorldRoom,
     route: Route,
     traveller: Traveller,
-    draws: boolean,
-    carried: ReadonlyArray<Route | null>
+    draws: boolean
   ): Route | null {
     if (draws) return null;
-    const longer = 1 + tuning().world.directLonger;
-    const most = route.steps.length / longer;
+    const most = route.steps.length - 1;
     if (most < 1) return null;
     const plain = allowingEvery(traveller);
     const moves: Traveller = { ...plain, preferred: undefined, countsMoves: true };
@@ -2071,8 +2066,7 @@ export class Router {
     if (found === null) return null;
     const cost = this.costAlong(found.cameFrom, to, plain);
     const other = this.buildRoute(found.cameFrom, to, cost, plain, false);
-    if (route.steps.length <= other.steps.length * longer) return null;
-    return [route, ...carried].some((way) => way !== null && sameSteps(way, other)) ? null : other;
+    return route.steps.length > other.steps.length ? other : null;
   }
 
   /** Whether a walk this traveller's kept-out words prune would arrive with every word allowed. */
