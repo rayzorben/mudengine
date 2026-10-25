@@ -277,6 +277,8 @@ export interface RemoteEvents extends StandingRemoteEvents {
   notice?: NoticeSink;
   /** Somebody asked this character to stop and wait, or said they are ready. */
   pace?(who: string, ready: boolean): void;
+  /** A member said it is held (`@held`) or free again (`@ok`), for whoever can free it. */
+  held?(who: string, held: boolean): void;
   /** A member left behind asked this character to walk back for it (`@comeback`). */
   walkBackFor?(who: string): void;
   /**
@@ -1732,7 +1734,9 @@ export class Remotes implements SessionModule {
          * Party pacing, and the only two of these that are a *fact* rather than
          * a request: a follower saying it cannot keep up, and the same follower
          * saying it can again. Reported to whoever is walking; nothing is sent.
+         * A hold is told to whoever can free it, whether or not the wait is kept.
          */
+        if (command.name !== 'wait') this.events.held?.(from, command.name === 'held');
         // MegaMUD's *Ignore @wait If Leading* (todo 831); a hurt member still stops the lap.
         // `@held` is a wait that is a condition, never walked on by `managesWait`.
         if (command.name !== 'ok' && this.config.party.ignoreWait) {

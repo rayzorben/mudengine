@@ -1,26 +1,24 @@
 /**
- * Curing a party member's poison (todo 80), beside `Cures`, which cures this
- * character.
- *
- * The party listing is the only thing that reports another character's
- * condition. GreaterMUD prints `P` in a member's row while the member carries
- * the `Poison` ability and is neither resting nor meditating
- * (`PartyCommand.GetMemberLine`, server source; capture 039 shows `P` on a
- * party mid-fight). MajorMUD's letter is not known, so this runs only on a
- * server whose own lines told the family as GreaterMUD.
- *
- * A cure that leaves the letter standing is tried again after 15 s, then 30,
- * 60 and 120 s at most, per member (MudPlay 3.142.36's backoff), and starts
- * over once the listing drops the letter. Under `healParty`, `<word> <member>`
- * with the poison box's spell when the realm lets it reach another character,
- * else the book's cheapest that does.
+ * A party member cured under `healParty`, beside `Cures`, which cures this
+ * character: poison where GreaterMUD's listing prints `P` in the member's row
+ * (todo 80), and a hold where a joined member standing here said `@held`
+ * (todo 20261024-1900-01), until their `@ok` or `tuning.spells.partyHeldMs`.
+ * `<word> <member>` with the cure box's spell where it reaches another
+ * character, else the book's cheapest that does; a cure that changes nothing
+ * waits 15 s, doubling to 120 s, per member and cure. `mudengine-automation` ›
+ * `parts/recovery.md`.
  */
 import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { CharacterState, PartyMember } from '../../shared/character';
-import type { SpellsConfig } from '../../shared/config';
+import {
+  joinedMembers,
+  standingHere,
+  type CharacterState,
+  type PartyMember
+} from '../../shared/character';
+import type { Cure, SpellsConfig } from '../../shared/config';
 import type { RealmFamily } from '../../shared/realm';
 import {
   castsBare,
@@ -59,11 +57,19 @@ function poisoned(member: PartyMember): boolean {
   );
 }
 
+/** A member to cure, and of what. */
+interface Need {
+  member: string;
+  cure: Extract<Cure, 'poison' | 'freedom'>;
+}
+
 export class PartyCures implements SessionModule {
-  /** Per member, lower-cased: when the next cast may go and the wait after it. */
+  /** Per cure and member, lower-cased: when the next cast may go and the wait after it. */
   private readonly waits = new Map<string, { at: number; wait: number }>();
-  /** Said once a session: no spell in reach cures a member's poison. */
-  private saidNone = false;
+  /** Members who said `@held`, lower-cased, and when they last said it. */
+  private readonly held = new Map<string, number>();
+  /** The cures no spell in reach answers, each said once a session. */
+  private readonly saidNone = new Set<Cure>();
   private readonly now: () => number;
   private readonly gate: CastGate;
 
@@ -83,38 +89,45 @@ export class PartyCures implements SessionModule {
 
   reset(): void {
     this.waits.clear();
-    this.saidNone = false;
+    this.held.clear();
+    this.saidNone.clear();
+  }
+
+  /** A member's `@held` (true) or `@ok` (false), from `Remotes`. */
+  memberHeld(who: string, held: boolean): void {
+    const key = who.toLowerCase();
+    if (held) this.held.set(key, this.now());
+    else this.held.delete(key);
   }
 
   onCharacter(state: CharacterState): void {
     if (!this.enabled || !this.config.healParty || state.phase !== 'in-game') return;
-    if (this.parts.family() !== 'greatermud') return;
-    const sick = state.party.members.filter(poisoned);
-    // A member the listing no longer marks starts over at the shortest wait.
-    for (const name of [...this.waits.keys()]) {
-      if (!sick.some((member) => member.name.toLowerCase() === name)) this.waits.delete(name);
-    }
-    if (sick.length === 0 || !manaAtLeast(state, this.config.minMana)) return;
-    const spell = this.spellFor(state);
-    if (spell === null) return;
-    const found = resolveSpell(spell, state.spellbook, this.parts.realmSpell);
-    if (!canPayFor(state, spellCost(found))) return;
+    this.expireHolds();
+    const needs = this.needs(state);
+    // A member no longer marked or held starts over at the shortest wait.
+    const due = new Set(needs.map(keyOf));
+    for (const key of [...this.waits.keys()]) if (!due.has(key)) this.waits.delete(key);
+    if (needs.length === 0 || !manaAtLeast(state, this.config.minMana)) return;
     const at = this.now();
-    for (const member of sick) {
-      const key = member.name.toLowerCase();
-      const held = this.waits.get(key);
-      if (held !== undefined && at < held.at) continue;
+    for (const need of needs) {
+      const key = keyOf(need);
+      const waited = this.waits.get(key);
+      if (waited !== undefined && at < waited.at) continue;
+      const spell = this.spellFor(state, need.cure);
+      if (spell === null) continue;
+      const found = resolveSpell(spell, state.spellbook, this.parts.realmSpell);
+      if (!canPayFor(state, spellCost(found))) continue;
       const { partyCureRetryMs: first, partyCureRetryMaxMs: most } = tuning().spells;
       const bare = castsBare(spellTargeting(this.parts.realmSpell(spell)?.targets));
       this.parts.queue.enqueue({
-        command: bare ? found.word : `${found.word} ${member.name}`,
+        command: bare ? found.word : `${found.word} ${need.member}`,
         priority: 'combat',
         coalesceKey: `party-cure:${key}`,
         decision: 'cure-party',
         expiresAt: at + tuning().spells.cureExpiresMs,
-        reason: t('automation.cure.partyReason', { member: member.name }),
+        reason: reasonFor(need),
         ...gatedCast(this.gate, found.configured, () => {
-          const wait = held === undefined ? first : Math.min(held.wait * 2, most);
+          const wait = waited === undefined ? first : Math.min(waited.wait * 2, most);
           this.waits.set(key, { at: this.now() + wait, wait });
         })
       });
@@ -122,20 +135,77 @@ export class PartyCures implements SessionModule {
     }
   }
 
-  /** The poison box's spell where it reaches another character, else the book's cheapest that does. */
-  private spellFor(state: CharacterState): string | null {
-    const boxed = this.config.cures.poison.trim();
+  /**
+   * Who wants curing of what: a member GreaterMUD's listing marks poisoned,
+   * and a joined member standing here who said `@held` lately.
+   */
+  private needs(state: CharacterState): Need[] {
+    const poison =
+      this.parts.family() === 'greatermud'
+        ? state.party.members
+            .filter(poisoned)
+            .map((member): Need => ({ member: member.name, cure: 'poison' }))
+        : [];
+    const here = standingHere(state);
+    const held = joinedMembers(state)
+      .filter((member) => this.held.has(member.name.toLowerCase()))
+      .filter((member) => here.has(member.name.toLowerCase()))
+      .map((member): Need => ({ member: member.name, cure: 'freedom' }));
+    return [...poison, ...held];
+  }
+
+  /** A `@held` older than `partyHeldMs` with no `@ok` is let go. */
+  private expireHolds(): void {
+    const at = this.now();
+    for (const [key, said] of this.held) {
+      if (at - said > tuning().spells.partyHeldMs) this.held.delete(key);
+    }
+  }
+
+  /** The cure box's spell where it reaches another character, else the book's cheapest that does. */
+  private spellFor(state: CharacterState, cure: Need['cure']): string | null {
+    const boxed = this.config.cures[cure].trim();
     const reaches = (name: string): boolean => {
       const realm = this.parts.realmSpell(name);
       return realm === null || castsOnOthers(spellTargeting(realm.targets));
     };
     if (boxed.length > 0 && reaches(boxed)) return boxed;
     const book = state.spellbook ?? [];
-    const best = cheapestCure(book, this.parts.realmSpell, 'poison', castsOnOthers);
-    if (best === null && !this.saidNone) {
-      this.saidNone = true;
-      this.parts.notice?.(t('automation.cure.partyNone'), 'cure-party');
+    const best = cheapestCure(book, this.parts.realmSpell, cure, castsOnOthers);
+    if (best === null && !this.saidNone.has(cure)) {
+      this.saidNone.add(cure);
+      this.parts.notice?.(noneFor(cure), 'cure-party');
     }
     return best;
+  }
+}
+
+const keyOf = (need: Need): string => `${need.cure}:${need.member.toLowerCase()}`;
+
+/** Why a cure is cast. */
+function reasonFor(need: Need): string {
+  switch (need.cure) {
+    case 'poison':
+      return t('automation.cure.partyReason', { member: need.member });
+    case 'freedom':
+      return t('automation.cure.partyFreeReason', { member: need.member });
+    default: {
+      const never: never = need.cure;
+      return never;
+    }
+  }
+}
+
+/** What is said once where no spell in reach casts a cure. */
+function noneFor(cure: Need['cure']): string {
+  switch (cure) {
+    case 'poison':
+      return t('automation.cure.partyNone');
+    case 'freedom':
+      return t('automation.cure.partyFreeNone');
+    default: {
+      const never: never = cure;
+      return never;
+    }
   }
 }

@@ -74,7 +74,7 @@ export class Cures implements SessionModule {
     private readonly events: { notice?: NoticeSink } = {},
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
     private readonly gate: CastGate = OPEN_CAST_GATE,
-    /** The party's poison, after this character's own cures. */
+    /** The party's poison and holds, after this character's own cures. */
     private readonly party: PartyCures | null = null
   ) {}
 
@@ -82,6 +82,11 @@ export class Cures implements SessionModule {
     this.config = config;
     this.enabled = enabled;
     this.party?.configure(config, enabled);
+  }
+
+  /** A member's `@held` (true) or `@ok` (false), for the party's freedom (`PartyCures`). */
+  memberHeld(who: string, held: boolean): void {
+    this.party?.memberHeld(who, held);
   }
 
   reset(): void {

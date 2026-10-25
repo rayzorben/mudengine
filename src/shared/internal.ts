@@ -699,6 +699,8 @@ const TUNING_DEFAULTS = {
      */
     partyCureRetryMs: 15_000,
     partyCureRetryMaxMs: 120_000,
+    /** A member's `@held` is acted on this long after they last said it, short of their `@ok` (`PartyCures`). */
+    partyHeldMs: 60_000,
     /** How often the blessing maintainer looks at what has lapsed. */
     buffTickMs: 1000,
     /** How long a blessing proposal stays worth sending. Never urgent. */

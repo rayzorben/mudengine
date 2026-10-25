@@ -107,3 +107,77 @@ describe("curing a party member's poison (todo 80)", () => {
     expect(sent).toHaveLength(4);
   });
 });
+
+/*
+ * Todo 20261024-1900-01: a member's `@held` is freed with the freedom box's
+ * spell, as MegaMUD's members do, while they stand here and until their `@ok`.
+ */
+describe('freeing a held party member', () => {
+  const freeing: SpellsConfig = {
+    ...spells,
+    cures: { ...spells.cures, freedom: 'freedom' }
+  };
+  const standing = (members: PartyMember[], here: string[]): CharacterState => {
+    const base = state(...members);
+    return {
+      ...base,
+      room: {
+        ...base.room,
+        occupants: here.map((name) => ({ name, kind: 'player' }) as never)
+      }
+    };
+  };
+  const freer = (config: SpellsConfig = freeing): PartyCures =>
+    new PartyCures(config, true, { queue, realmSpell: () => null, family: () => null });
+
+  it('casts freedom on a member who said @held and stands here, on any family', () => {
+    const cures = freer();
+    const room = standing([member('Killa', null), member('Yang', null)], ['Killa', 'Yang']);
+    // Positive control: nothing before the word.
+    cures.onCharacter(room);
+    expect(sent).toEqual([]);
+    cures.memberHeld('Killa', true);
+    cures.onCharacter(room);
+    expect(sent).toEqual(['freedom Killa']);
+    expect(kinds).toEqual(['cure-party']);
+  });
+
+  it('frees nobody who is not in the room, or not in the party', () => {
+    const cures = freer();
+    cures.memberHeld('Killa', true);
+    cures.memberHeld('Stranger', true);
+    cures.onCharacter(standing([member('Killa', null)], ['Stranger']));
+    expect(sent).toEqual([]);
+    // Positive control: Killa walks in.
+    cures.onCharacter(standing([member('Killa', null)], ['Stranger', 'Killa']));
+    expect(sent).toEqual(['freedom Killa']);
+  });
+
+  it('stops at the member’s @ok, and a minute after the last @held', () => {
+    const cures = freer();
+    const room = standing([member('Killa', null)], ['Killa']);
+    cures.memberHeld('Killa', true);
+    cures.memberHeld('Killa', false);
+    cures.onCharacter(room);
+    expect(sent).toEqual([]);
+    cures.memberHeld('Killa', true);
+    vi.advanceTimersByTime(tuning().spells.partyHeldMs + 1);
+    cures.onCharacter(room);
+    expect(sent).toEqual([]);
+    // Positive control: said again, it is cast.
+    cures.memberHeld('Killa', true);
+    cures.onCharacter(room);
+    expect(sent).toEqual(['freedom Killa']);
+  });
+
+  it('casts nothing with Heal Party off', () => {
+    const cures = freer({ ...freeing, healParty: false });
+    cures.memberHeld('Killa', true);
+    cures.onCharacter(standing([member('Killa', null)], ['Killa']));
+    expect(sent).toEqual([]);
+    // Positive control: switched on, the same word is answered.
+    cures.configure({ ...freeing, healParty: true }, true);
+    cures.onCharacter(standing([member('Killa', null)], ['Killa']));
+    expect(sent).toEqual(['freedom Killa']);
+  });
+});

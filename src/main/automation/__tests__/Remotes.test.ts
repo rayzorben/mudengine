@@ -2746,12 +2746,15 @@ describe('the decision behind each line and command (todo 119)', () => {
 describe('a held member: @held and @comeback', () => {
   let paced: string[];
   let walkedBack: string[];
+  let holds: string[];
   const make = (over: Partial<AutomationConfig> = {}): Remotes => {
     paced = [];
     walkedBack = [];
+    holds = [];
     return new Remotes({ ...config, ...over }, queue, {
       notice: (m) => notices.push(m),
       pace: (who, ready) => paced.push(`${who}:${ready ? 'ok' : 'wait'}`),
+      held: (who, held) => holds.push(`${who}:${held ? 'held' : 'free'}`),
       walkBackFor: (who) => walkedBack.push(who)
     });
   };
@@ -2763,6 +2766,15 @@ describe('a held member: @held and @comeback', () => {
     remotes.onBlock(said('conversation-telepath', 'Soul', '@ok'), who());
     expect(paced).toEqual(['Soul:wait', 'Soul:wait', 'Soul:ok']);
     expect(notices).toContain(t('automation.remotes.followerHeld', { from: 'Soul' }));
+  });
+
+  // Todo 20261024-1900-01: whoever can free the member is told, a plain @wait is no hold.
+  it('tells whoever can free a member of @held and @ok, even under Ignore @wait', () => {
+    const remotes = make({ party: { ...config.party, ignoreWait: true } });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@wait'), who());
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@held'), who());
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@ok'), who());
+    expect(holds).toEqual(['Soul:held', 'Soul:free']);
   });
 
   it('is skipped under Ignore @wait If Leading, and never walked on under Manage Party', () => {

@@ -69,7 +69,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the member's heal comment, one line as `@comeback` came (todo 20261023-1950-01).
   // Lowered by the light's comment, condensed as the done-once-found writer came (todo 20261024-1810-01).
   // Lowered by the supplies' vault search, one `Errands.cashFrom` beside the fare's (todo 20261024-0804-01).
-  'src/main/session/SessionManager.ts': 3325,
+  // Lowered by a comment that named nothing below it, as a member's `@held` came (todo 20261024-1900-01).
+  'src/main/session/SessionManager.ts': 3322,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

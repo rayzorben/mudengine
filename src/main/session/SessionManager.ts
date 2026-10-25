@@ -1231,10 +1231,6 @@ export class SessionManager {
       { notice }
     );
     this.chest = new ChestOpening(this.queue, { notice });
-    /*
-     * The other half of running several characters at once: `@health` over a
-     * telepath costs no command, where the party roster costs one and gives a percentage.
-     */
     // Whether anybody is at the keyboard: the telepath reply, the hang-up and the trace (todo 79).
     this.attendance = new Attendance(automation.afk.afterMinutes, () =>
       this.publisher.publishAutomation()
@@ -1252,6 +1248,7 @@ export class SessionManager {
       ...remoteHangUps(() => this.safety, sink),
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
+      held: (who, held) => this.cures.memberHeld(who, held),
       walkBackFor: (who) => this.travel.walkBackFor(who),
       switchAutomation: switchNow,
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
@@ -1268,7 +1265,7 @@ export class SessionManager {
         if (!this.grounded.standsDown(state) && !this.travel.isRetreating())
           this.heal.onCharacter(state);
       },
-      // Which client a player runs, on their registry entry, pushed for `commanded`'s reason.
+      // Which client a player runs, on their registry entry, pushed as `commanded` is.
       clientNamed: (from, client, extended) => {
         const facts = { ...(client === undefined ? {} : { client }), extendedRemotes: extended };
         if (this.tracker.noteRemoteClient(from, Date.now(), facts)) this.publisher.players();

@@ -5789,7 +5789,8 @@ settings:
     healParty: Auto-Heal Party Members
     healPartyHint: A member the party list has not shown has no health to read, and is never healed
       on a guess. On GreaterMUD a member the list marks P is cured of poison too, with your poison
-      cure when it can reach another character.
+      cure when it can reach another character. Your freedom cure is cast on a member in the room
+      who says @held, until they say @ok or a minute passes.
     healPartyWithHint: Cast on the member who is hurt. Only spells that can be cast on another
       character are shown.
     healPartyWithLabel: Party Healing Spell
@@ -6886,6 +6887,10 @@ automation:
     partyReason: 'cure: poison on {member}'
     partyNone: A party member is poisoned, and no spell in your book that cures poison can be cast
       on another character.
+    # A member who said @held (todo 20261024-1900-01).
+    partyFreeReason: 'cure: freedom on {member}'
+    partyFreeNone: A party member is held, and no spell in your book that frees a held character can
+      be cast on another character.
   spells:
     choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): even its lowest roll kills what is left
       of the target.'

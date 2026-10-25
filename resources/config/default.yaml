@@ -2031,7 +2031,9 @@ automation:
     # healParty also cures a member's poison on GreaterMUD, where the party
     # list marks a poisoned member P: the poison cure when it can be
     # cast on another character, else the cheapest in the book that can.
-    # One that changes nothing waits 15 seconds, doubling to 2 minutes.
+    # One that changes nothing waits 15 seconds, doubling to 2 minutes. The
+    # freedom cure is cast the same way on a member in the room who says
+    # @held, until they say @ok or a minute passes.
     healParty: false
 
     # Auto Choose Best Heal. On, the heal is picked each cast from your
