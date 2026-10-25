@@ -150,3 +150,22 @@ describe('what a lair spawns, and how often', () => {
     expect(found.map((e) => e.regenHours)).toEqual([1, undefined]);
   });
 });
+
+/*
+ * Format 74. A room's resident comes back on its own clock with no
+ * `GameLimit` (`NPCRegenSlot`), and the lair slot does not: gmud.zip's
+ * gravedigger is both, so its lair stays on the room's delay.
+ */
+describe('a resident’s clock beside a lair’s', () => {
+  it('gives the resident its clock and leaves the lair on the room’s delay', () => {
+    const graph = makeWorld(
+      [
+        { m: 1, r: 1, n: 'Graveyard', x: {}, lair: '(Max 2): 790,', dl: 1 },
+        { m: 1, r: 2, n: 'Shed', x: {}, npc: 790 }
+      ],
+      [{ n: 'gravedigger', hp: 130, i: [790], xp: 1500, nr: 1 }]
+    );
+    expect(graph.lairEntities(graph.byId('1/1')!).map((e) => e.regenHours)).toEqual([undefined]);
+    expect(graph.residentEntities(graph.byId('1/2')!).map((e) => e.regenHours)).toEqual([1]);
+  });
+});

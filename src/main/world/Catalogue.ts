@@ -586,6 +586,7 @@ export class Catalogue {
       // Format 36. Written only where every row of the name agrees, so where
       // it is here it answers for the fold as exactly as a row would.
       mob.regenHours = positive('rt');
+      mob.residentHours = positive('nr');
       mob.coins = readCoins(record['cs'], version);
       mob.follows = positive('fol');
       if (record['und'] === 1) mob.undead = true;
@@ -669,6 +670,7 @@ export class Catalogue {
         kept.experience = stated('xp');
         kept.regen = stated('rgn');
         kept.regenHours = stated('rt');
+        kept.residentHours = stated('nr');
         kept.coins = readCoins(row['cs'], version);
         kept.follows = stated('fol');
         kept.averageDamage = stated('dmg');
@@ -904,12 +906,17 @@ export class Catalogue {
   /**
    * The room's placed resident (`Rooms.NPC`), weighed as its own row — the
    * same reading `lairEntities` gives a lair, for the room that has a boss
-   * rather than a lair. Its clock is the row's `regenHours`, not the room's
-   * `delay`. Empty for a room with no resident, or one this table lacks.
+   * rather than a lair. Its clock is the row's `regenHours`, or its
+   * `residentHours` where that states none, never the room's `delay`. Empty
+   * for a room with no resident, or one this table lacks.
    */
   residentEntities(room: WorldRoom): MobEntity[] {
-    const entity = room.npcId === undefined ? undefined : this.rowEntity(room.npcId);
-    return entity === undefined ? [] : [entity];
+    const id = room.npcId;
+    const entity = id === undefined ? undefined : this.rowEntity(id);
+    if (id === undefined || entity === undefined) return [];
+    const resident = this.rowsById.get(id)?.residentHours ?? this.mobsById.get(id)?.residentHours;
+    if (entity.regenHours === undefined && resident !== undefined) entity.regenHours = resident;
+    return [entity];
   }
 
   supply(): WorldSupply {

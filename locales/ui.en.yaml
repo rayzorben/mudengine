@@ -3387,6 +3387,7 @@ cards:
       # `Monsters.RegenTime`: how long after a kill this one comes back. Shown only for a
       # monster with a clock of its own; the others come back with their room.
       respawnFigure: '{clock} after it is killed'
+      respawnResidentFigure: '{clock} after it is killed in the room it lives in'
       respawnLabel: Regen time
       undeadLabel: Undead
       undeadYes: 'yes'

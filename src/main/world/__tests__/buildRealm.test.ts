@@ -606,6 +606,30 @@ describe('naming what a monster is worth in health', () => {
   });
 
   /*
+   * Format 74. A room's resident comes back through `NPCRegenSlot`, which
+   * reads `Regen` whatever `GameLimit` says (`RegenSlot.cs:201`); gmud.zip has
+   * no `GameLimit` column at all. The minotaur, placed by no room, stays off.
+   */
+  it('keeps the RegenTime of a room’s resident with no GameLimit, apart from rt', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 52, Name: 'practice dummy', HP: 500, RegenTime: 24, 'In Game': 1 },
+          { Number: 111, Name: 'minotaur', HP: 200, RegenTime: 48, GameLimit: 0, 'In Game': 1 }
+        ]
+      }),
+      undefined,
+      undefined,
+      new Set([52])
+    );
+    // `nr`, beside `rt`: the lair's slot still reads no clock for the same row.
+    expect(mobs.find((mob) => mob.n === 'practice dummy')).toMatchObject({ nr: 24 });
+    expect(mobs.find((mob) => mob.n === 'practice dummy')?.rt).toBeUndefined();
+    expect(mobs.find((mob) => mob.n === 'minotaur')?.rt).toBeUndefined();
+    expect(mobs.find((mob) => mob.n === 'minotaur')?.nr).toBeUndefined();
+  });
+
+  /*
    * Format 49: `Monsters.R P G S C`, each coin's maximum, in `DENOMINATIONS`
    * order. Paradigm's kobold thief is S 7, C 20; its cave bear carries none.
    * A name holding several rows folds to the row worth least, as `xp` does.

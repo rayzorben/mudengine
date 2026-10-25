@@ -4,7 +4,7 @@ import EntityNumber from './EntityNumber';
 import MobAsks from './MobAsks';
 import MobFactRow from './MobFactRow';
 import RarityRows from './RarityRows';
-import { regenClockText } from '../lib/clockText';
+import { regenClockText, residentClockText } from '../lib/clockText';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
@@ -254,6 +254,7 @@ function MobDetail({
 }) {
   const word = mob.disposition === null ? null : DISPOSITION_WORD[mob.disposition];
   const ownClock = regenClockText(mob);
+  const residentClock = ownClock === null ? residentClockText(mob) : null;
   /*
    * Split at the point of display rather than in two fields on the wire: it is
    * one index and one cap over the realm's placements, and which of the two
@@ -514,6 +515,13 @@ function MobDetail({
             comes back with its room, so it has no row here.
           */}
           <dd>{t('cards.reference.mob.respawnFigure', { clock: ownClock })}</dd>
+        </>
+      )}
+      {residentClock !== null && (
+        <>
+          <dt>{t('cards.reference.mob.respawnLabel')}</dt>
+          {/* A resident's clock with no `GameLimit` (format 74): its lairs stay on their delay. */}
+          <dd>{t('cards.reference.mob.respawnResidentFigure', { clock: residentClock })}</dd>
         </>
       )}
       {residents.length > 0 && (

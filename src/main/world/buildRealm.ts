@@ -156,8 +156,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 71 | **The ways a quest counter lets through.** A room command or exit whose gate wants a counter at a rank (`Quest.opens`, `questOpenings.ts`), with its own level gate, less the ways the quest's own steps go on to use: a step, a command that gives an item a step takes back, a way into a step's room. A quest that pays nothing kept counts one its last rank goes through as its reward, at that way's level: MerchantCaptain's `secure passage to talkiran` at Blackwater Harbor, Wharf (14/759), level 65 on pmud.zip and 70 on gmud.zip (todo 155) |
  * | 72 | **What a monster answers to.** `Monsters.GreetTXT` was walked three times at build time (quests, levers, supply) and each kept only the words leading to its own kind of thing, so a monster's information could not list what it can be asked. `BuiltMob.ak` and `BuiltMobRow.ak` are its `ask` table (`mobAsks.ts`): every word, those running the same steps under the longest, with the items given and taken, spells taught and copper charged. The wounded messenger (243) answers eight in gmud.zip. The fold carries it only where every row's table agrees (todo 01) |
  * | 73 | **Where a command's run lands, and how often.** `parseRoomScript` took `to` from a `teleport` or a cast naming its map, and never followed `random`, a shown block's link or `EndCast`, so `dig grave` (7% to Musty Grottos behind `random 9121`, the shovel breaking on 2%) and every ship's `secure passage` (a draw into the Swiftwind, then three timed spells to the beach) led nowhere: 5,408 of pmud.zip's rooms were unreached with every gate open, Terra Fuego, Terra Ista and Tal'kiran among them. `navigation/scriptLandings.ts` follows the run; `RoomCommand.landings` carries each chance landing with its draw, its roll line's gates and a ship's passage's wait, `breaks` what a try that moves nobody takes, `takes` what passing takes. A monster's ask that moves somebody is a command of each room it stands in (`askWays.ts`), behind `monster-here`. Todo 20261024-0804-01 |
+ * | 74 | **A room's resident keeps its clock with no `GameLimit`.** `ownClock` kept `Monsters.RegenTime` only where `GameLimit` is above zero, the lair slot's rule, but a resident placed by `Rooms.NPC` comes back through `NPCRegenSlot`, which reads the clock in both branches (`RegenSlot.cs:144-215`). gmud.zip has no `GameLimit` column, so 326 residents lost theirs; pmud's healer and practice dummy and stock's practice dummy did too. `BuiltMob.nr` and `BuiltMobRow.nr` carry it where `rt` does not, read for a resident only: 9 of gmud.zip's are lair rows too (the gravedigger), and a lair stays on the room's delay, as stock's minotaur does. Todo 20261021-0855-03 |
  */
-export const REALM_FORMAT = 73;
+export const REALM_FORMAT = 74;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -774,6 +775,8 @@ export interface BuiltMob {
    * a resident still resolves its own row outright.
    */
   rt?: number;
+  /** A room's resident's clock where `rt` states none (format 74, `residentClock`), folded as `rt`. */
+  nr?: number;
   /** Its `ask` table (format 72), only where every row of the name has the same one, as `rt`. */
   ak?: BuiltAsk[];
   /**
@@ -898,6 +901,8 @@ export interface BuiltMobRow {
   rgn?: number;
   /** `Monsters.RegenTime`, hours: a placed monster's clock (format 33). */
   rt?: number;
+  /** A room's resident's clock where `rt` states none (format 74, `residentClock`). */
+  nr?: number;
   /** This row's coin maxima (format 49), as `BuiltMob.cs`. */
   cs?: number[];
   fol?: number;
@@ -1003,8 +1008,31 @@ export function placedItems(raw: unknown): number[] {
 function ownClock(row: Record<string, unknown>): number | null {
   const limit = number(row['GameLimit']);
   if (limit === null || limit === 0 || limit === BLANK_AS_NUMBER) return null;
+  return statedClock(row);
+}
+
+/** A draft room's resident (`Rooms.NPC`), as a list of none or one. */
+function residentOf(room: Record<string, unknown>): number[] {
+  return typeof room['npc'] === 'number' ? [room['npc']] : [];
+}
+
+/** `Monsters.RegenTime` in hours, or null where the row states none. */
+function statedClock(row: Record<string, unknown>): number | null {
   const hours = number(row['RegenTime']);
   return hours === null || hours <= 0 || hours === BLANK_AS_NUMBER ? null : hours;
+}
+
+/**
+ * The clock a room's resident (`Rooms.NPC`) comes back on, where it differs
+ * from `ownClock` (format 74). A resident goes through `NPCRegenSlot`, which
+ * reads `Regen` in both branches (`RegenSlot.cs:144-215`), so with no
+ * `GameLimit` it still comes back `Regen × 60` minutes after the kill and the
+ * room's `Delay` plays no part. gmud.zip has no `GameLimit` column: 326 of its
+ * residents state a clock, 9 of them lair rows too (the gravedigger), whose
+ * lairs stay on the room's delay. Null for a row no room places.
+ */
+function residentClock(row: Record<string, unknown>, resident: boolean): number | null {
+  return resident && ownClock(row) === null ? statedClock(row) : null;
 }
 
 /**
@@ -1568,8 +1596,13 @@ export function buildRealm(
   const items = indexItems(source, neededItems, fromScripts.from, itemLandings);
   const named = new Map(items.map((item) => [item.id, item.n]));
   const spellNames = new Map(spells.map((spell) => [spell.id, spell.n]));
-  const mobs = indexMobs(source, named, (greet) =>
-    askTable(greet, blocks, { item: (id) => named.get(id), spell: (id) => spellNames.get(id) })
+  const residents = new Set(drafts.flatMap(({ room }) => residentOf(room)));
+  const mobs = indexMobs(
+    source,
+    named,
+    (greet) =>
+      askTable(greet, blocks, { item: (id) => named.get(id), spell: (id) => spellNames.get(id) }),
+    residents
   );
   // Every row a gate names, said by its name: a room's commands and the quests.
   const races = indexRaces(source);
@@ -1676,7 +1709,7 @@ export function buildRealm(
     const action = cmd === null ? undefined : blocks.get(cmd)?.action;
     const here = roomId(room['m'] as number, room['r'] as number);
     const standing = [
-      ...(typeof room['npc'] === 'number' ? [room['npc']] : []),
+      ...residentOf(room),
       ...(typeof room['lair'] === 'string' ? parseLair(room['lair']).ids : [])
     ];
     const answers = [
@@ -2159,7 +2192,8 @@ export function indexClasses(source: RealmSource): BuiltClass[] {
 export function indexMobs(
   source: RealmSource,
   itemNames?: Map<number, string>,
-  asksOf?: (greet: number) => BuiltAsk[]
+  asksOf?: (greet: number) => BuiltAsk[],
+  residents: ReadonlySet<number> = new Set()
 ): BuiltMob[] {
   const monsters = source.table('Monsters');
   if (monsters === null) return [];
@@ -2207,6 +2241,8 @@ export function indexMobs(
        * reason `BuiltMob.rt` gives — one value means the name agrees.
        */
       rts: Set<number>;
+      /** Format 74: each row's `residentClock`, gathered as `rts` is. */
+      nrs: Set<number>;
       /** Format 72: each row's `ask` table as JSON, a row with none counted as `[]`. */
       asks: Map<string, BuiltAsk[]>;
       /** Format 18: gathered rather than reduced, for the reason `ty` states. */
@@ -2274,6 +2310,7 @@ export function indexMobs(
     if (align !== null) costs.push(costsAlignment(align));
 
     const id = number(row['Number']);
+    const resident = id !== null && residents.has(id);
     const entry = span ?? {
       lo: hp,
       hi: hp,
@@ -2282,6 +2319,7 @@ export function indexMobs(
       ids: id === null ? [] : [id],
       coins: coinMaxima(row),
       rts: new Set<number>(),
+      nrs: new Set<number>(),
       asks: new Map<string, BuiltAsk[]>(),
       types: new Set<number>(),
       casts: new Set<number>(),
@@ -2324,6 +2362,7 @@ export function indexMobs(
      * the question — so it votes `0` and a disagreeing name states nothing.
      */
     entry.rts.add(ownClock(row) ?? 0);
+    entry.nrs.add(residentClock(row, resident) ?? 0);
     // Format 72, gathered as the clocks are: one table is the whole name agreeing.
     const greet = number(row['GreetTXT']);
     const asked = asksOf !== undefined && greet !== null && greet > 0 ? asksOf(greet) : [];
@@ -2380,6 +2419,7 @@ export function indexMobs(
       own.rgn = stated('HPRegen');
       // Only where `GameLimit` makes it one — see `ownClock`.
       own.rt = ownClock(row) ?? undefined;
+      own.nr = residentClock(row, resident) ?? undefined;
       if (coins !== null) own.cs = compactCoins(coins);
       own.fol = stated('Follow%');
       own.dmg = stated('AvgDmg');
@@ -2445,6 +2485,11 @@ export function indexMobs(
       if (span.rts.size === 1) {
         const only = [...span.rts][0]!;
         if (only > 0) mob.rt = only;
+      }
+      // Format 74, folded as `rt` is.
+      if (span.nrs.size === 1) {
+        const only = [...span.nrs][0]!;
+        if (only > 0) mob.nr = only;
       }
       if (span.asks.size === 1) {
         const only = [...span.asks.values()][0]!;

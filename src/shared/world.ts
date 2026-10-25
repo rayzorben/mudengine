@@ -1939,6 +1939,12 @@ export interface WorldMobRow {
    * a uniquely named boss, having no `rw`, carried no clock at all.
    */
   regenHours?: number;
+  /**
+   * The clock it comes back on as a room's resident (`Rooms.NPC`) where
+   * `regenHours` states none: the resident's slot reads `RegenTime` without a
+   * `GameLimit` (format 74, `BuiltMob.nr`), a lair's slot does not.
+   */
+  residentHours?: number;
   /** This row's coin maxima (`Monsters.R P G S C`, format 49). Absent on an older realm file. */
   coins?: CoinMaxima;
   follows?: number;
@@ -2098,6 +2104,8 @@ export interface WorldMob {
   regen?: number;
   /** Hours a placed one stays dead — `Monsters.RegenTime` (format 33). */
   regenHours?: number;
+  /** As a room's resident, where `regenHours` states none (format 74, `WorldMob.residentHours`). */
+  residentHours?: number;
   /**
    * The most of each coin it is made with (`Monsters.R P G S C`, format 49):
    * the row worth least, like `experience`. All zero where it carries none,

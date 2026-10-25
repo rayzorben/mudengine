@@ -37,3 +37,14 @@ export function clockText(seconds: number): string {
 export function regenClockText(mob: Pick<WorldMob, 'regenHours'>): string | null {
   return hasOwnClock(mob) ? clockText(mob.regenHours * 3600) : null;
 }
+
+/**
+ * The clock a room's resident comes back on where `regenHours` states none
+ * (`WorldMob.residentHours`, format 74), as text; null where it has none. Only
+ * the monster card reads it: a lair holding the same row stays on its delay.
+ */
+export function residentClockText(mob: Pick<WorldMob, 'residentHours'>): string | null {
+  return mob.residentHours !== undefined && mob.residentHours > 0
+    ? clockText(mob.residentHours * 3600)
+    : null;
+}
