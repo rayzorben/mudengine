@@ -22,7 +22,7 @@ import type { PageMaps } from '../../shared/routeLegs';
 import type { SurvivalLevel } from '../../shared/survival';
 import { roomId, type Direction, type RoomId, type WorldRoom } from '../../shared/world';
 import { describeObstacle, leverOpening } from './obstacle';
-import { offPlaneWays, type PlaneGraph } from './planeSteps';
+import { landsInOneRoom, offPlaneWays, type PlaneGraph } from './planeSteps';
 import type { WorldGraph } from './WorldGraph';
 import { placeFlat, type FlatPlacement } from './flatPlacement';
 
@@ -112,9 +112,17 @@ export function mapCellOf(
    * on a `Text:` exit.
    */
   const away: MapAway[] = [];
+  // One mark per landing room. The first way to it is kept: a room's
+  // commands come before its spell and its item landings (`linkPortals`),
+  // and a command's mark carries no obstacle. A press routes to the room,
+  // and the route takes whichever way gets there.
+  const landings = new Set<RoomId>();
   for (const way of offPlaneWays(graph, room)) {
     const { kind, to, destination } = way;
     if (way.kind === 'teleport') {
+      // A roll among landings has no one room for a press to route to.
+      if (!landsInOneRoom(way) || landings.has(to)) continue;
+      landings.add(to);
       const { requirement } = way.exit;
       away.push({
         kind,

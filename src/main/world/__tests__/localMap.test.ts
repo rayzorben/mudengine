@@ -321,6 +321,32 @@ describe('the ways out that leave the plane', () => {
     expect(at(localMap(graph, '1/1'), '1/1')?.away).toBeUndefined();
   });
 
+  it('carries one teleport per room it lands in, and no roll among several', () => {
+    const graph = worldOf([
+      {
+        m: 1,
+        r: 1,
+        n: 'Lake',
+        x: {},
+        sp: 1,
+        cmd: [
+          { say: ['go portal'], to: '1/2' },
+          { say: ['swim'], to: '1/2' }
+        ],
+        sw: {
+          landings: [
+            { to: '1/3', chance: 0.1 },
+            { to: '1/4', chance: 0.1 }
+          ]
+        }
+      },
+      { m: 1, r: 2, n: 'Shore', x: {} },
+      { m: 1, r: 3, n: 'Reeds', x: {} },
+      { m: 1, r: 4, n: 'Island', x: {} }
+    ]);
+    expect(at(localMap(graph, '1/1'), '1/1')?.away?.map((way) => way.to)).toEqual(['1/2']);
+  });
+
   it('carries nothing for an ordinary room', () => {
     const graph = worldOf([
       { m: 1, r: 1, n: 'A', x: { e: { m: 1, r: 2 } } },

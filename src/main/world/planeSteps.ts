@@ -46,8 +46,9 @@ export type OffPlaneWay =
 
 /**
  * The ways out of a room the plane cannot draw: up, down and the room's
- * teleports. The Map card's marks (`mapCellOf`) take every one; the game
- * view's plane (`leapSteps`) skips a cast that scatters, as `planeSteps` does.
+ * teleports. The Map card's marks (`mapCellOf`) take every one but a teleport
+ * that does not land in one room; the game view's plane (`leapSteps`) also
+ * skips a cast that scatters, as `planeSteps` does.
  */
 export function* offPlaneWays(graph: LeapGraph, room: WorldRoom): Generator<OffPlaneWay> {
   for (const exit of room.exits) {
@@ -68,6 +69,18 @@ export function* offPlaneWays(graph: LeapGraph, room: WorldRoom): Generator<OffP
 }
 
 /**
+ * Whether a teleport lands in the one room it names: not a draw, and not one
+ * landing of a roll among several (format 73). A room spell's roll is its
+ * wait, one tick per try (`spellWays`), so only a line that always fires
+ * lands in one room. Crystal Lake's drift has twenty landings per room.
+ */
+export function landsInOneRoom(way: Extract<OffPlaneWay, { kind: 'teleport' }>): boolean {
+  const { requirement } = way.exit;
+  if (requirement.spellEffect === 'scatters' || requirement.tries !== undefined) return false;
+  return requirement.kind !== 'room-spell' || (requirement.waits?.ticks ?? 1) <= 1;
+}
+
+/**
  * The ways off the plane the game view's layout follows (`realmLayout`): up and
  * down change the floor, a teleport sets its landing beside the room. A
  * chance landing, a draw, a ship's passage and a monster's ask are left out
@@ -79,8 +92,7 @@ export function* leapSteps(graph: LeapGraph, room: WorldRoom): Generator<OffPlan
     if (way.kind !== 'teleport') {
       if (requirement?.spellEffect !== 'scatters') yield way;
     } else if (
-      requirement?.spellEffect !== 'scatters' &&
-      requirement?.tries === undefined &&
+      landsInOneRoom(way) &&
       requirement?.waits === undefined &&
       requirement?.asks === undefined
     ) {
