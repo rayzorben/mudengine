@@ -287,6 +287,11 @@ export class AttackSpells {
     );
   }
 
+  /** Whether the server repeats an area spell: a named re-attack would put a single one in its place. */
+  get repeatsArea(): boolean {
+    return this.repeating?.kind === 'spell' && this.repeating.area;
+  }
+
   /** The spell of a cast the player typed and the server has not answered, or null. */
   get playerCastOwed(): string | null {
     return this.inFlight.playerCast(Date.now());

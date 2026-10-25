@@ -11,7 +11,7 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import { joinedMembers, type CharacterState } from '../../shared/character';
+import { joinedMember, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { CommandQueue } from './CommandQueue';
@@ -63,7 +63,6 @@ export class ParOnWord {
 
 /** Whether `from`'s bar reads full or unstated, which their `@heal` says it is not. */
 function showsNothingMissing(from: string, state: CharacterState): boolean {
-  const key = from.toLowerCase();
-  const member = joinedMembers(state).find((entry) => entry.name.toLowerCase() === key);
+  const member = joinedMember(state, from);
   return member !== undefined && (member.health === null || member.health >= 1);
 }

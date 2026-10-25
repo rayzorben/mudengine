@@ -466,6 +466,11 @@ tuning:
     # How old a sighting of the leader's target may be before it is nobody's.
     assistFreshMs: 60000
 
+    # Attacking last: the re-attacks with no round between them after which
+    # this character stops attacking last on that monster, as two members both
+    # set to attack last answer each other. The next monster starts over.
+    attackLastTries: 3
+
     # The share of a fight's simulated runs survived, at full health, above
     # which a fight on a planned route costs no more than its fightCost. Below
     # it the route adds up to `survivalCost`. It prices routes only:

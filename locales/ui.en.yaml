@@ -1617,6 +1617,7 @@ toolbar:
   combat: Auto-Combat
   connect: Connect
   defendParty: Auto-Defend Party
+  attackLast: Attack Last in Party
   disconnect: Disconnect
   drop: Auto-Drop Junk
   retreat: Auto-Run (Run When Hurt)
@@ -5409,6 +5410,11 @@ settings:
     askHealthHint: Telepath @health to a member who joins, so their health is known before they
       are hurt.
     askHealthLabel: Request Party Health
+    attackLastHint: Attack each monster a party member attacks, after them every time they attack it,
+      so it turns on this character. For the character with the most AC and health. Two members both
+      set to attack last answer each other; after a few re-attacks with no round between, this one
+      stops attacking last on that monster until the next.
+    attackLastLabel: Attack Last in Party
     assistHint: Attack what the leader (whoever this character follows) was last seen attacking,
       while it is still in the room. When the leader attacks everyone in the room, pick a monster
       the way auto-combat would. Never a player.
@@ -7507,6 +7513,12 @@ automation:
     reasonAssist: 'assist: {leader} is fighting {target}'
     reasonAssistRoom: 'assist: {leader} is attacking everyone in the room; {why}'
     reasonDefend: 'defend: {target} is attacking {member}'
+    reasonAttackLast: 'attack last: {member} attacked {target}'
+    attackLastPerson: '{target} is a person: Attack Last answers only an attack on a monster'
+    attackLastNotHere: '{target} is not listed in this room'
+    attackLastArea: your area spell is repeating, which an attack at {target} would replace
+    attackLastStopped: '{member} attacks again each time this character does: Attack Last stops on
+      {target} until the next monster.'
     reasonRestWithLeader: 'resting with {leader}'
     reasonRestForMember: 'resting until {who} is back to Keep Resting To HP %'
     reasonMeditateWithLeader: 'meditating with {leader}'

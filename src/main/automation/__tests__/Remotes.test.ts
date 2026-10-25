@@ -490,6 +490,14 @@ describe('answering the imperative ones', () => {
         ...config,
         movement: { ...config.movement, sneak: on }
       })
+    },
+    {
+      remote: 'attack-last',
+      setting: t('toolbar.attackLast'),
+      at: (on: boolean): AutomationConfig => ({
+        ...config,
+        party: { ...config.party, attackLast: on }
+      })
     }
   ] as const)('@$remote', ({ remote, setting, at }) => {
     let switched: Array<[AutomationSwitch, boolean]>;
@@ -577,7 +585,11 @@ describe('answering the imperative ones', () => {
 
   /* Each switch remote is one row, and each row is a remote `REMOTES` says is acted. */
   it('has a test row for every switch remote', () => {
-    expect(Object.keys(SWITCH_REMOTES).sort()).toEqual(['auto-combat', 'auto-sneak']);
+    expect(Object.keys(SWITCH_REMOTES).sort()).toEqual([
+      'attack-last',
+      'auto-combat',
+      'auto-sneak'
+    ]);
   });
 
   it('joins the sender’s party on @join', () => {

@@ -8,6 +8,7 @@
  */
 import { standingOf, type CharacterState, type PartyFight } from '../../shared/character';
 import { occupantAttacksOnSight } from '../../shared/mobRules';
+import { isAreaTarget, partyFight } from '../../shared/partyEngaged';
 import { mobKey, withoutArticle } from '../../shared/world';
 
 /**
@@ -117,16 +118,6 @@ export function engagedBy(
   };
 }
 
-/** What a member's swing at `target` files: the whole room, one monster, or nothing for a person. */
-function partyFight(s: CharacterState, target: string, at: number): PartyFight | null {
-  if (isAreaTarget(target)) return { kind: 'room', at };
-  const mob = target.trim().replace(/[.!]+$/, '');
-  const person = s.room.occupants.some(
-    (there) => there.kind === 'player' && there.name.toLowerCase() === mob.toLowerCase()
-  );
-  return person ? null : { kind: 'mob', target: mob, at };
-}
-
 function sameFight(a: PartyFight, b: PartyFight): boolean {
   if (a.at !== b.at) return false;
   return a.kind === 'room' ? b.kind === 'room' : b.kind === 'mob' && a.target === b.target;
@@ -189,16 +180,6 @@ function claim(s: CharacterState, who: string, mob: string, at: number): Charact
     ...s,
     combat: { ...s.combat, claimed: { ...s.combat.claimed, [key]: { by: who, at } } }
   };
-}
-
-/**
- * An area attack's target, `<Name> moves to attack everyone in the room.`
- * (`Player.cs:6169`, `Spell.cs:2131`; wire, Killa in
- * `logs/2026-09-13_22-38-55_festus`): every monster the room lists, never a
- * monster named for the phrase (todos 747, 756).
- */
-function isAreaTarget(target: string): boolean {
-  return /^everyone in the room[.!]?$/i.test(target.trim());
 }
 
 /**

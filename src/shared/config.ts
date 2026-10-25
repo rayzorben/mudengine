@@ -2090,6 +2090,13 @@ export interface PartyConfig {
    */
   defendParty: boolean;
   /**
+   * Attack each time a party member attacks a monster, so it turns on this
+   * character (MegaMUD's *Attack Last If In Party*, `AttackLast`; `AttackLast.ts`).
+   * Two members both set to attack last stop on a monster after
+   * `tuning.combat.attackLastTries` re-attacks with no round between.
+   */
+  attackLast: boolean;
+  /**
    * Sit down when the leader does. The party listing and `stops to rest` say
    * who is resting; a follower that keeps walking while its leader mends is a
    * follower a lair finds alone. Out of combat only, like every rest.
@@ -2594,6 +2601,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     party: {
       assistLeader: false,
       defendParty: false,
+      attackLast: false,
       restWithLeader: false,
       askForHealBelow: 0,
       waitBelow: 0,
@@ -4029,6 +4037,7 @@ function normalizeParty(value: unknown): PartyConfig {
   return {
     assistLeader: bool(raw['assistLeader'], d.assistLeader),
     defendParty: bool(raw['defendParty'], d.defendParty),
+    attackLast: bool(raw['attackLast'], d.attackLast),
     restWithLeader: bool(raw['restWithLeader'], d.restWithLeader),
     askForHealBelow: fraction(raw['askForHealBelow'], d.askForHealBelow),
     waitBelow: fraction(raw['waitBelow'], d.waitBelow),

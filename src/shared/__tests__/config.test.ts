@@ -735,6 +735,7 @@ describe('following somebody', () => {
     expect(party({})).toEqual({
       assistLeader: false,
       defendParty: false,
+      attackLast: false,
       restWithLeader: false,
       askForHealBelow: 0,
       waitBelow: 0,

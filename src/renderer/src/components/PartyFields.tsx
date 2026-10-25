@@ -51,6 +51,7 @@ export default function PartyFields({
     key:
       | 'assistLeader'
       | 'defendParty'
+      | 'attackLast'
       | 'restWithLeader'
       | 'ignoreParty'
       | 'sayPanic'
@@ -92,6 +93,13 @@ export default function PartyFields({
           hint: t('settings.party.defendHint'),
           name: 'defend',
           setting: 'automation.party.defendParty'
+        })}
+        {check({
+          key: 'attackLast',
+          label: t('settings.party.attackLastLabel'),
+          hint: t('settings.party.attackLastHint'),
+          name: 'attack-last',
+          setting: 'automation.party.attackLast'
         })}
         {check({
           key: 'restWithLeader',

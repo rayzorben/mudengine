@@ -2406,6 +2406,13 @@ automation:
     # person attacking a member is that member's PvP fight.
     defendParty: false
 
+    # Attack each monster a party member attacks, after them every time they
+    # attack it, so it turns on you. MegaMUD's Attack Last If In Party. For the
+    # character with the most AC and health. Two members both set to attack
+    # last answer each other; after a few re-attacks with no round between,
+    # this one stops attacking last on that monster until the next.
+    attackLast: false
+
     # Sit down when the leader does, out of combat.
     restWithLeader: false
 

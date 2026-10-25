@@ -1955,6 +1955,15 @@ export function joinedMembers(state: Pick<CharacterState, 'name' | 'party'>): Pa
   );
 }
 
+/** The joined member called `name`, whatever its case, or undefined. */
+export function joinedMember(
+  state: Pick<CharacterState, 'name' | 'party'>,
+  name: string
+): PartyMember | undefined {
+  const key = name.toLowerCase();
+  return joinedMembers(state).find((member) => member.name.toLowerCase() === key);
+}
+
 /** The same, by name. */
 export function partyMembers(state: CharacterState): string[] {
   return joinedMembers(state).map((member) => member.name);

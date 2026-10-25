@@ -5360,3 +5360,99 @@ describe('a weapon that cannot hurt the monster', () => {
     expect(sent).toEqual(['a stone golem', 'a stone golem']);
   });
 });
+
+/*
+ * Attacking last in a party (`AttackLast`): a member's attack is answered with
+ * the fight's own attack at their monster, and nothing else is sent for it.
+ */
+describe('attacking last', () => {
+  const member = (name: string) => ({
+    name,
+    activity: null,
+    className: null,
+    health: 1,
+    invited: false,
+    vitals: null,
+    pool: null,
+    sheet: null,
+    mana: null,
+    rank: null
+  });
+  const fighting = (target: string | null = 'giant rat'): CharacterState =>
+    state({
+      inCombat: target !== null,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: target !== null, target },
+      party: { ...EMPTY_CHARACTER.party, members: [member('Vaelor'), member('Soul')] },
+      room: {
+        ...EMPTY_CHARACTER.room,
+        occupants: [mob('giant rat', 'hostile'), mob('orc rogue', 'hostile')]
+      }
+    });
+  const attackingLast = (attackLast: boolean, settings: CombatConfig = combat()): AutoCombat => {
+    const auto = make(settings);
+    auto.configure(settings, true, undefined, { ...DEFAULT_CONFIG.automation.party, attackLast });
+    return auto;
+  };
+
+  it('attacks again after a member attacks, at the member’s monster', () => {
+    const auto = attackingLast(true);
+    auto.onCharacter(fighting());
+    drain();
+    expect(sent).toEqual([]);
+    auto.onBlock(block('player-attacks', { attacker: 'Soul', target: 'orc rogue.' }));
+    drain();
+    expect(sent).toEqual(['a orc rogue']);
+    expect(kinds).toEqual(['attack-last']);
+  });
+
+  // The user, 2026-10-25: whatever this character was fighting, or nothing.
+  it('answers a member opening a fight this character is not in', () => {
+    const auto = attackingLast(true);
+    auto.onCharacter(fighting(null));
+    drain();
+    sent.length = 0;
+    kinds.length = 0;
+    auto.onBlock(block('player-attacks', { attacker: 'Soul', target: 'orc rogue.' }));
+    drain();
+    expect(sent).toEqual(['a orc rogue']);
+    expect(kinds).toEqual(['attack-last']);
+  });
+
+  // On review: a switch is an opening, and passes what one does.
+  it('switches only past the gates an opening passes, and traces the decline', () => {
+    const fleeing = combat({ mobRules: [{ mob: 'black ooze', treat: 'escape' }] });
+    const auto = attackingLast(true, fleeing);
+    const beside = fighting('orc rogue');
+    const withOoze: CharacterState = {
+      ...beside,
+      room: { ...beside.room, occupants: [...beside.room.occupants, mob('black ooze', 'hostile')] }
+    };
+    auto.onCharacter(withOoze);
+    drain();
+    sent.length = 0;
+    decisions.length = 0;
+    // An escape row's monster stands here: nothing is opened beside it.
+    auto.onBlock(block('player-attacks', { attacker: 'Soul', target: 'orc rogue.' }));
+    drain();
+    expect(sent).toEqual(['a orc rogue']);
+    // That was the monster already fought; a switch to the rat is declined, said.
+    auto.onBlock(block('player-attacks', { attacker: 'Soul', target: 'giant rat.' }));
+    drain();
+    expect(sent).toEqual(['a orc rogue']);
+    expect(decisions.at(-1)).toMatchObject({ target: 'giant rat', acted: false });
+  });
+
+  it('sends nothing for a member’s attack with the setting off', () => {
+    const off = attackingLast(false);
+    off.onCharacter(fighting());
+    off.onBlock(block('player-attacks', { attacker: 'Soul', target: 'giant rat.' }));
+    drain();
+    expect(sent).toEqual([]);
+    // Positive control: the same attack with the setting on.
+    const on = attackingLast(true);
+    on.onCharacter(fighting());
+    on.onBlock(block('player-attacks', { attacker: 'Soul', target: 'giant rat.' }));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+});

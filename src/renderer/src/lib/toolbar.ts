@@ -108,6 +108,7 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   // back and this is the party's — the same idea at two scopes, and the label
   // is what separates them.
   defendParty: 'shield',
+  attackLast: 'crosshair',
   restWithLeader: 'moon',
   remotes: 'at',
   gangpath: 'broadcast',
@@ -167,6 +168,8 @@ export function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.assistLeader');
     case 'defendParty':
       return t('toolbar.defendParty');
+    case 'attackLast':
+      return t('toolbar.attackLast');
     case 'restWithLeader':
       return t('toolbar.restWithLeader');
     case 'remotes':

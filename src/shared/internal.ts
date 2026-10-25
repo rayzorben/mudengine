@@ -537,6 +537,13 @@ const TUNING_DEFAULTS = {
     /** How old a sighting of the leader's target may be before it is nobody's. */
     assistFreshMs: 60_000,
     /**
+     * Attacking last (`AttackLast`): the re-attacks with no round between them
+     * after which this character stops attacking last on that monster, two
+     * members both set to attack last answering each other (the user,
+     * 2026-10-25: "stop auto attacking after the 3rd attempt").
+     */
+    attackLastTries: 3,
+    /**
      * The share of a fight's simulated runs survived, at full health, above
      * which a planned fight costs no more than `automation.movement.fightCost`. Below it the
      * plan adds up to `world.survivalCost` (`navigation/plan.ts`). It prices a

@@ -146,6 +146,7 @@ import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 import { BrokenFight } from './BrokenFight';
 import { NoEffect } from './NoEffect';
+import { AttackLast, type Reattack } from './AttackLast';
 
 /**
  * `notice`, and `needBook` — the spellbook never read while *Auto Choose Best
@@ -502,6 +503,8 @@ export class AutoCombat implements SessionModule {
   private saidOpenerNeedsClass = false;
   /** The attack spell: what opens a fight, what the server repeats, and a round's change. */
   private readonly spell: AttackSpells;
+  /** When a party member's attack is answered with this character's own (`party.attackLast`). */
+  private readonly last: AttackLast;
   /**
    * The last attack or cast this module sent: its own answer is its whatever
    * the book and the realm say of the word (`offAnswering`).
@@ -620,6 +623,7 @@ export class AutoCombat implements SessionModule {
       () => this.engageCooldown
     );
     this.spell.configure(undefined, config.mobRules);
+    this.last = new AttackLast(this.party, { notice: (m, d) => this.events.notice?.(m, d) });
   }
 
   /**
@@ -638,7 +642,10 @@ export class AutoCombat implements SessionModule {
     this.config = config;
     this.enabled = enabled;
     this.spell.configure(spells, config.mobRules);
-    if (party) this.party = party;
+    if (party) {
+      this.party = party;
+      this.last.configure(party);
+    }
   }
 
   /** What the party's leader is fighting, if this character follows one and is told to help. */
@@ -720,6 +727,7 @@ export class AutoCombat implements SessionModule {
     this.cannotBackstabWith.clear();
     this.noEffect.reset();
     this.spell.reset();
+    this.last.reset();
     this.sentAttack = null;
     this.sentEchoed = true;
     this.lastChosen = null;
@@ -977,6 +985,8 @@ export class AutoCombat implements SessionModule {
     this.settleOff(block, answering);
     // After `settleOff`: the echo of a later attack breaks an earlier cast's Off and keeps that attack.
     if (answering !== null && answering === this.sentAttack?.command) this.sentEchoed = true;
+    const owed = this.last.heard(block, this.state);
+    if (owed !== null) this.reattack(owed);
     switch (block.type) {
       /*
        * An Off answering an attack is the first half of its own re-engagement
@@ -1008,11 +1018,13 @@ export class AutoCombat implements SessionModule {
       case 'user-hits':
         this.spell.heard(block, this.state);
         this.armRound();
+        this.last.roundFought();
         return;
       case 'user-misses':
       case 'mob-hits':
       case 'mob-misses':
         this.armRound();
+        this.last.roundFought();
         return;
 
       /*
@@ -1137,6 +1149,7 @@ export class AutoCombat implements SessionModule {
      */
     this.spell.onTarget(state.combat.target);
     this.broken.observe(state);
+    this.last.observe(state);
 
     if (!this.acting) return;
     if (state.phase !== 'in-game') return;
@@ -1695,24 +1708,8 @@ export class AutoCombat implements SessionModule {
    * surprising to be stopped by.
    */
   private whyNot(state: CharacterState, joining: boolean, target: string | null): string | null {
-    // Joining a party's fight — assisting the leader or defending a member —
-    // is not *opening* one, so `engage: none` does not stop it. Nor does it
-    // stop a monster a quest run was told to kill (`alsoFight`).
-    if (this.config.engage === 'none' && !joining && !this.wantedHere(state)) {
-      return t('automation.combat.refusedEngageNone');
-    }
-    if (this.retreating) return t('automation.combat.refusedRetreating');
-    const beside = this.besideStance(state);
-    if (beside !== null) return besideRefusal(beside.stance, beside.name);
-    // The player typed `break`; nothing opens a fight until they move or
-    // attack, or the stand-down lapses.
-    if (Date.now() < this.standDownUntil) return t('automation.combat.refusedStandDown');
-    // A step is unanswered: this room is being left, and a fight opened into
-    // it lands behind the character.
-    if (this.movePending) return t('automation.combat.refusedMovePending');
-    // The player's cast is owed its answer, which a cast sent now would share (todo 131).
-    const typed = this.spell.playerCastOwed;
-    if (typed !== null) return t('automation.combat.refusedPlayerCast', { spell: typed });
+    const gate = this.gateRefusal(state, joining);
+    if (gate !== null) return gate;
     /*
      * Already swinging at something: the server rolls the rounds, and a second
      * `attack` on the same thing spends a command to say what it already knows.
@@ -1748,7 +1745,38 @@ export class AutoCombat implements SessionModule {
      */
     const engaged = this.stillEngaged(state);
     if (engaged !== null) return t('automation.combat.refusedEngagedWith', { target: engaged });
+    return this.roomRefusal(state, target);
+  }
 
+  /**
+   * The gates on swinging at anything here, whatever the room holds: `engage:
+   * none`, a run, a monster leaving or hanging up standing here, the player's
+   * `break`, an unanswered step, the player's own cast still owed its answer.
+   */
+  private gateRefusal(state: CharacterState, joining: boolean): string | null {
+    // Joining a party's fight — assisting the leader or defending a member —
+    // is not *opening* one, so `engage: none` does not stop it. Nor does it
+    // stop a monster a quest run was told to kill (`alsoFight`).
+    if (this.config.engage === 'none' && !joining && !this.wantedHere(state)) {
+      return t('automation.combat.refusedEngageNone');
+    }
+    if (this.retreating) return t('automation.combat.refusedRetreating');
+    const beside = this.besideStance(state);
+    if (beside !== null) return besideRefusal(beside.stance, beside.name);
+    // The player typed `break`; nothing opens a fight until they move or
+    // attack, or the stand-down lapses.
+    if (Date.now() < this.standDownUntil) return t('automation.combat.refusedStandDown');
+    // A step is unanswered: this room is being left, and a fight opened into
+    // it lands behind the character.
+    if (this.movePending) return t('automation.combat.refusedMovePending');
+    // The player's cast is owed its answer, which a cast sent now would share (todo 131).
+    const typed = this.spell.playerCastOwed;
+    if (typed !== null) return t('automation.combat.refusedPlayerCast', { spell: typed });
+    return null;
+  }
+
+  /** Whether this room is the right size to fight in, `maxMobs` and `minMobs`, or why not. */
+  private roomRefusal(state: CharacterState, target: string | null): string | null {
     const here = countMobs(state.room.occupants);
     if (this.config.maxMobs > 0 && here > this.config.maxMobs) {
       return t('automation.combat.refusedMaxMobs', { here, max: this.config.maxMobs });
@@ -1853,14 +1881,13 @@ export class AutoCombat implements SessionModule {
      * opened is fought out below it: only opening asks.
      */
     const take = (who: RoomOccupant): void => {
-      const wait = waitOf(mobRuleFor(this.config.mobRules, who));
-      const short = wait === null ? null : waitShort(wait, state.vitals);
-      if (wait === null || short === null) {
+      const held = this.rowWait(state, who);
+      if (held === null) {
         willing.push(who);
         return;
       }
-      decline(who, waitRefusal(short, wait, who.name));
-      waits.set(who, wait);
+      decline(who, held.why);
+      waits.set(who, held.wait);
     };
     /*
      * Refused only because the realm does not say it starts fights: still in
@@ -1874,32 +1901,14 @@ export class AutoCombat implements SessionModule {
     const listed = new Set<RoomOccupant>();
 
     for (const who of mobs) {
-      const row = mobRuleFor(this.config.mobRules, who);
-      if (row !== undefined && !isBanded(row)) {
-        decline(who, stanceRefusal(row.treat, who.name));
+      const first = this.openingRefusal(state, who);
+      if (first !== null) {
+        decline(who, first);
         continue;
       }
-      /*
-       * Somebody outside the party is already fighting it — MegaMUD's
-       * *PoliteAttacks*. The sighting is the tracker's (`combat.claimed`) and
-       * it ages out on the same clock a sighting of the leader's target does:
-       * both are one sentence about somebody else's fight, and a minute later
-       * neither says anything about now.
-       */
-      const claim = this.claimOn(state, who.name);
-      if (claim !== null) {
-        decline(who, t('automation.combat.refusedClaimed', { target: who.name, player: claim.by }));
-        continue;
-      }
-      /*
-       * Attacking it would certainly cost the character ten evil points,
-       * cumulatively, for as long as it plays: spent only when the player
-       * says so (`attackCostly`).
-       */
-      if (who.costly === 'always' && !this.config.attackCostly) {
-        decline(who, t('automation.combat.refusedCostly', { target: who.name }));
-        continue;
-      }
+      // Past `openingRefusal`, a row is a band (`isBanded`) or absent.
+      const rule = mobRuleFor(this.config.mobRules, who);
+      const row = rule !== undefined && isBanded(rule) ? rule : undefined;
       // Nothing carried can hurt it and no attack spell opens on it (todo 46).
       if (this.reachOf(state, who.name).kind === 'cannot' && !this.spellOpens(state, who.name)) {
         decline(who, t('automation.combat.refusedCannotHurt', { target: who.name }));
@@ -2678,10 +2687,15 @@ export class AutoCombat implements SessionModule {
 
   /** The state, while this character is in a fight this module may act in; else null. */
   private inAFight(): CharacterState | null {
+    const state = this.ableToFight();
+    return state?.inCombat === true ? state : null;
+  }
+
+  /** The character, where auto-combat may swing at all: on, standing, in the realm, not running. */
+  private ableToFight(): CharacterState | null {
     const state = this.state;
     if (!this.acting || this.events.onTheGround()) return null;
-    if (state === null || state.phase !== 'in-game') return null;
-    if (this.retreating || !state.inCombat) return null;
+    if (state === null || state.phase !== 'in-game' || this.retreating) return null;
     return state;
   }
 
@@ -2726,6 +2740,118 @@ export class AutoCombat implements SessionModule {
       decision: change.decision,
       onSent: () => this.attackSent(change)
     });
+  }
+
+  /**
+   * The fight's own attack, at the monster a party member just attacked
+   * (`AttackLast`): the attack spell where one is wanted, else the attack verb.
+   * Never an opener, since the member's attack started the fight. Whatever this
+   * character was fighting, or nothing; a switch or an opening passes what any
+   * opening does (`switchRefusal`) and is recorded as one. Every decline is
+   * traced. A change of attack still waiting goes, since this is the same command.
+   */
+  private reattack(owed: Reattack): void {
+    const state = this.ableToFight();
+    if (state === null || this.movePendingNow) return;
+    const { target, member } = owed;
+    const key = mobKey(target);
+    const opening = state.combat.target === null || mobKey(state.combat.target) !== key;
+    const refused = this.reattackRefusal(state, target, opening);
+    if (refused !== null) {
+      this.decline(target, refused);
+      return;
+    }
+    const why = t('automation.party.reasonAttackLast', { member, target });
+    const cast = this.spell.opening(
+      state,
+      this.spellTarget(state, target),
+      why,
+      this.swingFor(state, target)
+    );
+    const verb = this.attackVerb(target);
+    if (cast === null && (verb.length === 0 || this.reachOf(state, target).kind === 'cannot')) {
+      this.decline(target, t('automation.combat.refusedCannotHurt', { target }));
+      return;
+    }
+    const proposal: Proposal = cast ?? {
+      command: `${verb} ${target}`,
+      action: { kind: 'melee' },
+      reason: t('automation.combat.reason', { why }),
+      decision: 'attack-last'
+    };
+    // An opening or a switch is recorded as `swing` records one, so `stillEngaged` holds the room.
+    if (opening) {
+      this.opened.set(key, Date.now());
+      this.focus = key;
+    }
+    this.note(target, true, undefined, why, proposal.command);
+    this.queue.cancel((intent) => intent.coalesceKey === 'round-attack');
+    this.queue.enqueue({
+      command: proposal.command,
+      priority: 'combat',
+      coalesceKey: 'attack-last',
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
+      stillWanted: () => this.state !== null && canStillHit(this.state, key),
+      reason: proposal.reason,
+      decision: 'attack-last',
+      onSent: () => {
+        this.attackSent(proposal);
+        this.last.sent(target);
+      }
+    });
+  }
+
+  /**
+   * Why a member's monster is not attacked last, or null: a person, a row that
+   * leaves it alone, a repeated area spell a named attack would replace; and
+   * where this character is not already on it, every gate an opening passes,
+   * the room's size, a stranger's claim, the ten evil points and its row's wait.
+   */
+  private reattackRefusal(state: CharacterState, target: string, opening: boolean): string | null {
+    if (this.isPlayer(state, target)) return t('automation.party.attackLastPerson', { target });
+    const who = mobListed(state.room.occupants, target);
+    if (who === undefined) return t('automation.party.attackLastNotHere', { target });
+    const row = mobRuleFor(this.config.mobRules, who);
+    // A stance row, as `choose` declines it.
+    if (row !== undefined && !isBanded(row)) return stanceRefusal(row.treat, target);
+    if (this.spell.repeatsArea) return t('automation.party.attackLastArea', { target });
+    if (!opening) return null;
+    return (
+      this.gateRefusal(state, true) ??
+      this.roomRefusal(state, target) ??
+      this.openingRefusal(state, who) ??
+      this.rowWait(state, who)?.why ??
+      null
+    );
+  }
+
+  /**
+   * The first of `choose`'s refusals of one monster, which any opening on it
+   * passes: a stance row, somebody outside the party already fighting it
+   * (MegaMUD's *PoliteAttacks*; the tracker's `combat.claimed`, aged on the
+   * clock a sighting of the leader's target is), and the ten evil points a
+   * certain alignment cost would spend, only with `attackCostly`.
+   */
+  private openingRefusal(state: CharacterState, who: RoomOccupant): string | null {
+    const row = mobRuleFor(this.config.mobRules, who);
+    if (row !== undefined && !isBanded(row)) return stanceRefusal(row.treat, who.name);
+    const claim = this.claimOn(state, who.name);
+    if (claim !== null) {
+      return t('automation.combat.refusedClaimed', { target: who.name, player: claim.by });
+    }
+    if (who.costly === 'always' && !this.config.attackCostly) {
+      return t('automation.combat.refusedCostly', { target: who.name });
+    }
+    return null;
+  }
+
+  /** The monster's row waiting for health or mana this character is short of, and why; null where it does not. */
+  private rowWait(state: CharacterState, who: RoomOccupant): { wait: MobWait; why: string } | null {
+    const wait = waitOf(mobRuleFor(this.config.mobRules, who));
+    const short = wait === null ? null : waitShort(wait, state.vitals);
+    return wait === null || short === null
+      ? null
+      : { wait, why: waitRefusal(short, wait, who.name) };
   }
 
   /** `break` for the area spell once the room has no monster left (`AttackSpells.breakEmptied`). */

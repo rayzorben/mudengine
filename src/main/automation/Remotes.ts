@@ -52,7 +52,7 @@ import type { WalkProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
 import {
   inAParty,
-  joinedMembers,
+  joinedMember,
   packRows,
   partyMembers,
   type CharacterState
@@ -380,7 +380,8 @@ export interface RemoteEvents extends StandingRemoteEvents {
  */
 export const SWITCH_REMOTES = {
   'auto-combat': 'combat',
-  'auto-sneak': 'sneak'
+  'auto-sneak': 'sneak',
+  'attack-last': 'attackLast'
 } as const satisfies Partial<Record<RemoteName, AutomationSwitch>>;
 
 export type SwitchRemote = keyof typeof SWITCH_REMOTES;
@@ -408,6 +409,8 @@ function switchRemoteLabel(remote: SwitchRemote): string {
       return t('toolbar.combat');
     case 'auto-sneak':
       return t('toolbar.sneak');
+    case 'attack-last':
+      return t('toolbar.attackLast');
     default: {
       const never: never = remote;
       return never;
@@ -1696,6 +1699,7 @@ export class Remotes implements SessionModule {
 
       case 'auto-combat':
       case 'auto-sneak':
+      case 'attack-last':
         this.switchByRemote(from, command.name, command.argument, prefix);
         return;
 
@@ -1775,7 +1779,6 @@ export class Remotes implements SessionModule {
       case 'deposit-all':
       case 'looponce':
       case 'roam':
-      case 'attack-last':
       case 'auto-all':
       case 'auto-nuke':
       case 'auto-heal':
@@ -1838,9 +1841,7 @@ export class Remotes implements SessionModule {
   /** Whether this leader walks on through `from`'s `@wait` (`walksOnThroughWait`). */
   private managesWait(from: string, command: RemoteCall, state: CharacterState): boolean {
     if (!this.config.party.manageParty || state.party.following !== null) return false;
-    const member = joinedMembers(state).find(
-      (entry) => entry.name.toLowerCase() === from.toLowerCase()
-    );
+    const member = joinedMember(state, from);
     return walksOnThroughWait(member, readWaitReason(command.argument));
   }
 

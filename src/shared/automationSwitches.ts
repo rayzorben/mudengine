@@ -57,6 +57,7 @@ export const AUTOMATION_SWITCHES = {
   invokeItems: ['spells', 'invokeItems'],
   assistLeader: ['party', 'assistLeader'],
   defendParty: ['party', 'defendParty'],
+  attackLast: ['party', 'attackLast'],
   restWithLeader: ['party', 'restWithLeader'],
   remotes: ['remotes', 'enabled'],
   gangpath: ['remotes', 'gangpath'],

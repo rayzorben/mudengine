@@ -15,6 +15,30 @@ import {
 import { mobListed } from './mobRules';
 
 /**
+ * An area attack's target, `<Name> moves to attack everyone in the room.`
+ * (`Player.cs:6169`, `Spell.cs:2131`; wire, Killa in
+ * `logs/2026-09-13_22-38-55_festus`): every monster the room lists, never a
+ * monster named for the phrase (todos 747, 756).
+ */
+export function isAreaTarget(target: string): boolean {
+  return /^everyone in the room[.!]?$/i.test(target.trim());
+}
+
+/** What a member's swing at `target` files: the whole room, one monster, or nothing for a person. */
+export function partyFight(
+  s: Pick<CharacterState, 'room'>,
+  target: string,
+  at: number
+): PartyFight | null {
+  if (isAreaTarget(target)) return { kind: 'room', at };
+  const mob = target.trim().replace(/[.!]+$/, '');
+  const person = s.room.occupants.some(
+    (there) => there.kind === 'player' && there.name.toLowerCase() === mob.toLowerCase()
+  );
+  return person ? null : { kind: 'mob', target: mob, at };
+}
+
+/**
  * What one sighting still points at: the monster as the room lists it, `room`
  * for a whole-room attack, or null once it is older than `freshMs` or its
  * monster left.

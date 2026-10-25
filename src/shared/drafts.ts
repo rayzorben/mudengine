@@ -1026,6 +1026,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     party: {
       assistLeader: party['assistLeader'] === true,
       defendParty: party['defendParty'] === true,
+      attackLast: party['attackLast'] === true,
       restWithLeader: party['restWithLeader'] === true,
       askForHealBelow: unit(party['askForHealBelow']),
       waitBelow: unit(party['waitBelow']),

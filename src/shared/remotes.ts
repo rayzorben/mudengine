@@ -343,11 +343,14 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
    */
   stop: { name: 'stop', support: 'acted' },
   rego: { name: 'rego', support: 'acted' },
-  'attack-last': {
-    name: 'attack-last',
-    support: 'unread',
-    because: 'no such setting here'
-  },
+  /*
+   * `@attack-last on` and `off`: `automation.party.attackLast`, written as
+   * `@auto-combat` writes its switch (`SWITCH_REMOTES`). The `{ok}` is carried
+   * over from `@auto-combat`; no capture shows MegaMUD's reply. A bare word
+   * toggles in MegaMUD and changes nothing here, as for every switch remote.
+   * Granted by nothing shipped.
+   */
+  'attack-last': { name: 'attack-last', support: 'acted' },
   'auto-all': {
     name: 'auto-all',
     support: 'unread',

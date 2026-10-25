@@ -72,6 +72,7 @@ export const DECISION_SETTINGS = {
   },
   'assist-leader': ['automation.party.assistLeader'],
   'defend-party': ['automation.party.defendParty'],
+  'attack-last': ['automation.party.attackLast'],
   'engage-gate': [
     'automation.combat.engage',
     'automation.combat.maxMobs',
