@@ -47,13 +47,14 @@ export const PORT = 2427;
  * The names that mean *this* realm.
  *
  * Every name kept, and the old ones deliberately: the server is reachable as
- * `orohost` from one machine and as `localhost` from the machine it runs on,
- * and an options file written any time in the past year names it `gmud-tgs`.
+ * `orohost` from one machine, as `localhost` from the machine it runs on and
+ * as `70.176.151.219` from outside (the user, 2026-10-25), and an options file
+ * written any time in the past year names it `gmud-tgs`.
  * All of them are the same sanctioned target. What the rule refuses is a
  * *third party*, not another spelling of the same host — and a spelling
  * dropped from this set does not fail loudly, it makes every probe skip.
  */
-const LOCAL_NAMES = new Set([HOST, 'gmud-tgs', 'localhost', '127.0.0.1', '::1']);
+const LOCAL_NAMES = new Set([HOST, 'gmud-tgs', 'localhost', '127.0.0.1', '::1', '70.176.151.219']);
 
 export function isLocalRealm(host) {
   return LOCAL_NAMES.has(
