@@ -49,6 +49,10 @@ import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
 import { PartyWait } from './PartyWait';
+import { ComeBack } from './ComeBack';
+import { backLeg, settleBack } from './trailBack';
+import { inviteIntent } from '../automation/PartyRegroup';
+import { recordOf } from '../../shared/players';
 import { KeyBuying } from './KeyBuying';
 import { StopperOutfit, type OutfitVerdict, type StopperOutfitParts } from './StopperOutfit';
 import type { Remotes } from '../automation/Remotes';
@@ -57,7 +61,7 @@ import { packHolds } from '../../shared/quests';
 import { playerKey } from '../../shared/players';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
 import type { CarriedRoute } from '../../shared/underway';
-import { landed, stillFled, type FledRoom } from '../../shared/walk';
+import { landed, stillFled, type FledRoom, type UnfinishedRoute } from '../../shared/walk';
 import {
   asDirection,
   crossedWords,
@@ -157,7 +161,7 @@ export const ERRAND_LEG = {
 export interface TravelParts {
   readonly tracker: Pick<
     CharacterTracker,
-    'current' | 'pendingMoves' | 'trail' | 'wayBackFrom' | 'retraced'
+    'current' | 'pendingMoves' | 'trail' | 'wayBackFrom' | 'retraced' | 'players'
   >;
   readonly world: Pick<WorldGraph, 'byId' | 'item'> | undefined;
   readonly errands: Pick<
@@ -430,8 +434,7 @@ export class Travel implements SessionModule {
     crossing: readonly string[];
   } | null = null;
   /**
-   * A back press that is being walked: the room it is going back to, and the
-   * trail entry it is walking back over.
+   * A back press that is being walked: the trail entry it is walking back over.
    *
    * The **entry** is the mark, because the way back may be several steps and
    * each of them records itself on the trail — so what has to be given up on
@@ -439,7 +442,7 @@ export class Travel implements SessionModule {
    * different move once the trail is at `trailSteps` and every push shifts the
    * oldest off. See `stepBack` and `CharacterTracker.retraced`.
    */
-  private steppingBack: { to: RoomId; step: TrailStep } | null = null;
+  private steppingBack: TrailStep | null = null;
   /**
    * Whether `pickUpAfterLoss` has said, this connection, that it is waiting
    * for the room. Once, because the entry probe is what asks, and this is only
@@ -462,6 +465,8 @@ export class Travel implements SessionModule {
   private clearing: readonly string[] = [];
   /** Who the party waits for, and the one clock on it (todo 831). See `PartyWait`. */
   private readonly partyWait: PartyWait;
+  /** A member's `@comeback` walked back for. See `ComeBack`. */
+  private readonly comeBack: ComeBack;
   /** Auto-Rest put back on at each walk, loop, arrival and connection (todo 148). */
   private readonly autoRest: AutoRestBack;
   /** Everyone walking a way carries what stops its room spells first. See `StopperOutfit`. */
@@ -491,11 +496,31 @@ export class Travel implements SessionModule {
     this.questRunner = parts.questRunner;
     this.light = parts.light;
     this.partyWait = new PartyWait({
-      pauseLap: (why) => this.pauseLap(why),
-      lapStopped: () => this.loops.progress.status === 'stopped',
-      resumeLap: (who) => this.resumeLap(who),
+      pauseMoving: (why) => this.pauseMoving(why, 'party-wait'),
+      stopped: () => this.movementStopped(),
+      resume: (who) => this.resumeMoving(who, null),
       notice: (message, decision) => this.session.notice(message, decision),
       waitMinutes: () => this.automationConfig.party.waitMinutes
+    });
+    this.comeBack = new ComeBack({
+      trail: () => this.tracker.trail,
+      retraced: (step) => this.tracker.retraced(step),
+      lastSeen: (who) => recordOf(this.tracker.players, who)?.lastRoom ?? null,
+      plan: (to) => this.errands.planFromHere(to),
+      // Nobody's asked route, so a stopped lap stays the movement play picks up (`movementOf`).
+      walk: (route) => this.walker.start(route, this.tracker.current, { asked: false }),
+      stopWalk: (why) => this.walker.stop(why),
+      busy: () => this.walkBackRefused(),
+      pause: (why) => this.pauseMoving(why, 'party-comeback'),
+      unfinished: () => (this.session.movement().kind === 'route' ? this.walker.unfinished : null),
+      resume: (who, walked) => this.resumeMoving(who, walked),
+      partyWaiting: () => this.partyWait.holding,
+      invite: (who) =>
+        this.queue.enqueue(
+          inviteIntent(who, t('session.comeBack.inviteReason', { who }), 'party-comeback')
+        ),
+      rooms: () => this.automationConfig.party.comebackRooms,
+      notice: (message, decision) => this.session.notice(message, decision)
     });
     this.autoRest = new AutoRestBack(session);
     this.keyBuying = new KeyBuying({
@@ -756,6 +781,7 @@ export class Travel implements SessionModule {
     this.walkAsked = false;
     this.walkRun = false;
     this.settleStepBack(arrived);
+    this.comeBack.walkEnded(arrived, standing);
   }
 
   /**
@@ -950,6 +976,11 @@ export class Travel implements SessionModule {
     this.partyWait.pace(who, ready, 'asked');
   }
 
+  /** A member left behind asked to be walked back for (`@comeback`). See `ComeBack`. */
+  walkBackFor(who: string): void {
+    this.comeBack.asked(who, this.tracker.current);
+  }
+
   /** Leading, whom the party waits for on their health. See `PartyWait.onCharacter`. */
   watchParty(state: CharacterState): void {
     const { enabled, party, health } = this.automationConfig;
@@ -959,15 +990,33 @@ export class Travel implements SessionModule {
       enabled ? party.waitBelow : 0,
       managed ? { health, marginWhenUncapped: tuning().loop.resumeMarginWhenUncapped } : null
     );
+    this.comeBack.onCharacter(state);
   }
 
   /** The session is closing: nothing may walk on for a wait it held. */
   dispose(): void {
     this.partyWait.forget();
+    this.comeBack.cancel(null);
   }
 
-  /** Stops a running lap for the party, saying why; false where no lap was running. See `PartyWait`. */
-  private pauseLap(why: string): boolean {
+  /**
+   * Stops what is moving for the party, saying why: a running lap, or a route
+   * somebody asked for (todo 20261023-1950-01: a `@wait` during a goto went
+   * unheeded). False where neither was. A walk back is already the party's
+   * stop. An errand's own walk is left to the errand.
+   */
+  private pauseMoving(why: string, decision: DecisionKind): boolean {
+    if (this.comeBack.active) return true;
+    // A stop of its own: a route a walk back owed is not what goes on after it.
+    this.comeBack.forgetOwed();
+    if (
+      this.walker.walking &&
+      this.walker.progress.asked &&
+      this.loops.progress.status !== 'running'
+    ) {
+      this.walker.stop(why);
+      return true;
+    }
     if (this.loops.progress.status !== 'running') return false;
     /*
      * The lap before the leg, not after: `walker.stop` reports `ended`
@@ -976,13 +1025,43 @@ export class Travel implements SessionModule {
      * nothing went wrong with. Stopped first, the runner reads the
      * ending as what it is: a leg the stop ended.
      */
-    this.loops.stop(why, 'party-wait');
+    this.loops.stop(why, decision);
     this.walker.stop(why);
     return true;
   }
 
-  /** Walks a lap the party stopped on again. See `PartyWait`. */
-  private resumeLap(who: string): void {
+  /**
+   * Whether what the party stopped is still stopped, so going on has
+   * something to pick up: a walk back counts, and so does the route it owes.
+   */
+  private movementStopped(): boolean {
+    if (this.comeBack.active) return true;
+    const movement = this.session.movement();
+    if (movement.moving) {
+      this.comeBack.forgetOwed();
+      return false;
+    }
+    return this.comeBack.owes || movement.resumable;
+  }
+
+  /**
+   * Why a walk back cannot start now: a leg would replace an errand's own
+   * walk without its ending being heard, or a back press's.
+   */
+  private walkBackRefused(): string | null {
+    if (this.steppingBack !== null) return t('session.comeBack.backPressed');
+    const errandWalking =
+      this.walker.walking &&
+      !this.walker.progress.asked &&
+      this.loops.progress.status !== 'running';
+    return errandWalking ? t('session.comeBack.errandWalking') : null;
+  }
+
+  /**
+   * Walks what the party stopped on again, `confirmed` the steps a walk back
+   * made. See `PartyWait`, `ComeBack`.
+   */
+  private resumeMoving(who: string, confirmed: number | null): void {
     /*
      * Through `startMoving`, not straight at the runner: this is a second
      * door onto the resume, and the wander check exists precisely because
@@ -991,7 +1070,17 @@ export class Travel implements SessionModule {
      * now a journey away is **reported and left stopped** — the player
      * presses play, having read how far.
      */
-    const answer = this.startMoving(null, null);
+    if (this.comeBack.active) return;
+    const owed = this.comeBack.takeOwed();
+    if (owed !== null) {
+      this.answerResume(who, this.resumeRoute(confirmed, owed));
+      return;
+    }
+    this.answerResume(who, this.startMoving(null, confirmed));
+  }
+
+  /** Says what became of a resume nobody pressed. */
+  private answerResume(who: string, answer: MovementStart): void {
     // Said out loud: a loop that quietly failed to walk on is the same
     // stalled evening the resume exists to prevent.
     if ('refused' in answer) this.session.notice(answer.refused);
@@ -1023,6 +1112,7 @@ export class Travel implements SessionModule {
    */
   forgetFollowers(): void {
     this.partyWait.forget();
+    this.comeBack.cancel(null);
   }
 
   /**
@@ -2430,23 +2520,21 @@ export class Travel implements SessionModule {
     const state = this.tracker.current;
     if (state.phase !== 'in-game') return { refused: t('session.back.notInRealm') };
     if (this.tracker.pendingMoves > 0) return { refused: t('session.back.moveInFlight') };
-    const trail = this.tracker.trail;
-    const last = trail.at(-1);
-    if (last === undefined) return { refused: t('session.back.nothingBehind') };
-    const plan = this.errands.planFromHere(last.from);
-    if (typeof plan === 'string') return { refused: plan };
-    if (plan.blocked) {
+    const leg = backLeg(this.tracker.trail, (to) => this.errands.planFromHere(to));
+    if (leg.kind === 'nothing') return { refused: t('session.back.nothingBehind') };
+    if (leg.kind === 'refused') {
       return {
-        refused: t('session.back.noWay', { reason: plan.reason ?? t('session.back.noRoute') })
+        refused: t('session.back.noWay', { reason: leg.reason })
       };
     }
-    const steps = plan.steps.length;
     // Standing in it already — the trail is behind the character rather than
     // in front of it. Give the entry up and let the next press do the walking.
-    if (steps === 0) {
-      this.tracker.retraced(last);
+    if (leg.kind === 'there') {
+      this.tracker.retraced(leg.step);
       return { refused: t('session.back.alreadyThere') };
     }
+    const { step: last, route: plan } = leg;
+    const steps = plan.steps.length;
     const name = plan.steps.at(-1)?.name ?? last.from;
     if (steps > 1 && (confirmed === null || steps > confirmed)) {
       return { confirm: { kind: 'back', name, steps } };
@@ -2461,7 +2549,7 @@ export class Travel implements SessionModule {
     this.errandOwes = null;
     const refused = this.walker.start(plan, state);
     if (refused !== null) return { refused };
-    this.steppingBack = { to: last.from, step: last };
+    this.steppingBack = last;
     return { started: true };
   }
 
@@ -2477,9 +2565,9 @@ export class Travel implements SessionModule {
     const back = this.steppingBack;
     if (back === null) return;
     this.steppingBack = null;
-    if (arrived && roomAddress(this.tracker.current.room) === back.to) {
-      this.tracker.retraced(back.step);
-    }
+    settleBack(back, arrived, roomAddress(this.tracker.current.room), (step) =>
+      this.tracker.retraced(step)
+    );
   }
 
   /**
@@ -2518,6 +2606,7 @@ export class Travel implements SessionModule {
       this.session.notice(t('session.walk.notResumed', { destination: held, reason }));
     }
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
+    this.comeBack.cancel(reason);
     // Before the walk, so the leg's end is not read as a room to pass over.
     this.areaSearch.stop(reason);
     this.hostTrips.stop(reason);
@@ -2677,8 +2766,10 @@ export class Travel implements SessionModule {
    * character is now than when it stopped — so walking on down a route you
    * were already walking asks nothing however long the route is.
    */
-  private resumeRoute(confirmed: number | null): MovementStart {
-    const owed = this.walker.unfinished;
+  private resumeRoute(
+    confirmed: number | null,
+    owed: UnfinishedRoute | null = this.walker.unfinished
+  ): MovementStart {
     if (owed === null) return { refused: t('session.move.nothingToResume') };
     const plan = this.errands.planFromHere(owed.to, {}, 'walk', this.allowingFor(owed.to));
     if (typeof plan === 'string') return { refused: plan };
@@ -2800,6 +2891,7 @@ export class Travel implements SessionModule {
     if (this.loops.progress.status === 'running') this.loops.stop(t('session.loop.stoppedDied'));
     else this.loops.restate(t('session.loop.stoppedDied'));
     this.partyWait.end();
+    this.comeBack.cancel(null);
     // And an errand: the shop it was walking to is several maps away now.
     // With it goes the route it was shopping on behalf of — a death is the
     // player's cue to decide what happens next, not the client's.

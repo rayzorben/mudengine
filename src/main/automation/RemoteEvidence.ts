@@ -45,8 +45,15 @@ import { t } from '../app/i18n';
  * rather than refusing in silence. Case-insensitive on both names and the
  * gang, because the server is inconsistent about the first and a gang name is
  * typed by whoever founded it.
+ *
+ * `leftLately` is a member who left the party a moment ago, counted as in it
+ * (`PartyLeavers`, for the `PACING_REMOTES` only).
  */
-export function evidenceAbout(from: string, state: CharacterState): RemoteEvidence {
+export function evidenceAbout(
+  from: string,
+  state: CharacterState,
+  leftLately = false
+): RemoteEvidence {
   const own = ownGang(state);
   const theirs = gangOnRoster(state, from);
   const inGang =
@@ -54,7 +61,7 @@ export function evidenceAbout(from: string, state: CharacterState): RemoteEviden
       ? null
       : own !== null && theirs !== null && own.toLowerCase() === theirs.toLowerCase();
 
-  return { inGang, inParty: joinedTheParty(state, from) };
+  return { inGang, inParty: leftLately || joinedTheParty(state, from) };
 }
 
 /**

@@ -2464,6 +2464,12 @@ automation:
     # this many minutes for everyone to be here and in it. 0 invites and walks on.
     regroupMinutes: 5
 
+    # Leading, when a member says @comeback (held, and dropped from the party),
+    # walk back the way you came to the room they were last seen in, and up to
+    # this many rooms past it, until they are here; then invite them and go on.
+    # MegaMUD walks back 5. 0 never walks back.
+    comebackRooms: 15
+
     # Following, when the leader fails to bash a door: pick it if your
     # picklocks are enough for it, or else bash it if your strength is.
     helpWithDoors: false

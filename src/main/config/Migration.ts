@@ -330,6 +330,8 @@ function migrateAll(options: MigrationOptions): void {
   statedKeyBuying(home, note, options.template);
   stoppersFollowHave(home, note);
   statedChanceWaysAndFares(home, note, options.template);
+  statedComebackRooms(home, note, options.template);
+  heldAndComebackFollowWait(home, note);
 }
 
 /**
@@ -2370,6 +2372,24 @@ function stoppersFollowHave(home: Home, note: (message: string) => void): void {
     });
   }
   if (added > 0) note(t('notices.migration.stoppersFollowHave', { count: added }));
+}
+
+/**
+ * `held` and `comeback` granted wherever `wait` is (todo 20261023-1950-01):
+ * all three are a member saying it cannot keep up, and neither was acted on
+ * before. In the global options and every character's file.
+ */
+function heldAndComebackFollowWait(home: Home, note: (message: string) => void): void {
+  let added = 0;
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const count =
+        grantBeside(document, 'wait', 'held') + grantBeside(document, 'wait', 'comeback');
+      added += count;
+      return count > 0;
+    });
+  }
+  if (added > 0) note(t('notices.migration.heldFollowsWait', { count: added }));
 }
 
 /**
@@ -4994,6 +5014,28 @@ function statedChanceWaysAndFares(
     stated.length === 1
       ? t('notices.migration.chanceWays.one', params)
       : t('notices.migration.chanceWays.many', params)
+  );
+}
+
+/**
+ * `automation.party.comebackRooms` (todo 20261023-1950-01) into every file
+ * stating `party:` without it, after `regroupMinutes`, as the template ships it.
+ */
+function statedComebackRooms(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const rooms = DEFAULT_CONFIG.automation.party.comebackRooms;
+  const stated = stateKeysIn(home, template, PARTY_BLOCK, 'regroupMinutes', [
+    ['comebackRooms', rooms]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', '), rooms };
+  note(
+    stated.length === 1
+      ? t('notices.migration.comebackRooms.one', params)
+      : t('notices.migration.comebackRooms.many', params)
   );
 }
 

@@ -6018,6 +6018,37 @@ describe('stoppers follow have', () => {
   });
 });
 
+/* Todo 20261023-1950-01: `@held` and `@comeback` go wherever `@wait` is granted. */
+describe('held and comeback follow wait', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-held-remote-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('grants both beside @wait, once', () => {
+    fs.writeFileSync(home.options, 'automation:\n  remotes:\n    party: [wait, ok]\n', 'utf8');
+    const migrate = (): void =>
+      migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+    migrate();
+    const remotes = (
+      parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>
+    )['remotes'] as Record<string, unknown>;
+    expect(remotes['party']).toEqual(['wait', 'ok', 'held', 'comeback']);
+    expect(notesOf(said, 'notices.migration.heldFollowsWait')).toHaveLength(1);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+});
+
 /*
  * `automation.party.askForHealBelow` is a key inside a block the file may
  * already state, which `reconcileWithTemplate` never reaches.

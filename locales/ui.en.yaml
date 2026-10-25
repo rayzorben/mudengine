@@ -450,6 +450,9 @@ notices:
     keyBuying:
       many: 'Buy a Key on the Way was added, on, to {count} files: {fileList}'
       one: 'Buy a Key on the Way was added, on, to {fileList}'
+    comebackRooms:
+      many: 'Walk Back For a Member ({rooms} rooms) was added to {count} files: {fileList}'
+      one: 'Walk Back For a Member ({rooms} rooms) was added to {fileList}'
     chanceWays:
       many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
       one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
@@ -716,6 +719,8 @@ notices:
         you add one.'
     pathFollowsStatus: '@path was added next to @status in {count} permission lists. Both say
       where the character is going.'
+    heldFollowsWait: '@held and @comeback were added next to @wait in {count} permission lists. All
+      three are a member saying it cannot keep up.'
     stoppersFollowHave: '@stoppers was added next to @have in {count} permission lists. Both say
       what the pack holds; a party leader asks it before walking a way a room spell hurts on.'
     roomRemoteFollowsWhere: "@where-room was added next to @where in {count} permission lists in
@@ -5434,6 +5439,11 @@ settings:
       out of the party, send par, invite back a member who is here but not in it, and hold the walk
       this many minutes for everyone. 0 does not wait.
     regroupMinutesLabel: Rejoin Wait (minutes)
+    comebackRoomsHint:
+      When a member says @comeback, walk back the way you came to the room they were last seen in,
+      and up to this many rooms past it, until they are here. Then invite them and go on. 0 never
+      walks back.
+    comebackRoomsLabel: Walk Back For a Member (rooms)
     warning: It is not yet known whether the game limits commands per connection or per computer.
       These settings make a second automated character useful; turning them on means testing that
       yourself.
@@ -6024,6 +6034,21 @@ session:
     nothingBehind: No confirmed move to go back over; the client has not seen this character move
       yet.
     notInRealm: This character is not in the realm.
+  comeBack:
+    busy: '{who} asked for @comeback; already walking back for {busy}.'
+    cutShort: Stopped walking back for {who} before the room was reached; going on.
+    gaveUp: Walked back as far as allowed and did not find {who}; going on.
+    here: '{who} is here: inviting them back into the party.'
+    inviteReason: '{who} asked for @comeback and is here'
+    noWay: 'Cannot walk back for {who}: {reason}'
+    nothingBehind: '{who} asked for @comeback, but there is no confirmed move to walk back over.'
+    notNow: '{who} asked for @comeback; not walking back: {reason}'
+    backPressed: the character is already going back a room
+    errandWalking: the character is on a trip to the shop or bank, and stopping it would lose the trip
+    trailEnded: no confirmed move is left to walk back over
+    off: '{who} asked for @comeback; Walk Back For a Member is 0, so the walk goes on.'
+    started: Walking back for {who}, up to {rooms} rooms.
+    stopped: 'Stopped walking back for {who}: {reason}'
   macro:
     dropped:
       one: Dropped the {count} command still waiting from the talk box.
@@ -7464,6 +7489,7 @@ automation:
   remotes:
     followerReady: '{from} is ready.'
     followerWait: '{from} asked the party to wait.'
+    followerHeld: '{from} is held and asked the party to wait.'
     ignoredParty: 'Not running @party from {from}: Ignore @party If Following is on.'
     autoJoinInParty: '{from} invited this character; not joining, because it is already in a party.'
     autoJoinDenied: '{from} invited this character; not joining, because @join is denied to {from} by name.'

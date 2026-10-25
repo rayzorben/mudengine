@@ -20,14 +20,14 @@ describe('a leader waiting for its party', () => {
     running = true;
     minutes = 2;
     wait = new PartyWait({
-      pauseLap: (why) => {
+      pauseMoving: (why) => {
         if (!running) return false;
         running = false;
         moves.push(`pause:${why}`);
         return true;
       },
-      lapStopped: () => !running,
-      resumeLap: (who) => {
+      stopped: () => !running,
+      resume: (who) => {
         running = true;
         moves.push(`resume:${who}`);
       },

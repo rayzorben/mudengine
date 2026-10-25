@@ -178,6 +178,13 @@ export function isAfflictionHold(hold: string | null): hold is AfflictionHold {
   return (AFFLICTION_HOLDS as readonly (string | null)[]).includes(hold);
 }
 
+/** What a stopped route still had to walk (`Walker.unfinished`), for play to pick up. */
+export interface UnfinishedRoute {
+  to: RoomId;
+  name: string;
+  left: number;
+}
+
 /**
  * Why a walk is standing still. `blind`, `held`, `poisoned` and `confused`
  * are the afflictions the server has stated and the walk waits out —

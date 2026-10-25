@@ -750,6 +750,8 @@ describe('following somebody', () => {
       parAtLoss: 0.25,
       relayPortals: true,
       regroupMinutes: 5,
+      // Walks nothing until a member granted `@comeback` asks.
+      comebackRooms: 15,
       helpWithDoors: false
     });
   });

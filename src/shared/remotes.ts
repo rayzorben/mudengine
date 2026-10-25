@@ -151,8 +151,8 @@ export const REMOTE_NAMES = [
    * MegaMUD's answers are **prose for a person**: `@where` comes back as
    * `{Town Gates (Exits: N,S)}`, which is the room's *name*, and 83.85% of the
    * realm's edges lead to a namesake (`sameRoomAgain`). So a client that is
-   * asked to walk to a name is asked to guess, which is why `@comeback` is
-   * `unread` here and `@goto` walks nothing for a name several rooms share:
+   * asked to walk to a name is asked to guess, which is why `@comeback` walks
+   * back this character's own trail and `@goto` walks nothing for a name several rooms share:
    * an ambiguous room is refused rather than guessed, everywhere in this client.
    *
    * Both ends of a conversation between two mudengine clients have the realm
@@ -421,11 +421,12 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
       'nothing here forwards a channel, and what it would forward is a third party’s words — the ' +
       'one command in the table that leaks somebody who is not in the conversation'
   },
-  comeback: {
-    name: 'comeback',
-    support: 'unread',
-    because: 'nothing here retraces a walk, and no capture shows the exchange'
-  },
+  /*
+   * Acted and never answered (todo 20261023-1950-01): a held member the realm
+   * dropped from the party asks the leader to walk back for it. MegaMUD's
+   * manual: *back-tracking up to 5 rooms*. `ComeBack` walks the trail back.
+   */
+  comeback: { name: 'comeback', support: 'acted' },
   /*
    * Acted and never answered: the heal landing on the sender is the answer.
    * captures/081 has the whole exchange — `Death telepaths: @heal`, then the
@@ -445,11 +446,8 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     support: 'unread',
     because: 'nothing here models disease, and no capture shows a cure'
   },
-  held: {
-    name: 'held',
-    support: 'unread',
-    because: 'nothing here models being held, and no capture shows a release'
-  },
+  // A `@wait` under another word, released by the same `@ok` (captures/038, 059, 142).
+  held: { name: 'held', support: 'acted' },
   share: {
     name: 'share',
     support: 'unread',
@@ -1579,6 +1577,13 @@ export function isActionable(name: RemoteName): boolean {
 
 /** Every remote this client answers or acts on, in the vocabulary's own order: what *Allow all* grants. */
 export const ACTIONABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isActionable);
+
+/**
+ * What a member who left the party within `party.regroupMinutes` may still
+ * send on a party grant (todo 20261023-1950-01): the realm drops a held member
+ * as the leader steps off, before its `@comeback` arrives (Killa, 2026-10-24).
+ */
+export const PACING_REMOTES: readonly RemoteName[] = ['wait', 'ok', 'held', 'comeback'];
 
 /**
  * Whether a grant can carry `name`: one this client answers, or one of the

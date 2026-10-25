@@ -2734,3 +2734,75 @@ describe('the decision behind each line and command (todo 119)', () => {
     expect(decided).toEqual([["/Soul @wait (HP's too low)", 'follower-wait']]);
   });
 });
+
+/*
+ * Todo 20261023-1950-01: Killa telepathed `@held`, was dropped from the party
+ * as Festus stepped off, then telepathed `@comeback`.
+ */
+describe('a held member: @held and @comeback', () => {
+  let paced: string[];
+  let walkedBack: string[];
+  const make = (over: Partial<AutomationConfig> = {}): Remotes => {
+    paced = [];
+    walkedBack = [];
+    return new Remotes({ ...config, ...over }, queue, {
+      notice: (m) => notices.push(m),
+      pace: (who, ready) => paced.push(`${who}:${ready ? 'ok' : 'wait'}`),
+      walkBackFor: (who) => walkedBack.push(who)
+    });
+  };
+
+  it('is a wait by telepath or said in the room, released by @ok', () => {
+    const remotes = make();
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@held'), who());
+    remotes.onBlock(said('conversation-local', 'Soul', '@held'), who());
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@ok'), who());
+    expect(paced).toEqual(['Soul:wait', 'Soul:wait', 'Soul:ok']);
+    expect(notices).toContain(t('automation.remotes.followerHeld', { from: 'Soul' }));
+  });
+
+  it('is skipped under Ignore @wait If Leading, and never walked on under Manage Party', () => {
+    const ignoring = make({ party: { ...config.party, ignoreWait: true } });
+    ignoring.onBlock(said('conversation-telepath', 'Soul', '@held'), who());
+    expect(paced).toEqual([]);
+    const managing = make({ party: { ...config.party, manageParty: true } });
+    const soul = {
+      name: 'Soul',
+      className: null,
+      health: 0.9,
+      mana: null,
+      rank: null,
+      activity: null,
+      invited: false,
+      vitals: null,
+      sheet: null
+    };
+    const leading = who({
+      party: { engaged: {}, threatened: {}, following: null, members: [soul] }
+    });
+    managing.onBlock(said('conversation-telepath', 'Soul', '@held'), leading);
+    expect(paced).toEqual(['Soul:wait']);
+  });
+
+  it('takes @comeback from a member who left a moment ago, on the party grant', () => {
+    const partyOnly: Partial<AutomationConfig> = {
+      remotes: { ...config.remotes, players: {}, party: ['comeback'] }
+    };
+    const remotes = make(partyOnly);
+    // A stranger first: the positive control for the refusal below.
+    remotes.onBlock(said('conversation-telepath', 'Killa', '@comeback'), who());
+    expect(walkedBack).toEqual([]);
+    const left = {
+      type: 'party-left',
+      domain: 'presence',
+      groups: { player: 'Killa' }
+    } as unknown as Block;
+    remotes.onBlock(left, who());
+    remotes.onBlock(said('conversation-telepath', 'Killa', '@comeback'), who());
+    expect(walkedBack).toEqual(['Killa']);
+    // Past `regroupMinutes`, the party grant no longer covers them.
+    vi.advanceTimersByTime((config.party.regroupMinutes * 60 + 1) * 1000);
+    remotes.onBlock(said('conversation-telepath', 'Killa', '@comeback'), who());
+    expect(walkedBack).toEqual(['Killa']);
+  });
+});

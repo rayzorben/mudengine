@@ -2154,6 +2154,12 @@ export interface PartyConfig {
    * minutes for everyone to be here and in it. 0 invites and does not wait.
    */
   regroupMinutes: number;
+  /**
+   * Leading, on a member's `@comeback`, walk back the trail to the room the
+   * member was last seen in and up to this many rooms past it, looking for
+   * them (MegaMUD walks back 5). 0 never walks back (`ComeBack`).
+   */
+  comebackRooms: number;
   /** Following, pick or bash a door the leader fails to bash (`LeaderDoors`, todo 03). */
   helpWithDoors: boolean;
 }
@@ -2603,6 +2609,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       parAtLoss: 0.25,
       relayPortals: true,
       regroupMinutes: 5,
+      comebackRooms: 15,
       helpWithDoors: false
     },
     health: {
@@ -4012,7 +4019,8 @@ export const PARTY_RANGES = {
   waitMinutes: [0, 120],
   parSeconds: [0, 3600],
   parEveryRounds: [0, 20],
-  regroupMinutes: [0, 60]
+  regroupMinutes: [0, 60],
+  comebackRooms: [0, 50]
 } as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
 
 function normalizeParty(value: unknown): PartyConfig {
@@ -4036,6 +4044,7 @@ function normalizeParty(value: unknown): PartyConfig {
     parAtLoss: fraction(raw['parAtLoss'], d.parAtLoss),
     relayPortals: bool(raw['relayPortals'], d.relayPortals),
     regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes),
+    comebackRooms: int(raw['comebackRooms'], d.comebackRooms, ...PARTY_RANGES.comebackRooms),
     helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors)
   };
 }

@@ -1266,6 +1266,7 @@ export class SessionManager {
       ...remoteHangUps(() => this.safety, sink),
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
+      walkBackFor: (who) => this.travel.walkBackFor(who),
       switchAutomation: switchNow,
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
       commanded: (from, raw, at) => {
@@ -1274,11 +1275,7 @@ export class SessionManager {
       // A blessed party member says the spell wore off; recast on the event.
       blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
       stats: this.statsBaseline,
-      /*
-       * A member asks for a heal. Decided now rather than on the next status
-       * line, which out of a fight may be a long way off — under the guard the
-       * heal always runs under, since nothing is cast on the way out of a room.
-       */
+      // A member's heal, decided now (a status line may be far off), under the heal's own guard.
       healRequested: (from) => {
         const state = this.tracker.current;
         this.heal.request(from, state);

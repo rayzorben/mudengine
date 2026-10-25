@@ -90,6 +90,7 @@ import {
   judgedByGrant,
   parseRemoteCall,
   parseOnOff,
+  PACING_REMOTES,
   parseRemoteReply,
   parseRoomAddress,
   plainRemote,
@@ -142,6 +143,7 @@ import { PartyStoppers } from './PartyStoppers';
 import { ParOnWord } from './ParOnWord';
 import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
+import { PartyLeavers } from './PartyLeavers';
 
 /**
  * The standing refusals, spoken to the sender and shown to the player.
@@ -254,11 +256,29 @@ function addressedToUs(block: Block, state: CharacterState): boolean {
   return state.name !== null && target.toLowerCase() === state.name.toLowerCase();
 }
 
+/** What a member's word on pacing is said as here. */
+function followerPaced(name: 'wait' | 'held' | 'ok', from: string): string {
+  switch (name) {
+    case 'wait':
+      return t('automation.remotes.followerWait', { from });
+    case 'held':
+      return t('automation.remotes.followerHeld', { from });
+    case 'ok':
+      return t('automation.remotes.followerReady', { from });
+    default: {
+      const never: never = name;
+      return never;
+    }
+  }
+}
+
 /** `hangUp` and `relog` are `@hangup`, `@relog` and `@panic!` let through (`StandingRemotes`). */
 export interface RemoteEvents extends StandingRemoteEvents {
   notice?: NoticeSink;
   /** Somebody asked this character to stop and wait, or said they are ready. */
   pace?(who: string, ready: boolean): void;
+  /** A member left behind asked this character to walk back for it (`@comeback`). */
+  walkBackFor?(who: string): void;
   /**
    * Somebody sent an `@` command, whether or not it was allowed.
    *
@@ -455,6 +475,8 @@ export class Remotes implements SessionModule {
   private readonly parOnWord: ParOnWord;
   /** What each member carries against a room's spell on the way, asked and answered. See `PartyStoppers`. */
   readonly stoppers: PartyStoppers;
+  /** Who left the party lately, for a held member's `@comeback`. See `PartyLeavers`. */
+  private readonly leavers = new PartyLeavers();
 
   constructor(
     private config: AutomationConfig,
@@ -564,6 +586,8 @@ export class Remotes implements SessionModule {
     this.autoJoin.onBlock(block, state);
     this.healthAsks.onBlock(block, state);
     if (block.type === 'party-joined') {
+      const joined = block.groups['player'] ?? block.groups['leader'];
+      if (joined !== undefined) this.leavers.joined(joined);
       if (this.config.enabled)
         this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
       return;
@@ -571,6 +595,7 @@ export class Remotes implements SessionModule {
     if (block.type === 'party-left') {
       const who = block.groups['player'] ?? block.groups['leader'];
       if (who !== undefined) this.stoppers.forget(who);
+      if (who !== undefined) this.leavers.left(who);
       return;
     }
     const channel = CHANNELS.get(block.type);
@@ -623,7 +648,10 @@ export class Remotes implements SessionModule {
      * them cannot disagree.
      */
     const prefix = channel(from, this.config.remotes);
-    const evidence = evidenceAbout(from, state);
+    const leftLately =
+      PACING_REMOTES.includes(command.name) &&
+      this.leavers.within(from, this.config.party.regroupMinutes);
+    const evidence = evidenceAbout(from, state, leftLately);
     /*
      * A channel this client never answers on is not one addressed to this
      * character, and that reading sits above **both** the gate and the record.
@@ -1071,6 +1099,7 @@ export class Remotes implements SessionModule {
     this.healthAsks.reset();
     this.parOnWord.reset();
     this.stoppers.reset();
+    this.leavers.forget();
   }
 
   /** The regroup's and the invitation's clocks are what here outlive a call. */
@@ -1697,6 +1726,7 @@ export class Remotes implements SessionModule {
         return;
 
       case 'wait':
+      case 'held':
       case 'ok': {
         /*
          * Party pacing, and the only two of these that are a *fact* rather than
@@ -1704,7 +1734,8 @@ export class Remotes implements SessionModule {
          * saying it can again. Reported to whoever is walking; nothing is sent.
          */
         // MegaMUD's *Ignore @wait If Leading* (todo 831); a hurt member still stops the lap.
-        if (command.name === 'wait' && this.config.party.ignoreWait) {
+        // `@held` is a wait that is a condition, never walked on by `managesWait`.
+        if (command.name !== 'ok' && this.config.party.ignoreWait) {
           this.events.notice?.(t('automation.remotes.ignoredWait', { from }), WAIT);
           return;
         }
@@ -1716,14 +1747,14 @@ export class Remotes implements SessionModule {
           return;
         }
         this.events.pace?.(from, command.name === 'ok');
-        this.events.notice?.(
-          command.name === 'ok'
-            ? t('automation.remotes.followerReady', { from })
-            : t('automation.remotes.followerWait', { from }),
-          WAIT
-        );
+        this.events.notice?.(followerPaced(command.name, from), WAIT);
         return;
       }
+
+      case 'comeback':
+        // Walked by whoever moves the character; no reply, as MegaMUD gives none.
+        this.events.walkBackFor?.(from);
+        return;
 
       case 'disarm':
       case 'pick':
@@ -1750,10 +1781,8 @@ export class Remotes implements SessionModule {
       case 'auto-hide':
       case 'auto-search':
       case 'divert':
-      case 'comeback':
       case 'blind':
       case 'diseased':
-      case 'held':
       case 'share':
         return;
 

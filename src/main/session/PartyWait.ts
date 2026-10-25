@@ -31,12 +31,12 @@ export interface ManagedFloors {
 }
 
 export interface PartyWaitMoves {
-  /** Stop the running lap, saying `why`; false where no lap was running. */
-  pauseLap(why: string): boolean;
-  /** Whether the lap is stopped, so walking on has something to resume. */
-  lapStopped(): boolean;
-  /** Walk the lap on again, said out loud where it cannot. */
-  resumeLap(who: string): void;
+  /** Stop the running lap or the asked route, saying `why`; false where neither was moving. */
+  pauseMoving(why: string): boolean;
+  /** Whether what was stopped is still stopped, so walking on has something to resume. */
+  stopped(): boolean;
+  /** Walk on again, said out loud where it cannot. */
+  resume(who: string): void;
   notice: NoticeSink;
   /** `party.waitMinutes`, read when a wait begins; 0 waits for ever. */
   waitMinutes(): number;
@@ -55,7 +55,7 @@ export class PartyWait {
 
   constructor(private readonly moves: PartyWaitMoves) {}
 
-  /** Whether the lap is stopped for the party. */
+  /** Whether the lap or route is stopped for the party. */
   get holding(): boolean {
     return this.paused;
   }
@@ -67,6 +67,8 @@ export class PartyWait {
    * its `@wait` is, and a lap started while one is still under it stops for it.
    */
   onCharacter(state: CharacterState, waitBelow: number, managed: ManagedFloors | null): void {
+    // A route has no publish of its own here, so walking it on by hand is read off the state.
+    if (this.paused && !this.moves.stopped()) this.walkedOn();
     const leading = state.party.following === null;
     this.still =
       leading && managed !== null
@@ -97,15 +99,15 @@ export class PartyWait {
     if (!ready) {
       this.waiting.set(key, who);
       const said = pausedSentence(why, who);
-      if (this.paused || !this.moves.pauseLap(said)) return;
+      if (this.paused || !this.moves.pauseMoving(said)) return;
       this.paused = true;
       this.arm();
       return;
     }
     this.waiting.delete(key);
-    if (this.waiting.size > 0 || !this.paused || !this.moves.lapStopped()) return;
+    if (this.waiting.size > 0 || !this.paused || !this.moves.stopped()) return;
     this.end();
-    this.moves.resumeLap(who);
+    this.moves.resume(who);
   }
 
   /**
@@ -114,7 +116,11 @@ export class PartyWait {
    * the members hurt then are not waited for again until they recover.
    */
   noteLap(progress: LoopProgress): void {
-    if (progress.status === 'stopped') return;
+    if (progress.status !== 'stopped') this.walkedOn();
+  }
+
+  /** What was stopped moves again, however: walked on by hand, the hurt are given up on. */
+  private walkedOn(): void {
     if (this.paused) this.giveUpOnHurt();
     this.end();
   }
@@ -162,7 +168,7 @@ export class PartyWait {
       t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
       'party-wait'
     );
-    if (this.moves.lapStopped()) this.moves.resumeLap(who[0] ?? '');
+    if (this.moves.stopped()) this.moves.resume(who[0] ?? '');
   }
 }
 

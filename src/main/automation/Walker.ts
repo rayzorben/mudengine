@@ -56,7 +56,7 @@
 import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
 import type { MobWaited } from '../../shared/mobRules';
-import { paceOf, pathOf, portalLeftUnseen } from '../../shared/walk';
+import { paceOf, pathOf, portalLeftUnseen, type UnfinishedRoute } from '../../shared/walk';
 import type { HandAnswer } from '../../shared/barrierHands';
 import {
   roomAddress,
@@ -343,7 +343,7 @@ export class Walker implements SessionModule {
    * the *client* picks back up unasked across a dropped socket, and this is
    * somebody pressing play.
    */
-  get unfinished(): { to: RoomId; name: string; left: number } | null {
+  get unfinished(): UnfinishedRoute | null {
     if (this.status !== 'stopped' || this.route === null) return null;
     const last = this.route.steps.at(-1);
     if (last === undefined) return null;

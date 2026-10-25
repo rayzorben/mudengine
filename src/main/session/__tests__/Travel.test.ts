@@ -76,7 +76,8 @@ function travel(
       pendingMoves: 0,
       trail: [],
       wayBackFrom: () => null,
-      retraced: vi.fn()
+      retraced: vi.fn(),
+      players: {}
     },
     world: undefined,
     errands: {
@@ -1065,5 +1066,41 @@ describe('a walk held for the inventory', () => {
     expect(notices).toContain(t('session.walk.keys.dropped', { destination: 'Mine' }));
     moving.walkOnceListed(listed([942]));
     expect(parts.walker.start).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * Todo 20261023-1950-01: Festus walked a goto, Killa said `@wait (can't
+ * move)`, and the next room block stepped on, since only a lap was stopped.
+ */
+describe('a party wait during a route', () => {
+  it('stops a route somebody asked for', () => {
+    const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'stepping');
+    moving.watchParty(EMPTY_CHARACTER);
+    expect(parts.walker.stop).not.toHaveBeenCalled();
+    moving.pace('Killa', false);
+    expect(parts.walker.stop).toHaveBeenCalledWith(
+      t('session.loop.pausedForRemote', { who: 'Killa' })
+    );
+  });
+
+  it('leaves a walk nobody asked for to the errand walking it', () => {
+    const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'stepping');
+    (parts.walker as { progress: unknown }).progress = { ...IDLE_WALK, asked: false };
+    moving.pace('Killa', false);
+    expect(parts.walker.stop).not.toHaveBeenCalled();
+  });
+
+  // A leg back is nobody's asked route, so the lap it stopped is still what play picks up.
+  it('walks a member’s @comeback as legs nobody asked for', () => {
+    const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'none', false);
+    const back: Route = {
+      steps: [{ to: '1/1', name: 'Gate' }],
+      blocked: false
+    } as unknown as Route;
+    (parts.tracker as { trail: unknown }).trail = [{ from: '1/1', direction: 'n', to: '1/2' }];
+    vi.mocked(parts.errands.planFromHere).mockReturnValue(back);
+    moving.walkBackFor('Killa');
+    expect(parts.walker.start).toHaveBeenCalledWith(back, EMPTY_CHARACTER, { asked: false });
   });
 });

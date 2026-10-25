@@ -1062,6 +1062,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         ...PARTY_RANGES.regroupMinutes,
         DEFAULT_CONFIG.automation.party.regroupMinutes
       ),
+      comebackRooms: clamp(
+        party['comebackRooms'],
+        ...PARTY_RANGES.comebackRooms,
+        DEFAULT_CONFIG.automation.party.comebackRooms
+      ),
       helpWithDoors: party['helpWithDoors'] === true,
       parAtLoss: unit(party['parAtLoss'], DEFAULT_CONFIG.automation.party.parAtLoss)
     },
