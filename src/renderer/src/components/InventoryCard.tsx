@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
@@ -9,6 +9,7 @@ import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { entityNumber } from '@shared/entities';
 import { equipVerdict, type GearAction, type Wearer } from '@shared/gear';
+import { useFitTier } from '../hooks/useFitTier';
 import { useWearer } from '../hooks/useWearer';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
@@ -29,36 +30,15 @@ import type { WorldItem } from '@shared/world';
  * beside it are what move.
  */
 function Purse({ coins, wealth }: { coins: Coins; wealth: number | null }): React.JSX.Element {
-  const value = useRef<HTMLElement>(null);
-  const [tier, setTier] = useState(0);
   const full = coinText(coins, 0);
-
-  /*
-   * Which tier fits is *measured*, never guessed at.
-   *
-   * No pixel constant may exist in this path: the card is resizable, it can be
-   * docked, floated or railed, and `App.tsx` overwrites the typography tokens at
-   * runtime from the config — so a width decided at build time is wrong for
-   * somebody. This renders the longest form, asks the laid-out element whether
-   * it overflowed, and steps down until it does not.
-   */
-  useLayoutEffect(() => {
-    const node = value.current;
-    if (node === null) return;
-    const observer = new ResizeObserver(() => setTier(0));
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  // Back to the longest form whenever what is drawn changes, so a row that
-  // shrank for a long count grows again when the count gets shorter.
-  useLayoutEffect(() => setTier(0), [full]);
-
-  useLayoutEffect(() => {
-    const node = value.current;
-    if (node === null || tier >= 2) return;
-    if (node.scrollWidth > node.clientWidth) setTier(tier + 1);
-  });
+  // Which tier fits is measured (`useFitTier`), and starts again from the
+  // longest whenever what is drawn changes, so a row that shrank for a long
+  // count grows again when the count gets shorter.
+  const [value, tier] = useFitTier<HTMLElement>(
+    3,
+    (node) => node.scrollWidth > node.clientWidth,
+    full
+  );
 
   return (
     <dd className="purse" ref={value}>

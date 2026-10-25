@@ -570,6 +570,7 @@ describe('guards over the party', () => {
         health: null,
         invited: false,
         vitals: null,
+        pool: null,
         sheet: null,
         mana: null,
         rank: null

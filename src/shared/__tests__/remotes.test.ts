@@ -316,14 +316,14 @@ describe('answering @stats, which is this client’s own', () => {
     expect(body).toBe('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40,LVL=12,TRA=40,PIC=35}');
     expect(parseRemoteReply(body!)).toEqual({
       kind: 'stats',
-      sheet: { strength: 60, level: 12, traps: 40, picklocks: 35 }
+      sheet
     });
   });
 
   it('reads a figure the sheet left out as unknown, and a short sheet as no answer', () => {
     expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40,LVL=3}')).toEqual({
       kind: 'stats',
-      sheet: { strength: 60, level: 3, traps: null, picklocks: null }
+      sheet: { ...six, level: 3, traps: null, picklocks: null }
     });
     expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45}')).toBeNull();
     expect(parseRemoteReply('{HP=600/600}')).toMatchObject({ kind: 'vitals' });

@@ -20,6 +20,11 @@ describe('a member’s sheet', () => {
     );
     expect(next?.party.members[1]?.sheet).toEqual({
       strength: 60,
+      intellect: 45,
+      willpower: 50,
+      agility: 55,
+      health: 45,
+      charm: 40,
       level: 12,
       traps: 40,
       picklocks: 35

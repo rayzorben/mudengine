@@ -23,6 +23,7 @@ function member(name: string, hpMax: number | null): PartyMember {
     activity: null,
     invited: false,
     vitals: hpMax === null ? null : { hp: hpMax, hpMax, mana: null, manaMax: null },
+    pool: null,
     sheet: null
   };
 }

@@ -383,6 +383,7 @@ describe('a leader standing while the party fights', () => {
     activity: null,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null
   };
   const skeleton = classifyOccupant('angry blood skeleton', {

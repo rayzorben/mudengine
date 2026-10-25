@@ -3392,6 +3392,7 @@ describe('the party this character travels with', () => {
       className: null,
       health: null,
       mana: null,
+      pool: null,
       rank: null,
       activity: null,
       invited: false,
@@ -3419,6 +3420,7 @@ describe('the party this character travels with', () => {
         className: null,
         health: null,
         mana: null,
+        pool: null,
         rank: null,
         activity: null,
         invited: true,
@@ -6833,6 +6835,7 @@ describe('loot and listings from other realms', () => {
         className: 'Gypsy',
         health: 0.76,
         mana: 0.81,
+        pool: 'MA',
         rank: 'mid',
         activity: null,
         invited: false,
@@ -6844,12 +6847,28 @@ describe('loot and listings from other realms', () => {
         className: 'Paladin',
         health: 0.84,
         mana: 0.68,
+        pool: 'MA',
         rank: 'front',
         activity: null,
         invited: false,
         vitals: null,
         sheet: null
       }
+    ]);
+  });
+
+  /* MajorMUD prints a kai class's column as `[K:`, and the card labels it so. */
+  it('reads a kai column as kai', () => {
+    const t = play([
+      '[HP=100]:',
+      'The following people are in your travel party:',
+      '  Slayer OfSouls                 (Mystic)     [K:  2%] [H: 76%]   - Midrank',
+      '  Dungeon Breath                 (Paladin)    [M: 68%] [H: 84%]   - Frontrank',
+      '[HP=100]:'
+    ]);
+    expect(t.current.party.members.map((member) => [member.name, member.pool])).toEqual([
+      ['Slayer', 'KAI'],
+      ['Dungeon', 'MA']
     ]);
   });
 });

@@ -9729,7 +9729,7 @@ button.lookup:focus-visible {
   .settings-name,
   .combat-name .name,
   .party-name,
-  .party-class,
+  .party-what,
   .party-meter-value,
   .rewrite-list .rewrite-name,
   .rewrite-tag .hint,
@@ -12727,7 +12727,7 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
 }
 
-.party-class {
+.party-what {
   color: var(--text-lo-quiet);
   flex: 1 1 auto;
   font-size: var(--font-micro);
@@ -12735,6 +12735,10 @@ tr:hover .row-action.worn,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.party-what > span + span::before {
+  content: ' ';
 }
 
 /*
@@ -12803,10 +12807,76 @@ tr:hover .row-action.worn,
   font-family: var(--font-mono);
 }
 
-/* A member's Traps, Picklocks and Strength (todo 86): a fact, quiet under the meters. */
-.party-sheet {
+/*
+ * A member's six stats, Traps and Picklocks (todo 86): facts, quiet under the
+ * meters, each label quieter than its figure. Wraps on the narrowest rail.
+ */
+.party-stats {
   color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
   font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  gap: 0 8px;
+}
+
+.party-stats em,
+.party-best em {
+  color: var(--text-lo-quiet);
+  font-style: normal;
+  margin-right: 3px;
+}
+
+.party-stats.none {
+  color: var(--text-lo-quiet);
+}
+
+/* Who the party has for a trap, a lock and a door: a pane under the list. */
+.party-best {
+  border-top: var(--rule) solid var(--ink-line);
+  color: var(--text-lo);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 0 12px;
+  margin-top: 6px;
+  padding-top: 5px;
+}
+
+/*
+ * The drawing that fits (`useFitTier` on the scroller): `vitals` gives up the
+ * stat line, `compact` puts each member on one line with the meters stacked
+ * beside the name. The footer still names the best hands in both.
+ */
+.party-card .scroller[data-fit='vitals'] .party-stats,
+.party-card .scroller[data-fit='compact'] .party-stats,
+.party-card .scroller[data-fit='compact'] .party-race {
+  display: none;
+}
+
+.party-card .scroller[data-fit='compact'] .party-list {
+  gap: 2px;
+}
+
+.party-card .scroller[data-fit='compact'] .party-rank-group {
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+.party-card .scroller[data-fit='compact'] .party-list li {
+  align-items: center;
+  column-gap: 8px;
+  display: grid;
+  /* The meters keep their figures whole (`4,434` is the point of them);
+     the name gives way and is shortened. */
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.party-card .scroller[data-fit='compact'] .party-meters {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 0;
 }
 
 /*
@@ -12872,6 +12942,11 @@ tr:hover .row-action.worn,
 
 .party-meter.mana > .party-bar > span {
   background: var(--accent);
+}
+
+/* Kai, the `[K:` column, has its own colour. */
+.party-meter.kai > .party-bar > span {
+  background: var(--marker);
 }
 
 /* Level outranks the resource, and equal specificity plus source order is what

@@ -28,6 +28,7 @@ const member = (name: string, flag: string | null): PartyMember => ({
   activity: flag === null ? null : { state: 'unknown', flag },
   invited: false,
   vitals: null,
+  pool: null,
   sheet: null
 });
 

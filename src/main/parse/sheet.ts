@@ -12,6 +12,7 @@
 import {
   AFFLICTIONS_ENDED,
   NO_COMBAT,
+  poolNamed,
   type Affliction,
   type Afflictions,
   type CharacterState,
@@ -766,9 +767,7 @@ export class StatusLine {
     // Mystic's kai (2026-10-03). The prompt fills the pool only while it is
     // unknown; the sheet's `Kai:` and the book that answered decide it.
     const key = prompt.exact === true ? undefined : block.groups['manaType'];
-    const manaType: 'MA' | 'KAI' | null =
-      s.vitals.manaType ??
-      (key === 'MA' || key === 'M' ? 'MA' : key === 'KAI' || key === 'K' ? 'KAI' : null);
+    const manaType = s.vitals.manaType ?? poolNamed(key);
     const agreed = prompt.exact === true;
     return {
       ...s,

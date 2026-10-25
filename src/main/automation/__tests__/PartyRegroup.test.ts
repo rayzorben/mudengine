@@ -51,6 +51,7 @@ function state(
         activity: null,
         invited: false,
         vitals: null,
+        pool: null,
         sheet: null
       }))
     }

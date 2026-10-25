@@ -1186,23 +1186,41 @@ const SHEET_KEYS = { level: 'LVL', traps: 'TRA', picklocks: 'PIC' } as const;
  * not yet read, and a partial answer would read as the whole of one. The last
  * three are left out when unknown, and read back as unknown (`readStats`).
  */
-export function formatStats(
-  stats: Readonly<Record<TrainedAttribute | keyof typeof SHEET_KEYS, number | null>>
-): string | null {
-  const fields: string[] = [];
-  for (const attribute of TRAINED_ATTRIBUTES) {
-    const value = stats[attribute];
-    if (value === null) return null;
-    fields.push(`${STAT_KEYS[attribute]}=${value}`);
-  }
+export function formatStats(stats: SheetFigures): string | null {
+  const sheet = memberSheetOf(stats);
+  if (sheet === null) return null;
+  const fields = TRAINED_ATTRIBUTES.map(
+    (attribute) => `${STAT_KEYS[attribute]}=${sheet[attribute]}`
+  );
   for (const [field, key] of Object.entries(SHEET_KEYS)) {
-    const value = stats[field as keyof typeof SHEET_KEYS];
+    const value = sheet[field as keyof typeof SHEET_KEYS];
     if (value !== null) fields.push(`${key}=${value}`);
   }
   return `{${fields.join(',')}}`;
 }
 
-/** `formatStats` read back: the figures a leader chooses by, or null for any other shape. */
+/** What a sheet is made from: the stat screen's figures, each null while unread. */
+export type SheetFigures = Readonly<
+  Record<TrainedAttribute | keyof typeof SHEET_KEYS, number | null>
+>;
+
+/** The figures as a member's sheet, or null while any of the six is unknown (all six or nothing). */
+export function memberSheetOf(stats: SheetFigures): MemberSheet | null {
+  const six: Partial<Record<TrainedAttribute, number>> = {};
+  for (const attribute of TRAINED_ATTRIBUTES) {
+    const value = stats[attribute];
+    if (value === null) return null;
+    six[attribute] = value;
+  }
+  return {
+    ...(six as Record<TrainedAttribute, number>),
+    level: stats.level,
+    traps: stats.traps,
+    picklocks: stats.picklocks
+  };
+}
+
+/** `formatStats` read back: the member's sheet, or null for any other shape. */
 function readStats(text: string): MemberSheet | null {
   if (!/^\{[A-Z]{3}=-?\d+(?:,[A-Z]{3}=-?\d+)*\}$/.test(text)) return null;
   const fields = new Map(
@@ -1215,13 +1233,17 @@ function readStats(text: string): MemberSheet | null {
     const value = fields.get(key);
     return value === undefined ? null : Number(value);
   };
-  if (TRAINED_ATTRIBUTES.some((attribute) => !fields.has(STAT_KEYS[attribute]))) return null;
-  return {
-    strength: figure(STAT_KEYS.strength)!,
+  return memberSheetOf({
+    strength: figure(STAT_KEYS.strength),
+    intellect: figure(STAT_KEYS.intellect),
+    willpower: figure(STAT_KEYS.willpower),
+    agility: figure(STAT_KEYS.agility),
+    health: figure(STAT_KEYS.health),
+    charm: figure(STAT_KEYS.charm),
     level: figure(SHEET_KEYS.level),
     traps: figure(SHEET_KEYS.traps),
     picklocks: figure(SHEET_KEYS.picklocks)
-  };
+  });
 }
 
 /** `{mudengine 0.5.0}`, in the shape of `{MegaMMUD 2.1}`. */

@@ -34,6 +34,7 @@ const leading = (level: number, inParty = true): CharacterState => {
             activity: null,
             invited: false,
             vitals: null,
+            pool: null,
             sheet: null
           }
         ]

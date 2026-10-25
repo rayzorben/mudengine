@@ -936,6 +936,7 @@ describe('sending a changed @stats sheet on', () => {
     activity: null,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null
   };
   const atLevel = (level: number): CharacterState =>
@@ -1523,6 +1524,7 @@ describe('the gate: who may ask, and for what', () => {
     activity: null,
     invited,
     vitals: null,
+    pool: null,
     sheet: null
   });
 
@@ -2059,6 +2061,7 @@ describe('@heal', () => {
     activity: null,
     invited,
     vitals: null,
+    pool: null,
     sheet: null
   });
   // Known to be seen, so the ask is the room say; `hidden` below covers the rest.
@@ -2537,6 +2540,7 @@ describe('party pacing', () => {
     activity: null,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null
   });
   it('walks on through @wait under Ignore @wait If Leading, and says so', () => {
@@ -2775,6 +2779,7 @@ describe('a held member: @held and @comeback', () => {
       activity: null,
       invited: false,
       vitals: null,
+      pool: null,
       sheet: null
     };
     const leading = who({

@@ -118,6 +118,7 @@ const partyRow = (name: string): PartyMember => ({
   activity: null,
   invited: false,
   vitals: null,
+  pool: null,
   sheet: null
 });
 

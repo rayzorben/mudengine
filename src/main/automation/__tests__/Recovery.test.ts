@@ -860,6 +860,7 @@ describe('resting with the leader', () => {
     health: 1,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null,
     mana: null,
     rank: null
@@ -1223,6 +1224,7 @@ describe('resting for a member under Manage Party Health', () => {
         health: name === 'Soul' ? soul : 1,
         invited: false,
         vitals: null,
+        pool: null,
         sheet: null,
         mana: null,
         rank: null

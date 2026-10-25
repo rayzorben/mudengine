@@ -200,7 +200,18 @@ const leadingRand = (own: number | null, traps: number | null): CharacterState =
         {
           ...member('Rand'),
           vitals: { hp: 300, hpMax: 300, mana: null, manaMax: null },
-          sheet: { strength: 50, level: 10, traps, picklocks: null }
+          pool: null,
+          sheet: {
+            strength: 50,
+            intellect: 50,
+            willpower: 50,
+            agility: 50,
+            health: 50,
+            charm: 50,
+            level: 10,
+            traps,
+            picklocks: null
+          }
         }
       ],
       engaged: {},

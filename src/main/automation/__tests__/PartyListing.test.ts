@@ -37,6 +37,7 @@ describe('the party listing on a clock', () => {
           activity: null,
           invited: false,
           vitals: null,
+          pool: null,
           sheet: null
         }))
       }

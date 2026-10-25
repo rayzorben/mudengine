@@ -91,6 +91,7 @@ describe('a leader waiting for its party', () => {
       activity: null,
       invited: false,
       vitals: null,
+      pool: null,
       sheet: null
     });
     const leading = (soul: number | null, here = ['Vaelor', 'Soul']): CharacterState => {

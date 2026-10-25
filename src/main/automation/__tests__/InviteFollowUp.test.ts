@@ -27,6 +27,7 @@ function state(
     activity: null,
     invited: isInvited,
     vitals: null,
+    pool: null,
     sheet: null
   });
   return {

@@ -80,6 +80,7 @@ describe('joinedTheParty', () => {
     activity: null,
     invited,
     vitals: null,
+    pool: null,
     sheet: null
   });
 
@@ -124,6 +125,7 @@ describe('membersBelow', () => {
     activity: null,
     invited,
     vitals: null,
+    pool: null,
     sheet: null
   });
   const party = (members: ReturnType<typeof member>[], here: string[]): CharacterState => {

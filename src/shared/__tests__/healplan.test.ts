@@ -179,6 +179,7 @@ describe('who a heal could reach', () => {
     activity: null,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null,
     ...over
   });

@@ -3588,6 +3588,7 @@ describe('fighting what the leader fights', () => {
     health: 1,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null,
     mana: null,
     rank: null
@@ -3736,6 +3737,7 @@ describe('defending the party', () => {
     health: 1,
     invited: false,
     vitals: null,
+    pool: null,
     sheet: null,
     mana: null,
     rank: null

@@ -14,6 +14,9 @@ import {
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../character';
 import type { Requirement } from '../world';
 
+/** The five a member's sheet carries that no choice here reads. */
+const SIX = { strength: 50, intellect: 50, willpower: 50, agility: 50, health: 50, charm: 50 };
+
 const lock = (over: Partial<Requirement>): Requirement => ({ kind: 'door', raw: '', ...over });
 
 const hand = (
@@ -92,7 +95,8 @@ describe('who goes', () => {
       activity: null,
       invited: false,
       vitals: { hp: 220, hpMax: 220, mana: null, manaMax: null },
-      sheet: { strength: 60, level: 12, traps: 55, picklocks: 70 }
+      pool: null,
+      sheet: { ...SIX, strength: 60, level: 12, traps: 55, picklocks: 70 }
     };
     const state: CharacterState = {
       ...structuredClone(EMPTY_CHARACTER),
@@ -118,7 +122,8 @@ describe('the party a leader sends from', () => {
     activity: null,
     invited: false,
     vitals: null,
-    sheet: { strength: 60, level: 12, traps: 70, picklocks: 70 }
+    pool: null,
+    sheet: { ...SIX, strength: 60, level: 12, traps: 70, picklocks: 70 }
   };
   const soul: PartyMember = { ...rand, name: 'Soul', sheet: null };
   const leading = (following: string | null = null): CharacterState => {

@@ -3133,7 +3133,11 @@ cards:
       together: '{count} together'
     bar:
       hp: HP
+      kai: KAI
       mana: MA
+    # The footer: who has the best figure for a trap, a lock and a door.
+    bash: Bash
+    best: '{name} {figure}'
     empty: Not in a party (solo)
     groups:
       back: Back
@@ -3145,11 +3149,23 @@ cards:
     fightingRoom: fighting everyone in the room
     followAria: 'Follow {name}'
     followButton: Follow
+    hitBy: 'hit by {target}'
+    level: 'level {level}'
     leaveAction: Leave Party
+    noSheet: 'no stat sheet: only MudEngine answers @stats'
     notYetListed: not yet listed
     ofMax: '{percent}% of {max}'
-    sheet: Traps {traps} · Picklocks {picklocks} · Str {strength}
+    raceUnknown: race unknown
     sheetUnknown: '?'
+    stat:
+      agility: Agi
+      charm: Cha
+      health: Hea
+      intellect: Int
+      picklocks: Picks
+      strength: Str
+      traps: Traps
+      willpower: Wil
     title: Party
   picker:
     away: '{cardCount} put away'

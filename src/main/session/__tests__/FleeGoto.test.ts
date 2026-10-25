@@ -131,6 +131,7 @@ describe('FleeGoto', () => {
       vitals: null,
       mana: null,
       rank: null,
+      pool: null,
       sheet: null
     };
     const leading = (): CharacterState =>

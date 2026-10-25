@@ -31,6 +31,7 @@ const row = (name: string, invited = false) => ({
   activity: null,
   invited,
   vitals: null,
+  pool: null,
   sheet: null
 });
 

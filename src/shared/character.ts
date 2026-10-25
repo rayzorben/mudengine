@@ -35,6 +35,7 @@ import type {
 } from './world';
 import type { WoundBand } from './wounds';
 import type { StatedSheet } from './stated';
+import type { TrainedAttribute } from './training';
 import { NO_TALLY, type CombatTally } from './tally';
 
 /**
@@ -1131,6 +1132,16 @@ export const NO_COMBAT: Combat = {
  * at every level. Mana is null for a class that has none, which is not the same
  * as zero: the roster omits the column entirely for a warrior.
  */
+/**
+ * The wire's word for the second pool, as `Vitals.manaType`: the prompt
+ * prints `MA=` or `KAI=` (`M=`/`K=` short), the party listing `[M:` or `[K:`.
+ */
+export function poolNamed(word: string | undefined): Vitals['manaType'] {
+  if (word === 'MA' || word === 'M') return 'MA';
+  if (word === 'KAI' || word === 'K') return 'KAI';
+  return null;
+}
+
 export interface PartyMember {
   name: string;
   className: string | null;
@@ -1138,6 +1149,11 @@ export interface PartyMember {
   health: number | null;
   /** Null when the class has none at all. */
   mana: number | null;
+  /**
+   * Which resource `mana` is: the roster prints `[M:` for mana and `[K:` for
+   * kai (MajorMUD's `[K:  2%]` in the corpus). Null with no column.
+   */
+  pool: Vitals['manaType'];
   /** Where they stand in the formation. */
   /** MajorMUD's listing has a middle rank as well; GreaterMUD's has two. */
   rank: 'front' | 'mid' | 'back' | null;
@@ -1180,17 +1196,16 @@ export interface PartyMember {
 }
 
 /**
- * What decides who goes at a trap or a locked door: Strength for a bash,
- * Traps for a disarm, Picklocks for a pick, and the level they were read at.
- * Strength is always on the sheet; the other three are null when the answer
- * left them out (a sheet that did not print them).
+ * A member's own stat sheet, as their `@stats` answer states it: the six
+ * attributes, always together, then the level, Traps and Picklocks, each null
+ * when the answer left it out. Strength, Traps and Picklocks decide who goes
+ * at a trap or a locked door; the Party card shows the lot.
  */
-export interface MemberSheet {
-  strength: number;
+export type MemberSheet = Readonly<Record<TrainedAttribute, number>> & {
   level: number | null;
   traps: number | null;
   picklocks: number | null;
-}
+};
 
 /**
  * What the roster's status flag says a party member is doing.

@@ -13,10 +13,13 @@ import type { VitalsUiConfig } from '@shared/config';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { isKnownPlayer, isSelf, PlayerName } from '../lib/players';
-import { playerKey, type PlayerRegistry } from '@shared/players';
+import { playerKey, recordOf, type PlayerRegistry } from '@shared/players';
+import { memberSheetOf } from '@shared/remotes';
+import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord, meterValue } from '../lib/vitals';
 import { tuning } from '../lib/tuning';
+import { useFitTier } from '../hooks/useFitTier';
 
 export interface PartyCardProps extends CardChrome {
   character: CharacterState;
@@ -192,6 +195,33 @@ function PartyCard({
       ? party.members
       : [...party.members].sort((a, b) => Number(isHead(b)) - Number(isHead(a)));
 
+  /*
+   * Eight members fit only when each row gives something up, and which drawing
+   * fits is measured on the scroller: every row with its stat line, then the
+   * stat lines dropped, then one line a member. What a row draws changes only
+   * with who is in it and what is known of them, so that is what starts the
+   * measuring again; a resize does too.
+   */
+  const drawn = members
+    .map((m) =>
+      [
+        m.name,
+        m.invited,
+        m.sheet !== null,
+        m.mana !== null,
+        m.activity?.state,
+        fightingWord(character, m.name),
+        hitByWord(character, m.name)
+      ].join(':')
+    )
+    .join(',');
+  const [scroller, tier] = useFitTier<HTMLDivElement>(
+    FITS.length,
+    (node) => node.scrollHeight > node.clientHeight,
+    drawn
+  );
+  const facts = (member: PartyMember): Who => whoIs(character, players, member);
+
   return (
     <BentoCard
       {...chrome}
@@ -210,81 +240,102 @@ function PartyCard({
       }
       badge={badge}
       className="party-card"
+      paned
       title={t('cards.party.title')}
     >
-      {members.length === 0 ? (
-        <div className="empty">{t('cards.party.empty')}</div>
-      ) : (
-        GROUPS.map(({ key, label }) => {
-          const inRank = members.filter((entry) => groupOf(entry) === key);
-          if (inRank.length === 0) return null;
-          return (
-            <section className="party-rank-group" data-rank={key} key={key}>
-              <h4 className="party-rank-head from-medium">{label}</h4>
-              <ul className="party-list">
-                {inRank.map((member) => (
-                  <li
-                    data-selected={playerKey(member.name) === subject ? 'true' : undefined}
-                    key={member.name}
-                  >
-                    <div className="party-who">
-                      {/* A member the registry or roster knows is a person, and a
+      <div className="scroller" data-fit={FITS[tier]} ref={scroller}>
+        {members.length === 0 ? (
+          <div className="empty">{t('cards.party.empty')}</div>
+        ) : (
+          GROUPS.map(({ key, label }) => {
+            const inRank = members.filter((entry) => groupOf(entry) === key);
+            if (inRank.length === 0) return null;
+            return (
+              <section className="party-rank-group" data-rank={key} key={key}>
+                <h4 className="party-rank-head from-medium">{label}</h4>
+                <ul className="party-list">
+                  {inRank.map((member) => {
+                    const who = facts(member);
+                    return (
+                      <li
+                        data-selected={playerKey(member.name) === subject ? 'true' : undefined}
+                        key={member.name}
+                      >
+                        <div className="party-who">
+                          {/* A member the registry or roster knows is a person, and a
                           person's name is the control that opens their card — the
                           same gesture as on the Realm and Players listings, gated
                           by the same test rather than by "a member is a person".
                           This character's own row stays text: its numbers are on
                           the Vitals card. */}
-                      <span className="party-name" data-leader={isHead(member)}>
-                        {onSelect && isKnownPlayer(players, character, member.name) ? (
-                          <PlayerName
-                            className="name"
-                            name={member.name}
-                            onSelect={onSelect}
-                            self={isSelf(character, member.name)}
-                          />
-                        ) : (
-                          member.name
-                        )}
-                      </span>
-                      <span className="party-class from-medium">{member.className ?? ''}</span>
-                      {/*
+                          <span className="party-name" data-leader={isHead(member)}>
+                            {onSelect && isKnownPlayer(players, character, member.name) ? (
+                              <PlayerName
+                                className="name"
+                                name={member.name}
+                                onSelect={onSelect}
+                                self={isSelf(character, member.name)}
+                              />
+                            ) : (
+                              member.name
+                            )}
+                          </span>
+                          <span className="party-what from-medium">
+                            <span className="party-race">
+                              {member.invited ? '' : (who.race ?? t('cards.party.raceUnknown'))}
+                            </span>
+                            <span className="party-class">{who.className ?? ''}</span>
+                            {who.level !== null && (
+                              <span className="party-level">
+                                {t('cards.party.level', { level: who.level })}
+                              </span>
+                            )}
+                          </span>
+                          {/*
                         A condition is tonal, per §9 — and it is the thing on
                         this row that decides whether a member will answer a
                         heal or a step.
                       */}
-                      {member.activity !== null && (
-                        <span className="party-activity" data-state={member.activity.state}>
-                          {activityWord(member.activity)}
-                        </span>
-                      )}
-                      {/* What the server last said this member hit, while the
+                          {member.activity !== null && (
+                            <span className="party-activity" data-state={member.activity.state}>
+                              {activityWord(member.activity)}
+                            </span>
+                          )}
+                          {/* What the server last said this member hit, while the
                           sighting is fresh: the fact `assistLeader` acts on,
                           shown where the person deciding to help can see it. */}
-                      {fightingWord(character, member.name) !== null && (
-                        <span className="chip quiet party-fighting from-medium">
-                          {fightingWord(character, member.name)}
-                        </span>
-                      )}
-                      {/* `follow <name>` is how a leader is made on this realm;
+                          {fightingWord(character, member.name) !== null && (
+                            <span className="chip quiet party-fighting from-medium">
+                              {fightingWord(character, member.name)}
+                            </span>
+                          )}
+                          {/* The monster seen hitting them, which need not be the
+                          one they swing at: the member a heal or a defence is for. */}
+                          {hitByWord(character, member.name) !== null && (
+                            <span className="chip bad party-hit-by from-medium">
+                              {hitByWord(character, member.name)}
+                            </span>
+                          )}
+                          {/* `follow <name>` is how a leader is made on this realm;
                           there is no verb for the other direction, so there is
                           no other button. Not for this character's own row, and
                           not for whoever is already followed. */}
-                      {ask &&
-                        !member.invited &&
-                        !isSelf(character, member.name) &&
-                        !isHead(member) && (
-                          <button
-                            aria-label={t('cards.party.followAria', { name: member.name })}
-                            className="quiet party-follow from-medium"
-                            onClick={() => ask(`follow ${member.name}`)}
-                            onMouseDown={keepFocus}
-                            type="button"
-                          >
-                            {t('cards.party.followButton')}
-                          </button>
-                        )}
-                    </div>
-                    {/*
+                          {ask &&
+                            !member.invited &&
+                            !isSelf(character, member.name) &&
+                            !isHead(member) && (
+                              <button
+                                aria-label={t('cards.party.followAria', { name: member.name })}
+                                className="quiet party-follow from-medium"
+                                onClick={() => ask(`follow ${member.name}`)}
+                                onMouseDown={keepFocus}
+                                type="button"
+                              >
+                                {t('cards.party.followButton')}
+                              </button>
+                            )}
+                        </div>
+                        {/*
                       A member the announcements added has no numbers at all
                       until the next listing, and two empty tracks would read as
                       two resources at zero. An *invited* member has none either
@@ -292,39 +343,46 @@ function PartyCard({
                       the heading above them already says, so the row says
                       nothing a second time.
                     */}
-                    {member.invited ? null : member.health === null ? (
-                      <span className="hint">{t('cards.party.notYetListed')}</span>
-                    ) : (
-                      <div className="party-meters">
-                        <Bar
-                          fraction={member.health}
-                          label={t('cards.party.bar.hp')}
-                          max={member.vitals?.hpMax ?? null}
-                          thresholds={thresholds.hp}
-                          tone="hp"
-                        />
-                        {/* No mana track for a class that has none — the roster
+                        {member.invited ? null : member.health === null ? (
+                          <span className="hint">{t('cards.party.notYetListed')}</span>
+                        ) : (
+                          <div className="party-meters">
+                            <Bar
+                              fraction={member.health}
+                              label={t('cards.party.bar.hp')}
+                              max={member.vitals?.hpMax ?? null}
+                              thresholds={thresholds.hp}
+                              tone="hp"
+                            />
+                            {/* No mana track for a class that has none — the roster
                             omits the column entirely, and an empty one would
                             imply a resource that does not exist. */}
-                        {member.mana !== null && (
-                          <Bar
-                            fraction={member.mana}
-                            label={t('cards.party.bar.mana')}
-                            max={member.vitals?.manaMax ?? null}
-                            thresholds={thresholds.mana}
-                            tone="mana"
-                          />
+                            {member.mana !== null && (
+                              <Bar
+                                fraction={member.mana}
+                                label={
+                                  member.pool === 'KAI'
+                                    ? t('cards.party.bar.kai')
+                                    : t('cards.party.bar.mana')
+                                }
+                                max={member.vitals?.manaMax ?? null}
+                                thresholds={thresholds.mana}
+                                tone={member.pool === 'KAI' ? 'mana kai' : 'mana'}
+                              />
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
-                    {!member.invited && <SheetLine sheet={member.sheet} />}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          );
-        })
-      )}
+                        {!member.invited && <StatLine sheet={member.sheet} />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })
+        )}
+      </div>
+      {members.length > 0 && <BestHands members={members} />}
     </BentoCard>
   );
 }
@@ -339,7 +397,7 @@ function PartyCard({
 function ownRow(character: CharacterState, member: PartyMember): PartyMember {
   if (!isSelf(character, member.name)) return member;
   const { hp, hpMax, mana, manaMax, resting, meditating } = character.vitals;
-  const { strength, level, traps, picklocks } = character.progress;
+  const sheet = memberSheetOf(character.progress);
   const health = ratio(hp, hpMax);
   const magic = ratio(mana, manaMax);
   const activity: PartyActivity | null = resting
@@ -351,41 +409,148 @@ function ownRow(character: CharacterState, member: PartyMember): PartyMember {
     ...member,
     health: health ?? member.health,
     mana: magic ?? member.mana,
+    pool: character.vitals.manaType ?? member.pool,
     activity: character.lastStatusAt === null ? member.activity : activity,
     vitals: hp === null || hpMax === null ? member.vitals : { hp, hpMax, mana, manaMax },
-    sheet: strength === null ? member.sheet : { strength, level, traps, picklocks }
+    sheet: sheet ?? member.sheet
+  };
+}
+
+/** The three drawings a row can take, fullest first (`useFitTier`). */
+const FITS = ['full', 'vitals', 'compact'] as const;
+
+/** The six as the stat line labels them, in the stat screen's order. */
+const STAT_LABELS: Readonly<Record<TrainedAttribute, string>> = {
+  strength: t('cards.party.stat.strength'),
+  intellect: t('cards.party.stat.intellect'),
+  willpower: t('cards.party.stat.willpower'),
+  agility: t('cards.party.stat.agility'),
+  health: t('cards.party.stat.health'),
+  charm: t('cards.party.stat.charm')
+};
+
+/** Who a member is, beyond the listing's name and class. */
+interface Who {
+  race: string | null;
+  className: string | null;
+  level: number | null;
+}
+
+/**
+ * Race, class and level: this character's own off its stat sheet, anyone
+ * else's off the player record (`bg` states all three) and their `@stats`
+ * answer, the newer source for a level. Unknown stays unknown.
+ */
+function whoIs(character: CharacterState, players: PlayerRegistry, member: PartyMember): Who {
+  if (isSelf(character, member.name)) {
+    return {
+      race: character.race,
+      className: character.className ?? member.className,
+      level: character.progress.level ?? member.sheet?.level ?? null
+    };
+  }
+  const record = recordOf(players, member.name);
+  return {
+    race: record?.race ?? null,
+    className: member.className ?? record?.className ?? null,
+    level: member.sheet?.level ?? record?.level ?? null
   };
 }
 
 /**
- * A member's Traps, Picklocks and Strength, which decide who the leader sends
- * at a trap or a lock (todo 86): off their `@stats` answer, each unknown one
- * shown as unknown, as for a MegaMUD member, who never answers it.
+ * A member's six stats, Traps and Picklocks, off their `@stats` answer (todo
+ * 86). A MegaMUD member never answers it, and the row says so once rather
+ * than eight question marks.
  */
-function SheetLine({ sheet }: { sheet: MemberSheet | null }) {
-  const shown = (figure: number | null | undefined): string =>
-    figure === null || figure === undefined ? t('cards.party.sheetUnknown') : String(figure);
+function StatLine({ sheet }: { sheet: MemberSheet | null }) {
+  if (sheet === null) {
+    return <span className="party-stats none from-medium">{t('cards.party.noSheet')}</span>;
+  }
+  const shown = (figure: number | null): string =>
+    figure === null ? t('cards.party.sheetUnknown') : String(figure);
   return (
-    <span className="party-sheet from-medium">
-      {t('cards.party.sheet', {
-        traps: shown(sheet?.traps),
-        picklocks: shown(sheet?.picklocks),
-        strength: shown(sheet?.strength)
-      })}
+    <span className="party-stats from-medium">
+      {TRAINED_ATTRIBUTES.map((attribute) => (
+        <span key={attribute}>
+          <em>{STAT_LABELS[attribute]}</em>
+          {sheet[attribute]}
+        </span>
+      ))}
+      <span>
+        <em>{t('cards.party.stat.traps')}</em>
+        {shown(sheet.traps)}
+      </span>
+      <span>
+        <em>{t('cards.party.stat.picklocks')}</em>
+        {shown(sheet.picklocks)}
+      </span>
     </span>
   );
 }
 
+/**
+ * Who the party has for a trap, a lock and a door: the best Traps, Picklocks
+ * and Strength among the members whose sheet states one. The question those
+ * three figures answer, asked once for the party.
+ */
+function BestHands({ members }: { members: readonly PartyMember[] }) {
+  const best = (figure: (sheet: MemberSheet) => number | null): string => {
+    let found: { name: string; value: number } | null = null;
+    for (const member of members) {
+      const value = member.sheet === null ? null : figure(member.sheet);
+      if (value !== null && (found === null || value > found.value)) {
+        found = { name: member.name, value };
+      }
+    }
+    return found === null
+      ? t('cards.party.sheetUnknown')
+      : t('cards.party.best', { name: found.name, figure: found.value });
+  };
+  return (
+    <div className="party-best">
+      <span>
+        <em>{t('cards.party.stat.traps')}</em>
+        {best((sheet) => sheet.traps)}
+      </span>
+      <span>
+        <em>{t('cards.party.stat.picklocks')}</em>
+        {best((sheet) => sheet.picklocks)}
+      </span>
+      <span>
+        <em>{t('cards.party.bash')}</em>
+        {best((sheet) => sheet.strength)}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A member's entry in `engaged` or `threatened`, matched by name as either
+ * source spells it, or undefined once the sighting is older than
+ * `fightingFreshMs`.
+ */
+function freshSighting<T extends { at: number }>(
+  seen: Readonly<Record<string, T>>,
+  name: string
+): T | undefined {
+  const key = Object.keys(seen).find((entry) => entry.toLowerCase() === name.toLowerCase());
+  const entry = key === undefined ? undefined : seen[key];
+  return entry && Date.now() - entry.at <= tuning().fightingFreshMs ? entry : undefined;
+}
+
 /** What a member was last seen fighting, as the chip says it, or null once the sighting is stale. */
 function fightingWord(character: CharacterState, name: string): string | null {
-  const key = Object.keys(character.party.engaged).find(
-    (entry) => entry.toLowerCase() === name.toLowerCase()
-  );
-  const seen = key === undefined ? undefined : character.party.engaged[key];
-  if (!seen || Date.now() - seen.at > tuning().fightingFreshMs) return null;
+  const seen = freshSighting(character.party.engaged, name);
+  if (!seen) return null;
   return seen.kind === 'room'
     ? t('cards.party.fightingRoom')
     : t('cards.party.fighting', { target: seen.target });
+}
+
+/** The monster last seen hitting a member, as the chip says it, or null once the sighting is stale. */
+function hitByWord(character: CharacterState, name: string): string | null {
+  const seen = freshSighting(character.party.threatened, name);
+  return seen ? t('cards.party.hitBy', { target: seen.target }) : null;
 }
 
 export default memo(PartyCard);
