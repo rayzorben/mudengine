@@ -82,7 +82,11 @@ export function spellWaysOf(
   const start: RunEnd = { rooms: [], chance: 1, inner: [], takes: [] };
   const ends = merged(castOn(spell, start, realm, 0, new Set())).flatMap((end) => {
     const rooms = end.rooms.filter((room) => room !== realm.here);
-    return rooms.length === end.rooms.length ? [end] : rooms.length === 0 ? [] : [{ ...end, rooms }];
+    return rooms.length === end.rooms.length
+      ? [end]
+      : rooms.length === 0
+        ? []
+        : [{ ...end, rooms }];
   });
   const moved = landingsOf(ends, names);
   // A way slower than `world.spellWayTicks` is a hazard nobody waits for (`spellWays`).

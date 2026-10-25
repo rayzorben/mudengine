@@ -1149,7 +1149,11 @@ describe('a fare the purse cannot pay', () => {
     expect(moving.walkRoute(PASSAGE)).toBeNull();
     expect(parts.errands.cashFrom).toHaveBeenCalledWith(500_000, '14/759');
     expect(parts.walker.start).toHaveBeenCalledWith(BANK_LEG, expect.anything(), expect.anything());
-    expect(parts.walker.start).not.toHaveBeenCalledWith(PASSAGE, expect.anything(), expect.anything());
+    expect(parts.walker.start).not.toHaveBeenCalledWith(
+      PASSAGE,
+      expect.anything(),
+      expect.anything()
+    );
     expect(moving.errandUnderWay()).toBe(true);
   });
 

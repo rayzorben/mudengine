@@ -82,7 +82,9 @@ export class AttackLast {
       return;
     }
     for (const key of stopped.keys) {
-      const here = state.room.occupants.some((who) => who.kind === 'mob' && mobKey(who.name) === key);
+      const here = state.room.occupants.some(
+        (who) => who.kind === 'mob' && mobKey(who.name) === key
+      );
       if (!here) stopped.keys.delete(key);
     }
     if (stopped.keys.size === 0) this.stopped = null;
@@ -117,7 +119,10 @@ export class AttackLast {
     }
     this.stopped.keys.add(key);
     this.tries.delete(key);
-    this.events.notice?.(t('automation.party.attackLastStopped', { member, target }), 'attack-last');
+    this.events.notice?.(
+      t('automation.party.attackLastStopped', { member, target }),
+      'attack-last'
+    );
     return null;
   }
 }

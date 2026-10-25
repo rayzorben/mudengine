@@ -201,13 +201,16 @@ describe('the party grants, and only to somebody who has joined it', () => {
 
 // The user, 2026-10-25: an accepted invitation is understood to allow comeback.
 describe('joining the party grants @comeback and @comeback-room, whatever the lists say', () => {
-  it.each(['comeback', 'comeback-room'] as const)('grants %s to a member, not a stranger', (name) => {
-    expect(judgeRemote('Killa', name, access(), inParty)).toEqual({
-      allowed: true,
-      because: 'party'
-    });
-    expect(judgeRemote('Rend', name, access(), stranger).allowed).toBe(false);
-  });
+  it.each(['comeback', 'comeback-room'] as const)(
+    'grants %s to a member, not a stranger',
+    (name) => {
+      expect(judgeRemote('Killa', name, access(), inParty)).toEqual({
+        allowed: true,
+        because: 'party'
+      });
+      expect(judgeRemote('Rend', name, access(), stranger).allowed).toBe(false);
+    }
+  );
 
   it('is still refused to a member denied it by name', () => {
     const denied = access({ players: { killa: { allow: [], deny: ['comeback-room'] } } as never });

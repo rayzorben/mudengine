@@ -26,8 +26,7 @@ function at(map: number, room: number, copper: number | null = null): CharacterS
     ...base,
     phase: 'in-game',
     room: { ...base.room, map, number: room },
-    banks:
-      copper === null ? [] : [{ shop: 8, name: 'Bank of Godfrey', copper, at: Date.now() + 1 }]
+    banks: copper === null ? [] : [{ shop: 8, name: 'Bank of Godfrey', copper, at: Date.now() + 1 }]
   };
 }
 
