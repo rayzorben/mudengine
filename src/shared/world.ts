@@ -4226,24 +4226,27 @@ export function demandsOf(route: Route): Map<string, string> {
 }
 
 /**
- * The one item an edge demands be carried, or null where it demands none.
+ * Every item an edge demands be carried, each once; empty where it demands none.
  *
  * Two of the realm's columns state one, and from *is this thing in the pack*
  * they are the same fact: `Key: 1124` is a lock and `Item: 191` a hidden
  * exit's own action, which is `Requirement.keyId`'s own reading one layer up.
  * A hidden exit states it on the action rather than on the requirement, so
- * both are looked at, the requirement first.
- *
- * One, and the first: an exit wanting two items is a shape neither shipped
- * realm writes, and inventing an answer for it is the guess this file refuses.
+ * both are looked at. A room command's gates state them as `carry` (format
+ * 53), and one can want several: the shovel for `dig grave`, the three keys
+ * for `put three keys in device`.
  */
-export function itemDemanded(requirement: Requirement | null): number | null {
-  if (requirement === null) return null;
-  if (requirement.keyId !== undefined) return requirement.keyId;
+export function itemsDemanded(requirement: Requirement | null): number[] {
+  if (requirement === null) return [];
+  const items = new Set<number>();
+  if (requirement.keyId !== undefined) items.add(requirement.keyId);
   for (const action of requirement.actions ?? []) {
-    if (action.item !== undefined) return action.item;
+    if (action.item !== undefined) items.add(action.item);
   }
-  return null;
+  for (const gate of requirement.gates ?? []) {
+    if (gate.kind === 'carry') items.add(gate.item);
+  }
+  return [...items];
 }
 
 /** The most items one collect-then-walk may name: a payload bound, for IPC. */
@@ -4289,7 +4292,7 @@ export function itemsWanted(route: Route): Array<{ id: number; name: string }> {
  * walls and spells are the reader's to tick.
  */
 export function needsAlong(route: Route): Array<{ id: number; name: string }> {
-  const demanded = new Set(route.steps.map((step) => itemDemanded(step.requirement)));
+  const demanded = new Set(route.steps.flatMap((step) => itemsDemanded(step.requirement)));
   return (route.needs ?? []).filter((item) => demanded.has(item.id));
 }
 

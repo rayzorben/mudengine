@@ -15,6 +15,7 @@ import {
   indexQuests,
   itemsInReach,
   landingsOfItems,
+  roomsHoldingItems,
   spellsTaughtInReach
 } from './indexQuests';
 import type { BuiltItemFrom, ItemLanding } from './indexQuests';
@@ -27,6 +28,7 @@ import { spellNegates, type NegateRow } from './navigation/scriptNegates';
 import { readTextblocks } from './navigation/textblock';
 import { spellWaysOf, type LandingSpell } from './navigation/scriptLandings';
 import { AskWays, askingMonsters } from './askWays';
+import { ItemWays, usedItems } from './itemWays';
 import { askTable, type BuiltAsk } from './mobAsks';
 import {
   indexSupply,
@@ -160,8 +162,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 75 | **An item stops a room's spell only where it stops every way in.** `resolveHazard` put every `failitem` in `hz.av`, and `hazardAvoided` made the whole spell free for its carrier, but a `failitem` fails its own line and the server tries the next. Crystal Lake's `sea 1`–`sea 3` (block 9358) fail their first line for a log raft or a wooden skiff, and `maxlevel 49:checkitem 690:random 9445` teleports the raft's carrier on about two entries in three, so a raft in the pack walked 15 lake rooms that move you. `hz.r` replaces `hz.lv` and `hz.av`: per effect, each way in as `[min, max, ...failitems]`, `null` for an unbounded level, absent where a way reaches everybody (`hazardReach.ts`); `avoidedBy` is derived on reading. A `checkitem` or `takeitem` line is taken to run for anybody. On pmud.zip 11 room spells over 1,849 rooms change what stops them outright: the three seas (390) and the two desert spells (979), where the sunstone wristband still takes off desert spell 2's teleports, and the triggers' manhole, which was never holdable |
  * | 76 | **A spell check stops its own line too.** `checkspell` and `failspell` fail the line while the spell is up, as `failitem` does for an item, but `hz.sp` named every spell met as stopping the whole room spell. Each way in now carries the spells it fails on, `[min, max, failitems, wards]` (`hazardReach.ts`), and `avoidedBySpell` is derived on reading like `avoidedBy`. What takes part of a spell off is read per effect at the character's level (`hazardStoppers`): the route's *Carry* list, the fetch, the way carrying what stops it and the Room card's *Stops part of it* name the sunstone wristband for desert spell 2's teleports |
  * | 77 | **A room's own spell can be a way.** The server casts it on everyone in the room each spell tick, and an instant one as they walk in (`TimedEventManager.spellTick_Fire`, `Player.cs:765`), and `spellHazard.ts` read one that moves somebody as a hazard and nothing else, so the class passages behind 17/3247's training key, the Deep Black Pit's drop to the Platform of Stars, the Sandstone Cavern's fall and Crystal Lake's way aboard the Ancient Galleon led nowhere: 97 of pmud.zip's rooms were unreached with every gate open. `WorldRoom.spellWays` carries each landing and draw with its share of ticks and its line's gates (`spellWaysOf`), and the way is waited out standing in the room (a `room-spell` requirement). Todo 20261024-0804-01 |
+ * | 78 | **An item used in a room can land by chance.** `landingsOfItems` reads the first stated `teleport` of an item's chain, so the obsidian talisman, whose spell runs `roomitem 802` then `random 1092` (65% a draw of spell 434 over 1/2417–2430, 10% the talisman taken), had no landing, and five labyrinth dead ends and the rooms behind them were unreached with every gate open. A use with no stated landing is read through `scriptLandings` as a room command, `use <item>` behind carrying it, in each room holding every item its run wants lying there (`itemWays.ts`). Todo 20261025-0750-01 |
  */
-export const REALM_FORMAT = 77;
+export const REALM_FORMAT = 78;
 
 /**
  * The slowest room-spell way the file keeps (format 77), in ticks expected:
@@ -1649,6 +1652,14 @@ export function buildRealm(
     { blocks, spell: (id) => landingSpells.get(id) },
     names
   );
+  // Where using an item lands by chance or a draw (format 78), as commands of the rooms it works in.
+  const itemWays = new ItemWays(
+    usedItems(source),
+    roomsHoldingItems(source),
+    { blocks, spell: (id) => landingSpells.get(id) },
+    names,
+    (id) => itemLandings.has(id)
+  );
   for (const spell of spells) {
     if (spellNegates(spell.id, (id) => abilitiesOf.get(id), blocks)) spell.ng = 1;
     const lines = scriptLines(spell.id, (id) => abilitiesOf.get(id), blocks);
@@ -1727,7 +1738,8 @@ export function buildRealm(
       ...(action === undefined
         ? []
         : parseRoomScript(action, names, { here, blocks, spell: (id) => landingSpells.get(id) })),
-      ...askWays.in(standing)
+      ...askWays.in(standing),
+      ...itemWays.in(here)
     ];
     if (answers.length > 0) scripted += 1;
 

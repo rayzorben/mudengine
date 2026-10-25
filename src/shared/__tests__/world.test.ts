@@ -8,6 +8,7 @@ import {
   hazardCarried,
   hazardFor,
   hazardStoppers,
+  itemsDemanded,
   outrightStoppers,
   stopperEffects,
   type SpellHazard,
@@ -579,5 +580,25 @@ describe('a hazard as it applies to what is carried', () => {
     const lake: SpellHazard = { relocates: true, reach: { relocates: [{ fails: [690] }] } };
     expect(hazardAvoided(lake, [690])).toBe(true);
     expect(hazardAvoided(lake, [])).toBe(false);
+  });
+});
+
+describe('itemsDemanded', () => {
+  // Mutant: the first item only, so a way wanting the three keys fetches one.
+  it('names every item a way wants carried, each once', () => {
+    expect(
+      itemsDemanded({
+        kind: 'text',
+        raw: 'put three keys in device',
+        gates: [
+          { kind: 'carry', item: 490 },
+          { kind: 'carry', item: 491 },
+          { kind: 'lack', item: 7 },
+          { kind: 'carry', item: 492 }
+        ]
+      })
+    ).toEqual([490, 491, 492]);
+    expect(itemsDemanded({ kind: 'key', raw: 'Key: 1124', keyId: 1124 })).toEqual([1124]);
+    expect(itemsDemanded(null)).toEqual([]);
   });
 });

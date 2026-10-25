@@ -27,7 +27,7 @@ import {
   type TbUse
 } from './navigation/textblock';
 import type { RealmSource } from './RealmSource';
-import { abilityPairs, dropSlots, number, shopSlots, text, type ShopSlotField } from './values';
+import { castsOf, dropSlots, number, shopSlots, text, type ShopSlotField } from './values';
 
 /** `[row, copies]`: how many of each one run makes on average. */
 export type BuiltMade = Array<[number, number]>;
@@ -468,10 +468,7 @@ export function indexSupply(
   for (const row of byNumber(source.table('Items')?.rows ?? [], 'Number')) {
     const it = number(row['Number']);
     if (it === null || it <= 0) continue;
-    for (const [ability, spell] of abilityPairs(row)) {
-      if (ability === HAZARD_ABILITY.castsSpell && spell > 0)
-        push({ k: 'use', it }, makings.spell(spell));
-    }
+    for (const spell of castsOf(row)) push({ k: 'use', it }, makings.spell(spell));
   }
 
   const rooms = [...(source.table('Rooms')?.rows ?? [])].sort(

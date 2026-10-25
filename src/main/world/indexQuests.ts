@@ -69,7 +69,7 @@ import {
   type QuestStep,
   type QuestWay
 } from '../../shared/quests';
-import { abilityPairs } from './values';
+import { castsOf } from './values';
 import { readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
 import { itemsInScripts } from './roomScript';
@@ -406,8 +406,7 @@ export function landingsOfItems(
   for (const row of source.table('Items')?.rows ?? []) {
     const id = number(row['Number']);
     if (id === null || id <= 0) continue;
-    for (const [ability, value] of abilityPairs(row)) {
-      if (ability !== HAZARD_ABILITY.castsSpell || value <= 0) continue;
+    for (const value of castsOf(row)) {
       for (const start of runs(value)) {
         const found = teleportInChain(read, start);
         if (found === null) continue;
@@ -416,20 +415,11 @@ export function landingsOfItems(
           if (!landings.has(id)) landings.set(id, { to: found.to, ...fare });
           break;
         }
-        // Every `roomitem` on the way has to be satisfied at once, so the
-        // rooms it may be used in are the rooms holding *all* of them.
-        let where: string[] | null = null;
-        for (const wanted of found.needsItems) {
-          const held = rooms.get(wanted);
-          if (held === undefined || held.length === 0) {
-            where = null;
-            break;
-          }
-          where = where === null ? [...held] : where.filter((at) => held.includes(at));
-        }
-        // Unresolvable, or no room satisfies all of them: say nothing rather
-        // than claim it works everywhere.
-        if (where === null || where.length === 0) break;
+        // Every `roomitem` on the way has to be satisfied at once. Unresolvable,
+        // or no room satisfies all of them: say nothing rather than claim it
+        // works everywhere.
+        const where = roomsHoldingAll(found.needsItems, rooms);
+        if (where.length === 0) break;
         if (!landings.has(id)) landings.set(id, { to: found.to, usableIn: where, ...fare });
         break;
       }
@@ -450,7 +440,7 @@ export function landingsOfItems(
  * the waterfall is a hidden placed item, which is the branch `TextBlockPart`
  * falls through to.
  */
-function roomsHoldingItems(source: RealmSource): Map<number, string[]> {
+export function roomsHoldingItems(source: RealmSource): Map<number, string[]> {
   const rooms = new Map<number, string[]>();
   for (const row of source.table('Items')?.rows ?? []) {
     const id = number(row['Number']);
@@ -462,6 +452,19 @@ function roomsHoldingItems(source: RealmSource): Map<number, string[]> {
     if (where.length > 0) rooms.set(id, where);
   }
   return rooms;
+}
+
+/** The rooms holding every one of `wanted` (`roomsHoldingItems`); none for an empty list. */
+export function roomsHoldingAll(
+  wanted: Iterable<number>,
+  holding: ReadonlyMap<number, readonly string[]>
+): string[] {
+  let rooms: string[] | null = null;
+  for (const item of wanted) {
+    const held = holding.get(item) ?? [];
+    rooms = rooms === null ? [...held] : rooms.filter((room) => held.includes(room));
+  }
+  return rooms ?? [];
 }
 
 /** How far a `LinkTo` chain is followed before it is given up as a loop. */

@@ -14,6 +14,7 @@
  * cycle, and this project has one of those written down
  * (`src/shared/__tests__/module-cycle.test.ts`).
  */
+import { HAZARD_ABILITY } from '../../shared/abilities';
 
 /**
  * A value that should be a number, or null.
@@ -82,6 +83,13 @@ export function abilityPairs(row: Record<string, unknown>): Array<[number, numbe
     pairs.push([which, value === null || value === BLANK_AS_NUMBER ? 0 : value]);
   }
   return pairs;
+}
+
+/** The spells using an item casts (`CastsSp`), in slot order. */
+export function castsOf(row: Record<string, unknown>): number[] {
+  return abilityPairs(row).flatMap(([ability, spell]) =>
+    ability === HAZARD_ABILITY.castsSpell && spell > 0 ? [spell] : []
+  );
 }
 
 /**

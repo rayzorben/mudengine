@@ -14,7 +14,7 @@ import { packRows, type CharacterState } from '../../shared/character';
 import { chargedInCopper, COPPER_PER } from '../../shared/coins';
 import { plannedFetches, type Plan } from '../../shared/navigation';
 import type { MovementChoices } from '../../shared/walkChoices';
-import { coinWords, itemDemanded, type RoomId, type Route } from '../../shared/world';
+import { coinWords, itemsDemanded, type RoomId, type Route } from '../../shared/world';
 
 export interface KeyBuyingParts {
   choices(): Pick<MovementChoices, 'buyKeys' | 'buyKeysMaxGold'>;
@@ -87,7 +87,7 @@ export class KeyBuying {
    * through a keyed door, and the key may be in it or may not.
    */
   private listFirst(route: Route, run: boolean): KeyChoice {
-    const keyed = route.steps.some((step) => itemDemanded(step.requirement ?? null) !== null);
+    const keyed = route.steps.some((step) => itemsDemanded(step.requirement ?? null).length > 0);
     if (!keyed && route.keysAhead !== true) return WALK;
     if (!this.parts.listPack()) {
       this.parts.notice(t('session.walk.keys.notAsked'));

@@ -8,7 +8,7 @@
 import { flood, stronglyConnected } from './components';
 import type { RoomId } from '../../shared/world';
 
-/** The realm's moves with every gate open, each marked by whether it crosses the word. */
+/** The realm's moves with every gate open, a draw none, each marked by whether it crosses the word. */
 export interface WordMoves {
   rooms(): Iterable<RoomId>;
   next(room: RoomId): Iterable<{ to: RoomId; crosses: boolean }>;

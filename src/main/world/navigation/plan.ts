@@ -28,7 +28,7 @@ import {
 import {
   blockItem,
   describeBlock,
-  itemDemanded,
+  itemsDemanded,
   walkable,
   type FightOdds,
   type RoomId,
@@ -226,11 +226,13 @@ function keysUsed(
 ): PlannedItem[] {
   const needs = new Map<number, PlannedItem>();
   for (const step of way.steps) {
-    const id = itemDemanded(
+    const ids = itemsDemanded(
       standingRequirement(step.requirement, step.from, step.direction, traveller)
     );
-    if (id === null || held.includes(id) || needs.has(id)) continue;
-    needs.set(id, { id, name: realm.itemName(id) ?? `#${id}` });
+    for (const id of ids) {
+      if (held.includes(id) || needs.has(id)) continue;
+      needs.set(id, { id, name: realm.itemName(id) ?? `#${id}` });
+    }
   }
   return [...needs.values()];
 }

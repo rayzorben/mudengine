@@ -71,7 +71,7 @@ import {
   fareOverShare,
   fareRoom,
   fareShortfall,
-  itemDemanded,
+  itemsDemanded,
   newDemands,
   OPPOSITE,
   roomAddress,
@@ -2537,10 +2537,9 @@ export class Travel implements SessionModule {
   /** Whether the listed pack holds every item a step of `route` demands. */
   private holdsEveryKey(route: Route, state: CharacterState): boolean {
     const rows = packRows(state.inventory);
-    return route.steps.every((step) => {
-      const item = itemDemanded(step.requirement ?? null);
-      return item === null || packHolds(rows, item) === true;
-    });
+    return route.steps.every((step) =>
+      itemsDemanded(step.requirement ?? null).every((item) => packHolds(rows, item) === true)
+    );
   }
 
   /**

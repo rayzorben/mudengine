@@ -394,6 +394,18 @@ describe.skipIf(graph === null)('the trainers soul was sent to, on the shipped r
     expect(fetched[2]).toBe('magical quartz rod');
   });
 
+  // Mutant: `itemsDemanded` blind to a room command's `carry` gate, so the dig is refused.
+  it('fetches a shovel before digging into Musty Grottos', () => {
+    const made = plan(world(), losesTo([]), '1/834', '1/9462', { ...soul(), level: 20 });
+    expect(made.kind).toBe('plan');
+    const fetched =
+      made.kind === 'plan'
+        ? made.steps.flatMap((s) => (s.kind === 'kill' ? [s.item.name] : []))
+        : [];
+    expect(fetched).toEqual(['shovel']);
+    expect(made.kind === 'plan' && made.steps.at(-1)).toMatchObject({ kind: 'walk' });
+  });
+
   /* The Hydra Trainer wants the manscorpion king's key and the hydra dead. */
   it('plans the Hydra Trainer through the manscorpion king, with the odds, and the hydra', () => {
     const lost = plan(world(), losesTo(['manscorpion king']), '1/834', '12/2249', soul());

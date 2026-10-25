@@ -34,7 +34,7 @@ import {
   hazardCarried,
   hazardStoppers,
   packWith,
-  itemDemanded,
+  itemsDemanded,
   landingRooms,
   leverRooms,
   openableHere,
@@ -1782,7 +1782,11 @@ export class Router {
             (block) => !seen.has(blockKey(block))
           );
     const named = [...blocks, ...spent];
-    const reasons = named.length > 0 ? named : unjoinedBlocks();
+    const drawItems =
+      named.length === 0 && walkable.drawsAhead
+        ? this.drawItemsWanted(from, to, goal, traveller)
+        : [];
+    const reasons = named.length > 0 ? named : drawItems.length > 0 ? drawItems : unjoinedBlocks();
     return {
       steps: [],
       cost: 0,
@@ -1792,6 +1796,38 @@ export class Router {
       reason: reasons.map(describeBlock).join('; '),
       blocks: reasons
     };
+  }
+
+  /**
+   * The items a draw's door wants that each make the way, for a refusal
+   * nothing else explains. The solve leaves out a door the traveller cannot
+   * pass, gates open or not, since a wall paid on every try never settles
+   * (`scatterCosts`); so the obsidian talisman at an obelisk is named here,
+   * one search holding each item.
+   */
+  private drawItemsWanted(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    traveller: Traveller
+  ): RouteBlock[] {
+    const doors = new Map<number, RoomId>();
+    for (const spell of this.scatterDoors().values()) {
+      for (const { at, exit } of spell.doors) {
+        for (const item of itemsDemanded(exit.requirement ?? null)) {
+          if (traveller.keys?.includes(item) === true) continue;
+          // A door outside the goal, where there is one, is where the item is used.
+          if (!doors.has(item) || doors.get(item) === to) doors.set(item, at);
+        }
+      }
+    }
+    return [...doors].flatMap(([item, at]): RouteBlock[] => {
+      const holding = { ...traveller, keys: [...(traveller.keys ?? []), item] };
+      if (this.search(from, to, goal, holding, false, true).found === null) return [];
+      const itemName = this.index.item(item)?.name;
+      const name = this.rooms.get(to)?.name ?? to;
+      return [{ kind: 'carry', at, to, name, itemId: item, ...(itemName ? { itemName } : {}) }];
+    });
   }
 
   /**
@@ -2177,7 +2213,10 @@ export class Router {
 
   /**
    * The rooms every way into which crosses this word (`closedPlaces`), built
-   * once per word over `movesFrom`: the Black Wasteland for `vortex`.
+   * once per word over `movesFrom`: the Black Wasteland for `vortex`. A draw
+   * is left out: it puts the character in one of its rooms by chance, so it is
+   * no way into a place, and a character standing in the wasteland still
+   * leaves by the vortex (the obsidian talisman lands in 1/2426).
    */
   private closedBehind(plain: string): ReadonlySet<RoomId> {
     let found = this.closedRooms.get(plain);
@@ -2185,10 +2224,11 @@ export class Router {
     found = closedPlaces({
       rooms: () => this.rooms.keys(),
       next: (id) =>
-        this.movesFrom(id).map(({ exit, to }) => ({
-          to,
-          crosses: this.crosses(plain, exit, this.rooms.get(to) ?? null)
-        })),
+        this.movesFrom(id).flatMap(({ exit, to }) =>
+          exit.requirement?.spellEffect === 'scatters'
+            ? []
+            : [{ to, crosses: this.crosses(plain, exit, this.rooms.get(to) ?? null) }]
+        ),
       landings: () => this.landedRooms()
     });
     this.closedRooms.set(plain, found);
@@ -2235,8 +2275,9 @@ export class Router {
     const ids = new Set<number>();
     for (const room of this.rooms.values()) {
       for (const exit of room.exits) {
-        const id = itemDemanded(exit.requirement ?? null);
-        if (id !== null && (this.index.item(id)?.name.trim() ?? '').length > 0) ids.add(id);
+        for (const id of itemsDemanded(exit.requirement ?? null)) {
+          if ((this.index.item(id)?.name.trim() ?? '').length > 0) ids.add(id);
+        }
       }
     }
     this.exitItems = [...ids];
@@ -3014,10 +3055,10 @@ export class Router {
         : current.exits;
       for (const exit of ways) {
         if (!keysAhead) {
-          const item = itemDemanded(
+          const items = itemsDemanded(
             standingRequirement(exit.requirement ?? null, currentId, exit.direction, traveller)
           );
-          keysAhead = item !== null && traveller.keys?.includes(item) !== true;
+          keysAhead = items.some((item) => traveller.keys?.includes(item) !== true);
         }
         /*
          * A draw is not an edge, so it is never relaxed as one: relaxing it
