@@ -1223,6 +1223,26 @@ export interface LevelBand {
   max?: number;
 }
 
+/** The effects a room's spell can have, each priced and stopped on its own. */
+export const HAZARD_EFFECTS = ['damage', 'relocates', 'summons', 'unread'] as const;
+
+export type HazardEffect = (typeof HAZARD_EFFECTS)[number];
+
+/**
+ * One way an effect of a room's spell reaches a character: a line of the
+ * chain, as the level band it is gated to and the items whose carrier it fails
+ * on (`failitem`). An effect reaches a character where any of its ways does.
+ * Format 75: a `failitem` fails its own line and the server tries the next, so
+ * Crystal Lake's `sea 1` fails its first line for a log raft and teleports the
+ * raft's carrier on its second (`maxlevel 49:checkitem 690:random 9445`).
+ */
+export interface HazardReach {
+  /** Absent is any level. */
+  band?: LevelBand;
+  /** Absent is no item stops it. */
+  fails?: number[];
+}
+
 export interface SpellHazard {
   /**
    * Hit points a tick in the room is expected to cost. Absent where the chain
@@ -1257,13 +1277,60 @@ export interface SpellHazard {
    */
   unread?: boolean;
   /**
-   * The level bands the realm gates some of these effects behind (todo 01).
-   *
-   * Absent per effect is **ungated**. Read through `hazardFor`, never
-   * directly: a reader that forgot to would price a gated effect for every
-   * character, which is the bug this exists to fix.
+   * Each effect's ways in (todo 01, format 75). Absent per effect is one way
+   * that reaches everybody. Read through `hazardFor` and `hazardCarried`,
+   * never directly: a reader that forgot to would price a gated effect for
+   * every character, which is the bug this exists to fix.
    */
-  levels?: { damage?: LevelBand; relocates?: LevelBand; summons?: LevelBand };
+  reach?: HazardReachMap;
+}
+
+/** Each effect's ways in. What an absent effect means is the holder's to say (`SpellHazard.reach`). */
+export type HazardReachMap = Partial<Record<HazardEffect, HazardReach[]>>;
+
+/** Whether this hazard has this effect: the one reading of which field holds each. */
+export function hazardHas(hazard: SpellHazard, effect: HazardEffect): boolean {
+  switch (effect) {
+    case 'damage':
+      return hazard.damage !== undefined;
+    case 'relocates':
+      return hazard.relocates === true;
+    case 'summons':
+      return hazard.summons === true;
+    case 'unread':
+      return hazard.unread === true;
+    default: {
+      const never: never = effect;
+      return never;
+    }
+  }
+}
+
+/** The fields that turn one effect off. */
+const EFFECT_OFF: Record<HazardEffect, Partial<SpellHazard>> = {
+  damage: { damage: undefined },
+  relocates: { relocates: false },
+  summons: { summons: false },
+  unread: { unread: false }
+};
+
+/** This hazard with only the ways `keep` admits; an effect none admits is off. */
+function narrowReach(hazard: SpellHazard, keep: (way: HazardReach) => boolean): SpellHazard {
+  const reach = hazard.reach;
+  if (reach === undefined) return hazard;
+  const kept: HazardReachMap = {};
+  const off = new Set<HazardEffect>();
+  let narrowed = false;
+  for (const effect of HAZARD_EFFECTS) {
+    const ways = reach[effect];
+    if (ways === undefined) continue;
+    const admitted = ways.filter(keep);
+    if (admitted.length !== ways.length) narrowed = true;
+    if (admitted.length > 0) kept[effect] = admitted;
+    else off.add(effect);
+  }
+  if (!narrowed) return hazard;
+  return Object.assign({ ...hazard, reach: kept }, ...[...off].map((effect) => EFFECT_OFF[effect]));
 }
 
 /**
@@ -1278,22 +1345,42 @@ export interface SpellHazard {
  * which is almost all of them — costs one property read.
  */
 export function hazardFor(hazard: SpellHazard, level: number | null | undefined): SpellHazard {
-  const bands = hazard.levels;
-  if (bands === undefined || level === null || level === undefined) return hazard;
-  const out = (band: LevelBand | undefined): boolean =>
-    band !== undefined &&
-    ((band.min !== undefined && level < band.min) || (band.max !== undefined && level > band.max));
+  if (level === null || level === undefined) return hazard;
+  return narrowReach(
+    hazard,
+    ({ band }) =>
+      band === undefined ||
+      !(
+        (band.min !== undefined && level < band.min) ||
+        (band.max !== undefined && level > band.max)
+      )
+  );
+}
 
-  const damage = out(bands.damage);
-  const relocates = out(bands.relocates);
-  const summons = out(bands.summons);
-  if (!damage && !relocates && !summons) return hazard;
-  return {
-    ...hazard,
-    ...(damage ? { damage: undefined } : {}),
-    ...(relocates ? { relocates: false } : {}),
-    ...(summons ? { summons: false } : {})
-  };
+/**
+ * This hazard as it applies to a character carrying these items: a way one of
+ * them fails is dropped, so desert spell 2's teleports, each behind
+ * `failitem 1180`, are off for a waterskin's carrier above level 19 while its
+ * summons run. The same shape as `hazardFor`, for the pack in place of the
+ * level; an unlisted pack keeps everything.
+ */
+export function hazardCarried(
+  hazard: SpellHazard,
+  carrying: readonly number[] | undefined
+): SpellHazard {
+  if (carrying === undefined || carrying.length === 0) return hazard;
+  return narrowReach(hazard, ({ fails }) => !(fails ?? []).some((item) => carrying.includes(item)));
+}
+
+/**
+ * The items that stop every way in of every effect (`SpellHazard.avoidedBy`),
+ * in the order the chain names them: the raft on the Silver River, and not on
+ * Crystal Lake, where a second line teleports its carrier.
+ */
+export function outrightStoppers(reach: HazardReachMap): number[] {
+  const ways = Object.values(reach).flat();
+  const named = [...new Set(ways.flatMap((way) => way.fails ?? []))];
+  return named.filter((item) => ways.every((way) => way.fails?.includes(item) === true));
 }
 
 /**
@@ -1347,6 +1434,8 @@ export function hazardAvoided(
     wanted.some((item) => carrying.includes(item))
   )
     return true;
+  const left = hazardCarried(hazard, carrying);
+  if (left !== hazard && HAZARD_EFFECTS.every((effect) => !hazardHas(left, effect))) return true;
   const spells = hazard.avoidedBySpell;
   if (spells === undefined || spellsUp.length === 0) return false;
   return spells.some((spell) => spellsUp.includes(spell));

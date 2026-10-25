@@ -6,7 +6,7 @@
  * area search's walls, the walk's refusal, the rest refusal and the party's
  * question. `mudengine-world` › `parts/routing.md`.
  */
-import { hazardAvoided, type RoomId, type SpellHazard } from '../../../shared/world';
+import { hazardAvoided, hazardCarried, type RoomId, type SpellHazard } from '../../../shared/world';
 
 /** A room spell on a way that an item stops, with the items that stop it. */
 export interface WayStopper {
@@ -71,7 +71,8 @@ export function hurtsUnstopped(
   carrying: readonly number[] | null,
   spellsUp: readonly number[]
 ): boolean {
-  return hurts(hazard) && !hazardAvoided(hazard, carrying ?? undefined, spellsUp);
+  const pack = carrying ?? undefined;
+  return hurts(hazardCarried(hazard, pack)) && !hazardAvoided(hazard, pack, spellsUp);
 }
 
 /** Whether the pack stops this stopper's spell; an unlisted pack does not. */

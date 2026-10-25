@@ -169,6 +169,7 @@ import {
   asDirection,
   counterIn,
   hazardAvoided,
+  hazardCarried,
   nameAnswersTo,
   lairKey,
   parseLair,
@@ -1038,7 +1039,7 @@ export class Errands implements SessionModule {
        * it because `LairCosts` remembers per room; this has nothing to
        * remember, so what it depends on is hoisted instead.
        */
-      hazard: (room) => this.roomHazard(room, state, pack.keys, up)
+      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up)
     };
   }
 
@@ -1120,10 +1121,15 @@ export class Errands implements SessionModule {
    */
   lapTraveller(state: CharacterState): Traveller {
     const priced = this.travellerNow(state, false);
-    const relocates = (room: WorldRoom): number | null =>
-      this.world?.hazardOf(room, state.progress.level)?.relocates === true
-        ? (priced.hazard?.(room) ?? null)
+    const relocates = (
+      room: WorldRoom,
+      carrying: readonly number[] | undefined = priced.keys
+    ): number | null => {
+      const hazard = this.world?.hazardOf(room, state.progress.level) ?? null;
+      return hazard !== null && hazardCarried(hazard, carrying).relocates === true
+        ? (priced.hazard?.(room, carrying) ?? null)
         : null;
+    };
     return { ...priced, danger: undefined, runDeath: undefined, hazard: relocates };
   }
 
@@ -1147,11 +1153,13 @@ export class Errands implements SessionModule {
     if (!this.world) return null;
     // The character's own level: the realm gates some effects on it, and a
     // sandstorm that cannot catch this character is not a price it pays.
-    const hazard = this.world.hazardOf(room, state.progress.level);
-    if (hazard === null) return null;
+    const stated = this.world.hazardOf(room, state.progress.level);
+    if (stated === null) return null;
     // Carrying what stops it is not *unknown*, it is *free*: the room costs a
     // plain step, which is what it is for that character.
-    if (hazardAvoided(hazard, carrying, up)) return null;
+    if (hazardAvoided(stated, carrying, up)) return null;
+    // And what stops one effect of it takes that effect off the price.
+    const hazard = hazardCarried(stated, carrying);
     /*
      * **A room that moves you is a wall, exactly as an exit that casts one
      * is** (`edgePenalty`'s `spellEffect === 'relocates'`). The walker's next

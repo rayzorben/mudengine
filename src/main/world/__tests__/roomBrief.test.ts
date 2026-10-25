@@ -123,7 +123,11 @@ describe('the realm’s answer about one room', () => {
     const graph = makeWorld([{ m: 1, r: 1, n: 'Desert', x: {}, sp: 683 }], {
       items: [{ id: 1180, n: 'waterskin' }],
       spells: [
-        { id: 683, n: 'desert spell', hz: { d: 13, av: [1180, 9999], sp: [711] } },
+        {
+          id: 683,
+          n: 'desert spell',
+          hz: { d: 13, r: { d: [[null, null, 1180, 9999]] }, sp: [711] }
+        },
         { id: 711, n: 'quench' }
       ]
     });

@@ -75,6 +75,88 @@ describe('what a room’s spell does to whoever stands in it', () => {
   });
 
   /*
+   * A `failitem` fails its own line, and the server tries the next. Crystal
+   * Lake's `sea 1` (spell 1076, block 9358 on pmud.zip) fails its first line
+   * for a log raft or a wooden skiff, and its second line teleports a raft's
+   * carrier below level 50 anyway: the raft stops nothing (2026-10-24).
+   */
+  it('names an item only where it stops every line that does something', () => {
+    const table = spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] } });
+    const lake = resolveHazard(
+      1,
+      table,
+      blocks({
+        10:
+          'failitem 690:failitem 691:random 11\n' +
+          'maxlevel 49:checkitem 690:random 12\nmaxlevel 49:checkitem 691:random 12',
+        11: '30:addexp 0\n100:teleport 1320 17',
+        12: '50:addexp 0\n100:teleport 981 17'
+      })
+    );
+    expect(lake).toMatchObject({ relocates: true, avoidedBy: [] });
+    expect(lake.reach.relocates).toEqual([{ fails: [690, 691] }, { band: { max: 49 } }]);
+    // Positive control: the same raft on both lines stops it.
+    const river = resolveHazard(
+      1,
+      table,
+      blocks({
+        10: 'failitem 690:failitem 691:random 11\nfailitem 690:random 12',
+        11: '30:addexp 0\n100:teleport 1320 17',
+        12: '50:addexp 0\n100:teleport 981 17'
+      })
+    );
+    expect(river.avoidedBy).toEqual([690]);
+    // A line that does nothing asks nothing of the pack.
+    const quiet = resolveHazard(
+      1,
+      table,
+      blocks({ 10: 'failitem 690:random 11\nmessage 1', 11: '100:teleport 1320 17' })
+    );
+    expect(quiet.avoidedBy).toEqual([690]);
+  });
+
+  /*
+   * A block met again while still being walked adds nothing there, so what
+   * finished inside that cycle is short of it and is walked again by the
+   * next path: block 12 reaches 11's teleport only through 11.
+   */
+  it('walks again what a cycle left short, for the next path to it', () => {
+    const cycle = resolveHazard(
+      1,
+      spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] } }),
+      blocks({
+        10: 'failitem 5:random 11\nfailitem 6:random 12',
+        11: '50:teleport 1 1\n100:random 12',
+        12: '100:random 11'
+      })
+    );
+    expect(cycle.reach.relocates).toEqual([{ fails: [5] }, { fails: [6] }]);
+    expect(cycle.avoidedBy).toEqual([]);
+  });
+
+  /*
+   * One item can stop one effect and not another. Desert spell 2 (684,
+   * block 2660 on pmud.zip): the sandstorm below level 20, a roll that
+   * summons for anybody, and a teleport behind the waterskin.
+   */
+  it('keeps what stops each way in, apart from the others', () => {
+    const desert = resolveHazard(
+      684,
+      spells({
+        684: { abilities: [[HAZARD_ABILITY.textBlock, 10]] },
+        713: { abilities: [[HAZARD_ABILITY.teleportRoom, 0]] },
+        714: { abilities: [[HAZARD_ABILITY.teleportRoom, 0]] }
+      }),
+      blocks({ 10: '86:maxlevel 19:cast 713\n99:summon 570\n100:failitem 1180:cast 714' })
+    );
+    expect(desert.avoidedBy).toEqual([]);
+    expect(desert.reach).toEqual({
+      relocates: [{ band: { max: 19 } }, { fails: [1180] }],
+      summons: [{}]
+    });
+  });
+
+  /*
    * `failroomitem` checks the room's floor (`TextBlockPart.cs:998`), not the
    * pack: `rock check` drops the outcropping it looks for itself. A gate on
    * the room, so the cast behind it is priced and nothing is offered to carry.
@@ -174,14 +256,19 @@ describe('what a room’s spell does to whoever stands in it', () => {
     expect(desert.summons).toBe(true);
     // The teleport is banded; the summons on the next line is not — a gate
     // governs the rest of its own line and nothing under it.
-    expect(desert.levels).toEqual({ relocates: { max: 19 } });
+    // (Block 2654 is not in the fixture, so the way into it is unread.)
+    expect(desert.reach).toEqual({
+      unread: [{}],
+      relocates: [{ band: { max: 19 } }],
+      summons: [{}]
+    });
   });
 
   /*
-   * And the merge is the generous direction: an effect that can reach this
-   * character by any path is one it can reach.
+   * An effect that can reach this character by any path is one it can reach:
+   * both ways are kept, and `hazardFor` keeps the effect while either admits.
    */
-  it('drops the band for an effect recorded outside a gate as well', () => {
+  it('keeps a way outside the gate beside the way behind it', () => {
     const both = resolveHazard(
       1,
       spells({
@@ -191,7 +278,7 @@ describe('what a room’s spell does to whoever stands in it', () => {
       blocks({ 10: 'maxlevel 19:cast 2\n100:cast 2' })
     );
     expect(both.relocates).toBe(true);
-    expect(both.levels.relocates).toBeUndefined();
+    expect(both.reach.relocates).toEqual([{ band: { max: 19 } }, {}]);
   });
 
   it('calls a verb it cannot evaluate unread rather than harmless', () => {

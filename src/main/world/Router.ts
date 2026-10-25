@@ -31,6 +31,7 @@ import {
   DIRECTION_COMMAND,
   edgeKey,
   hazardAvoided,
+  hazardCarried,
   itemDemanded,
   landingRooms,
   leverRooms,
@@ -292,9 +293,10 @@ export interface Traveller {
    *
    * Null where nothing can be weighed: no spell, a spell that harms nobody,
    * an unread sheet, or an item in the pack that stops it — the last of which
-   * is not *unknown* but *free*, and both price at nothing.
+   * is not *unknown* but *free*, and both price at nothing. `carrying` prices
+   * it for that pack in place of the traveller's own (`holding`).
    */
-  hazard?: (room: WorldRoom) => number | null;
+  hazard?: (room: WorldRoom, carrying?: readonly number[]) => number | null;
   /**
    * Rooms this search may not enter at all.
    *
@@ -1986,7 +1988,7 @@ export class Router {
     };
     const equipped: Traveller = {
       ...traveller,
-      hazard: (room) => (quietened(room) ? null : priced(room))
+      hazard: (room, carrying) => (quietened(room) ? null : priced(room, carrying))
     };
     const found = this.search(from, to, goal, equipped, false, draws).found;
     if (found === null) return null;
@@ -3464,9 +3466,10 @@ export class Router {
       const room = this.rooms.get(step.to);
       if (room?.spell === undefined) continue;
       const spell = this.index.spellById(room.spell);
-      const hazard = spell?.hazard;
-      if (spell === null || hazard === undefined) continue;
-      if (hazardAvoided(hazard, traveller.keys, traveller.spellsUp)) continue;
+      const stated = spell?.hazard;
+      if (spell === null || stated === undefined) continue;
+      if (hazardAvoided(stated, traveller.keys, traveller.spellsUp)) continue;
+      const hazard = hazardCarried(stated, traveller.keys);
       const seen = folded.get(spell.id);
       if (seen !== undefined) {
         seen.rooms += 1;
@@ -3541,7 +3544,8 @@ export class Router {
    * question — the character is about to hold *this* row and nothing else new —
    * so the item joins `keys`, which opens the doors it is a key to, and the
    * hazards it stops go quiet through the same `hazardAvoided` join the router
-   * uses everywhere. Nothing else about the traveller moves.
+   * uses everywhere, and what it stops of one effect comes off the price
+   * through `hazardCarried`. Nothing else about the traveller moves.
    */
   holding(traveller: Traveller, item: number): Traveller {
     const keys = [...(traveller.keys ?? []), item];
@@ -3550,9 +3554,9 @@ export class Router {
     return {
       ...traveller,
       keys,
-      hazard: (room) => {
+      hazard: (room, carrying = keys) => {
         const hazard = this.index.hazardOf(room, traveller.level);
-        return hazard !== null && hazardAvoided(hazard, keys) ? null : priced(room);
+        return hazard !== null && hazardAvoided(hazard, carrying) ? null : priced(room, carrying);
       }
     };
   }

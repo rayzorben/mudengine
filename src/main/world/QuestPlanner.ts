@@ -680,7 +680,8 @@ export class QuestPlanner {
     };
     return {
       ...traveller,
-      hazard: (room) => (room.spell !== undefined && stopped(room.spell) ? null : priced(room))
+      hazard: (room, carrying) =>
+        room.spell !== undefined && stopped(room.spell) ? null : priced(room, carrying)
     };
   }
 

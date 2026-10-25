@@ -14,7 +14,12 @@ import { t } from '../../lib/i18n';
 const desert: WorldSpell = {
   id: 683,
   name: 'desert spell',
-  hazard: { damage: 13, relocates: true, unread: true, levels: { relocates: { max: 19 } } }
+  hazard: {
+    damage: 13,
+    relocates: true,
+    unread: true,
+    reach: { relocates: [{ band: { max: 19 } }] }
+  }
 };
 
 describe('the Room card says what the room casts', () => {
@@ -40,7 +45,7 @@ describe('the Room card says what the room casts', () => {
     const gated: WorldSpell = {
       id: 713,
       name: 'sandstorm',
-      hazard: { relocates: true, levels: { relocates: { max: 19 } } }
+      hazard: { relocates: true, reach: { relocates: [{ band: { max: 19 } }] } }
     };
     expect(hazardWords(hazardAtLevel(gated, 21)!).map((word) => word.text)).toEqual([
       t('cards.roomSpell.notAtYourLevel')

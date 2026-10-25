@@ -4,7 +4,10 @@ import {
   asRoomReference,
   asRoute,
   describeBlock,
+  hazardAvoided,
+  hazardCarried,
   hazardFor,
+  outrightStoppers,
   type SpellHazard,
   newDemands,
   openableHere,
@@ -468,7 +471,7 @@ describe('a hazard as it applies to one character', () => {
     relocates: true,
     summons: true,
     avoidedBySpell: [711],
-    levels: { relocates: { max: 19 } }
+    reach: { relocates: [{ band: { max: 19 } }] }
   };
 
   it('drops an effect the realm has already excluded this character from', () => {
@@ -499,8 +502,50 @@ describe('a hazard as it applies to one character', () => {
   });
 
   it('reads a minimum as well as a maximum', () => {
-    const summonsHigh: SpellHazard = { summons: true, levels: { summons: { min: 50 } } };
+    const summonsHigh: SpellHazard = { summons: true, reach: { summons: [{ band: { min: 50 } }] } };
     expect(hazardFor(summonsHigh, 21).summons).toBe(false);
     expect(hazardFor(summonsHigh, 50).summons).toBe(true);
+  });
+});
+
+/*
+ * What is carried takes off the ways it fails (format 75). Desert spell 2 on
+ * pmud.zip: a sandstorm below level 20, a teleport behind the waterskin
+ * (1180), and a summons for anybody.
+ */
+describe('a hazard as it applies to what is carried', () => {
+  const desert: SpellHazard = {
+    relocates: true,
+    summons: true,
+    reach: { relocates: [{ band: { max: 19 } }, { fails: [1180] }], summons: [{}] }
+  };
+
+  it('drops an effect once level and pack have shut every way in', () => {
+    const above = hazardFor(desert, 40);
+    expect(hazardCarried(above, [1180]).relocates).toBe(false);
+    expect(hazardCarried(above, [1180]).summons).toBe(true);
+    // Positive control: without the waterskin the teleport stands.
+    expect(hazardCarried(above, [690]).relocates).toBe(true);
+    // And below level 20 the sandstorm needs no waterskin.
+    expect(hazardCarried(hazardFor(desert, 10), [1180]).relocates).toBe(true);
+  });
+
+  it('keeps everything for a pack nobody has listed', () => {
+    expect(hazardCarried(desert, undefined)).toBe(desert);
+  });
+
+  it('names an item as stopping it outright only where it stops every way in', () => {
+    expect(outrightStoppers(desert.reach ?? {})).toEqual([]);
+    expect(outrightStoppers({ damage: [{ fails: [690, 691] }, { fails: [691] }] })).toEqual([691]);
+    // Crystal Lake: the raft fails the first line, and the second teleports its carrier.
+    expect(outrightStoppers({ relocates: [{ fails: [690, 691] }, { band: { max: 49 } }] })).toEqual(
+      []
+    );
+  });
+
+  it('counts a hazard every way of which the pack shuts as avoided', () => {
+    const lake: SpellHazard = { relocates: true, reach: { relocates: [{ fails: [690] }] } };
+    expect(hazardAvoided(lake, [690])).toBe(true);
+    expect(hazardAvoided(lake, [])).toBe(false);
   });
 });

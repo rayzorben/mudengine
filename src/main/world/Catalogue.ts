@@ -20,6 +20,9 @@ import {
   hazardFor,
   shopKind,
   type ItemHandover,
+  hazardHas,
+  outrightStoppers,
+  type HazardReach,
   type LevelBand,
   type MobAttack,
   type MobCast,
@@ -73,6 +76,7 @@ import {
   type CoinMaxima
 } from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
+import { builtEffects } from './hazardReach';
 import type { ItemEntity, ItemUseRules, MobEntity, NpcEntity } from '../../shared/entities';
 import { restrictionsOf } from '../../shared/gear';
 import { DENOMINATIONS, type AttributeSpans, type Denomination } from '../../shared/character';
@@ -2385,48 +2389,58 @@ function readHazard(value: unknown, holdable: (item: number) => boolean): SpellH
   const hazard: SpellHazard = {};
   const damage = Number(record['d']);
   if (Number.isFinite(damage) && damage > 0) hazard.damage = damage;
-  // Only an item somebody can hold stops it: the server's `failitem` checks the
-  // pack, and nothing puts the manhole (`failitem 185`) in one. See
-  // `mudengine-world` › *What stops a room's spell is an item somebody can hold*.
-  const avoidedBy = readIdList(record['av']).filter(holdable);
-  if (avoidedBy.length > 0) hazard.avoidedBy = avoidedBy;
   const avoidedBySpell = readIdList(record['sp']);
   if (avoidedBySpell.length > 0) hazard.avoidedBySpell = avoidedBySpell;
   if (record['tp'] === 1) hazard.relocates = true;
   if (record['sm'] === 1) hazard.summons = true;
   if (record['u'] === 1) hazard.unread = true;
-  const levels = readLevelBands(record['lv']);
-  if (levels !== null) hazard.levels = levels;
+  const reach = readReach(record['r'], hazard);
+  if (reach !== null) hazard.reach = reach;
+  // Only an item somebody can hold stops it: the server's `failitem` checks the
+  // pack, and nothing puts the manhole (`failitem 185`) in one. See
+  // `mudengine-world` › *What stops a room's spell is an item somebody can hold*.
+  const avoidedBy = outrightStoppers(reach ?? {}).filter(holdable);
+  if (avoidedBy.length > 0) hazard.avoidedBy = avoidedBy;
   // Nothing stated at all is nothing to carry: the writer omits a spell whose
   // chain reaches no harm, so an empty object here is a row that says nothing.
   return Object.keys(hazard).length > 0 ? hazard : null;
 }
 
 /**
- * The level bands a hazard's own effects sit behind — format 46, `[min, max]`
- * with `null` for unbounded. A band that bounds nothing is not carried: it is
- * the same fact as an absent one and would make `hazardFor` copy the object
- * for no answer.
+ * Each effect's ways in (format 75, `[min, max, ...failitems]`), or null where
+ * every effect reaches everybody. An effect the hazard has and the record does
+ * not narrow is one way that reaches everybody, so `outrightStoppers` finds no
+ * item stops it.
  */
-function readLevelBands(value: unknown): SpellHazard['levels'] | null {
+function readReach(value: unknown, hazard: SpellHazard): SpellHazard['reach'] | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const band = (raw: unknown): LevelBand | undefined => {
-    if (!Array.isArray(raw)) return undefined;
-    const [min, max] = raw as [unknown, unknown];
-    const read: LevelBand = {};
-    if (typeof min === 'number' && Number.isFinite(min)) read.min = min;
-    if (typeof max === 'number' && Number.isFinite(max)) read.max = max;
-    return read.min === undefined && read.max === undefined ? undefined : read;
-  };
-  const levels: NonNullable<SpellHazard['levels']> = {};
-  const damage = band(record['d']);
-  if (damage !== undefined) levels.damage = damage;
-  const relocates = band(record['tp']);
-  if (relocates !== undefined) levels.relocates = relocates;
-  const summons = band(record['sm']);
-  if (summons !== undefined) levels.summons = summons;
-  return Object.keys(levels).length > 0 ? levels : null;
+  const reach: NonNullable<SpellHazard['reach']> = {};
+  for (const [effect, key] of builtEffects()) {
+    if (!hazardHas(hazard, effect)) continue;
+    const raw = record[key];
+    const ways = Array.isArray(raw) ? raw.flatMap((entry) => readWay(entry)) : [];
+    reach[effect] = ways.length > 0 ? ways : [{}];
+  }
+  return reach;
+}
+
+/** One way in, or none for a shape `BuiltReachWay` does not write. */
+function readWay(value: unknown): HazardReach[] {
+  if (!Array.isArray(value) || value.length < 2) return [];
+  const [min, max, ...fails] = value as unknown[];
+  const band: LevelBand = {};
+  if (typeof min === 'number' && Number.isFinite(min)) band.min = min;
+  if (typeof max === 'number' && Number.isFinite(max)) band.max = max;
+  const items = fails.filter(
+    (item): item is number => typeof item === 'number' && Number.isInteger(item) && item > 0
+  );
+  return [
+    {
+      ...(band.min === undefined && band.max === undefined ? {} : { band }),
+      ...(items.length > 0 ? { fails: items } : {})
+    }
+  ];
 }
 
 /**

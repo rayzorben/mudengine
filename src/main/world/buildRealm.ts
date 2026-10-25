@@ -157,8 +157,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 72 | **What a monster answers to.** `Monsters.GreetTXT` was walked three times at build time (quests, levers, supply) and each kept only the words leading to its own kind of thing, so a monster's information could not list what it can be asked. `BuiltMob.ak` and `BuiltMobRow.ak` are its `ask` table (`mobAsks.ts`): every word, those running the same steps under the longest, with the items given and taken, spells taught and copper charged. The wounded messenger (243) answers eight in gmud.zip. The fold carries it only where every row's table agrees (todo 01) |
  * | 73 | **Where a command's run lands, and how often.** `parseRoomScript` took `to` from a `teleport` or a cast naming its map, and never followed `random`, a shown block's link or `EndCast`, so `dig grave` (7% to Musty Grottos behind `random 9121`, the shovel breaking on 2%) and every ship's `secure passage` (a draw into the Swiftwind, then three timed spells to the beach) led nowhere: 5,408 of pmud.zip's rooms were unreached with every gate open, Terra Fuego, Terra Ista and Tal'kiran among them. `navigation/scriptLandings.ts` follows the run; `RoomCommand.landings` carries each chance landing with its draw, its roll line's gates and a ship's passage's wait, `breaks` what a try that moves nobody takes, `takes` what passing takes. A monster's ask that moves somebody is a command of each room it stands in (`askWays.ts`), behind `monster-here`. Todo 20261024-0804-01 |
  * | 74 | **A room's resident keeps its clock with no `GameLimit`.** `ownClock` kept `Monsters.RegenTime` only where `GameLimit` is above zero, the lair slot's rule, but a resident placed by `Rooms.NPC` comes back through `NPCRegenSlot`, which reads the clock in both branches (`RegenSlot.cs:144-215`). gmud.zip has no `GameLimit` column, so 326 residents lost theirs; pmud's healer and practice dummy and stock's practice dummy did too. `BuiltMob.nr` and `BuiltMobRow.nr` carry it where `rt` does not, read for a resident only: 9 of gmud.zip's are lair rows too (the gravedigger), and a lair stays on the room's delay, as stock's minotaur does. Todo 20261021-0855-03 |
+ * | 75 | **An item stops a room's spell only where it stops every way in.** `resolveHazard` put every `failitem` in `hz.av`, and `hazardAvoided` made the whole spell free for its carrier, but a `failitem` fails its own line and the server tries the next. Crystal Lake's `sea 1`–`sea 3` (block 9358) fail their first line for a log raft or a wooden skiff, and `maxlevel 49:checkitem 690:random 9445` teleports the raft's carrier on about two entries in three, so a raft in the pack walked 15 lake rooms that move you. `hz.r` replaces `hz.lv` and `hz.av`: per effect, each way in as `[min, max, ...failitems]`, `null` for an unbounded level, absent where a way reaches everybody (`hazardReach.ts`); `avoidedBy` is derived on reading. A `checkitem` or `takeitem` line is taken to run for anybody. On pmud.zip 11 room spells over 1,849 rooms change what stops them outright: the three seas (390) and the two desert spells (979), where the waterskin still takes off desert spell 2's teleports, and the triggers' manhole, which was never holdable |
  */
-export const REALM_FORMAT = 74;
+export const REALM_FORMAT = 75;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -565,23 +566,21 @@ export interface BuiltSpell {
  */
 export interface BuiltSpellHazard {
   d?: number;
-  av?: number[];
   sp?: number[];
   tp?: 1;
   /** 1 when the chain can put a monster in the room. Format 31. */
   sm?: 1;
   u?: 1;
   /**
-   * The level bands the realm gates `d`, `tp` and `sm` behind, where it gates
-   * them at all — format 46. `[min, max]`, with `null` on either side for
-   * unbounded. Absent per effect is ungated.
+   * Each effect's ways in, where any is narrower than *everybody* — format
+   * 75: `[min, max, ...failitems]`, `null` for an unbounded level. An effect
+   * absent here reaches everybody. See `HazardReach`.
    */
-  lv?: {
-    d?: [number | null, number | null];
-    tp?: [number | null, number | null];
-    sm?: [number | null, number | null];
-  };
+  r?: { d?: BuiltReachWay[]; tp?: BuiltReachWay[]; sm?: BuiltReachWay[]; u?: BuiltReachWay[] };
 }
+
+/** One way in to a hazard's effect on disk: the level band, then the items whose carrier it fails on. */
+export type BuiltReachWay = [number | null, number | null, ...number[]];
 
 /**
  * One row's fighting profile on disk — format 20 — in the compact shape the

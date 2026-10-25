@@ -5,7 +5,8 @@
  * runtime cannot walk (`TextBlock` → `TBInfo` → `cast`), so the chain is
  * followed here at build time and the answer written onto the spell. A plain
  * magnitude prices as `resolveSpells` prices an exit; `failitem` names what
- * stops the script; a roll table is dice; `summon` is a fact; a gate on who
+ * stops the script where it stops every line that does something; a roll
+ * table is dice; `summon` is a fact; a gate on who
  * the character is (a `gate` step) is followed at full weight, since what stands
  * behind it happens to somebody. A chain this cannot follow is `unread`,
  * never harmless.
@@ -13,8 +14,14 @@
  * See `mudengine-world` › *The world knowledge base*, the room-spell bullets.
  */
 import { HAZARD_ABILITY, abilityHurts } from '../../shared/abilities';
-import type { LevelBand } from '../../shared/world';
+import {
+  outrightStoppers,
+  type HazardEffect,
+  type HazardReachMap,
+  type LevelBand
+} from '../../shared/world';
 import type { BuiltSpellHazard } from './buildRealm';
+import { behind, builtEffects, joinReach } from './hazardReach';
 import { number } from './values';
 import type { RealmSource } from './RealmSource';
 import { castMoves, SCRIPT_DEPTH, scriptsOf } from './navigation/scriptWays';
@@ -42,7 +49,7 @@ interface SpellFacts {
 export interface SpellHazardFacts {
   /** Hit points a tick is expected to cost. `0` where the chain does none. */
   damage: number;
-  /** Items that stop the script outright, in the realm's order. */
+  /** Items that stop the script outright, in the realm's order (`outrightStoppers`). */
   avoidedBy: number[];
   /** Spells that stop it. Recorded, never evaluated — see `WorldSpell`. */
   avoidedBySpell: number[];
@@ -61,20 +68,14 @@ export interface SpellHazardFacts {
   /** Whether the chain ran into something this reader cannot follow. */
   unread: boolean;
   /**
-   * The level bands the realm gates some of these effects behind (todo 01).
-   *
-   * A gate is followed at full weight because what stands behind one happens
-   * to *somebody* — but which somebody is stated, and the router knows which
-   * character it is planning for. The desert's sandstorm is
-   * `86:maxlevel 19:cast 713`: a one-in-a-hundred teleport that cannot happen
-   * to a level 21 character at all, and the plan said *it moves you somewhere
-   * else* on every one of 979 rooms.
-   *
-   * Absent per fact is **ungated**, which is the answer for anything recorded
-   * outside a level gate as well as for anything recorded both ways: an
-   * effect that can reach this character by any path is one it can reach.
+   * Each effect's ways in: the level band and the `failitem`s each sits behind
+   * (todo 01, format 75). A gate is followed at full weight because what stands
+   * behind one happens to *somebody*, and which somebody is stated: the
+   * desert's sandstorm is `86:maxlevel 19:cast 713`, a one-in-a-hundred
+   * teleport that cannot happen to a level 21 character, and the plan said *it
+   * moves you somewhere else* on every one of 979 rooms.
    */
-  levels: { damage?: LevelBand; relocates?: LevelBand; summons?: LevelBand };
+  reach: HazardReachMap;
 }
 
 /**
@@ -123,16 +124,22 @@ export function indexSpellHazards(
     if (hazard.damage === 0 && !hazard.unread && !hazard.relocates && !hazard.summons) continue;
     const written: BuiltSpellHazard = {};
     if (hazard.damage > 0) written.d = hazard.damage;
-    if (hazard.avoidedBy.length > 0) written.av = hazard.avoidedBy;
     if (hazard.avoidedBySpell.length > 0) written.sp = hazard.avoidedBySpell;
     if (hazard.relocates) written.tp = 1;
     if (hazard.summons) written.sm = 1;
     if (hazard.unread) written.u = 1;
-    const lv: NonNullable<BuiltSpellHazard['lv']> = {};
-    if (hazard.levels.damage !== undefined) lv.d = pair(hazard.levels.damage);
-    if (hazard.levels.relocates !== undefined) lv.tp = pair(hazard.levels.relocates);
-    if (hazard.levels.summons !== undefined) lv.sm = pair(hazard.levels.summons);
-    if (Object.keys(lv).length > 0) written.lv = lv;
+    const ways: NonNullable<BuiltSpellHazard['r']> = {};
+    for (const [effect, key] of builtEffects()) {
+      const reach = hazard.reach[effect];
+      // One way that reaches everybody is what an absent effect reads back as.
+      if (
+        reach === undefined ||
+        reach.some((way) => way.band === undefined && way.fails === undefined)
+      )
+        continue;
+      ways[key] = reach.map((way) => [...pair(way.band ?? {}), ...(way.fails ?? [])]);
+    }
+    if (Object.keys(ways).length > 0) written.r = ways;
     index.set(id, written);
   }
   return index;
@@ -150,7 +157,6 @@ export function resolveHazard(
   facts: ReadonlyMap<number, SpellFacts>,
   blocks: ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>
 ): SpellHazardFacts {
-  const avoidedBy: number[] = [];
   const avoidedBySpell: number[] = [];
   /*
    * Keyed on the id **and the band it was reached under**, not on the id.
@@ -164,6 +170,51 @@ export function resolveHazard(
    */
   const seenSpells = new Set<string>();
   const seenBlocks = new Set<string>();
+  /*
+   * Each one's ways, once walked. One still being walked (a cycle) adds none
+   * where it is met again, so every node between it and the meeting is short
+   * of its ways and is not kept, and the next path to one walks it again.
+   * `low` is the shallowest open node met below the current one; a node is
+   * kept where nothing below it reached above it.
+   */
+  const spellStops = new Map<string, HazardReachMap>();
+  const blockStops = new Map<string, HazardReachMap>();
+  const open = new Map<string, number>();
+  let stack = 0;
+  let low = Infinity;
+  const met = (
+    memo: ReadonlyMap<string, HazardReachMap>,
+    key: string,
+    name: string
+  ): HazardReachMap => {
+    const held = memo.get(key);
+    if (held !== undefined) return held;
+    low = Math.min(low, open.get(name) ?? Infinity);
+    return {};
+  };
+  const enter = (name: string): { depth: number; lowBefore: number } => {
+    stack += 1;
+    open.set(name, stack);
+    const lowBefore = low;
+    low = Infinity;
+    return { depth: stack, lowBefore };
+  };
+  const settle = (
+    seen: Set<string>,
+    memo: Map<string, HazardReachMap>,
+    key: string,
+    name: string,
+    entry: { depth: number; lowBefore: number },
+    ways: HazardReachMap
+  ): HazardReachMap => {
+    open.delete(name);
+    stack -= 1;
+    const whole = low >= entry.depth;
+    if (whole) memo.set(key, ways);
+    else seen.delete(key);
+    low = Math.min(entry.lowBefore, whole ? Infinity : low);
+    return ways;
+  };
   const visit = (id: number): string => `${id}|${band?.min ?? ''}|${band?.max ?? ''}`;
   let damage = 0;
   let relocates = false;
@@ -171,65 +222,46 @@ export function resolveHazard(
   let unread = false;
 
   /*
-   * The level gate in force where the reader currently is, and what each fact
-   * was recorded under (todo 01).
+   * The level gate in force where the reader currently is (todo 01).
    *
    * `band` is pushed by a `minlevel` / `maxlevel` step and popped at the end
    * of the line it gated, because a gate governs the rest of *its* line and
    * nothing else — `86:maxlevel 19:cast 713` is one roll-table line, and the
    * next line is not gated by it.
-   *
-   * `widen` is the merge, and it is deliberately the generous direction: a
-   * fact recorded once behind a gate and once outside one can reach every
-   * character, so the second recording erases the band. Unknown is never the
-   * reassuring answer, and here the reassuring answer is *it cannot happen to
-   * you*.
    */
   let band: LevelBand | null = null;
-  const bands: SpellHazardFacts['levels'] = {};
-  const widen = (fact: 'damage' | 'relocates' | 'summons'): void => {
-    if (band === null) {
-      bands[fact] = undefined;
-      delete bands[fact];
-      seenUngated.add(fact);
-      return;
-    }
-    if (seenUngated.has(fact)) return;
-    const held = bands[fact];
-    if (held === undefined) {
-      bands[fact] = { ...band };
-      return;
-    }
-    // Two bands on one fact: whichever character either admits, it can reach.
-    bands[fact] = {
-      ...(held.min !== undefined && band.min !== undefined
-        ? { min: Math.min(held.min, band.min) }
-        : {}),
-      ...(held.max !== undefined && band.max !== undefined
-        ? { max: Math.max(held.max, band.max) }
-        : {})
-    };
+  /** One way in for an effect met here: the band in force, no `failitem` ahead of it yet. */
+  const here = (effect: HazardEffect): HazardReachMap => ({
+    [effect]: [band === null ? {} : { band: { ...band } }]
+  });
+  const cannotRead = (): HazardReachMap => {
+    unread = true;
+    return here('unread');
   };
-  const seenUngated = new Set<string>();
 
-  const walkSpell = (spell: number, depth: number): void => {
-    if (depth > SCRIPT_DEPTH) return void (unread = true);
+  const walkSpell = (spell: number, depth: number): HazardReachMap => {
+    if (depth > SCRIPT_DEPTH) return cannotRead();
     const key = visit(spell);
-    if (seenSpells.has(key)) return;
+    const name = `spell ${key}`;
+    if (seenSpells.has(key)) return met(spellStops, key, name);
     seenSpells.add(key);
+    const entry = enter(name);
     const row = facts.get(spell);
     /*
      * A spell the realm's own table does not hold is unread, not harmless —
      * the reassuring answer here is *walk through it*, and the whole point of
      * this reader is that the river was being walked through for free.
      */
-    if (row === undefined) return void (unread = true);
+    if (row === undefined) return settle(seenSpells, spellStops, key, name, entry, cannotRead());
     const mean = Math.abs(row.power[0] + row.power[1]) / 2;
+    let ways: HazardReachMap = {};
     // `TextBlock 0` is the spell's own roll (`columnRows`), and with no power it is no script.
-    for (const script of scriptsOf(row).flat()) walkBlock(script, depth + 1, 'steps');
+    for (const script of scriptsOf(row).flat()) {
+      ways = joinReach(ways, walkBlock(script, depth + 1, 'steps'));
+    }
     if (castMoves(row.abilities)) {
       relocates = true;
-      widen('relocates');
+      ways = joinReach(ways, here('relocates'));
     }
     for (const [ability, value] of row.abilities) {
       if (ability === HAZARD_ABILITY.textBlock) continue;
@@ -249,7 +281,7 @@ export function resolveHazard(
          * there is in real trouble. `unread` says so, and costs
          * `unreadHazardShare`.
          */
-        if (value > 0) unread = true;
+        if (value > 0) ways = joinReach(ways, cannotRead());
         continue;
       }
       if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap)
@@ -259,17 +291,22 @@ export function resolveHazard(
       // which figure to use — the same one `resolveSpells` makes.
       const magnitude = value !== 0 ? Math.abs(value) : mean;
       if (magnitude > damage) damage = magnitude;
-      widen('damage');
+      ways = joinReach(ways, here('damage'));
     }
+    return settle(seenSpells, spellStops, key, name, entry, ways);
   };
 
-  const walkBlock = (block: number, depth: number, use: 'steps' | 'roll'): void => {
-    if (depth > SCRIPT_DEPTH) return void (unread = true);
+  const walkBlock = (block: number, depth: number, use: 'steps' | 'roll'): HazardReachMap => {
+    if (depth > SCRIPT_DEPTH) return cannotRead();
     const key = visit(block);
-    if (seenBlocks.has(key)) return;
+    const name = `block ${key}`;
+    if (seenBlocks.has(key)) return met(blockStops, key, name);
     seenBlocks.add(key);
+    const entry = enter(name);
     const read = blocks.get(block);
-    if (read === undefined) return void (unread = true);
+    if (read === undefined) return settle(seenBlocks, blockStops, key, name, entry, cannotRead());
+    let ways: HazardReachMap = {};
+    const done = (): HazardReachMap => settle(seenBlocks, blockStops, key, name, entry, ways);
     for (const line of linesRun(read, use)) {
       /*
        * A gate governs the rest of *its own line* and nothing else, so the
@@ -279,20 +316,28 @@ export function resolveHazard(
        * still inside that gate.
        */
       const outer = band;
+      // The items this line fails on so far, and the ways in of what it has done.
+      const fails: number[] = [];
+      let lineWays: HazardReachMap = {};
+      const does = (step: HazardReachMap): void => {
+        lineWays = joinReach(lineWays, behind(fails, step));
+      };
       // A roll table's lines are all followed at full weight, as `random` is.
       walkLine: for (const step of stepsRun(line, use)) {
         switch (step.verb) {
           case 'failitem':
             /*
              * *Stop if they have this.* The raft on the Silver River: the
-             * script goes no further, so the cast at the end of it never
+             * line goes no further, so the cast at the end of it never
              * happens. This is the client's whole answer to "unless of course
-             * you have the item". `failroomitem` is not this: it checks the
-             * room's floor (`TextBlockPart.cs:998`), and `rock check` drops
-             * the outcropping it looks for itself, so it is a gate (todo 135).
+             * you have the item", where every other way in fails for the
+             * carrier too (`outrightStoppers`). `failroomitem` is not
+             * this: it checks the room's floor (`TextBlockPart.cs:998`), and
+             * `rock check` drops the outcropping it looks for itself, so it is
+             * a gate (todo 135).
              */
-            if (step.item <= 0) unread = true;
-            else if (!avoidedBy.includes(step.item)) avoidedBy.push(step.item);
+            if (step.item <= 0) does(cannotRead());
+            else fails.push(step.item);
             break;
           case 'checkspell':
           case 'failspell':
@@ -306,34 +351,34 @@ export function resolveHazard(
              * took the heat 24 times, typed `drink water` (which casts 711),
              * and crossed 26 more desert rooms without it.
              */
-            if (step.spell <= 0) unread = true;
+            if (step.spell <= 0) does(cannotRead());
             else if (!avoidedBySpell.includes(step.spell)) avoidedBySpell.push(step.spell);
             if (step.otherwise !== undefined && step.otherwise > 0) {
-              walkBlock(step.otherwise, depth + 1, 'steps');
+              does(walkBlock(step.otherwise, depth + 1, 'steps'));
             }
             break;
           case 'cast':
-            walkSpell(step.spell, depth + 1);
+            does(walkSpell(step.spell, depth + 1));
             break;
           case 'random':
             // Followed at full weight: a route is walked more than once, and a
             // one-in-ten drowning priced at a tenth is a number the realm never gave.
-            walkBlock(step.block, depth + 1, 'roll');
+            does(walkBlock(step.block, depth + 1, 'roll'));
             break;
           case 'show': {
             // Showing a block runs what it links to (`TextBlock.Display`).
             const linked = blocks.get(step.block)?.linkTo ?? null;
-            if (linked !== null && linked > 0) walkBlock(linked, depth + 1, 'steps');
+            if (linked !== null && linked > 0) does(walkBlock(linked, depth + 1, 'steps'));
             break;
           }
           case 'teleport':
             relocates = true;
-            widen('relocates');
+            does(here('relocates'));
             break;
           case 'summon':
             // A monster put in the room: a lair by another name. See `summons`.
             summons = true;
-            widen('summons');
+            does(here('summons'));
             break;
           case 'minlevel':
           case 'maxlevel': {
@@ -341,7 +386,7 @@ export function resolveHazard(
              * A gate on *who*, and the one gate the router can answer for the
              * character it is planning for. Still followed at full weight —
              * what stands behind it happens to somebody — but the band is
-             * recorded with whatever is recorded under it, so `hazardFor` can
+             * recorded on every way in under it, so `hazardFor` can
              * drop it for a character the realm has already excluded.
              */
             const edge: LevelBand =
@@ -354,12 +399,13 @@ export function resolveHazard(
           case 'unknown':
             if (step.why === 'arguments') {
               band = outer;
-              return;
+              ways = joinReach(ways, lineWays);
+              return done();
             }
             break walkLine;
           case 'testskill':
             // A roll is not a fact about anybody, and what it leads to is unread.
-            unread = true;
+            does(cannotRead());
             break;
           default: {
             /*
@@ -373,22 +419,24 @@ export function resolveHazard(
             const role = roleOf(step);
             if (role === 'gate' || role === 'pays' || role === 'say' || role === 'flow') break;
             if (step.verb === 'addexp') break;
-            unread = true;
+            does(cannotRead());
           }
         }
       }
       band = outer;
+      ways = joinReach(ways, lineWays);
     }
+    return done();
   };
 
-  walkSpell(id, 0);
+  const reach = walkSpell(id, 0);
   return {
     damage: Math.round(damage),
-    avoidedBy,
+    avoidedBy: outrightStoppers(reach),
     avoidedBySpell,
     relocates,
     summons,
     unread,
-    levels: bands
+    reach
   };
 }
