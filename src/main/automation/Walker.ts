@@ -1589,7 +1589,7 @@ export class Walker implements SessionModule {
     const cast = step.requirement?.landing;
     const moves =
       step.requirement?.spellEffect === 'scatters' || step.requirement?.spellEffect === 'teleports';
-    if (now !== undefined && this.roomCommands.refuseBeforeSending(step, now)) return;
+    if (now !== undefined && this.roomCommands.inPlaceOfSending(step, now)) return;
     this.events.stepping?.(step.command, step.direction, step.to, moves ? cast : undefined);
     this.askedWhereAt = null;
     this.dispatch(step, step.command, t('automation.walk.reasonStepping', { stepName: step.name }));

@@ -68,7 +68,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the replan's comment, one line as `fetchAgain` came (todo 20261024-0804-01).
   // Lowered by the member's heal comment, one line as `@comeback` came (todo 20261023-1950-01).
   // Lowered by the light's comment, condensed as the done-once-found writer came (todo 20261024-1810-01).
-  'src/main/session/SessionManager.ts': 3336,
+  // Lowered by the supplies' vault search, one `Errands.cashFrom` beside the fare's (todo 20261024-0804-01).
+  'src/main/session/SessionManager.ts': 3325,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
@@ -79,7 +80,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the placements' comments, condensed as `lairRoomsOf` came (the monster find).
   // Lowered by a command's ways, out to `navigation/commandWays.ts` (todo 20261024-0804-01).
   // And by `landingOf`, out to `navigation/spellLanding.ts` for both readers of a spell's landing.
-  'src/main/world/WorldGraph.ts': 2315,
+  // Lowered by the portal list's push, one line each, as the room spell's ways came (format 77).
+  'src/main/world/WorldGraph.ts': 2312,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).

@@ -1261,7 +1261,11 @@ const TUNING_DEFAULTS = {
      * again.
      */
     cooldownMs: 10_000,
-    expiresMs: 10_000
+    expiresMs: 10_000,
+    /** A vault silent this long refuses a fare's draw (`FareCash`). */
+    fareVaultMs: 8000,
+    /** The legs to the fare's vault, a fight ending each, before it is given up. */
+    fareLegs: 4
   },
   /** The `i` after an `open <chest>` (`ChestOpening`); a listing after this is not the chest's. */
   chest: {
@@ -2176,6 +2180,14 @@ const TUNING_DEFAULTS = {
      * entrance and every alternative is `wallCost`.
      */
     itemLandingCost: 40,
+    /**
+     * The most ticks a room's own spell is expected to take to move whoever
+     * stands there for it to be a way (format 77, `spellWays`): Crystal Lake's
+     * way aboard the Ancient Galleon is ten, and the river's sweep, a hazard
+     * at 143, is left out, so its 1,170 rooms add no ways nobody would wait for.
+     * At most the 100 a converted world keeps (`SPELL_WAY_KEPT_TICKS`).
+     */
+    spellWayTicks: 100,
     /**
      * What a step along a route the player saved costs, as a fraction of an
      * ordinary one.

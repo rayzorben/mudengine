@@ -59,7 +59,7 @@ export class Withdrawal {
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly queue: CommandQueue,
+    private readonly queue: Pick<CommandQueue, 'enqueue' | 'cancel'>,
     private readonly events: WithdrawalEvents,
     private readonly now: () => number = () => Date.now()
   ) {}

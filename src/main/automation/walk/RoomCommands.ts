@@ -102,10 +102,12 @@ export class RoomCommands {
    * In place of the step, once every hold has had its say: a monster still
    * standing in the room means auto-combat's rules left it alone (or it is
    * off), so `nomonsters` refuses. Spending the command would only print the
-   * realm's `You cannot do that right now!`; the refusal is taken now.
-   * Returns whether it answered the send.
+   * realm's `You cannot do that right now!`; the refusal is taken now. A way
+   * the room's own spell opens is waited out where the character stands,
+   * nothing sent (`room-spell`). Returns whether it answered the send.
    */
-  refuseBeforeSending(step: RouteStep, state: CharacterState): boolean {
+  inPlaceOfSending(step: RouteStep, state: CharacterState): boolean {
+    if (step.requirement?.kind === 'room-spell') return this.chance.waitsOut(step, step.from);
     if (!wantsEmptyRoom(step) || countMobs(state.room.occupants) === 0) return false;
     this.refuse(step, state);
     return true;

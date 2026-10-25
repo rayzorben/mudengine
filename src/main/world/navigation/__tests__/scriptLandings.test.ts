@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { GateNames } from '../stepGates';
 import { readLines } from '../textblock';
 import { parseRoomScript } from '../../roomScript';
-import type { LandingSpell } from '../scriptLandings';
+import { spellWaysOf, type LandingSpell } from '../scriptLandings';
 import { WorldGraph } from '../../WorldGraph';
 
 /*
@@ -171,6 +171,44 @@ describe('scriptLandings', () => {
     ]);
   });
 
+  it('reads a room spell that moves whoever stands there as its ways, the slow ones and the room itself left out', () => {
+    const lake = new Map([
+      ...blocks,
+      [
+        9445,
+        {
+          lines: readLines('10:teleport 2280 17\n20:teleport 1203 17\n100:message 1'),
+          linkTo: null
+        }
+      ],
+      [9446, { lines: readLines('maxlevel 49:checkitem 690:random 9445'), linkTo: null }],
+      [9447, { lines: readLines('random 9448'), linkTo: null }],
+      [9448, { lines: readLines('1:teleport 1072 17\n100:message 1'), linkTo: null }]
+    ]);
+    const spells: Record<number, LandingSpell> = {
+      ...SPELLS,
+      9000: { abilities: [[148, 9446]] },
+      9001: { abilities: [[148, 9447]] }
+    };
+    const at = { here: '17/1203' as const, blocks: lake, spell: (id: number) => spells[id] };
+    expect(spellWaysOf(9000, at, named, 100)).toEqual({
+      landings: [
+        {
+          to: '17/2280',
+          chance: 0.1,
+          gates: [
+            { kind: 'carry', item: 690 },
+            { kind: 'level', max: 49 }
+          ]
+        }
+      ]
+    });
+    // One tick in a hundred is a hazard nobody waits for.
+    expect(spellWaysOf(9001, at, named, 99)).toBeNull();
+    // Positive control: the same spell at the bound is a way.
+    expect(spellWaysOf(9001, at, named, 100)?.landings?.[0]?.to).toBe('17/1072');
+  });
+
   it('keeps a certain landing as `to`', () => {
     const [go] = parseRoomScript('go portal:teleport 1041 8', named, realm('1/1'));
     expect(go?.to).toBe('8/1041');
@@ -206,6 +244,34 @@ describe.skipIf(graph === null)(
       }
       // Positive control: a room nothing in the realm leads into still has none.
       expect(graph!.hasWayIn('1/62')).toBe(false);
+    });
+
+    // Mutant: a room's own spell read as a hazard only, so the class passages have no way in.
+    it('waits in the Grand Chamber for its spell to move a Warrior with the training key', () => {
+      const key = graph!.itemIdNamed('training key')!;
+      const warrior = { level: 20, packKnown: true, classId: 1 };
+      const keyed = graph!.route('17/3247', '17/3250', { ...warrior, keys: [key] });
+      expect(keyed.blocked).toBe(false);
+      expect(keyed.steps).toHaveLength(1);
+      expect(keyed.steps[0]).toMatchObject({
+        command: '',
+        requirement: { kind: 'room-spell', waits: { in: ['17/3247'], ticks: 1 } }
+      });
+      // Without the key the way is walled, naming it.
+      const none = graph!.route('17/3247', '17/3250', { ...warrior, keys: [] });
+      expect(none.blocks).toEqual([expect.objectContaining({ kind: 'carry' })]);
+      // And the Crimson Passage is not a Mystic's (class 5), whatever it carries.
+      const mystic = graph!.route('17/3247', '17/3250', { ...warrior, classId: 5, keys: [key] });
+      expect(mystic.blocked).toBe(true);
+    });
+
+    // Mutant: the river's sweep kept as a way, 143 ticks a try.
+    it('opens no way out of a river room whose sweep is a hazard', () => {
+      expect(graph!.byId('17/1072')).toBeDefined();
+      const river = [...graph!.everyRoom()].filter(
+        (room) => room.name === 'Silver River' && room.spellWays !== undefined
+      );
+      expect(river).toEqual([]);
     });
 
     // Mutant: the fare ceiling not judged, so an errand pays 2 runic on a 10 runic purse.

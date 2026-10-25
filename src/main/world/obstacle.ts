@@ -183,6 +183,8 @@ export function describeObstacle(
         return requirement.damage === undefined
           ? t('map.obstacle.trapped')
           : t('map.obstacle.trapDamage', { damage: requirement.damage });
+      case 'room-spell':
+        return t('map.obstacle.roomSpellWay');
       case 'text': {
         const command = requirement.commands?.[0];
         return command === undefined

@@ -78,7 +78,8 @@ function read(requirement: Requirement): readonly Gate[] | null {
         act.item === undefined ? [] : [{ kind: 'carry', item: act.item }]
       );
     case 'text':
-      // A room script's conditions (`linkPortals`); a `Text:` exit has none.
+    case 'room-spell':
+      // A room script's conditions (`linkPortals`), a room spell's line's; a `Text:` exit has none.
       return requirement.gates ?? [];
     case 'key':
     case 'door':

@@ -93,7 +93,8 @@ function travel(
       priceAt: vi.fn(() => null),
       legsThrough: vi.fn(() => null),
       // A way that charges nothing, or within the share (`Errands.fareOf`).
-      fareOf: vi.fn(() => null)
+      fareOf: vi.fn(() => null),
+      cashFrom: vi.fn(() => [])
     },
     roomHazards: { stoppersAlong: vi.fn(() => []), counterFor: vi.fn(() => null) },
     queue: {
@@ -101,7 +102,8 @@ function travel(
         sent.push(intent.command);
         kinds.push(intent.decision);
         return true;
-      }
+      },
+      cancel: vi.fn(() => 0)
     },
     walker: {
       start: vi.fn(),
@@ -1102,5 +1104,61 @@ describe('a party wait during a route', () => {
     vi.mocked(parts.errands.planFromHere).mockReturnValue(back);
     moving.walkBackFor('Killa');
     expect(parts.walker.start).toHaveBeenCalledWith(back, EMPTY_CHARACTER, { asked: false });
+  });
+});
+
+/* Todo 20261024-0804-01: a fare the purse is short for is drawn at a bank before the walk. */
+describe('a fare the purse cannot pay', () => {
+  const PASSAGE = {
+    steps: [
+      {
+        from: '14/759',
+        to: '14/715',
+        requirement: { kind: 'command', gates: [{ kind: 'copper', copper: 2_000_000 }] }
+      }
+    ],
+    cost: 1,
+    blocked: false
+  } as unknown as Route;
+  const BANK_LEG = { steps: [{ from: '1/1', to: '1/2170' }], cost: 4, blocked: false };
+  const fare = { copper: 2_000_000, ceiling: 3_000_000, wealth: 30_000_000, share: 10 };
+
+  function short(purse: number) {
+    const made = travel(beside(), 'stepping', false);
+    made.parts.walker.start = vi.fn(() => null);
+    made.parts.supplies.considerBeforeRoute = () => null;
+    vi.mocked(made.parts.errands.fareOf).mockReturnValue({ ...fare, purse });
+    vi.mocked(made.parts.errands.cashFrom).mockReturnValue([
+      {
+        shop: 8,
+        name: 'Bank of Godfrey',
+        map: 1,
+        room: 2170,
+        roomName: 'Bank Lobby',
+        copper: 3_000_000,
+        detour: 4,
+        moves: 4
+      }
+    ]);
+    vi.mocked(made.parts.errands.planFromHere).mockReturnValue(BANK_LEG as unknown as Route);
+    return made;
+  }
+
+  it('walks to the bank for the shortfall instead of the way', () => {
+    const { travel: moving, parts } = short(1_500_000);
+    expect(moving.walkRoute(PASSAGE)).toBeNull();
+    expect(parts.errands.cashFrom).toHaveBeenCalledWith(500_000, '14/759');
+    expect(parts.walker.start).toHaveBeenCalledWith(BANK_LEG, expect.anything(), expect.anything());
+    expect(parts.walker.start).not.toHaveBeenCalledWith(PASSAGE, expect.anything(), expect.anything());
+    expect(moving.errandUnderWay()).toBe(true);
+  });
+
+  it('walks the way where the purse pays it', () => {
+    // The positive control: the same way, the purse holding the fare.
+    const { travel: moving, parts } = short(2_000_000);
+    vi.mocked(parts.errands.fareOf).mockReturnValue(null);
+    expect(moving.walkRoute(PASSAGE)).toBeNull();
+    expect(parts.errands.cashFrom).not.toHaveBeenCalled();
+    expect(parts.walker.start).toHaveBeenCalledWith(PASSAGE, expect.anything(), expect.anything());
   });
 });

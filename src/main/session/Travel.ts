@@ -54,6 +54,7 @@ import { backLeg, settleBack } from './trailBack';
 import { inviteIntent } from '../automation/PartyRegroup';
 import { recordOf } from '../../shared/players';
 import { KeyBuying } from './KeyBuying';
+import { FareCash, type FareCashStart } from './FareCash';
 import { StopperOutfit, type OutfitVerdict, type StopperOutfitParts } from './StopperOutfit';
 import type { Remotes } from '../automation/Remotes';
 import type { RoomHazards } from './RoomHazards';
@@ -68,7 +69,8 @@ import {
   coinWords,
   DIRECTION_NAME,
   fareOverShare,
-  fareShortOfPurse,
+  fareRoom,
+  fareShortfall,
   itemDemanded,
   newDemands,
   OPPOSITE,
@@ -178,10 +180,11 @@ export interface TravelParts {
     | 'priceAt'
     | 'legsThrough'
     | 'fareOf'
+    | 'cashFrom'
   >;
   /** A room's spell against the character: what a way wants carried, and where it is sold. */
   readonly roomHazards: Pick<RoomHazards, 'stoppersAlong' | 'counterFor'>;
-  readonly queue: Pick<CommandQueue, 'enqueue'>;
+  readonly queue: Pick<CommandQueue, 'enqueue' | 'cancel'>;
   readonly walker: Pick<
     Walker,
     'start' | 'stop' | 'walking' | 'holding' | 'progress' | 'journey' | 'unfinished' | 'noteEscaped'
@@ -471,6 +474,8 @@ export class Travel implements SessionModule {
   private readonly autoRest: AutoRestBack;
   /** Everyone walking a way carries what stops its room spells first. See `StopperOutfit`. */
   private readonly outfit: StopperOutfit;
+  /** A fare the purse is short for, drawn at a bank before the walk. See `FareCash`. */
+  private readonly fareCash: FareCash;
 
   constructor(
     parts: TravelParts,
@@ -560,16 +565,28 @@ export class Travel implements SessionModule {
       notice: (message, decision) => this.session.notice(message, decision),
       decided: (decision) => this.session.decided(decision)
     });
+    this.fareCash = new FareCash({
+      queue: this.queue,
+      cashFrom: (need, then) => this.errands.cashFrom(need, then),
+      routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
+      walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
+      walking: () => this.walker.walking,
+      moveInFlight: () => this.tracker.pendingMoves > 0,
+      escaping: () => this.escaping,
+      notice: (message, decision) => this.session.notice(message, decision)
+    });
   }
 
-  /** The outfit's clocks and errand, each state (`StopperOutfit.onCharacter`). */
-  outfitTick(state: CharacterState): void {
+  /** The errands a walk waits on, each state: the outfit's and the fare's cash. */
+  beforeWalkTick(state: CharacterState): void {
     this.outfit.onCharacter(state);
+    this.fareCash.onCharacter(state);
   }
 
-  /** A hand-over the server echoed (`StopperOutfit.onBlock`). */
-  outfitBlock(block: Block): void {
+  /** A hand-over or a withdrawal the server echoed, for the same errands. */
+  beforeWalkBlock(block: Block): void {
     this.outfit.onBlock(block);
+    this.fareCash.onBlock(block);
   }
 
   /**
@@ -616,6 +633,7 @@ export class Travel implements SessionModule {
     this.autoRest.backOn('connected');
     this.keyBuying.reset();
     this.outfit.reset();
+    this.fareCash.reset();
   }
 
   /**
@@ -649,6 +667,7 @@ export class Travel implements SessionModule {
     // supply errand is shopping on behalf of, and the choice to cross it.
     this.journey = null;
     this.errandOwes = null;
+    this.fareCash.reset();
     this.crossing = null;
     /*
      * The rooms run out of belong to the fight they were run out of, and that
@@ -1475,7 +1494,8 @@ export class Travel implements SessionModule {
       this.areaSearch.busy ||
       this.itemErrand.running ||
       this.questRunner.running ||
-      this.outfit.busy
+      this.outfit.busy ||
+      this.fareCash.busy
     );
   }
 
@@ -2122,9 +2142,9 @@ export class Travel implements SessionModule {
    * (todo 20261024-0804-01): the panel asks first, and a walk the player
    * pressed there carries the answer (`Route.fare.accepted`) for at least
    * what the way charges now. Go to and `@goto` say what it costs and where
-   * to answer.
+   * to answer. A purse still short after `FareCash` drew is refused.
    */
-  private fareUnpaid(route: Route): string | null {
+  private fareUnpaid(route: Route, drawn: boolean): string | null {
     const fare = this.errands.fareOf(route);
     const over = fare !== null && fareOverShare(fare);
     const accepted = route.fare?.accepted === true && route.fare.copper >= (fare?.copper ?? 0);
@@ -2134,12 +2154,13 @@ export class Travel implements SessionModule {
         ? t('session.walk.fareUnread', words)
         : t('session.walk.fareOverShare', { ...words, wealth: coinWords(fare.wealth) });
     }
-    // The server takes a fare from the purse (`TextBlockPart.cs` `price`), so banked money is drawn first.
-    if (fare === null || !fareShortOfPurse(fare) || fare.purse === null) return null;
+    // The server takes a fare from the purse (`TextBlockPart.cs` `price`); `FareCash` draws it once.
+    const short = fare === null ? null : fareShortfall(fare);
+    if (!drawn || fare === null || short === null) return null;
     return t('session.walk.fareDrawFirst', {
       fare: coinWords(fare.copper),
-      purse: coinWords(fare.purse),
-      short: coinWords(fare.copper - fare.purse)
+      purse: coinWords(fare.copper - short),
+      short: coinWords(short)
     });
   }
 
@@ -2386,12 +2407,13 @@ export class Travel implements SessionModule {
    * by the time this returns, and the route is planned afresh from the shop
    * when the errand lets go (`walkOnAfterErrand`).
    */
-  walkRoute(route: Route, run = false): string | null {
-    const fare = this.fareUnpaid(route);
+  walkRoute(route: Route, run = false, fareDrawn = false): string | null {
+    const fare = this.fareUnpaid(route, fareDrawn);
     if (fare !== null) {
       this.session.notice(fare, 'walk-fare');
       return fare;
     }
+    this.fareCash.reset();
     // The counters, if this way turns on one nobody has read yet.
     this.errands.askCountersFor(route);
     /*
@@ -2412,6 +2434,8 @@ export class Travel implements SessionModule {
     }
     this.errandOwes = null;
     const last = route.steps.at(-1);
+    const drawing = fareDrawn ? null : this.drawFareFirst(route, run);
+    if (drawing !== null) return drawing.kind === 'held' ? null : drawing.why;
     /*
      * The party first (todo 20261021-1200-01): a member without a raft is
      * bought one and handed it, or the walk is refused naming them. This
@@ -2443,6 +2467,31 @@ export class Travel implements SessionModule {
       })
     );
     return null;
+  }
+
+  /**
+   * A way whose fare the purse cannot pay: the shortfall drawn at a bank
+   * first (`FareCash`), then the way planned again from the bank and walked,
+   * the player's answer to the fare carried. Null where the purse pays it.
+   */
+  private drawFareFirst(route: Route, run: boolean): FareCashStart | null {
+    const fare = this.errands.fareOf(route);
+    const to = route.steps.at(-1);
+    const short = fare === null ? null : fareShortfall(fare);
+    if (fare === null || short === null || to === undefined) return null;
+    const crossing = crossedWords(route);
+    const walkOn = (): void => {
+      const plan = this.errands.planFromHere(to.to, {}, 'walk', crossing);
+      const answered = route.fare?.accepted === true ? { fare: route.fare } : {};
+      const refused =
+        typeof plan === 'string' ? plan : this.walkRoute({ ...plan, ...answered }, run, true);
+      if (refused !== null) {
+        this.session.notice(
+          t('session.walk.notResumed', { destination: to.name, reason: refused })
+        );
+      }
+    };
+    return this.fareCash.start(short, fare.copper, fareRoom(route), this.tracker.current, walkOn);
   }
 
   /** A player's route, or the shorter way through a door whose key is bought on the way (`KeyBuying`). */
@@ -2870,6 +2919,7 @@ export class Travel implements SessionModule {
    */
   stopGoingAnywhere(): void {
     this.dropWalkHome();
+    this.fareCash.reset();
     const held = this.keyBuying.drop();
     if (held !== null) this.session.notice(t('session.walk.keys.dropped', { destination: held }));
     const retreat = this.retreat;

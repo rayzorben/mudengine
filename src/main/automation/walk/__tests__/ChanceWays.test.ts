@@ -162,3 +162,72 @@ describe("a ship's passage", () => {
     expect(ends.at(-1)?.[0]).toBe(true);
   });
 });
+
+describe("a room's own spell as a way", () => {
+  /** Standing in the Grand Chamber (17/3247) until its spell puts a Warrior in the Crimson Passage. */
+  const chamber: Route = routeOf({
+    from: '17/3247',
+    to: '17/3250',
+    direction: 'portal',
+    command: '',
+    name: 'Crimson Passage',
+    dark: false,
+    requirement: {
+      kind: 'room-spell',
+      raw: 'Spell: 1375',
+      waits: { in: ['17/3247'], ticks: 1 },
+      gates: [{ kind: 'class', id: 1, is: true, name: 'Warrior' }]
+    }
+  });
+
+  // Mutant: the step sent as a command, a blank line each try.
+  it('is waited out where the character stands, nothing sent, and arrives in the passage', () => {
+    const here = at(17, 3247);
+    const { walker, sent, ends, notices } = walkerOn({ stateNow: () => here });
+    walker.start(chamber, here);
+    vi.advanceTimersByTime(50);
+    expect(moves(sent)).toEqual([]);
+    expect(notices).toContain(
+      t('automation.walk.roomSpellWaiting', { room: 'Crimson Passage', ticks: 1 })
+    );
+    walker.onCharacter(at(17, 3250));
+    expect(ends.at(-1)?.[0]).toBe(true);
+  });
+
+  // Mutant: the waits never counted, so a gate read wrong leaves the character standing for good.
+  it('takes another way past the tries where there is one, and waits on where there is none', () => {
+    const here = at(17, 3247);
+    const run = (another: boolean) => {
+      const asked: unknown[] = [];
+      const rig = walkerOn(
+        {
+          stateNow: () => here,
+          replan: (_to, _kind, without) => {
+            asked.push(without ?? null);
+            if (without === undefined) return chamber;
+            return another ? routeOf(stepOf(17, 3247, 'n')) : 'no other way';
+          }
+        },
+        configWith({ movement: { chanceTries: 1 } })
+      );
+      rig.walker.start(chamber, here);
+      // Two waits, each its hold, the second past the one try allowed.
+      vi.advanceTimersByTime(60_000);
+      vi.advanceTimersByTime(60_000);
+      return { ...rig, asked };
+    };
+    const round = run(true);
+    expect(round.asked).toContainEqual({ from: '17/3247', direction: 'portal' });
+    expect(round.notices).toContain(
+      t('automation.walk.roomSpellGaveUp', { room: 'Crimson Passage', count: 2 })
+    );
+    vi.advanceTimersByTime(2_000);
+    expect(moves(round.sent).at(-1)).toBe('n');
+    // Positive control: the only way is waited on, nothing sent.
+    const only = run(false);
+    expect(moves(only.sent)).toEqual([]);
+    expect(only.notices).not.toContain(
+      t('automation.walk.roomSpellGaveUp', { room: 'Crimson Passage', count: 2 })
+    );
+  });
+});

@@ -178,6 +178,7 @@ import {
   roomId,
   routeFares,
   type BuyingPlace,
+  type CashPlace,
   type Requirement,
   type RoomId,
   type RoomReference,
@@ -866,6 +867,18 @@ export class Errands implements SessionModule {
     if (ceiling !== null && copper <= ceiling && purse !== null && purse >= copper) return null;
     const share = this.automationConfig.movement.fareShare;
     return { copper, ceiling, wealth: wealthOf(state), purse, share };
+  }
+
+  /**
+   * The vaults holding `need` copper by the character's record, best first for
+   * a stop on the way to `then` from where it stands (`WorldGraph.cashPlaces`):
+   * a supply errand short at a counter, a fare short of the purse.
+   */
+  cashFrom(need: number, then: RoomId | null): CashPlace[] {
+    const state = this.tracker.current;
+    const here = roomAddress(state.room);
+    if (this.world === undefined || here === null) return [];
+    return this.world.cashPlaces(state.banks, need, here, then, this.travellerNow(state));
   }
 
   /** A walk planned for the panel, carrying the fare it asks about (`Route.fare`). */

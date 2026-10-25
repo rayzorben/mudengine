@@ -652,8 +652,9 @@ export function edgeBlock(
       return gatedShut(requirement, traveller) === null
         ? null
         : { kind: requirement.kind, requirement };
-    case 'text': {
-      // A room script's wall is named by the gate that shut it.
+    case 'text':
+    case 'room-spell': {
+      // A room script's wall is named by the gate that shut it, and a room spell's line's.
       const shut = gatedShut(requirement, traveller);
       if (shut === null) return null;
       const missing =
@@ -705,7 +706,8 @@ function trapPrice(requirement: Requirement, traveller: Traveller): number {
 const UNEVALUATED = 60;
 
 /** The exit kinds whose instruction is gates the one judge answers (`exitGates`). */
-type GatedKind = 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'ability' | 'item' | 'text';
+type GatedKind =
+  'level' | 'toll' | 'class' | 'race' | 'alignment' | 'ability' | 'item' | 'text' | 'room-spell';
 
 /**
  * What a gated exit costs once its gates pass, and while nobody has said.
@@ -721,7 +723,9 @@ const GATED_PRICE: Record<GatedKind, { pass: number; unknown: number }> = {
   ability: { pass: 0, unknown: UNEVALUATED },
   item: { pass: 0, unknown: UNEVALUATED },
   // A room script's conditions: the way is offered, never preferred, while any is unread.
-  text: { pass: 0, unknown: UNEVALUATED }
+  text: { pass: 0, unknown: UNEVALUATED },
+  // A room's own spell's line, judged as a script's; the wait is `waits`.
+  'room-spell': { pass: 0, unknown: UNEVALUATED }
 };
 
 /** The route block a gate kind names when it shuts a way; a kind not here is priced, never a wall. */
@@ -964,6 +968,7 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
 
   switch (requirement.kind) {
     case 'text':
+    case 'room-spell':
       // A different command and no obstacle; a room script's conditions are judged.
       return gatedPrice(requirement, requirement.kind, traveller);
 
@@ -3343,8 +3348,12 @@ export class Router {
         to: cursor,
         direction: exit.direction,
         // A `Text:` exit is not walked with a direction; it needs its own
-        // command, and the first listed phrasing is the canonical one.
-        command: exit.requirement?.commands?.[0] ?? DIRECTION_COMMAND[exit.direction as Direction],
+        // command, and the first listed phrasing is the canonical one. A room's
+        // own spell is waited out with nothing said (`room-spell`).
+        command:
+          exit.requirement?.kind === 'room-spell'
+            ? ''
+            : (exit.requirement?.commands?.[0] ?? DIRECTION_COMMAND[exit.direction as Direction]),
         name: destination?.name ?? '',
         requirement: exit.requirement,
         /*

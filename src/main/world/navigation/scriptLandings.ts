@@ -17,7 +17,8 @@ import {
   type CommandWait,
   type Landing,
   type RoomCommand,
-  type RoomId
+  type RoomId,
+  type SpellWays
 } from '../../../shared/world';
 import { SCRIPT_DEPTH, scriptsOf, type Blocks, type SpellScriptRow } from './scriptWays';
 import { spellLanding, teleportRoomOf } from './spellLanding';
@@ -62,6 +63,41 @@ const MAX_ENDS = 256;
 export function runEnds(steps: readonly TbStep[], realm: LandingRealm): RunEnd[] {
   const start: RunEnd = { rooms: [], chance: 1, inner: [], takes: [] };
   return merged(walk(untilUnrun(steps), [start], realm, 0, new Set()));
+}
+
+/**
+ * Where a room's own spell puts whoever stands in it (format 77): the run of a
+ * spell cast on them, each landing at its share of the ticks, the room itself
+ * left out. The server casts it every spell tick on everyone in the room, and
+ * an instant one as they walk in (`TimedEventManager.spellTick_Fire`,
+ * `Player.cs:765`). Only landings expected within `mostTicks`; null where
+ * none is.
+ */
+export function spellWaysOf(
+  spell: number,
+  realm: LandingRealm & { here: RoomId },
+  names: GateNames,
+  mostTicks: number
+): SpellWays | null {
+  const start: RunEnd = { rooms: [], chance: 1, inner: [], takes: [] };
+  const ends = merged(castOn(spell, start, realm, 0, new Set())).flatMap((end) => {
+    const rooms = end.rooms.filter((room) => room !== realm.here);
+    return rooms.length === end.rooms.length ? [end] : rooms.length === 0 ? [] : [{ ...end, rooms }];
+  });
+  const moved = landingsOf(ends, names);
+  // A way slower than `world.spellWayTicks` is a hazard nobody waits for (`spellWays`).
+  const often = (landing: { chance: number; draw?: number }): boolean =>
+    Math.ceil(1 / (landing.draw ?? landing.chance)) <= mostTicks;
+  const landings = [
+    ...(moved.to === undefined ? [] : [{ to: moved.to, chance: 1 }]),
+    ...(moved.landings ?? [])
+  ].filter(often);
+  const draws = (moved.draws ?? []).filter(often);
+  if (landings.length === 0 && draws.length === 0) return null;
+  return {
+    ...(landings.length === 0 ? {} : { landings }),
+    ...(draws.length === 0 ? {} : { draws })
+  };
 }
 
 function walk(

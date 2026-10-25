@@ -23,6 +23,7 @@ import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quest
 import {
   type WorldLair,
   asRoomCommand,
+  asSpellWays,
   DIRECTIONS,
   roomId,
   type Requirement,
@@ -106,7 +107,7 @@ import { readActions, readRows } from './roomColumns';
 import { headerOf, NO_HEADER, type RealmHeader } from './realmHeader';
 import { QuestPlanner } from './QuestPlanner';
 import type { PlannerRooms } from './PlannerRooms';
-import { commandWays } from './navigation/commandWays';
+import { roomWays } from './navigation/commandWays';
 import { spellLanding } from './navigation/spellLanding';
 
 // Read only by `WorldGraph.test.ts`, which todo 710 kept unchanged; goes when a router-only test exists.
@@ -1544,30 +1545,24 @@ export class WorldGraph {
           command,
           uses: item.uses === undefined || item.uses < 0 ? null : item.uses
         });
-        const held = this.portals.get(at);
-        if (held) held.push(edge);
-        else this.portals.set(at, [edge]);
+        (this.portals.get(at) ?? this.portals.set(at, []).get(at)!).push(edge);
       }
     }
   }
 
   private linkPortals(): void {
     for (const [id, room] of this.rooms) {
-      for (const command of room.commands ?? []) {
-        for (const way of commandWays(command, (to) => this.corridorFrom(command, to))) {
-          const destination = this.rooms.get(way.to);
-          // A teleport out of the dataset is a hole in the data, not a route.
-          if (!destination) continue;
-          const edge: PortalExit = {
-            direction: 'portal',
-            map: destination.map,
-            room: destination.room,
-            requirement: way.requirement
-          };
-          const held = this.portals.get(id);
-          if (held) held.push(edge);
-          else this.portals.set(id, [edge]);
-        }
+      for (const way of roomWays(room, (command, to) => this.corridorFrom(command, to))) {
+        const destination = this.rooms.get(way.to);
+        // A teleport out of the dataset is a hole in the data, not a route.
+        if (!destination) continue;
+        const edge: PortalExit = {
+          direction: 'portal',
+          map: destination.map,
+          room: destination.room,
+          requirement: way.requirement
+        };
+        (this.portals.get(id) ?? this.portals.set(id, []).get(id)!).push(edge);
       }
     }
   }
@@ -2142,6 +2137,8 @@ export class WorldGraph {
     const wanderers = readRows(raw['wd'], this.rowLists);
     if (wanderers !== null) result.wanderers = wanderers;
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
+    const spellWays = asSpellWays(raw['sw']);
+    if (spellWays !== null) result.spellWays = spellWays;
     // What the realm puts on the floor — format 42; before it, a raw string nothing read.
     const placed = Array.isArray(raw['pl'])
       ? raw['pl'].filter((id): id is number => Number.isInteger(id) && (id as number) > 0)

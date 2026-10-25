@@ -93,15 +93,21 @@ export class ChanceWays {
 
   /**
    * Where a ship's passage is waited out: the room the board put the
-   * character in, a beat at a time until the spells land it. True where
-   * `here` is one.
+   * character in, a beat at a time until the spells land it; and a room whose
+   * own spell is the way, where it stands. True where `here` is one.
    */
   waitsOut(step: RouteStep, here: RoomId): boolean {
     const waits = step.requirement?.waits;
     if (waits === undefined || !waits.in.includes(here)) return false;
     this.clock.clear();
-    if (!this.walk.quiet())
-      this.events.notice?.(t('automation.walk.passageWaiting', { command: step.command }));
+    if (step.requirement?.kind === 'room-spell' && this.waitedEnough(step)) return true;
+    if (!this.walk.quiet()) {
+      this.events.notice?.(
+        step.requirement?.kind === 'room-spell'
+          ? t('automation.walk.roomSpellWaiting', { room: step.name, ticks: waits.ticks })
+          : t('automation.walk.passageWaiting', { command: step.command })
+      );
+    }
     // The spells' own ticks, and as long again, before the walk plans from here.
     const ms = waits.ticks * tuning().walk.passageTickMs * 2;
     this.clock.afterHold(ms, () => {
@@ -109,6 +115,27 @@ export class ChanceWays {
       const at = state === undefined ? null : roomAddress(state.room);
       if (state !== undefined && at !== null && this.walk.walking()) this.walk.onward(state, at);
     });
+    return true;
+  }
+
+  /**
+   * A room's spell waited for as a chance way is tried: past `chanceTries`
+   * waits, each twice the ticks expected, the way round where there is one.
+   * True where the walk took it; an only way is waited for until it lands.
+   */
+  private waitedEnough(step: RouteStep): boolean {
+    const key = `${step.from}|${step.to}`;
+    const count = this.tries?.key === key ? this.tries.count + 1 : 1;
+    this.tries = { key, count };
+    const state = this.events.stateNow?.();
+    if (count <= this.walk.chanceTries() || state === undefined) return false;
+    const round = this.wayRound(step, key);
+    if (round === null) return false;
+    this.tries = null;
+    if (!this.walk.quiet()) {
+      this.events.notice?.(t('automation.walk.roomSpellGaveUp', { room: step.name, count }));
+    }
+    this.walk.detour(round, state);
     return true;
   }
 

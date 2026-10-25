@@ -25,7 +25,7 @@ import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
 import { spellNegates, type NegateRow } from './navigation/scriptNegates';
 import { readTextblocks } from './navigation/textblock';
-import type { LandingSpell } from './navigation/scriptLandings';
+import { spellWaysOf, type LandingSpell } from './navigation/scriptLandings';
 import { AskWays, askingMonsters } from './askWays';
 import { askTable, type BuiltAsk } from './mobAsks';
 import {
@@ -159,8 +159,17 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 74 | **A room's resident keeps its clock with no `GameLimit`.** `ownClock` kept `Monsters.RegenTime` only where `GameLimit` is above zero, the lair slot's rule, but a resident placed by `Rooms.NPC` comes back through `NPCRegenSlot`, which reads the clock in both branches (`RegenSlot.cs:144-215`). gmud.zip has no `GameLimit` column, so 326 residents lost theirs; pmud's healer and practice dummy and stock's practice dummy did too. `BuiltMob.nr` and `BuiltMobRow.nr` carry it where `rt` does not, read for a resident only: 9 of gmud.zip's are lair rows too (the gravedigger), and a lair stays on the room's delay, as stock's minotaur does. Todo 20261021-0855-03 |
  * | 75 | **An item stops a room's spell only where it stops every way in.** `resolveHazard` put every `failitem` in `hz.av`, and `hazardAvoided` made the whole spell free for its carrier, but a `failitem` fails its own line and the server tries the next. Crystal Lake's `sea 1`–`sea 3` (block 9358) fail their first line for a log raft or a wooden skiff, and `maxlevel 49:checkitem 690:random 9445` teleports the raft's carrier on about two entries in three, so a raft in the pack walked 15 lake rooms that move you. `hz.r` replaces `hz.lv` and `hz.av`: per effect, each way in as `[min, max, ...failitems]`, `null` for an unbounded level, absent where a way reaches everybody (`hazardReach.ts`); `avoidedBy` is derived on reading. A `checkitem` or `takeitem` line is taken to run for anybody. On pmud.zip 11 room spells over 1,849 rooms change what stops them outright: the three seas (390) and the two desert spells (979), where the sunstone wristband still takes off desert spell 2's teleports, and the triggers' manhole, which was never holdable |
  * | 76 | **A spell check stops its own line too.** `checkspell` and `failspell` fail the line while the spell is up, as `failitem` does for an item, but `hz.sp` named every spell met as stopping the whole room spell. Each way in now carries the spells it fails on, `[min, max, failitems, wards]` (`hazardReach.ts`), and `avoidedBySpell` is derived on reading like `avoidedBy`. What takes part of a spell off is read per effect at the character's level (`hazardStoppers`): the route's *Carry* list, the fetch, the way carrying what stops it and the Room card's *Stops part of it* name the sunstone wristband for desert spell 2's teleports |
+ * | 77 | **A room's own spell can be a way.** The server casts it on everyone in the room each spell tick, and an instant one as they walk in (`TimedEventManager.spellTick_Fire`, `Player.cs:765`), and `spellHazard.ts` read one that moves somebody as a hazard and nothing else, so the class passages behind 17/3247's training key, the Deep Black Pit's drop to the Platform of Stars, the Sandstone Cavern's fall and Crystal Lake's way aboard the Ancient Galleon led nowhere: 97 of pmud.zip's rooms were unreached with every gate open. `WorldRoom.spellWays` carries each landing and draw with its share of ticks and its line's gates (`spellWaysOf`), and the way is waited out standing in the room (a `room-spell` requirement). Todo 20261024-0804-01 |
  */
-export const REALM_FORMAT = 76;
+export const REALM_FORMAT = 77;
+
+/**
+ * The slowest room-spell way the file keeps (format 77), in ticks expected:
+ * the river's sweep at 143 would quadruple the ways for 1,170 rooms of hazard,
+ * and every line kept was 20 MB. `world.spellWayTicks` can only lower it, when
+ * the world loads (`spellWays`).
+ */
+const SPELL_WAY_KEPT_TICKS = 100;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1761,6 +1770,17 @@ export function buildRealm(
       else ambiguousLevers += 1;
     }
     if (answers.length > 0) room['cmd'] = answers;
+    // Where the room's own spell moves whoever stands in it (format 77).
+    const ways =
+      typeof room['sp'] === 'number'
+        ? spellWaysOf(
+            room['sp'],
+            { here, blocks, spell: (id) => landingSpells.get(id) },
+            names,
+            SPELL_WAY_KEPT_TICKS
+          )
+        : null;
+    if (ways !== null) room['sw'] = ways;
     if (mine.length > 0) levered += 1;
     const exits = room['x'] as Record<string, BuiltExit>;
     counterWays.push(...openingsIn({ here, commands: answers, exits }));

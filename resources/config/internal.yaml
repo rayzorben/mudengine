@@ -969,6 +969,11 @@ tuning:
     # again.
     cooldownMs: 10000
     expiresMs: 10000
+    # A fare's cash drawn before the walk (`FareCash`): a vault silent for
+    # `fareVaultMs` refuses the walk, and the bank is given up on after
+    # `fareLegs` legs, a fight ending each.
+    fareVaultMs: 8000
+    fareLegs: 4
 
   # The `i` after an `open <chest>` (`ChestOpening`). A listing later than
   # this is not read as what the chest gave.
@@ -1669,6 +1674,12 @@ tuning:
     # saves more than forty rooms of walking. An item that is the *only* way in
     # is taken at any price, because every alternative is a wall.
     itemLandingCost: 40
+
+    # The most ticks a room's own spell is expected to take to move whoever
+    # stands there for it to be a way. Crystal Lake's way aboard the Ancient
+    # Galleon is ten; the river's sweep, at 143, is a hazard and no way. A
+    # converted world keeps ways up to 100, so this can only lower it.
+    spellWayTicks: 100
 
     # What a step along a route you saved costs, as a fraction of an ordinary
     # one. A route drawn on the loop builder and saved (`prefer: true` in its

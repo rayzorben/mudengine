@@ -4383,6 +4383,13 @@ describe('naming what blocked a route', () => {
       { kind: 'trap', raw: 'Trap', damage: 5 },
       { kind: 'hidden', raw: 'Hidden', searchable: true },
       { kind: 'text', raw: 'Text: go path' },
+      { kind: 'room-spell', raw: 'Spell: 1375', waits: { in: ['17/3247'], ticks: 1 } },
+      {
+        kind: 'room-spell',
+        raw: 'Spell: 1375',
+        waits: { in: ['17/3247'], ticks: 1 },
+        gates: [{ kind: 'class', id: 1, is: true }]
+      },
       { kind: 'class', raw: 'Class: 3 OK, 0 NO', classOk: 3 },
       { kind: 'class', raw: 'Class: 0 OK, 3 NO', classNo: 3 },
       { kind: 'race', raw: 'Race: 13 OK, 0 NO', raceOk: 13 },

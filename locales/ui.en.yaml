@@ -3811,8 +3811,8 @@ cards:
         against {share}%.'
       pay: 'Pay {fare} and walk it'
       payFirst: Say to pay the fare first.
-      drawFirst: 'The fare is taken from what you carry, {purse}: withdraw {short} at a bank before
-        walking it.'
+      drawFirst: 'The fare is taken from what you carry, {purse}: the walk goes to a bank first to
+        withdraw {short}.'
     keptOut:
       ask: 'This way crosses {wordList}, which you avoid. Choose a way:'
       groupAria: The way through {wordList}, or the way around it
@@ -4263,6 +4263,7 @@ map:
     pickOnly: pick {difficulty}
     pickOrBash: pick/bash {difficulty}
     sayCommand: 'Say: {command}'
+    roomSpellWay: Wait here for the room's spell to move you
     scatter: '{spellName}: puts you in one of {roomCount} rooms'
     scatterDetail: '{spellName}: the way through puts you in one of {roomCount} random rooms, and
       there is no telling which'
@@ -6360,8 +6361,20 @@ session:
     keptOutDemand: crossing {word}, which you avoid
     fareOverShare: This way pays {fare} in fares, more than {share}% of the {wealth} you carry and
       have in banks. Open it on the route panel and say to pay it, or raise Highest Fare.
-    fareDrawFirst: This way pays {fare} in fares and you carry {purse}. The fare is taken from what
-      you carry, so withdraw {short} at a bank first.
+    fareDrawFirst: This way pays {fare} in fares and you carry {purse} after withdrawing, still {short}
+      short. The fare is taken from what you carry.
+    fareCash:
+      going: 'This way pays {fare} in fares, {short} more than you carry: withdrawing it at {bank}
+        first.'
+      noBank: This way pays {fare} in fares and you carry {short} too little. No bank you have
+        checked holds that much, so withdraw it yourself first.
+      reasonBalance: checking the balance at {bank}, to withdraw for a fare
+      reasonWithdraw: withdrawing {amount} for a fare
+      drew: Withdrew {amount} at {bank} for the fare.
+      bankShort: '{bank} holds {held}, short of the {short} the fare needs, so the walk does not
+        go.'
+      bankSilent: '{bank} did not answer, so the fare was not withdrawn and the walk does not go.'
+      notReached: 'Did not reach {bank} to withdraw for the fare: {why}'
     fareUnread: This way pays {fare} in fares, and your cash has not been read yet to weigh it
       against {share}%. Look at your inventory first, or open it on the route panel and say to pay
       it.
@@ -7848,6 +7861,9 @@ automation:
     chanceGaveUp: '{command} did not work after {count} tries; taking another way.'
     chanceItemGone: '{command} needs {missing}, and the last try took it; getting another.'
     passageWaiting: 'Waiting out the passage {command} paid for.'
+    roomSpellWaiting: Waiting in this room for its spell to move you to {room}, about {ticks} ticks.
+    roomSpellGaveUp: The room's spell has not moved you to {room} after {count} waits; taking another
+      way.
     # A step on the wire when the character dropped: refused there, and handed
     # no state, so not a silence (todo 764).
     reasonGrounded: you fell to the ground with {command} still unanswered, and nothing is walked

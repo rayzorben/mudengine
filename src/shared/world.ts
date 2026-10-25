@@ -184,6 +184,7 @@ export const REQUIREMENT_KINDS = [
   'trap',
   'hidden',
   'timed',
+  'room-spell',
   'unknown'
 ] as const;
 
@@ -2535,6 +2536,8 @@ export interface WorldRoom {
    * them apart.
    */
   spell?: number;
+  /** Where that spell puts whoever stands here, and how often a tick (format 77). */
+  spellWays?: SpellWays;
   /**
    * `Rooms.Placed` — the items the realm puts on this floor and puts back at
    * the nightly cleanup where they are missing, within each item's game limit
@@ -2700,6 +2703,15 @@ export interface CommandLanding {
   waits?: CommandWait;
 }
 
+/**
+ * Where a room's own spell moves whoever stands in it, each landing at its share
+ * of ticks: a room command's landings and draws, said by nobody.
+ */
+export interface SpellWays {
+  landings?: CommandLanding[];
+  draws?: CommandDraw[];
+}
+
 /** The rooms a ship's passage is waited out in, and the ticks of its spells before it lands. */
 export interface CommandWait {
   in: readonly RoomId[];
@@ -2788,6 +2800,19 @@ export function asRoomCommand(value: unknown): RoomCommand | null {
     ...(landings === undefined ? {} : { landings }),
     ...(draws === undefined ? {} : { draws }),
     ...(breaks === undefined ? {} : { breaks })
+  };
+}
+
+/** A room's `sw` as written (format 77), or null where it is not that shape. */
+export function asSpellWays(value: unknown): SpellWays | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { landings: rawLandings, draws: rawDraws } = value as Record<string, unknown>;
+  const landings = rawLandings === undefined ? undefined : asList(rawLandings, asCommandLanding);
+  const draws = rawDraws === undefined ? undefined : asList(rawDraws, asCommandDraw);
+  if (landings === null || draws === null) return null;
+  return {
+    ...(landings === undefined ? {} : { landings }),
+    ...(draws === undefined ? {} : { draws })
   };
 }
 
@@ -4138,21 +4163,28 @@ export function fareOverShare(fare: RouteFare): boolean {
   return fare.ceiling === null || fare.copper > fare.ceiling;
 }
 
-/** Whether the purse cannot pay a way's fares: the server takes them from cash on hand. */
-export function fareShortOfPurse(fare: RouteFare): boolean {
-  return fare.purse !== null && fare.purse < fare.copper;
+/** What the purse is short of a way's fares, in copper, or null where it pays them or is unread: the server takes them from cash on hand. */
+export function fareShortfall(fare: RouteFare): number | null {
+  return fare.purse !== null && fare.purse < fare.copper ? fare.copper - fare.purse : null;
 }
 
-/** What a way charges, in copper: its tolls and every room command's `price` (a ship's passage). */
-export function routeFares(route: Pick<Route, 'steps'>): number {
-  let copper = 0;
-  for (const step of route.steps) {
-    const requirement = step.requirement ?? null;
-    if (requirement === null) continue;
-    if (requirement.kind === 'toll') copper += requirement.tollCopper ?? 0;
-    for (const gate of requirement.gates ?? []) if (gate.kind === 'copper') copper += gate.copper;
-  }
+/** What one step charges, in copper: its toll and its room command's `price` (a ship's passage). */
+function stepFare(step: Pick<RouteStep, 'requirement'>): number {
+  const requirement = step.requirement ?? null;
+  if (requirement === null) return 0;
+  let copper = requirement.kind === 'toll' ? (requirement.tollCopper ?? 0) : 0;
+  for (const gate of requirement.gates ?? []) if (gate.kind === 'copper') copper += gate.copper;
   return copper;
+}
+
+/** What a way charges, in copper: every step's fare. */
+export function routeFares(route: Pick<Route, 'steps'>): number {
+  return route.steps.reduce((sum, step) => sum + stepFare(step), 0);
+}
+
+/** The room the way's first fare is paid in, where its cash is wanted; null where it charges nothing. */
+export function fareRoom(route: Pick<Route, 'steps'>): RoomId | null {
+  return route.steps.find((step) => stepFare(step) > 0)?.from ?? null;
 }
 
 /**

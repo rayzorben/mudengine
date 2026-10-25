@@ -1023,18 +1023,7 @@ export class SessionManager {
         shopRoom: (item, passOver) => this.errands.shopRoom(item, passOver),
         priceAt: (item, shop) => this.errands.priceAt(item.name, shop),
         weightAt: (item, shop) => this.errands.weightAt(item.name, shop),
-        cashFrom: (need, then) => {
-          const state = this.tracker.current;
-          const here = roomAddress(state.room);
-          if (this.world === undefined || here === null) return [];
-          return this.world.cashPlaces(
-            state.banks,
-            need,
-            here,
-            then,
-            this.errands.travellerNow(state)
-          );
-        },
+        cashFrom: (need, then) => this.errands.cashFrom(need, then),
         walk: (route) =>
           // A trip, unsaid and not picked up after a fight: `Supplies` starts
           // afresh from the next pack listing, which is what it was ever about.
@@ -2674,7 +2663,7 @@ export class SessionManager {
     this.light.onBlock(block, this.tracker.current);
     this.supplies.onBlock(block, this.tracker.current);
     this.remotes.onBlock(block, this.tracker.current);
-    this.travel.outfitBlock(block);
+    this.travel.beforeWalkBlock(block);
     this.afk.onBlock(block, this.tracker.current);
     /*
      * The spellbook ask correcting itself (a wrong-book refusal names the right
@@ -2912,7 +2901,7 @@ export class SessionManager {
       // Telling a leader this character sat down or stood up; and, leading, whom to wait for.
       this.remotes.onCharacter(state);
       this.travel.watchParty(state);
-      this.travel.outfitTick(state);
+      this.travel.beforeWalkTick(state);
       // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);

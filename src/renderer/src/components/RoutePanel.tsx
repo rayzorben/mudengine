@@ -22,7 +22,6 @@ import {
   chosenWay,
   farePaid,
   fareOverShare,
-  fareShortOfPurse,
   crossedWords,
   describeBlock,
   DIRECTION_NAME,
@@ -845,7 +844,7 @@ export default function RoutePanel({
   const fare = route?.fare;
   const choosing =
     (route?.keptOut !== undefined && crossing === null) ||
-    (fare !== undefined && ((fareOverShare(fare) && !paying) || fareShortOfPurse(fare)));
+    (fare !== undefined && fareOverShare(fare) && !paying);
   /** True when there is a plan on screen that could actually be walked. */
   const walkable = shown !== null && !shown.blocked && shown.steps.length > 0 && !choosing;
 
