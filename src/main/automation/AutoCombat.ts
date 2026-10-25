@@ -122,6 +122,7 @@ import {
   type MobWaited,
   type RowNamed
 } from '../../shared/mobRules';
+import { freshSighting } from '../../shared/partyEngaged';
 import type { MobEntity } from '../../shared/entities';
 import { sameItem } from '../../shared/items';
 import { heldWeapon } from '../../shared/gear';
@@ -660,9 +661,8 @@ export class AutoCombat implements SessionModule {
       (name) => name.toLowerCase() === leader.toLowerCase()
     );
     const seen = key === undefined ? undefined : state.party.engaged[key];
-    if (!seen || Date.now() - seen.at > tuning().combat.assistFreshMs) return null;
-    if (seen.kind === 'room') return { kind: 'room', leader };
-    const there = mobListed(state.room.occupants, seen.target);
+    const there = freshSighting(state, seen, Date.now(), tuning().combat.assistFreshMs);
+    if (there === 'room') return { kind: 'room', leader };
     if (!there || this.leftAlone(there) || this.isPlayer(state, there.name)) return null;
     return { kind: 'mob', name: there.name, leader };
   }
@@ -703,9 +703,8 @@ export class AutoCombat implements SessionModule {
     if (!this.party.defendParty) return null;
     let best: { name: string; member: string; at: number } | null = null;
     for (const [member, seen] of Object.entries(state.party.threatened)) {
-      if (Date.now() - seen.at > tuning().combat.assistFreshMs) continue;
-      const there = mobListed(state.room.occupants, seen.target);
-      if (!there || this.leftAlone(there) || this.isPlayer(state, there.name)) {
+      const there = freshSighting(state, seen, Date.now(), tuning().combat.assistFreshMs);
+      if (!there || there === 'room' || this.leftAlone(there) || this.isPlayer(state, there.name)) {
         continue;
       }
       if (best === null || seen.at > best.at) best = { name: there.name, member, at: seen.at };

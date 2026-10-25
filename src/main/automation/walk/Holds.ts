@@ -5,9 +5,10 @@
  * Owns the one-deep `WalkProgress.hold` slot — a fight takes it and hands it
  * back — the fight hold and the exemption for the fight a walk was asked to
  * leave, and the holds for a rest in flight, health, a stated affliction, a
- * trap and a dark room. `Walker` asks them in its order (`holdBeforeSending`,
- * `onCharacter`); `Barriers` takes the slot for a door and a search. The why
- * is `mudengine-automation` › `parts/walking.md`.
+ * trap, a dark room, and the party rejoining or still fighting here. `Walker`
+ * asks them in its order (`holdBeforeSending`, `onCharacter`); `Barriers`
+ * takes the slot for a door and a search. The why is `mudengine-automation` ›
+ * `parts/walking.md`.
  */
 import {
   afflictionHolding,
@@ -20,6 +21,7 @@ import type { Block } from '../../../shared/blocks';
 import { fightIsRunning, type CharacterState } from '../../../shared/character';
 import { stillFor, type AutomationConfig } from '../../../shared/config';
 import { waitShort, type MobWait, type MobWaited } from '../../../shared/mobRules';
+import { partyFightHere } from '../../../shared/partyEngaged';
 import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -830,7 +832,7 @@ export class Holds {
     // The party's hold is asked after this one, so a vital takes the word from it.
     if (
       this.hold === null ||
-      this.hold === 'party' ||
+      partyHold(this.hold) ||
       this.hold === 'waiting' ||
       (mine && this.hold !== wanted)
     ) {
@@ -882,7 +884,7 @@ export class Holds {
       if (!away || here === null || kept.room === null) return false;
       return this.backTo(kept.waited.name, kept.room, state);
     }
-    if (this.hold === null || this.hold === 'party') {
+    if (this.hold === null || partyHold(this.hold)) {
       this.hold = 'waiting';
       this.walk.publish();
     }
@@ -1101,21 +1103,50 @@ export class Holds {
     return true;
   }
 
-  /**
-   * Stand still, leading, while the party rejoins on the far side of a portal.
-   * The wait and its bound are `PartyRegroup`'s, which says when it starts and
-   * ends; this re-asks on the beat and lets go when the answer turns false.
-   */
+  /** Stand still, leading, for the party: rejoining after a portal, or still fighting here. */
   holdForParty(state: CharacterState): boolean {
-    if (this.events.regrouping?.(state) !== true) {
-      if (this.hold === 'party') {
+    return (
+      this.holdWhile('party', this.events.regrouping?.(state) === true, state) ||
+      this.holdWhile('partyFight', this.partyFighting(state), state)
+    );
+  }
+
+  /**
+   * Leading, a member here still fighting a monster in this room (todo
+   * 20261023-1951-01): Festus's fists had no effect on the blood skeleton, so
+   * nothing put him in a fight, and the walk stepped on while Killa fought it.
+   * Ended by the sighting going stale or the monster leaving, never by
+   * `maxHolds`, as the fight hold is not. Off where nothing here ends a fight
+   * (`canEndAFight`), under this character's own fight (`answerFight`'s), and
+   * on a walk that does not wait fights out, a `safe-haven` retreat above all,
+   * except a lap's leg, whose loop waits its own out.
+   */
+  private partyFighting(state: CharacterState): boolean {
+    if (!this.canEndAFight() || fightIsRunning(state)) return false;
+    if (!this.resumeAfterFight && this.walk.kind() !== 'lap') return false;
+    const { assistFreshMs } = tuning().combat;
+    return partyFightHere(state, Date.now(), assistFreshMs, this.config.party.defendParty);
+  }
+
+  /**
+   * The hold `kind` while `holding`, re-asked on the beat and let go when the
+   * answer turns false. The party's regroup is `PartyRegroup`'s, which says
+   * when it starts and ends.
+   */
+  private holdWhile(
+    kind: 'party' | 'partyFight',
+    holding: boolean,
+    state: CharacterState
+  ): boolean {
+    if (!holding) {
+      if (this.hold === kind) {
         this.hold = null;
         this.walk.publish();
       }
       return false;
     }
-    if (this.hold !== 'party') {
-      this.hold = 'party';
+    if (this.hold !== kind) {
+      this.hold = kind;
       this.walk.publish();
     }
     this.walk.retryAfter(tuning().walk.holdMs, state);
@@ -1349,4 +1380,9 @@ function holdingSentence(reason: AfflictionHold): string {
       return unreachable;
     }
   }
+}
+
+/** The party's holds, asked after the vitals and a monster's wait, which take the word from them. */
+function partyHold(hold: WalkHold): boolean {
+  return hold === 'party' || hold === 'partyFight';
 }

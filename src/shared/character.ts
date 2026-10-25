@@ -1269,7 +1269,13 @@ export interface Party {
    * either end: a person attacking a member is that member's PvP fight, not a
    * thing this client joins.
    */
-  threatened: Record<string, { target: string; at: number }>;
+  threatened: Record<string, PartyThreat>;
+}
+
+/** The monster last seen hitting a member, as the room spelled it, and when (`Party.threatened`). */
+export interface PartyThreat {
+  target: string;
+  at: number;
 }
 
 export const NO_PARTY: Party = { following: null, members: [], engaged: {}, threatened: {} };

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Holds, type HoldsWalk } from '../Holds';
 import { WalkClock } from '../clock';
 import { t } from '../../../app/i18n';
-import { NO_AFFLICTIONS } from '../../../../shared/character';
+import { NO_AFFLICTIONS, type RoomOccupant } from '../../../../shared/character';
+import { classifyOccupant } from '../../../../shared/mobs';
 import { AFFLICTION_HOLDS } from '../../../../shared/walk';
 import { DEFAULT_INTERNAL } from '../../../../shared/internal';
 import {
@@ -364,5 +365,87 @@ describe('the floor read waking the walk', () => {
     holds.afterBlock();
     expect(retryAfter).not.toHaveBeenCalled();
     clock.dispose();
+  });
+});
+
+/*
+ * Todo 20261023-1951-01: Festus leading, `Your fists have no effect against
+ * this monster!`, `Killa moves to attack angry blood skeleton.`, and the walk
+ * stepped on, since nothing put Festus in a fight.
+ */
+describe('a leader standing while the party fights', () => {
+  const killa = {
+    name: 'Killa',
+    className: null,
+    health: 1,
+    mana: null,
+    rank: null,
+    activity: null,
+    invited: false,
+    vitals: null,
+    sheet: null
+  };
+  const skeleton = classifyOccupant('angry blood skeleton', {
+    players: new Set<string>(),
+    mob: () => ({ disposition: 'hostile', uncertain: false, costly: 'never' })
+  });
+  const leading = (occupants: RoomOccupant[], fought = Date.now()) =>
+    at(1, 1, {
+      name: 'Festus',
+      room: { ...at(1, 1).room, occupants },
+      party: {
+        following: null,
+        members: [killa],
+        engaged: { Killa: { kind: 'mob', target: 'angry blood skeleton', at: fought } },
+        threatened: {}
+      }
+    });
+
+  it('holds the step while a member fights a monster here, and walks on once it is gone', () => {
+    let now = leading([skeleton]);
+    const { walker, sent } = walkerOn({ willFight: () => true, stateNow: () => now });
+    walker.start(ROUTE, now);
+    expect(moves(sent)).toEqual([]);
+    expect(walker.progress.hold).toBe('partyFight');
+    // The room clear: the positive control, the step goes.
+    now = leading([]);
+    vi.advanceTimersByTime(TUNING.walk.holdMs + 50);
+    expect(moves(sent)).toHaveLength(1);
+  });
+
+  it('walks on with auto-combat off, and past a sighting gone stale', () => {
+    const off = walkerOn({ willFight: () => false, stateNow: () => leading([skeleton]) });
+    off.walker.start(ROUTE, leading([skeleton]));
+    expect(moves(off.sent)).toHaveLength(1);
+    const stale = leading([skeleton], Date.now() - TUNING.combat.assistFreshMs - 1);
+    const old = walkerOn({ willFight: () => true, stateNow: () => stale });
+    old.walker.start(ROUTE, stale);
+    expect(moves(old.sent)).toHaveLength(1);
+  });
+
+  it('leaves a retreat walking away, and holds a lap’s leg, which waits its own fights out', () => {
+    const fighting = leading([skeleton]);
+    const retreat = walkerOn({ willFight: () => true, stateNow: () => fighting });
+    retreat.walker.start(ROUTE, fighting, {
+      asked: false,
+      holdWhenHurt: false,
+      resumeAfterFight: false
+    });
+    expect(moves(retreat.sent)).toHaveLength(1);
+    const leg = walkerOn({ willFight: () => true, stateNow: () => fighting });
+    leg.walker.start(ROUTE, fighting, { asked: false, resumeAfterFight: false, kind: 'lap' });
+    expect(moves(leg.sent)).toEqual([]);
+    expect(leg.walker.progress.hold).toBe('partyFight');
+  });
+
+  it('gives the slot to the health, asked first', () => {
+    const tired = hurt(leading([skeleton]), 10);
+    const { walker, sent } = walkerOn(
+      { willFight: () => true, stateNow: () => tired },
+      configWith({ health: { restBelow: 0.5 } })
+    );
+    walker.start(ROUTE, tired);
+    expect(moves(sent)).toEqual([]);
+    expect(walker.progress.hold).toBe('health');
   });
 });

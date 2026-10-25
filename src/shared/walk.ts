@@ -227,6 +227,8 @@ export type WalkHold =
   | 'dark'
   /** Leading, on the far side of a portal, until the party rejoins (todo 839). */
   | 'party'
+  /** Leading, while a member here still fights a monster in this room (todo 20261023-1951-01). */
+  | 'partyFight'
   /** Beside a monster whose row waits for health or mana before it is fought (`waitingOn`). */
   | 'waiting'
   | null;

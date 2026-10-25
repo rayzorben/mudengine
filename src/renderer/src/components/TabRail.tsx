@@ -274,6 +274,10 @@ function attention(
     // character is doing, not a condition somebody has to come and look at.
     return { level: 'info', label: t('tabs.tab.markFighting') };
   }
+  // Leading, standing while a member still fights here (todo 20261023-1951-01).
+  if (view.walk.status === 'walking' && view.walk.hold === 'partyFight') {
+    return { level: 'info', label: t('tabs.tab.markPartyFighting') };
+  }
   if (
     view.walk.status === 'walking' &&
     // `resting` is the beat a step waits for a rest this client has just asked

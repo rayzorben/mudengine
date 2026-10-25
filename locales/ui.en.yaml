@@ -1667,6 +1667,7 @@ tabs:
     editAria: Edit {characterName}…
     markError: error
     markFighting: fighting
+    markPartyFighting: party fighting
     markHurt: hurt
     markLooping: looping
     markMeditating: meditating
@@ -3112,6 +3113,7 @@ cards:
       badgeBlocked: blocked
       badgeDark: lighting
       badgeRegrouping: waiting for party
+      badgePartyFighting: party fighting
       badgeStopped: stopped
       endedReason: 'Ended: {reason}'
       gatedLabel: Gated
