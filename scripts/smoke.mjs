@@ -9731,8 +9731,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
  */
 {
   const side = () => evaluate(`document.querySelector('.workspace')?.dataset.tabs ?? ''`);
-  const cycleTabs = async () => {
-    const was = await side();
+  /** Opens the palette, types `query` and presses the row `id`. */
+  const pressCommand = async (query, id) => {
     await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
     await paletteReady();
     await evaluate(`
@@ -9740,23 +9740,26 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         const el = document.querySelector('.palette input');
         if (!el) return false;
         const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
-        set.call(el, 'tabs');
+        set.call(el, ${JSON.stringify(query)});
         el.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
       })()
     `);
     // The row listed; the click below is a gesture and stays outside the wait.
-    await waitFor(async () =>
-      evaluate(`!!document.querySelector('.palette li[data-command="tabside"]')`)
-    );
-    const clicked = await evaluate(`
+    const row = `.palette li[data-command="${id}"]`;
+    await waitFor(async () => evaluate(`!!document.querySelector('${row}')`));
+    return evaluate(`
       (() => {
-        const row = document.querySelector('.palette li[data-command="tabside"]');
+        const row = document.querySelector('${row}');
         if (!row) return false;
         row.click();
         return true;
       })()
     `);
+  };
+  const cycleTabs = async () => {
+    const was = await side();
+    const clicked = await pressCommand('tabs', 'tabside');
     /*
      * The side changes at once; the grid then *animates* its column tracks and
      * the console re-fits, which goes out over NAWS. So: wait for the thing
@@ -9875,6 +9878,60 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     }
   }
   await capture('smoke-tabs-left.png', 'the tab rail down the left, cards on the right');
+
+  /*
+   * Auto-hide (`ui.tabsAutoHide`): the rail gives up its track once, then comes
+   * out over the console when the pointer reaches the window's left edge and
+   * goes when it leaves, and the console never moves while it does.
+   */
+  {
+    const hiding = () => evaluate(`document.querySelector('.workspace')?.dataset.tabsHide ?? ''`);
+    const shown = () =>
+      evaluate(`getComputedStyle(document.querySelector('.workspace > .tab-rail')).visibility`);
+    const pointAt = (x, y) =>
+      cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, pointerType: 'mouse' });
+    check(
+      String(await pressCommand('hide', 'tabsautohide')) === 'true',
+      'the palette offers auto-hide for the tabs down a side'
+    );
+    check((await readUntil(hiding, (now) => now === 'true')) === 'true', 'and it turns on');
+    const tucked = await stable(layout);
+    check(
+      (await readUntil(shown, (now) => now === 'hidden')) === 'hidden' &&
+        tucked.console.left < (sided.console?.left ?? 0),
+      'the tabs go out of sight and the console takes their track',
+      JSON.stringify(tucked)
+    );
+    const middle = Math.round(
+      Number(await evaluate(`document.querySelector('.terminal-stack').getBoundingClientRect().top`)) +
+        100
+    );
+    await pointAt(2, middle);
+    const out = await readUntil(shown, (now) => now === 'visible');
+    const over = await stable(layout);
+    check(out === 'visible', 'the pointer at the left edge brings them out', String(out));
+    check(
+      over.tabs !== null && over.tabs.left >= 0 && over.tabs.width > 0,
+      'over the console, inside the window',
+      JSON.stringify(over)
+    );
+    check(
+      over.console.left === tucked.console.left && over.console.width === tucked.console.width,
+      'and the console keeps its place and width',
+      JSON.stringify({ tucked: tucked.console, over: over.console })
+    );
+    await pointAt(tucked.console.left + Math.round(tucked.console.width / 2), middle);
+    check(
+      (await readUntil(shown, (now) => now === 'hidden')) === 'hidden',
+      'the pointer leaving puts them away again'
+    );
+    check(
+      String(await pressCommand('hide', 'tabsautohide')) === 'true' &&
+        (await readUntil(hiding, (now) => now === '')) === '',
+      'and the palette turns auto-hide off'
+    );
+    await stable(layout);
+  }
 
   // left -> top, which is what the options file for this run asks for and what
   // everything below was written against.

@@ -62,6 +62,8 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     },
     tabSide: 'left',
     setTabSide: vi.fn(),
+    tabsAutoHide: 'off',
+    setTabsAutoHide: vi.fn(),
     panes: [HERO],
     paneFlow: 'rows',
     addPane: vi.fn(),
@@ -174,6 +176,14 @@ describe('the palette commands', () => {
     find('timestamps', { setTimestamps }).run();
     find('timestamps', { setTimestamps, timestamps: 'on' }).run();
     expect(setTimestamps.mock.calls).toEqual([['on'], ['off']]);
+  });
+
+  it('hides the tabs down a side on and off, and offers nothing with the tabs on top', () => {
+    const setTabsAutoHide = vi.fn();
+    find('tabsautohide', { setTabsAutoHide }).run();
+    find('tabsautohide', { setTabsAutoHide, tabsAutoHide: 'on', tabSide: 'right' }).run();
+    expect(setTabsAutoHide.mock.calls).toEqual([['on'], ['off']]);
+    expect(ids({ tabSide: 'top' })).not.toContain('tabsautohide');
   });
 
   it("starts a loop on the shown character and says a refusal in that character's console", async () => {

@@ -212,6 +212,16 @@ option {
   --track-tsplit: var(--gap);
 }
 
+/*
+ * A hidden tab rail (`ui.tabsAutoHide`) takes no track: it is laid over the
+ * console, so it coming and going never resizes the terminal (a resize goes
+ * out over NAWS). The track is given up once, when the setting changes.
+ */
+.workspace[data-tabs-hide] {
+  --track-tabs: 0;
+  --track-tsplit: 0;
+}
+
 .workspace[data-tabs='top'] {
   grid-template-areas:
     'tabs tabs tabs tabs tabs'
@@ -5971,6 +5981,82 @@ button.quest-tile-name:hover:not(:disabled) {
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/*
+ * Hidden down its edge until the pointer reaches it (`ui.tabsAutoHide`), as
+ * Edge's sidebar does. Out of view it is slid past the window's edge and
+ * `hidden`, so nothing in it takes a click or a Tab; `::before` stays visible
+ * and is the strip that brings it out. Over the float layer, since it is
+ * brought out on purpose and goes again on its own.
+ *
+ * Held out while the pointer is on it, while a key is in it, while its menu
+ * is open (the menu is in a portal, off the rail), and while a tab is dragged.
+ */
+.workspace[data-tabs-hide] > .tab-rail {
+  /* `auto`, or the zero-width `tabs` area becomes its containing block. */
+  grid-area: auto;
+  position: absolute;
+  z-index: 45;
+  inset-block: var(--gap);
+  left: var(--gap);
+  width: var(--tab-rail-w);
+  padding: calc(var(--gap) / 2);
+  border-radius: var(--r-card);
+  background: var(--glass-fill-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), var(--glass-rim);
+  opacity: 0;
+  transform: translateX(calc(-100% - var(--gap)));
+  visibility: hidden;
+  transition:
+    transform var(--dur-surface) var(--ease-inout) var(--delay-tabs-hide),
+    opacity var(--dur-surface) var(--ease-inout) var(--delay-tabs-hide),
+    visibility 0s linear calc(var(--delay-tabs-hide) + var(--dur-surface));
+}
+
+.workspace[data-tabs-hide][data-tabs='right'] > .tab-rail {
+  left: auto;
+  right: var(--gap);
+  transform: translateX(calc(100% + var(--gap)));
+}
+
+.workspace[data-tabs-hide]
+  > .tab-rail:is(:hover, :focus-within, [data-held], :has([aria-expanded='true'])) {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition:
+    transform var(--dur-surface) var(--ease-out) var(--delay-tabs-show),
+    opacity var(--dur-surface) var(--ease-out) var(--delay-tabs-show),
+    visibility 0s linear var(--delay-tabs-show);
+}
+
+/*
+ * The strip: from the window's edge to `--tab-reveal-w` past the rail. Out of
+ * view the rail's far side is the window's edge, so the strip is the edge's
+ * first few pixels; brought out, it covers the workspace's padding, so a
+ * pointer pressed against the edge stays on the rail rather than flickering it.
+ */
+.workspace[data-tabs-hide] > .tab-rail::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset-block: calc(-1 * var(--gap));
+  left: calc(-1 * var(--gap));
+  right: calc(-1 * var(--tab-reveal-w));
+  visibility: visible;
+}
+
+.workspace[data-tabs-hide][data-tabs='right'] > .tab-rail::before {
+  left: calc(-1 * var(--tab-reveal-w));
+  right: calc(-1 * var(--gap));
+}
+
+/* A card dragged to the edge is going to a strip or a float, not to the tabs. */
+.workspace[data-tabs-hide][data-dragging] > .tab-rail::before {
+  pointer-events: none;
 }
 
 /*

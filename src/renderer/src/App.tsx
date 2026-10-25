@@ -14,7 +14,7 @@ import PinnedFloats from './components/PinnedFloats';
 import SettingsScreen from './components/SettingsScreen';
 import SessionTerminal from './components/SessionTerminal';
 import SlideOuts from './components/SlideOuts';
-import TabRail, { type RailSide } from './components/TabRail';
+import TabRail from './components/TabRail';
 
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
@@ -71,7 +71,8 @@ import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useBoundKeys } from './hooks/useBoundKeys';
 import { CLIENT_KEYS } from '@shared/keys';
-import { useOverridablePreference, useOverridableSwitch } from './hooks/usePreference';
+import { useOverridableSwitch } from './hooks/usePreference';
+import { useTabPlacement } from './hooks/useTabPlacement';
 import { useTheme } from './hooks/useTheme';
 import { useStreamPressure } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
@@ -319,27 +320,11 @@ export default function App() {
    */
   const [debugOpen, setDebugOpen] = useState(false);
 
-  /** Same precedence as density and theme: remembered, overridden by the file. */
-  const [tabSide, setTabSide] = useOverridablePreference<RailSide>(
-    'mudengine.tabs',
-    config.ui.tabs,
-    (value): value is RailSide => value === 'top' || value === 'left' || value === 'right'
+  const { tabSide, setTabSide, railSide, tabsAutoHide, setTabsAutoHide } = useTabPlacement(
+    config.ui
   );
-  /*
-   * Which edge the *cards* take, which is the other one.
-   *
-   * One setting decides both, because the two side rails cannot share an edge:
-   * a client that let each be asked for independently would have to pick a
-   * winner when both said left, and the pick would be arbitrary. So the tab
-   * rail's side is the setting and the card rail takes what is left.
-   *
-   * Stated as its own attribute rather than read off `data-tabs` in the
-   * stylesheet, because it has to hold in the one state where there is no tab
-   * rail at all — a client with no characters yet. Keyed on the tabs, the card
-   * rail would sit on the right until the first character loaded and then jump
-   * across the window.
-   */
-  const railSide: 'left' | 'right' = tabSide === 'right' ? 'left' : 'right';
+  /* Hidden down its edge and laid over the console; across the top it stays. */
+  const tabsHide = showTabs && tabSide !== 'top' && tabsAutoHide === 'on';
 
   /**
    * How this character's rail is arranged, remembered per character.
@@ -924,6 +909,8 @@ export default function App() {
     },
     tabSide,
     setTabSide,
+    tabsAutoHide,
+    setTabsAutoHide,
     panes,
     paneFlow,
     addPane,
@@ -1125,6 +1112,7 @@ export default function App() {
         ref={workspaceRef}
         data-rail-side={railSide}
         data-tabs={showTabs ? tabSide : 'none'}
+        data-tabs-hide={tabsHide ? 'true' : undefined}
         style={workspaceStyle}
       >
         {/*
@@ -1153,7 +1141,7 @@ export default function App() {
           views={views}
         />
 
-        {showTabs && tabSide !== 'top' && (
+        {showTabs && tabSide !== 'top' && !tabsHide && (
           <Splitter
             // Which way a drag grows the rail; `pane` is where the handle
             // goes. The two part company the moment the workspace mirrors.

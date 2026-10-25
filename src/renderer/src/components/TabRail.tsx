@@ -511,7 +511,12 @@ function TabRail({
   if (sessions.length === 0) return null;
 
   return (
-    <div className="tab-rail" data-side={side} role="tablist">
+    <div
+      className="tab-rail"
+      data-held={drag.session !== null ? 'true' : undefined}
+      data-side={side}
+      role="tablist"
+    >
       {ghost}
       {/*
         Making a character, beside the characters.

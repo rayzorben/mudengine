@@ -192,6 +192,12 @@
      realm's median plan is 41ms, so most never show the line; Paradigm's
      median is 184ms, so most do. */
   --delay-planning: 100ms;
+  /* The hidden tab rail (`ui.tabsAutoHide`): the strip at the window's edge that
+     brings it out, the pause before it comes, and how long the pointer may be
+     off it before it goes, so a pointer that overshoots does not shut it. */
+  --tab-reveal-w: 8px;
+  --delay-tabs-show: 60ms;
+  --delay-tabs-hide: 350ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
 

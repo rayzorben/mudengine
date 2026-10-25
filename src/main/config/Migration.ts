@@ -45,7 +45,7 @@ import { credentialsNamed } from '../../shared/login';
 import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
-import { DEFAULT_CONFIG, normalizeBands } from '../../shared/config';
+import { DEFAULT_CONFIG, normalizeBands, type AppConfig } from '../../shared/config';
 import { DEFAULT_ART } from '../../shared/artConfig';
 import {
   DEFAULT_ALERT_DEBOUNCE_SECONDS,
@@ -234,6 +234,7 @@ function migrateAll(options: MigrationOptions): void {
   theWorldsAreBundled(home, note);
   statedTheMark(home, note);
   statedThePartyRecap(home, note, options.template);
+  statedTheTabsAutoHide(home, note, options.template);
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
@@ -4270,30 +4271,53 @@ function statedTheMark(home: Home, note: (message: string) => void): void {
  * States `ui.partyRecap` in an options file that already has a `ui:` block
  * (todo 20261020-1654-01), for the reason `statedTheMark` gives: a key added
  * inside `ui:` after the file was copied reaches nobody. After `showLogo`,
- * where the template puts it, with the template's own paragraph.
+ * where the template puts it.
  */
 function statedThePartyRecap(
   home: Home,
   note: (message: string) => void,
   template: string | undefined
 ): void {
+  if (statedUiKey(home, template, 'partyRecap', DEFAULT_CONFIG.ui.partyRecap, 'showLogo'))
+    note(t('notices.migration.partyRecapStated', { file: home.options }));
+}
+
+/** States `ui.tabsAutoHide`, off, after `tabs`, as `statedThePartyRecap` does. */
+function statedTheTabsAutoHide(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (statedUiKey(home, template, 'tabsAutoHide', DEFAULT_CONFIG.ui.tabsAutoHide, 'tabs'))
+    note(t('notices.migration.tabsAutoHideStated', { file: home.options }));
+}
+
+/**
+ * Adds one `ui:` key the options file lacks, with the template's own paragraph,
+ * after the key named `after` (else last). True when the file was written.
+ */
+function statedUiKey(
+  home: Home,
+  template: string | undefined,
+  key: keyof AppConfig['ui'],
+  value: boolean,
+  after: keyof AppConfig['ui']
+): boolean {
   const comments = templateComments(template, 'ui');
   let stated = false;
   edit(home.options, (document) => {
     const ui = document.getIn(['ui'], true);
-    if (!isMap(ui) || ui.has('partyRecap')) return false;
-    const pair = document.createPair('partyRecap', DEFAULT_CONFIG.ui.partyRecap) as Pair;
-    const lead = comments.get('ui.partyRecap');
+    if (!isMap(ui) || ui.has(key)) return false;
+    const pair = document.createPair(key, value) as Pair;
+    const lead = comments.get(`ui.${key}`);
     if (typeof lead === 'string' && isScalar(pair.key)) pair.key.commentBefore = lead;
-    const at = ui.items.findIndex((item) => keyText(item) === 'showLogo');
+    const at = ui.items.findIndex((item) => keyText(item) === after);
     if (at === -1) ui.items.push(pair);
     else ui.items.splice(at + 1, 0, pair);
     stated = true;
     return true;
   });
-
-  if (!stated) return;
-  note(t('notices.migration.partyRecapStated', { file: home.options }));
+  return stated;
 }
 
 /**

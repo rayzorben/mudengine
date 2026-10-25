@@ -517,6 +517,13 @@ export default function GlobalSettings({
                 ]}
                 value={draft.ui.tabs}
               />
+              <CheckField
+                checked={draft.ui.tabsAutoHide}
+                hint={t('settings.client.appearance.tabsAutoHideHint')}
+                label={t('settings.client.appearance.tabsAutoHide')}
+                name="global-tabs-auto-hide"
+                onChange={(value) => patch('ui', { tabsAutoHide: value })}
+              />
               <SelectField
                 hint={t('settings.client.appearance.gameDockHint')}
                 label={t('settings.client.appearance.gameDockLabel')}

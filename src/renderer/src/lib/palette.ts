@@ -102,6 +102,9 @@ export interface PaletteDeps {
   >;
   tabSide: RailSide;
   setTabSide(side: RailSide): void;
+  /** Whether a side tab rail hides until the pointer reaches it (`ui.tabsAutoHide`). */
+  tabsAutoHide: Switch;
+  setTabsAutoHide(value: Switch): void;
   panes: readonly SessionId[];
   paneFlow: PaneFlow;
   addPane(id: SessionId): void;
@@ -844,6 +847,21 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
             group: 'view' as const,
             run: () =>
               deps.setTabSide(tabSide === 'left' ? 'top' : tabSide === 'top' ? 'right' : 'left')
+          }
+        ]
+      : []),
+    ...(showTabs && tabSide !== 'top'
+      ? [
+          {
+            id: 'tabsautohide',
+            icon: 'layout' as const,
+            label:
+              deps.tabsAutoHide === 'on'
+                ? t('palette.view.tabsAutoHideOffLabel')
+                : t('palette.view.tabsAutoHideOnLabel'),
+            keywords: ['tabs', 'hide', 'auto', 'sidebar', 'rail', 'collapse', 'overlay', 'edge'],
+            group: 'view' as const,
+            run: () => deps.setTabsAutoHide(deps.tabsAutoHide === 'on' ? 'off' : 'on')
           }
         ]
       : []),

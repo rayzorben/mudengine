@@ -681,6 +681,34 @@ describe('the party recap switch', () => {
   });
 });
 
+describe('the tab rail hiding', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated off after the tabs, with the template’s paragraph, in a file that lacks it', () => {
+    fs.writeFileSync(home.options, 'ui:\n  tabs: left\n  showHud: true\n', 'utf8');
+    migrate(true);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['tabsAutoHide']).toBe(false);
+    expect(text.indexOf('tabsAutoHide')).toBeGreaterThan(text.indexOf('tabs:'));
+    expect(text.indexOf('tabsAutoHide')).toBeLessThan(text.indexOf('showHud'));
+    const ui = parseDocument(text).get('ui', true);
+    const key = isMap(ui)
+      ? ui.items.find((item) => isScalar(item.key) && item.key.value === 'tabsAutoHide')?.key
+      : undefined;
+    expect(isScalar(key) ? (key.commentBefore ?? '') : '').not.toBe('');
+  });
+
+  it('leaves a file that already states it alone', () => {
+    fs.writeFileSync(home.options, 'ui:\n  tabs: right\n  tabsAutoHide: true\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['tabsAutoHide']).toBe(true);
+    expect(text.match(/tabsAutoHide/g)).toHaveLength(1);
+  });
+});
+
 describe('the mark at the head of the card rail', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });

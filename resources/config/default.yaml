@@ -232,6 +232,12 @@ ui:
   # than one of them.
   tabs: left
 
+  # With the tabs down the left or the right, hide them until the pointer
+  # reaches that edge of the window. They slide out over the console while the
+  # pointer is on them and slide away when it leaves. The console keeps its
+  # width either way. No effect with the tabs across the top.
+  tabsAutoHide: false
+
   # dark | light | system
   #
   # `system` follows the OS appearance and repaints live when it changes.

@@ -249,6 +249,7 @@ export interface GlobalDraft {
     theme: ThemePreference;
     density: DensityPreference;
     tabs: TabsPreference;
+    tabsAutoHide: boolean;
     showHud: boolean;
     showLogo: boolean;
     partyRecap: boolean;
@@ -1446,6 +1447,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       theme: isThemePreference(ui['theme']) ? ui['theme'] : 'system',
       density: oneOf(ui['density'], ['auto', 'comfortable', 'compact'] as const, 'auto'),
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
+      tabsAutoHide: ui['tabsAutoHide'] === true,
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
       partyRecap: ui['partyRecap'] !== false,

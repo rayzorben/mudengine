@@ -472,6 +472,8 @@ notices:
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     partyRecapStated: '"ui.partyRecap" was added to {file}, turned on. After a fight two or more
       of your party struck, the console shows each member''s damage.'
+    tabsAutoHideStated: '"ui.tabsAutoHide" was added to {file}, turned off. Turn it on to hide the
+      character tabs until the pointer reaches their edge of the window.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
       channels. A channel only said what kind of thing a row was about, not what happened. Channel
       rows were moved to the closest event ({pairs}), which is narrower than a whole channel, so
@@ -1528,6 +1530,8 @@ palette:
     tabsOnTopLabel: Tabs on top
     tabsRightHint: more room, cards on the left
     tabsTopHint: compact, uses rows
+    tabsAutoHideOnLabel: Auto-hide the character tabs
+    tabsAutoHideOffLabel: Keep the character tabs shown
     themeCycleLabel: Cycle theme
     themeCycleSystemHint: system · {themeLabel}
     themeFollowSystemLabel: 'Theme: follow the system'
@@ -4560,6 +4564,9 @@ settings:
       tabsLeft: Down the left, cards right
       tabsRight: Down the right, cards left
       tabsTop: Across the top
+      tabsAutoHide: Auto-Hide Character Tabs
+      tabsAutoHideHint: Down the left or right, the tabs stay out of sight until the pointer reaches
+        that edge, then slide out over the console.
       uiFontHint: Everything except the console, which is always fixed-width. Blank uses the console
         font.
       uiFontLabel: Interface Font

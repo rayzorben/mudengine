@@ -396,6 +396,12 @@ export interface UiConfig {
    */
   tabs: TabsPreference;
   /**
+   * Hide the tab rail down a side until the pointer reaches that edge of the
+   * window, then slide it out over the console and back when the pointer
+   * leaves. The console keeps its width either way. No effect on `top`.
+   */
+  tabsAutoHide: boolean;
+  /**
    * Show the Vitals and Room cards once in the realm.
    *
    * Separate from the diagnostics cards on purpose: the HUD is what the player
@@ -2484,6 +2490,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     density: 'auto',
     theme: DEFAULT_THEME,
     tabs: 'left',
+    tabsAutoHide: false,
     showHud: true,
     showLogo: true,
     partyRecap: true,
@@ -2948,6 +2955,7 @@ export function normalizeConfig(input: unknown): AppConfig {
     ui: {
       font: normalizeFont(ui['font'], DEFAULT_CONFIG.ui.font),
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, DEFAULT_CONFIG.ui.tabs),
+      tabsAutoHide: bool(ui['tabsAutoHide'], DEFAULT_CONFIG.ui.tabsAutoHide),
       density: oneOf(
         ui['density'],
         ['auto', 'comfortable', 'compact'] as const,
