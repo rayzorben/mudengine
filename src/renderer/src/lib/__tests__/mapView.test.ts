@@ -249,6 +249,16 @@ describe('fittedTo', () => {
     expect(view?.perRoom).toBe(bounds.min);
   });
 
+  it('keeping the end, drops rooms from the start that the widest zoom cannot hold', () => {
+    // 1/9 to 1/2 is 64 cells across, 6.25px each in 400px, under the floor of 10.
+    const view = fittedTo(cells, new Set(['1/9', '1/1', '1/2']), box, bounds, 'end');
+    // 1/1 and 1/2 stay: four cells across, clamped to 40.
+    expect(view).toEqual({ perRoom: 40, pan: { x: 1.5 * MAP_CELL, y: 0 } });
+    // With the far room last, it is the one kept.
+    const turned = fittedTo(cells, new Set(['1/2', '1/9']), box, bounds, 'end');
+    expect(turned?.pan).toEqual({ x: -60 * MAP_CELL, y: 0 });
+  });
+
   it('answers nothing when no room asked for is placed, or the box is unmeasured', () => {
     expect(fittedTo(cells, new Set(['2/2']), box, bounds)).toBeNull();
     expect(fittedTo(cells, new Set(['1/1']), { width: 0, height: 0 }, bounds)).toBeNull();

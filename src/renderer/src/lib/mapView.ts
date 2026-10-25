@@ -262,32 +262,48 @@ export function densityFor(perRoom: number, sparse: number, dense: number): numb
 }
 
 /**
+ * Which rooms a fit gives up when the floor of the zoom cannot hold them all:
+ * none (`all`, the Map card's pages, shown from their middle), or those at the
+ * start of the way (`end`, the route panel, whose picture is of where it ends).
+ */
+export type FitKeep = 'all' | 'end';
+
+/**
  * The view that shows every placed room of `rooms` at once: the pan on the
  * middle of their box and the largest zoom that holds it, with half a cell
  * round the edge so a room at the rim is drawn whole. Clamped to `bounds`,
  * so a leg wider than the box at the floor is shown as far out as the map goes.
+ * With `keep` at `end`, `rooms` is read in walking order and rooms are dropped
+ * from the start until the floor holds the rest, so the end stays in view.
  * Null when the box is not measured or none of the rooms is placed.
  */
 export function fittedTo(
   cells: ReadonlyArray<{ id: string; gx: number; gy: number }>,
   rooms: ReadonlySet<string>,
   box: Box,
-  bounds: { min: number; max: number }
+  bounds: { min: number; max: number },
+  keep: FitKeep = 'all'
 ): MapView | null {
   if (!measured(box)) return null;
+  const placed = new Map<string, { gx: number; gy: number }>();
+  for (const cell of cells) if (rooms.has(cell.id)) placed.set(cell.id, cell);
+  const order = [...rooms].flatMap((id) => placed.get(id) ?? []);
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-  for (const cell of cells) {
-    if (!rooms.has(cell.id)) continue;
-    minX = Math.min(minX, cell.gx);
-    maxX = Math.max(maxX, cell.gx);
-    minY = Math.min(minY, cell.gy);
-    maxY = Math.max(maxY, cell.gy);
+  let across = Infinity;
+  for (let at = order.length - 1; at >= 0; at -= 1) {
+    const { gx, gy } = order[at]!;
+    const x0 = Math.min(minX, gx);
+    const x1 = Math.max(maxX, gx);
+    const y0 = Math.min(minY, gy);
+    const y1 = Math.max(maxY, gy);
+    const next = Math.min(box.width / (x1 - x0 + 1), box.height / (y1 - y0 + 1));
+    if (keep === 'end' && next < bounds.min && across !== Infinity) break;
+    [minX, maxX, minY, maxY, across] = [x0, x1, y0, y1, next];
   }
-  if (minX === Infinity) return null;
-  const across = Math.min(box.width / (maxX - minX + 1), box.height / (maxY - minY + 1));
+  if (across === Infinity) return null;
   return {
     perRoom: Math.max(bounds.min, Math.min(bounds.max, across)),
     pan: { x: ((minX + maxX) / 2) * MAP_CELL, y: ((minY + maxY) / 2) * MAP_CELL }

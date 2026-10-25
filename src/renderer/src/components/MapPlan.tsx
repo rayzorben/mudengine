@@ -314,8 +314,9 @@ export interface MapPlanProps {
    */
   onTeleport?: TeleportPress;
   /**
-   * The rooms the walk in progress has still to travel through, opening with
-   * the one the character is standing in — `WalkProgress.path`.
+   * The rooms of a way, in walking order: on the Map card the walk in
+   * progress from the room stood in (`WalkProgress.path`) or a preview page's
+   * leg, in the route panel the way into the destination (`wayIn`).
    *
    * Drawn over the corridors it walks along, and *only* over corridors this
    * map already draws: a route runs through rooms the projection may have

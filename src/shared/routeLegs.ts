@@ -69,6 +69,16 @@ export function legsOf(route: Route, from: RoomId): RouteLeg[] {
   return legs;
 }
 
+/**
+ * The way into where the route ends, as far as the map around it draws flat:
+ * the rooms of the route's last leg, its end last. A route arriving by a jump
+ * is its end alone; one with no steps is `from` alone; a blocked route is
+ * null. The route panel draws and fits it.
+ */
+export function wayIn(route: Route, from: RoomId): RoomId[] | null {
+  return legsOf(route, from).at(-1)?.rooms ?? null;
+}
+
 /** How a stretch on a page is reached from the stretch before it. */
 export type JoinKind = 'up' | 'down' | 'jump' | 'onward';
 

@@ -92,6 +92,7 @@ import {
   within,
   zoomedAt,
   type Box,
+  type FitKeep,
   type MapView as View
 } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
@@ -136,6 +137,8 @@ export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport' | 'o
    * on identity, so a new set is a new fit.
    */
   fit?: ReadonlySet<RoomId> | null;
+  /** What the fit gives up when the widest zoom cannot hold it (`FitKeep`). */
+  fitKeep?: FitKeep;
   /**
    * Bumped to bring the eye back to the centre when the centre itself has
    * not changed: the Map card's locate button, after a pan or a look.
@@ -177,6 +180,7 @@ function MapView({
   name,
   onLook,
   fit = null,
+  fitKeep = 'all',
   home = 0,
   legend = DEFAULT_MAP_LEGEND,
   ...picture
@@ -303,13 +307,13 @@ function MapView({
     if (!fitting || map.centre !== centre) return;
     if (fitted.current.rooms !== fit) fitted.current = { rooms: fit, perRoom: Infinity };
     const state = fitted.current;
-    const next = fittedTo(map.cells, fit, size, bounds);
+    const next = fittedTo(map.cells, fit, size, bounds, fitKeep);
     // A narrower fetch places fewer of the rooms; the wider fit stands.
     if (next === null || next.perRoom > state.perRoom) return;
     state.perRoom = next.perRoom;
     setPan(next.pan);
     onZoom(next.perRoom);
-  }, [fitting, fit, map, centre, size, bounds, setPan, onZoom]);
+  }, [fitting, fit, fitKeep, map, centre, size, bounds, setPan, onZoom]);
 
   /* The latest of what the fetch reports to, read from inside its promise. */
   const loaded = useRef(onLoaded);

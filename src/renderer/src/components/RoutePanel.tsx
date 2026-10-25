@@ -15,6 +15,7 @@ import { corridorTitle } from '../lib/corridor';
 import { healthShareWords } from '../lib/healthShare';
 import { t } from '../lib/i18n';
 import { type MapLoader } from '@shared/map';
+import { wayIn } from '@shared/routeLegs';
 import { errorMessage } from '@shared/values';
 import { CLIENT_KEYS } from '@shared/keys';
 import {
@@ -650,6 +651,18 @@ export default function RoutePanel({
     () => (target === null ? null : roomId(target.map, target.room)),
     [target]
   );
+  /*
+   * The way in on the way shown, drawn as the trail and fitted, the end kept,
+   * so the picture holds the way in as well as the room it ends in. A way in
+   * of one room (it arrives by a way up or down, a portal or a typed exit) is
+   * not fitted, or a one-room fit would zoom right in. With *Stop before
+   * entering* on it ends where the walk does, a room short, as `walk()` trims it.
+   */
+  const trail = useMemo(() => {
+    if (shown === null || shown.blocked || centre === null) return null;
+    return wayIn(stopping ? stoppedBefore(shown) : shown, shown.steps[0]?.from ?? centre);
+  }, [shown, stopping, centre]);
+  const fit = useMemo(() => (trail !== null && trail.length > 1 ? new Set(trail) : null), [trail]);
   /* One element for as long as the reason holds, so the view's memo holds too. */
   const empty = useMemo(() => <div className="empty">{t('cards.map.emptyNoWorldData')}</div>, []);
 
@@ -1072,12 +1085,15 @@ export default function RoutePanel({
                     centre={centre}
                     empty={empty}
                     finds={finds}
+                    fit={fit}
+                    fitKeep="end"
                     focus="destination"
                     load={onLoadMap}
                     name="route"
                     onPeek={onPeek === null ? undefined : peek}
                     onPeekEnd={onPeekEnd ?? undefined}
                     onZoom={setZoom}
+                    {...(trail === null ? {} : { path: trail })}
                     zoom={zoom}
                   />
                 </div>

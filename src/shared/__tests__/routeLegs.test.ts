@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { legsOf, pageWalking, pagesOf, type PageMaps } from '../routeLegs';
+import { legsOf, pageWalking, pagesOf, wayIn, type PageMaps } from '../routeLegs';
 import { inWindow, NO_EXTENT, type LocalMap, type MapCell } from '../map';
 import type { Route, RouteStep } from '../world';
 
@@ -278,5 +278,23 @@ describe('finding the page a walk is on', () => {
     expect(pageWalking(legs, 5)).toBeNull();
     expect(pageWalking(legs, -1)).toBeNull();
     expect(pageWalking([], 0)).toBeNull();
+  });
+});
+
+describe('the way into a destination', () => {
+  const up = step('1/11', '2/5', { direction: 'u', command: 'u' });
+
+  it('runs back to the last way up', () => {
+    const way = route([step('1/10', '1/11'), up, step('2/5', '2/6'), step('2/6', '2/7')]);
+    expect(wayIn(way, '1/10')).toEqual(['2/5', '2/6', '2/7']);
+  });
+
+  it('is the destination alone when the way up arrives in it', () => {
+    expect(wayIn(route([step('1/10', '1/11'), up]), '1/10')).toEqual(['2/5']);
+  });
+
+  it('is the room stood in alone with no steps, and nothing for a blocked route', () => {
+    expect(wayIn(route([]), '2/7')).toEqual(['2/7']);
+    expect(wayIn(route([step('1/10', '1/11')], true), '1/10')).toBeNull();
   });
 });
