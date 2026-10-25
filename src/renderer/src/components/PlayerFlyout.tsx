@@ -21,6 +21,7 @@ import {
   grantFor,
   judgeRemote,
   judgedByGrant,
+  partyGrant,
   type RemoteGrant,
   type RemoteName
 } from '@shared/remotes';
@@ -913,7 +914,7 @@ function PlayerAccess({
           allow={grant.allow}
           deny={grant.deny}
           fromGang={inGang === true ? remotes.gang : []}
-          fromParty={inParty ? remotes.party : []}
+          fromParty={inParty ? partyGrant(remotes) : []}
           mode="player"
           onSet={(remote, stance) =>
             set({

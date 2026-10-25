@@ -6,6 +6,7 @@ import { t } from '../lib/i18n';
 import {
   GRANTABLE_REMOTES,
   isGrantable,
+  PARTY_GRANTS,
   REMOTE_NAMES,
   REMOTES,
   type RemoteName,
@@ -127,7 +128,9 @@ export default function RemoteList({
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = REMOTE_NAMES.filter((name) => terms.every((term) => `@${name}`.includes(term)));
 
-  const granted = GRANTABLE_REMOTES.filter((name) => allowed.has(name)).length;
+  // The party's list also holds what joining grants, which no toggle takes off (`PARTY_GRANTS`).
+  const joined = mode === 'party' ? new Set(PARTY_GRANTS) : new Set<RemoteName>();
+  const granted = GRANTABLE_REMOTES.filter((name) => allowed.has(name) || joined.has(name)).length;
 
   return (
     <div className="remote-list" data-mode={mode} data-setting={setting}>
@@ -209,6 +212,10 @@ export default function RemoteList({
                     {spec.support === 'unread'
                       ? t('remotes.support.unread')
                       : t('remotes.support.refused')}
+                  </span>
+                ) : joined.has(name) ? (
+                  <span className="chip" title={t('remotes.byJoiningTitle', { remote: name })}>
+                    {t('remotes.byJoining')}
                   </span>
                 ) : mode !== 'player' ? (
                   <button

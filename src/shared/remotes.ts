@@ -472,9 +472,9 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
    * `@where` with the ambiguity taken out, and `@comeback` made possible by
    * the same fact. See the note beside them in `REMOTE_NAMES`.
    *
-   * `comeback-room` is `acted` and **not** granted by anything shipped: it
-   * walks this character across the realm on somebody else's word, which is
-   * more authority than any other grant in the table carries. `where-room` is
+   * `comeback-room` is `acted` and granted only by joining the party
+   * (`PARTY_GRANTS`): it walks this character across the realm on somebody
+   * else's word, more authority than any list grant carries. `where-room` is
    * `answered` and is granted wherever `where` is, by migration, because they
    * are the same question and the asker picks the wording.
    */
@@ -1551,7 +1551,7 @@ export function judgeRemote(
   const fromGang = has(access.gang, name);
   if (fromGang && evidence.inGang === true) return { allowed: true, because: 'gang' };
 
-  const fromParty = has(access.party, name);
+  const fromParty = has(partyGrant(access), name);
   if (fromParty && evidence.inParty) return { allowed: true, because: 'party' };
 
   return {
@@ -1605,7 +1605,26 @@ export const ACTIONABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isA
  * send on a party grant (todo 20261023-1950-01): the realm drops a held member
  * as the leader steps off, before its `@comeback` arrives (Killa, 2026-10-24).
  */
-export const PACING_REMOTES: readonly RemoteName[] = ['wait', 'ok', 'held', 'comeback'];
+export const PACING_REMOTES: readonly RemoteName[] = [
+  'wait',
+  'ok',
+  'held',
+  'comeback',
+  'comeback-room'
+];
+
+/**
+ * What joining the party grants whatever the lists say (the user, 2026-10-25:
+ * "if the party leader invites someone and it is accepted, it is understood
+ * that comeback is allowed"): a held member asking the leader back to it, by
+ * the trail or to its room. A deny by name still refuses it.
+ */
+export const PARTY_GRANTS: readonly RemoteName[] = ['comeback', 'comeback-room'];
+
+/** What a joined member may ask for: the party list and what joining grants. One reading for the judge and the flyout. */
+export function partyGrant(access: Pick<RemoteAccess, 'party'>): RemoteName[] {
+  return [...new Set([...access.party, ...PARTY_GRANTS])];
+}
 
 /**
  * Whether a grant can carry `name`: one this client answers, or one of the

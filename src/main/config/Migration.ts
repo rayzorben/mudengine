@@ -2319,10 +2319,8 @@ const LOOT_DISCARD_COMMENT = ` Which coins to put back on the floor whenever any
  * then saw the question refused would be refused for a wording they never
  * chose and cannot see, which is the shape a permission must not have.
  *
- * `comeback-room` is deliberately **not** carried anywhere by this. It walks
- * this character across the realm on somebody else's word — more authority
- * than any grant in the table has ever carried — and nothing on disk can imply
- * a decision nobody has made.
+ * `comeback-room` is not carried anywhere by this: joining the party grants
+ * it in code (`PARTY_GRANTS`, the user, 2026-10-25), and nothing else may.
  *
  * Every list: the gang's, the party's, and each player's `allow`. A `deny` is
  * left exactly as it is, for the same reason: adding a name to one would be

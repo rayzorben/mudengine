@@ -6,17 +6,26 @@
  * `restTo`) or a condition its walk stands still for (`afflictionHolding`).
  * The server's rest flag is not one: nothing stands a rested character up, so
  * an `@ok` that waited for it went out after the bar was full (the user,
- * 2026-10-10, Brakkle). `mudengine-automation` › parts/remotes.md.
+ * 2026-10-10, Brakkle). Held, it says `@held` after the wait, and dropped
+ * from the party while held (`You are no longer following <leader>.`) asks
+ * that leader `@comeback` once, as MegaMUD does (todo 20261024-1900-02).
+ * `mudengine-automation` › parts/remotes.md.
  */
 import { tuning } from '../app/tuning';
+import type { Block } from '../../shared/blocks';
 import { leaderOf, type CharacterState } from '../../shared/character';
 import { stillFor, type AutomationConfig } from '../../shared/config';
 import { waitArgument, type WaitReason } from '../../shared/remotes';
 import { afflictionHolding } from '../../shared/walk';
 
 export interface FollowerPacingEvents {
-  /** Telepath the leader `@wait` (with its bracket) or `@ok`. */
-  tell(leader: string, name: 'wait' | 'ok', state: CharacterState, argument?: string): void;
+  /** Telepath the leader `@wait` (with its bracket), `@held`, `@ok` or `@comeback`. */
+  tell(
+    leader: string,
+    name: 'wait' | 'held' | 'ok' | 'comeback',
+    state: CharacterState,
+    argument?: string
+  ): void;
 }
 
 export class FollowerPacing {
@@ -24,6 +33,8 @@ export class FollowerPacing {
   private reason: WaitReason | null = null;
   /** Whether this character's own walk stood still for each vital at the last state. */
   private readonly still = { health: false, mana: false };
+  /** Whether this hold has asked its leader back already: once a hold. */
+  private askedBack = false;
 
   constructor(
     private config: AutomationConfig,
@@ -36,6 +47,7 @@ export class FollowerPacing {
 
   reset(): void {
     this.reason = null;
+    this.askedBack = false;
     this.still.health = false;
     this.still.mana = false;
   }
@@ -55,11 +67,29 @@ export class FollowerPacing {
     const reason = leaderResting(state) ? null : this.reasonFor(state);
     const was = this.reason;
     this.reason = reason;
-    if (was === reason || !this.config.enabled || !this.config.remotes.enabled) return;
+    if (reason !== 'held') this.askedBack = false;
+    if (was === reason || !this.sending()) return;
     const leader = state.party.following;
     if (leader === null) return;
-    if (reason === null) this.events.tell(leader, 'ok', state);
-    else this.events.tell(leader, 'wait', state, waitArgument(reason));
+    if (reason === null) {
+      this.events.tell(leader, 'ok', state);
+      return;
+    }
+    this.events.tell(leader, 'wait', state, waitArgument(reason));
+    if (reason === 'held') this.events.tell(leader, 'held', state);
+  }
+
+  /** The realm dropping this character from the party while it is held: the leader asked back. */
+  onBlock(block: Block, state: CharacterState): void {
+    const leader = block.type === 'party-left' ? block.groups['leader'] : undefined;
+    if (leader === undefined || this.reason !== 'held' || this.askedBack) return;
+    if (!this.sending()) return;
+    this.askedBack = true;
+    this.events.tell(leader, 'comeback', state);
+  }
+
+  private sending(): boolean {
+    return this.config.enabled && this.config.remotes.enabled;
   }
 
   private reasonFor(state: CharacterState): WaitReason | null {

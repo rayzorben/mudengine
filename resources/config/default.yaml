@@ -1429,6 +1429,9 @@ automation:
   # `deny` beats everything, which is what makes "the party, except Corwin"
   # expressible; `allow` grants whether or not they are in the gang or party;
   # anything in neither list falls through to `gang` and then to `party`.
+  # Joining the party grants @comeback and @comeback-room whatever the lists
+  # say, so a held member can ask the leader back. A `deny` by name still
+  # refuses them.
   # `autoInvite: true` sends them `invite` when they are in the room with this
   # character, unless they are already in the party or invited, or this
   # character is following somebody (Invite When Seen on the Player flyout).

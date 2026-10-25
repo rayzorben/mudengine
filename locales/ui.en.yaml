@@ -727,8 +727,8 @@ notices:
       what the pack holds; a party leader asks it before walking a way a room spell hurts on.'
     roomRemoteFollowsWhere: "@where-room was added next to @where in {count} permission lists in
       {file}. It answers the same question with the room's map number instead of its name, and the
-      person asking chooses which to send. @comeback-room was not added anywhere, because it lets
-      someone else walk this character, and that should be a deliberate choice."
+      person asking chooses which to send. @comeback-room was not added to any list; joining the
+      party grants it."
     partyRemotesStated: '"automation.remotes.party" was added to {file}. It lists the remote
       commands anyone who has joined this character''s party may use. It comes with @health,
       @bless-expired and @heal, which is what the client already answered. Nothing changes until
@@ -8079,6 +8079,9 @@ remotes:
   findPlaceholder: Find an @ command
   fromGang: from the gang
   fromParty: from the party
+  byJoining: by joining
+  byJoiningTitle: Anyone who has joined this party may ask for @{remote}, so a held member can ask
+    the leader back. Deny it by name on the Player card to refuse one person.
   granted: '{granted} of {total} granted'
   noMatch: No @ command matches "{query}".
   on: 'On'

@@ -575,6 +575,7 @@ export class Remotes implements SessionModule {
     this.invites.onBlock(block, state);
     this.leaderDoors.onBlock(block, state);
     this.hands.onBlock(block, state);
+    this.pacing.onBlock(block, state);
     if (!this.config.remotes.enabled) return;
     /*
      * The master switch holds what is sent (`askJoined`, `answer`), never
@@ -1626,11 +1627,11 @@ export class Remotes implements SessionModule {
         /*
          * *Come to where I am*, with where that is stated rather than named.
          * This is the one command in the vocabulary that walks this character
-         * across the realm on somebody else's word, which is why nothing
-         * shipped grants it and why the address is parsed into a pair of
-         * numbers or refused — `parseRoomAddress` returns null and nothing is
-         * sent, rather than a walk aimed at whatever a malformed argument
-         * happened to resemble.
+         * across the realm on somebody else's word, which is why only joining
+         * the party grants it (`PARTY_GRANTS`) and why the address is parsed
+         * into a pair of numbers or refused — `parseRoomAddress` returns null
+         * and nothing is sent, rather than a walk aimed at whatever a
+         * malformed argument happened to resemble.
          */
         const where = parseRoomAddress(command.argument);
         if (where === null) {

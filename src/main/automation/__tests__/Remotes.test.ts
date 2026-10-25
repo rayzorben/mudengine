@@ -2527,7 +2527,8 @@ describe('party pacing', () => {
       queue,
       {
         notice: (m) => notices.push(m),
-        pace: (who, ready) => paced.push(`${who}:${ready ? 'ok' : 'wait'}`)
+        pace: (who, ready) => paced.push(`${who}:${ready ? 'ok' : 'wait'}`),
+        peer: (who) => recordOf(registry, who)
       }
     );
   };
@@ -2661,8 +2662,52 @@ describe('party pacing', () => {
       "/Soul @wait (HP's too low)",
       '/Soul @ok',
       "/Soul @wait (can't move)",
+      '/Soul @held',
       '/Soul @ok'
     ]);
+  });
+
+  /*
+   * Todo 20261024-1900-02: Killa (MegaMUD 2.1) sent `@wait (can't move)`,
+   * `@held`, then `@comeback` after the realm dropped it as Festus stepped off.
+   */
+  describe('dropped from the party while held', () => {
+    const held = (yes: boolean, following: string | null = 'Soul'): CharacterState =>
+      who({
+        room: { ...EMPTY_CHARACTER.room, map: 1, number: 30 },
+        vitals: { ...EMPTY_CHARACTER.vitals, hp: 100, hpMax: 100 },
+        afflictions: { ...EMPTY_CHARACTER.afflictions, held: yes ? 'yes' : 'no' },
+        party: { engaged: {}, threatened: {}, following, members: [member('Soul', 1)] }
+      });
+    const dropped = (leader: string): Block =>
+      ({ type: 'party-left', domain: 'presence', groups: { leader } }) as unknown as Block;
+
+    it('asks the leader @comeback once, and not when it was not held', () => {
+      const remotes = make({});
+      remotes.onCharacter(held(true));
+      remotes.onBlock(dropped('Soul'), held(true, null));
+      remotes.onBlock(dropped('Soul'), held(true, null));
+      drain();
+      expect(sent).toEqual(["/Soul @wait (can't move)", '/Soul @held', '/Soul @comeback']);
+      // And a fresh follower dropped while free asks nothing.
+      sent.length = 0;
+      const free = make({});
+      free.onCharacter(held(false));
+      free.onBlock(dropped('Soul'), held(false, null));
+      drain();
+      expect(sent).toEqual([]);
+    });
+
+    it('asks a leader running this client to come to its room', () => {
+      registry = {
+        soul: { ...(recordOf(NO_PLAYERS, 'Soul') ?? {}), name: 'Soul', extendedRemotes: 'yes' }
+      } as never;
+      const remotes = make({});
+      remotes.onCharacter(held(true));
+      remotes.onBlock(dropped('Soul'), held(true, null));
+      drain();
+      expect(sent.at(-1)).toBe('/Soul @comeback-room 1/30');
+    });
   });
 });
 
