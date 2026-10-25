@@ -1602,12 +1602,15 @@ function writeSupplies(document: Document, supplies: SuppliesConfig): void {
  * where no room was chosen.
  */
 function writeSupplyItems(document: Document, items: readonly SupplyItem[]): void {
+  // A collected-only row has no minimum; each switch is written only off its default.
   const rows = items.map((item) => ({
     name: item.name,
-    min: item.min,
+    ...(item.buy ? { min: item.min } : {}),
     max: item.max,
     shop: item.shop,
-    ...(item.at === null ? {} : { at: { map: item.at.map, room: item.at.room } })
+    ...(item.at === null ? {} : { at: { map: item.at.map, room: item.at.room } }),
+    ...(item.buy ? {} : { buy: false }),
+    ...(item.doneOnFound ? { doneOnFound: true } : {})
   }));
   // A node made here, so the rows are styled whether or not a list was there.
   const list = document.createNode(rows);

@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import Icon from './Icon';
-import { type SupplyItem } from '@shared/packConfig';
+import { BOUGHT_ROW, type SupplyItem } from '@shared/packConfig';
 import { stockCeiling, supplyFor, type SupplyCounters } from '@shared/supplies';
 import type { ShopPlace } from '@shared/world';
 import { keepFocus } from '../lib/focus';
@@ -213,19 +213,22 @@ export function SupplyControl({
   const known = choices.some((choice) => choice.key === current);
   const write = (patch: Partial<SupplyItem>): void =>
     supplies.edit(name, (current) => ({
-      ...(current ?? { name, min: 0, max: 0, shop: '', at: null }),
+      ...(current ?? { name, min: 0, max: 0, shop: '', at: null, ...BOUGHT_ROW }),
       ...patch
     }));
   return (
     <>
       <dt>{t('cards.self.supplies.keepLabel')}</dt>
       <dd className="supply-control">
-        <CountField
-          label={t('cards.self.supplies.min')}
-          name={`supply-min-${name}`}
-          onCommit={(min) => write({ min })}
-          value={row?.min ?? 0}
-        />
+        {/* A row collected only where it is found has no minimum (todo 20261024-1810-01). */}
+        {(row?.buy ?? true) && (
+          <CountField
+            label={t('cards.self.supplies.min')}
+            name={`supply-min-${name}`}
+            onCommit={(min) => write({ min })}
+            value={row?.min ?? 0}
+          />
+        )}
         <CountField
           shown={(max) => stockCeiling({ min: row?.min ?? 0, max })}
           label={t('cards.self.supplies.max')}
@@ -233,6 +236,24 @@ export function SupplyControl({
           onCommit={(max) => write({ max })}
           value={row?.max ?? 0}
         />
+        <label title={t('cards.self.supplies.buyTooltip')}>
+          <input
+            checked={row?.buy ?? true}
+            name={`supply-buy-${name}`}
+            onChange={(event) => write({ buy: event.target.checked })}
+            type="checkbox"
+          />
+          <span>{t('cards.self.supplies.buy')}</span>
+        </label>
+        <label title={t('cards.self.supplies.doneOnFoundTooltip')}>
+          <input
+            checked={row?.doneOnFound ?? false}
+            name={`supply-done-${name}`}
+            onChange={(event) => write({ doneOnFound: event.target.checked })}
+            type="checkbox"
+          />
+          <span>{t('cards.self.supplies.doneOnFound')}</span>
+        </label>
         {row !== null && (
           <button
             className="row-action"

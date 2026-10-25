@@ -3,7 +3,7 @@
  * the Self card in the renderer so the two cannot count differently.
  */
 import type { CharacterState } from './character';
-import { type SupplyItem } from './packConfig';
+import { settledSupply, type SupplyItem } from './packConfig';
 import { bareName } from './items';
 import { nameAnswersTo, type RoomId } from './world';
 
@@ -33,6 +33,11 @@ export function stockCeiling(item: Pick<SupplyItem, 'min' | 'max'>): number {
   return Math.max(item.min, item.max);
 }
 
+/** Takes a row off this character's supplies list on disk (`FoundSupplies`); whether it was written. */
+export interface SupplyListWriter {
+  dropSupply(name: string): boolean;
+}
+
 /** The row on the list that names this item, by the same matching, or null. */
 export function supplyFor(items: readonly SupplyItem[], name: string): SupplyItem | null {
   const typed = bareName(name);
@@ -42,9 +47,9 @@ export function supplyFor(items: readonly SupplyItem[], name: string): SupplyIte
 /**
  * The list with one row replaced, added or removed, by name.
  *
- * `null` removes; a row with a zero minimum is kept only if it names a shop,
- * because "keep none, buy none" is a row that does nothing — but a shop chosen
- * ahead of a minimum is a preference worth keeping.
+ * `null` removes; a bought row with no minimum, maximum or shop does nothing
+ * and is dropped, though a shop chosen ahead of a minimum is kept. A collected
+ * row is kept at a maximum of at least one (`settledSupply`).
  */
 export function withSupply(
   items: readonly SupplyItem[],
@@ -54,8 +59,8 @@ export function withSupply(
   const typed = bareName(name);
   const rest = items.filter((item) => bareName(item.name) !== typed);
   if (row === null) return rest;
-  if (row.min <= 0 && row.max <= 0 && row.shop.length === 0) return rest;
-  return [...rest, { ...row, max: stockCeiling(row) }];
+  if (row.buy && row.min <= 0 && row.max <= 0 && row.shop.length === 0) return rest;
+  return [...rest, settledSupply(row)];
 }
 
 /** Whether a row leaves the counter to the realm (todo 49): no shop and no room named. */

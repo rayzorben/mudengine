@@ -23,7 +23,15 @@ function errands(world: Record<string, unknown>): Errands {
   );
 }
 
-const ROW: SupplyItem = { name: 'torch', min: 3, max: 5, shop: '', at: null };
+const ROW: SupplyItem = {
+  name: 'torch',
+  min: 3,
+  max: 5,
+  shop: '',
+  at: null,
+  buy: true,
+  doneOnFound: false
+};
 
 describe('the counter a supply row is bought at', () => {
   it('is the room the row names, never the nearest', () => {

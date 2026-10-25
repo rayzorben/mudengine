@@ -170,8 +170,24 @@ describe('useCardContext', () => {
             : pending
       }
     ) as CardContextInputs['api'];
-    const torch: SupplyItem = { name: 'torch', min: 1, max: 2, shop: '', at: null };
-    const rope: SupplyItem = { name: 'rope', min: 1, max: 1, shop: '', at: null };
+    const torch: SupplyItem = {
+      name: 'torch',
+      min: 1,
+      max: 2,
+      shop: '',
+      at: null,
+      buy: true,
+      doneOnFound: false
+    };
+    const rope: SupplyItem = {
+      name: 'rope',
+      min: 1,
+      max: 1,
+      shop: '',
+      at: null,
+      buy: true,
+      doneOnFound: false
+    };
     const drawn = [torch, rope];
     probe.render(
       createElement(Probe, {
@@ -220,9 +236,33 @@ describe('the supplies bundle', () => {
     return null;
   }
 
-  const torch: SupplyItem = { name: 'torch', min: 3, max: 6, shop: 'General Store', at: null };
-  const rope: SupplyItem = { name: 'rope', min: 1, max: 2, shop: '', at: null };
-  const flask: SupplyItem = { name: 'flask', min: 1, max: 1, shop: '', at: null };
+  const torch: SupplyItem = {
+    name: 'torch',
+    min: 3,
+    max: 6,
+    shop: 'General Store',
+    at: null,
+    buy: true,
+    doneOnFound: false
+  };
+  const rope: SupplyItem = {
+    name: 'rope',
+    min: 1,
+    max: 2,
+    shop: '',
+    at: null,
+    buy: true,
+    doneOnFound: false
+  };
+  const flask: SupplyItem = {
+    name: 'flask',
+    min: 1,
+    max: 1,
+    shop: '',
+    at: null,
+    buy: true,
+    doneOnFound: false
+  };
 
   function draw(drawn: () => SupplyItem[]): {
     out: MutableRefObject<Contexts | null>;

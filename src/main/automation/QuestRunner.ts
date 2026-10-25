@@ -29,7 +29,7 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import { type QuestsConfig } from '../../shared/config';
-import { type SupplyItem } from '../../shared/packConfig';
+import { BOUGHT_ROW, type SupplyItem } from '../../shared/packConfig';
 import {
   IDLE_QUEST_RUN,
   stepRoll,
@@ -620,7 +620,8 @@ export class QuestRunner implements SessionModule {
           min: count,
           max: count,
           shop: source.shops[0] ?? '',
-          at: at === null ? null : { map: at.map, room: at.room }
+          at: at === null ? null : { map: at.map, room: at.room },
+          ...BOUGHT_ROW
         };
         /*
          * And a shopping errand that would not *start* is the same kind of

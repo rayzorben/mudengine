@@ -82,6 +82,8 @@ import type { FloorGearReader } from '../../shared/upgrades';
 import { tuning } from '../app/tuning';
 import type { FloorAfterKill } from './FloorAfterKill';
 import { FoundGear } from './FoundGear';
+import { FoundSupplies } from './FoundSupplies';
+import type { SupplyListWriter } from '../../shared/supplies';
 import type { SessionModule } from './Module';
 
 /**
@@ -149,6 +151,8 @@ function pickedBeforeThePurse(
 
 /** What the loot reads besides its configuration, named (todo 760). */
 export interface AutoLootDeps {
+  /** Where a row done once found is taken off the list (`FoundSupplies`); absent, nothing is. */
+  readonly supplyList?: SupplyListWriter;
   /**
    * The realm's row for a name on the floor, whole; omitted, the wire's own
    * entity, which is what a realm with no data says.
@@ -232,6 +236,8 @@ export class AutoLoot implements SessionModule {
   private readonly floor: FloorAfterKill;
   /** Gear better than what is worn: taken, then put on (todo 77). */
   private readonly found: FoundGear;
+  /** Rows done once found, taken off the list at their maximum. See `FoundSupplies`. */
+  private readonly foundSupplies: FoundSupplies;
   /** Whether a `get` this module asked for is still waiting its turn: a walk out waits on it. */
   readonly taking: () => boolean;
 
@@ -256,6 +262,7 @@ export class AutoLoot implements SessionModule {
     this.taking = () => queue.queued((intent) => intent.coalesceKey?.startsWith(TAKE_KEY) === true);
     this.floor = deps.floor;
     this.found = new FoundGear(queue, deps.floorGear, this.notice);
+    this.foundSupplies = new FoundSupplies(deps.supplyList, this.notice);
   }
 
   /** Whether the floor read asked after a kill is unanswered — the walk waits on it. */
@@ -323,6 +330,7 @@ export class AutoLoot implements SessionModule {
     this.coinsFor = null;
     this.floor.reset();
     this.found.reset();
+    this.foundSupplies.reset();
   }
 
   /**
@@ -333,6 +341,8 @@ export class AutoLoot implements SessionModule {
    * is the one the block has already been folded into.
    */
   onCharacter(state: CharacterState): void {
+    // With Auto-Buy off the list is kept whole, done once found included.
+    if (this.supplies.enabled) this.foundSupplies.onCharacter(state, this.supplies.items);
     /*
      * The release, before any gate: a count that has moved is an ask the
      * server has answered one way or the other, and the denomination is free
@@ -399,6 +409,7 @@ export class AutoLoot implements SessionModule {
     }
     // The pack confirming a pick-up frees the name for the next drop.
     if (block.type === 'player-gets' && block.groups['player'] === undefined) {
+      if (this.supplies.enabled) this.foundSupplies.onBlock(block, this.supplies.items);
       const item = block.groups['item'];
       if (item) this.attempted.delete(item.toLowerCase());
       return;

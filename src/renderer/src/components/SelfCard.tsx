@@ -434,15 +434,19 @@ function SelfCard({
       from: 'medium',
       label: t('cards.self.supplies.min'),
       numeric: true,
-      value: (row) => row.min,
-      cell: (row) => (
-        <CountInput
-          className="supply-cell"
-          label={t('cards.self.supplies.min')}
-          onCommit={(min) => editCount(supplies, row.name, { min })}
-          value={row.min}
-        />
-      )
+      value: (row) => (row.buy ? row.min : null),
+      // A row collected only where it is found has no minimum (todo 20261024-1810-01).
+      cell: (row) =>
+        row.buy ? (
+          <CountInput
+            className="supply-cell"
+            label={t('cards.self.supplies.min')}
+            onCommit={(min) => editRow(supplies, row.name, { min })}
+            value={row.min}
+          />
+        ) : (
+          <span className="inert">—</span>
+        )
     },
     {
       id: 'max',
@@ -455,7 +459,7 @@ function SelfCard({
           className="supply-cell"
           shown={(max) => stockCeiling({ min: row.min, max })}
           label={t('cards.self.supplies.max')}
-          onCommit={(max) => editCount(supplies, row.name, { max })}
+          onCommit={(max) => editRow(supplies, row.name, { max })}
           value={row.max}
         />
       )
@@ -464,15 +468,53 @@ function SelfCard({
       id: 'shop',
       from: 'medium',
       label: t('cards.self.supplies.columnShop'),
-      value: (row) => (row.shop.length > 0 ? row.shop : null),
+      value: (row) => (row.buy && row.shop.length > 0 ? row.shop : null),
       cell: (row) =>
-        row.shop.length > 0 ? (
+        !row.buy ? (
+          <span className="slot" title={t('cards.self.supplies.collectOnlyTooltip')}>
+            {t('cards.self.supplies.collectOnly')}
+          </span>
+        ) : row.shop.length > 0 ? (
           <span className="slot" title={row.at ? `${row.at.map}/${row.at.room}` : undefined}>
             {row.shop}
           </span>
         ) : (
           <NearestShop counter={counters?.[row.name]} failed={failed} />
         )
+    },
+    {
+      id: 'buy',
+      from: 'medium',
+      label: t('cards.self.supplies.buy'),
+      control: true,
+      unsearchable: true,
+      value: (row) => (row.buy ? 1 : 0),
+      cell: (row) => (
+        <input
+          aria-label={t('cards.self.supplies.buy')}
+          checked={row.buy}
+          onChange={(event) => editRow(supplies, row.name, { buy: event.target.checked })}
+          title={t('cards.self.supplies.buyTooltip')}
+          type="checkbox"
+        />
+      )
+    },
+    {
+      id: 'done',
+      from: 'medium',
+      label: t('cards.self.supplies.doneOnFound'),
+      control: true,
+      unsearchable: true,
+      value: (row) => (row.doneOnFound ? 1 : 0),
+      cell: (row) => (
+        <input
+          aria-label={t('cards.self.supplies.doneOnFound')}
+          checked={row.doneOnFound}
+          onChange={(event) => editRow(supplies, row.name, { doneOnFound: event.target.checked })}
+          title={t('cards.self.supplies.doneOnFoundTooltip')}
+          type="checkbox"
+        />
+      )
     },
     {
       id: 'remove',
@@ -541,15 +583,18 @@ function SelfCard({
       paned: true,
       copyText: () =>
         rows
-          .map((row) =>
-            t('cards.self.supplies.copyRow', {
-              item: row.name,
-              have: carriedCount(character, row.name),
-              min: row.min,
-              max: row.max,
-              shop: row.shop
-            })
-          )
+          .map((row) => {
+            const have = carriedCount(character, row.name);
+            return row.buy
+              ? t('cards.self.supplies.copyRow', {
+                  item: row.name,
+                  have,
+                  min: row.min,
+                  max: row.max,
+                  shop: row.shop
+                })
+              : t('cards.self.supplies.copyRowCollected', { item: row.name, have, max: row.max });
+          })
           .join('\n')
     }
   ];
@@ -581,12 +626,9 @@ function SelfCard({
  * A count typed on a row, written onto that row as the newest list has it. A
  * row removed while the figure was being typed stays removed.
  */
-function editCount(
-  supplies: SupplyList,
-  name: string,
-  count: Pick<SupplyItem, 'min'> | Pick<SupplyItem, 'max'>
-): void {
-  supplies.edit(name, (current) => (current === null ? null : { ...current, ...count }));
+/** One field of a row changed, the rest kept (`withSupply` settles the row). */
+function editRow(supplies: SupplyList, name: string, change: Partial<SupplyItem>): void {
+  supplies.edit(name, (current) => (current === null ? null : { ...current, ...change }));
 }
 
 function selfCopy(character: CharacterState, title: string): string {

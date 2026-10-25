@@ -4,6 +4,7 @@ import { CheckField } from './FormField';
 import { wholeOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import {
+  BOUGHT_ROW,
   SUPPLY_COUNT_MAX,
   supplyChoices,
   type SuppliesConfig,
@@ -87,17 +88,20 @@ export default function SupplyRows({ supplies, idPrefix, onChange }: SupplyRowsP
                   placeholder={t('settings.movement.suppliesNamePlaceholder')}
                   value={row.name}
                 />
-                <label>
-                  <span>{t('cards.self.supplies.min')}</span>
-                  <input
-                    aria-label={t('settings.movement.suppliesMinAria', { number: index + 1 })}
-                    className="number"
-                    inputMode="numeric"
-                    name={`${idPrefix}supplies-${index}-min`}
-                    onChange={(event) => update(index, { min: count(event.target.value) })}
-                    value={row.min}
-                  />
-                </label>
+                {/* A row collected only where it is found has no minimum (todo 20261024-1810-01). */}
+                {row.buy && (
+                  <label>
+                    <span>{t('cards.self.supplies.min')}</span>
+                    <input
+                      aria-label={t('settings.movement.suppliesMinAria', { number: index + 1 })}
+                      className="number"
+                      inputMode="numeric"
+                      name={`${idPrefix}supplies-${index}-min`}
+                      onChange={(event) => update(index, { min: count(event.target.value) })}
+                      value={row.min}
+                    />
+                  </label>
+                )}
                 <label>
                   <span>{t('cards.self.supplies.max')}</span>
                   <input
@@ -109,7 +113,31 @@ export default function SupplyRows({ supplies, idPrefix, onChange }: SupplyRowsP
                     value={row.max}
                   />
                 </label>
-                <span>{row.shop.length > 0 ? row.shop : t('cards.self.supplies.noShop')}</span>
+                <label title={t('cards.self.supplies.buyTooltip')}>
+                  <input
+                    checked={row.buy}
+                    name={`${idPrefix}supplies-${index}-buy`}
+                    onChange={(event) => update(index, { buy: event.target.checked })}
+                    type="checkbox"
+                  />
+                  <span>{t('cards.self.supplies.buy')}</span>
+                </label>
+                <label title={t('cards.self.supplies.doneOnFoundTooltip')}>
+                  <input
+                    checked={row.doneOnFound}
+                    name={`${idPrefix}supplies-${index}-done`}
+                    onChange={(event) => update(index, { doneOnFound: event.target.checked })}
+                    type="checkbox"
+                  />
+                  <span>{t('cards.self.supplies.doneOnFound')}</span>
+                </label>
+                <span>
+                  {!row.buy
+                    ? t('cards.self.supplies.collectOnly')
+                    : row.shop.length > 0
+                      ? row.shop
+                      : t('cards.self.supplies.noShop')}
+                </span>
                 <button
                   aria-label={t('cards.self.supplies.removeTooltip', { item: row.name })}
                   className="quiet"
@@ -126,7 +154,9 @@ export default function SupplyRows({ supplies, idPrefix, onChange }: SupplyRowsP
       )}
       <button
         className="quiet add-step"
-        onClick={() => setItems([...items, { name: '', min: 1, max: 1, shop: '', at: null }])}
+        onClick={() =>
+          setItems([...items, { name: '', min: 1, max: 1, shop: '', at: null, ...BOUGHT_ROW }])
+        }
         type="button"
       >
         <Icon name="plus" />

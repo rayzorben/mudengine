@@ -719,6 +719,8 @@ notices:
         you add one.'
     pathFollowsStatus: '@path was added next to @status in {count} permission lists. Both say
       where the character is going.'
+    collectedRows: '{count} supplies rows with no minimum and no shop are now set to pick up only;
+      nothing ever bought them.'
     heldFollowsWait: '@held and @comeback were added next to @wait in {count} permission lists. All
       three are a member saying it cannot keep up.'
     stoppersFollowHave: '@stoppers was added next to @have in {count} permission lists. Both say
@@ -3982,6 +3984,15 @@ cards:
         one: '{shop}, 1 step'
         many: '{shop}, {steps} steps'
       foundOnly: found
+      # A row collected only where it is found, never bought (todo 20261024-1810-01).
+      buy: buy
+      buyTooltip: Buy it at a shop when you have fewer than the minimum. With buy off, it is only
+        picked up where it is found, up to the maximum.
+      doneOnFound: done once found
+      doneOnFoundTooltip: Take the item off this list once you carry its maximum.
+      collectOnly: picked up only
+      collectOnlyTooltip: Never bought. Picked up from the floor when one is here and you have
+        fewer than the maximum.
       foundTooltip: No shop sells it. Picked up from the floor when one is here and you have fewer
         than the maximum.
       # And the sentence under the table, about both ends of the list.
@@ -3991,10 +4002,11 @@ cards:
       empty: Nothing kept in stock yet.
       howToAdd: 'To keep an item stocked, click its name in your inventory and set a minimum on its
         panel. With no shop chosen it is bought at the nearest shop that sells it; an item no shop
-        sells is picked up when found, up to its maximum. To only pick an item up, set its minimum
-        to 0 and a maximum.'
+        sells is picked up when found, up to its maximum. To only pick an item up, turn buy off
+        and set a maximum.'
       switchedOff: Auto-Buy is off on the toolbar; the list is kept but nothing is bought.
       copyRow: '{item}: {have} carried, keep {min}–{max}, from {shop}'
+      copyRowCollected: '{item}: {have} carried, picked up to {max}'
   stats:
     attackingLabel: Attacking
     avg: avg {mean}
@@ -5256,6 +5268,7 @@ settings:
     searchTriesLabel: Searches Per Room
     lootItemsHint: Matched by the start of the name, the same way the game reads get. This does not
       check weight, value or selling.
+    lootCollectNote: To pick an item up only to a count, add it to Supplies below with buy off.
     lootItemsLabel: Auto-Get Items List
     lootItemsPlaceholder: gem, scroll
     lootLegend: Auto-Loot
@@ -7364,6 +7377,10 @@ automation:
       Walking on without one.'
     refusalCollect: 'Not buying a light, walking on without one: {why}'
   supplies:
+    # A row marked done once found, at its maximum (todo 20261024-1810-01).
+    doneOnFound: 'Found {item} ({count}): taken off the supplies list.'
+    doneOnFoundNotWritten: 'Found {item}, but the supplies list could not be written; it is still
+      on it.'
     abandonedPlayerMoved: you took over
     refusalBusy: already on a detour to a shop
     refusalNotInRealm: this character is not in the realm

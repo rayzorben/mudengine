@@ -149,6 +149,8 @@ export interface SessionHostOptions {
   worldFor(id: SessionId): WorldGraph | undefined;
   /** Set one automation switch, live and then in the character's file; whether it was written. */
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
+  /** Takes a row off a character's supplies list on disk (`FoundSupplies`); whether it was written. */
+  dropSupply?(id: SessionId, name: string): boolean;
   /** This character's own aliases as its file writes them (todo 134). */
   ownAliases?(id: SessionId): readonly StatedPair[];
   /** Write one alias into a character's file, null removing it: the error, or null. */
@@ -591,6 +593,7 @@ export class SessionHost {
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomationNow: (name, on) => this.switchNow(id, name, on),
+        dropSupply: (name) => this.options.dropSupply?.(id, name) ?? false,
         keys: () => this.options.configFor(id).keys,
         portraits: () => this.options.configFor(id).art.enabled,
         roomLook: {

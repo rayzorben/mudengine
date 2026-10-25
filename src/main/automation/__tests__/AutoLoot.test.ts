@@ -354,7 +354,9 @@ describe('a supply found on the floor', () => {
     min,
     max,
     shop,
-    at: null
+    at: null,
+    buy: true,
+    doneOnFound: false
   });
   /** A pack holding `count` of `name`, as a listing would have left it. */
   const carrying = (name: string, count: number): CharacterState => {
@@ -908,7 +910,7 @@ describe('reading the floor after a kill', () => {
     const auto = make(loot({ upgrades: false }), true, {
       ...DEFAULT_SUPPLIES,
       enabled: true,
-      items: [{ name: 'torch', min: 2, max: 4, shop: '', at: null }]
+      items: [{ name: 'torch', min: 2, max: 4, shop: '', at: null, buy: true, doneOnFound: false }]
     });
     auto.onBlock(kill(), torches(4));
     drain();

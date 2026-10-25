@@ -388,6 +388,7 @@ export const DECISION_SETTINGS = {
   'supplies-bank': ['automation.supplies.enabled', 'automation.supplies.cashBuffer'],
   'supplies-surplus': ['automation.supplies.items'],
   'supply-counter': ['automation.supplies.items', 'automation.supplies.dearerSteps'],
+  'supply-found': ['automation.supplies.items'],
   'gear-trip': { exempt: 'the player started the trip', since: '2026-10-13' },
   'gear-upgrades': ['automation.loot.gearWeights'],
   'best-in-slot': ['automation.loot.gearWeights', 'automation.gear.offersPerSlot'],

@@ -1116,11 +1116,14 @@ automation:
   # on the counter's own confirmation, and lets the loop go on from the shop.
   # Per character: state a list in a character's own file, or add items from the
   # Self card or the item panel. This global list is what a character with no
-  # list of its own inherits.
+  # list of its own inherits. `buy: false` only picks the item up where it is
+  # found, up to `max`, and is never bought; `doneOnFound: true` takes the row
+  # off the list once the pack holds `max`.
   #
   #   items:
   #     - { name: torch, min: 3, max: 7 }
   #     - { name: rations, min: 2, max: 5, shop: General Store, at: { map: 1, room: 2147 } }
+  #     - { name: black star key, max: 1, buy: false, doneOnFound: true }
   supplies:
     enabled: true
     items: []

@@ -274,7 +274,15 @@ describe('a supplies write', () => {
 
   it('has the changed torch and then the emptied list live in the change it emits', () => {
     expect(supplies()).toEqual([
-      { name: 'torch', min: 3, max: 6, shop: 'General Store', at: { map: 1, room: 334 } }
+      {
+        name: 'torch',
+        min: 3,
+        max: 6,
+        shop: 'General Store',
+        at: { map: 1, room: 334 },
+        buy: true,
+        doneOnFound: false
+      }
     ]);
     const seen: unknown[] = [];
     store.on('change', (snapshot) =>
@@ -285,7 +293,9 @@ describe('a supplies write', () => {
       min: 2,
       max: 9,
       shop: 'General Store',
-      at: { map: 1, room: 334 }
+      at: { map: 1, room: 334 },
+      buy: true,
+      doneOnFound: false
     };
 
     expect(editor().setSupplies('thorn', [torch])).toEqual({ ok: true });

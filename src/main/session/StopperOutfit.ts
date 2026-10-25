@@ -18,7 +18,7 @@ import type { Block } from '../../shared/blocks';
 import { partyMembers, packRows, type CharacterState } from '../../shared/character';
 import { chargedInCopper, coveredBy } from '../../shared/coins';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
-import type { SupplyItem } from '../../shared/packConfig';
+import { BOUGHT_ROW, type SupplyItem } from '../../shared/packConfig';
 import { playerKey } from '../../shared/players';
 import { carriedCount } from '../../shared/supplies';
 import { coinWords, roomAddress, type RoomId } from '../../shared/world';
@@ -282,7 +282,8 @@ export class StopperOutfit {
       min: copies,
       max: copies,
       shop: counter.shop,
-      at: counter.at
+      at: counter.at,
+      ...BOUGHT_ROW
     };
     const refused = this.parts.fetch(row, state);
     if (refused !== null) {

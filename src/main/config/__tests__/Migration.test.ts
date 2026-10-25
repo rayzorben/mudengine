@@ -6018,6 +6018,50 @@ describe('stoppers follow have', () => {
   });
 });
 
+/* Todo 20261024-1810-01: a min-0 row with no shop was only ever picked up. */
+describe('collected rows say buy off', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-collected-rows-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('states buy off on a min-0 row with no shop, and leaves a bought or shopped row', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  supplies:\n    items:\n' +
+        '      - { name: skull, min: 0, max: 2, shop: "" }\n' +
+        '      - { name: torch, min: 3, max: 7, shop: "" }\n' +
+        '      - { name: rations, min: 0, max: 5, shop: General Store }\n',
+      'utf8'
+    );
+    const migrate = (): void =>
+      migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+    migrate();
+    const items = (
+      (parse(fs.readFileSync(home.options, 'utf8')).automation as Record<string, unknown>)[
+        'supplies'
+      ] as { items: unknown[] }
+    ).items;
+    expect(items).toEqual([
+      { name: 'skull', max: 2, shop: '', buy: false },
+      { name: 'torch', min: 3, max: 7, shop: '' },
+      { name: 'rations', min: 0, max: 5, shop: 'General Store' }
+    ]);
+    expect(notesOf(said, 'notices.migration.collectedRows')).toHaveLength(1);
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+  });
+});
+
 /* Todo 20261023-1950-01: `@held` and `@comeback` go wherever `@wait` is granted. */
 describe('held and comeback follow wait', () => {
   let home: Home;

@@ -1914,8 +1914,24 @@ describe('the supplies list', () => {
     editor.saveProfile('vaelor', draft());
     expect(
       editor.setSupplies('vaelor', [
-        { name: 'torch', min: 3, max: 7, shop: 'General Store', at: { map: 1, room: 2147 } },
-        { name: 'lantern', min: 1, max: 1, shop: 'Slum Store', at: null }
+        {
+          name: 'torch',
+          min: 3,
+          max: 7,
+          shop: 'General Store',
+          at: { map: 1, room: 2147 },
+          buy: true,
+          doneOnFound: false
+        },
+        {
+          name: 'lantern',
+          min: 1,
+          max: 1,
+          shop: 'Slum Store',
+          at: null,
+          buy: true,
+          doneOnFound: false
+        }
       ]).ok
     ).toBe(true);
     expect(suppliesOf('vaelor')).toEqual({
@@ -1934,9 +1950,23 @@ describe('the supplies list', () => {
     expect(resolveProfile('vaelor', read('vaelor'), parse(OPTIONS)).error).toBeUndefined();
   });
 
+  // Todo 20261024-1810-01: each switch only off its default, and no minimum on a collected row.
+  it('writes a collected row without a minimum, and done once found', () => {
+    editor.saveProfile('vaelor', draft());
+    const key = { name: 'black star key', min: 0, max: 2, shop: '', at: null };
+    editor.setSupplies('vaelor', [{ ...key, buy: false, doneOnFound: true }]);
+    const written = (suppliesOf('vaelor') as { items: unknown[] }).items;
+    expect(written).toEqual([
+      { name: 'black star key', max: 2, shop: '', buy: false, doneOnFound: true }
+    ]);
+    expect(resolveProfile('vaelor', read('vaelor'), parse(OPTIONS)).error).toBeUndefined();
+  });
+
   it('replaces rather than adds, so clearing clears', () => {
     editor.saveProfile('vaelor', draft());
-    editor.setSupplies('vaelor', [{ name: 'torch', min: 3, max: 7, shop: '', at: null }]);
+    editor.setSupplies('vaelor', [
+      { name: 'torch', min: 3, max: 7, shop: '', at: null, buy: true, doneOnFound: false }
+    ]);
     editor.setSupplies('vaelor', []);
     expect(suppliesOf('vaelor')).toEqual({ ...DEFAULT_CONFIG.automation.supplies, items: [] });
   });

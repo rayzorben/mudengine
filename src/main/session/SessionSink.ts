@@ -185,6 +185,8 @@ export interface SessionSink {
    * it's write lands before the first room. Whether it was written.
    */
   switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
+  /** Takes a row off this character's supplies list on disk (`SupplyListWriter`). */
+  dropSupply?(name: string): boolean;
   /** The keys this character binds, its own over the options file's, for a macro's `{f2}` (todo 134). */
   keys?(): KeyBindings;
   /** This character's own file, where `alias` writes (todo 134). */

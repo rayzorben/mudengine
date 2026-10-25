@@ -181,7 +181,8 @@ import {
   DEFAULT_CONFIG,
   type AppConfig
 } from '../shared/config';
-import { type SupplyItem } from '../shared/packConfig';
+import { settledSupply, type SupplyItem } from '../shared/packConfig';
+import { withSupply } from '../shared/supplies';
 import { DEFAULT_INTERNAL } from '../shared/internal';
 import { isRemoteName, REMOTE_NAMES, type RemoteGrant, type RemoteName } from '../shared/remotes';
 import { DEFAULT_RECONNECT_TRIES, UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
@@ -1429,7 +1430,11 @@ function asSupplyItems(value: unknown): SupplyItem[] | null {
       if (!Number.isInteger(map) || !Number.isInteger(room) || map < 0 || room < 0) return null;
       at = { map, room };
     }
-    items.push({ name, min, max: Math.max(min, max), shop, at });
+    // Absent is the file's default: bought, and kept when found.
+    const buy = row['buy'] ?? true;
+    const doneOnFound = row['doneOnFound'] ?? false;
+    if (typeof buy !== 'boolean' || typeof doneOnFound !== 'boolean') return null;
+    items.push(settledSupply({ name, min, max, shop, at, buy, doneOnFound }));
   }
   return items;
 }
@@ -1697,6 +1702,11 @@ function createHost(): SessionHost {
     worldFor,
     // The same write the toolbar's press makes, so the toggle shows it.
     flipSwitch: (id, name, on) => settingsEditor().setAutomationSwitch(id, name, on).ok,
+    // A supplies row done once found, off the list in effect, as the Self card's trash does.
+    dropSupply: (id, name) => {
+      const items = configFor(id).automation.supplies.items;
+      return settingsEditor().setSupplies(id, withSupply(items, name, null)).ok;
+    },
     // The `alias` command's read and write, the character's own file only (todo 134).
     ownAliases: (id) => settingsEditor().ownAliases(id),
     writeAlias: (id, word, line) => {

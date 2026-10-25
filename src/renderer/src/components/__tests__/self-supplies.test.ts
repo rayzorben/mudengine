@@ -19,7 +19,15 @@ import type { SupplyItem } from '@shared/packConfig';
  * character's pinned float alike, each to its own character.
  */
 const SESSION = 'rayzor' as SessionId;
-const torch: SupplyItem = { name: 'torch', min: 3, max: 6, shop: 'General Store', at: null };
+const torch: SupplyItem = {
+  name: 'torch',
+  min: 3,
+  max: 6,
+  shop: 'General Store',
+  at: null,
+  buy: true,
+  doneOnFound: false
+};
 
 const probe = mount();
 afterEach(() => {

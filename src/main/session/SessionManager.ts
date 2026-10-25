@@ -923,14 +923,11 @@ export class SessionManager {
       moveOnly,
       floor,
       coinWord: (coin) => this.vocabulary.coins.word(coin),
-      floorGear: floorGearReader(this.world, this.errands, () => this.automationConfig)
+      floorGear: floorGearReader(this.world, this.errands, () => this.automationConfig),
+      supplyList: { dropSupply: (name) => sink.dropSupply?.(name) ?? false }
     });
     this.deathSummons = new DeathSummons(floor);
-    /*
-     * The light, asked by the walker before every step (`beforeStep`) and by
-     * the state on every arrival. Its refusals go to the safety trace, because
-     * a torch not lit in a dark room is a decision somebody will ask about.
-     */
+    // The light, asked before each step and arrival; a torch not lit is traced as a decision.
     /*
      * And the ward a room wants, kept up off the pack (todo 105): the realm names the spell that
      * stops a room's effect and the item whose use casts it, used before the step and when the

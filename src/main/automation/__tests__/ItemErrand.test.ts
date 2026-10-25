@@ -200,7 +200,15 @@ describe('collecting what a route needs', () => {
      * which refuses a name standing in several rooms.
      */
     expect(bought).toEqual([
-      { name: 'black star key', min: 1, max: 1, shop: 'Locksmith', at: { map: 1, room: 42 } }
+      {
+        name: 'black star key',
+        min: 1,
+        max: 1,
+        shop: 'Locksmith',
+        at: { map: 1, room: 42 },
+        buy: true,
+        doneOnFound: false
+      }
     ]);
     expect(walked).toHaveLength(0);
 

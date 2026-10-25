@@ -24,7 +24,17 @@ const automation: AutomationConfig = {
 const TORCHES: SuppliesConfig = {
   ...DEFAULT_SUPPLIES,
   enabled: true,
-  items: [{ name: 'torch', min: 3, max: 5, shop: 'General Store', at: { map: 1, room: 2147 } }]
+  items: [
+    {
+      name: 'torch',
+      min: 3,
+      max: 5,
+      shop: 'General Store',
+      at: { map: 1, room: 2147 },
+      buy: true,
+      doneOnFound: false
+    }
+  ]
 };
 
 const ROUTE: Route = {
@@ -719,12 +729,14 @@ describe('a row that names no shop', () => {
   const TORCH_ANYWHERE: SuppliesConfig = {
     ...DEFAULT_SUPPLIES,
     enabled: true,
-    items: [{ name: 'torch', min: 3, max: 5, shop: '', at: null }]
+    items: [{ name: 'torch', min: 3, max: 5, shop: '', at: null, buy: true, doneOnFound: false }]
   };
   const KEYS: SuppliesConfig = {
     ...DEFAULT_SUPPLIES,
     enabled: true,
-    items: [{ name: 'black star key', min: 2, max: 2, shop: '', at: null }]
+    items: [
+      { name: 'black star key', min: 2, max: 2, shop: '', at: null, buy: true, doneOnFound: false }
+    ]
   };
 
   it('is never walked to a shop when no counter sells it, and never refused for that', () => {
@@ -750,6 +762,24 @@ describe('a row that names no shop', () => {
     auto.onCharacter(character(1));
     expect(asked).toEqual(['|']);
     expect(log).toEqual(['hold', 'route:1/2147', 'walk']);
+  });
+
+  // Todo 20261024-1810-01: a row collected only where it is found is never bought.
+  it('walks nowhere for a row with buy off, though a counter sells it', () => {
+    const asked: string[] = [];
+    const { planner: p, log } = planner({
+      shopRoom: () => {
+        asked.push('asked');
+        return { kind: 'counter', room: '1/2147', name: 'General Store', moves: null };
+      }
+    });
+    const collected: SuppliesConfig = {
+      ...TORCH_ANYWHERE,
+      items: [{ ...TORCH_ANYWHERE.items[0]!, buy: false }]
+    };
+    make(p, collected).onCharacter(character(1));
+    expect(log).toEqual([]);
+    expect(asked).toEqual([]);
   });
 
   it('says once that nothing sells or drops it, and walks nowhere', () => {

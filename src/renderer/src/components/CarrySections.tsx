@@ -248,6 +248,8 @@ export default function CarrySections({
           value={joinNames(loot.items)}
           wide
         />
+        {/* Picking up only to a count is a supplies row, below (todo 20261024-1810-01). */}
+        <p className="settings-note">{t('settings.movement.lootCollectNote')}</p>
         <div className="settings-inline">
           <NumberField
             hint={t('settings.movement.lootMinPriceHint')}

@@ -1516,7 +1516,8 @@ export class Errands implements SessionModule {
     if (!this.automationConfig.enabled || !this.automationConfig.supplies.enabled) return [];
     if (packRows(state.inventory) === null) return [];
     const wanted = this.automationConfig.supplies.items.filter(
-      (row) => row.shop.trim().length > 0 && carriedCount(state, row.name) < stockCeiling(row)
+      (row) =>
+        row.buy && row.shop.trim().length > 0 && carriedCount(state, row.name) < stockCeiling(row)
     );
     if (wanted.length === 0) return [];
     const named = world.itemsNamed(wanted.map((row) => row.name));

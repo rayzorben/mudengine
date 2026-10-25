@@ -542,7 +542,8 @@ export class Supplies implements SessionModule {
     if (state.inventory.listedAt === null) return;
     const now = this.now();
     for (const item of this.config.items) {
-      if (item.min <= 0) continue;
+      // A row collected only where it is found is never bought (todo 20261024-1810-01).
+      if (!item.buy || item.min <= 0) continue;
       const until = this.retryAt.get(bareName(item.name));
       if (until !== undefined && until > now) continue;
       const have = carriedCount(state, item.name);

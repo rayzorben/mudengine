@@ -332,6 +332,7 @@ function migrateAll(options: MigrationOptions): void {
   statedChanceWaysAndFares(home, note, options.template);
   statedComebackRooms(home, note, options.template);
   heldAndComebackFollowWait(home, note);
+  collectedRowsSayBuyOff(home, note);
 }
 
 /**
@@ -5015,6 +5016,36 @@ function statedChanceWaysAndFares(
       ? t('notices.migration.chanceWays.one', params)
       : t('notices.migration.chanceWays.many', params)
   );
+}
+
+/**
+ * A supplies row with no minimum, a maximum and no shop was only ever picked
+ * up, since nothing buys a row at min 0 with no shop (todo 20261024-1810-01).
+ * It says `buy: false` now and loses its `min`. In the global options and
+ * every character's file; a row already stating `buy` is left.
+ */
+function collectedRowsSayBuyOff(home: Home, note: (message: string) => void): void {
+  let changed = 0;
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const items = document.getIn(['automation', 'supplies', 'items'], true);
+      if (!isSeq(items)) return false;
+      let here = 0;
+      for (const row of items.items) {
+        if (!isMap(row) || row.has('buy') || row.has('at')) continue;
+        const min = Number(row.get('min') ?? 0);
+        const max = Number(row.get('max') ?? 0);
+        const shop = String(row.get('shop') ?? '').trim();
+        if (min > 0 || !(max > 0) || shop.length > 0) continue;
+        row.delete('min');
+        row.set('buy', false);
+        here += 1;
+      }
+      changed += here;
+      return here > 0;
+    });
+  }
+  if (changed > 0) note(t('notices.migration.collectedRows', { count: changed }));
 }
 
 /**

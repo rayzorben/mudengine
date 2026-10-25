@@ -25,7 +25,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
-import { type SupplyItem } from '../../shared/packConfig';
+import { BOUGHT_ROW, type SupplyItem } from '../../shared/packConfig';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
 import type { BuyingPlace, DropSources, ItemAsk, RoomId, Route } from '../../shared/world';
@@ -334,7 +334,8 @@ export class ItemErrand implements SessionModule {
         min: item.count ?? 1,
         max: item.count ?? 1,
         shop: counter.shop,
-        at: { map: counter.map, room: counter.room }
+        at: { map: counter.map, room: counter.room },
+        ...BOUGHT_ROW
       };
       const refused = this.planner.buy(row);
       if (refused !== null) return this.refuse(item, refused);

@@ -76,6 +76,9 @@ export interface OutgrownConfig {
  * `name` is the realm's own spelling of the item, matched against the pack the
  * way the server matches a typed name (`nameAnswersTo`). `min` is the count
  * below which the character goes shopping and `max` what it buys back up to.
+ * `buy` false is a row only collected where it is found, never bought, with no
+ * minimum (todo 20261024-1810-01); `doneOnFound` removes the row once the pack
+ * holds its maximum.
  * `shop` names the shop and `at` says which room, because a shop's name is not
  * a place (`WorldGraph.shopPlace`): null leaves the name to be settled when
  * the errand is planned, and refused out loud if it cannot be.
@@ -86,6 +89,25 @@ export interface SupplyItem {
   max: number;
   shop: string;
   at: { map: number; room: number } | null;
+  buy: boolean;
+  doneOnFound: boolean;
+}
+
+/** A row made to buy something now: bought, and kept when found. */
+export const BOUGHT_ROW: Pick<SupplyItem, 'buy' | 'doneOnFound'> = {
+  buy: true,
+  doneOnFound: false
+};
+
+/**
+ * A row as every reader keeps it: a bought row's maximum is never under its
+ * minimum, and a row collected and not bought has no minimum and collects at
+ * least one.
+ */
+export function settledSupply(row: SupplyItem): SupplyItem {
+  return row.buy
+    ? { ...row, max: Math.max(row.min, row.max) }
+    : { ...row, min: 0, max: Math.max(1, row.max) };
 }
 
 /**
@@ -229,18 +251,23 @@ export function normalizeSupplies(value: unknown): SuppliesConfig {
       const name = str(entry['name'], '').trim();
       if (name.length === 0) continue;
       const min = int(entry['min'], 0, 0, SUPPLY_COUNT_MAX);
-      const max = Math.max(min, int(entry['max'], 0, 0, SUPPLY_COUNT_MAX));
+      const buy = bool(entry['buy'], true);
+      const max = int(entry['max'], 0, 0, SUPPLY_COUNT_MAX);
       const shop = str(entry['shop'], '').trim();
       const at = isRecord(entry['at']) ? entry['at'] : null;
       const map = at === null ? null : int(at['map'], -1, 0, 999);
       const room = at === null ? null : int(at['room'], -1, 0, 999_999);
-      items.push({
-        name,
-        min,
-        max,
-        shop,
-        at: map !== null && room !== null && map >= 0 && room >= 0 ? { map, room } : null
-      });
+      items.push(
+        settledSupply({
+          name,
+          min,
+          max,
+          shop,
+          at: map !== null && room !== null && map >= 0 && room >= 0 ? { map, room } : null,
+          buy,
+          doneOnFound: bool(entry['doneOnFound'], false)
+        })
+      );
     }
   }
   return { enabled: bool(raw['enabled'], d.enabled), items, ...supplyChoices(raw) };
