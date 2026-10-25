@@ -126,7 +126,7 @@ describe('the realm’s answer about one room', () => {
         {
           id: 683,
           n: 'desert spell',
-          hz: { d: 13, r: { d: [[null, null, 1180, 9999]] }, sp: [711] }
+          hz: { d: 13, r: { d: [[null, null, [1180, 9999], [711]]] } }
         },
         { id: 711, n: 'quench' }
       ]

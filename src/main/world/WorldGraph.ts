@@ -484,9 +484,9 @@ export class WorldGraph {
     return this.catalogue.hazardOf(room, level);
   }
 
-  /** Every item that stops a room spell, in the realm's order (`Catalogue.stoppersOf`). */
-  stoppersOf(spell: number): WorldItem[] {
-    return this.catalogue.stoppersOf(spell);
+  /** Every item that takes something off a room spell at this level (`Catalogue.stoppersOf`). */
+  stoppersOf(spell: number, level?: number | null): WorldItem[] {
+    return this.catalogue.stoppersOf(spell, level);
   }
 
   namedClasses(): Record<number, string> {
@@ -1675,7 +1675,7 @@ export class WorldGraph {
     for (const [id, rooms] of casting) {
       const cast = this.spellById(id);
       if (cast === null) continue;
-      for (const ward of cast.hazard?.avoidedBySpell ?? []) {
+      for (const ward of this.catalogue.wardsOf(id)) {
         const casts = this.spellById(ward);
         for (const item of this.catalogue.itemsCasting(ward)) {
           rules.push({

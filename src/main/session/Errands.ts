@@ -1126,7 +1126,7 @@ export class Errands implements SessionModule {
       carrying: readonly number[] | undefined = priced.keys
     ): number | null => {
       const hazard = this.world?.hazardOf(room, state.progress.level) ?? null;
-      return hazard !== null && hazardCarried(hazard, carrying).relocates === true
+      return hazard !== null && hazardCarried(hazard, carrying, priced.spellsUp).relocates === true
         ? (priced.hazard?.(room, carrying) ?? null)
         : null;
     };
@@ -1159,7 +1159,7 @@ export class Errands implements SessionModule {
     // plain step, which is what it is for that character.
     if (hazardAvoided(stated, carrying, up)) return null;
     // And what stops one effect of it takes that effect off the price.
-    const hazard = hazardCarried(stated, carrying);
+    const hazard = hazardCarried(stated, carrying, up);
     /*
      * **A room that moves you is a wall, exactly as an exit that casts one
      * is** (`edgePenalty`'s `spellEffect === 'relocates'`). The walker's next

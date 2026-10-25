@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hazardAtLevel, hazardWords, roomSpellCopyLines } from '../RoomSpellRows';
+import { hazardAtLevel, hazardWords, roomSpellCopyLines, stoppersShown } from '../RoomSpellRows';
 import { healthShareWords } from '../../lib/healthShare';
 import type { WorldSpell } from '@shared/world';
 import { t } from '../../lib/i18n';
@@ -73,7 +73,7 @@ describe('the Room card says what the room casts', () => {
   it('copies every row drawn: what stops it, and the passage where the room casts nothing', () => {
     const copied = roomSpellCopyLines({
       spell: null,
-      hazard: undefined,
+      hazard: { damage: 13, reach: { damage: [{ fails: [1180], wards: [711] }] } },
       stoppedBy: {
         items: [{ id: 1180, name: 'waterskin' }],
         spells: [{ id: 711, name: 'quench' }]
@@ -86,5 +86,33 @@ describe('the Room card says what the room casts', () => {
     expect(copied[2]).toContain(
       t('cards.roomSpell.passageValue', { spellName: 'quench', roomCount: 4 })
     );
+  });
+
+  /*
+   * Desert spell 2 above level 19: the sunstone wristband takes its teleports off and
+   * leaves the summons, so it is said as stopping part of it, with what.
+   */
+  it('says what an item that stops part of it takes off', () => {
+    const shown = stoppersShown(
+      {
+        relocates: true,
+        summons: true,
+        reach: { relocates: [{ fails: [1180] }], summons: [{}] }
+      },
+      {
+        items: [
+          { id: 1180, name: 'sunstone wristband' },
+          { id: 690, name: 'log raft' }
+        ],
+        spells: []
+      }
+    );
+    expect(shown.items).toEqual([]);
+    expect(shown.part).toEqual([
+      t('cards.roomSpell.stopsPartValue', {
+        stopperName: 'sunstone wristband',
+        effectList: t('cards.roomSpell.moves')
+      })
+    ]);
   });
 });

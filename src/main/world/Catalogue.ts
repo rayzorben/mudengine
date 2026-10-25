@@ -21,6 +21,7 @@ import {
   shopKind,
   type ItemHandover,
   hazardHas,
+  hazardStoppers,
   outrightStoppers,
   type HazardReach,
   type LevelBand,
@@ -462,20 +463,30 @@ export class Catalogue {
   }
 
   /**
-   * Every item the realm says stops a room's spell: the ones its script
-   * names outright (`failitem`), and the ones whose *use* casts a spell it
-   * names (`failspell 711` is the waterskin, through `grants`). In the
-   * realm's order, items before spells.
+   * The spells whose being up takes something off a room's spell for a
+   * character of this level (`hazardStoppers`): quench, in the desert.
    */
-  stoppersOf(spell: number): WorldItem[] {
-    const hazard = this.spellById(spell)?.hazard;
-    if (hazard === undefined) return [];
+  wardsOf(spell: number, level?: number | null): number[] {
+    const stated = this.spellById(spell)?.hazard;
+    return stated === undefined ? [] : hazardStoppers(hazardFor(stated, level), 'wards');
+  }
+
+  /**
+   * Every item the realm says takes something off a room's spell for a
+   * character of this level (`hazardStoppers`): the ones its script names
+   * (`failitem`), and the ones whose *use* casts a spell it names
+   * (`failspell 711` is the waterskin, through `grants`). In the realm's
+   * order, items before spells. An unstated level asks of the whole chain.
+   */
+  stoppersOf(spell: number, level?: number | null): WorldItem[] {
+    const stated = this.spellById(spell)?.hazard;
+    if (stated === undefined) return [];
     const found: WorldItem[] = [];
-    for (const id of hazard.avoidedBy ?? []) {
+    for (const id of hazardStoppers(hazardFor(stated, level), 'fails')) {
       const item = this.items.get(id);
       if (item !== undefined && !found.includes(item)) found.push(item);
     }
-    for (const id of hazard.avoidedBySpell ?? []) {
+    for (const id of this.wardsOf(spell, level)) {
       for (const item of this.grants.get(id) ?? []) if (!found.includes(item)) found.push(item);
     }
     return found;
@@ -2389,56 +2400,62 @@ function readHazard(value: unknown, holdable: (item: number) => boolean): SpellH
   const hazard: SpellHazard = {};
   const damage = Number(record['d']);
   if (Number.isFinite(damage) && damage > 0) hazard.damage = damage;
-  const avoidedBySpell = readIdList(record['sp']);
-  if (avoidedBySpell.length > 0) hazard.avoidedBySpell = avoidedBySpell;
   if (record['tp'] === 1) hazard.relocates = true;
   if (record['sm'] === 1) hazard.summons = true;
   if (record['u'] === 1) hazard.unread = true;
-  const reach = readReach(record['r'], hazard);
+  const reach = readReach(record['r'], hazard, holdable);
   if (reach !== null) hazard.reach = reach;
-  // Only an item somebody can hold stops it: the server's `failitem` checks the
-  // pack, and nothing puts the manhole (`failitem 185`) in one. See
-  // `mudengine-world` › *What stops a room's spell is an item somebody can hold*.
-  const avoidedBy = outrightStoppers(reach ?? {}).filter(holdable);
+  const avoidedBy = outrightStoppers(reach ?? {}, 'fails');
   if (avoidedBy.length > 0) hazard.avoidedBy = avoidedBy;
+  const avoidedBySpell = outrightStoppers(reach ?? {}, 'wards');
+  if (avoidedBySpell.length > 0) hazard.avoidedBySpell = avoidedBySpell;
   // Nothing stated at all is nothing to carry: the writer omits a spell whose
   // chain reaches no harm, so an empty object here is a row that says nothing.
   return Object.keys(hazard).length > 0 ? hazard : null;
 }
 
 /**
- * Each effect's ways in (format 75, `[min, max, ...failitems]`), or null where
- * every effect reaches everybody. An effect the hazard has and the record does
- * not narrow is one way that reaches everybody, so `outrightStoppers` finds no
- * item stops it.
+ * Each effect's ways in (format 76, `[min, max, failitems?, wards?]`), or null
+ * where every effect reaches everybody. An effect the hazard has and the
+ * record does not narrow is one way that reaches everybody, so
+ * `outrightStoppers` finds nothing stops it.
  */
-function readReach(value: unknown, hazard: SpellHazard): SpellHazard['reach'] | null {
+function readReach(
+  value: unknown,
+  hazard: SpellHazard,
+  holdable: (item: number) => boolean
+): SpellHazard['reach'] | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const reach: NonNullable<SpellHazard['reach']> = {};
   for (const [effect, key] of builtEffects()) {
     if (!hazardHas(hazard, effect)) continue;
     const raw = record[key];
-    const ways = Array.isArray(raw) ? raw.flatMap((entry) => readWay(entry)) : [];
+    const ways = Array.isArray(raw) ? raw.flatMap((entry) => readWay(entry, holdable)) : [];
     reach[effect] = ways.length > 0 ? ways : [{}];
   }
   return reach;
 }
 
-/** One way in, or none for a shape `BuiltReachWay` does not write. */
-function readWay(value: unknown): HazardReach[] {
-  if (!Array.isArray(value) || value.length < 2) return [];
-  const [min, max, ...fails] = value as unknown[];
+/**
+ * One way in, or none for a shape `BuiltReachWay` does not write. Only an item
+ * somebody can hold fails it: the server's `failitem` checks the pack, and
+ * nothing puts the manhole (`failitem 185`) in one. See `mudengine-world` ›
+ * *What stops a room's spell is an item somebody can hold*.
+ */
+function readWay(value: unknown, holdable: (item: number) => boolean): HazardReach[] {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 4) return [];
+  const [min, max, fails, wards] = value as unknown[];
   const band: LevelBand = {};
   if (typeof min === 'number' && Number.isFinite(min)) band.min = min;
   if (typeof max === 'number' && Number.isFinite(max)) band.max = max;
-  const items = fails.filter(
-    (item): item is number => typeof item === 'number' && Number.isInteger(item) && item > 0
-  );
+  const items = readIdList(fails ?? []).filter(holdable);
+  const spells = readIdList(wards ?? []);
   return [
     {
       ...(band.min === undefined && band.max === undefined ? {} : { band }),
-      ...(items.length > 0 ? { fails: items } : {})
+      ...(items.length > 0 ? { fails: items } : {}),
+      ...(spells.length > 0 ? { wards: spells } : {})
     }
   ];
 }

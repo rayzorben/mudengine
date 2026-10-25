@@ -3659,6 +3659,8 @@ cards:
     passageValue: '{spellName} for {roomCount} rooms'
     stoppedBy: Stopped by
     stoppedBySpell: Or the spell
+    stopsPart: Stops part of it
+    stopsPartValue: '{stopperName}: {effectList}'
     summons: it may summon something
   slotPeek:
     acPerWeightTooltip: AC and DR together for every 100 of weight. Higher is more armour for the load.

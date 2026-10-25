@@ -7,7 +7,9 @@ import {
   hazardAvoided,
   hazardCarried,
   hazardFor,
+  hazardStoppers,
   outrightStoppers,
+  stopperEffects,
   type SpellHazard,
   newDemands,
   openableHere,
@@ -510,7 +512,7 @@ describe('a hazard as it applies to one character', () => {
 
 /*
  * What is carried takes off the ways it fails (format 75). Desert spell 2 on
- * pmud.zip: a sandstorm below level 20, a teleport behind the waterskin
+ * pmud.zip: a sandstorm below level 20, a teleport behind the sunstone wristband
  * (1180), and a summons for anybody.
  */
 describe('a hazard as it applies to what is carried', () => {
@@ -524,9 +526,9 @@ describe('a hazard as it applies to what is carried', () => {
     const above = hazardFor(desert, 40);
     expect(hazardCarried(above, [1180]).relocates).toBe(false);
     expect(hazardCarried(above, [1180]).summons).toBe(true);
-    // Positive control: without the waterskin the teleport stands.
+    // Positive control: without the wristband the teleport stands.
     expect(hazardCarried(above, [690]).relocates).toBe(true);
-    // And below level 20 the sandstorm needs no waterskin.
+    // And below level 20 the sandstorm needs no wristband.
     expect(hazardCarried(hazardFor(desert, 10), [1180]).relocates).toBe(true);
   });
 
@@ -535,12 +537,42 @@ describe('a hazard as it applies to what is carried', () => {
   });
 
   it('names an item as stopping it outright only where it stops every way in', () => {
-    expect(outrightStoppers(desert.reach ?? {})).toEqual([]);
-    expect(outrightStoppers({ damage: [{ fails: [690, 691] }, { fails: [691] }] })).toEqual([691]);
+    expect(outrightStoppers(desert.reach ?? {}, 'fails')).toEqual([]);
+    expect(
+      outrightStoppers({ damage: [{ fails: [690, 691] }, { fails: [691] }] }, 'fails')
+    ).toEqual([691]);
     // Crystal Lake: the raft fails the first line, and the second teleports its carrier.
-    expect(outrightStoppers({ relocates: [{ fails: [690, 691] }, { band: { max: 49 } }] })).toEqual(
-      []
-    );
+    expect(
+      outrightStoppers({ relocates: [{ fails: [690, 691] }, { band: { max: 49 } }] }, 'fails')
+    ).toEqual([]);
+  });
+
+  it('names what takes one effect off, at the level the reader meets it', () => {
+    // Below level 20 the sandstorm needs no wristband, so nothing takes the teleport off.
+    expect(hazardStoppers(hazardFor(desert, 10), 'fails')).toEqual([]);
+    expect(hazardStoppers(hazardFor(desert, 40), 'fails')).toEqual([1180]);
+    expect(stopperEffects(hazardFor(desert, 40), 'fails', 1180)).toEqual(['relocates']);
+    // Positive control: an item nothing fails on takes nothing off.
+    expect(stopperEffects(hazardFor(desert, 40), 'fails', 690)).toEqual([]);
+  });
+
+  /*
+   * The desert's own spell, on pmud.zip: `failspell 711 2654:random 2655`. A
+   * stated quench takes off every way behind it; one line it does not guard
+   * keeps that way.
+   */
+  it('takes off the ways a ward up fails, line by line', () => {
+    const sands: SpellHazard = {
+      summons: true,
+      relocates: true,
+      reach: { summons: [{ wards: [711] }], relocates: [{ wards: [711] }, {}] }
+    };
+    const up = hazardCarried(sands, [], [711]);
+    expect(up.summons).toBe(false);
+    expect(up.relocates).toBe(true);
+    expect(hazardAvoided(sands, [], [711])).toBe(false);
+    expect(hazardStoppers(sands, 'wards')).toEqual([711]);
+    expect(hazardStoppers(sands, 'wards', 'relocates')).toEqual([]);
   });
 
   it('counts a hazard every way of which the pack shuts as avoided', () => {

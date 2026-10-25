@@ -5996,7 +5996,7 @@ describe('the order a step fetches its items in', () => {
             {
               id: 683,
               n: 'desert spell',
-              hz: { r: { tp: [[null, null, 1180]] }, sp: [711], tp: 1 }
+              hz: { r: { tp: [[null, null, [1180], [711]]] }, tp: 1 }
             },
             { id: 711, n: 'waterskin', dur: 600 },
             { id: 915, n: 'darkwood forest spell', hz: { sm: 1 } }
@@ -6093,7 +6093,7 @@ describe('the order a step fetches its items in', () => {
             {
               id: 683,
               n: 'desert spell',
-              hz: { r: { tp: [[null, null, 1180]] }, sp: [711], tp: 1 }
+              hz: { r: { tp: [[null, null, [1180], [711]]] }, tp: 1 }
             },
             { id: 711, n: 'waterskin', dur: 600 }
           ],
@@ -6181,7 +6181,7 @@ describe('the order a step fetches its items in', () => {
             {
               id: 683,
               n: 'desert spell',
-              hz: { r: { tp: [[null, null, 1180]] }, sp: [711], tp: 1 }
+              hz: { r: { tp: [[null, null, [1180], [711]]] }, tp: 1 }
             },
             { id: 711, n: 'waterskin', dur: 600 }
           ],
@@ -6251,8 +6251,8 @@ describe('the order a step fetches its items in', () => {
           items: [{ id: 690, n: 'log raft' }],
           shops: [{ id: 1, n: 'Boathouse', items: [690], t: 0 }],
           spells: [
-            { id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, 690]] } } },
-            { id: 5249, n: 'Ocean', hz: { d: 20, r: { d: [[null, null, 690]] } } }
+            { id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, [690]]] } } },
+            { id: 5249, n: 'Ocean', hz: { d: 20, r: { d: [[null, null, [690]]] } } }
           ],
           quests: [{ id: 134, name: 'CoastQuest', steps: [{ ...asker, takes: [] }] }]
         },
@@ -6299,7 +6299,7 @@ describe('the order a step fetches its items in', () => {
             { id: 1, n: 'Far Boathouse', items: [690], t: 0 },
             { id: 2, n: 'Near Boathouse', items: [690], t: 0 }
           ],
-          spells: [{ id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, 690]] } } }],
+          spells: [{ id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, [690]]] } } }],
           quests: [{ id: 134, name: 'RiverQuest', steps: [{ ...asker, takes: [] }] }]
         },
         43
@@ -6363,7 +6363,9 @@ describe('the order a step fetches its items in', () => {
         street(7).map((room) => (room['r'] === 4 ? { ...room, sp: 683 } : room)),
         {
           items: [{ id: 1180, n: 'sunstone wristband' }],
-          spells: [{ id: 683, n: 'desert spell', hz: { r: { tp: [[null, null, 1180]] }, tp: 1 } }],
+          spells: [
+            { id: 683, n: 'desert spell', hz: { r: { tp: [[null, null, [1180]]] }, tp: 1 } }
+          ],
           quests: [{ id: 134, name: 'DesertQuest', steps: [{ ...asker, takes: [] }] }]
         },
         43
@@ -6857,15 +6859,17 @@ describe('what a room does to whoever stands in it prices the way through it', (
   ];
   const header = {
     items: [{ id: 690, n: 'log raft' }],
-    spells: [{ id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, 690]] } } }]
+    spells: [{ id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, [690]]] } } }]
   };
   const world = (dry = 3) => makeWorld(bothWays(dry), header, 30);
   /** The session's own arithmetic, in miniature: damage over the bar, unless carried. */
-  const hazardFor = (graph: WorldGraph, hp: number, keys: number[]) => (room: WorldRoom) => {
-    const hazard = graph.hazardOf(room);
-    if (hazard === null || hazardAvoided(hazard, keys)) return null;
-    return (hazard.damage ?? 0) / hp;
-  };
+  const hazardFor =
+    (graph: WorldGraph, hp: number, keys: number[]) =>
+    (room: WorldRoom, carrying: readonly number[] = keys) => {
+      const hazard = graph.hazardOf(room);
+      if (hazard === null || hazardAvoided(hazard, carrying)) return null;
+      return (hazard.damage ?? 0) / hp;
+    };
 
   /*
    * The bug this is all for. `Rooms.Spell` had been in the realm file since
@@ -6932,7 +6936,7 @@ describe('what a room does to whoever stands in it prices the way through it', (
         bothWays(3),
         {
           items: [manhole],
-          spells: [{ id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, 185]] } } }]
+          spells: [{ id: 753, n: 'river damage', hz: { d: 15, r: { d: [[null, null, [185]]] } } }]
         },
         30
       );
@@ -7431,9 +7435,9 @@ describe('the wards the realm itself writes', () => {
           { id: 1180, n: 'sunstone wristband' }
         ],
         spells: [
-          { id: 683, n: 'desert spell', hz: { d: 13, r: { d: [[null, null, 1180]] }, sp: [711] } },
+          { id: 683, n: 'desert spell', hz: { d: 13, r: { d: [[null, null, [1180], [711]]] } } },
           { id: 711, n: 'waterskin', dur: 600 },
-          { id: 753, n: 'silver river', hz: { d: 15, r: { d: [[null, null, 690]] } } }
+          { id: 753, n: 'silver river', hz: { d: 15, r: { d: [[null, null, [690]]] } } }
         ]
       },
       45

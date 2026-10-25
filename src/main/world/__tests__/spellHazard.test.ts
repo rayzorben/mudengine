@@ -135,9 +135,37 @@ describe('what a room’s spell does to whoever stands in it', () => {
   });
 
   /*
+   * A spell check fails its own line as a `failitem` does (format 76): a
+   * stated quench takes off the lines behind `failspell 711`, and not a line
+   * beside it that no spell guards.
+   */
+  it('keeps the spells that fail each way in, line by line', () => {
+    const sands = resolveHazard(
+      1,
+      spells({
+        1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] },
+        2: { abilities: [[HAZARD_ABILITY.teleportRoom, 0]] }
+      }),
+      blocks({
+        10: 'failspell 711 11\n100:cast 2',
+        11: '100:summon 570'
+      })
+    );
+    expect(sands.reach).toEqual({ summons: [{ wards: [711] }], relocates: [{}] });
+    expect(sands.avoidedBySpell).toEqual([]);
+    // Positive control: the same check on the only line stops it outright.
+    const desert = resolveHazard(
+      1,
+      spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] } }),
+      blocks({ 10: 'failspell 711 11', 11: '100:summon 570' })
+    );
+    expect(desert.avoidedBySpell).toEqual([711]);
+  });
+
+  /*
    * One item can stop one effect and not another. Desert spell 2 (684,
    * block 2660 on pmud.zip): the sandstorm below level 20, a roll that
-   * summons for anybody, and a teleport behind the waterskin.
+   * summons for anybody, and a teleport behind the sunstone wristband (1180).
    */
   it('keeps what stops each way in, apart from the others', () => {
     const desert = resolveHazard(
@@ -257,11 +285,13 @@ describe('what a room’s spell does to whoever stands in it', () => {
     // The teleport is banded; the summons on the next line is not — a gate
     // governs the rest of its own line and nothing under it.
     // (Block 2654 is not in the fixture, so the way into it is unread.)
+    // Every way sits behind `failspell 711`, so quench stops the lot.
     expect(desert.reach).toEqual({
-      unread: [{}],
-      relocates: [{ band: { max: 19 } }],
-      summons: [{}]
+      unread: [{ wards: [711] }],
+      relocates: [{ band: { max: 19 }, wards: [711] }],
+      summons: [{ wards: [711] }]
     });
+    expect(desert.avoidedBySpell).toEqual([711]);
   });
 
   /*
@@ -313,12 +343,11 @@ describe('what a room’s spell does to whoever stands in it', () => {
       blocks({ 10: 'checkspell 3 11:cast 2', 11: '' })
     );
     /*
-     * The spell is recorded (todo 02) and the pools are still nothing: a
-     * hazard with no damage, no teleport, no summons and nothing unread is
-     * not written out at all, so what `avoidedBySpell` says about a room that
-     * does nothing is never read by anybody.
+     * The pools are still nothing: a hazard with no damage, no teleport, no
+     * summons and nothing unread has no ways in for a spell to stop, and is
+     * not written out at all.
      */
-    expect(harmless).toMatchObject({ damage: 0, unread: false, avoidedBySpell: [3] });
+    expect(harmless).toMatchObject({ damage: 0, unread: false, avoidedBySpell: [] });
 
     // And the desert: a sandstorm behind `maxlevel 19` still moves *somebody*.
     const desert = resolveHazard(
@@ -348,10 +377,9 @@ describe('what a room’s spell does to whoever stands in it', () => {
       spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] } }),
       blocks({ 10: 'checkspell 7 11:message 5', 11: '' })
     );
-    // The spell is recorded here too (todo 02); the block behind it being
-    // empty is what makes the room harmless, and a harmless room is never
-    // written out at all.
-    expect(empty).toMatchObject({ damage: 0, unread: false, avoidedBySpell: [7] });
+    // The block behind it being empty is what makes the room harmless: no
+    // way in for the spell to stop, and a harmless room is never written out.
+    expect(empty).toMatchObject({ damage: 0, unread: false, avoidedBySpell: [] });
     const lacking = resolveHazard(
       1,
       spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] } }),

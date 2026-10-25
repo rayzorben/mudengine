@@ -11,8 +11,12 @@ import { healthShareWords } from '../lib/healthShare';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
+  hazardEffects,
   hazardFor,
+  stopperEffects,
   type Corridor,
+  type HazardEffect,
+  type HazardStopper,
   type SpellHazard,
   type SpellStoppers,
   type WorldSpell
@@ -57,24 +61,74 @@ export interface HazardWord {
   title?: string;
 }
 
+/** The chip for one effect the hazard has. */
+function effectWord(hazard: SpellHazard, effect: HazardEffect, hpMax: number | null): HazardWord {
+  switch (effect) {
+    case 'damage': {
+      const share = damageShare(hazard.damage ?? 0, hpMax);
+      return {
+        text: t('cards.roomSpell.damage', { damage: hazard.damage ?? 0 }),
+        loud: true,
+        ...(share === null ? {} : { title: share })
+      };
+    }
+    case 'relocates':
+      return { text: t('cards.roomSpell.moves'), loud: true };
+    case 'summons':
+      return { text: t('cards.roomSpell.summons'), loud: false };
+    // Unknown is said as itself, never as harmless.
+    case 'unread':
+      return { text: t('cards.route.hazardUnread'), loud: false };
+    default: {
+      const never: never = effect;
+      return never;
+    }
+  }
+}
+
 /** One chip per effect, so a room that both hurts and moves says both. */
 export function hazardWords(hazard: SpellHazard, hpMax: number | null = null): HazardWord[] {
-  const words: HazardWord[] = [];
-  if (hazard.damage !== undefined) {
-    const share = damageShare(hazard.damage, hpMax);
-    words.push({
-      text: t('cards.roomSpell.damage', { damage: hazard.damage }),
-      loud: true,
-      ...(share === null ? {} : { title: share })
-    });
-  }
-  if (hazard.relocates === true) words.push({ text: t('cards.roomSpell.moves'), loud: true });
-  if (hazard.summons === true) words.push({ text: t('cards.roomSpell.summons'), loud: false });
-  // Unknown is said as itself, never as harmless.
-  if (hazard.unread === true) words.push({ text: t('cards.route.hazardUnread'), loud: false });
+  const words = hazardEffects(hazard).map((effect) => effectWord(hazard, effect, hpMax));
   // Everything the realm states was gated away from this level.
   if (words.length === 0) words.push({ text: t('cards.roomSpell.notAtYourLevel'), loud: false });
   return words;
+}
+
+/** The named stoppers as they stand for this hazard: those that stop it whole, and the rest each with what it takes off. */
+export interface StoppersShown {
+  items: string[];
+  spells: string[];
+  part: string[];
+}
+
+/**
+ * Sorts what the realm names against the hazard as the reader meets it:
+ * desert spell 2's sunstone wristband takes its teleports off above level 19 and
+ * leaves the summons, so it is said as stopping part of it.
+ */
+export function stoppersShown(
+  hazard: SpellHazard | undefined,
+  stoppedBy: SpellStoppers | undefined
+): StoppersShown {
+  const shown: StoppersShown = { items: [], spells: [], part: [] };
+  if (hazard === undefined || stoppedBy === undefined) return shown;
+  const has = hazardEffects(hazard).length;
+  const sort = (side: HazardStopper, named: SpellStoppers['items'], whole: string[]): void => {
+    for (const { id, name } of named) {
+      const effects = stopperEffects(hazard, side, id);
+      if (effects.length === 0) continue;
+      if (effects.length === has) whole.push(name);
+      else {
+        const effectList = effects
+          .map((effect) => effectWord(hazard, effect, null).text)
+          .join(', ');
+        shown.part.push(t('cards.roomSpell.stopsPartValue', { stopperName: name, effectList }));
+      }
+    }
+  };
+  sort('fails', stoppedBy.items, shown.items);
+  sort('wards', stoppedBy.spells, shown.spells);
+  return shown;
 }
 
 /** The same rows as text, one line per row drawn, for a card's copy. */
@@ -89,15 +143,15 @@ export function roomSpellCopyLines({
     const effects = hazard === undefined ? [] : hazardWords(hazard).map((word) => word.text);
     lines.push(`${t('cards.roomSpell.label')}: ${[spell.name, ...effects].join(', ')}`);
   }
-  if (stoppedBy !== undefined && stoppedBy.items.length > 0) {
-    lines.push(
-      `${t('cards.roomSpell.stoppedBy')}: ${stoppedBy.items.map((item) => item.name).join(', ')}`
-    );
+  const shown = stoppersShown(hazard, stoppedBy);
+  if (shown.items.length > 0) {
+    lines.push(`${t('cards.roomSpell.stoppedBy')}: ${shown.items.join(', ')}`);
   }
-  if (stoppedBy !== undefined && stoppedBy.spells.length > 0) {
-    lines.push(
-      `${t('cards.roomSpell.stoppedBySpell')}: ${stoppedBy.spells.map((ward) => ward.name).join(', ')}`
-    );
+  if (shown.spells.length > 0) {
+    lines.push(`${t('cards.roomSpell.stoppedBySpell')}: ${shown.spells.join(', ')}`);
+  }
+  if (shown.part.length > 0) {
+    lines.push(`${t('cards.roomSpell.stopsPart')}: ${shown.part.join('; ')}`);
   }
   if (passage !== undefined && passage !== null) {
     lines.push(`${t('cards.roomSpell.passage')}: ${passageValue(passage)}`);
@@ -117,6 +171,7 @@ export default function RoomSpellRows({
   hpMax,
   inspect
 }: RoomSpellRowsProps) {
+  const shown = stoppersShown(hazard, stoppedBy);
   return (
     <>
       {spell !== null && (
@@ -151,16 +206,22 @@ export default function RoomSpellRows({
           </dd>
         </>
       )}
-      {stoppedBy !== undefined && stoppedBy.items.length > 0 && (
+      {shown.items.length > 0 && (
         <>
           <dt>{t('cards.roomSpell.stoppedBy')}</dt>
-          <dd className="span">{stoppedBy.items.map((item) => item.name).join(', ')}</dd>
+          <dd className="span">{shown.items.join(', ')}</dd>
         </>
       )}
-      {stoppedBy !== undefined && stoppedBy.spells.length > 0 && (
+      {shown.spells.length > 0 && (
         <>
           <dt>{t('cards.roomSpell.stoppedBySpell')}</dt>
-          <dd className="span">{stoppedBy.spells.map((ward) => ward.name).join(', ')}</dd>
+          <dd className="span">{shown.spells.join(', ')}</dd>
+        </>
+      )}
+      {shown.part.length > 0 && (
+        <>
+          <dt>{t('cards.roomSpell.stopsPart')}</dt>
+          <dd className="span">{shown.part.join('; ')}</dd>
         </>
       )}
       {passage !== undefined && passage !== null && (

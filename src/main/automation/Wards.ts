@@ -45,6 +45,8 @@ import { bareName } from '../../shared/items';
 import { effectSeconds } from '../../shared/menace';
 import {
   hazardAvoided,
+  hazardFor,
+  hazardStoppers,
   nameAnswersTo,
   roomAddress,
   type RoomId,
@@ -166,7 +168,8 @@ export class Wards implements SessionModule {
     if (!hurts) return;
     const found = this.sources.hazardAt(here);
     if (found === null) return;
-    for (const id of found.hazard.avoidedBySpell ?? []) this.until.delete(id);
+    const atLevel = hazardFor(found.hazard, state.progress.level);
+    for (const id of hazardStoppers(atLevel, 'wards')) this.until.delete(id);
     this.keep(here, state, 'combat');
   }
 
@@ -183,8 +186,10 @@ export class Wards implements SessionModule {
     if (state.inventory.listedAt === null) return;
     const found = this.sources.hazardAt(room);
     if (found === null) return;
-    const { spell: cast, hazard } = found;
-    const spells = hazard.avoidedBySpell ?? [];
+    const { spell: cast } = found;
+    // Only a ward that takes something off at this character's level is worth a use.
+    const hazard = hazardFor(found.hazard, state.progress.level);
+    const spells = hazardStoppers(hazard, 'wards');
     if (spells.length === 0) return;
     // Carrying what stops it outright — the wristband — wants no ward at all.
     if (hazardAvoided(hazard, state.inventory.rows)) return;

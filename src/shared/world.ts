@@ -1241,7 +1241,15 @@ export interface HazardReach {
   band?: LevelBand;
   /** Absent is no item stops it. */
   fails?: number[];
+  /**
+   * Spells whose being up fails it (`checkspell`, `failspell`): quench (711),
+   * which drinking from a waterskin casts, in the desert. Absent is none.
+   */
+  wards?: number[];
 }
+
+/** The two things a way in fails on: an item carried, a spell up. */
+export type HazardStopper = 'fails' | 'wards';
 
 export interface SpellHazard {
   /**
@@ -1306,6 +1314,23 @@ export function hazardHas(hazard: SpellHazard, effect: HazardEffect): boolean {
   }
 }
 
+/** The effects this hazard has, in `HAZARD_EFFECTS`' order. */
+export function hazardEffects(hazard: SpellHazard): HazardEffect[] {
+  return HAZARD_EFFECTS.filter((effect) => hazardHas(hazard, effect));
+}
+
+/**
+ * A pack with these items added: the one asked about (`carrying`), or else
+ * the traveller's own. How every price "with this in the pack" is asked.
+ */
+export function packWith(
+  carrying: readonly number[] | undefined,
+  own: readonly number[] | undefined,
+  items: readonly number[]
+): number[] {
+  return [...(carrying ?? own ?? []), ...items];
+}
+
 /** The fields that turn one effect off. */
 const EFFECT_OFF: Record<HazardEffect, Partial<SpellHazard>> = {
   damage: { damage: undefined },
@@ -1360,27 +1385,67 @@ export function hazardFor(hazard: SpellHazard, level: number | null | undefined)
 /**
  * This hazard as it applies to a character carrying these items: a way one of
  * them fails is dropped, so desert spell 2's teleports, each behind
- * `failitem 1180`, are off for a waterskin's carrier above level 19 while its
+ * `failitem 1180`, are off for a sunstone wristband's carrier above level 19 while its
  * summons run. The same shape as `hazardFor`, for the pack in place of the
  * level; an unlisted pack keeps everything.
  */
 export function hazardCarried(
   hazard: SpellHazard,
-  carrying: readonly number[] | undefined
+  carrying: readonly number[] | undefined,
+  wardsUp: readonly number[] = []
 ): SpellHazard {
-  if (carrying === undefined || carrying.length === 0) return hazard;
-  return narrowReach(hazard, ({ fails }) => !(fails ?? []).some((item) => carrying.includes(item)));
+  const pack = carrying ?? [];
+  if (pack.length === 0 && wardsUp.length === 0) return hazard;
+  return narrowReach(
+    hazard,
+    ({ fails, wards }) =>
+      !(fails ?? []).some((item) => pack.includes(item)) &&
+      !(wards ?? []).some((spell) => wardsUp.includes(spell))
+  );
+}
+
+/** What every one of these ways fails on, in the order the chain names them. */
+function failedByAll(ways: readonly HazardReach[], side: HazardStopper): number[] {
+  const named = [...new Set(ways.flatMap((way) => way[side] ?? []))];
+  return named.filter((id) => ways.every((way) => way[side]?.includes(id) === true));
 }
 
 /**
- * The items that stop every way in of every effect (`SpellHazard.avoidedBy`),
- * in the order the chain names them: the raft on the Silver River, and not on
- * Crystal Lake, where a second line teleports its carrier.
+ * The items (`fails`) or spells (`wards`) that stop every way in of every
+ * effect (`SpellHazard.avoidedBy`, `avoidedBySpell`): the raft on the Silver
+ * River, and not on Crystal Lake, where a second line teleports its carrier.
  */
-export function outrightStoppers(reach: HazardReachMap): number[] {
-  const ways = Object.values(reach).flat();
-  const named = [...new Set(ways.flatMap((way) => way.fails ?? []))];
-  return named.filter((item) => ways.every((way) => way.fails?.includes(item) === true));
+export function outrightStoppers(reach: HazardReachMap, side: HazardStopper): number[] {
+  return failedByAll(Object.values(reach).flat(), side);
+}
+
+/**
+ * The items (`fails`) or spells (`wards`) that take an effect off this hazard,
+ * or with no effect named any effect it has, in the order the chain names
+ * them: desert spell 2's sunstone wristband takes its teleports off above level 19.
+ * Asked of the hazard as it stands for the character (`hazardFor`,
+ * `hazardCarried`), so what is already carried or up is not asked for again.
+ * A hazard with no ways in answers from `avoidedBy` and `avoidedBySpell`.
+ */
+export function hazardStoppers(
+  hazard: SpellHazard,
+  side: HazardStopper,
+  effect?: HazardEffect
+): number[] {
+  const reach = hazard.reach;
+  if (reach === undefined) {
+    const outright = side === 'fails' ? hazard.avoidedBy : hazard.avoidedBySpell;
+    return effect === undefined || hazardHas(hazard, effect) ? (outright ?? []) : [];
+  }
+  const effects = effect === undefined ? hazardEffects(hazard) : [effect];
+  const found: number[] = [];
+  for (const each of effects) {
+    // An effect the hazard has with no ways listed reaches everybody.
+    const ways = hazardHas(hazard, each) ? (reach[each] ?? [{}]) : [];
+    if (ways.length === 0) continue;
+    for (const id of failedByAll(ways, side)) if (!found.includes(id)) found.push(id);
+  }
+  return found;
 }
 
 /**
@@ -1404,6 +1469,17 @@ export interface WardRule {
   hazard: string;
   /** How many rooms of this realm cast that spell. */
   rooms: number;
+}
+
+/** The effects of this hazard that one item (`fails`) or spell (`wards`) takes off. */
+export function stopperEffects(
+  hazard: SpellHazard,
+  side: HazardStopper,
+  id: number
+): HazardEffect[] {
+  return hazardEffects(hazard).filter((effect) =>
+    hazardStoppers(hazard, side, effect).includes(id)
+  );
 }
 
 /**
@@ -1434,7 +1510,7 @@ export function hazardAvoided(
     wanted.some((item) => carrying.includes(item))
   )
     return true;
-  const left = hazardCarried(hazard, carrying);
+  const left = hazardCarried(hazard, carrying, spellsUp);
   if (left !== hazard && HAZARD_EFFECTS.every((effect) => !hazardHas(left, effect))) return true;
   const spells = hazard.avoidedBySpell;
   if (spells === undefined || spellsUp.length === 0) return false;

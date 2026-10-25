@@ -29,6 +29,10 @@ import { asQuestOpenings } from '../../shared/questOpenings';
 import {
   asRoomReference,
   counterIn,
+  hazardAvoided,
+  hazardFor,
+  hazardStoppers,
+  packWith,
   roomId,
   type Dropper,
   type DropSources,
@@ -63,6 +67,7 @@ type PlannerCatalogue = Pick<
   | 'dropsOf'
   | 'everyItem'
   | 'item'
+  | 'itemsCasting'
   | 'mob'
   | 'shop'
   | 'sourcesOf'
@@ -513,7 +518,10 @@ export class QuestPlanner {
         for (const way of [...hunts, ...ways]) {
           for (const hazard of way.hazards ?? []) {
             if (!this.worthNaming(hazard)) continue;
-            if (this.stopperOf(hazard.id, carrying, [...supplies, ...spent]) !== undefined)
+            if (
+              this.stopperOf(hazard.id, traveller.level, carrying, [...supplies, ...spent]) !==
+              undefined
+            )
               continue;
             const supply = this.supplyFor(hazard, from, way.steps, carrying, traveller);
             if (supply === undefined) continue;
@@ -550,7 +558,10 @@ export class QuestPlanner {
               seen.rooms = Math.max(seen.rooms, hazard.rooms);
               continue;
             }
-            const safeWith = this.stopperOf(hazard.id, carrying, [...supplies, ...spent]);
+            const safeWith = this.stopperOf(hazard.id, traveller.level, carrying, [
+              ...supplies,
+              ...spent
+            ]);
             const snag: Extract<PlanSnag, { kind: 'hazard' }> = {
               kind: 'hazard',
               spell: hazard.spell,
@@ -662,26 +673,48 @@ export class QuestPlanner {
   }
 
   /**
-   * The traveller with every room spell that `stoppers` stop priced at
-   * nothing — `Router.holding`'s wrapper, over both halves of what stops a spell
-   * (the item the script names and the item whose use casts the spell it
-   * names). One answer per spell, kept for the search's thousands of asks.
+   * The traveller holding `stoppers` — `Router.holding`'s wrapper, over both
+   * halves of what stops a spell (the item the script names and the item
+   * whose use casts the spell it names). A spell they stop whole is priced at
+   * nothing; one they stop part of is priced with them in the pack, so
+   * desert spell 2's teleports come off for the sunstone wristband and its summons
+   * stay. One answer per spell, kept for the search's thousands of asks.
    */
   private quietened(traveller: Traveller, stoppers: readonly number[]): Traveller {
     const priced = traveller.hazard;
     if (priced === undefined || stoppers.length === 0) return traveller;
-    const settled = new Map<number, boolean>();
-    const stopped = (spell: number): boolean => {
+    const settled = new Map<number, 'whole' | 'part' | 'none'>();
+    const stopped = (spell: number): 'whole' | 'part' | 'none' => {
       const known = settled.get(spell);
       if (known !== undefined) return known;
-      const answer = this.catalogue.stoppersOf(spell).some((item) => stoppers.includes(item.id));
+      const stated = this.catalogue.spellById(spell)?.hazard;
+      const hazard = stated === undefined ? null : hazardFor(stated, traveller.level);
+      const wardsUp =
+        hazard === null
+          ? []
+          : hazardStoppers(hazard, 'wards').filter((ward) =>
+              this.catalogue.itemsCasting(ward).some((item) => stoppers.includes(item.id))
+            );
+      const answer =
+        hazard !== null && hazardAvoided(hazard, stoppers, wardsUp)
+          ? 'whole'
+          : this.catalogue
+                .stoppersOf(spell, traveller.level)
+                .some((item) => stoppers.includes(item.id))
+            ? 'part'
+            : 'none';
       settled.set(spell, answer);
       return answer;
     };
     return {
       ...traveller,
-      hazard: (room, carrying) =>
-        room.spell !== undefined && stopped(room.spell) ? null : priced(room, carrying)
+      hazard: (room, carrying) => {
+        const answer = room.spell === undefined ? 'none' : stopped(room.spell);
+        if (answer === 'whole') return null;
+        if (answer === 'none') return priced(room, carrying);
+        // Items only: a ward an item's use casts is counted whole or not at all.
+        return priced(room, packWith(carrying, traveller.keys, stoppers));
+      }
     };
   }
 
@@ -692,10 +725,11 @@ export class QuestPlanner {
    */
   private stopperOf(
     spell: number,
+    level: number | null | undefined,
     carrying: readonly number[] | null,
     supplies: readonly number[]
   ): string | undefined {
-    for (const item of this.catalogue.stoppersOf(spell)) {
+    for (const item of this.catalogue.stoppersOf(spell, level)) {
       if (supplies.includes(item.id) || packHolds(carrying, item.id) === true) return item.name;
     }
     return undefined;

@@ -258,7 +258,7 @@ describe('the spell the realm says the placed room casts (todo 72)', () => {
     const graph = worldOf([{ ...SHORE }, { ...BEACH, sp: 683 }], {
       items: [{ id: 1180, n: 'waterskin' }],
       spells: [
-        { id: 683, n: 'desert spell', hz: { d: 13, r: { d: [[null, null, 1180]] }, sp: [711] } },
+        { id: 683, n: 'desert spell', hz: { d: 13, r: { d: [[null, null, [1180], [711]]] } } },
         { id: 711, n: 'quench' }
       ]
     });

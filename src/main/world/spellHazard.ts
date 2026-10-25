@@ -20,7 +20,7 @@ import {
   type HazardReachMap,
   type LevelBand
 } from '../../shared/world';
-import type { BuiltSpellHazard } from './buildRealm';
+import type { BuiltReachWay, BuiltSpellHazard } from './buildRealm';
 import { behind, builtEffects, joinReach } from './hazardReach';
 import { number } from './values';
 import type { RealmSource } from './RealmSource';
@@ -124,7 +124,6 @@ export function indexSpellHazards(
     if (hazard.damage === 0 && !hazard.unread && !hazard.relocates && !hazard.summons) continue;
     const written: BuiltSpellHazard = {};
     if (hazard.damage > 0) written.d = hazard.damage;
-    if (hazard.avoidedBySpell.length > 0) written.sp = hazard.avoidedBySpell;
     if (hazard.relocates) written.tp = 1;
     if (hazard.summons) written.sm = 1;
     if (hazard.unread) written.u = 1;
@@ -134,10 +133,16 @@ export function indexSpellHazards(
       // One way that reaches everybody is what an absent effect reads back as.
       if (
         reach === undefined ||
-        reach.some((way) => way.band === undefined && way.fails === undefined)
+        reach.some(
+          (way) => way.band === undefined && way.fails === undefined && way.wards === undefined
+        )
       )
         continue;
-      ways[key] = reach.map((way) => [...pair(way.band ?? {}), ...(way.fails ?? [])]);
+      ways[key] = reach.map((way): BuiltReachWay => {
+        const [min, max] = pair(way.band ?? {});
+        if (way.wards !== undefined) return [min, max, way.fails ?? [], way.wards];
+        return way.fails === undefined ? [min, max] : [min, max, way.fails];
+      });
     }
     if (Object.keys(ways).length > 0) written.r = ways;
     index.set(id, written);
@@ -157,7 +162,6 @@ export function resolveHazard(
   facts: ReadonlyMap<number, SpellFacts>,
   blocks: ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>
 ): SpellHazardFacts {
-  const avoidedBySpell: number[] = [];
   /*
    * Keyed on the id **and the band it was reached under**, not on the id.
    *
@@ -316,11 +320,12 @@ export function resolveHazard(
        * still inside that gate.
        */
       const outer = band;
-      // The items this line fails on so far, and the ways in of what it has done.
+      // The items and spells this line fails on so far, and the ways in of what it has done.
       const fails: number[] = [];
+      const wards: number[] = [];
       let lineWays: HazardReachMap = {};
       const does = (step: HazardReachMap): void => {
-        lineWays = joinReach(lineWays, behind(fails, step));
+        lineWays = joinReach(lineWays, behind(fails, wards, step));
       };
       // A roll table's lines are all followed at full weight, as `random` is.
       walkLine: for (const step of stepsRun(line, use)) {
@@ -352,7 +357,7 @@ export function resolveHazard(
              * and crossed 26 more desert rooms without it.
              */
             if (step.spell <= 0) does(cannotRead());
-            else if (!avoidedBySpell.includes(step.spell)) avoidedBySpell.push(step.spell);
+            else wards.push(step.spell);
             if (step.otherwise !== undefined && step.otherwise > 0) {
               does(walkBlock(step.otherwise, depth + 1, 'steps'));
             }
@@ -432,8 +437,8 @@ export function resolveHazard(
   const reach = walkSpell(id, 0);
   return {
     damage: Math.round(damage),
-    avoidedBy: outrightStoppers(reach),
-    avoidedBySpell,
+    avoidedBy: outrightStoppers(reach, 'fails'),
+    avoidedBySpell: outrightStoppers(reach, 'wards'),
     relocates,
     summons,
     unread,

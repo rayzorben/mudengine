@@ -1,11 +1,11 @@
 /**
  * The ways each effect of a room's spell reaches a character, put together as
- * `spellHazard.ts` walks the chain (`HazardReach`, format 75).
+ * `spellHazard.ts` walks the chain (`HazardReach`, format 76).
  *
  * Two chains either of which may run reach a character where either does, so
- * their ways are joined. A step's ways sit behind the `failitem`s ahead of it
- * on its line, since a `failitem` fails its own line and the server tries the
- * next.
+ * their ways are joined. A step's ways sit behind the `failitem`s and the
+ * spell checks ahead of it on its line, since either fails its own line and
+ * the server tries the next.
  */
 import type { HazardEffect, HazardReach, HazardReachMap } from '../../shared/world';
 import type { BuiltSpellHazard } from './buildRealm';
@@ -27,7 +27,7 @@ export function builtEffects(): Array<[HazardEffect, BuiltKey]> {
 }
 
 const wayKey = (way: HazardReach): string =>
-  `${way.band?.min ?? ''}|${way.band?.max ?? ''}|${(way.fails ?? []).join(',')}`;
+  `${way.band?.min ?? ''}|${way.band?.max ?? ''}|${(way.fails ?? []).join(',')}|${(way.wards ?? []).join(',')}`;
 
 /** Every way of both, each once. */
 export function joinReach(a: HazardReachMap, b: HazardReachMap): HazardReachMap {
@@ -40,15 +40,29 @@ export function joinReach(a: HazardReachMap, b: HazardReachMap): HazardReachMap 
   return out;
 }
 
-/** A step's ways, behind the `failitem`s ahead of it on its line. */
-export function behind(fails: readonly number[], step: HazardReachMap): HazardReachMap {
-  if (fails.length === 0) return step;
+/** A step's ways, behind the items (`fails`) and spells (`wards`) ahead of it on its line. */
+export function behind(
+  fails: readonly number[],
+  wards: readonly number[],
+  step: HazardReachMap
+): HazardReachMap {
+  if (fails.length === 0 && wards.length === 0) return step;
+  const both = (
+    ahead: readonly number[],
+    own: readonly number[] | undefined
+  ): number[] | undefined =>
+    ahead.length === 0 && own === undefined ? undefined : [...new Set([...ahead, ...(own ?? [])])];
   const out: HazardReachMap = {};
   for (const [effect, ways] of Object.entries(step) as Array<[HazardEffect, HazardReach[]]>) {
-    out[effect] = ways.map((way) => ({
-      ...way,
-      fails: [...new Set([...fails, ...(way.fails ?? [])])]
-    }));
+    out[effect] = ways.map((way) => {
+      const failsOn = both(fails, way.fails);
+      const wardedBy = both(wards, way.wards);
+      return {
+        ...(way.band === undefined ? {} : { band: way.band }),
+        ...(failsOn === undefined ? {} : { fails: failsOn }),
+        ...(wardedBy === undefined ? {} : { wards: wardedBy })
+      };
+    });
   }
   return out;
 }

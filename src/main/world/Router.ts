@@ -32,6 +32,8 @@ import {
   edgeKey,
   hazardAvoided,
   hazardCarried,
+  hazardStoppers,
+  packWith,
   itemDemanded,
   landingRooms,
   leverRooms,
@@ -1978,17 +1980,28 @@ export class Router {
   ): Route | null {
     const priced = traveller.hazard;
     if (priced === undefined) return null;
-    const quietened = (room: WorldRoom): boolean => {
+    // The items that would take more off a room's spell than the pack does, once a room.
+    const kits = new Map<WorldRoom, number[]>();
+    const kitFor = (room: WorldRoom): number[] => {
+      const held = kits.get(room);
+      if (held !== undefined) return held;
       const hazard = this.index.hazardOf(room, traveller.level);
-      return (
-        hazard !== null &&
-        (hazard.avoidedBy?.length ?? 0) > 0 &&
-        !hazardAvoided(hazard, traveller.keys, traveller.spellsUp)
-      );
+      const kit =
+        hazard === null || hazardAvoided(hazard, traveller.keys, traveller.spellsUp)
+          ? []
+          : hazardStoppers(hazardCarried(hazard, traveller.keys, traveller.spellsUp), 'fails');
+      kits.set(room, kit);
+      return kit;
     };
+    const quietened = (room: WorldRoom): boolean => kitFor(room).length > 0;
     const equipped: Traveller = {
       ...traveller,
-      hazard: (room, carrying) => (quietened(room) ? null : priced(room, carrying))
+      hazard: (room, carrying) => {
+        const kit = kitFor(room);
+        return kit.length === 0
+          ? priced(room, carrying)
+          : priced(room, packWith(carrying, traveller.keys, kit));
+      }
     };
     const found = this.search(from, to, goal, equipped, false, draws).found;
     if (found === null) return null;
@@ -3466,10 +3479,11 @@ export class Router {
       const room = this.rooms.get(step.to);
       if (room?.spell === undefined) continue;
       const spell = this.index.spellById(room.spell);
-      const stated = spell?.hazard;
-      if (spell === null || stated === undefined) continue;
+      const stated = this.index.hazardOf(room, traveller.level);
+      if (spell === null || stated === null) continue;
       if (hazardAvoided(stated, traveller.keys, traveller.spellsUp)) continue;
-      const hazard = hazardCarried(stated, traveller.keys);
+      // What is left of it for this pack, and what would take more of it off.
+      const hazard = hazardCarried(stated, traveller.keys, traveller.spellsUp);
       const seen = folded.get(spell.id);
       if (seen !== undefined) {
         seen.rooms += 1;
@@ -3492,14 +3506,14 @@ export class Router {
         unread: hazard.unread === true,
         summons: hazard.summons === true,
         relocates: hazard.relocates === true,
-        needs: (hazard.avoidedBy ?? []).flatMap((id) => {
+        needs: hazardStoppers(hazard, 'fails').flatMap((id) => {
           if (traveller.keys?.includes(id) === true) return [];
           const item = this.index.item(id);
           // A row the item index cannot name is left out: `carry item 3609`
           // is the exact half-read `describeObstacle` refuses for a key.
           return item === undefined ? [] : [{ id, name: item.name }];
         }),
-        needsSpell: (hazard.avoidedBySpell ?? []).flatMap((id) => {
+        needsSpell: hazardStoppers(hazard, 'wards').flatMap((id) => {
           const named = this.index.spellById(id);
           return named === null ? [] : [named.name];
         })
@@ -3539,8 +3553,8 @@ export class Router {
   /**
    * This traveller, with one more thing in the pack.
    *
-   * `carrying` above switches off **every** hazard an item could quieten,
-   * because it is asking what the whole kit would buy. This is the narrower
+   * `carrying` above prices every room with all that would take more of its
+   * spell off, because it is asking what that would buy. This is the narrower
    * question — the character is about to hold *this* row and nothing else new —
    * so the item joins `keys`, which opens the doors it is a key to, and the
    * hazards it stops go quiet through the same `hazardAvoided` join the router
@@ -3548,7 +3562,7 @@ export class Router {
    * through `hazardCarried`. Nothing else about the traveller moves.
    */
   holding(traveller: Traveller, item: number): Traveller {
-    const keys = [...(traveller.keys ?? []), item];
+    const keys = packWith(undefined, traveller.keys, [item]);
     const priced = traveller.hazard;
     if (priced === undefined) return { ...traveller, keys };
     return {

@@ -19,8 +19,11 @@ export interface PlanWorld extends StandingRealm {
   itemSources(item: number): readonly ItemSource[];
   namedExitItems(): readonly number[];
   item(id: number): { name: string } | undefined;
-  /** Every item that stops a room spell (`Catalogue.stoppersOf`), in the realm's order. */
-  stoppersOf(spell: number): ReadonlyArray<{ id: number; name: string; uses?: number }>;
+  /** Every item that takes something off a room spell at this level (`Catalogue.stoppersOf`), in the realm's order. */
+  stoppersOf(
+    spell: number,
+    level?: number | null
+  ): ReadonlyArray<{ id: number; name: string; uses?: number }>;
   /** The counters selling any of `items`, least off the way from `from` to `to` first. */
   stockingPlaces(
     items: readonly number[],
@@ -59,7 +62,7 @@ function stopperPlace(
   steps: ReadonlyArray<{ to: RoomId; scatter?: unknown }>,
   traveller: Traveller
 ): StopperPlace | null {
-  const stoppers = world.stoppersOf(spell);
+  const stoppers = world.stoppersOf(spell, traveller.level);
   const casting = steps.find(
     (step) => step.scatter === undefined && world.byId(step.to)?.spell === spell
   );
