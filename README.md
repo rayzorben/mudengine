@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.9.5-14b8a6?style=for-the-badge">
+  <img alt="version" src="https://img.shields.io/badge/version-0.9.6-14b8a6?style=for-the-badge">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-334155?style=for-the-badge">
   <img alt="Windows" src="https://img.shields.io/badge/Windows-0f172a?style=for-the-badge&logo=windows&logoColor=white">
   <img alt="macOS" src="https://img.shields.io/badge/macOS-0f172a?style=for-the-badge&logo=apple&logoColor=white">
@@ -87,7 +87,7 @@
 | Runs on | Windows, macOS (Intel and Apple Silicon), Linux, or in a browser through Docker |
 | World data | MajorMUD and Paradigm built in, or load your realm's own `.mdb` |
 | Realms included | Paradigm's six: game 1 to 4, test PvE, test PvP |
-| Status | 0.9.5, played daily on live realms |
+| Status | 0.9.6, played daily on live realms |
 
 ## Cards
 
