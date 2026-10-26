@@ -6086,6 +6086,7 @@ session:
     pausedForRemote: '{who} asked the party to wait'
     pausedForHealth: 'Waiting for {who}, under Wait For Party Members'
     pausedForRest: 'Waiting for {who} to rest to your own settings, under Manage Party Health If Leading'
+    pausedForJoin: 'Waiting for {who} to join the party'
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.
@@ -6099,18 +6100,19 @@ session:
       yet.
     notInRealm: This character is not in the realm.
   comeBack:
-    busy: '{who} asked for @comeback; already walking back for {busy}.'
+    busy: 'Already walking back for {busy}; not walking back for {who}.'
     cutShort: Stopped walking back for {who} before the room was reached; going on.
     gaveUp: Walked back as far as allowed and did not find {who}; going on.
     here: '{who} is here: inviting them back into the party.'
-    inviteReason: '{who} asked for @comeback and is here'
+    inviteReason: '{who} is here, to be invited back'
+    leftBehind: '{who} asked the party to wait after it had already moved on.'
     noWay: 'Cannot walk back for {who}: {reason}'
-    nothingBehind: '{who} asked for @comeback, but there is no confirmed move to walk back over.'
-    notNow: '{who} asked for @comeback; not walking back: {reason}'
+    nothingBehind: 'Not walking back for {who}: there is no confirmed move to walk back over.'
+    notNow: 'Not walking back for {who}: {reason}'
     backPressed: the character is already going back a room
     errandWalking: the character is on a trip to the shop or bank, and stopping it would lose the trip
     trailEnded: no confirmed move is left to walk back over
-    off: '{who} asked for @comeback; Walk Back For a Member is 0, so the walk goes on.'
+    off: 'Not walking back for {who}: Walk Back For a Member is 0.'
     started: Walking back for {who}, up to {rooms} rooms.
     stopped: 'Stopped walking back for {who}: {reason}'
   macro:

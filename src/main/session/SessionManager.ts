@@ -1247,7 +1247,7 @@ export class SessionManager {
       }).events,
       ...remoteHangUps(() => this.safety, sink),
       peer: (who) => recordOf(this.tracker.players, who),
-      pace: (who, ready) => this.travel.pace(who, ready),
+      pace: (who, ready, left) => this.travel.pace(who, ready, left),
       held: (who, held) => this.cures.memberHeld(who, held),
       walkBackFor: (who) => this.travel.walkBackFor(who),
       switchAutomation: switchNow,

@@ -2810,7 +2810,8 @@ describe('a held member: @held and @comeback', () => {
     holds = [];
     return new Remotes({ ...config, ...over }, queue, {
       notice: (m) => notices.push(m),
-      pace: (who, ready) => paced.push(`${who}:${ready ? 'ok' : 'wait'}`),
+      pace: (who, ready, left) =>
+        paced.push(`${who}:${ready ? 'ok' : 'wait'}${left ? ':left' : ''}`),
       held: (who, held) => holds.push(`${who}:${held ? 'held' : 'free'}`),
       walkBackFor: (who) => walkedBack.push(who)
     });
@@ -2823,6 +2824,16 @@ describe('a held member: @held and @comeback', () => {
     remotes.onBlock(said('conversation-telepath', 'Soul', '@ok'), who());
     expect(paced).toEqual(['Soul:wait', 'Soul:wait', 'Soul:ok']);
     expect(notices).toContain(t('automation.remotes.followerHeld', { from: 'Soul' }));
+  });
+
+  // The user, 2026-10-26: the realm can drop a held member before their @wait lands.
+  it('says a @wait came from a member who just left the party', () => {
+    const remotes = make();
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@wait'), who());
+    const left = { type: 'party-left', domain: 'presence', groups: { player: 'Soul' } };
+    remotes.onBlock(left as unknown as Block, who());
+    remotes.onBlock(said('conversation-telepath', 'Soul', "@wait (can't move)"), who());
+    expect(paced).toEqual(['Soul:wait', 'Soul:wait:left']);
   });
 
   // Todo 20261024-1900-01: whoever can free the member is told, a plain @wait is no hold.

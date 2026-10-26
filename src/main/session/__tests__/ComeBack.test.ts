@@ -61,6 +61,7 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
     resume: (who, walked) => void log.push(`resume:${who}:${walked}`),
     partyWaiting: () => false,
     invite: (who) => void log.push(`invite:${who}`),
+    awaitJoin: (who) => void log.push(`awaitJoin:${who}`),
     rooms: () => 15,
     notice: (message) => void log.push(message),
     ...over
@@ -98,6 +99,7 @@ describe('a leader walking back for a member (@comeback)', () => {
     back.walkEnded(true, standing('1/3', 'Killa'));
     expect(log.slice(1)).toEqual([
       'invite:Killa',
+      'awaitJoin:Killa',
       t('session.comeBack.here', { who: 'Killa' }),
       'resume:Killa:2'
     ]);
@@ -140,6 +142,33 @@ describe('a leader walking back for a member (@comeback)', () => {
     expect(log).toContain('invite:Killa');
     expect(log.some((line) => line.startsWith('resume:'))).toBe(false);
     expect(back.owes).toBe(true);
+  });
+
+  /* The user, 2026-10-26: the lap was already stopped for Brakkle's @wait when he was left behind. */
+  it('waits for the join of a member it walked back for, under a party wait it found stopped', () => {
+    const { fake, log } = port(3, { partyWaiting: () => true, pause: () => false });
+    const back = new ComeBack(fake);
+    back.asked('Brakkle', standing('1/3'));
+    expect(log).toEqual([t('session.comeBack.started', { who: 'Brakkle', rooms: 2 })]);
+    back.walkEnded(true, standing('1/2', 'Brakkle'));
+    expect(log.slice(1)).toEqual([
+      'invite:Brakkle',
+      'awaitJoin:Brakkle',
+      t('session.comeBack.here', { who: 'Brakkle' })
+    ]);
+  });
+
+  it('goes on after the walk back when the party wait it found gave up meanwhile', () => {
+    let waiting = true;
+    const { fake, log } = port(3, { partyWaiting: () => waiting, pause: () => false });
+    const back = new ComeBack(fake);
+    back.asked('Brakkle', standing('1/3'));
+    waiting = false;
+    back.walkEnded(true, standing('1/2'));
+    back.onCharacter(standing('1/2'));
+    back.walkEnded(true, standing('1/1'));
+    back.onCharacter(standing('1/1'));
+    expect(log.at(-1)).toBe('resume:Brakkle:2');
   });
 
   it('invites a member already here without walking, and walks nothing at 0', () => {

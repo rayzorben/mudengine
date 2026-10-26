@@ -1531,7 +1531,8 @@ export const RULES: Rule[] = [
    */
   {
     type: 'party-left',
-    pattern: /^(?<player>\w+) has been removed from your followers\.$/
+    // `removed` tells the leader's own uninvite from a member leaving (`PartyWait`).
+    pattern: /^(?<player>\w+) (?<removed>has been removed) from your followers\.$/
   },
   {
     type: 'party-rank-changed',

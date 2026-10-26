@@ -505,7 +505,11 @@ export class Travel implements SessionModule {
       stopped: () => this.movementStopped(),
       resume: (who) => this.resumeMoving(who, null),
       notice: (message, decision) => this.session.notice(message, decision),
-      waitMinutes: () => this.automationConfig.party.waitMinutes
+      waitMinutes: () => this.automationConfig.party.waitMinutes,
+      leftBehind: (who) => {
+        this.session.notice(t('session.comeBack.leftBehind', { who }), 'party-comeback');
+        this.comeBack.asked(who, this.tracker.current);
+      }
     });
     this.comeBack = new ComeBack({
       trail: () => this.tracker.trail,
@@ -524,6 +528,7 @@ export class Travel implements SessionModule {
         this.queue.enqueue(
           inviteIntent(who, t('session.comeBack.inviteReason', { who }), 'party-comeback')
         ),
+      awaitJoin: (who) => this.partyWait.pace(who, false, 'invited'),
       rooms: () => this.automationConfig.party.comebackRooms,
       notice: (message, decision) => this.session.notice(message, decision)
     });
@@ -583,10 +588,11 @@ export class Travel implements SessionModule {
     this.fareCash.onCharacter(state);
   }
 
-  /** A hand-over or a withdrawal the server echoed, for the same errands. */
+  /** A hand-over or a withdrawal the server echoed, for the same errands; a member leaving or joining. */
   beforeWalkBlock(block: Block): void {
     this.outfit.onBlock(block);
     this.fareCash.onBlock(block);
+    this.partyWait.onBlock(block);
   }
 
   /**
@@ -991,8 +997,9 @@ export class Travel implements SessionModule {
    * stands; the leg being walked is ended here too, because the runner
    * never touches the walker.
    */
-  pace(who: string, ready: boolean): void {
+  pace(who: string, ready: boolean, left: boolean): void {
     this.partyWait.pace(who, ready, 'asked');
+    if (!ready && left) this.partyWait.leftParty(who);
   }
 
   /** A member left behind asked to be walked back for (`@comeback`). See `ComeBack`. */
@@ -1025,7 +1032,11 @@ export class Travel implements SessionModule {
    * stop. An errand's own walk is left to the errand.
    */
   private pauseMoving(why: string, decision: DecisionKind): boolean {
-    if (this.comeBack.active) return true;
+    if (this.comeBack.active) {
+      // A walk back is already the stop, and it says nothing of this reason.
+      this.session.notice(why, decision);
+      return true;
+    }
     // A stop of its own: a route a walk back owed is not what goes on after it.
     this.comeBack.forgetOwed();
     if (

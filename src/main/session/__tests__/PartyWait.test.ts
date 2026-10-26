@@ -4,9 +4,22 @@ import { PartyWait } from '../PartyWait';
 import { t } from '../../app/i18n';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG } from '../../../shared/config';
+import type { Block, BlockType } from '../../../shared/blocks';
 
 const ASKED = (who: string): string => `pause:${t('session.loop.pausedForRemote', { who })}`;
 const HURT = (who: string): string => `pause:${t('session.loop.pausedForHealth', { who })}`;
+
+/** A member's party line as the leader reads it; `removed` marks the leader's uninvite. */
+const partyLine = (type: BlockType, player: string, removed = false): Block => ({
+  seq: 1,
+  at: 0,
+  type,
+  domain: 'presence',
+  groups: removed ? { player, removed: 'has been removed' } : { player },
+  text: '',
+  terminator: 'newline',
+  confidence: 1
+});
 
 /* Todo 831: why a leader's lap waits for its party, and for how long. */
 describe('a leader waiting for its party', () => {
@@ -32,7 +45,8 @@ describe('a leader waiting for its party', () => {
         moves.push(`resume:${who}`);
       },
       notice: (message, decision) => moves.push(`${decision}:${message}`),
-      waitMinutes: () => minutes
+      waitMinutes: () => minutes,
+      leftBehind: (who) => moves.push(`leftBehind:${who}`)
     });
   });
   afterEach(() => vi.useRealTimers());
@@ -40,11 +54,15 @@ describe('a leader waiting for its party', () => {
   it('stops the lap once and walks on when the last reason is gone', () => {
     wait.pace('Soul', false, 'asked');
     wait.pace('Yang', false, 'hurt');
-    expect(moves).toEqual([ASKED('Soul')]);
+    wait.pace('Brakkle', false, 'asked');
+    // A second member's word is said; their health is not, and neither stops anything again.
+    const brakkle = `party-wait:${t('session.loop.pausedForRemote', { who: 'Brakkle' })}`;
+    expect(moves).toEqual([ASKED('Soul'), brakkle]);
     wait.pace('Soul', true, 'asked');
-    expect(moves).toEqual([ASKED('Soul')]);
+    wait.pace('Brakkle', true, 'asked');
+    expect(moves).toEqual([ASKED('Soul'), brakkle]);
     wait.pace('Yang', true, 'hurt');
-    expect(moves).toEqual([ASKED('Soul'), 'resume:Yang']);
+    expect(moves).toEqual([ASKED('Soul'), brakkle, 'resume:Yang']);
   });
 
   it("keeps a member's @ok from ending a wait its health still asks for", () => {
@@ -79,6 +97,43 @@ describe('a leader waiting for its party', () => {
     wait.pace('Yang', false, 'asked');
     expect(moves).toEqual([]);
     expect(wait.holding).toBe(false);
+  });
+
+  /* The user, 2026-10-26: Brakkle's `@wait (can't move)` landed after the leader's `sw` went. */
+  it('walks back for a member who asked to wait and dropped out behind the step', () => {
+    const left = (who: string) => partyLine('party-left', who);
+    wait.onBlock(left('Brakkle'));
+    wait.pace('Brakkle', false, 'asked');
+    wait.onBlock(left('Soul'));
+    // The leader's own uninvite is not a member left behind.
+    wait.onBlock(partyLine('party-left', 'Brakkle', true));
+    expect(moves).toEqual([ASKED('Brakkle')]);
+    wait.onBlock(left('Brakkle'));
+    expect(moves).toEqual([ASKED('Brakkle'), 'leftBehind:Brakkle']);
+  });
+
+  it('walks back for a member whose @wait lands after the drop', () => {
+    wait.leftParty('Brakkle');
+    expect(moves).toEqual([]);
+    wait.pace('Brakkle', false, 'asked');
+    wait.leftParty('Brakkle');
+    expect(moves).toEqual([ASKED('Brakkle'), 'leftBehind:Brakkle']);
+  });
+
+  it('holds for a member invited back until they join and say @ok', () => {
+    const joined = (who: string) => partyLine('party-joined', who);
+    wait.pace('Brakkle', false, 'asked');
+    wait.pace('Brakkle', false, 'invited');
+    wait.pace('Brakkle', true, 'asked');
+    // Somebody else joining ends nothing.
+    wait.onBlock(joined('Soul'));
+    expect(wait.holding).toBe(true);
+    wait.onBlock(joined('Brakkle'));
+    expect(moves).toEqual([
+      ASKED('Brakkle'),
+      `party-wait:${t('session.loop.pausedForJoin', { who: 'Brakkle' })}`,
+      'resume:Brakkle'
+    ]);
   });
 
   describe('for a member under Wait For Party Members', () => {

@@ -39,6 +39,8 @@ export interface ComeBackPort {
   /** Whether the party still waits on somebody's word (`PartyWait`). */
   partyWaiting(): boolean;
   invite(who: string): void;
+  /** Hold what was stopped until `who` joins the party again (`PartyWait`). */
+  awaitJoin(who: string): void;
   /** `party.comebackRooms`: 0 never walks back. */
   rooms(): number;
   notice: NoticeSink;
@@ -94,6 +96,7 @@ export class ComeBack {
       this.port.notice(t('session.comeBack.off', { who }), COMEBACK);
       return;
     }
+    if (this.walk?.who.toLowerCase() === who.toLowerCase()) return;
     if (this.walk !== null) {
       this.port.notice(t('session.comeBack.busy', { who, busy: this.walk.who }), COMEBACK);
       return;
@@ -119,8 +122,10 @@ export class ComeBack {
       return;
     }
     const started = t('session.comeBack.started', { who, rooms: legs });
-    const stopped = this.port.pause(started);
-    if (!stopped) this.port.notice(started, COMEBACK);
+    const paused = this.port.pause(started);
+    if (!paused) this.port.notice(started, COMEBACK);
+    // A lap stopped for a member's @wait is this walk's stop too: if that wait gives up first, the walk's end goes on.
+    const stopped = paused || this.port.partyWaiting();
     // Read once the route is stopped, and before the first leg back replaces it.
     this.owed = this.port.unfinished();
     this.walk = { who, legsLeft: legs, leg: null, walked: 0, due: false, stopped };
@@ -207,6 +212,8 @@ export class ComeBack {
   private found(walk: Walk): void {
     const said = t('session.comeBack.here', { who: walk.who });
     this.port.invite(walk.who);
+    // Before the walk is over, so the stop it holds is the party's to end.
+    if (walk.stopped) this.port.awaitJoin(walk.who);
     if (walk.leg === null) this.port.notice(said, COMEBACK);
     else {
       // The walker says why it stopped, which is this sentence.
@@ -218,7 +225,7 @@ export class ComeBack {
 
   /**
    * The walk back is over. What it stopped goes on, unless the party still
-   * waits on a member's word, whose `@ok` goes on with it (`PartyWait`).
+   * waits on a member's word or their joining, which goes on with it (`PartyWait`).
    */
   private finish(walk: Walk): void {
     this.walk = null;

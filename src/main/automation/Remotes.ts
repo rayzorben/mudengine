@@ -277,8 +277,11 @@ function followerPaced(name: 'wait' | 'held' | 'ok', from: string): string {
 /** `hangUp` and `relog` are `@hangup`, `@relog` and `@panic!` let through (`StandingRemotes`). */
 export interface RemoteEvents extends StandingRemoteEvents {
   notice?: NoticeSink;
-  /** Somebody asked this character to stop and wait, or said they are ready. */
-  pace?(who: string, ready: boolean): void;
+  /**
+   * Somebody asked this character to stop and wait, or said they are ready;
+   * `left` where they dropped out of the party within `regroupMinutes`.
+   */
+  pace?(who: string, ready: boolean, left: boolean): void;
   /** A member said it is held (`@held`) or free again (`@ok`), for whoever can free it. */
   held?(who: string, held: boolean): void;
   /** A member left behind asked this character to walk back for it (`@comeback`). */
@@ -1768,7 +1771,9 @@ export class Remotes implements SessionModule {
           this.parOnWord.said(from, 'wait', state);
           return;
         }
-        this.events.pace?.(from, command.name === 'ok');
+        // A `@wait` can land after the realm dropped its sender behind the step (`PartyLeavers`).
+        const left = this.leavers.within(from, this.config.party.regroupMinutes);
+        this.events.pace?.(from, command.name === 'ok', left);
         this.events.notice?.(followerPaced(command.name, from), WAIT);
         return;
       }

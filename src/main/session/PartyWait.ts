@@ -12,14 +12,16 @@ import { membersBelow, type CharacterState } from '../../shared/character';
 import { membersStill, type HealthConfig } from '../../shared/config';
 import type { LoopProgress } from '../../shared/loops';
 import type { NoticeSink } from '../../shared/decisionSettings';
+import type { Block } from '../../shared/blocks';
 
 /**
  * Why the party waits for a member: it said `@wait`, its health is under
- * `party.waitBelow` (`hurt`), or it is under this character's own rest floors
- * (`low`, `manageParty`). Kept apart so a member's `@ok` does not end a wait
- * its health still asks for.
+ * `party.waitBelow` (`hurt`), it is under this character's own rest floors
+ * (`low`, `manageParty`), or it was invited back and has not joined
+ * (`invited`). Kept apart so a member's `@ok` does not end a wait its health
+ * or its joining still asks for.
  */
-export type PaceReason = 'asked' | 'hurt' | 'low';
+export type PaceReason = 'asked' | 'hurt' | 'low' | 'invited';
 
 /** A wait that comes and goes with a member's bar, not with what it said. */
 const BAR_REASONS = ['hurt', 'low'] as const satisfies readonly PaceReason[];
@@ -40,6 +42,8 @@ export interface PartyWaitMoves {
   notice: NoticeSink;
   /** `party.waitMinutes`, read when a wait begins; 0 waits for ever. */
   waitMinutes(): number;
+  /** A member the stopped party waits on dropped out of it behind a step already sent. */
+  leftBehind(who: string): void;
 }
 
 export class PartyWait {
@@ -79,6 +83,29 @@ export class PartyWait {
     this.track('low', low);
   }
 
+  /**
+   * The party's own lines: a member invited back is waited for until they
+   * join, and one who stops following is `leftParty`. An uninvite
+   * (`has been removed from your followers`) is the player's own choice.
+   */
+  onBlock(block: Block): void {
+    const who = block.groups['player'];
+    if (who === undefined) return;
+    if (block.type === 'party-joined' && this.waiting.has(`invited:${who.toLowerCase()}`))
+      this.pace(who, true, 'invited');
+    else if (block.type === 'party-left' && block.groups['removed'] === undefined)
+      this.leftParty(who);
+  }
+
+  /**
+   * `who` is out of the party. Asked to wait while the party is stopped for
+   * them, they were left behind: GreaterMUD drops a held member as the leader
+   * steps off, and the `@wait` lands before or after the drop.
+   */
+  leftParty(who: string): void {
+    if (this.paused && this.waiting.has(`asked:${who.toLowerCase()}`)) this.moves.leftBehind(who);
+  }
+
   /** The members under one bar reason now: a wait for each, an end for each no longer under it. */
   private track(why: (typeof BAR_REASONS)[number], names: string[]): void {
     const now = new Set(names.map((name) => `${why}:${name.toLowerCase()}`));
@@ -97,9 +124,15 @@ export class PartyWait {
   pace(who: string, ready: boolean, why: PaceReason): void {
     const key = `${why}:${who.toLowerCase()}`;
     if (!ready) {
+      const fresh = !this.waiting.has(key);
       this.waiting.set(key, who);
       const said = pausedSentence(why, who);
-      if (this.paused || !this.moves.pauseMoving(said)) return;
+      // A word or a join added to a stop already held is said; a bar crossing back and forth is not.
+      if (this.paused) {
+        if (fresh && !isBarReason(why)) this.moves.notice(said, 'party-wait');
+        return;
+      }
+      if (!this.moves.pauseMoving(said)) return;
       this.paused = true;
       this.arm();
       return;
@@ -172,6 +205,10 @@ export class PartyWait {
   }
 }
 
+function isBarReason(why: PaceReason): why is (typeof BAR_REASONS)[number] {
+  return (BAR_REASONS as readonly PaceReason[]).includes(why);
+}
+
 /** What the lap says on stopping for a member, by why. */
 function pausedSentence(why: PaceReason, who: string): string {
   switch (why) {
@@ -181,6 +218,8 @@ function pausedSentence(why: PaceReason, who: string): string {
       return t('session.loop.pausedForHealth', { who });
     case 'low':
       return t('session.loop.pausedForRest', { who });
+    case 'invited':
+      return t('session.loop.pausedForJoin', { who });
     default: {
       const unreachable: never = why;
       return unreachable;

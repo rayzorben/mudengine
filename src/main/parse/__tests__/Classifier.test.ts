@@ -1984,9 +1984,11 @@ describe('the cheap eight', () => {
 
   // `uninvite soul`, captured live: the offer withdrawn before it was accepted.
   it('reads an invitation withdrawn, captured live', () => {
-    expect(expectType('Soul has been removed from your followers.', 'party-left')['player']).toBe(
-      'Soul'
-    );
+    const removed = expectType('Soul has been removed from your followers.', 'party-left');
+    expect(removed['player']).toBe('Soul');
+    // Marked, so a member left behind is told from the leader's own uninvite (`PartyWait`).
+    expect(removed['removed']).toBeDefined();
+    expect(expectType('Soul is no longer following you.', 'party-left')['removed']).toBeUndefined();
   });
 
   it('reads this character’s own rank change, captured live', () => {

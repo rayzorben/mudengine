@@ -1080,7 +1080,7 @@ describe('a party wait during a route', () => {
     const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'stepping');
     moving.watchParty(EMPTY_CHARACTER);
     expect(parts.walker.stop).not.toHaveBeenCalled();
-    moving.pace('Killa', false);
+    moving.pace('Killa', false, false);
     expect(parts.walker.stop).toHaveBeenCalledWith(
       t('session.loop.pausedForRemote', { who: 'Killa' })
     );
@@ -1089,7 +1089,7 @@ describe('a party wait during a route', () => {
   it('leaves a walk nobody asked for to the errand walking it', () => {
     const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'stepping');
     (parts.walker as { progress: unknown }).progress = { ...IDLE_WALK, asked: false };
-    moving.pace('Killa', false);
+    moving.pace('Killa', false, false);
     expect(parts.walker.stop).not.toHaveBeenCalled();
   });
 
