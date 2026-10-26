@@ -477,6 +477,8 @@ notices:
       of your party struck, the console shows each member''s damage.'
     tabsAutoHideStated: '"ui.tabsAutoHide" was added to {file}, turned off. Turn it on to hide the
       character tabs until the pointer reaches their edge of the window.'
+    cardsSideStated: '"ui.cards" was added to {file}, set to right. The cards no longer follow the
+      character tabs to the other side of the console; set it to left to put them there.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
       channels. A channel only said what kind of thing a row was about, not what happened. Channel
       rows were moved to the closest event ({pairs}), which is narrower than a whole channel, so
@@ -1527,14 +1529,16 @@ palette:
     consolePaletteFollowHint: whatever palette the theme uses
     consolePaletteFollowLabel: 'Console: follow the theme'
     consolePaletteLabel: 'Console: {paletteLabel}'
-    tabsLeftHint: more room, cards on the right
+    tabsLeftHint: more room, uses columns
     tabsOnLeftLabel: Tabs on the left
     tabsOnRightLabel: Tabs on the right
     tabsOnTopLabel: Tabs on top
-    tabsRightHint: more room, cards on the left
+    tabsRightHint: more room, uses columns
     tabsTopHint: compact, uses rows
     tabsAutoHideOnLabel: Auto-hide the character tabs
     tabsAutoHideOffLabel: Keep the character tabs shown
+    cardsOnLeftLabel: Cards on the left
+    cardsOnRightLabel: Cards on the right
     themeCycleLabel: Cycle theme
     themeCycleSystemHint: system · {themeLabel}
     themeFollowSystemLabel: 'Theme: follow the system'
@@ -4564,12 +4568,16 @@ settings:
       showLogo: Show The MudEngine Logo
       partyRecap: Show A Damage Recap After A Party Fight
       tabPlacementLabel: Character Tabs
-      tabsLeft: Down the left, cards right
-      tabsRight: Down the right, cards left
+      tabsLeft: Down the left
+      tabsRight: Down the right
       tabsTop: Across the top
       tabsAutoHide: Auto-Hide Character Tabs
       tabsAutoHideHint: Down the left or right, the tabs stay out of sight until the pointer reaches
-        that edge, then slide out over the console.
+        that edge, then slide out over whatever is beside them.
+      cardsSideLabel: Cards
+      cardsSideHint: On the same side as the character tabs, the tabs take the window's edge.
+      cardsLeft: Left of the console
+      cardsRight: Right of the console
       uiFontHint: Everything except the console, which is always fixed-width. Blank uses the console
         font.
       uiFontLabel: Interface Font

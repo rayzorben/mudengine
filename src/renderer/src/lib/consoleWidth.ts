@@ -38,15 +38,20 @@ export function consoleGrid(): { cols: number; cell: number } | null {
  * track holds beyond the one card column an open rail keeps. Read off the
  * workspace's resolved tracks rather than the rail's box, because a closed
  * rail has no box and its empty `auto` track still holds that width. The
- * track order is the one `index.css` declares for `.workspace`.
+ * track order is the one `index.css` declares for the workspace's sides.
  */
 export function consoleRoom(box: HTMLElement): number {
   const workspace = document.querySelector<HTMLElement>('.workspace');
   if (!workspace) return box.clientWidth;
   const style = getComputedStyle(workspace);
-  // Five tracks in every state; the rail's is the first when mirrored.
+  // Five tracks in every state, ordered by the areas' last row.
   const tracks = style.gridTemplateColumns.split(' ').map(parseFloat);
-  const rail = workspace.dataset['railSide'] === 'left' ? tracks[0] : tracks[4];
+  const areas = style.gridTemplateAreas
+    .match(/"[^"]*"/g)
+    ?.at(-1)
+    ?.slice(1, -1)
+    .split(/\s+/);
+  const rail = tracks[areas?.indexOf('rail') ?? -1];
   if (rail === undefined || !Number.isFinite(rail)) return box.clientWidth;
   const kept =
     workspace.dataset['rail'] === 'open'

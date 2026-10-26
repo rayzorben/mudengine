@@ -9803,35 +9803,35 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     l.tabs.width > 0 &&
     l.rail.width > 0;
 
-  // top -> right. The mirror: tabs to the right of the console, cards to the
-  // left of it, and each rail's own handle in its own gap.
+  // top -> right. The cards keep their own side (`ui.cards`, right): the tab
+  // rail takes the window's edge and the cards sit between it and the console,
+  // each rail's own handle in its own gap.
   check(await cycleTabs(), 'the palette offers one command for where the tabs go');
   const mirrored = await layout();
   check(
-    mirrored.side === 'right' && mirrored.railSide === 'left',
-    'and it puts the tabs on the right with the cards on the left',
+    mirrored.side === 'right' && mirrored.railSide === 'right',
+    'and it puts the tabs on the right with the cards staying on the right',
     JSON.stringify(mirrored)
   );
   check(placed(mirrored), 'both rails are drawn and have width', JSON.stringify(mirrored));
   if (placed(mirrored)) {
     check(
-      mirrored.rail.right <= mirrored.console.left && mirrored.tabs.left >= mirrored.console.right,
-      'the console sits between them, cards left and tabs right',
+      mirrored.rail.left >= mirrored.console.right && mirrored.tabs.left >= mirrored.rail.right,
+      'the console stays left, then the cards, then the tabs at the edge',
       JSON.stringify(mirrored)
     );
     /*
      * The half a swapped grid area alone would not catch. Each handle has to
      * be in the gap beside its own pane, or dragging it resizes nothing it is
-     * next to: the tab rail's beside the tab rail, and the console's between
-     * the console and the card rail (todo 09).
+     * next to (todo 09).
      */
     check(
       mirrored.tabSplit !== null &&
-        mirrored.tabSplit.left >= mirrored.console.right &&
+        mirrored.tabSplit.left >= mirrored.rail.right &&
         mirrored.tabSplit.right <= mirrored.tabs.left &&
         mirrored.railSplit !== null &&
-        mirrored.railSplit.left >= mirrored.rail.right &&
-        mirrored.railSplit.right <= mirrored.console.left,
+        mirrored.railSplit.left >= mirrored.console.right &&
+        mirrored.railSplit.right <= mirrored.rail.left,
       'and each handle sits in the gap beside its own pane',
       JSON.stringify(mirrored)
     );
@@ -9853,6 +9853,36 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       JSON.stringify(sided)
     );
   }
+
+  // The cards on their own: with the tabs left, the cards go left too and sit
+  // between the tabs and the console. Pressed again, they come back.
+  const swapCards = async () => {
+    const was = (await layout()).railSide;
+    const clicked = await pressCommand('cards', 'cardside');
+    await readUntil(async () => (await layout()).railSide, (now) => now !== was);
+    await stable(layout);
+    return String(clicked) === 'true';
+  };
+  check(await swapCards(), 'the palette moves the cards to the other side on their own');
+  const sameSide = await layout();
+  check(
+    sameSide.side === 'left' && sameSide.railSide === 'left',
+    'and the tabs stay where they were',
+    JSON.stringify(sameSide)
+  );
+  if (placed(sameSide)) {
+    check(
+      sameSide.tabSplit !== null &&
+        sameSide.railSplit !== null &&
+        sameSide.tabs.right <= sameSide.tabSplit.left &&
+        sameSide.tabSplit.right <= sameSide.rail.left &&
+        sameSide.rail.right <= sameSide.railSplit.left &&
+        sameSide.railSplit.right <= sameSide.console.left,
+      'the tabs take the edge, then the cards, then the console, each handle in its own gap',
+      JSON.stringify(sameSide)
+    );
+  }
+  check(await swapCards(), 'pressing it again puts the cards back on the right');
   {
     // Measured with the rail at its top, where its head is drawn.
     await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);

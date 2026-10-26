@@ -45,10 +45,10 @@ export interface SplitterProps {
    * Which pane this handle belongs to, for the workspace grid.
    *
    * Deliberately not derived from `edge`. The two are the same fact only while
-   * the tab rail is on the left: mirror the workspace (`ui.tabs: right`) and
-   * the tab rail's handle becomes a right edge while still belonging in the
-   * tab rail's own gap. The grid area was keyed on `edge` and the two rails
-   * swapped their handles the moment the mirror existed.
+   * the tab rail is on the left: put it on the right (`ui.tabs: right`) and
+   * its handle becomes a right edge while still belonging in the tab rail's
+   * own gap. The grid area was keyed on `edge` and the two rails swapped
+   * their handles the moment the right side existed.
    *
    * Absent for the docked strips, whose handles are positioned against the
    * strip itself rather than placed in the grid.

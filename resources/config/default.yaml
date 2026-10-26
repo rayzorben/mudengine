@@ -221,11 +221,8 @@ ui:
   # `top` costs rows, which are cheap, and collapses each tab to a name, a state
   # dot and a health bar.
   #
-  # `right` is `left` mirrored, and the mirror takes the card rail with it: the
-  # tabs move to the right edge and the cards to the left. It costs exactly what
-  # `left` costs. Which side each rail is on is your hand and your monitor, not
-  # a trade -- so it is one setting and not two, because the two rails cannot
-  # both have the same edge.
+  # `right` costs what `left` costs. Which side the cards sit on is `cards`
+  # below; on the same side as the tabs, the tabs take the window's edge.
   #
   # `left` is the default: this is a client for playing several characters, and
   # the roomier rail is the one that earns its space the moment there is more
@@ -237,6 +234,11 @@ ui:
   # pointer is on them and slide away when it leaves. The console keeps its
   # width either way. No effect with the tabs across the top.
   tabsAutoHide: false
+
+  # left | right: which side of the console the cards sit on. With the tabs on
+  # the same side, the tabs take the window's edge and the cards sit between
+  # them and the console.
+  cards: right
 
   # dark | light | system
   #

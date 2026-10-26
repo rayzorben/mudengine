@@ -1109,6 +1109,7 @@ export class SettingsEditor {
         density: config.ui.density,
         tabs: config.ui.tabs,
         tabsAutoHide: config.ui.tabsAutoHide,
+        cards: config.ui.cards,
         showHud: config.ui.showHud,
         showLogo: config.ui.showLogo,
         partyRecap: config.ui.partyRecap,
@@ -1237,6 +1238,7 @@ export class SettingsEditor {
         set(['ui', 'density'], draft.ui.density);
         set(['ui', 'tabs'], draft.ui.tabs);
         set(['ui', 'tabsAutoHide'], draft.ui.tabsAutoHide);
+        set(['ui', 'cards'], draft.ui.cards);
         set(['ui', 'showHud'], draft.ui.showHud);
         set(['ui', 'showLogo'], draft.ui.showLogo);
         set(['ui', 'partyRecap'], draft.ui.partyRecap);

@@ -231,18 +231,17 @@ option {
 }
 
 /*
- * Mirrored: the card rail takes the left edge and the tab rail the right.
+ * The card rail's side (`ui.cards`) and the tab rail's are two settings. On
+ * the same side the tab rail keeps the window's edge and the cards sit between
+ * it and the console.
  *
- * Keyed on which side the *cards* are on rather than on `data-tabs`, because
- * the mirror has to hold in the one state where there are no tabs at all — a
- * client with no characters yet. Keyed on `data-tabs='right'` it would put the
- * card rail back on the right until the first character loaded, and the whole
- * layout would jump sideways the moment one did.
+ * Keyed on `data-rail-side` rather than inferred from `data-tabs`, because the
+ * side has to hold with no tabs at all, a client with no characters yet.
  *
  * The five tracks are the same five; only their order changes, so each rail
  * keeps its own width and its own handle. The handles are placed by which pane
  * they belong to (`data-pane`) rather than by which way they grow it, which is
- * what lets the tab rail's handle be a right edge here and still sit in the tab
+ * what lets the tab rail's handle be a right edge and still sit in the tab
  * rail's own gap.
  */
 .workspace[data-rail-side='left'] {
@@ -252,12 +251,26 @@ option {
     var(--track-tsplit) var(--track-tabs);
 }
 
-/*
- * There is deliberately no mirrored `top` variant. The cards take the left only
- * when the tabs have asked for the right, so `data-tabs` here is `right` or —
- * with no characters loaded at all — `none`, and never `top`. A rule for it
- * would be a claim about a state the client cannot be in.
- */
+.workspace[data-rail-side='left'][data-tabs='left'] {
+  grid-template-areas: 'tabs tsplit rail rsplit main';
+  grid-template-columns:
+    var(--track-tabs) var(--track-tsplit) var(--track-rail)
+    var(--track-rsplit) var(--track-main);
+}
+
+.workspace[data-rail-side='right'][data-tabs='right'] {
+  grid-template-areas: 'main rsplit rail tsplit tabs';
+  grid-template-columns:
+    var(--track-main) var(--track-rsplit) var(--track-rail)
+    var(--track-tsplit) var(--track-tabs);
+}
+
+/* Across the top, with the cards on the left: the mirrored columns under it. */
+.workspace[data-rail-side='left'][data-tabs='top'] {
+  grid-template-areas:
+    'tabs tabs tabs tabs tabs'
+    'rail rsplit main main main';
+}
 
 /*
  * The handle between two panes. See `components/Splitter.tsx`.
@@ -279,8 +292,8 @@ option {
  * Placed by which pane it belongs to, never by which way it grows that pane.
  *
  * They were the same fact for as long as the tab rail could only be on the
- * left. Mirror the workspace and they part company: the tab rail's handle
- * becomes a right edge while still belonging in the tab rail's own gap, and
+ * left. Put either rail on the other side and they part company: its handle
+ * becomes a right edge while still belonging in its own gap, and
  * keyed on `data-edge` the two rails swapped handles. The docked strips'
  * handles carry no `data-pane` — they are positioned against the strip.
  */

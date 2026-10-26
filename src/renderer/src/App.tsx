@@ -320,9 +320,8 @@ export default function App() {
    */
   const [debugOpen, setDebugOpen] = useState(false);
 
-  const { tabSide, setTabSide, railSide, tabsAutoHide, setTabsAutoHide } = useTabPlacement(
-    config.ui
-  );
+  const placement = useTabPlacement(config.ui);
+  const { tabSide, railSide, tabsAutoHide } = placement;
   /* Hidden down its edge and laid over the console; across the top it stays. */
   const tabsHide = showTabs && tabSide !== 'top' && tabsAutoHide === 'on';
 
@@ -907,10 +906,7 @@ export default function App() {
       choose: chooseTheme,
       chooseConsole
     },
-    tabSide,
-    setTabSide,
-    tabsAutoHide,
-    setTabsAutoHide,
+    ...placement,
     panes,
     paneFlow,
     addPane,

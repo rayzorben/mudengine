@@ -709,6 +709,33 @@ describe('the tab rail hiding', () => {
   });
 });
 
+describe('the cards’ side', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('is stated right after the tab hiding in a file that lacks it', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  tabs: right\n  tabsAutoHide: false\n  showHud: true\n',
+      'utf8'
+    );
+    migrate(true);
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['cards']).toBe('right');
+    expect(text.indexOf('cards:')).toBeGreaterThan(text.indexOf('tabsAutoHide'));
+    expect(text.indexOf('cards:')).toBeLessThan(text.indexOf('showHud'));
+  });
+
+  it('leaves a file that already states it alone', () => {
+    fs.writeFileSync(home.options, 'ui:\n  tabs: right\n  cards: left\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    expect((parse(text).ui as Record<string, unknown>)['cards']).toBe('left');
+    expect(text.match(/cards:/g)).toHaveLength(1);
+  });
+});
+
 describe('the mark at the head of the card rail', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });

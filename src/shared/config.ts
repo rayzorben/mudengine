@@ -117,15 +117,15 @@ export type DensityPreference = 'auto' | 'comfortable' | 'compact';
 export type Density = Exclude<DensityPreference, 'auto'>;
 
 /**
- * Which edge the character tabs sit on.
- *
- * `left` and `right` are the same rail mirrored, and the mirror takes the card
- * rail with it: whichever side the tabs are on, the cards are on the other. It
- * is one setting rather than two because the two side rails cannot share an
- * edge — a client that let both be asked for on the left would have to pick a
- * winner, and the pick would be arbitrary.
+ * Which edge the character tabs sit on. The card rail's edge is its own
+ * setting (`CardsSide`); on the same side the tabs take the window's edge and
+ * the cards sit between them and the console.
  */
 export type TabsPreference = 'top' | 'left' | 'right';
+
+/** Which side of the console the card rail sits on (`ui.cards`). */
+export const CARDS_SIDES = ['left', 'right'] as const;
+export type CardsSide = (typeof CARDS_SIDES)[number];
 
 /** One realm-specific prompt the block vocabulary does not cover. */
 export interface LoginStep {
@@ -389,10 +389,8 @@ export interface UiConfig {
    * is doing. `top` costs rows, which are cheap, and collapses to a name, a
    * state dot and a bar. See docs/ui-design.md §3.8.
    *
-   * `right` is `left` mirrored, and mirrors the whole workspace: the tabs take
-   * the right edge and the card rail takes the left. It costs exactly what
-   * `left` costs — which side of the console each rail is on is the player's
-   * hand and their monitor, not a trade.
+   * `right` costs what `left` costs. Which side of the console the cards sit
+   * on is `cards`.
    */
   tabs: TabsPreference;
   /**
@@ -401,6 +399,8 @@ export interface UiConfig {
    * leaves. The console keeps its width either way. No effect on `top`.
    */
   tabsAutoHide: boolean;
+  /** Which side of the console the card rail sits on. */
+  cards: CardsSide;
   /**
    * Show the Vitals and Room cards once in the realm.
    *
@@ -2499,6 +2499,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     theme: DEFAULT_THEME,
     tabs: 'left',
     tabsAutoHide: false,
+    cards: 'right',
     showHud: true,
     showLogo: true,
     partyRecap: true,
@@ -2965,6 +2966,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       font: normalizeFont(ui['font'], DEFAULT_CONFIG.ui.font),
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, DEFAULT_CONFIG.ui.tabs),
       tabsAutoHide: bool(ui['tabsAutoHide'], DEFAULT_CONFIG.ui.tabsAutoHide),
+      cards: oneOf(ui['cards'], CARDS_SIDES, DEFAULT_CONFIG.ui.cards),
       density: oneOf(
         ui['density'],
         ['auto', 'comfortable', 'compact'] as const,

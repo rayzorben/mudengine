@@ -235,6 +235,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheMark(home, note);
   statedThePartyRecap(home, note, options.template);
   statedTheTabsAutoHide(home, note, options.template);
+  statedTheCardsSide(home, note, options.template);
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
@@ -4294,14 +4295,27 @@ function statedTheTabsAutoHide(
 }
 
 /**
+ * States `ui.cards`, right, after `tabsAutoHide`. The cards had followed the
+ * tabs to the other side; on the right they stay put when the tabs move.
+ */
+function statedTheCardsSide(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (statedUiKey(home, template, 'cards', DEFAULT_CONFIG.ui.cards, 'tabsAutoHide'))
+    note(t('notices.migration.cardsSideStated', { file: home.options }));
+}
+
+/**
  * Adds one `ui:` key the options file lacks, with the template's own paragraph,
  * after the key named `after` (else last). True when the file was written.
  */
-function statedUiKey(
+function statedUiKey<K extends keyof AppConfig['ui']>(
   home: Home,
   template: string | undefined,
-  key: keyof AppConfig['ui'],
-  value: boolean,
+  key: K,
+  value: AppConfig['ui'][K],
   after: keyof AppConfig['ui']
 ): boolean {
   const comments = templateComments(template, 'ui');

@@ -35,6 +35,8 @@ import {
   PARTY_RANGES,
   type EncumbranceGate,
   type TabsPreference,
+  CARDS_SIDES,
+  type CardsSide,
   combatChoices,
   type CombatChoices,
   spellWeights,
@@ -250,6 +252,7 @@ export interface GlobalDraft {
     density: DensityPreference;
     tabs: TabsPreference;
     tabsAutoHide: boolean;
+    cards: CardsSide;
     showHud: boolean;
     showLogo: boolean;
     partyRecap: boolean;
@@ -1453,6 +1456,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       density: oneOf(ui['density'], ['auto', 'comfortable', 'compact'] as const, 'auto'),
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       tabsAutoHide: ui['tabsAutoHide'] === true,
+      cards: oneOf(ui['cards'], CARDS_SIDES, DEFAULT_CONFIG.ui.cards),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
       partyRecap: ui['partyRecap'] !== false,

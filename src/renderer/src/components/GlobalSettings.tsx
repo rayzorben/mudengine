@@ -56,6 +56,8 @@ import TrainStatFields from './TrainStatFields';
 
 import { t } from '../lib/i18n';
 import {
+  CARDS_SIDES,
+  type CardsSide,
   DEFAULT_CONFIG,
   GEAR_RANGES,
   QUESTS_RANGES,
@@ -263,6 +265,11 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
     { id: 'rewrites-statline', label: t('settings.statline.legend') },
     { id: 'rewrites-asks', label: t('settings.asks.legend') }
   ]
+};
+
+const CARDS_SIDE_LABEL: Record<CardsSide, string> = {
+  left: t('settings.client.appearance.cardsLeft'),
+  right: t('settings.client.appearance.cardsRight')
 };
 
 const SECTION_LABEL: Record<Section, string> = {
@@ -523,6 +530,20 @@ export default function GlobalSettings({
                 label={t('settings.client.appearance.tabsAutoHide')}
                 name="global-tabs-auto-hide"
                 onChange={(value) => patch('ui', { tabsAutoHide: value })}
+              />
+              <SelectField
+                hint={t('settings.client.appearance.cardsSideHint')}
+                label={t('settings.client.appearance.cardsSideLabel')}
+                name="global-cards-side"
+                onChange={(value) => {
+                  const cards = CARDS_SIDES.find((side) => side === value);
+                  if (cards) patch('ui', { cards });
+                }}
+                options={CARDS_SIDES.map((side) => ({
+                  value: side,
+                  label: CARDS_SIDE_LABEL[side]
+                }))}
+                value={draft.ui.cards}
               />
               <SelectField
                 hint={t('settings.client.appearance.gameDockHint')}

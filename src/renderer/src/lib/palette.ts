@@ -27,6 +27,7 @@ import type { UseTheme } from './theme';
 import { tuning } from './tuning';
 import {
   targetFromServer,
+  type CardsSide,
   type Density,
   type DensityPreference,
   type Server
@@ -105,6 +106,9 @@ export interface PaletteDeps {
   /** Whether a side tab rail hides until the pointer reaches it (`ui.tabsAutoHide`). */
   tabsAutoHide: Switch;
   setTabsAutoHide(value: Switch): void;
+  /** Which side of the console the card rail sits on (`ui.cards`). */
+  railSide: CardsSide;
+  setRailSide(side: CardsSide): void;
   panes: readonly SessionId[];
   paneFlow: PaneFlow;
   addPane(id: SessionId): void;
@@ -865,6 +869,17 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
           }
         ]
       : []),
+    {
+      id: 'cardside',
+      icon: 'columns' as const,
+      label:
+        deps.railSide === 'right'
+          ? t('palette.view.cardsOnLeftLabel')
+          : t('palette.view.cardsOnRightLabel'),
+      keywords: ['cards', 'rail', 'left', 'right', 'side', 'edge', 'swap', 'mirror'],
+      group: 'view' as const,
+      run: () => deps.setRailSide(deps.railSide === 'right' ? 'left' : 'right')
+    },
     {
       id: 'config',
       icon: 'fileText' as const,

@@ -64,6 +64,8 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     setTabSide: vi.fn(),
     tabsAutoHide: 'off',
     setTabsAutoHide: vi.fn(),
+    railSide: 'right',
+    setRailSide: vi.fn(),
     panes: [HERO],
     paneFlow: 'rows',
     addPane: vi.fn(),
@@ -184,6 +186,15 @@ describe('the palette commands', () => {
     find('tabsautohide', { setTabsAutoHide, tabsAutoHide: 'on', tabSide: 'right' }).run();
     expect(setTabsAutoHide.mock.calls).toEqual([['on'], ['off']]);
     expect(ids({ tabSide: 'top' })).not.toContain('tabsautohide');
+  });
+
+  it('moves the cards across on their own, whichever side the tabs are on', () => {
+    const setRailSide = vi.fn();
+    const setTabSide = vi.fn();
+    find('cardside', { setRailSide, setTabSide, tabSide: 'right' }).run();
+    find('cardside', { setRailSide, setTabSide, railSide: 'left', tabSide: 'top' }).run();
+    expect(setRailSide.mock.calls).toEqual([['left'], ['right']]);
+    expect(setTabSide).not.toHaveBeenCalled();
   });
 
   it("starts a loop on the shown character and says a refusal in that character's console", async () => {
