@@ -1,7 +1,7 @@
 /**
- * What the character was doing when the app last saw it: the lap and the
- * route the player asked for, kept in the character's own record so a quit
- * and a relaunch carry them as a dropped connection does (todo 01,
+ * What the character was doing when the app last saw it: the lap, the route
+ * the player asked for and the party, kept in the character's own record so a
+ * quit and a relaunch carry them as a dropped connection does (todo 01,
  * 2026-09-30). See `mudengine-session` › *Every close carries the loop and
  * the route*.
  *
@@ -34,9 +34,20 @@ export interface CarriedRoute {
   run: boolean;
 }
 
+/** Somebody the party had: `droppedAt` is when it lost them to a hangup, null while they are in it. */
+export interface CarriedMember {
+  name: string;
+  droppedAt: number | null;
+}
+
+/** The party as `PartyRejoin` keeps it: the members this character leads, or the leader it follows. */
+export type CarriedParty =
+  { kind: 'leading'; members: CarriedMember[] } | { kind: 'following'; leader: CarriedMember };
+
 export interface Underway {
   lap: CarriedLap | null;
   route: CarriedRoute | null;
+  party: CarriedParty | null;
   /**
    * A run turned auto-combat off and had not given it back. What a run turns
    * off is the run's, so the next dial gives it back (2026-10-08: Soul's run
@@ -45,12 +56,26 @@ export interface Underway {
   combatOffForRun: boolean;
 }
 
-export const NOTHING_UNDERWAY: Underway = { lap: null, route: null, combatOffForRun: false };
+export const NOTHING_UNDERWAY: Underway = {
+  lap: null,
+  route: null,
+  party: null,
+  combatOffForRun: false
+};
 
 /** Where `Underway` is kept between launches. Written as it changes, read at `connect`. */
 export interface UnderwaySink {
   recallUnderway(): Underway;
   rememberUnderway(underway: Underway): void;
+}
+
+/** Who keeps the party the record carries (`PartyRejoin`), as `CarryOver` reads and restores it. */
+export interface PartyCarrier {
+  readonly carried: CarriedParty | null;
+  /** At a dial: the party the record carried, lost with the link. */
+  carry(party: CarriedParty | null): void;
+  /** The record's writer, called whenever `carried` moves; one, set at composition, a second replaces it. */
+  writeWith(write: () => void): void;
 }
 
 /** The sink for a session with nowhere to write: nothing was underway, and nothing is kept. */
@@ -62,7 +87,10 @@ export const NO_UNDERWAY: UnderwaySink = {
 /** Whether two readings say the same; the lap's loop is compared by reference, as the runner holds one. */
 export function sameUnderway(a: Underway, b: Underway): boolean {
   return (
-    sameLap(a.lap, b.lap) && sameRoute(a.route, b.route) && a.combatOffForRun === b.combatOffForRun
+    sameLap(a.lap, b.lap) &&
+    sameRoute(a.route, b.route) &&
+    sameParty(a.party, b.party) &&
+    a.combatOffForRun === b.combatOffForRun
   );
 }
 
@@ -86,12 +114,27 @@ function sameRoute(a: CarriedRoute | null, b: CarriedRoute | null): boolean {
   return a.to === b.to && a.name === b.name && a.run === b.run;
 }
 
+function sameParty(a: CarriedParty | null, b: CarriedParty | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.kind === 'following') return b.kind === 'following' && sameMember(a.leader, b.leader);
+  return (
+    b.kind === 'leading' &&
+    a.members.length === b.members.length &&
+    a.members.every((member, i) => sameMember(member, b.members[i]))
+  );
+}
+
+function sameMember(a: CarriedMember, b: CarriedMember | undefined): boolean {
+  return b !== undefined && a.name === b.name && a.droppedAt === b.droppedAt;
+}
+
 /** Parses a record read off disk. A part that does not parse is nothing carried, never a guess. */
 export function asUnderway(value: unknown): Underway {
   if (!isRecord(value)) return NOTHING_UNDERWAY;
   return {
     lap: asLap(value['lap']),
     route: asCarriedRoute(value['route']),
+    party: asCarriedParty(value['party']),
     combatOffForRun: value['combatOffForRun'] === true
   };
 }
@@ -123,6 +166,25 @@ function asCarriedRoute(value: unknown): CarriedRoute | null {
   const { name, run } = value;
   if (to === undefined || typeof name !== 'string' || typeof run !== 'boolean') return null;
   return { to, name, run };
+}
+
+function asCarriedParty(value: unknown): CarriedParty | null {
+  if (!isRecord(value)) return null;
+  if (value['kind'] === 'following') {
+    const leader = asCarriedMember(value['leader']);
+    return leader === null ? null : { kind: 'following', leader };
+  }
+  if (value['kind'] !== 'leading' || !Array.isArray(value['members'])) return null;
+  const members = value['members'].flatMap((entry: unknown) => asCarriedMember(entry) ?? []);
+  return members.length === 0 ? null : { kind: 'leading', members };
+}
+
+/** A player's name is one word (`invite <name>`); anything else is not carried. */
+function asCarriedMember(value: unknown): CarriedMember | null {
+  if (!isRecord(value)) return null;
+  const { name } = value;
+  if (typeof name !== 'string' || !/^\w+$/.test(name)) return null;
+  return { name, droppedAt: clock(value['droppedAt']) };
 }
 
 /** A figure the runner may not have had: null stays null, never zero. */

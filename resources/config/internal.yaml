@@ -1361,6 +1361,11 @@ tuning:
     # is invited once. Chosen, not measured.
     inviteSeenAgainMs: 60000
 
+    # How long after "You are no longer following <leader>." the leader's
+    # "just disconnected!!!" still means they hung up on the party. The server
+    # sends the two back to back. Chosen, not measured.
+    leaderDroppedMs: 5000
+
     # How soon after a party member's @wait or @heal sends par another may
     # send it again, while the party list shows their bar fuller than they
     # say it is. MegaMUD re-reads the party list every 15s in a fight

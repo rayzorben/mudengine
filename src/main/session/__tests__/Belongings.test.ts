@@ -723,13 +723,21 @@ describe('what this character was doing when the app closed', () => {
   };
   const route = { to: '1/2140', name: 'Town Square', run: false };
 
-  it('keeps the lap and the route and hands them back to the next launch', () => {
+  it('keeps the lap, the route and the party and hands them back to the next launch', () => {
+    const party = {
+      kind: 'leading' as const,
+      members: [
+        { name: 'Brakkle', droppedAt: null },
+        { name: 'Soul', droppedAt: 1_700_000_002_000 }
+      ]
+    };
     const first = new Belongings({ file, realm: REALM });
-    first.rememberUnderway({ lap, route, combatOffForRun: true });
+    first.rememberUnderway({ lap, route, party, combatOffForRun: true });
     first.close();
 
     const back = new Belongings({ file, realm: REALM }).recallUnderway();
     expect(back.route).toEqual(route);
+    expect(back.party).toEqual(party);
     expect(back.combatOffForRun).toBe(true);
     expect(back.lap).toMatchObject({ index: 1, laps: 3, running: true, expAtStart: null });
     expect(back.lap?.loop.stops).toHaveLength(2);

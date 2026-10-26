@@ -1303,6 +1303,7 @@ export function partyFormOf(party: PartyConfig): PartyForm {
     parEveryRounds: String(party.parEveryRounds),
     regroupMinutes: String(party.regroupMinutes),
     comebackRooms: String(party.comebackRooms),
+    reinviteMinutes: String(party.reinviteMinutes),
     parAtLoss: percent(party.parAtLoss)
   };
 }
@@ -1318,6 +1319,7 @@ export function partyOf(form: PartyForm): PartyConfig {
     parEveryRounds: wholeOf(form.parEveryRounds, DEFAULT_CONFIG.automation.party.parEveryRounds),
     regroupMinutes: wholeOf(form.regroupMinutes, DEFAULT_CONFIG.automation.party.regroupMinutes),
     comebackRooms: wholeOf(form.comebackRooms, DEFAULT_CONFIG.automation.party.comebackRooms),
+    reinviteMinutes: wholeOf(form.reinviteMinutes, DEFAULT_CONFIG.automation.party.reinviteMinutes),
     // A cleared field keeps the shipped share: 0 would ask `par` every round at any loss.
     parAtLoss: shareOf(form.parAtLoss) ?? DEFAULT_CONFIG.automation.party.parAtLoss
   };

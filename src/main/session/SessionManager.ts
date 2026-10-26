@@ -1503,7 +1503,7 @@ export class SessionManager {
         ...reports
       }
     );
-    this.carryOver = new CarryOver(this.loops, this.travel, () => this.belongings);
+    this.carryOver = new CarryOver(this.loops, this.travel, this.remotes, () => this.belongings);
     this.claims = new Claims(
       {
         tracker: this.tracker,

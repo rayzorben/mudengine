@@ -127,6 +127,8 @@ import { restoreKit } from './restoreKit';
 import { takeFloor } from './takeFloor';
 import { FOLLOW_UP, InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
+import { PartyRejoin } from './PartyRejoin';
+import type { PartyCarrier } from '../../shared/underway';
 import { LeaderDoors } from './LeaderDoors';
 import { BarrierRemotes } from './BarrierRemotes';
 import {
@@ -459,6 +461,8 @@ export class Remotes implements SessionModule {
   private readonly autoJoin: AutoJoin;
   /** Inviting a player marked Invite When Seen. See `AutoInvite`. */
   private readonly autoInvite: AutoInvite;
+  /** The party a hangup took apart, owed back. See `PartyRejoin`. */
+  private readonly rejoin: PartyRejoin;
   /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
   private readonly regroup: PartyRegroup;
   /** `@join` to somebody invited who has not joined, until they do. See `InviteFollowUp`. */
@@ -499,8 +503,9 @@ export class Remotes implements SessionModule {
   ) {
     const notice = (message: string, decision?: DecisionKind): void =>
       events.notice?.(message, decision);
-    this.autoJoin = new AutoJoin(config, queue, { notice });
-    this.autoInvite = new AutoInvite(config, queue, { notice });
+    this.rejoin = new PartyRejoin(config, { notice });
+    this.autoJoin = new AutoJoin(config, queue, this.rejoin, { notice });
+    this.autoInvite = new AutoInvite(config, queue, this.rejoin, { notice });
     this.regroup = new PartyRegroup(config, queue, { notice });
     this.invites = new InviteFollowUp(config, queue, {
       notice,
@@ -532,6 +537,7 @@ export class Remotes implements SessionModule {
 
   configure(config: AutomationConfig): void {
     this.config = config;
+    this.rejoin.configure(config);
     this.autoJoin.configure(config);
     this.autoInvite.configure(config);
     this.regroup.configure(config);
@@ -552,6 +558,11 @@ export class Remotes implements SessionModule {
     landing?: Landing
   ): void {
     this.regroup.stepping(command, direction, to, state, landing);
+  }
+
+  /** The party the character's record carries across a hangup (`CarryOver`). */
+  get party(): PartyCarrier {
+    return this.rejoin;
   }
 
   /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */
@@ -575,21 +586,22 @@ export class Remotes implements SessionModule {
   onBlock(block: Block, state: CharacterState): void {
     // The party's own switch, not the remotes': the regroup answers nobody's `@`.
     this.regroup.onBlock(block);
+    this.rejoin.onBlock(block);
     this.invites.onBlock(block, state);
     this.leaderDoors.onBlock(block, state);
     this.hands.onBlock(block, state);
     this.pacing.onBlock(block, state);
+    // Its own switches: a rejoin is the party's, under the master switch alone.
+    this.autoJoin.onBlock(block, state);
     if (!this.config.remotes.enabled) return;
     /*
      * The master switch holds what is sent (`askJoined`, `answer`), never
      * what is read: a remote is still recorded as commanded, a reply still
      * read, a refusal still said, and `act` gives a notice that automation is
-     * off instead of answering. `AutoJoin` reads the switch itself;
-     * `HealthAsks.onBlock` only remembers the party list. Every telepath here
-     * goes at `user`, which the queue's own gate exempts, so this module's
-     * guards are the only thing holding them.
+     * off instead of answering. `HealthAsks.onBlock` only remembers the
+     * party list. Every telepath here goes at `user`, which the queue's own
+     * gate exempts, so this module's guards are the only thing holding them.
      */
-    this.autoJoin.onBlock(block, state);
     this.healthAsks.onBlock(block, state);
     if (block.type === 'party-joined') {
       const joined = block.groups['player'] ?? block.groups['leader'];
@@ -890,6 +902,7 @@ export class Remotes implements SessionModule {
   onCharacter(state: CharacterState): void {
     this.regroup.onCharacter(state);
     this.invites.onCharacter(state);
+    this.rejoin.onCharacter(state);
     this.autoInvite.onCharacter(state);
     // An ask left unanswered is closed whatever the master switch says; the
     // sheet and the health asks go out under the gate their first answer did (todo 118).

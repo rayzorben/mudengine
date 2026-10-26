@@ -2173,6 +2173,14 @@ export interface PartyConfig {
    * them (MegaMUD walks back 5). 0 never walks back (`ComeBack`).
    */
   comebackRooms: number;
+  /**
+   * After this character or a member disconnects, form the party again for
+   * this many minutes (`PartyRejoin`): leading, invite each member back once
+   * they are in the room; following, join the leader when they invite. The
+   * server drops a member who hangs up, and every member when the leader
+   * does (GreaterMUD `Player.PlayerLeavingPartyCheck`). 0 never does.
+   */
+  reinviteMinutes: number;
   /** Following, pick or bash a door the leader fails to bash (`LeaderDoors`, todo 03). */
   helpWithDoors: boolean;
 }
@@ -2625,6 +2633,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       relayPortals: true,
       regroupMinutes: 5,
       comebackRooms: 15,
+      reinviteMinutes: 30,
       helpWithDoors: false
     },
     health: {
@@ -4036,7 +4045,8 @@ export const PARTY_RANGES = {
   parSeconds: [0, 3600],
   parEveryRounds: [0, 20],
   regroupMinutes: [0, 60],
-  comebackRooms: [0, 50]
+  comebackRooms: [0, 50],
+  reinviteMinutes: [0, 240]
 } as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
 
 function normalizeParty(value: unknown): PartyConfig {
@@ -4062,6 +4072,11 @@ function normalizeParty(value: unknown): PartyConfig {
     relayPortals: bool(raw['relayPortals'], d.relayPortals),
     regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes),
     comebackRooms: int(raw['comebackRooms'], d.comebackRooms, ...PARTY_RANGES.comebackRooms),
+    reinviteMinutes: int(
+      raw['reinviteMinutes'],
+      d.reinviteMinutes,
+      ...PARTY_RANGES.reinviteMinutes
+    ),
     helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors)
   };
 }

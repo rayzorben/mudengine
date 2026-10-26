@@ -10,6 +10,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../.
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 const AGAIN = DEFAULT_INTERNAL.tuning.remotes.inviteSeenAgainMs;
+const NOTHING_OWED = { owesInvite: (): boolean => false };
 
 const occupant = (name: string, kind: RoomOccupant['kind'] = 'player'): RoomOccupant => ({
   name,
@@ -82,7 +83,9 @@ describe('inviting a player marked Invite When Seen', () => {
     }
   });
   const make = (players = ['soul'], enabled = true): AutoInvite =>
-    new AutoInvite(config(players, enabled), queue, { notice: (line) => said.push(line) });
+    new AutoInvite(config(players, enabled), queue, NOTHING_OWED, {
+      notice: (line) => said.push(line)
+    });
   const drain = (): void => void vi.advanceTimersByTime(500);
 
   beforeEach(() => {
@@ -125,6 +128,19 @@ describe('inviting a player marked Invite When Seen', () => {
     it.onCharacter(state(4, [occupant('Soul')]));
     drain();
     expect(sent).toEqual(['invite Soul']);
+  });
+
+  it('invites a member a hangup took out of the party, marked or not', () => {
+    const owed = new Set(['brakkle']);
+    const it = new AutoInvite(
+      config([]),
+      queue,
+      { owesInvite: (name) => owed.has(name.toLowerCase()) },
+      { notice: (line) => said.push(line) }
+    );
+    it.onCharacter(state(1, [occupant('Yang'), occupant('Brakkle')]));
+    drain();
+    expect(sent).toEqual(['invite Brakkle']);
   });
 
   it('invites nobody while following, and says so', () => {

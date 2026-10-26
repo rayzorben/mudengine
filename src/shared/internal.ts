@@ -1792,6 +1792,13 @@ const TUNING_DEFAULTS = {
      */
     inviteSeenAgainMs: 60_000,
     /**
+     * How long after `You are no longer following <leader>.` the leader's
+     * `just disconnected!!!` still says they hung up on the party. GreaterMUD
+     * sends the two back to back (`Player.Disconnects`), so this only covers
+     * the wire between them. Chosen, not measured.
+     */
+    leaderDroppedMs: 5_000,
+    /**
      * How soon after a member's `@wait` or `@heal` sent `par` another may send
      * it again (todo 142). MegaMUD's own party clock (`ParPeriod=15`) is how
      * often it re-reads the party list in a fight.

@@ -217,6 +217,14 @@ export default function PartyFields({
             onChange={(value) => set('comebackRooms', value)}
             value={party.comebackRooms}
           />
+          <NumberField
+            hint={t('settings.party.reinviteMinutesHint')}
+            label={t('settings.party.reinviteMinutesLabel')}
+            name={`${namePrefix}party-reinvite-minutes`}
+            setting="automation.party.reinviteMinutes"
+            onChange={(value) => set('reinviteMinutes', value)}
+            value={party.reinviteMinutes}
+          />
         </div>
       </fieldset>
       <fieldset className="settings-menus" data-fieldset="party-healing">

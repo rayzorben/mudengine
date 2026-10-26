@@ -453,6 +453,9 @@ notices:
     comebackRooms:
       many: 'Walk Back For a Member ({rooms} rooms) was added to {count} files: {fileList}'
       one: 'Walk Back For a Member ({rooms} rooms) was added to {fileList}'
+    reinviteMinutes:
+      many: 'Re-form the Party After a Disconnect ({minutes} min) was added to {count} files: {fileList}'
+      one: 'Re-form the Party After a Disconnect ({minutes} min) was added to {fileList}'
     chanceWays:
       many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
       one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
@@ -5491,6 +5494,11 @@ settings:
       and up to this many rooms past it, until they are here. Then invite them and go on. 0 never
       walks back.
     comebackRoomsLabel: Walk Back For a Member (rooms)
+    reinviteMinutesHint:
+      After you or a member disconnects, form the party again for this many minutes. Leading,
+      invite each member back once they are in the room with you. Following, join the leader when
+      they invite you. 0 never does.
+    reinviteMinutesLabel: Re-form the Party After a Disconnect (minutes)
     warning: It is not yet known whether the game limits commands per connection or per computer.
       These settings make a second automated character useful; turning them on means testing that
       yourself.
@@ -7539,6 +7547,14 @@ automation:
     regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.
     regroupGaveUp: 'Stopped waiting for the party: {members} did not rejoin within {minutes} min.'
     regroupReleased: Stopped waiting for the party; walking on without them.
+    # A party a disconnect took apart, formed again (party.reinviteMinutes).
+    reasonRejoin: 'joining {leader} again after the disconnect'
+    memberDropped: '{member} disconnected; inviting them back when they are in the room, for {minutes} min.'
+    leaderDropped: '{leader} disconnected; joining them again when they invite this character, for {minutes} min.'
+    reformLeading: 'Reconnected; inviting {members} back when each is in the room, for {minutes} min.'
+    reformFollowing: 'Reconnected; joining {leader} again when they invite this character, for {minutes} min.'
+    memberGaveUp: '{member} was not back in the party within {minutes} min; not inviting them again.'
+    leaderGaveUp: '{leader} did not invite this character within {minutes} min; not joining them again.'
     # Todo 67: an exit whose spell lands each member in a room of their own.
     apart: 'This exit sends {members} each to a room of their own and out of the party; not waiting for them.'
     # Todo 01: an invitation nobody has answered, followed up with @join.

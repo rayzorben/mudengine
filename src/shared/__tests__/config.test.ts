@@ -753,6 +753,7 @@ describe('following somebody', () => {
       regroupMinutes: 5,
       // Walks nothing until a member granted `@comeback` asks.
       comebackRooms: 15,
+      reinviteMinutes: 30,
       helpWithDoors: false
     });
   });

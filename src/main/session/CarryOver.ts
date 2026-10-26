@@ -1,14 +1,20 @@
 /**
  * What the character was doing, kept in its own record so a quit and a
  * relaunch pick it up the way a dropped connection does (todo 01,
- * 2026-09-30): the lap, the route the player asked for and auto-combat a run
- * turned off, written whenever either publishes and handed back at the next
- * dial, where `Travel.pickUpAfterLoss` walks on once the character is placed. See
+ * 2026-09-30): the lap, the route the player asked for, auto-combat a run
+ * turned off and the party (`PartyRejoin`), written whenever one of them moves
+ * and handed back at the next dial, where `Travel.pickUpAfterLoss` walks on
+ * once the character is placed and the party is invited back. See
  * `mudengine-session` › *Every close carries the loop and the route*.
  */
 import type { LoopRunner } from '../automation/LoopRunner';
 import type { Travel } from './Travel';
-import { NOTHING_UNDERWAY, type Underway, type UnderwaySink } from '../../shared/underway';
+import {
+  NOTHING_UNDERWAY,
+  type PartyCarrier,
+  type Underway,
+  type UnderwaySink
+} from '../../shared/underway';
 
 export class CarryOver {
   /**
@@ -26,9 +32,13 @@ export class CarryOver {
       Travel,
       'owed' | 'owe' | 'combatOffForRunNow' | 'combatBackAfterLaunch'
     >,
+    /** `Remotes`, which keeps the party (`PartyRejoin`). */
+    private readonly company: { readonly party: PartyCarrier },
     /** The record for the realm being dialled, as `SessionManager.useRealm` keeps it. */
     private readonly record: () => UnderwaySink
-  ) {}
+  ) {
+    company.party.writeWith(() => this.remember());
+  }
 
   /** At the top of `connect`, before anything is reset. */
   dial(): void {
@@ -42,15 +52,17 @@ export class CarryOver {
     if (owed.combatOffForRun) this.travel.combatBackAfterLaunch();
     if (owed.route !== null) this.travel.owe(owed.route);
     if (owed.lap !== null) this.loops.carry(owed.lap);
+    this.company.party.carry(owed.party);
     this.remember();
   }
 
-  /** The lap or the walk published: what is underway now. The record writes only a change. */
+  /** The lap, the walk or the party moved: what is underway now. The record writes only a change. */
   remember(): void {
     if (this.owed !== null || this.done) return;
     this.record().rememberUnderway({
       lap: this.loops.place,
       route: this.travel.owed,
+      party: this.company.party.carried,
       combatOffForRun: this.travel.combatOffForRunNow
     });
   }

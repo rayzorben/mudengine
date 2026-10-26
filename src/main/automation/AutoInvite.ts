@@ -1,7 +1,8 @@
 /**
  * Inviting a named player when they are in the room with this character: they
  * walked in, or this character walked in on them (todo 851, fatavatar
- * `7896db7`). The per-player `autoInvite` in `automation.remotes.players`.
+ * `7896db7`). The per-player `autoInvite` in `automation.remotes.players`,
+ * and a member a hangup took out of the party (`PartyRejoin.owesInvite`).
  * Never somebody already in the party or invited, never while this character
  * is following, and the same name not again within
  * `tuning.remotes.inviteSeenAgainMs`, so a player stepping in and out is not
@@ -16,6 +17,7 @@ import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { grantFor } from '../../shared/remotes';
 import type { CommandQueue } from './CommandQueue';
 import { inviteIntent } from './PartyRegroup';
+import { REJOIN, type PartyRejoin } from './PartyRejoin';
 
 const INVITE: DecisionKind = 'party-autoinvite';
 
@@ -32,6 +34,7 @@ export class AutoInvite {
   constructor(
     private config: AutomationConfig,
     private readonly queue: CommandQueue,
+    private readonly rejoin: Pick<PartyRejoin, 'owesInvite'>,
     private readonly events: AutoInviteEvents = {}
   ) {}
 
@@ -51,19 +54,21 @@ export class AutoInvite {
     if (!this.config.enabled) return;
     for (const { name } of players) {
       const key = name.toLowerCase();
-      if (before.has(key) || !grantFor(this.config.remotes, key).autoInvite) continue;
+      if (before.has(key)) continue;
+      const owed = this.rejoin.owesInvite(name);
+      if (!owed && !grantFor(this.config.remotes, key).autoInvite) continue;
       // Joined, or the listing already prints them `[Invited]`.
       if (state.party.members.some((member) => member.name.toLowerCase() === key)) continue;
-      this.invite(name, key, state);
+      this.invite(name, key, state, owed ? REJOIN : INVITE);
     }
   }
 
-  private invite(name: string, key: string, state: CharacterState): void {
+  private invite(name: string, key: string, state: CharacterState, decision: DecisionKind): void {
     const leader = state.party.following;
     if (leader !== null) {
       this.events.notice?.(
         t('automation.remotes.autoInviteFollowing', { who: name, leader }),
-        INVITE
+        decision
       );
       return;
     }
@@ -76,12 +81,16 @@ export class AutoInvite {
           who: name,
           seconds: Math.ceil((again - (now - last)) / 1000)
         }),
-        INVITE
+        decision
       );
       return;
     }
+    const reason =
+      decision === REJOIN
+        ? t('automation.party.reasonReinvite', { member: name })
+        : t('automation.remotes.reasonAutoInvite', { who: name });
     this.queue.enqueue({
-      ...inviteIntent(name, t('automation.remotes.reasonAutoInvite', { who: name }), INVITE),
+      ...inviteIntent(name, reason, decision),
       // Counted when it goes: one the queue dropped spends no wait.
       onSent: () => {
         this.invitedAt.set(key, now);

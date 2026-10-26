@@ -332,6 +332,7 @@ function migrateAll(options: MigrationOptions): void {
   stoppersFollowHave(home, note);
   statedChanceWaysAndFares(home, note, options.template);
   statedComebackRooms(home, note, options.template);
+  statedReinviteMinutes(home, note, options.template);
   heldAndComebackFollowWait(home, note);
   collectedRowsSayBuyOff(home, note);
 }
@@ -5089,6 +5090,29 @@ function statedComebackRooms(
     stated.length === 1
       ? t('notices.migration.comebackRooms.one', params)
       : t('notices.migration.comebackRooms.many', params)
+  );
+}
+
+/**
+ * `automation.party.reinviteMinutes` (2026-10-25, the user: a party a
+ * disconnect took apart is formed again) into every file stating `party:`
+ * without it, after `comebackRooms`, as the template ships it.
+ */
+function statedReinviteMinutes(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const minutes = DEFAULT_CONFIG.automation.party.reinviteMinutes;
+  const stated = stateKeysIn(home, template, PARTY_BLOCK, 'comebackRooms', [
+    ['reinviteMinutes', minutes]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', '), minutes };
+  note(
+    stated.length === 1
+      ? t('notices.migration.reinviteMinutes.one', params)
+      : t('notices.migration.reinviteMinutes.many', params)
   );
 }
 

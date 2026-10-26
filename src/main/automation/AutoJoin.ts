@@ -7,7 +7,9 @@
  * refuse; never while already in a party, since what `join` does to one is
  * uncaptured. Every refusal is said. The `@join` usually arrives in the same
  * read, after this `join` went and before its answer, so `@join` asks
- * `joining` and no second `join` goes. `mudengine-automation` › remotes.
+ * `joining` and no second `join` goes. The leader a hangup took this
+ * character away from (`PartyRejoin.owesJoin`) is joined under the master
+ * switch alone, refused only by a deny by name. `mudengine-automation` › remotes.
  */
 import { isPrompt, type Block } from '../../shared/blocks';
 import { inAParty, type CharacterState } from '../../shared/character';
@@ -16,6 +18,7 @@ import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { judgeRemote } from '../../shared/remotes';
 import { t } from '../app/i18n';
 import type { CommandQueue, Intent } from './CommandQueue';
+import { REJOIN, type PartyRejoin } from './PartyRejoin';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
 export interface AutoJoinEvents {
@@ -46,6 +49,7 @@ export class AutoJoin {
   constructor(
     private config: AutomationConfig,
     private readonly queue: CommandQueue,
+    private readonly rejoin: Pick<PartyRejoin, 'owesJoin'>,
     private readonly events: AutoJoinEvents = {}
   ) {}
 
@@ -71,17 +75,20 @@ export class AutoJoin {
     if (isPrompt(block.type)) this.sentTo = null;
     if (block.type !== 'party-invited') return;
     const { enabled, remotes } = this.config;
-    if (!enabled || !remotes.enabled || !remotes.autoJoin) return;
     // `leader` is somebody inviting this character; `player` is this character inviting somebody.
     const leader = block.groups['leader'];
-    if (leader === undefined || this.joining(leader)) return;
+    if (!enabled || leader === undefined || this.joining(leader)) return;
+    const rejoining = this.rejoin.owesJoin(leader);
+    if (!rejoining && (!remotes.enabled || !remotes.autoJoin)) return;
+    const decision = rejoining ? REJOIN : JOIN;
 
     if (inAParty(state) || state.party.following !== null) {
-      this.events.notice?.(t('automation.remotes.autoJoinInParty', { from: leader }), JOIN);
+      this.events.notice?.(t('automation.remotes.autoJoinInParty', { from: leader }), decision);
       return;
     }
     const verdict = judgeRemote(leader, 'join', remotes, evidenceAbout(leader, state));
-    if (!verdict.allowed) {
+    // Rejoining is this character's own party: only a deny by name refuses it.
+    if (!verdict.allowed && (!rejoining || verdict.because === 'denied')) {
       this.events.notice?.(
         verdict.because === 'denied'
           ? t('automation.remotes.autoJoinDenied', { from: leader })
@@ -89,13 +96,16 @@ export class AutoJoin {
               from: leader,
               unresolvedClause: unresolvedClauseOf(verdict)
             }),
-        JOIN
+        decision
       );
       return;
     }
     const key = joinKey(leader);
+    const reason = rejoining
+      ? t('automation.party.reasonRejoin', { leader })
+      : t('automation.remotes.reasonAutoJoin', { from: leader });
     this.queue.enqueue({
-      ...joinIntent(leader, t('automation.remotes.reasonAutoJoin', { from: leader }), JOIN),
+      ...joinIntent(leader, reason, decision),
       onSent: () => {
         this.sentTo = key;
       }
