@@ -10,9 +10,11 @@ export interface TabPlacement {
   /** Which side of the console the card rail takes (`ui.cards`). */
   railSide: CardsSide;
   setRailSide(side: CardsSide): void;
-  /** Whether a side tab rail hides until the pointer reaches its edge (`ui.tabsAutoHide`). */
+  /** Whether a side tab rail is put away behind its strip of circles (`ui.tabsAutoHide`). */
   tabsAutoHide: Switch;
   setTabsAutoHide(next: Switch): void;
+  /** Hidden down its edge behind the strip; across the top, or with no tabs, it stays. */
+  tabsHide: boolean;
 }
 
 const isRailSide = (value: unknown): value is RailSide =>
@@ -26,11 +28,14 @@ const isCardsSide = (value: unknown): value is CardsSide =>
  *
  * Same precedence as density and theme: remembered, overridden by the file.
  */
-export function useTabPlacement(configured: {
-  tabs: RailSide;
-  tabsAutoHide: boolean;
-  cards: CardsSide;
-}): TabPlacement {
+export function useTabPlacement(
+  configured: {
+    tabs: RailSide;
+    tabsAutoHide: boolean;
+    cards: CardsSide;
+  },
+  showTabs: boolean
+): TabPlacement {
   const [tabSide, setTabSide] = useOverridablePreference(
     'mudengine.tabs',
     configured.tabs,
@@ -50,5 +55,6 @@ export function useTabPlacement(configured: {
     configured.cards,
     isCardsSide
   );
-  return { tabSide, setTabSide, railSide, setRailSide, tabsAutoHide, setTabsAutoHide };
+  const tabsHide = showTabs && tabSide !== 'top' && tabsAutoHide === 'on';
+  return { tabSide, setTabSide, railSide, setRailSide, tabsAutoHide, setTabsAutoHide, tabsHide };
 }

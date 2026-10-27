@@ -9859,7 +9859,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   const swapCards = async () => {
     const was = (await layout()).railSide;
     const clicked = await pressCommand('cards', 'cardside');
-    await readUntil(async () => (await layout()).railSide, (now) => now !== was);
+    await readUntil(
+      async () => (await layout()).railSide,
+      (now) => now !== was
+    );
     await stable(layout);
     return String(clicked) === 'true';
   };
@@ -9910,9 +9913,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await capture('smoke-tabs-left.png', 'the tab rail down the left, cards on the right');
 
   /*
-   * Auto-hide (`ui.tabsAutoHide`): the rail gives up its track once, then comes
-   * out over the console when the pointer reaches the window's left edge and
-   * goes when it leaves, and the console never moves while it does.
+   * Auto-hide (`ui.tabsAutoHide`): the rail gives its track to a strip of
+   * circles, one per character, then comes out beside it over the console
+   * when the pointer is on the strip and goes when it leaves, and the console
+   * never moves while it does.
    */
   {
     const hiding = () => evaluate(`document.querySelector('.workspace')?.dataset.tabsHide ?? ''`);
@@ -9932,17 +9936,36 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'the tabs go out of sight and the console takes their track',
       JSON.stringify(tucked)
     );
-    const middle = Math.round(
-      Number(await evaluate(`document.querySelector('.terminal-stack').getBoundingClientRect().top`)) +
-        100
+    const circles = await evaluate(`JSON.stringify({
+      strip: [...document.querySelectorAll('.tab-strip-item')].map((item) => item.dataset.session),
+      tabs: [...document.querySelectorAll('.tab-rail .tab')].map((tab) => tab.dataset.session)
+    })`);
+    const { strip, tabs } = JSON.parse(String(circles));
+    check(
+      strip.length > 0 && JSON.stringify(strip) === JSON.stringify(tabs),
+      'and a strip at the edge holds a circle per character, in the rail order',
+      String(circles)
     );
-    await pointAt(2, middle);
+    const middle = Math.round(
+      Number(
+        await evaluate(`document.querySelector('.terminal-stack').getBoundingClientRect().top`)
+      ) + 100
+    );
+    const stripX = Math.round(
+      Number(
+        await evaluate(`(() => {
+          const box = document.querySelector('.tab-strip').getBoundingClientRect();
+          return box.left + box.width / 2;
+        })()`)
+      )
+    );
+    await pointAt(stripX, middle);
     const out = await readUntil(shown, (now) => now === 'visible');
     const over = await stable(layout);
-    check(out === 'visible', 'the pointer at the left edge brings them out', String(out));
+    check(out === 'visible', 'the pointer on the strip brings them out', String(out));
     check(
-      over.tabs !== null && over.tabs.left >= 0 && over.tabs.width > 0,
-      'over the console, inside the window',
+      over.tabs !== null && over.tabs.left >= stripX && over.tabs.width > 0,
+      'beside the strip, over the console',
       JSON.stringify(over)
     );
     check(
@@ -9950,7 +9973,13 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and the console keeps its place and width',
       JSON.stringify({ tucked: tucked.console, over: over.console })
     );
-    await pointAt(tucked.console.left + Math.round(tucked.console.width / 2), middle);
+    // Past the flyout's far edge: it lies over the console's left half.
+    await pointAt(tucked.console.left + tucked.console.width - 10, middle);
+    check(
+      over.tabs.left + over.tabs.width < tucked.console.left + tucked.console.width - 10,
+      'and leaves the far side of the console uncovered',
+      JSON.stringify({ tabs: over.tabs, console: tucked.console })
+    );
     check(
       (await readUntil(shown, (now) => now === 'hidden')) === 'hidden',
       'the pointer leaving puts them away again'

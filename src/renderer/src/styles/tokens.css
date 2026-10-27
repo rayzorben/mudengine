@@ -192,10 +192,9 @@
      realm's median plan is 41ms, so most never show the line; Paradigm's
      median is 184ms, so most do. */
   --delay-planning: 100ms;
-  /* The hidden tab rail (`ui.tabsAutoHide`): the strip at the window's edge that
-     brings it out, the pause before it comes, and how long the pointer may be
-     off it before it goes, so a pointer that overshoots does not shut it. */
-  --tab-reveal-w: 8px;
+  /* The hidden tab rail (`ui.tabsAutoHide`): the pause before it comes out of
+     its strip, and how long the pointer may be off both before it goes, so a
+     pointer that overshoots does not shut it. */
   --delay-tabs-show: 60ms;
   --delay-tabs-hide: 350ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -378,6 +377,18 @@
   --card-size-large: 300px;
   /* Wide enough for a name, health in numbers and a room name. See §3.8. */
   --tab-rail-w: 200px;
+  /* The hidden rail's strip: a character's circle, its 2px ring either side
+     and a 6px margin; then the gap the flown-out rail keeps from it, which the
+     hide delay carries the pointer across. */
+  --badge-d: 30px;
+  --tab-strip-w: calc(var(--badge-d) + 16px);
+  --tab-flyout-gap: 4px;
+  /* On a flown-out tab: the height of its name and controls rows. */
+  --badge-d-tab: 40px;
+  /* The rail flown out beside the strip. Measured 2026-10-27: a six-letter
+     name, "waiting for party" (the longest status) and "GreaterMUD (local)"
+     take 313px of the row, and the circle, grip and padding 79px more. */
+  --tab-flyout-w: 392px;
 }
 
 :root[data-density='compact'] {

@@ -8,10 +8,10 @@ import { memo } from 'react';
 
 import type { CharacterState } from '@shared/character';
 import type { PortraitStatus, PortraitView } from '@shared/portrait';
-import { useFirstPicture } from '../../hooks/useFirstPicture';
+import { useCharacterPicture } from '../../hooks/useCharacterPicture';
 import { t } from '../../lib/i18n';
 import { figure } from '../../lib/stats';
-import { portraitOf, type ItemArtIndex } from '../../lib/itemArt';
+import type { ItemArtIndex } from '../../lib/itemArt';
 
 /** Why the panel shows something other than the drawn portrait, or null when it is the drawn one. */
 function statusLine(status: PortraitStatus): string | null {
@@ -50,14 +50,18 @@ function PortraitHead({
   onOpen(): void;
 }) {
   const name = character.fullName ?? character.name ?? t('game.bar.unknownName');
-  const kind = art === null ? null : portraitOf(art, character.race, character.className);
-  const { src, failed } = useFirstPicture([portrait.picture, kind]);
+  const { src, failed, drawn, initial } = useCharacterPicture(
+    art,
+    portrait,
+    character.race,
+    character.className,
+    name
+  );
   const why = statusLine(portrait.status);
-  const drawn = src !== null && src === portrait.picture;
   const p = character.progress;
   const picture =
     src === null ? (
-      <span aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+      <span aria-hidden="true">{initial}</span>
     ) : (
       <img
         alt={t('game.sheet.portrait', {

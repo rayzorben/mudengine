@@ -475,8 +475,8 @@ notices:
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     partyRecapStated: '"ui.partyRecap" was added to {file}, turned on. After a fight two or more
       of your party struck, the console shows each member''s damage.'
-    tabsAutoHideStated: '"ui.tabsAutoHide" was added to {file}, turned off. Turn it on to hide the
-      character tabs until the pointer reaches their edge of the window.'
+    tabsAutoHideStated: '"ui.tabsAutoHide" was added to {file}, turned off. Turn it on to put the
+      character tabs away behind a strip of their circles.'
     cardsSideStated: '"ui.cards" was added to {file}, set to right. The cards no longer follow the
       character tabs to the other side of the console; set it to left to put them there.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -4572,8 +4572,8 @@ settings:
       tabsRight: Down the right
       tabsTop: Across the top
       tabsAutoHide: Auto-Hide Character Tabs
-      tabsAutoHideHint: Down the left or right, the tabs stay out of sight until the pointer reaches
-        that edge, then slide out over whatever is beside them.
+      tabsAutoHideHint: Down the left or right, a strip at the edge shows each character as a circle,
+        with its portrait once one is drawn. The pointer on the strip slides the tabs out beside it.
       cardsSideLabel: Cards
       cardsSideHint: On the same side as the character tabs, the tabs take the window's edge.
       cardsLeft: Left of the console

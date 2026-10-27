@@ -394,9 +394,9 @@ export interface UiConfig {
    */
   tabs: TabsPreference;
   /**
-   * Hide the tab rail down a side until the pointer reaches that edge of the
-   * window, then slide it out over the console and back when the pointer
-   * leaves. The console keeps its width either way. No effect on `top`.
+   * Put the tab rail down a side away behind a strip of character circles,
+   * and slide it out beside the strip over the console while the pointer is
+   * on either. No effect on `top`.
    */
   tabsAutoHide: boolean;
   /** Which side of the console the card rail sits on. */

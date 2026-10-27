@@ -1,6 +1,7 @@
 import { Fragment, memo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
+import CharacterBadge, { type PortraitApi } from './CharacterBadge';
 import Icon from './Icon';
 import NewCharacterButton from './NewCharacterButton';
 import { reordered } from '../lib/reorder';
@@ -54,6 +55,10 @@ export interface TabRailProps {
   views: Record<SessionId, RailView>;
   active: SessionId;
   side: RailSide;
+  /** Each tab leads with the character's circle: the rail flying out beside the strip. */
+  badges: boolean;
+  /** Where the circles' portraits come from. */
+  api: PortraitApi;
   thresholds: VitalsUiConfig;
   /**
    * The ceiling each character rests to — `automation.health.restTo`, resolved
@@ -419,6 +424,8 @@ function TabRail({
   views,
   active,
   side,
+  badges,
+  api,
   thresholds,
   restToFor,
   editable,
@@ -644,6 +651,16 @@ function TabRail({
                   onPointerDown={(event) => drag.begin(session.id, event)}
                   title={t('tabs.tab.dragHint')}
                 />
+
+                {badges && (
+                  <CharacterBadge
+                    api={api}
+                    className={view?.character.className ?? null}
+                    name={session.name}
+                    race={view?.character.race ?? null}
+                    session={session.id}
+                  />
+                )}
 
                 <span
                   className="who"

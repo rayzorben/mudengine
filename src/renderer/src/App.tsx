@@ -15,6 +15,7 @@ import SettingsScreen from './components/SettingsScreen';
 import SessionTerminal from './components/SessionTerminal';
 import SlideOuts from './components/SlideOuts';
 import TabRail from './components/TabRail';
+import TabStrip from './components/TabStrip';
 
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
@@ -308,22 +309,11 @@ export default function App() {
    * nothing: a setting that cannot take effect is worse than one not offered.
    */
   const [railOpen, setRailOpen] = useState(false);
-  /**
-   * Whether the debug view is over the console.
-   *
-   * A plain `useState`, and hidden on every launch, for exactly the reason the
-   * diagnostics rail is: this is a tool reached for when something looks wrong
-   * and put down again, not part of how a player has arranged their
-   * instrument. Made configurable it would become somebody's permanent client
-   * because of one evening's debugging — which is the complaint
-   * `ui.showDiagnostics` was deleted over.
-   */
+  /** Whether the debug view is over the console: hidden on every launch, for the rail's reason above. */
   const [debugOpen, setDebugOpen] = useState(false);
 
-  const placement = useTabPlacement(config.ui);
-  const { tabSide, railSide, tabsAutoHide } = placement;
-  /* Hidden down its edge and laid over the console; across the top it stays. */
-  const tabsHide = showTabs && tabSide !== 'top' && tabsAutoHide === 'on';
+  const placement = useTabPlacement(config.ui, showTabs);
+  const { tabSide, railSide, tabsHide } = placement;
 
   /**
    * How this character's rail is arranged, remembered per character.
@@ -1111,13 +1101,20 @@ export default function App() {
         data-tabs-hide={tabsHide ? 'true' : undefined}
         style={workspaceStyle}
       >
-        {/*
-          Shown as soon as there are characters: with one it still names who is
-          playing and holds their health, connection and close button. With
-          none there is no rail, and the new-character form is open instead.
-        */}
+        {/* Shown with one character too; with none the new-character form is open. */}
+        {tabsHide && (
+          <TabStrip
+            active={session}
+            api={api}
+            onSelect={showSession}
+            sessions={sessions}
+            views={views}
+          />
+        )}
         <TabRail
           active={session}
+          api={api}
+          badges={tabsHide}
           editable={editable}
           onClose={closeSession}
           onEdit={editCharacter}
