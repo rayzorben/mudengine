@@ -55,8 +55,6 @@ export interface TabRailProps {
   views: Record<SessionId, RailView>;
   active: SessionId;
   side: RailSide;
-  /** Each tab leads with the character's circle: the rail flying out beside the strip. */
-  badges: boolean;
   /** Where the circles' portraits come from. */
   api: PortraitApi;
   thresholds: VitalsUiConfig;
@@ -424,7 +422,6 @@ function TabRail({
   views,
   active,
   side,
-  badges,
   api,
   thresholds,
   restToFor,
@@ -652,7 +649,7 @@ function TabRail({
                   title={t('tabs.tab.dragHint')}
                 />
 
-                {badges && (
+                {stacked && (
                   <CharacterBadge
                     api={api}
                     className={view?.character.className ?? null}

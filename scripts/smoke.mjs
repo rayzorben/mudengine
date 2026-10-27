@@ -15440,9 +15440,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 // Measured here while the character is in the realm; the offline half of the
 // check runs after the disconnect at the end of the run, because taking a
 // character out of the realm mid-suite would break every assertion after it.
-const railWidthInGame = await evaluate(
-  `Math.round(document.querySelector('.terminal-layers').getBoundingClientRect().width)`
-);
+const consoleSize = async () =>
+  JSON.parse(
+    await evaluate(`JSON.stringify({
+      width: Math.round(document.querySelector('.terminal-layers').getBoundingClientRect().width),
+      cols: Number(document.querySelector('.terminal-layer[data-focused="true"] .xterm')?.dataset.cols)
+    })`)
+  );
+const railWidthInGame = await consoleSize();
 check(
   await evaluate(`!!document.querySelector('.rail')`),
   'the rail is on screen while the character is in the realm'
@@ -18208,13 +18213,17 @@ check(
   offlineToolbar
 );
 
-const railWidthOffline = await evaluate(
-  `Math.round(document.querySelector('.terminal-layers').getBoundingClientRect().width)`
-);
+/*
+ * Columns, not pixels: the console's track holds its columns plus up to a
+ * cell of slack, and the slack depends on which layout last measured it. The
+ * tabs' trip down the left side moved it 835, 828, 830px at 80 columns
+ * throughout (2026-10-27), and nothing re-wrapped.
+ */
+const railWidthOffline = await consoleSize();
 check(
-  Math.abs(railWidthOffline - railWidthInGame) <= 2,
+  railWidthOffline.cols > 0 && railWidthOffline.cols === railWidthInGame.cols,
   'and the console keeps its width, so the scrollback is not re-wrapped',
-  `${railWidthInGame} -> ${railWidthOffline}`
+  `${railWidthInGame.cols} cols (${railWidthInGame.width}px) -> ${railWidthOffline.cols} cols (${railWidthOffline.width}px)`
 );
 
 /*

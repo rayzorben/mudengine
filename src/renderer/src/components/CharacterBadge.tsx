@@ -1,6 +1,6 @@
 /**
- * A character as a circle, its picture from `useCharacterPicture`. Drawn on the hidden tab rail's strip and on each tab
- * of the rail that flies out beside it.
+ * A character as a circle, its picture from `useCharacterPicture`. Drawn on the hidden tab rail's strip and at the
+ * head of every tab on a side rail.
  */
 import { memo } from 'react';
 

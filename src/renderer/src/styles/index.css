@@ -6141,12 +6141,12 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
- * On a flown-out tab the circle leads, beside the name and the controls row;
+ * On a side rail's tab the circle leads, beside the name and the controls row;
  * the room or what it is doing runs under both.
  */
 .tab-rail .tab:has(> .badge) {
   grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 8px;
+  column-gap: var(--badge-gap);
 }
 
 .tab-rail .tab > .badge {

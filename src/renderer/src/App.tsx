@@ -1114,7 +1114,6 @@ export default function App() {
         <TabRail
           active={session}
           api={api}
-          badges={tabsHide}
           editable={editable}
           onClose={closeSession}
           onEdit={editCharacter}
