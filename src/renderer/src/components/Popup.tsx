@@ -106,10 +106,13 @@ export default function Popup({ at, onDismiss, role, label, className, children 
     if (position === null || focused.current) return;
     focused.current = true;
     // A panel with nothing to press (the map's key) takes the caret itself,
-    // or its Escape would go to the game.
-    (
-      ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])') ?? ref.current
-    )?.focus();
+    // or its Escape would go to the game. The popup positions itself, so the
+    // focus must not scroll: the scroll moved the anchor and `scrollMovesAnchor`
+    // closed the popup as it opened (the smoke, 2026-10-28; the Talk settings
+    // panel, 2026-10-07).
+    (ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])') ?? ref.current)?.focus(
+      { preventScroll: true }
+    );
   }, [position]);
 
   useEffect(() => {
