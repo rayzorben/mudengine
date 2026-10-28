@@ -1353,7 +1353,8 @@ tuning:
 
     # How long after a @join to somebody this character invited the party
     # listing is asked again, and so how often the @join is repeated while the
-    # listing still prints them [Invited].
+    # listing still prints them [Invited]. Also how often the listing is asked
+    # again for a member back after a hangup until one comes.
     inviteAgainMs: 5000
 
     # How long after inviting a player marked Invite When Seen they are not
@@ -1361,9 +1362,10 @@ tuning:
     # is invited once. Chosen, not measured.
     inviteSeenAgainMs: 60000
 
-    # How long after "You are no longer following <leader>." the leader's
-    # "just disconnected!!!" still means they hung up on the party. The server
-    # sends the two back to back. Chosen, not measured.
+    # How long after "You are no longer following <leader>." or "<Name> is no
+    # longer following you." the same name's "just disconnected!!!" still
+    # means they hung up on the party. The server sends the two back to back.
+    # Chosen, not measured.
     leaderDroppedMs: 5000
 
     # How soon after a party member's @wait or @heal sends par another may

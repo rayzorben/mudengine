@@ -455,6 +455,9 @@ notices:
     reinviteMinutes:
       many: 'Re-form the Party After a Disconnect ({minutes} min) was added to {count} files: {fileList}'
       one: 'Re-form the Party After a Disconnect ({minutes} min) was added to {fileList}'
+    reinviteADay:
+      many: 'Re-form the Party After a Disconnect went from {from} to {minutes} min, so the loop waits for a member who hung up, in {count} files: {fileList}'
+      one: 'Re-form the Party After a Disconnect went from {from} to {minutes} min, so the loop waits for a member who hung up, in {fileList}'
     chanceWays:
       many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
       one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
@@ -5502,9 +5505,10 @@ settings:
       walks back.
     comebackRoomsLabel: Walk Back For a Member (rooms)
     reinviteMinutesHint:
-      After you or a member disconnects, form the party again for this many minutes. Leading,
-      invite each member back once they are in the room with you. Following, join the leader when
-      they invite you. 0 never does.
+      After you or a member disconnects, form the party again for this many minutes. Leading, the
+      loop waits for each member, invites them back once they are in the room with you, and goes on
+      when the party list shows them joined. Following, join the leader when they invite you. 0
+      never does.
     reinviteMinutesLabel: Re-form the Party After a Disconnect (minutes)
     warning: It is not yet known whether the game limits commands per connection or per computer.
       These settings make a second automated character useful; turning them on means testing that
@@ -6086,6 +6090,7 @@ session:
     pausedForHealth: 'Waiting for {who}, under Wait For Party Members'
     pausedForRest: 'Waiting for {who} to rest to your own settings, under Manage Party Health If Leading'
     pausedForJoin: 'Waiting for {who} to join the party'
+    pausedForRejoin: 'Waiting for {who} to rejoin the party after a disconnect'
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.

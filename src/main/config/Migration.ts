@@ -334,6 +334,7 @@ function migrateAll(options: MigrationOptions): void {
   statedChanceWaysAndFares(home, note, options.template);
   statedComebackRooms(home, note, options.template);
   statedReinviteMinutes(home, note, options.template);
+  theRejoinWaitsADay(home, note);
   heldAndComebackFollowWait(home, note);
   collectedRowsSayBuyOff(home, note);
 }
@@ -5127,6 +5128,35 @@ function statedReinviteMinutes(
     stated.length === 1
       ? t('notices.migration.reinviteMinutes.one', params)
       : t('notices.migration.reinviteMinutes.many', params)
+  );
+}
+
+/**
+ * `automation.party.reinviteMinutes` from 30 to a day (2026-10-28, the user:
+ * the loop waits for a member who hung up, a day by default). Only from 30:
+ * `statedReinviteMinutes` wrote 30, the shipped default, into every file three
+ * days earlier, so nobody chose it; any other figure was somebody's and stays.
+ * `theDoorsOpenByDefault`'s argument.
+ */
+function theRejoinWaitsADay(home: Home, note: (message: string) => void): void {
+  const from = 30;
+  const minutes = DEFAULT_CONFIG.automation.party.reinviteMinutes;
+  const moved: string[] = [];
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const party = document.getIn(['automation', 'party'], true);
+      if (!isMap(party) || party.get('reinviteMinutes') !== from) return false;
+      party.set('reinviteMinutes', minutes);
+      moved.push(file);
+      return true;
+    });
+  }
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', '), from, minutes };
+  note(
+    moved.length === 1
+      ? t('notices.migration.reinviteADay.one', params)
+      : t('notices.migration.reinviteADay.many', params)
   );
 }
 

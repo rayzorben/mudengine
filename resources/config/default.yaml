@@ -2494,10 +2494,12 @@ automation:
     comebackRooms: 15
 
     # After you or a member disconnects, form the party again for this many
-    # minutes. Leading, invite each member back once they are in the room with
-    # you. Following, join the leader when they invite you. The server drops a
-    # member who hangs up, and the whole party when the leader does. 0 never does.
-    reinviteMinutes: 30
+    # minutes. Leading, the loop waits for each member, invites them back once
+    # they are in the room with you, and goes on when the party list shows them
+    # joined. Following, join the leader when they invite you. The server drops
+    # a member who hangs up, and the whole party when the leader does. 0 never
+    # does.
+    reinviteMinutes: 1440
 
     # Following, when the leader fails to bash a door: pick it if your
     # picklocks are enough for it, or else bash it if your strength is.

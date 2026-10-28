@@ -208,7 +208,7 @@ export interface TravelParts {
   readonly combat: Pick<AutoCombat, 'willFight' | 'alsoFight' | 'stopFighting'>;
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon' | 'fetch'>;
   /** The leader's question to each member about a room's spell on the way, and `@do` (todo 20261021-1200-01). */
-  readonly remotes: Pick<Remotes, 'ask'> & { stoppers: StopperOutfitParts['stoppers'] };
+  readonly remotes: Pick<Remotes, 'ask' | 'away'> & { stoppers: StopperOutfitParts['stoppers'] };
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
   readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
@@ -1014,7 +1014,8 @@ export class Travel implements SessionModule {
     this.partyWait.onCharacter(
       state,
       enabled ? party.waitBelow : 0,
-      managed ? { health, marginWhenUncapped: tuning().loop.resumeMarginWhenUncapped } : null
+      managed ? { health, marginWhenUncapped: tuning().loop.resumeMarginWhenUncapped } : null,
+      enabled ? this.remotes.away : []
     );
     this.comeBack.onCharacter(state);
   }

@@ -173,6 +173,56 @@ describe('leading, when a member hangs up', () => {
     expect(sent).toEqual(['invite Brakkle']);
   });
 
+  /* 2026-10-28, the user's log: the leave line comes first, and Brakkle was never invited back. */
+  it('owes a member whose hangup follows their leave line, until a party list prints them', () => {
+    remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
+    remotes.onBlock(block('party-left', { player: 'Brakkle' }), state(754, ['Brakkle']));
+    remotes.onBlock(block('player-disconnects', { player: 'Brakkle' }), state(754, []));
+    remotes.onBlock(block('party-alone', {}), state(754, []));
+    remotes.onCharacter(state(754, []));
+    expect(remotes.away).toEqual(['Brakkle']);
+    remotes.onCharacter(state(754, ['Brakkle']));
+    drain();
+    expect(sent).toEqual(['invite Brakkle']);
+    // The join line alone is not the party whole: the list is asked, once.
+    remotes.onBlock(block('party-joined', { player: 'Brakkle' }), state(754, ['Brakkle']));
+    remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
+    remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
+    drain();
+    expect(sent).toEqual(['invite Brakkle', config.onPartyChange]);
+    expect(remotes.away).toEqual(['Brakkle']);
+    remotes.onBlock(block('party-roster', {}), state(754, ['Brakkle']));
+    remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
+    expect(remotes.away).toEqual([]);
+  });
+
+  /* 2026-10-28, the user's second log: the disconnect line twice, and the room shown mid-fight. */
+  it('owes a member once whose disconnect is printed twice', () => {
+    remotes.onBlock(block('party-roster', {}), state(754, ['Brakkle']));
+    remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
+    remotes.onBlock(block('party-left', { player: 'Brakkle' }), state(754, ['Brakkle']));
+    remotes.onBlock(block('player-disconnects', { player: 'Brakkle' }), state(754, []));
+    remotes.onBlock(block('player-disconnects', { player: 'Brakkle' }), state(754, []));
+    remotes.onBlock(block('party-alone', {}), state(754, []));
+    remotes.onCharacter(state(754, []));
+    expect(remotes.away).toEqual(['Brakkle']);
+    expect(notices).toEqual([
+      t('automation.party.memberDropped', { member: 'Brakkle', minutes: MINUTES })
+    ]);
+    remotes.onCharacter(state(754, ['Brakkle']));
+    drain();
+    expect(sent).toEqual(['invite Brakkle']);
+  });
+
+  it('does not owe a member who left long before they disconnect', () => {
+    remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
+    remotes.onBlock(block('party-left', { player: 'Brakkle' }), state(754, ['Brakkle']));
+    vi.advanceTimersByTime(LEADER_GAP + 1);
+    remotes.onBlock(block('player-disconnects', { player: 'Brakkle' }), state(754, []));
+    expect(remotes.away).toEqual([]);
+    expect(remotes.party.carried).toBeNull();
+  });
+
   it('forgets a member the party list no longer prints, and keeps one who hung up', () => {
     remotes.onCharacter(state(754, ['Brakkle', 'Soul'], { members: ['Brakkle', 'Soul'] }));
     remotes.onBlock(block('player-disconnects', { player: 'Brakkle' }), state(754, ['Soul']));

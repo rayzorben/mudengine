@@ -17,14 +17,21 @@ import type { Block } from '../../shared/blocks';
 /**
  * Why the party waits for a member: it said `@wait`, its health is under
  * `party.waitBelow` (`hurt`), it is under this character's own rest floors
- * (`low`, `manageParty`), or it was invited back and has not joined
- * (`invited`). Kept apart so a member's `@ok` does not end a wait its health
- * or its joining still asks for.
+ * (`low`, `manageParty`), it was invited back and has not joined
+ * (`invited`), or it hung up and no party list has printed it back (`away`).
+ * Kept apart so a member's `@ok` does not end a wait its health or its
+ * joining still asks for.
  */
-export type PaceReason = 'asked' | 'hurt' | 'low' | 'invited';
+export type PaceReason = 'asked' | 'hurt' | 'low' | 'invited' | 'away';
 
 /** A wait that comes and goes with a member's bar, not with what it said. */
 const BAR_REASONS = ['hurt', 'low'] as const satisfies readonly PaceReason[];
+
+/**
+ * A wait re-read from every state. `away` is bounded by
+ * `party.reinviteMinutes` (`PartyRejoin`), not by `waitMinutes`.
+ */
+const TRACKED_REASONS = [...BAR_REASONS, 'away'] as const satisfies readonly PaceReason[];
 
 /** The leader's own floors, when it holds the party to them (`party.manageParty`). */
 export interface ManagedFloors {
@@ -51,7 +58,7 @@ export class PartyWait {
   private readonly waiting = new Map<string, string>();
   /** Whether the lap's current stop is this wait's own: only that is walked on from. */
   private paused = false;
-  /** Hurt members a wait gave up on, until they are over the line or gone (`giveUp`). */
+  /** Tracked members a wait gave up on, until they are over the line or gone (`giveUp`). */
   private readonly givenUp = new Set<string>();
   /** The members' vitals held under `manageParty`, as `membersStill` keys them. */
   private still: ReadonlyMap<string, string> = new Map();
@@ -69,8 +76,14 @@ export class PartyWait {
    * this character's own floors hold for, re-read from every state (MegaMUD's
    * *Wait For Party Members*): a member under the line is a reason to wait, as
    * its `@wait` is, and a lap started while one is still under it stops for it.
+   * So is each member `away` after a hangup, until a party list prints them.
    */
-  onCharacter(state: CharacterState, waitBelow: number, managed: ManagedFloors | null): void {
+  onCharacter(
+    state: CharacterState,
+    waitBelow: number,
+    managed: ManagedFloors | null,
+    away: readonly string[]
+  ): void {
     // A route has no publish of its own here, so walking it on by hand is read off the state.
     if (this.paused && !this.moves.stopped()) this.walkedOn();
     const leading = state.party.following === null;
@@ -81,6 +94,7 @@ export class PartyWait {
     const low = [...new Set(this.still.values())];
     this.track('hurt', leading ? membersBelow(state, waitBelow) : []);
     this.track('low', low);
+    this.track('away', leading ? away : []);
   }
 
   /**
@@ -106,8 +120,8 @@ export class PartyWait {
     if (this.paused && this.waiting.has(`asked:${who.toLowerCase()}`)) this.moves.leftBehind(who);
   }
 
-  /** The members under one bar reason now: a wait for each, an end for each no longer under it. */
-  private track(why: (typeof BAR_REASONS)[number], names: string[]): void {
+  /** The members under one tracked reason now: a wait for each, an end for each no longer under it. */
+  private track(why: (typeof TRACKED_REASONS)[number], names: readonly string[]): void {
     const now = new Set(names.map((name) => `${why}:${name.toLowerCase()}`));
     for (const [key, name] of [...this.waiting]) {
       if (key.startsWith(`${why}:`) && !now.has(key)) this.pace(name, true, why);
@@ -130,11 +144,13 @@ export class PartyWait {
       // A word or a join added to a stop already held is said; a bar crossing back and forth is not.
       if (this.paused) {
         if (fresh && !isBarReason(why)) this.moves.notice(said, 'party-wait');
+        // A stop held only for `away` has no clock yet, or one spent: this reason starts it.
+        if (why !== 'away' && this.timer === null) this.arm();
         return;
       }
       if (!this.moves.pauseMoving(said)) return;
       this.paused = true;
-      this.arm();
+      if (why !== 'away') this.arm();
       return;
     }
     this.waiting.delete(key);
@@ -154,7 +170,7 @@ export class PartyWait {
 
   /** What was stopped moves again, however: walked on by hand, the hurt are given up on. */
   private walkedOn(): void {
-    if (this.paused) this.giveUpOnHurt();
+    if (this.paused) this.giveUpOnTracked();
     this.end();
   }
 
@@ -173,10 +189,10 @@ export class PartyWait {
     this.end();
   }
 
-  /** The hurt members waited for now are not waited for again until they recover. */
-  private giveUpOnHurt(): void {
+  /** The tracked members waited for now, but those `kept`, are not waited for again until they recover or are back. */
+  private giveUpOnTracked(kept: (key: string) => boolean = () => false): void {
     for (const key of [...this.waiting.keys()]) {
-      if (!BAR_REASONS.some((why) => key.startsWith(`${why}:`))) continue;
+      if (kept(key) || !TRACKED_REASONS.some((why) => key.startsWith(`${why}:`))) continue;
       this.givenUp.add(key);
       this.waiting.delete(key);
     }
@@ -189,18 +205,24 @@ export class PartyWait {
     this.timer.unref?.();
   }
 
-  /** The wait ran past its limit: walk on, and say for whom it gave up. */
+  /**
+   * The wait ran past its limit: walk on, and say for whom it gave up. A
+   * member `away` after a hangup is still waited for, on its own clock.
+   */
   private giveUp(minutes: number): void {
     this.timer = null;
     if (!this.paused) return;
-    const who = [...new Set(this.waiting.values())];
-    this.giveUpOnHurt();
-    this.waiting.clear();
+    const owed = (key: string): boolean => key.startsWith('away:');
+    const who = [...new Set([...this.waiting].filter(([key]) => !owed(key)).map(([, n]) => n))];
+    this.giveUpOnTracked(owed);
+    for (const key of [...this.waiting.keys()]) if (!owed(key)) this.waiting.delete(key);
+    if (who.length > 0)
+      this.moves.notice(
+        t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
+        'party-wait'
+      );
+    if (this.waiting.size > 0) return;
     this.paused = false;
-    this.moves.notice(
-      t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
-      'party-wait'
-    );
     if (this.moves.stopped()) this.moves.resume(who[0] ?? '');
   }
 }
@@ -220,6 +242,8 @@ function pausedSentence(why: PaceReason, who: string): string {
       return t('session.loop.pausedForRest', { who });
     case 'invited':
       return t('session.loop.pausedForJoin', { who });
+    case 'away':
+      return t('session.loop.pausedForRejoin', { who });
     default: {
       const unreachable: never = why;
       return unreachable;

@@ -134,7 +134,8 @@ function travel(
     supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn(), fetch: vi.fn() },
     remotes: {
       stoppers: { settle: vi.fn(), askWealth: vi.fn(), purseOf: vi.fn(), forget: vi.fn() },
-      ask: vi.fn(() => true)
+      ask: vi.fn(() => true),
+      away: []
     },
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },

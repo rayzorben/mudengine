@@ -127,7 +127,8 @@ import { restoreKit } from './restoreKit';
 import { takeFloor } from './takeFloor';
 import { FOLLOW_UP, InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
-import { PartyRejoin } from './PartyRejoin';
+import { PartyRejoin, REJOIN } from './PartyRejoin';
+import { partyListingIntent } from './PartyListing';
 import type { PartyCarrier } from '../../shared/underway';
 import { LeaderDoors } from './LeaderDoors';
 import { BarrierRemotes } from './BarrierRemotes';
@@ -506,7 +507,10 @@ export class Remotes implements SessionModule {
   ) {
     const notice = (message: string, decision?: DecisionKind): void =>
       events.notice?.(message, decision);
-    this.rejoin = new PartyRejoin(config, { notice });
+    this.rejoin = new PartyRejoin(config, {
+      notice,
+      listParty: () => queue.enqueue(partyListingIntent(this.config, REJOIN))
+    });
     this.autoJoin = new AutoJoin(config, queue, this.rejoin, { notice });
     this.autoInvite = new AutoInvite(config, queue, this.rejoin, { notice });
     this.regroup = new PartyRegroup(config, queue, { notice });
@@ -566,6 +570,11 @@ export class Remotes implements SessionModule {
   /** The party the character's record carries across a hangup (`CarryOver`). */
   get party(): PartyCarrier {
     return this.rejoin;
+  }
+
+  /** Leading, the members a hangup took out and no party list has shown back (`PartyWait`). */
+  get away(): readonly string[] {
+    return this.rejoin.away;
   }
 
   /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */

@@ -1054,6 +1054,34 @@ describe('the ward switch moving to health', () => {
  * charges for a hang-up. The options file takes the new default; a character
  * inherits its realm unless it had said `false`, which was *hang up anyway*.
  */
+/* 2026-10-28, the user: the loop waits a day for a member who hung up. */
+describe('the rejoin window moving from 30 minutes to a day', () => {
+  const party = (minutes: number): string =>
+    `automation:\n  party:\n    comebackRooms: 15\n    reinviteMinutes: ${minutes}\n`;
+  const stated = (file: string): unknown =>
+    (
+      (parse(fs.readFileSync(file, 'utf8')) as Record<string, Record<string, unknown>>)[
+        'automation'
+      ]?.['party'] as Record<string, unknown>
+    )['reinviteMinutes'];
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('moves the 30 the client wrote, said, and leaves a figure somebody chose', () => {
+    fs.writeFileSync(home.options, party(30), 'utf8');
+    const chosen = profile('vaelor', party(45));
+    migrate();
+    expect(stated(home.options)).toBe(DEFAULT_CONFIG.automation.party.reinviteMinutes);
+    expect(stated(chosen)).toBe(45);
+    expect(notesOf(said, 'notices.migration.reinviteADay.one')).toHaveLength(1);
+    expect(said.join(' ')).toContain(home.options);
+    migrate();
+    expect(notesOf(said, 'notices.migration.reinviteADay.one')).toEqual([]);
+  });
+});
+
 describe('the hang-up refusal becoming whether the realm charges', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });

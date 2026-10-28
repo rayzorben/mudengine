@@ -2175,8 +2175,10 @@ export interface PartyConfig {
   comebackRooms: number;
   /**
    * After this character or a member disconnects, form the party again for
-   * this many minutes (`PartyRejoin`): leading, invite each member back once
-   * they are in the room; following, join the leader when they invite. The
+   * this many minutes (`PartyRejoin`): leading, the lap waits for each member
+   * (`PartyWait`), invites them back once they are in the room and goes on
+   * once a party list prints them joined; following, join the leader when
+   * they invite (2026-10-28, the user: a day by default). The
    * server drops a member who hangs up, and every member when the leader
    * does (GreaterMUD `Player.PlayerLeavingPartyCheck`). 0 never does.
    */
@@ -2634,7 +2636,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       relayPortals: true,
       regroupMinutes: 5,
       comebackRooms: 15,
-      reinviteMinutes: 30,
+      reinviteMinutes: 1440,
       helpWithDoors: false
     },
     health: {
@@ -4048,7 +4050,7 @@ export const PARTY_RANGES = {
   parEveryRounds: [0, 20],
   regroupMinutes: [0, 60],
   comebackRooms: [0, 50],
-  reinviteMinutes: [0, 240]
+  reinviteMinutes: [0, 10_080]
 } as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
 
 function normalizeParty(value: unknown): PartyConfig {

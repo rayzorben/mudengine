@@ -164,49 +164,49 @@ describe('a leader waiting for its party', () => {
     };
 
     it('stops the lap while a member here is under the line, and walks on when it is over', () => {
-      wait.onCharacter(leading(0.3), 0.5, null);
-      wait.onCharacter(leading(0.2), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
+      wait.onCharacter(leading(0.2), 0.5, null, []);
       expect(moves).toEqual([HURT('Soul')]);
-      wait.onCharacter(leading(0.8), 0.5, null);
+      wait.onCharacter(leading(0.8), 0.5, null, []);
       expect(moves).toEqual([HURT('Soul'), 'resume:Soul']);
     });
 
     it('lets a member who walked out go, and waits for nobody at 0', () => {
-      wait.onCharacter(leading(0.3), 0.5, null);
-      wait.onCharacter(leading(0.3, ['Vaelor']), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
+      wait.onCharacter(leading(0.3, ['Vaelor']), 0.5, null, []);
       expect(moves).toEqual([HURT('Soul'), 'resume:Soul']);
       moves = [];
-      wait.onCharacter(leading(0.1), 0, null);
+      wait.onCharacter(leading(0.1), 0, null, []);
       expect(moves).toEqual([]);
     });
 
     it('stops a lap started while a member is still hurt', () => {
       running = false;
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       expect(moves).toEqual([]);
       running = true;
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       expect(moves).toEqual([HURT('Soul')]);
     });
 
     it('walks on for good when the player resumes the lap by hand, until the member recovers', () => {
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       running = true;
       wait.noteLap({ status: 'running' } as never);
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       expect(moves).toEqual([HURT('Soul')]);
-      wait.onCharacter(leading(0.8), 0.5, null);
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.8), 0.5, null, []);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       expect(moves).toEqual([HURT('Soul'), HURT('Soul')]);
     });
 
     it('does not stop again for a member a wait gave up on, until it recovers', () => {
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       vi.advanceTimersByTime(2 * 60_000);
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       expect(moves.filter((move) => move.startsWith('pause:'))).toHaveLength(1);
-      wait.onCharacter(leading(0.8), 0.5, null);
-      wait.onCharacter(leading(0.3), 0.5, null);
+      wait.onCharacter(leading(0.8), 0.5, null, []);
+      wait.onCharacter(leading(0.3), 0.5, null, []);
       expect(moves.filter((move) => move.startsWith('pause:'))).toHaveLength(2);
     });
 
@@ -217,18 +217,52 @@ describe('a leader waiting for its party', () => {
         marginWhenUncapped: 0.1
       };
       const LOW = `pause:${t('session.loop.pausedForRest', { who: 'Soul' })}`;
-      wait.onCharacter(leading(0.6), 0, managed);
+      wait.onCharacter(leading(0.6), 0, managed, []);
       expect(moves).toEqual([]);
-      wait.onCharacter(leading(0.4), 0, managed);
+      wait.onCharacter(leading(0.4), 0, managed, []);
       expect(moves).toEqual([LOW]);
       // Over the rest level is not enough: the lap waits for the rest-up level.
-      wait.onCharacter(leading(0.7), 0, managed);
+      wait.onCharacter(leading(0.7), 0, managed, []);
       expect(wait.holding).toBe(true);
-      wait.onCharacter(leading(0.9), 0, managed);
+      wait.onCharacter(leading(0.9), 0, managed, []);
       expect(moves).toEqual([LOW, 'resume:Soul']);
       // Off, the same member stops nothing.
-      wait.onCharacter(leading(0.4), 0, null);
+      wait.onCharacter(leading(0.4), 0, null, []);
       expect(moves).toEqual([LOW, 'resume:Soul']);
+    });
+
+    /* 2026-10-28, the user: Brakkle hung up, the lap walked on, and Rayzor died alone. */
+    it('waits for a member who hung up past Wait No Longer Than, until they are back', () => {
+      const AWAY = `pause:${t('session.loop.pausedForRejoin', { who: 'Soul' })}`;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      wait.pace('Yang', false, 'asked');
+      expect(moves).toEqual([
+        AWAY,
+        `party-wait:${t('session.loop.pausedForRemote', { who: 'Yang' })}`
+      ]);
+      // The give-up clock lets go of Yang's word, and not of the member who hung up.
+      vi.advanceTimersByTime(2 * 60_000);
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves.slice(2)).toEqual([
+        `party-wait:${t('session.loop.partyWaitGaveUp', { minutes: 2, who: 'Yang' })}`
+      ]);
+      expect(wait.holding).toBe(true);
+      wait.onCharacter(leading(1), 0, null, []);
+      expect(moves.slice(3)).toEqual(['resume:Soul']);
+    });
+
+    it("still gives up a member's @wait that comes after a long wait for one who hung up", () => {
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      vi.advanceTimersByTime(10 * 60_000);
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(wait.holding).toBe(true);
+      wait.pace('Soul', false, 'asked');
+      wait.onCharacter(leading(1), 0, null, []);
+      // Back in the party, still asking to wait: Wait No Longer Than bounds that.
+      expect(wait.holding).toBe(true);
+      vi.advanceTimersByTime(2 * 60_000);
+      expect(moves.at(-1)).toBe('resume:Soul');
+      expect(wait.holding).toBe(false);
     });
   });
 });

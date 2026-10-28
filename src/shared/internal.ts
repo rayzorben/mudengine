@@ -1783,6 +1783,8 @@ const TUNING_DEFAULTS = {
      * How long after a `@join` to somebody this character invited the party
      * listing is asked again, and so how often the `@join` is repeated while
      * the listing still prints them `[Invited]` (todo 01, the user's figure).
+     * Also how often it is asked again for a member back after a hangup
+     * (`PartyRejoin`) until one comes.
      */
     inviteAgainMs: 5_000,
     /**
@@ -1792,8 +1794,9 @@ const TUNING_DEFAULTS = {
      */
     inviteSeenAgainMs: 60_000,
     /**
-     * How long after `You are no longer following <leader>.` the leader's
-     * `just disconnected!!!` still says they hung up on the party. GreaterMUD
+     * How long after `You are no longer following <leader>.`, or `<Name> is no
+     * longer following you.`, the same name's `just disconnected!!!` still
+     * says they hung up on the party (2026-10-28, Brakkle). GreaterMUD
      * sends the two back to back (`Player.Disconnects`), so this only covers
      * the wire between them. Chosen, not measured.
      */
