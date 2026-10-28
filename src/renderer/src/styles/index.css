@@ -213,13 +213,13 @@ option {
 }
 
 /*
- * A hidden tab rail (`ui.tabsAutoHide`) gives its track to the strip of
- * circles and is laid over the console, so it coming and going never resizes
+ * A hidden tab rail (`ui.tabsAutoHide`) keeps a track the width of its circle
+ * column and is laid over the console, so it coming and going never resizes
  * the terminal (a resize goes out over NAWS). The track changes once, when the
  * setting does.
  */
 .workspace[data-tabs-hide] {
-  --track-tabs: var(--tab-strip-w);
+  --track-tabs: var(--tab-column-w);
   --track-tsplit: var(--gap);
 }
 
@@ -5998,16 +5998,16 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
- * Hidden behind its strip until the pointer is on the strip (`ui.tabsAutoHide`).
- * Out of view it is tucked under the strip and `hidden`, so nothing in it takes
- * a click or a Tab; brought out, it slides from under the strip and lies beside
- * it over the console, so the strip's circles still take a press. The hide
- * delay carries the pointer across the gap between the two. Over the float
+ * Hidden down to its circle column (`ui.tabsAutoHide`): the rail lies over the
+ * console at its flown-out width, clipped to the track's width at the window's
+ * edge, where only the mark and each tab's circle show. The pointer or a key
+ * in the column opens the clip over the console. The circles are the tabs'
+ * own, so each is level with its tab and scrolls with it. `clip-path` also
+ * clips the pointer, so the clipped part takes no press. Over the float
  * layer, since it is brought out on purpose and goes again on its own.
  *
- * Held out while the pointer is on it or the strip, while a key is in it, while
- * its menu is open (the menu is in a portal, off the rail), and while a tab is
- * dragged. Its own width (`--tab-flyout-w`): there is no handle to drag here.
+ * Held open while the pointer is on it, while a key is in it, while its menu
+ * is open (the menu is in a portal, off the rail), and while a tab is dragged.
  */
 .workspace[data-tabs-hide] > .tab-rail {
   /* `auto`, or the narrow `tabs` area becomes its containing block. */
@@ -6015,91 +6015,107 @@ button.quest-tile-name:hover:not(:disabled) {
   position: absolute;
   z-index: 45;
   inset-block: var(--gap);
-  left: calc(var(--gap) + var(--tab-strip-w) + var(--tab-flyout-gap));
+  left: var(--gap);
   width: var(--tab-flyout-w);
-  max-width: calc(100% - 2 * var(--gap) - var(--tab-strip-w) - var(--tab-flyout-gap));
+  max-width: calc(100% - 2 * var(--gap));
   padding: calc(var(--gap) / 2);
   border-radius: var(--r-card);
   background: var(--glass-fill-strong);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--glass-shadow), var(--glass-rim);
-  opacity: 0;
-  transform: translateX(calc(-1 * var(--tab-strip-w)));
-  visibility: hidden;
-  transition:
-    transform var(--dur-surface) var(--ease-inout) var(--delay-tabs-hide),
-    opacity var(--dur-surface) var(--ease-inout) var(--delay-tabs-hide),
-    visibility 0s linear calc(var(--delay-tabs-hide) + var(--dur-surface));
+  /* From the rail's content edge to a circle, so the circle is centred in the column. */
+  --column-inset: calc((var(--tab-column-w) - var(--badge-d) - var(--gap)) / 2);
+  clip-path: inset(0 calc(100% - var(--tab-column-w)) 0 0 round var(--r-card));
+  transition: clip-path var(--dur-surface) var(--ease-inout) var(--delay-tabs-hide);
 }
 
-.workspace[data-tabs-hide][data-tabs='right'] > .tab-rail {
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] {
   left: auto;
-  right: calc(var(--gap) + var(--tab-strip-w) + var(--tab-flyout-gap));
-  transform: translateX(var(--tab-strip-w));
+  right: var(--gap);
+  clip-path: inset(0 0 0 calc(100% - var(--tab-column-w)) round var(--r-card));
 }
 
-.workspace[data-tabs-hide] > .tab-strip:is(:hover, :focus-within) ~ .tab-rail,
 .workspace[data-tabs-hide]
   > .tab-rail:is(:hover, :focus-within, [data-held], :has([aria-expanded='true'])) {
-  opacity: 1;
-  transform: none;
-  visibility: visible;
-  transition:
-    transform var(--dur-surface) var(--ease-out) var(--delay-tabs-show),
-    opacity var(--dur-surface) var(--ease-out) var(--delay-tabs-show),
-    visibility 0s linear var(--delay-tabs-show);
+  clip-path: inset(0 round var(--r-card));
+  transition: clip-path var(--dur-surface) var(--ease-out) var(--delay-tabs-show);
 }
 
 /* A card dragged to the edge is going to a strip or a float, not to the tabs. */
-.workspace[data-tabs-hide][data-dragging] > .tab-strip {
+.workspace[data-tabs-hide][data-dragging] > .tab-rail {
   pointer-events: none;
 }
 
 /*
- * The strip: a slim glass column of circles, one per character in the rail's
- * order, in the track the rail gave up. Above the rail, which slides out from
- * under it.
+ * In the column: the mark and each circle at the column's middle, the grip
+ * moved to the tab's far side, and the room under the name and controls only,
+ * so no word shows under a circle. On the right the circle is the tab's last
+ * column.
  */
-.tab-strip {
-  grid-area: tabs;
-  position: relative;
-  z-index: 46;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  min-height: 0;
-  padding-block: calc(var(--gap) / 2);
-  overflow: hidden auto;
-  scrollbar-width: none;
-  border-radius: var(--r-card);
-  background: var(--glass-fill);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-rim);
+.workspace[data-tabs-hide] > .tab-rail .rail-head > .app-mark {
+  margin-inline: var(--column-inset);
 }
 
-.tab-strip-item {
-  flex: 0 0 auto;
-  padding: 2px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: transparent;
-  cursor: pointer;
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .rail-head > .app-mark {
+  order: 1;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='left'] .tab {
+  padding-left: var(--column-inset);
+  padding-right: 18px;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab {
+  padding-right: var(--column-inset);
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='left'] .tab-grip {
+  left: auto;
+  right: 5px;
+}
+
+.workspace[data-tabs-hide] > .tab-rail .tab:has(> .char-badge) > .where {
+  grid-column: 2;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab:has(> .char-badge) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab > .char-badge {
+  grid-area: 1 / 2 / span 2 / 3;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab > .who {
+  grid-area: 1 / 1;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab > .tab-controls {
+  grid-area: 2 / 1;
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab:has(> .char-badge) > .where {
+  grid-area: 3 / 1;
+}
+
+/* The character being typed at wears the accent seam on its circle, as the tab does. */
+.workspace[data-tabs-hide] > .tab-rail .tab > .char-badge {
   transition: box-shadow var(--dur-tint) var(--ease-out);
 }
 
-.tab-strip-item:hover {
+.workspace[data-tabs-hide] > .tab-rail .tab:hover > .char-badge {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--tab-accent) 45%, transparent);
 }
 
-/* The character being typed at: the same accent seam the active tab wears. */
-.tab-strip-item[data-active='true'] {
+.workspace[data-tabs-hide] > .tab-rail .tab[data-active='true'] > .char-badge {
   box-shadow: 0 0 0 2px var(--tab-accent);
 }
 
-.tab-strip-item:is([data-phase='closed'], [data-phase='idle']) .badge {
+.workspace[data-tabs-hide]
+  > .tab-rail
+  .tab:is([data-phase='closed'], [data-phase='idle'])
+  > .char-badge {
   opacity: 0.55;
 }
 
@@ -6107,7 +6123,7 @@ button.quest-tile-name:hover:not(:disabled) {
  * A character's circle: its portrait cropped to the head, else its initial on
  * its own accent at the tonal recipe.
  */
-.badge {
+.char-badge {
   display: grid;
   flex: none;
   place-items: center;
@@ -6122,7 +6138,7 @@ button.quest-tile-name:hover:not(:disabled) {
   line-height: 1;
 }
 
-.badge img {
+.char-badge img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -6135,7 +6151,7 @@ button.quest-tile-name:hover:not(:disabled) {
  * cover crop above keeps the top 68%; this enlarges the head's band to fill
  * the circle.
  */
-.badge[data-picture='drawn'] img {
+.char-badge[data-picture='drawn'] img {
   transform: scale(2.28);
   transform-origin: 50% 10.4%;
 }
@@ -6144,18 +6160,17 @@ button.quest-tile-name:hover:not(:disabled) {
  * On a side rail's tab the circle leads, beside the name and the controls row;
  * the room or what it is doing runs under both.
  */
-.tab-rail .tab:has(> .badge) {
+.tab-rail .tab:has(> .char-badge) {
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: var(--badge-gap);
 }
 
-.tab-rail .tab > .badge {
-  --badge-d: var(--badge-d-tab);
+.tab-rail .tab > .char-badge {
   grid-row: span 2;
   align-self: center;
 }
 
-.tab-rail .tab:has(> .badge) > .where {
+.tab-rail .tab:has(> .char-badge) > .where {
   grid-column: 1 / -1;
 }
 
@@ -6252,16 +6267,16 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /* The identity colour, resolved once per tab and read by everything below. */
-:is(.tab, .tab-strip-item) {
+.tab {
   --tab-accent: var(--accent);
 }
-:is(.tab, .tab-strip-item)[data-accent='green'] {
+.tab[data-accent='green'] {
   --tab-accent: var(--ok);
 }
-:is(.tab, .tab-strip-item)[data-accent='amber'] {
+.tab[data-accent='amber'] {
   --tab-accent: var(--pending);
 }
-:is(.tab, .tab-strip-item)[data-accent='violet'] {
+.tab[data-accent='violet'] {
   --tab-accent: var(--marker);
 }
 
@@ -9953,41 +9968,26 @@ button.lookup:focus-visible {
 }
 
 /*
- * The client's mark at the upper right with its version to the left:
- * clipped to one line, the tooltip carries the version either way.
+ * The client's mark, the size of a character's circle (`AppMark`). Where the
+ * circle is taller than the band (compact), it overhangs the band evenly, so
+ * the rail head stays the height of the toolbar beside it.
  */
 .app-mark {
-  align-items: center;
-  color: var(--text-lo);
-  display: flex;
-  flex: 0 1 auto;
-  font-size: var(--font-micro);
-  font-variant-numeric: tabular-nums;
-  gap: 0 6px;
-  height: var(--topbar-h);
-  justify-content: flex-end;
-  margin-left: auto;
-  min-width: 0;
-  overflow: hidden;
-  padding-right: 4px;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-/* Sized from the band, not in pixels, so it follows `ui.font.size`. */
-.app-mark-glyph {
+  flex: 0 0 auto;
+  width: var(--badge-d);
+  height: var(--badge-d);
+  margin-block: min(0px, calc((var(--topbar-h) - var(--badge-d)) / 2));
   background-image: url('../assets/logo.png');
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
-  flex: 0 0 auto;
-  height: calc(var(--topbar-h) * 0.85);
-  width: calc(var(--topbar-h) * 0.85);
 }
 
-.app-mark-version {
-  line-height: var(--topbar-h);
-  white-space: nowrap;
+/* Across the top there are no circles, and the row is a control high. */
+.tab-rail[data-side='top'] .app-mark {
+  width: var(--control-h);
+  height: var(--control-h);
+  margin-block: 0;
 }
 
 /*

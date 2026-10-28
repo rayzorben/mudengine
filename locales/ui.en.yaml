@@ -157,7 +157,6 @@ app:
   commitUnknown: unknown
   markTooltip: '{name} {version}'
   markTooltipBuilt: '{name} {version}, built {built}'
-  markVersion: v{version}
   versionWithCommit: '{version}, commit {commit}'
   windowTitle: mudengine
 # Lines the client itself prints into the terminal or pushes as one-off notices.
@@ -471,8 +470,8 @@ notices:
     lootUpgradesOff:
       many: 'Auto-Get Better Gear was turned off in {count} files, as it now ships: {fileList}. Turn it on in the Gear section once the gear weights suit the character.'
       one: 'Auto-Get Better Gear was turned off in {fileList}, as it now ships. Turn it on in the Gear section once the gear weights suit the character.'
-    markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
-      of the card rail. Turn it off there, or on the MudEngine settings page.'
+    markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the head
+      of the character tabs. Turn it off there, or on the MudEngine settings page.'
     partyRecapStated: '"ui.partyRecap" was added to {file}, turned on. After a fight two or more
       of your party struck, the console shows each member''s damage.'
     tabsAutoHideStated: '"ui.tabsAutoHide" was added to {file}, turned off. Turn it on to put the

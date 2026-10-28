@@ -1,6 +1,7 @@
 import { Fragment, memo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
+import AppMark from './AppMark';
 import CharacterBadge, { type PortraitApi } from './CharacterBadge';
 import Icon from './Icon';
 import NewCharacterButton from './NewCharacterButton';
@@ -57,6 +58,8 @@ export interface TabRailProps {
   side: RailSide;
   /** Where the circles' portraits come from. */
   api: PortraitApi;
+  /** Lead the head with the client's mark (`ui.showLogo`), above the circles. */
+  showLogo: boolean;
   thresholds: VitalsUiConfig;
   /**
    * The ceiling each character rests to — `automation.health.restTo`, resolved
@@ -423,6 +426,7 @@ function TabRail({
   active,
   side,
   api,
+  showLogo,
   thresholds,
   restToFor,
   editable,
@@ -537,6 +541,7 @@ function TabRail({
         takes whatever width the gear leaves it.
       */}
       <div className="rail-head">
+        {showLogo && <AppMark />}
         <button
           aria-label={t('tabs.head.settingsAria')}
           className="new-character rail-settings"

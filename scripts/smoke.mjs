@@ -9913,15 +9913,47 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await capture('smoke-tabs-left.png', 'the tab rail down the left, cards on the right');
 
   /*
-   * Auto-hide (`ui.tabsAutoHide`): the rail gives its track to a strip of
-   * circles, one per character, then comes out beside it over the console
-   * when the pointer is on the strip and goes when it leaves, and the console
-   * never moves while it does.
+   * Auto-hide (`ui.tabsAutoHide`): the rail is clipped to a column at the
+   * window's edge holding the mark and each tab's circle, opens over the
+   * console when the pointer is on the column and closes when it leaves, and
+   * the console never moves while it does. Open or closed is read by what the
+   * pointer would hit just past the column, since the clip is the hit area.
    */
   {
     const hiding = () => evaluate(`document.querySelector('.workspace')?.dataset.tabsHide ?? ''`);
     const shown = () =>
-      evaluate(`getComputedStyle(document.querySelector('.workspace > .tab-rail')).visibility`);
+      evaluate(`(() => {
+        const rail = document.querySelector('.workspace > .tab-rail');
+        const tab = rail?.querySelector('.tab');
+        const stack = document.querySelector('.terminal-stack');
+        if (!tab || !stack) return 'none';
+        const t = tab.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          stack.getBoundingClientRect().left + 30,
+          t.top + t.height / 2
+        );
+        return rail.contains(hit) ? 'visible' : 'hidden';
+      })()`);
+    const circles = async () =>
+      JSON.parse(
+        String(
+          await evaluate(`JSON.stringify((() => {
+            const box = (el) => {
+              const b = el.getBoundingClientRect();
+              return { left: b.left, top: b.top, width: b.width, height: b.height,
+                       x: b.left + b.width / 2, y: b.top + b.height / 2 };
+            };
+            const mark = document.querySelector('.tab-rail .rail-head > .app-mark');
+            return {
+              mark: mark ? box(mark) : null,
+              tabs: [...document.querySelectorAll('.tab-rail .tab')].map((tab) => {
+                const circle = tab.querySelector(':scope > .char-badge');
+                return { tab: box(tab), circle: circle ? box(circle) : null };
+              })
+            };
+          })())`)
+        )
+      );
     const pointAt = (x, y) =>
       cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, pointerType: 'mouse' });
     check(
@@ -9933,40 +9965,50 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     check(
       (await readUntil(shown, (now) => now === 'hidden')) === 'hidden' &&
         tucked.console.left < (sided.console?.left ?? 0),
-      'the tabs go out of sight and the console takes their track',
+      'the tabs close to a column of circles and the console takes their track',
       JSON.stringify(tucked)
     );
-    const circles = await evaluate(`JSON.stringify({
-      strip: [...document.querySelectorAll('.tab-strip-item')].map((item) => item.dataset.session),
-      tabs: [...document.querySelectorAll('.tab-rail .tab')].map((tab) => tab.dataset.session)
-    })`);
-    const { strip, tabs } = JSON.parse(String(circles));
+    const closed = await circles();
+    const inColumn = (b) => b !== null && b.left >= tucked.tabs.left && b.x < tucked.console.left;
     check(
-      strip.length > 0 && JSON.stringify(strip) === JSON.stringify(tabs),
-      'and a strip at the edge holds a circle per character, in the rail order',
-      String(circles)
+      closed.tabs.length > 0 && closed.tabs.every((entry) => inColumn(entry.circle)),
+      'and the column holds the circle of every tab',
+      JSON.stringify({ closed, console: tucked.console })
+    );
+    check(
+      inColumn(closed.mark) &&
+        closed.mark.top + closed.mark.height <= closed.tabs[0].circle.top &&
+        Math.abs(closed.mark.width - closed.tabs[0].circle.width) <= 1,
+      'with the mark above them, the size of a circle',
+      JSON.stringify(closed)
     );
     const middle = Math.round(
       Number(
         await evaluate(`document.querySelector('.terminal-stack').getBoundingClientRect().top`)
       ) + 100
     );
-    const stripX = Math.round(
-      Number(
-        await evaluate(`(() => {
-          const box = document.querySelector('.tab-strip').getBoundingClientRect();
-          return box.left + box.width / 2;
-        })()`)
-      )
-    );
-    await pointAt(stripX, middle);
+    const columnX = Math.round(closed.tabs[0].circle.x);
+    await pointAt(columnX, middle);
     const out = await readUntil(shown, (now) => now === 'visible');
     const over = await stable(layout);
-    check(out === 'visible', 'the pointer on the strip brings them out', String(out));
+    check(out === 'visible', 'the pointer on the column brings the tabs out', String(out));
     check(
-      over.tabs !== null && over.tabs.left >= stripX && over.tabs.width > 0,
-      'beside the strip, over the console',
+      over.tabs !== null && over.tabs.right > tucked.console.left + 100,
+      'over the console',
       JSON.stringify(over)
+    );
+    const opened = await circles();
+    check(
+      opened.tabs.every(
+        (entry, i) =>
+          entry.circle !== null &&
+          entry.circle.y > entry.tab.top &&
+          entry.circle.y < entry.tab.top + entry.tab.height &&
+          Math.abs(entry.circle.x - closed.tabs[i].circle.x) <= 1 &&
+          Math.abs(entry.circle.y - closed.tabs[i].circle.y) <= 1
+      ),
+      'and each circle stays where it was, level with its own tab',
+      JSON.stringify({ closed: closed.tabs, opened: opened.tabs })
     );
     check(
       over.console.left === tucked.console.left && over.console.width === tucked.console.width,
@@ -13018,8 +13060,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * it, so the card rail stays mounted while this runs.
      */
     check(
-      await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`),
-      'the client draws its own mark at the head of the card rail by default'
+      await evaluate(`!!document.querySelector('.tab-rail .app-mark')`),
+      'the client draws its own mark at the head of the character tabs by default'
     );
     const markSwitch = `
       (() => {
@@ -13042,19 +13084,19 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * setting written into a file that nothing reads is the failure it exists
      * to catch.
      */
-    await gone('.card-rail-head .app-mark');
+    await gone('.tab-rail .app-mark');
     check(
-      !(await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`)),
+      !(await evaluate(`!!document.querySelector('.tab-rail .app-mark')`)),
       'and the mark actually goes'
     );
     // Back on, so the screenshots below and the rest of the run see the client
     // as it ships.
     check(await evaluate(markSwitch), 'and the switch turns it back on');
     await waitFor(
-      async () => await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`)
+      async () => await evaluate(`!!document.querySelector('.tab-rail .app-mark')`)
     );
     check(
-      await evaluate(`!!document.querySelector('.card-rail-head .app-mark')`),
+      await evaluate(`!!document.querySelector('.tab-rail .app-mark')`),
       'and the mark comes back'
     );
 

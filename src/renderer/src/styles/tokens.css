@@ -377,18 +377,16 @@
   --card-size-large: 300px;
   /* Wide enough for a name, health in numbers and a room name, beside the
      character's circle. See §3.8. */
-  --tab-rail-w: calc(200px + var(--badge-d-tab) + var(--badge-gap));
-  /* The hidden rail's strip: a character's circle, its 2px ring either side
-     and a 6px margin; then the gap the flown-out rail keeps from it, which the
-     hide delay carries the pointer across. */
-  --badge-d: 30px;
-  --tab-strip-w: calc(var(--badge-d) + 16px);
-  --tab-flyout-gap: 4px;
-  /* On a side rail's tab: the height of its name and controls rows, and the
-     space between the circle and them. */
-  --badge-d-tab: 40px;
+  --tab-rail-w: calc(200px + var(--badge-d) + var(--badge-gap));
+  /* A character's circle and the client's mark: on a side rail's tab, the
+     height of its name and controls rows; then the space between the circle
+     and them. */
+  --badge-d: 40px;
   --badge-gap: 8px;
-  /* The rail flown out beside the strip. Measured 2026-10-27: a six-letter
+  /* The hidden rail's column: a circle, its 2px ring either side and a 6px
+     margin. */
+  --tab-column-w: calc(var(--badge-d) + 16px);
+  /* The rail flown out over the console. Measured 2026-10-27: a six-letter
      name, "waiting for party" (the longest status) and "GreaterMUD (local)"
      take 313px of the row, and the circle, grip and padding 79px more. */
   --tab-flyout-w: 392px;
@@ -404,7 +402,7 @@
      would do nothing except be able to drift from the original. */
   --font-ui: calc(var(--font-ui-base) - 1px);
   --font-micro: calc(var(--font-ui-base) - 3px);
-  --tab-rail-w: calc(176px + var(--badge-d-tab) + var(--badge-gap));
+  --tab-rail-w: calc(176px + var(--badge-d) + var(--badge-gap));
 }
 
 /*

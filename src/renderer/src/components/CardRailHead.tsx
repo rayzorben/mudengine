@@ -7,8 +7,6 @@ import { useExtensions } from '../hooks/useExtensions';
 import type { AutoLayoutApi, CardId } from '../lib/cards';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { version } from '../../../../package.json';
-import { BUILD, versionWithCommit } from '@shared/build';
 
 export interface CardRailHeadProps {
   /** Cards currently put away; the chip is drawn only while there are some. */
@@ -17,44 +15,19 @@ export interface CardRailHeadProps {
   onFloat(id: CardId): void;
   onGrab?(id: CardId, event: PointerEvent<HTMLElement>): void;
   dragging?: boolean;
-  /** Draw the client's own mark at the right of the row (`ui.showLogo`). */
-  showLogo: boolean;
   /** Auto layout, and the undo of it while there is an arrangement kept. */
   autoLayout: AutoLayoutApi;
   /** Into the game view (todo 04). */
   onGameView(): void;
 }
 
-const MARK_NAME = t('app.windowTitle');
-const FULL_VERSION = versionWithCommit(version, BUILD, t);
-
-/** Name, version, commit and build time: fixed for the life of the window. */
-const MARK_TOOLTIP =
-  BUILD.builtAt === null
-    ? t('app.markTooltip', { name: MARK_NAME, version: FULL_VERSION })
-    : t('app.markTooltipBuilt', {
-        name: MARK_NAME,
-        version: FULL_VERSION,
-        built: new Date(BUILD.builtAt).toLocaleString()
-      });
-
 /**
  * The row at the head of the card rail: the put-away chip, auto layout and
- * its undo, the switch into the game view, and the mark.
- *
- * The mark was a line-high glyph at the left of the status rail, where it was
- * the smallest thing on the smallest line in the window. Here it has the band
- * the chip already fills (`--topbar-h`), so it is drawn at nearly that height
- * without the row taking any height it did not already have — unless nothing
- * is put away, when the row is the mark's alone.
- *
- * The mark sits at the far right with the version to its left; the tooltip
- * carries both, with the commit and when it was built, from the same
- * `package.json` and stamp main reports (`appVersion`).
+ * its undo, and the switch into the game view. The client's mark leads the
+ * character tabs (`AppMark`).
  */
 export default function CardRailHead({
   away: put,
-  showLogo,
   autoLayout,
   onGameView,
   ...picker
@@ -91,12 +64,6 @@ export default function CardRailHead({
         </button>
       )}
       <ViewSwitch className="chip" game={false} onToggle={onGameView} />
-      {showLogo && (
-        <span className="app-mark" title={MARK_TOOLTIP}>
-          <span className="app-mark-version">{t('app.markVersion', { version })}</span>
-          <span aria-hidden="true" className="app-mark-glyph" />
-        </span>
-      )}
     </div>
   );
 }

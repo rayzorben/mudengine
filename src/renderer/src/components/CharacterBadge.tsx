@@ -36,7 +36,7 @@ function CharacterBadge({
   const picture = src === null ? undefined : drawn ? 'drawn' : 'kind';
   // Decorative: the name is beside it on a tab and in the strip's tooltip.
   return (
-    <span aria-hidden="true" className="badge" data-picture={picture}>
+    <span aria-hidden="true" className="char-badge" data-picture={picture}>
       {src === null ? initial : <img alt="" onError={failed} src={src} />}
     </span>
   );

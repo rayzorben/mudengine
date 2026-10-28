@@ -15,7 +15,6 @@ import SettingsScreen from './components/SettingsScreen';
 import SessionTerminal from './components/SessionTerminal';
 import SlideOuts from './components/SlideOuts';
 import TabRail from './components/TabRail';
-import TabStrip from './components/TabStrip';
 
 import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
@@ -1101,16 +1100,6 @@ export default function App() {
         data-tabs-hide={tabsHide ? 'true' : undefined}
         style={workspaceStyle}
       >
-        {/* Shown with one character too; with none the new-character form is open. */}
-        {tabsHide && (
-          <TabStrip
-            active={session}
-            api={api}
-            onSelect={showSession}
-            sessions={sessions}
-            views={views}
-          />
-        )}
         <TabRail
           active={session}
           api={api}
@@ -1128,6 +1117,7 @@ export default function App() {
           restToFor={restToFor}
           returnFocus={returnFocus}
           sessions={showTabs ? sessions : NO_SESSIONS}
+          showLogo={config.ui.showLogo}
           side={tabSide}
           thresholds={config.ui.vitals}
           views={views}
@@ -1312,7 +1302,6 @@ export default function App() {
               // console it floats there, into the rail it lands there.
               onGrab={grabCard}
               onGameView={game.toggle}
-              showLogo={config.ui.showLogo}
             />
 
             {/*
