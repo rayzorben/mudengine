@@ -117,6 +117,7 @@ export class PartyRejoin implements PartyCarrier {
 
   onBlock(block: Block): void {
     if (block.type === 'party-left') this.partyLeft(block.groups);
+    else if (block.type === 'party-joined') this.joined(block.groups['player']);
     else if (block.type === 'player-disconnects') this.hungUp(block.groups['player']);
     // A clean quit takes the member out of the party too, and they chose it.
     else if (block.type === 'player-exits') this.forget(block.groups['player']);
@@ -201,6 +202,8 @@ export class PartyRejoin implements PartyCarrier {
       (left === undefined ? undefined : { name: left.name, droppedAt: null });
     if (member !== undefined && this.inIt(member)) {
       this.members.set(key(who), { name: member.name, droppedAt: now });
+      // The party list says who is left in it (the user, 2026-10-29).
+      this.askList();
       if (minutes > 0)
         this.events.notice?.(
           t('automation.party.memberDropped', { member: member.name, minutes }),
@@ -208,6 +211,12 @@ export class PartyRejoin implements PartyCarrier {
         );
       this.write();
     }
+  }
+
+  /** `<Name> started to follow you.` from a member a hangup took out: the party list says whether it took. */
+  private joined(who: string | undefined): void {
+    const member = who === undefined ? undefined : this.members.get(key(who));
+    if (member !== undefined && this.owed(member)) this.askList();
   }
 
   /** A member stopped following: gone, unless their hangup is read within `leaderDroppedMs`. */

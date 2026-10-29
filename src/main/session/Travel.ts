@@ -506,6 +506,7 @@ export class Travel implements SessionModule {
       resume: (who) => this.resumeMoving(who, null),
       notice: (message, decision) => this.session.notice(message, decision),
       waitMinutes: () => this.automationConfig.party.waitMinutes,
+      walkingAsked: () => this.walker.walking && this.walker.progress.asked,
       leftBehind: (who) => {
         this.session.notice(t('session.comeBack.leftBehind', { who }), 'party-comeback');
         this.comeBack.asked(who, this.tracker.current);
@@ -2699,13 +2700,23 @@ export class Travel implements SessionModule {
    * (`LoopRunner.strayedFrom`). Walking on down something you were already
    * walking asks nothing, however far it still has to go — see `resumeLoop`,
    * and `mudengine-automation` for why the lap's own leg is not the figure.
-   * `by` is the party only from `resumeMoving` (`ResumedBy`).
+   * `by` is the party only from `resumeMoving`, an errand only from one that
+   * walks the lap on itself (`ResumedBy`). A player's Play that went walks on
+   * from the party's waits (`PartyWait.beforePlay`); one refused or asked about
+   * leaves them.
    */
   startMoving(
     loopName: string | null,
     confirmed: number | null,
     by: ResumedBy = 'player'
   ): MovementStart {
+    const went = this.partyWait.beforePlay();
+    const answer = this.moveOn(loopName, confirmed, by);
+    if (by === 'player' && 'started' in answer) went();
+    return answer;
+  }
+
+  private moveOn(loopName: string | null, confirmed: number | null, by: ResumedBy): MovementStart {
     const reading: PlayReading = {
       movement: this.session.movement(),
       loops: this.loops,

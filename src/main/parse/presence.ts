@@ -31,6 +31,7 @@ import {
 } from '../../shared/players';
 import { figure } from '../../shared/values';
 import { listedVitals } from './memberBars';
+import { playerLeaves } from './room';
 
 /**
  * A fold that writes the registry as well as the state: `state` null where the
@@ -524,10 +525,18 @@ export function withEquipment(
   return observe(players, name, at, { equipment: worn, equipmentAt: at });
 }
 
-/** `just left the Realm` / `just disconnected`: off the roster, and only the roster. */
+/**
+ * `just left the Realm` / `just disconnected`: off the roster, and out of this
+ * room. The server takes a player who hangs up out of the room
+ * (captures/076:134-146: Philipe disconnects, and the room shown again lists
+ * him no more); kept in it, a member who came back where he stood was never
+ * an arrival and never invited (Rayzor, 2026-10-29).
+ */
 export function withoutPlayer(s: CharacterState, name: string | undefined): CharacterState | null {
-  if (!name || !s.online.some((entry) => entry.name === name)) return null;
-  return { ...s, online: s.online.filter((entry) => entry.name !== name) };
+  if (!name) return null;
+  const listed = s.online.some((entry) => entry.name === name);
+  const off = listed ? { ...s, online: s.online.filter((entry) => entry.name !== name) } : s;
+  return playerLeaves(off, name) ?? (listed ? off : null);
 }
 
 /**

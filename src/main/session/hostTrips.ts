@@ -229,7 +229,7 @@ function cashRunPlanner(parts: HostTripParts): CashRunPlanner {
     startLoop: (name) => {
       const { travel } = parts.modules();
       return travel.switchedOnFor(() => {
-        const started = travel.startMoving(name, null);
+        const started = travel.startMoving(name, null, 'errand');
         if ('refused' in started) return started.refused;
         return 'confirm' in started ? t('automation.cashRun.refusalWandered') : null;
       });

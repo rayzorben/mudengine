@@ -47,6 +47,8 @@ export interface PartyWaitMoves {
   /** Walk on again, said out loud where it cannot. */
   resume(who: string): void;
   notice: NoticeSink;
+  /** Whether a route somebody asked for is walking: a person chose to go. */
+  walkingAsked(): boolean;
   /** `party.waitMinutes`, read when a wait begins; 0 waits for ever. */
   waitMinutes(): number;
   /** A member the stopped party waits on dropped out of it behind a step already sent. */
@@ -84,8 +86,11 @@ export class PartyWait {
     managed: ManagedFloors | null,
     away: readonly string[]
   ): void {
-    // A route has no publish of its own here, so walking it on by hand is read off the state.
-    if (this.paused && !this.moves.stopped()) this.walkedOn();
+    // A route has no publish of its own here, so walking one on by hand is read off the state.
+    if (this.paused && !this.moves.stopped()) {
+      if (this.moves.walkingAsked()) this.played();
+      else this.walkedOn();
+    }
     const leading = state.party.following === null;
     this.still =
       leading && managed !== null
@@ -168,9 +173,33 @@ export class PartyWait {
     if (progress.status !== 'stopped') this.walkedOn();
   }
 
-  /** What was stopped moves again, however: walked on by hand, the hurt are given up on. */
+  /**
+   * What was stopped moves again, however: the hurt are given up on. A member
+   * away after a hangup is not: anything but the player's own Play (`played`)
+   * starting the lap again is stopped again at the next state (Rayzor,
+   * 2026-10-29: the lap walked on at 3am with Brakkle owed).
+   */
   private walkedOn(): void {
-    if (this.paused) this.giveUpOnTracked();
+    if (this.paused) this.giveUpOnTracked(isAway);
+    this.end();
+  }
+
+  /**
+   * Before the player's Play: what to call once it went. Only a wait that held
+   * the stop is walked on from, read now because the lap's publish ends the
+   * stop (`walkedOn`) before Play returns; a member hurt under a stop the
+   * player made is still waited for.
+   */
+  beforePlay(): () => void {
+    const held = this.paused;
+    return () => {
+      if (held) this.played();
+    };
+  }
+
+  /** The player walked on, by Play or a route of their own: every member waited for now is given up on. */
+  private played(): void {
+    this.giveUpOnTracked();
     this.end();
   }
 
@@ -212,10 +241,9 @@ export class PartyWait {
   private giveUp(minutes: number): void {
     this.timer = null;
     if (!this.paused) return;
-    const owed = (key: string): boolean => key.startsWith('away:');
-    const who = [...new Set([...this.waiting].filter(([key]) => !owed(key)).map(([, n]) => n))];
-    this.giveUpOnTracked(owed);
-    for (const key of [...this.waiting.keys()]) if (!owed(key)) this.waiting.delete(key);
+    const who = [...new Set([...this.waiting].filter(([key]) => !isAway(key)).map(([, n]) => n))];
+    this.giveUpOnTracked(isAway);
+    for (const key of [...this.waiting.keys()]) if (!isAway(key)) this.waiting.delete(key);
     if (who.length > 0)
       this.moves.notice(
         t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
@@ -225,6 +253,11 @@ export class PartyWait {
     this.paused = false;
     if (this.moves.stopped()) this.moves.resume(who[0] ?? '');
   }
+}
+
+/** A wait for a member a hangup took out, which only the player's Play or `PartyRejoin` ends. */
+function isAway(key: string): boolean {
+  return key.startsWith('away:');
 }
 
 function isBarReason(why: PaceReason): why is (typeof BAR_REASONS)[number] {

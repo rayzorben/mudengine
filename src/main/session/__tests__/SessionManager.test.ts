@@ -5964,6 +5964,66 @@ describe('picking up after a lost connection', () => {
     expect(notices).toContain(t('automation.loops.resumed'));
   });
 
+  /*
+   * Rayzor, 2026-10-29, the user's log: Brakkle hung up and reconnected where
+   * he stood, so he never arrived and was never invited, and the lap walked
+   * on at 3am. The lines are the log's, in its order.
+   */
+  it('asks the party list on a member hanging up, invites him back where he stands, and waits for the list', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: automation() });
+    await manager.connect(dial());
+    const socket = await client();
+    const seen = wire(socket);
+    const lists = (): number => seen().match(/\bpar(ty)?\r\n/g)?.length ?? 0;
+    const prompt = '[HP=114/135,MA=9/123]:' + PROMPT_REPAINT;
+    await placed(socket);
+    socket.write(
+      'Brakkle just entered the Realm.\r\nBrakkle walks into the room from the north.\r\n' +
+        'Brakkle started to follow you.\r\n' +
+        prompt
+    );
+    await until(() => manager!.character.party.members.some((m) => m.name === 'Brakkle'));
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+
+    const before = lists();
+    socket.write(
+      'Brakkle is no longer following you.\r\nYour party has been disbanded.\r\n' +
+        'Brakkle just disconnected!!!\r\nBrakkle just disconnected!!!\r\n' +
+        prompt
+    );
+    await until(() => lists() > before);
+    await until(() => manager!.loops.progress.status === 'stopped');
+    expect(notices).toContain(
+      t('automation.loops.stopped', {
+        reason: t('session.loop.pausedForRejoin', { who: 'Brakkle' })
+      })
+    );
+    socket.write(
+      'You are not in a party at the present time.\r\n' +
+        '  Rayzor Blade                  (Priest)     [M:  7%] [H: 84%]  - Frontrank\r\n' +
+        prompt
+    );
+
+    socket.write(
+      'Brakkle just entered the Realm.\r\nBrakkle walks into the room from nowhere.\r\n' + prompt
+    );
+    await until(() => /invite Brakkle\r\n/.test(seen()));
+    expect(manager.character.room.occupants.filter((o) => o.name === 'Brakkle')).toHaveLength(1);
+
+    const joined = lists();
+    socket.write('Brakkle started to follow you.\r\n' + prompt);
+    await until(() => lists() > joined);
+    expect(manager.loops.progress.status).toBe('stopped');
+    socket.write(
+      'The following people are in your travel party:\r\n' +
+        '  Rayzor Blade                  (Priest)     [M:  7%] [H: 84%]  - Frontrank\r\n' +
+        '  Brakkle                       (Ninja)               [H:100%]  - Frontrank\r\n' +
+        prompt
+    );
+    await until(() => manager!.loops.progress.status === 'running');
+  });
+
   /* A quit disposes the session; the character's record is what carries the lap to the next launch. */
   it('picks up the lap the last launch was running, from the character record', async () => {
     let kept: Underway = NOTHING_UNDERWAY;

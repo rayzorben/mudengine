@@ -1346,12 +1346,15 @@ export const RULES: Rule[] = [
    * (`shade walks into the room from the north.`, captures/002:548), which
    * the monster rules below read. Up and down are worded apart:
    * `FourQueTwo just left upwards.` (captures/006:40), `Alathar walks into
-   * the room from below.` (captures/113:5) (todo 826).
+   * the room from below.` (captures/113:5) (todo 826). A player entering the
+   * realm where they stood comes `from nowhere` (`Brakkle walks into the room
+   * from nowhere.`, the user's log, 2026-10-29); read by the monster rule it
+   * added him to the room a second time.
    */
   {
     type: 'player-arrives-room',
     pattern: new RegExp(
-      `^(?<player>[A-Z]\\w*) +walks into the room from (?:the (?<direction>${COMPASS})|(?<vertical>above|below))\\.$`
+      `^(?<player>[A-Z]\\w*) +walks into the room from (?:the (?<direction>${COMPASS})|(?<vertical>above|below)|nowhere)\\.$`
     )
   },
   {

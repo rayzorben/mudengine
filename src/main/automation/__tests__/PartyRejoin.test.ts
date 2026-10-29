@@ -170,7 +170,7 @@ describe('leading, when a member hangs up', () => {
     // Both come back into the room; only the one the link dropped is invited.
     remotes.onCharacter(state(754, ['Brakkle', 'Soul']));
     drain();
-    expect(sent).toEqual(['invite Brakkle']);
+    expect(sent).toEqual([config.onPartyChange, 'invite Brakkle']);
   });
 
   /* 2026-10-28, the user's log: the leave line comes first, and Brakkle was never invited back. */
@@ -183,13 +183,13 @@ describe('leading, when a member hangs up', () => {
     expect(remotes.away).toEqual(['Brakkle']);
     remotes.onCharacter(state(754, ['Brakkle']));
     drain();
-    expect(sent).toEqual(['invite Brakkle']);
+    expect(sent).toEqual([config.onPartyChange, 'invite Brakkle']);
     // The join line alone is not the party whole: the list is asked, once.
     remotes.onBlock(block('party-joined', { player: 'Brakkle' }), state(754, ['Brakkle']));
     remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
     remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
     drain();
-    expect(sent).toEqual(['invite Brakkle', config.onPartyChange]);
+    expect(sent).toEqual([config.onPartyChange, 'invite Brakkle', config.onPartyChange]);
     expect(remotes.away).toEqual(['Brakkle']);
     remotes.onBlock(block('party-roster', {}), state(754, ['Brakkle']));
     remotes.onCharacter(state(754, ['Brakkle'], { members: ['Brakkle'] }));
@@ -211,7 +211,7 @@ describe('leading, when a member hangs up', () => {
     ]);
     remotes.onCharacter(state(754, ['Brakkle']));
     drain();
-    expect(sent).toEqual(['invite Brakkle']);
+    expect(sent).toEqual([config.onPartyChange, 'invite Brakkle']);
   });
 
   it('does not owe a member who left long before they disconnect', () => {

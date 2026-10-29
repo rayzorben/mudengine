@@ -649,9 +649,11 @@ export type LoopStatus = 'idle' | 'running' | 'stopped';
  * Who walked a stopped lap on. Play, pressed or asked for with an `@`, starts
  * the Combat Stats card again. The party wait walking the lap on leaves it
  * running: a leader resting for its party resumed every few minutes and reset
- * the card each time (Rayzor, 2026-10-28).
+ * the card each time (Rayzor, 2026-10-28). An errand walking its lap on after
+ * a trip (`CashRun`) is not the player either, and does not walk on from a
+ * party wait (Rayzor, 2026-10-29).
  */
-export type ResumedBy = 'player' | 'party';
+export type ResumedBy = 'player' | 'party' | 'errand';
 
 /**
  * Why a running loop is standing still, when it is. `fight` is the point of

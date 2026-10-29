@@ -26,12 +26,14 @@ describe('a leader waiting for its party', () => {
   let moves: string[];
   let running: boolean;
   let minutes: number;
+  let routeAsked: boolean;
   let wait: PartyWait;
   beforeEach(() => {
     vi.useFakeTimers();
     moves = [];
     running = true;
     minutes = 2;
+    routeAsked = false;
     wait = new PartyWait({
       pauseMoving: (why) => {
         if (!running) return false;
@@ -45,6 +47,7 @@ describe('a leader waiting for its party', () => {
         moves.push(`resume:${who}`);
       },
       notice: (message, decision) => moves.push(`${decision}:${message}`),
+      walkingAsked: () => routeAsked,
       waitMinutes: () => minutes,
       leftBehind: (who) => moves.push(`leftBehind:${who}`)
     });
@@ -249,6 +252,42 @@ describe('a leader waiting for its party', () => {
       expect(wait.holding).toBe(true);
       wait.onCharacter(leading(1), 0, null, []);
       expect(moves.slice(3)).toEqual(['resume:Soul']);
+    });
+
+    /* Rayzor, 2026-10-29: something walked the lap on at 3am with Brakkle owed. */
+    it('stops again a lap anything but Play walks on while a member who hung up is away', () => {
+      const AWAY = `pause:${t('session.loop.pausedForRejoin', { who: 'Soul' })}`;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      running = true;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves).toEqual([AWAY, AWAY]);
+      // Play is the player choosing to go: not stopped again while Soul is still away.
+      const went = wait.beforePlay();
+      running = true;
+      went();
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves).toEqual([AWAY, AWAY]);
+    });
+
+    it('still stops for a member hurt under a stop the player made, after Play', () => {
+      running = false;
+      wait.onCharacter(leading(0.3), 0.5, null, []);
+      expect(moves).toEqual([]);
+      const went = wait.beforePlay();
+      running = true;
+      went();
+      wait.onCharacter(leading(0.3), 0.5, null, []);
+      expect(moves).toEqual([HURT('Soul')]);
+    });
+
+    it('lets a route the player walks go, while a member who hung up is away', () => {
+      const AWAY = `pause:${t('session.loop.pausedForRejoin', { who: 'Soul' })}`;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      routeAsked = true;
+      running = true;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves).toEqual([AWAY]);
     });
 
     it("still gives up a member's @wait that comes after a long wait for one who hung up", () => {

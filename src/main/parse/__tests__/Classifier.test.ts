@@ -3617,6 +3617,13 @@ describe('arrivals and departures', () => {
     expectType('Electra just left the Realm.', 'player-exits');
   });
 
+  it('reads a player entering the realm where they stand', () => {
+    // The user's log, 2026-10-29: read as a monster, it put Brakkle in the room twice.
+    expect(
+      expectType('Brakkle walks into the room from nowhere.', 'player-arrives-room')['player']
+    ).toBe('Brakkle');
+  });
+
   it('reads a monster leaving, named or not, with or without an article', () => {
     // The wire, 2026-09-21_15-27-56_soul.log:1013, and captures/005:833.
     expect(
