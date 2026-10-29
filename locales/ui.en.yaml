@@ -7639,6 +7639,16 @@ automation:
     stoppersUnlisted:
       '{from} asked @stoppers, and the inventory has not been listed yet; nothing was
       sent back. Type i.'
+    # `@death` reads the realm's own listing, asked with `death` or `pro` (2026-10-29).
+    reasonDeaths: '{from} asked @death'
+    deathsNoWord: '{from} asked @death, and this realm has neither death nor pro; nothing was sent
+      back.'
+    deathsNotAsked: '{from} asked @death, and the command queue did not take {command} ({why});
+      nothing was sent back.'
+    deathsUnanswered: '{from} asked @death, and the realm printed no Recent Deaths within {seconds}
+      s; nothing was sent back.'
+    deathsNeverSent: '{from} asked @death, and the command queue did not send it within {seconds} s;
+      nothing was sent back.'
     haveUncaptured: '{from} asked @have {item}; {count} carried, but MegaMUD has only ever been seen
       answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'

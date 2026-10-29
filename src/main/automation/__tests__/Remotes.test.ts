@@ -190,6 +190,35 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     drain();
   };
 
+  it("answers @death off the realm's own listing, asked with death", () => {
+    asked('@death', who());
+    expect(sent).toEqual(['death']);
+    const row = (day: string, room: string): Block =>
+      ({
+        type: 'user-recent-death',
+        domain: 'status',
+        text: '',
+        groups: {
+          month: '10',
+          day,
+          year: '2026',
+          hour: '7',
+          minute: '03',
+          half: 'PM',
+          killer: 'orc',
+          map: '1',
+          room
+        },
+        at: 1,
+        seq: 2
+      }) as unknown as Block;
+    peers.onBlock(row('30', '773'), who());
+    peers.onBlock(row('28', '297'), who());
+    peers.onBlock({ ...row('', ''), type: 'status-line' } as Block, who());
+    drain();
+    expect(sent).toEqual(['death', '/Rand {2026-10-30 7:03PM - 1/773, 2026-10-28 7:03PM - 1/297}']);
+  });
+
   it('answers @lives off the stat sheet, and says so when none has arrived', () => {
     asked('@lives', who({ progress: { ...EMPTY_CHARACTER.progress, lives: 9 } }));
     expect(sent).toEqual(['/Rand {9 lives remaining}']);

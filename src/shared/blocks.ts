@@ -97,6 +97,8 @@ export type BlockType =
    */
   | 'user-experience-table'
   | 'user-profile'
+  /** A row of `Recent Deaths:` under `death` or `pro`, or its `None! :)` (`recentDeaths.ts`). */
+  | 'user-recent-death'
   /** `pro`'s `Statusline:` row: what the realm says the prompt is. */
   | 'user-statline'
   | 'user-encumbrance'
@@ -995,6 +997,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-experience': 'status',
   'user-experience-table': 'status',
   'user-profile': 'status',
+  'user-recent-death': 'status',
   'user-statline': 'status',
   'user-encumbrance': 'status',
   'user-health': 'status',

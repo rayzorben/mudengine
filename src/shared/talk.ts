@@ -53,6 +53,7 @@
  */
 import type { Block, BlockType } from './blocks';
 import { commandOf, type CommandName } from './commands';
+import { twoDigits } from './values';
 
 /** What every channel has: what the realm knows it by, and a name to read. */
 interface Named {
@@ -311,8 +312,6 @@ export function isTalkStamp(value: unknown): value is TalkStamp {
   return typeof value === 'string' && (TALK_STAMPS as readonly string[]).includes(value);
 }
 
-const pad = (value: number): string => String(value).padStart(2, '0');
-
 /**
  * One moment, in the format asked for. Local time, and pure.
  *
@@ -326,16 +325,16 @@ const pad = (value: number): string => String(value).padStart(2, '0');
  */
 export function formatTalkStamp(at: number, format: TalkStamp): string {
   const when = new Date(at);
-  const date24 = `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
+  const date24 = `${when.getFullYear()}-${twoDigits(when.getMonth() + 1)}-${twoDigits(when.getDate())}`;
   const date12 = `${when.getMonth() + 1}/${when.getDate()}/${when.getFullYear()}`;
   const hours = when.getHours();
-  const minutes = pad(when.getMinutes());
+  const minutes = twoDigits(when.getMinutes());
   // 12-hour clock: midnight and noon are 12, never 0, which is the one case a
   // modulo alone gets wrong.
   const hour12 = hours % 12 === 0 ? 12 : hours % 12;
   const suffix = hours < 12 ? 'AM' : 'PM';
   const clock12 = `${hour12}:${minutes}${suffix}`;
-  const clock24 = `${pad(hours)}:${minutes}`;
+  const clock24 = `${twoDigits(hours)}:${minutes}`;
 
   switch (format) {
     case 'date-time-12':
@@ -347,7 +346,7 @@ export function formatTalkStamp(at: number, format: TalkStamp): string {
     case 'time-24':
       return clock24;
     case 'time-24-seconds':
-      return `${clock24}:${pad(when.getSeconds())}`;
+      return `${clock24}:${twoDigits(when.getSeconds())}`;
   }
 }
 

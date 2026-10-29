@@ -86,6 +86,11 @@ export function fraction(value: unknown, fallback: number): number {
   return Math.min(1, Math.max(0, asFraction));
 }
 
+/** A clock or calendar figure in two digits: `7` as `07`. */
+export function twoDigits(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 /**
  * A figure the wire printed, read as the integer it is: a rule's group, a
  * listing's cell, a prompt's field. Null where it is absent or holds no digits,

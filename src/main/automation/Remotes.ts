@@ -147,6 +147,7 @@ import { ParOnWord } from './ParOnWord';
 import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 import { PartyLeavers } from './PartyLeavers';
+import { DeathsRemote } from './DeathsRemote';
 
 /**
  * The standing refusals, spoken to the sender and shown to the player.
@@ -490,6 +491,8 @@ export class Remotes implements SessionModule {
   readonly stoppers: PartyStoppers;
   /** Who left the party lately, for a held member's `@comeback`. See `PartyLeavers`. */
   private readonly leavers = new PartyLeavers();
+  /** `@death`, answered off the realm's own listing. See `DeathsRemote`. */
+  private readonly deaths: DeathsRemote;
 
   constructor(
     private config: AutomationConfig,
@@ -540,6 +543,10 @@ export class Remotes implements SessionModule {
       this.ask(who, 'health', state, undefined, 'party-ask-health')
     );
     this.parOnWord = new ParOnWord(config, queue, notice);
+    this.deaths = new DeathsRemote(queue, {
+      notice,
+      reply: (to, body, prefix) => this.reply(to, body, prefix)
+    });
   }
 
   configure(config: AutomationConfig): void {
@@ -605,6 +612,7 @@ export class Remotes implements SessionModule {
     this.pacing.onBlock(block, state);
     // Its own switches: a rejoin is the party's, under the master switch alone.
     this.autoJoin.onBlock(block, state);
+    this.deaths.onBlock(block);
     if (!this.config.remotes.enabled) return;
     /*
      * The master switch holds what is sent (`askJoined`, `answer`), never
@@ -1131,6 +1139,7 @@ export class Remotes implements SessionModule {
     this.parOnWord.reset();
     this.stoppers.reset();
     this.leavers.forget();
+    this.deaths.reset();
   }
 
   /** The regroup's and the invitation's clocks are what here outlive a call. */
@@ -1391,6 +1400,9 @@ export class Remotes implements SessionModule {
         this.reply(from, body, prefix);
         return;
       }
+      case 'death':
+        this.deaths.ask(from, prefix);
+        return;
       case 'version':
         this.reply(from, formatVersion(CLIENT_NAME, CLIENT_VERSION), prefix);
         return;

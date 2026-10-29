@@ -557,6 +557,22 @@ describe('two listings in a row', () => {
     expect(batch?.type).toBe('user-profile');
     expect(batch?.groups).toEqual({ map: '9', room: '719' });
   });
+
+  // The row as Paradigm printed it under `pro` (2026-09-12); `death` prints the same rows.
+  it('reads a Recent Deaths row, and the none that stands for no rows', () => {
+    expect(expectType('9/9/2026 9:55 PM - Festus - 1/2372', 'user-recent-death')).toMatchObject({
+      month: '9',
+      day: '9',
+      year: '2026',
+      hour: '9',
+      minute: '55',
+      half: 'PM',
+      killer: 'Festus',
+      map: '1',
+      room: '2372'
+    });
+    expect(expectType('None! :)', 'user-recent-death')['room']).toBeUndefined();
+  });
 });
 
 describe('session prompts', () => {

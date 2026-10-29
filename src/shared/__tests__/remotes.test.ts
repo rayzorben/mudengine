@@ -30,8 +30,10 @@ import {
   parseRoomAddress,
   isExtended,
   plainRemote,
-  EXTENDED_REMOTES
+  EXTENDED_REMOTES,
+  formatDeaths
 } from '../remotes';
+import { readRecentDeath } from '../recentDeaths';
 
 describe('the `@` command vocabulary', () => {
   /*
@@ -524,6 +526,40 @@ describe('@path and the answers to @loop and @goto', () => {
       more: 2
     });
     expect(parseRemoteReply('{failed}')).toEqual({ kind: 'failed' });
+  });
+});
+
+describe('@death, which is this client’s own', () => {
+  const row = (month: string, day: string, time: string, half: string, where: string) => {
+    const [hour, minute] = time.split(':');
+    const [map, room] = where.split('/');
+    return readRecentDeath({
+      month,
+      day,
+      year: '2026',
+      hour: hour!,
+      minute: minute!,
+      half,
+      map: map!,
+      room: room!
+    })!;
+  };
+
+  it('tells the three newest, year first, without the killer', () => {
+    const deaths = [
+      row('10', '30', '1:49', 'AM', '7/773'),
+      row('10', '28', '7:03', 'PM', '1/297'),
+      row('9', '9', '9:55', 'PM', '1/2372'),
+      row('9', '1', '12:00', 'AM', '1/1')
+    ];
+    expect(formatDeaths(deaths)).toBe(
+      '{2026-10-30 1:49AM - 7/773, 2026-10-28 7:03PM - 1/297, 2026-09-09 9:55PM - 1/2372}'
+    );
+  });
+
+  it('says none for no deaths, and reads None! :) as no row', () => {
+    expect(formatDeaths([])).toBe('{none}');
+    expect(readRecentDeath({})).toBeNull();
   });
 });
 

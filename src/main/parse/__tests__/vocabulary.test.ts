@@ -182,6 +182,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/RecoveredCorpse.ts',
       // The answer to a `use` of a blessing item (todo 43).
       'src/main/automation/invokeAnswer.ts',
+      // The rows `@death` answers from (2026-10-29).
+      'src/main/automation/DeathsRemote.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))

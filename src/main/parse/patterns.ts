@@ -352,6 +352,16 @@ export const RULES: Rule[] = [
     pattern: /^(?:Recent Deaths:|Location:\s+(?<map>\d{1,3}),(?<room>\d{1,6}))/
   },
   /*
+   * A row under `Recent Deaths:`, from `death` or the end of `pro`. Captured on
+   * Paradigm (2026-09-12): `9/9/2026 9:55 PM - Festus - 1/2372`. `None! :)`
+   * stands for no rows (`DeathsCommand.cs`, not yet on the wire here).
+   */
+  {
+    type: 'user-recent-death',
+    pattern:
+      /^(?:None! :\)|(?<month>\d{1,2})\/(?<day>\d{1,2})\/(?<year>\d{4}) (?<hour>\d{1,2}):(?<minute>\d{2})(?: ?(?<half>[AP]M))? - (?<killer>.+) - (?<map>\d{1,3})\/(?<room>\d{1,6}))\s*$/
+  },
+  /*
    * `pro`'s own statement of the prompt — `Statusline:          full`, read
    * live on GreaterMUD (2026-09-09). The value is the class-default word or
    * the template somebody set, verbatim (`ProfileCommand.cs:54` prints the

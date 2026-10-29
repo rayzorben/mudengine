@@ -49,7 +49,9 @@
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
 import type { MemberSheet, PartyMember, Stealth } from './character';
+import type { RecentDeath } from './recentDeaths';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
+import { twoDigits } from './values';
 
 export const REMOTE_NAMES = [
   'version',
@@ -144,6 +146,13 @@ export const REMOTE_NAMES = [
    * `{no}` none. A MegaMUD member is asked `@have <name>` per item instead.
    */
   'stoppers',
+  /*
+   * Also mudengine's own (the user, 2026-10-29): where this character last
+   * died, from the realm's own `death` listing (`pro` where the realm lacks
+   * the word). `{2026-10-30 1:49AM - 7/773, 2026-10-28 7:03PM - 1/297}`, the
+   * newest first, at most `DEATHS_TOLD`. See `formatDeaths`.
+   */
+  'death',
   /*
    * The extended pair, and the reason there is such a thing as an extended
    * remote at all.
@@ -471,6 +480,7 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   bash: { name: 'bash', support: 'acted' },
   // Answered in a frame this client chose, from `@have`'s captured `{yes: 1}` / `{no}`.
   stoppers: { name: 'stoppers', support: 'answered' },
+  death: { name: 'death', support: 'answered' },
   /*
    * `@where` with the ambiguity taken out, and `@comeback` made possible by
    * the same fact. See the note beside them in `REMOTE_NAMES`.
@@ -983,6 +993,26 @@ export function formatStoppers(
   if (carrying === null) return null;
   const held = asked.find((id) => carrying.includes(id));
   return held === undefined ? '{no}' : `{yes: ${held}}`;
+}
+
+/** How many of the realm's recent deaths `@death` tells (the user, 2026-10-29). */
+const DEATHS_TOLD = 3;
+
+/**
+ * `{2026-10-30 1:49AM - 7/773, 2026-10-28 7:03PM - 1/297}`: the newest
+ * `DEATHS_TOLD` rows as the realm listed them, newest first, with the date
+ * written year first and the killer left out. `{none}` for no deaths.
+ */
+export function formatDeaths(deaths: readonly RecentDeath[]): string {
+  if (deaths.length === 0) return '{none}';
+  const told = deaths
+    .slice(0, DEATHS_TOLD)
+    .map(
+      (death) =>
+        `${death.year}-${twoDigits(death.month)}-${twoDigits(death.day)} ` +
+        `${death.hour}:${twoDigits(death.minute)}${death.half ?? ''} - ${death.map}/${death.room}`
+    );
+  return `{${told.join(', ')}}`;
 }
 
 /**
