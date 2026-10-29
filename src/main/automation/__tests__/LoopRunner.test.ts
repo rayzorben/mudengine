@@ -274,7 +274,7 @@ describe('starting a loop', () => {
     runner.stop('asked');
     resting = false;
     vi.advanceTimersByTime(3_000);
-    expect(runner.resume(state())).toBeNull();
+    expect(runner.resume(state(), 'player')).toBeNull();
     expect(runner.progress.hold).toBeNull();
   });
 
@@ -373,7 +373,7 @@ describe('when the lap wants auto-combat on', () => {
     const { runner, wanted } = counted(planner().planner);
     runner.start(loop, state());
     runner.stop('asked');
-    expect(runner.resume(state({ inCombat: true }))).toBeNull();
+    expect(runner.resume(state({ inCombat: true }), 'player')).toBeNull();
     expect(wanted()).toBe(1);
   });
 
@@ -382,7 +382,7 @@ describe('when the lap wants auto-combat on', () => {
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
     runner.stop('asked');
-    runner.resume(state());
+    runner.resume(state(), 'player');
     expect(wanted()).toBe(1);
     runner.onWalkEnded(true, null, state());
     expect(wanted()).toBe(2);
@@ -444,11 +444,23 @@ describe('when the lap actually begins', () => {
     runner.onWalkEnded(true, null, state());
     runner.stop('asked');
     expect(begun()).toBe(1);
-    runner.resume(state());
+    runner.resume(state(), 'player');
     // Walking to the next stop: not yet.
     expect(begun()).toBe(1);
     runner.onWalkEnded(true, null, state());
     expect(begun()).toBe(2);
+  });
+
+  /* Rayzor, 2026-10-28: thirty resets in ninety minutes under Manage Party Health. */
+  it('does not fire again when the party wait walks the lap on', () => {
+    const { runner, begun } = counted(planner().planner);
+    runner.start(loop, state());
+    runner.onWalkEnded(true, null, state());
+    runner.stop('Brakkle asked the party to wait');
+    runner.resume(state(), 'party');
+    runner.onWalkEnded(true, null, state());
+    expect(runner.progress.status).toBe('running');
+    expect(begun()).toBe(1);
   });
 
   it('fires again for every Start', () => {
@@ -707,7 +719,7 @@ describe('losing its place', () => {
     expect(runner.progress.status).toBe('running');
     // And a resume from an unplaced room says the same thing.
     runner.stop('paused');
-    expect(runner.resume(state())).toBeNull();
+    expect(runner.resume(state(), 'player')).toBeNull();
     expect(located).toBe(2);
     expect(runner.progress.status).toBe('running');
   });
@@ -973,7 +985,7 @@ describe('holding after an escape', () => {
     runner.onWalkEnded(true, null, at(100));
     runner.noteEscaped();
     runner.stop('asked');
-    expect(runner.resume(at(100))).toBeNull();
+    expect(runner.resume(at(100), 'player')).toBeNull();
     expect(runner.progress.hold).toBeNull();
     expect(walked).toEqual(['Arena', 'Arena']);
   });
@@ -1277,7 +1289,7 @@ describe('the loop card’s controls', () => {
     runner.onCharacter(state());
     vi.advanceTimersByTime(10_000);
     expect(walked).toEqual(['Arena']);
-    expect(runner.resume(state())).toBeNull();
+    expect(runner.resume(state(), 'player')).toBeNull();
     expect(runner.progress.status).toBe('running');
     // Planned again from where the character is, not from the pause.
     expect(walked).toEqual(['Arena', 'Arena']);
@@ -1291,7 +1303,7 @@ describe('the loop card’s controls', () => {
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
     runner.stop('asked');
-    expect(runner.resume(state({ inCombat: true }))).toBeNull();
+    expect(runner.resume(state({ inCombat: true }), 'player')).toBeNull();
     expect(runner.progress).toMatchObject({ status: 'running', hold: 'fight' });
     expect(walked).toEqual(['Arena']);
     runner.onCharacter(state());
@@ -1302,7 +1314,7 @@ describe('the loop card’s controls', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    expect(runner.resume(state())).toBe(t('automation.loops.refusalNotStopped'));
+    expect(runner.resume(state(), 'player')).toBe(t('automation.loops.refusalNotStopped'));
   });
 
   /* Stopping twice is idempotent, and the first reason is the one that stands:
@@ -1333,7 +1345,7 @@ describe('the loop card’s controls', () => {
   it('refuses every control while nothing is looping', () => {
     const runner = new LoopRunner(planner().planner, {});
     expect(runner.reverse()).toBe(t('automation.loops.refusalNotLooping'));
-    expect(runner.resume(state())).toBe(t('automation.loops.refusalNotStopped'));
+    expect(runner.resume(state(), 'player')).toBe(t('automation.loops.refusalNotStopped'));
   });
 
   /*
@@ -1534,7 +1546,7 @@ describe('an errand', () => {
     runner.start(loop, state());
     runner.noteErrand();
     runner.stop('asked');
-    runner.resume(state());
+    runner.resume(state(), 'player');
     expect(runner.progress.hold).toBeNull();
     expect(walked).toEqual(['Arena', 'Arena']);
   });
@@ -1624,13 +1636,13 @@ describe('losing the connection', () => {
     expect(runner.carried).toBe(true);
     // A stopped loop is not waiting for anything, so it reports no hold.
     expect(runner.progress).toMatchObject({ status: 'stopped', hold: null });
-    expect(runner.resume(state({ phase: 'unknown' }))).toBe(
+    expect(runner.resume(state({ phase: 'unknown' }), 'player')).toBe(
       t('automation.loops.refusalNotInRealm')
     );
     runner.noteOnline();
     expect(runner.carried).toBe(false);
     expect(runner.progress.status).toBe('stopped');
-    expect(runner.resume(state())).toBeNull();
+    expect(runner.resume(state(), 'player')).toBeNull();
     expect(walked).toEqual(['Arena', 'Arena']);
   });
 
@@ -1643,7 +1655,7 @@ describe('losing the connection', () => {
     runner.start(loop, state());
     runner.stop('asked');
     runner.noteOffline();
-    expect(runner.resume(state())).toBeNull();
+    expect(runner.resume(state(), 'player')).toBeNull();
     expect(runner.progress).toMatchObject({ status: 'running', hold: 'offline' });
     expect(walked).toEqual(['Arena']);
     runner.noteOnline();
@@ -2200,7 +2212,7 @@ describe('starting or playing hurt', () => {
     runner.start(loop, hp(100));
     expect(walked).toEqual(['Arena']);
     runner.stop(t('session.walk.stoppedByPlayer'));
-    expect(runner.resume(hp(50))).toBeNull();
+    expect(runner.resume(hp(50), 'player')).toBeNull();
     expect(runner.progress.hold).toBe('health');
     expect(walked).toEqual(['Arena']);
     runner.onCharacter(hp(90));

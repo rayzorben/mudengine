@@ -45,7 +45,7 @@ import type { Block } from '../../shared/blocks';
 import type { AutomationConfig, AutomationSwitch } from '../../shared/config';
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { mobListed, rowName, stanceHere } from '../../shared/mobRules';
-import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
+import { splitStop, type Loop, type LoopProgress, type ResumedBy } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
 import { PartyWait } from './PartyWait';
@@ -1107,7 +1107,7 @@ export class Travel implements SessionModule {
       this.answerResume(who, this.resumeRoute(confirmed, owed));
       return;
     }
-    this.answerResume(who, this.startMoving(null, confirmed));
+    this.answerResume(who, this.startMoving(null, confirmed, 'party'));
   }
 
   /** Says what became of a resume nobody pressed. */
@@ -2699,8 +2699,13 @@ export class Travel implements SessionModule {
    * (`LoopRunner.strayedFrom`). Walking on down something you were already
    * walking asks nothing, however far it still has to go — see `resumeLoop`,
    * and `mudengine-automation` for why the lap's own leg is not the figure.
+   * `by` is the party only from `resumeMoving` (`ResumedBy`).
    */
-  startMoving(loopName: string | null, confirmed: number | null): MovementStart {
+  startMoving(
+    loopName: string | null,
+    confirmed: number | null,
+    by: ResumedBy = 'player'
+  ): MovementStart {
     const reading: PlayReading = {
       movement: this.session.movement(),
       loops: this.loops,
@@ -2722,7 +2727,7 @@ export class Travel implements SessionModule {
      * progresses. Anything else was refused above.
      */
     return reading.movement.kind === 'loop'
-      ? this.resumeLoop(this.tracker.current, confirmed)
+      ? this.resumeLoop(this.tracker.current, confirmed, by)
       : this.resumeRoute(confirmed);
   }
 
@@ -2790,7 +2795,11 @@ export class Travel implements SessionModule {
    * An unplannable leg is not a long one: `resume` reports the real refusal in
    * the runner's own words rather than this guessing at it.
    */
-  private resumeLoop(state: CharacterState, confirmed: number | null): MovementStart {
+  private resumeLoop(
+    state: CharacterState,
+    confirmed: number | null,
+    by: ResumedBy
+  ): MovementStart {
     const loop = this.loops.progress;
     const heading = this.loops.heading;
     if (heading !== null) {
@@ -2812,7 +2821,7 @@ export class Travel implements SessionModule {
         }
       }
     }
-    const refused = this.autoRest.around('loop', () => this.loops.resume(state));
+    const refused = this.autoRest.around('loop', () => this.loops.resume(state, by));
     if (refused !== null) return { refused };
     const lap = this.loops.place;
     if (lap !== null) this.light.beforeLap(lap.loop, state);

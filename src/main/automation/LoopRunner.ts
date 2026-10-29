@@ -45,7 +45,8 @@ import {
   type Loop,
   type LoopExpected,
   type LoopProgress,
-  type LoopStatus
+  type LoopStatus,
+  type ResumedBy
 } from '../../shared/loops';
 
 export { NO_LOOP, type LoopProgress, type LoopStatus };
@@ -582,7 +583,7 @@ export class LoopRunner implements SessionModule {
    * runner plans a leg, and whether a leg that long is what the player meant
    * is a decision only the player can make.
    */
-  resume(state: CharacterState): string | null {
+  resume(state: CharacterState, by: ResumedBy): string | null {
     if (this.status !== 'stopped' || !this.loop) return t('automation.loops.refusalNotStopped');
     if (state.phase !== 'in-game') return t('automation.loops.refusalNotInRealm');
     this.status = 'running';
@@ -594,8 +595,8 @@ export class LoopRunner implements SessionModule {
     // And outranks an errand: whoever owns it hears the walk superseded.
     this.errand = false;
     // Play is a start for the Combat Stats card (todo 02): the first stop
-    // reached from here resets it, as it does after Start.
-    this.lapBegunAt = null;
+    // reached from here resets it, as it does after Start. See `ResumedBy`.
+    if (by === 'player') this.lapBegunAt = null;
     // A pause of any length is not a lap earning nothing.
     this.anchorRate(state);
     this.events.notice?.(t('automation.loops.resumed'));

@@ -5914,6 +5914,56 @@ describe('picking up after a lost connection', () => {
     expect(kept.lap).toMatchObject({ running: false, loop: { name: 'lap' } });
   });
 
+  /*
+   * Rayzor, 2026-10-28: the listing is a batch, which never reached `Remotes`,
+   * so Brakkle stayed owed all evening and the lap never walked on. The rows
+   * are from 2026-10-29_01-15-40_rayzor.mudcap.jsonl (UTC), own row first.
+   */
+  it('walks the lap on once a party list prints the member a lost connection took out', async () => {
+    let kept: Underway = NOTHING_UNDERWAY;
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    const first = await client();
+    await placed(first);
+    first.write('Soul started to follow you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members.length > 0);
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+    first.destroy();
+    await until(() => manager!.loops.progress.hold === 'offline');
+
+    await manager.connect(dial());
+    const second = await client(1);
+    const seen = wire(second);
+    await placed(second);
+    await until(() => manager!.loops.progress.status === 'stopped');
+    expect(notices).toContain(
+      t('automation.loops.stopped', {
+        reason: t('session.loop.pausedForRejoin', { who: 'Soul' })
+      })
+    );
+
+    second.write('Soul started to follow you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => /\bpar(ty)?\r\n/.test(seen()));
+    second.write(
+      'The following people are in your travel party:\r\n' +
+        '  Rayzor Blade                  (Priest)     [M: 18%] [H: 87%]  - Frontrank\r\n' +
+        '  Soul                          (Ninja)               [H:100%]  - Frontrank\r\n' +
+        '[HP=100/MA=50]:' +
+        PROMPT_REPAINT
+    );
+    await until(() => manager!.loops.progress.status === 'running');
+    expect(notices).toContain(t('automation.loops.resumed'));
+  });
+
   /* A quit disposes the session; the character's record is what carries the lap to the next launch. */
   it('picks up the lap the last launch was running, from the character record', async () => {
     let kept: Underway = NOTHING_UNDERWAY;

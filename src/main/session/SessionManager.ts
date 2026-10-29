@@ -2651,22 +2651,22 @@ export class SessionManager {
      * the room, once per fight, all evening.
      */
     this.combat.onBlock(block, this.answering);
-    this.loot.onBlock(block, this.tracker.current);
+    // A listing the server wrapped arrives as a batch: a floor long enough to
+    // wrap never reached the loot (todo 03), and the party list never reached
+    // the rejoin (Rayzor, 2026-10-28: 1,036 `party` sent, Brakkle still owed).
+    const reads = batch ? [block, batch] : [block];
+    for (const read of reads) this.loot.onBlock(read, this.tracker.current);
     this.deathSummons.onBlock(block, this.tracker.current);
-    // A floor listing the server wrapped arrives as a batch, and the loot
-    // reads the floor; without this a pile long enough to wrap — which is the
-    // pile worth having — was one the loot was never told about (todo 03).
-    if (batch) this.loot.onBlock(batch, this.tracker.current);
     this.light.onBlock(block, this.tracker.current);
     this.supplies.onBlock(block, this.tracker.current);
-    this.remotes.onBlock(block, this.tracker.current);
+    for (const read of reads) this.remotes.onBlock(read, this.tracker.current);
     this.travel.beforeWalkBlock(block);
     this.afk.onBlock(block, this.tracker.current);
     /*
      * The spellbook ask correcting itself (a wrong-book refusal names the right
      * listing, a level-up voids the one on file), and each listing's answer (835).
      */
-    for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
+    for (const read of reads) this.routines.onBlock(read);
     this.extensions.onBlock(block);
     this.charges.onBlock(block); // First: the cash run and the use read the count it takes.
     for (const each of [this.hostTrips, this.areaSearch, this.errands]) each.onBlock(block);

@@ -646,6 +646,14 @@ export function dueStop(
 export type LoopStatus = 'idle' | 'running' | 'stopped';
 
 /**
+ * Who walked a stopped lap on. Play, pressed or asked for with an `@`, starts
+ * the Combat Stats card again. The party wait walking the lap on leaves it
+ * running: a leader resting for its party resumed every few minutes and reset
+ * the card each time (Rayzor, 2026-10-28).
+ */
+export type ResumedBy = 'player' | 'party';
+
+/**
  * Why a running loop is standing still, when it is. `fight` is the point of
  * the loop, `health` is the hold `automation.health.restBelow` asked for,
  * and `retreated` is the beat after running away — the character is one room
