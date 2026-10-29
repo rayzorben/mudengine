@@ -30,6 +30,7 @@ export interface NavigationParts {
     | Pick<
         WorldGraph,
         | 'route'
+        | 'budgeted'
         | 'sweepTo'
         | 'itemSources'
         | 'byId'
@@ -79,6 +80,14 @@ export class Navigation {
     const world = this.parts.world();
     if (world === undefined) return null;
     return leg(planRealmOf(world), this.oracle(world), from, to, traveller, options);
+  }
+
+  /** `leg` held to `ms` of the thread (`WorldGraph.budgeted`): `spent` where it ran out, null while worldless. */
+  legWithin(from: RoomId, to: RoomId, traveller: Traveller, ms: number): Route | 'spent' | null {
+    const world = this.parts.world();
+    if (world === undefined) return null;
+    const realm = planRealmOf(world);
+    return world.budgeted(ms, () => leg(realm, this.oracle(world), from, to, traveller)) ?? 'spent';
   }
 
   /** The way to `to` through doors the walk goes round, every key on it bought (`boughtOffer`); null where none. */

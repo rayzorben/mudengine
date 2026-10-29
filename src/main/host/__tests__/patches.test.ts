@@ -33,6 +33,7 @@ describe('a character push sent as what changed', () => {
       c: Push.character,
       s: 'festus',
       set: { hp: 9 },
+      deep: {},
       drop: []
     });
   });
@@ -51,5 +52,45 @@ describe('a character push sent as what changed', () => {
 
   it('sends every other push whole', () => {
     expect(new PushPatcher().patch({ k: 'push', c: Push.notice, p: { message: 'x' } })).toBeNull();
+  });
+
+  /*
+   * The tally's experience samples were 24 KB of every character patch,
+   * re-sent whole on each blow (2026-10-29 UTC).
+   */
+  it('sends a changed record as what changed in it, and a list as its new tail', () => {
+    const patcher = new PushPatcher();
+    const samples = Array.from({ length: 600 }, (_, at) => ({ at, experience: at * 10 }));
+    const dealt = { melee: { count: 4, damage: 40 } };
+    patcher.patch(character('festus', { tally: { samples, dealt, missed: 1 }, hp: 9 }));
+    const kill = [...samples.slice(0, -1), { at: 599, experience: 9_999 }];
+    const body = patcher.patch(
+      character('festus', { tally: { samples: kill, dealt, missed: 2 }, hp: 9 })
+    );
+    expect(onTheWire(body)).toMatchObject({
+      set: {},
+      deep: {
+        tally: {
+          k: 'fields',
+          set: { missed: 2 },
+          deep: {
+            samples: { k: 'tail', skip: 0, keep: 599, tail: [{ at: 599, experience: 9_999 }] }
+          },
+          drop: []
+        }
+      },
+      drop: []
+    });
+    expect(body!.length).toBeLessThan(300);
+  });
+
+  it('sends a list trimmed at its head as its new end, and a changed one whole', () => {
+    const patcher = new PushPatcher();
+    patcher.patch(character('festus', { samples: [1, 2, 3], buffs: ['bless', 'shield'] }));
+    const next = onTheWire(
+      patcher.patch(character('festus', { samples: [2, 3, 4], buffs: ['cure', 'light'] }))
+    );
+    expect(next.deep).toEqual({ samples: { k: 'tail', skip: 1, keep: 2, tail: [4] } });
+    expect(next.set).toEqual({ buffs: ['cure', 'light'] });
   });
 });

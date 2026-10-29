@@ -31,6 +31,13 @@ export const RPC_PATH = '/ws';
 export const GAVE_UP = 4000;
 /** The page is going away; the client lets the tab go at once. */
 export const PAGE_CLOSED = 4001;
+/**
+ * A patch did not fit what the tab held, which only a fault can cause; the
+ * client lets the tab go, so its next hello starts the window over whole.
+ */
+export const PATCH_UNFIT = 4002;
+/** A WebSocket close reason carries at most 123 bytes; this many printable ASCII characters keep under it. */
+export const CLOSE_REASON_CHARS = 120;
 
 /** A fire-and-forget call: `Send.*`. `q` numbers it among everything the tab sends. */
 export interface RpcSend {
@@ -137,15 +144,36 @@ export type RpcOutbound = RpcReply | RpcPush;
 /**
  * A push sent as what changed (`main/host/web/patches.ts`): the top-level
  * fields of `s`'s payload that differ from the last one this tab was sent on
- * `c`, and those it no longer has. The tab puts the payload back together.
+ * `c`, and those it no longer has. A changed record or array may go as what
+ * changed in it (`deep`). The tab puts the payload back together.
  */
 export interface RpcPatch {
   k: 'patch';
   c: string;
   s: string;
   set: Record<string, unknown>;
+  deep: Record<string, RpcFieldPatch>;
   drop: string[];
 }
+
+/**
+ * What changed inside one field: a record's members, set whole, patched in
+ * turn or gone; or an array's `keep` items after its first `skip` kept and
+ * `tail` after them, so a list trimmed at its head as it grows (the samples
+ * at their cap) is still sent as its new end. The tally's experience samples were 24 KB of every character patch,
+ * re-sent on each blow (2026-10-29 UTC).
+ */
+export type RpcFieldPatch =
+  | {
+      k: 'fields';
+      set: Record<string, unknown>;
+      deep: Record<string, RpcFieldPatch>;
+      drop: string[];
+    }
+  | { k: 'tail'; skip: number; keep: number; tail: unknown[] };
+
+/** How deep a field patch may go: a field, its members, and an array among them. */
+export const PATCH_DEPTH = 2;
 
 /** The pushes sent to a browser tab as patches: each a whole state per character, mostly unchanged. */
 export const PATCHED_PUSHES: ReadonlySet<string> = new Set([Push.character, Push.automation]);
@@ -285,11 +313,12 @@ export function asRpcFrame(value: unknown): RpcFrame | null {
   const n = value['n'];
   if (!isId(n)) return null;
   if (value['k'] === 'patch') {
-    const { c, s, set, drop } = value;
-    if (!isChannel(c) || typeof s !== 'string' || !isRecord(set) || !Array.isArray(drop))
+    const { c, s } = value;
+    const fields = asFieldPatch({ ...value, k: 'fields' }, PATCH_DEPTH + 1);
+    if (!isChannel(c) || typeof s !== 'string' || fields === null || fields.k !== 'fields') {
       return null;
-    if (!drop.every((field) => typeof field === 'string')) return null;
-    return { k: 'patch', n, c, s, set, drop: drop as string[] };
+    }
+    return { k: 'patch', n, c, s, set: fields.set, deep: fields.deep, drop: fields.drop };
   }
   if (value['k'] === 'push') {
     if (!isChannel(value['c'])) return null;
@@ -300,6 +329,29 @@ export function asRpcFrame(value: unknown): RpcFrame | null {
     return { k: 'reply', n, id: value['id'], r: value['r'] };
   }
   return null;
+}
+
+/** A field patch off the wire, or null where it is not one, or nests past `depth`. */
+function asFieldPatch(value: unknown, depth: number): RpcFieldPatch | null {
+  if (!isRecord(value) || depth <= 0) return null;
+  if (value['k'] === 'tail') {
+    const { skip, keep, tail } = value;
+    const count = (n: unknown): n is number =>
+      typeof n === 'number' && Number.isInteger(n) && n >= 0;
+    if (!count(skip) || !count(keep) || !Array.isArray(tail)) return null;
+    return { k: 'tail', skip, keep, tail };
+  }
+  if (value['k'] !== 'fields') return null;
+  const { set, deep, drop } = value;
+  if (!isRecord(set) || !isRecord(deep) || !Array.isArray(drop)) return null;
+  if (!drop.every((field) => typeof field === 'string')) return null;
+  const nested: Record<string, RpcFieldPatch> = {};
+  for (const [field, inner] of Object.entries(deep)) {
+    const read = asFieldPatch(inner, depth - 1);
+    if (read === null) return null;
+    nested[field] = read;
+  }
+  return { k: 'fields', set, deep: nested, drop: drop as string[] };
 }
 
 /**

@@ -1336,6 +1336,25 @@ export interface HuntingSpot {
   estimate: SpotEstimate;
 }
 
+/**
+ * A hunting ground the sweep reaches at any level and not at this one, behind
+ * a level gate (todo 2322-01): listed below the spots with the gate, never
+ * priced or walked.
+ */
+export interface GatedGround {
+  key: string;
+  /** The monsters, as the realm names them. */
+  mobs: string[];
+  /** The most a kill there pays, as the world database states it; null where none states it. */
+  experience: number | null;
+  /** How many of its rooms the sweep reached. */
+  roomCount: number;
+  /** Steps to its nearest room, through the gate. */
+  steps: number;
+  /** The least level the way there admits. */
+  level: number;
+}
+
 /** What the model assumed, so the reader can weigh the answer. */
 export interface HuntingAssumptions {
   family: RealmFamily | null;
@@ -1413,6 +1432,11 @@ export interface HuntingAdvice {
    * the answer is the realm; never walked unasked.
    */
   unmeasured: HuntingSpot[];
+  /**
+   * Grounds behind a level gate, the best paying first (`GatedGround`), at
+   * most `maxSpots`: what a level opens.
+   */
+  gated: GatedGround[];
   /**
    * What was left out before the ranking, and why. `unsurvivable` is a lair
    * whose fight at full health is survived no more often than the safe level

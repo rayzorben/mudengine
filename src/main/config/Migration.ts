@@ -8791,6 +8791,8 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'partyDamageStep', DEFAULT_INTERNAL.tuning.hunting.partyDamageStep);
     // How long the Map card holds a picked room before following again (2026-10-20).
     addKey('view', 'mapFinderIdleMs', DEFAULT_INTERNAL.tuning.view.mapFinderIdleMs);
+    // When the Room card's round against a monster disagrees with stat all's (todo 2322-01).
+    addKey('view', 'roundGapSaidPercent', DEFAULT_INTERNAL.tuning.view.roundGapSaidPercent);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

@@ -316,7 +316,7 @@ export interface MapPlanProps {
   /**
    * The rooms of a way, in walking order: on the Map card the walk in
    * progress from the room stood in (`WalkProgress.path`) or a preview page's
-   * leg, in the route panel the way into the destination (`wayIn`).
+   * leg, in the route panel the whole way to the destination (`pathOf`).
    *
    * Drawn over the corridors it walks along, and *only* over corridors this
    * map already draws: a route runs through rooms the projection may have

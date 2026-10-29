@@ -395,7 +395,11 @@ describe('a spell held back while the melee round is expected to finish the mons
         restingRegen: null,
         baseManaRegen: null,
         manaRegen: null,
-        rounds: { attack: { swings: 2, accuracy: 200, min: 10, max: 10, crits: null } },
+        versusEvil: null,
+        versusGood: null,
+        rounds: {
+          attack: { swings: 2, accuracy: 200, min: 10, max: 10, crits: null, perRound: 20 }
+        },
         basis: statedBasis(base)
       }
     ]

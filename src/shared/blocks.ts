@@ -290,9 +290,10 @@ export type BlockType =
    * `Attacks:` or `Attacks against <monster>:`, then the spells cast in the
    * last fight. Wire-verbatim on `orohost` and Paradigm, 2026-09-05 onward.
    *
-   * Rows carry `healthRegen`/`restingRegen`, `baseManaRegen`/`manaRegen`, a
-   * `section` heading (with `against`), and the plain `Attack` row's
-   * `swings`, `accuracy`, `min` and `max`. See `src/shared/stated.ts`.
+   * Rows carry `healthRegen`/`restingRegen` with `versusEvil`,
+   * `baseManaRegen`/`manaRegen`, `versusGood`, a `section` heading (with
+   * `against`), and each attack row's `swings`, `accuracy`, `min`, `max`,
+   * `crits`, `perRound` and `withExtra`. See `src/shared/stated.ts`.
    */
   | 'user-stat-all'
   | 'user-inventory'

@@ -6,7 +6,7 @@ import RoutePanel from '../RoutePanel';
 import { mount } from '../../hooks/__tests__/mount';
 import type { Route, RouteStep, WorldRoom } from '@shared/world';
 
-/* The picture of where a route ends draws the way in, back to the last jump. */
+/* The picture of where a route ends draws the whole way and fits the way in, back to the last jump. */
 describe('the route panel drawing the way in', () => {
   beforeAll(() => {
     const g = globalThis as unknown as { window?: object };
@@ -65,7 +65,7 @@ describe('the route panel drawing the way in', () => {
     return { path: view.props.path, fit: view.props.fit };
   }
 
-  it('draws and fits the way from the last way up to the destination', async () => {
+  it('draws the whole way and fits the way from the last way up to the destination', async () => {
     const { path, fit } = await drawn({
       steps: [
         step('1/10', '1/11', 'e'),
@@ -76,7 +76,7 @@ describe('the route panel drawing the way in', () => {
       cost: 4,
       blocked: false
     });
-    expect(path).toEqual(['2/5', '2/6', '2/7']);
+    expect(path).toEqual(['1/10', '1/11', '2/5', '2/6', '2/7']);
     expect([...(fit as Set<string>)]).toEqual(['2/5', '2/6', '2/7']);
   });
 
@@ -86,7 +86,7 @@ describe('the route panel drawing the way in', () => {
       cost: 2,
       blocked: false
     });
-    expect(path).toEqual(['2/7']);
+    expect(path).toEqual(['1/10', '1/11', '2/7']);
     expect(fit).toBeNull();
   });
 
@@ -104,7 +104,7 @@ describe('the route panel drawing the way in', () => {
       { steps: [step('2/6', '2/7', 'e')], cost: 1, blocked: false },
       true
     );
-    expect(path).toEqual(['2/6']);
+    expect(path).toEqual([]);
     expect(fit).toBeNull();
   });
 });

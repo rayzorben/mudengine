@@ -15,7 +15,7 @@ import {
   type HuntingSpot
 } from '../../shared/hunting';
 import type { RealmFamily } from '../../shared/realm';
-import type { RoomId, WorldRoom } from '../../shared/world';
+import { lairKey, parseLair, type RoomId, type WorldRoom } from '../../shared/world';
 
 export type GroundWorld = Pick<WorldGraph, 'lairEntities' | 'residentEntities' | 'buildMobEntity'>;
 
@@ -80,6 +80,27 @@ export const GROUNDS = {
     fills: true
   }
 } satisfies Record<HuntVia, GroundKind>;
+
+/**
+ * Which ground a room is, by what it spawns: two rooms naming the same rows at
+ * the same cap on the same clock are one ground, a resident is its own, and
+ * any other room is none (a `seen` room is found by its refills).
+ */
+export function spawnGroundOf(
+  room: WorldRoom
+): { key: string; via: Exclude<HuntVia, 'seen'>; spawns: number | null } | null {
+  if (room.lair) {
+    // The clock is part of what spawns: a price is cached by key.
+    return {
+      key: `lair:${lairKey(room.lair)}:${room.delay ?? ''}`,
+      via: 'lair',
+      spawns: parseLair(room.lair).max
+    };
+  }
+  if (room.npcId !== undefined)
+    return { key: `resident:${room.npcId}`, via: 'resident', spawns: null };
+  return null;
+}
 
 /** Whether this ground refills each time a player walks in (`refillsOnEntry`). */
 export function groundRefills(via: HuntVia, room: WorldRoom, family: RealmFamily | null): boolean {

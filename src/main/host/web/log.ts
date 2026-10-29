@@ -5,10 +5,10 @@
  * file is on the volume. Appended without holding the thread, one write at a
  * time, and started afresh as `web.log.1` past `tuning.web.logBytes`.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 
 import { errorMessage } from '../../../shared/values';
+import { appendRotating } from '../../app/appendRotating';
 import { tuning } from '../../app/tuning';
 
 export class WebLog {
@@ -25,13 +25,7 @@ export class WebLog {
   private async append(text: string): Promise<void> {
     const file = path.join(this.directory(), 'web.log');
     try {
-      await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      const size = await fs.promises.stat(file).then(
-        (info) => info.size,
-        () => 0
-      );
-      if (size > tuning().web.logBytes) await fs.promises.rename(file, `${file}.1`);
-      await fs.promises.appendFile(file, text, 'utf8');
+      await appendRotating(file, text, tuning().web.logBytes);
       this.failed = false;
     } catch (error) {
       // Said once per run of failures: the log is for diagnosis, and a full

@@ -334,6 +334,11 @@ export interface AttachSnapshot {
   /** Every counter's last `list` in this realm. See `Push.shops`. */
   shops: Shelf[];
   /**
+   * The low-lives question still open, or null. A dial at launch is held
+   * before any window is listening, so the window that attaches is asked here.
+   */
+  lowLives: LowLivesAsk | null;
+  /**
    * The rank each quest has been seen to reach from what this character was
    * watched doing this session, and when each was seen. See `Push.questSaid`.
    */

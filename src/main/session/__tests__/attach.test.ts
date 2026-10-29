@@ -50,7 +50,8 @@ function loaded() {
         return new Promise((resolve) => (resolvePage = resolve));
       }
     },
-    marks: book
+    marks: book,
+    lowLives: { open: null }
   };
   return {
     slot,
@@ -123,5 +124,17 @@ describe('attachSnapshot', () => {
     expect(made).toEqual([]);
     expect(snapshot.backscroll).toBe(NO_BACKSCROLL);
     expect(snapshot.state).toBe(IDLE_CONNECTION);
+    expect(snapshot.lowLives).toBeNull();
+  });
+
+  it('hands over the low-lives question still open, asked before the window was listening', async () => {
+    const char = loaded();
+    const ask = { lives: 1, floor: 2, at: 5 };
+    const slot: AttachSlot = { ...char.slot, lowLives: { open: ask } };
+    const { src } = sources(() => slot);
+
+    const answer = attachSnapshot(src, 'rayzor', 40);
+    char.resolve(PAGE);
+    expect((await answer).lowLives).toEqual(ask);
   });
 });

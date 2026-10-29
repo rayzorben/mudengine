@@ -11,7 +11,7 @@ import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
 import { swingKey, type MeasuredRounds } from './rounds';
 import { spellKey } from './spell-messages';
-import type { StatedProwess } from './stated';
+import type { StatedAttack, StatedProwess } from './stated';
 import type { WorldItem, WorldSpell } from './world';
 
 /**
@@ -148,6 +148,11 @@ export interface ProwessClass {
   crits: number;
   /** What the realm's rounds measured (`RoundCount`); absent or null is none. */
   rounds?: MeasuredRounds | null;
+  /**
+   * ImmuPoison (21) on the class or race row (`spellWard.ts`). Absent or null
+   * is unread, which wards nothing.
+   */
+  poisonImmune?: boolean | null;
 }
 
 /** The class as a fight is priced: its rows, the realm's family, and the attack fought with. */
@@ -818,10 +823,16 @@ export function swing(
   family: RealmFamily | null,
   attack: ProwessAttack = PLAIN_ATTACK
 ): Swing | null {
-  // The hit roll below is GreaterMUD's, whoever stated the accuracy.
-  if (family !== 'greatermud') return null;
   // This attack's own row of `stat all`, where it was printed and still holds.
   const said = sheet.stated?.attacks?.[attack.kind];
+  /*
+   * The hit roll below is GreaterMUD's, shared by every family with that
+   * family's floor and ceiling (`hitChance`). Another family is priced only
+   * from a row the sheet states whole, so its accuracy, range and blows are
+   * the server's: Paradigm prints `Player.ShowStatAll`'s sheet, and its
+   * `stat all <n>` readings fit `CalcAvgRndAgainstMobDefenses` (todo 2322-01).
+   */
+  if (family !== 'greatermud' && !statesWhole(said)) return null;
   const aim = said?.accuracy ?? aimOf(sheet, weapon, attack, family);
   if (aim === null) return null;
 
@@ -917,6 +928,11 @@ export function swing(
     hitSpells,
     rounds
   };
+}
+
+/** Whether the sheet's row states an attack's accuracy, range and blows, so a swing needs no formula. */
+function statesWhole(said: StatedAttack | undefined): boolean {
+  return said?.accuracy !== undefined && said.damage !== undefined && said.swings !== undefined;
 }
 
 /**

@@ -49,8 +49,9 @@ import {
 } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
-  alignmentCost,
   costsAlignment,
+  isEvilAlignment,
+  shareOfRows,
   DISPOSITION_CODE,
   dispositionOf,
   worstDisposition,
@@ -163,8 +164,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 76 | **A spell check stops its own line too.** `checkspell` and `failspell` fail the line while the spell is up, as `failitem` does for an item, but `hz.sp` named every spell met as stopping the whole room spell. Each way in now carries the spells it fails on, `[min, max, failitems, wards]` (`hazardReach.ts`), and `avoidedBySpell` is derived on reading like `avoidedBy`. What takes part of a spell off is read per effect at the character's level (`hazardStoppers`): the route's *Carry* list, the fetch, the way carrying what stops it and the Room card's *Stops part of it* name the sunstone wristband for desert spell 2's teleports |
  * | 77 | **A room's own spell can be a way.** The server casts it on everyone in the room each spell tick, and an instant one as they walk in (`TimedEventManager.spellTick_Fire`, `Player.cs:765`), and `spellHazard.ts` read one that moves somebody as a hazard and nothing else, so the class passages behind 17/3247's training key, the Deep Black Pit's drop to the Platform of Stars, the Sandstone Cavern's fall and Crystal Lake's way aboard the Ancient Galleon led nowhere: 97 of pmud.zip's rooms were unreached with every gate open. `WorldRoom.spellWays` carries each landing and draw with its share of ticks and its line's gates (`spellWaysOf`), and the way is waited out standing in the room (a `room-spell` requirement). Todo 20261024-0804-01 |
  * | 78 | **An item used in a room can land by chance.** `landingsOfItems` reads the first stated `teleport` of an item's chain, so the obsidian talisman, whose spell runs `roomitem 802` then `random 1092` (65% a draw of spell 434 over 1/2417–2430, 10% the talisman taken), had no landing, and five labyrinth dead ends and the rooms behind them were unreached with every gate open. A use with no stated landing is read through `scriptLandings` as a room command, `use <item>` behind carrying it, in each room holding every item its run wants lying there (`itemWays.ts`). Todo 20261025-0750-01 |
+ * | 79 | **Whose blows meet `Prev`, and what a worn item takes off its wearer.** `sideOf` read a monster as evil only off a disposition, so a stationary NeutralEvil or LawfulEvil one (`passive`) met no `Prev` and the sheet's `AC vs Evil` never reached its roll. `BuiltMob.ev` folds `isEvilAlignment` over the name's rows as `ep` folds the cost. And `Items.NegateSpell-0..9` was never read, so the large silvery cross's drain life and the gazes a sunstone wristband stops were charged in full; `BuiltItem.neg` carries them for `spellWard.ts`. Todo 20261027-2322-01 |
  */
-export const REALM_FORMAT = 78;
+export const REALM_FORMAT = 79;
 
 /**
  * The slowest room-spell way the file keeps (format 77), in ticks expected:
@@ -427,6 +429,11 @@ export interface BuiltItem {
   ndr?: 1;
   /** `Items.Limit` — how many may exist at once. Format 18. */
   lim?: number;
+  /**
+   * `NegateSpell-0..9`: the spell ids a worn copy takes off its wearer
+   * (`Spell.Cast`, `ItemType.DoesNegateSpell`). Format 79.
+   */
+  neg?: number[];
 }
 
 /**
@@ -864,6 +871,12 @@ export interface BuiltMob {
    */
   ep?: 'a' | 's';
   /**
+   * Whether it is of an evil alignment (`isEvilAlignment`), so its blows meet
+   * `Prev`: `a` every row, `s` some. Absent is none, or a realm that states no
+   * alignment. Format 79.
+   */
+  ev?: 'a' | 's';
+  /**
    * `Abil-n` / `AbilVal-n` — format 14. What it resists, what it ignores, what
    * it calls for help.
    *
@@ -1090,7 +1103,7 @@ function compactCoins(maxima: CoinMaxima): number[] {
 }
 
 /**
- * How many `ClassRest-n` / `RaceRest-n` slots an item row has.
+ * How many `ClassRest-n` / `RaceRest-n` / `NegateSpell-n` slots an item row has.
  *
  * Ten of each on `Items`, and the same argument as `ABILITY_SLOTS`: a column
  * that is not there reads as absent, so one number covers every derivative.
@@ -2259,6 +2272,7 @@ export function indexMobs(
       hi: number;
       how: Set<MobDisposition>;
       costs: boolean[];
+      evils: boolean[];
       ids: number[];
       ac?: number;
       dr?: number;
@@ -2342,6 +2356,8 @@ export function indexMobs(
      */
     const costs = span?.costs ?? [];
     if (align !== null) costs.push(costsAlignment(align));
+    const evils = span?.evils ?? [];
+    if (align !== null) evils.push(isEvilAlignment(align));
 
     const id = number(row['Number']);
     const resident = id !== null && residents.has(id);
@@ -2350,6 +2366,7 @@ export function indexMobs(
       hi: hp,
       how,
       costs,
+      evils,
       ids: id === null ? [] : [id],
       coins: coinMaxima(row),
       rts: new Set<number>(),
@@ -2503,8 +2520,11 @@ export function indexMobs(
       // flag is what stops the worst case being acted on as though it were the
       // answer; see `WorldMob.uncertain`.
       if (span.how.size > 1) mob.x = 1;
-      const cost = alignmentCost(span.costs);
+      const cost = shareOfRows(span.costs);
       if (cost !== 'never') mob.ep = cost === 'always' ? 'a' : 's';
+      // Format 79, as `ep` is.
+      const evil = shareOfRows(span.evils);
+      if (evil !== 'never') mob.ev = evil === 'always' ? 'a' : 's';
       // Format 12, each omitted where the realm said nothing.
       if (span.ac !== undefined) mob.ac = span.ac;
       if (span.dr !== undefined) mob.dr = span.dr;
@@ -2643,6 +2663,7 @@ export function indexItems(
   const abilities = new Map<number, Array<[number, number]>>();
   /** Who the realm lets use a thing — `ClassRest-n` / `RaceRest-n`, format 15. */
   const restrictions = new Map<number, Pick<BuiltItem, 'cls' | 'race'>>();
+  const negations = new Map<number, number[]>();
   /** Everything about an item that depends on what kind of thing it is. */
   const kinds = new Map<number, Pick<BuiltItem, 'type' | 'worn' | 'wpn' | 'arm' | 'uses'>>();
   /** A column's value when it is a positive number, else undefined. */
@@ -2702,6 +2723,9 @@ export function indexItems(
     if (cls !== undefined || race !== undefined) {
       restrictions.set(id, { ...(cls ? { cls } : {}), ...(race ? { race } : {}) });
     }
+    // Format 79: the spells it takes off its wearer (`ItemType.DoesNegateSpell`), before the kind gate too.
+    const negates = restrictedTo('NegateSpell');
+    if (negates !== undefined) negations.set(id, negates);
 
     /*
      * What it does — read **before** the kind, because the kind gate below is a
@@ -2831,6 +2855,7 @@ export function indexItems(
        */
       const gate = effects?.find(([which]) => which === MIN_LEVEL_ABILITY);
       if (gate !== undefined && gate[1] > 0) entry.lvl = gate[1];
-      return { ...entry, ...restrictions.get(id), ...kinds.get(id) };
+      const neg = negations.get(id);
+      return { ...entry, ...restrictions.get(id), ...kinds.get(id), ...(neg ? { neg } : {}) };
     });
 }

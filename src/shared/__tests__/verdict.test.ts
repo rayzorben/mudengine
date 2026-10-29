@@ -15,8 +15,13 @@ import {
   verdictFor,
   wieldedWeapon,
   backstabsWith,
+  menacePlayerOf,
+  monsterIn,
+  roundGap,
+  type RoomVerdict,
   type Verdict
 } from '../verdict';
+import { keepSheet, readStatAll, statedBasis } from '../stated';
 import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobEntity } from '../entities';
@@ -116,6 +121,7 @@ describe('ranking on rounds rather than on health', () => {
     return {
       menace: menace(perRound, hp),
       rounds: rounds === null ? null : { value: rounds, from: 'bound' },
+      dealt: null,
       cost: rounds === null ? null : { value: perRound * rounds, from: 'bound' }
     };
   }
@@ -158,7 +164,7 @@ describe('ranking on rounds rather than on health', () => {
   it('keeps a monster the realm cannot place first at all', () => {
     // `rankByMenace`'s own answer, and for its own reason: a monster nothing is
     // known about is the one this client has least right to walk past.
-    const unplaced: Verdict = { menace: null, rounds: null, cost: null };
+    const unplaced: Verdict = { menace: null, rounds: null, dealt: null, cost: null };
     expect(rankByVerdict([verdict(5, 100, 10), unplaced])).toEqual([1, 0]);
   });
 
@@ -416,6 +422,7 @@ describe('lairPassage', () => {
             wide: false
           },
     rounds: null,
+    dealt: null,
     // Clearing the room is priced elsewhere and must not leak into a pass.
     cost: perRound === null ? null : { value: perRound * 50, from: 'bound' }
   });
@@ -623,5 +630,89 @@ describe('opening with a backstab', () => {
   it('lets an empty hand through, and is not known for a weapon of no stated kind', () => {
     expect(backstabsWith([])).toBe(true);
     expect(backstabsWith([held({ min: 2, max: 12 })])).toBeNull();
+  });
+});
+
+/*
+ * Todo 2322-01: what the character's own state gives the monster's side of
+ * the roll — the sheet's `AC vs Evil` whole, and the spells a worn item
+ * negates or the race's ImmuPoison stops.
+ */
+describe('the character as a monster’s blow meets it', () => {
+  const worn = {
+    ...EMPTY_CHARACTER,
+    progress: { ...EMPTY_CHARACTER.progress, level: 45, armourClass: 98, damageResist: 16 },
+    inventory: {
+      ...EMPTY_CHARACTER.inventory,
+      items: [
+        {
+          name: 'large silvery cross',
+          source: 'hybrid' as const,
+          slot: 'Neck',
+          equipped: true,
+          charges: null,
+          negates: [101]
+        }
+      ]
+    }
+  };
+  const cls = { combat: 3, magery: null, crits: 0, family: 'majormud' as const };
+
+  it('wards the spells the worn item negates, and poison where the class rows say', () => {
+    const player = menacePlayerOf(worn, { ...cls, poisonImmune: true }, () => null);
+    expect([...player.ward!.negates]).toEqual([101]);
+    expect(player.ward!.poisonImmune).toBe(true);
+    expect(menacePlayerOf(worn, cls, () => null).ward!.poisonImmune).toBe(false);
+  });
+
+  it('takes the sheet’s AC vs Evil while it holds', () => {
+    const rows: Array<Record<string, string>> = [
+      { healthRegen: '6', restingRegen: '18', versusEvil: '113' },
+      { versusGood: '98' }
+    ];
+    const sheet = readStatAll(rows, statedBasis(worn))!;
+    const read = { ...worn, stated: keepSheet(null, sheet) };
+    const player = menacePlayerOf(read, cls, () => null);
+    expect(player.statedVersusEvil).toBe(113);
+    expect(player.statedVersusGood).toBe(98);
+    expect(menacePlayerOf(worn, cls, () => null).statedVersusEvil).toBeNull();
+  });
+});
+
+describe('the client’s round beside the server’s', () => {
+  it('is how far apart, as a share of the server’s, and nothing while either is unknown', () => {
+    expect(roundGap(433, 451)).toBeCloseTo(0.04, 2);
+    expect(roundGap(null, 451)).toBeNull();
+    expect(roundGap(433, undefined)).toBeNull();
+    expect(roundGap(433, 0)).toBeNull();
+  });
+
+  it('carries what the swing deals a round on the verdict', () => {
+    const priced = verdictFor(
+      null,
+      { armourClass: 40, damageResist: 0, hp: 100 },
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    expect(priced.dealt).not.toBeNull();
+    expect(priced.dealt!).toBeGreaterThan(0);
+    expect(verdictFor(null, {}, SHEET, SWORD, 'majormud').dealt).toBeNull();
+  });
+
+  it('finds the room’s entry however the name was spelled', () => {
+    const verdict: RoomVerdict = {
+      monsters: [
+        {
+          name: 'The lashworm',
+          verdict: { menace: null, rounds: null, dealt: 9, cost: null },
+          stated: 10
+        }
+      ],
+      cost: null,
+      survival: null
+    };
+    expect(monsterIn(verdict, 'lashworm')?.stated).toBe(10);
+    expect(monsterIn(verdict, 'giant')).toBeUndefined();
   });
 });

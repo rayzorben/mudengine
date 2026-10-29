@@ -410,6 +410,25 @@ describe('naming the items an exit needs', () => {
     // The exit still says `Key: 7`; the map has to be able to say so.
     expect(entry).toEqual({ id: 7, n: '' });
   });
+
+  /* Format 79, pmud-20260931.mdb: the large silvery cross negates drain life (101) among others. */
+  it('carries the spells a worn copy negates, with no item kind stated', () => {
+    const [entry] = indexItems(
+      fake({
+        Items: [
+          {
+            Number: 7,
+            Name: 'large silvery cross',
+            'NegateSpell-0': 101,
+            'NegateSpell-1': 361,
+            'NegateSpell-2': 0
+          }
+        ]
+      }),
+      new Set([7])
+    );
+    expect(entry?.neg).toEqual([101, 361]);
+  });
 });
 
 /**
@@ -756,8 +775,9 @@ describe('naming what a monster is worth in health', () => {
       })
     );
     expect(bare(mobs)).toEqual([
-      { n: 'gate guard', hp: 80, d: 'p' },
-      { n: 'giant rat', hp: 12, d: 'h' },
+      // Waiting to be struck, and still evil to the hit roll (`ev`, format 79).
+      { n: 'gate guard', hp: 80, d: 'p', ev: 'a' },
+      { n: 'giant rat', hp: 12, d: 'h', ev: 'a' },
       { n: 'kobold slave', hp: 39, d: 'p' }
     ]);
   });
@@ -774,7 +794,7 @@ describe('naming what a monster is worth in health', () => {
         Monsters: [{ Number: 1, Name: 'wererat', HP: 300, Alignment: 2, Type: 2, 'In Game': 1 }]
       })
     );
-    expect(bare(mobs)).toEqual([{ n: 'wererat', hp: 300, d: 'h' }]);
+    expect(bare(mobs)).toEqual([{ n: 'wererat', hp: 300, d: 'h', ev: 'a' }]);
   });
 
   /*
@@ -791,7 +811,7 @@ describe('naming what a monster is worth in health', () => {
         ]
       })
     );
-    expect(bare(mobs)).toEqual([{ n: 'giant rat', hp: 12, d: 'h', x: 1 }]);
+    expect(bare(mobs)).toEqual([{ n: 'giant rat', hp: 12, d: 'h', x: 1, ev: 's' }]);
   });
 
   /*

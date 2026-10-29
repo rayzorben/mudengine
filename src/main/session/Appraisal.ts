@@ -22,6 +22,7 @@ import type { AutomationConfig } from '../../shared/config';
 import { inTheFight } from '../../shared/guards';
 import { attacksFirst, mobListed, rowPeaceFor } from '../../shared/mobRules';
 import { asksHere, type QuestWatched, type RoomAsk } from '../../shared/quests';
+import { statedAgainst } from '../../shared/stated';
 import { simulateFight, type Survival } from '../../shared/survival';
 import {
   appraiseRoom,
@@ -138,11 +139,17 @@ export class Appraisal {
     );
     // And the row's word beside the realm's, where one says it does not attack first.
     const rules = this.session.config().combat.mobRules;
-    // And each one fought alone, rested, out of the odds book.
+    // And each one fought alone, rested, out of the odds book; and the server's own round, where a sheet ran against it holds.
     const monsters = appraisal.monsters.map((entry) => {
       const peace = rowPeaceFor(rules, mobListed(state.room.occupants, entry.name) ?? entry.name);
       const alone = this.odds.mob(entry.name);
-      return peace === null ? { ...entry, alone } : { ...entry, peace, alone };
+      const stated = statedAgainst(state, entry.name, attack.kind);
+      return {
+        ...entry,
+        alone,
+        ...(peace === null ? {} : { peace }),
+        ...(stated === null ? {} : { stated })
+      };
     });
     return { ...appraisal, monsters, survival: this.survivalOf(state) };
   }

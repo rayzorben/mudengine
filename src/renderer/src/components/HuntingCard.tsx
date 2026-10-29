@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
+import GatedGrounds, { gatedRow } from './GatedGrounds';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
@@ -142,7 +143,9 @@ export function huntingCopyText(advice: HuntingAdvice | null): string {
         rooms: spot.walk.length,
         steps: spot.rooms[0]?.steps ?? 0
       })
-    )
+    ),
+    ...(advice.gated.length === 0 ? [] : [t('cards.hunting.locked.heading')]),
+    ...advice.gated.map(gatedRow)
   ].join('\n');
 }
 
@@ -199,6 +202,10 @@ function HuntingCard({
   const refresh = useCallback(() => setAsked((n) => n + 1), []);
 
   const rows = useMemo(() => (advice === null ? [] : everySpot(advice)), [advice]);
+  const gated = useMemo(
+    () => (advice === null ? null : <GatedGrounds grounds={advice.gated} />),
+    [advice]
+  );
   const rough = useMemo(() => new Set(advice?.unmeasured.map((spot) => spot.key) ?? []), [advice]);
 
   const spotColumns: Array<Column<HuntingSpot>> = useMemo(
@@ -428,6 +435,7 @@ function HuntingCard({
         rowAttrs={(spot) => ({ 'data-open': open === spot.key ? 'true' : 'false' })}
         rows={rows}
         session={session}
+        after={gated}
       />
       {/*
         The figures scroll and the three buttons do not.

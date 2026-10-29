@@ -49,9 +49,16 @@ import { OpenedWays } from './OpenedWays';
 import { lairRunner, runRiskOf, type RunRiskParts } from './runRisk';
 import { withChances } from './routeChances';
 import type { RunRisk } from '../../shared/runPass';
-import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds';
+import { GROUNDS, type Ground, admitsFiller, groundRefills, spawnGroundOf } from './huntGrounds';
+import { GatedGrounds } from './gatedGrounds';
 import { preferredEdges } from '../world/loopDraft';
-import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
+import {
+  capabilitiesOf,
+  holdsAbility,
+  IMMUNE_TO_POISON_ABILITY,
+  poisonRefusesRest,
+  type Capabilities
+} from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
 import {
   fightIsRunning,
@@ -171,8 +178,6 @@ import {
   hazardAvoided,
   hazardCarried,
   nameAnswersTo,
-  lairKey,
-  parseLair,
   edgeKey,
   roomAddress,
   roomId,
@@ -259,6 +264,7 @@ export type CastingInput = KillCasting;
  */
 export type ErrandsWorld = Pick<
   WorldGraph,
+  | 'budgeted'
   | 'buildMobEntity'
   | 'buyingPlaces'
   | 'byId'
@@ -369,6 +375,8 @@ export class Errands implements SessionModule {
   private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
   /** The one navigation engine for this character (`session/navigation.ts`). */
   private readonly navigation: Navigation;
+  /** The grounds behind a level gate, for the survey (todo 2322-01). */
+  private readonly gatedGrounds: GatedGrounds;
   /** Every toll the realm's exits charge, in copper, cheapest first; read once. */
   private tolls: number[] | null = null;
   /** `gateItems`, read once per realm. */
@@ -460,6 +468,11 @@ export class Errands implements SessionModule {
       errands: this,
       odds: () => this.session.odds()
     });
+    this.gatedGrounds = new GatedGrounds({
+      world: () => this.world,
+      navigation: this.navigation,
+      errands: this
+    });
   }
 
   /** Who this character is, for what it may wield and wear. See `wearerOf`. */
@@ -474,6 +487,11 @@ export class Errands implements SessionModule {
    */
   legAs(from: RoomId, to: RoomId, traveller: Traveller, options: RouteOptions = {}): Route | null {
     return this.navigation.leg(from, to, traveller, options);
+  }
+
+  /** `legAs` held to `ms` of the thread: `spent` where it ran out (`Navigation.legWithin`). */
+  legWithin(from: RoomId, to: RoomId, traveller: Traveller, ms: number): Route | 'spent' | null {
+    return this.navigation.legWithin(from, to, traveller, ms);
   }
 
   /** The plan from where the character stands to a room, keys and fights included, or null while unplaced. */
@@ -2123,6 +2141,7 @@ export class Errands implements SessionModule {
       swept: 0,
       spots: [],
       unmeasured: [],
+      gated: [],
       excluded: { ...NO_EXCLUSIONS },
       assumptions,
       floor: NO_FLOOR,
@@ -2158,22 +2177,9 @@ export class Errands implements SessionModule {
     const groupOfRoom = new Map<RoomId, string>();
     for (const [id, steps] of reach) {
       const room = world.byId(id);
-      if (!room) continue;
-      let key: string;
-      let via: HuntGroup['via'];
-      let spawns: number | null = null;
-      if (room.lair) {
-        // The clock is part of what spawns: two rooms naming the same rows on
-        // different delays are two hunting grounds, and a price is cached by key.
-        key = `lair:${lairKey(room.lair)}:${room.delay ?? ''}`;
-        via = 'lair';
-        spawns = parseLair(room.lair).max;
-      } else if (room.npcId !== undefined) {
-        key = `resident:${room.npcId}`;
-        via = 'resident';
-      } else {
-        continue;
-      }
+      const ground = room === undefined ? null : spawnGroundOf(room);
+      if (!room || ground === null) continue;
+      const { key, via, spawns } = ground;
       const entry = groups.get(key) ?? { rooms: [], sample: room, via, spawns };
       entry.rooms.push({ id, map: room.map, room: room.room, name: room.name, steps });
       groups.set(key, entry);
@@ -2521,6 +2527,13 @@ export class Errands implements SessionModule {
       swept: reach.size,
       spots: known,
       unmeasured: rest.filter((spot) => !taken.has(spot)),
+      gated: this.gatedGrounds.around(
+        state,
+        from,
+        radius ?? Number.POSITIVE_INFINITY,
+        reach,
+        c.maxSpots
+      ),
       excluded,
       assumptions: { ...assumptions, measured },
       floor,
@@ -3059,6 +3072,7 @@ export class Errands implements SessionModule {
       mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
       crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits),
+      poisonImmune: holdsAbility(this.capabilities(), IMMUNE_TO_POISON_ABILITY),
       rounds: this.measuredRounds()
     };
   }

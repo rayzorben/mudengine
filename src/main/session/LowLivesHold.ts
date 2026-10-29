@@ -34,10 +34,15 @@ export interface LowLivesEvents {
 }
 
 export class LowLivesHold {
-  /** Where the held dial was going, while the question is open. */
-  private held: ConnectionTarget | null = null;
+  /** The open question and where the held dial was going, or null while none is open. */
+  private question: { target: ConnectionTarget; ask: LowLivesAsk } | null = null;
 
   constructor(private readonly events: LowLivesEvents) {}
+
+  /** The open question, or null. Read at attach (`AttachSnapshot.lowLives`). */
+  get open(): LowLivesAsk | null {
+    return this.question?.ask ?? null;
+  }
 
   /**
    * Whether a dial to `target` waits for the player. When it does, the console
@@ -46,14 +51,15 @@ export class LowLivesHold {
    * told cannot answer it later and log in over a live connection.
    */
   holds(target: ConnectionTarget): boolean {
-    this.held = null;
+    this.question = null;
     if (!this.events.automationOn()) return false;
     const kept = this.events.livesAt(target);
     const floor = this.events.floor();
     if (kept === null || !atLivesFloor(kept.count, floor)) return false;
-    this.held = target;
+    const ask = { lives: kept.count, floor, at: kept.at };
+    this.question = { target, ask };
     this.events.notice(t('session.lowLives.held', { lives: kept.count, floor }), 'low-lives');
-    this.events.ask({ lives: kept.count, floor, at: kept.at });
+    this.events.ask(ask);
     return true;
   }
 
@@ -62,8 +68,8 @@ export class LowLivesHold {
    * staying offline and for an answer to a question no longer open.
    */
   answered(answer: LowLivesAnswer): LowLivesDial | null {
-    const target = this.held;
-    this.held = null;
+    const target = this.question?.target ?? null;
+    this.question = null;
     if (target === null) return null;
     switch (answer) {
       case 'switch-off':

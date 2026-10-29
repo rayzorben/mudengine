@@ -241,6 +241,8 @@ describe('choosing blessings for the fight being hunted', () => {
           restingRegen: null,
           baseManaRegen: 3,
           manaRegen: 3,
+          versusEvil: null,
+          versusGood: null,
           rounds: {},
           basis: statedBasis(read)
         }
@@ -278,6 +280,8 @@ describe('choosing blessings for the fight being hunted', () => {
             restingRegen: null,
             baseManaRegen: 3,
             manaRegen: 3,
+            versusEvil: null,
+            versusGood: null,
             rounds: {},
             basis: statedBasis(read)
           }

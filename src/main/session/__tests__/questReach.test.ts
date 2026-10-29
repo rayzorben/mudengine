@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { QuestReach, reachAll, reachLegs, stepRooms, type ReachRouter } from '../questReach';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { t } from '../../app/i18n';
 import type { Quest, QuestStep } from '../../../shared/quests';
 import type { Route, RoomId } from '../../../shared/world';
 
@@ -22,7 +24,7 @@ const step = (part: Partial<QuestStep>): QuestStep => ({
 function walls(open: Record<string, number[]>): ReachRouter & { asked: number } {
   const router = {
     asked: 0,
-    legAs(_from: RoomId, to: RoomId, traveller: { level?: number | null }): Route {
+    legWithin(_from: RoomId, to: RoomId, traveller: { level?: number | null }): Route {
       router.asked += 1;
       const next = (open[to] ?? []).find((level) => level > (traveller.level ?? 0));
       if (next === undefined) return { steps: [], cost: 1, blocked: false };
@@ -39,6 +41,13 @@ function walls(open: Record<string, number[]>): ReachRouter & { asked: number } 
   return router;
 }
 
+const pace = (superseded = false) => ({
+  tries: 3,
+  legMs: 1000,
+  superseded: () => superseded,
+  spent: () => undefined
+});
+
 const run = (router: ReachRouter, quest: Quest, level: number) =>
   reachAll(
     router,
@@ -48,8 +57,7 @@ const run = (router: ReachRouter, quest: Quest, level: number) =>
     ),
     '1/1' as RoomId,
     { level },
-    3,
-    () => false
+    pace()
   );
 
 describe('the level the way to a quest step opens at', () => {
@@ -100,15 +108,13 @@ describe('the level the way to a quest step opens at', () => {
     };
     const legs = reachLegs(two, [{ rank: 1, acts: two.steps }]);
     expect(
-      await reachAll(walls({ '2/2': [50] }), legs, '1/1' as RoomId, { level: 1 }, 3, () => false)
+      await reachAll(walls({ '2/2': [50] }), legs, '1/1' as RoomId, { level: 1 }, pace())
     ).toEqual({});
   });
 
   it('answers nothing for an ask a later one replaced', async () => {
     const legs = reachLegs(dao, [{ rank: 11, acts: dao.steps }]);
-    expect(
-      await reachAll(walls({}), legs, '1/1' as RoomId, { level: 1 }, 3, () => true)
-    ).toBeNull();
+    expect(await reachAll(walls({}), legs, '1/1' as RoomId, { level: 1 }, pace(true))).toBeNull();
   });
 });
 
@@ -146,7 +152,9 @@ describe('the quest book’s ask', () => {
       router: walls({ '12/2251': [20] }),
       state: () => state,
       watched: () => ({}),
-      traveller: (now) => ({ level: now.progress.level })
+      traveller: (now) => ({ level: now.progress.level }),
+      notice: () => undefined,
+      reachKey: () => ''
     });
 
   it('answers the portal’s level from where the character stands', async () => {
@@ -175,14 +183,17 @@ describe('the quest book’s ask', () => {
     const gone = new QuestReach({
       world: () => held,
       router: {
-        legAs: (_from, to) => {
+        legWithin: (_from, to) => {
           asked.push(to);
           return null;
         }
       },
       state: () => at({ map: 12, number: 2250 }),
       watched: () => ({}),
-      traveller: (now) => ({ level: now.progress.level })
+      traveller: (now) => ({ level: now.progress.level }),
+      notice: () => undefined,
+      // Moved by each run, so the second ask routes rather than answering from the first.
+      reachKey: () => `${asked.length}`
     });
     // Positive control: the same ask routes the portal while the realm stands.
     expect(await gone.ask({})).toEqual({});
@@ -191,5 +202,87 @@ describe('the quest book’s ask', () => {
     held = undefined;
     expect(await running).toBeNull();
     expect(asked).toEqual(['12/2251']);
+  });
+
+  /*
+   * The level being tried is the traveller's, and the lair and spell prices
+   * are the character's of now: they also made a leg through the scatter
+   * mazes hold the host's socket thread for a minute (2026-10-29 UTC).
+   */
+  it('routes without the risk of the character as they stand', async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const priced = new QuestReach({
+      world: () => realm,
+      router: {
+        legWithin: (_from, _to, traveller) => {
+          seen.push({ ...traveller });
+          return null;
+        }
+      },
+      state: () => at({ map: 12, number: 2250 }),
+      watched: () => ({}),
+      traveller: (now) => ({
+        level: now.progress.level,
+        keys: [7],
+        danger: () => 0.5,
+        runDeath: () => 0.1,
+        lairDamage: () => 30,
+        hazard: () => 0.2
+      }),
+      notice: () => undefined,
+      reachKey: () => ''
+    });
+    expect(await priced.ask({})).toEqual({});
+    expect(seen).toEqual([{ level: 13, keys: [7] }]);
+  });
+
+  /*
+   * A leg past its time on the thread is given up and said (2026-10-29 UTC: a
+   * minute a leg was a dead link for every character on the process).
+   */
+  it('leaves a rank unknown, out loud, where its way took too long to plan', async () => {
+    const said: string[] = [];
+    const slow = new QuestReach({
+      world: () => realm,
+      router: { legWithin: () => 'spent' },
+      state: () => at({ map: 12, number: 2250 }),
+      watched: () => ({}),
+      traveller: (now) => ({ level: now.progress.level }),
+      notice: (message) => said.push(message),
+      reachKey: () => ''
+    });
+    // Positive control: the same realm answers the portal's level when routed.
+    expect(await reach(at({ map: 12, number: 2250 })).ask({})).toEqual({
+      134: { rank: 1, level: 20 }
+    });
+    expect(await slow.ask({})).toEqual({});
+    expect(said).toEqual([
+      t('automation.quests.reachSpent', {
+        quests: 'DaoLordQuest',
+        seconds: DEFAULT_INTERNAL.tuning.world.questReachLegMs / 1000
+      })
+    ]);
+  });
+
+  it('answers again from what it worked out while nothing it reads has changed', async () => {
+    const router = walls({ '12/2251': [20] });
+    let key = 'gold for no tolls';
+    const kept = new QuestReach({
+      world: () => realm,
+      router,
+      state: () => at({ map: 12, number: 2250 }),
+      watched: () => ({}),
+      traveller: (now) => ({ level: now.progress.level }),
+      notice: () => undefined,
+      reachKey: () => key
+    });
+    expect(await kept.ask({})).toEqual({ 134: { rank: 1, level: 20 } });
+    const routed = router.asked;
+    expect(routed).toBeGreaterThan(0);
+    expect(await kept.ask({})).toEqual({ 134: { rank: 1, level: 20 } });
+    expect(router.asked).toBe(routed);
+    key = 'gold for one toll';
+    expect(await kept.ask({})).toEqual({ 134: { rank: 1, level: 20 } });
+    expect(router.asked).toBeGreaterThan(routed);
   });
 });

@@ -439,7 +439,7 @@ export default function App() {
       activeTerminal()?.focus();
     });
   }, [activeTerminal, game.takeFocus]);
-  const { asked: livesAsked, answer: answerLowLives } = useLowLivesAsk(api, returnFocus);
+  const lowLives = useLowLivesAsk(api, returnFocus, applySnapshot);
 
   /*
    * The modals that hold the caret and hand it back on their own exit, each
@@ -1209,7 +1209,7 @@ export default function App() {
                   onSelectGang={slideOuts.selectGang}
                   onSelectSlot={slideOuts.selectSlot}
                   onSearchResult={setSearchResult}
-                  onSnapshot={applySnapshot}
+                  onSnapshot={lowLives.attached}
                   // No pane: parked hidden in the focused one, measurable, out of the tab order.
                   pane={at >= 0 ? at : paneAt}
                   palette={game.paint(consolePalette)}
@@ -1461,9 +1461,9 @@ export default function App() {
       />
       <ResetGate api={api} profiles={profiles} returnFocus={returnFocus} />
       <LowLivesPrompt
-        ask={livesAsked?.payload ?? null}
-        characterName={livesAsked === null ? '' : profileNameFor(livesAsked.session)}
-        onAnswer={answerLowLives}
+        ask={lowLives.asked?.payload ?? null}
+        characterName={lowLives.asked === null ? '' : profileNameFor(lowLives.asked.session)}
+        onAnswer={lowLives.answer}
       />
       <TripDialogs api={api} trips={trips} profiles={profiles} />
       <SettingsScreen

@@ -11,6 +11,7 @@
  * `tuning.reconnect.silentForMs` is read at each arm; `0` switches both off. See
  * `mudengine-session` decisions › *A dead link is noticed by what is owed, not by silence*.
  */
+import { deadline, type Deadline } from '../app/deadline';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 
@@ -39,7 +40,7 @@ function deadNotice(owed: Owed, seconds: number): string {
 }
 
 export class LinkWatch {
-  private readonly timers = new Map<Owed, NodeJS.Timeout>();
+  private readonly timers = new Map<Owed, Deadline>();
 
   constructor(private readonly session: LinkWatchSession) {}
 
@@ -88,11 +89,13 @@ export class LinkWatch {
     if (this.timers.has(owed)) return;
     const after = tuning().reconnect.silentForMs;
     if (after <= 0) return;
-    const timer = setTimeout(() => this.expire(owed, after), after);
-    // A pending deadline does not owe the process another tick: a client told
-    // to quit should not be held open by a connection it is about to drop.
-    timer.unref();
-    this.timers.set(owed, timer);
+    // Judged after the bytes that waited out a stall of this process are read
+    // (`deadline`). It does not hold the process either: a client told to quit
+    // should not be held open by a connection it is about to drop.
+    this.timers.set(
+      owed,
+      deadline(after, () => this.expire(owed, after), false)
+    );
   }
 
   private expire(owed: Owed, after: number): void {
@@ -105,12 +108,12 @@ export class LinkWatch {
   private clear(owed: Owed): void {
     const timer = this.timers.get(owed);
     if (timer === undefined) return;
-    clearTimeout(timer);
+    timer.clear();
     this.timers.delete(owed);
   }
 
   private clearAll(): void {
-    for (const timer of this.timers.values()) clearTimeout(timer);
+    for (const timer of this.timers.values()) timer.clear();
     this.timers.clear();
   }
 }

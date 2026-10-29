@@ -41,7 +41,7 @@
  */
 import type { Alignment } from './alignment';
 import { sameItem, type ItemKind } from './items';
-import type { AlignmentCost, MobAvoid, MobDisposition } from './mobs';
+import type { AlignmentCost, MobAvoid, MobDisposition, RowShare } from './mobs';
 import type {
   MapObstacle,
   MobProfile,
@@ -202,6 +202,8 @@ export interface ItemEntity {
   notDroppable?: boolean;
   /** `Items.Limit` — how many may exist. */
   limit?: number;
+  /** The spells a worn copy takes off its wearer (`WorldItem.negates`). */
+  negates?: number[];
   /** Shops known to stock it, and monsters known to drop it. */
   shops?: string[];
   droppedBy?: string[];
@@ -266,6 +268,8 @@ export interface MobEntity {
   uncertain: boolean;
   /** What attacking it costs this character in alignment. */
   costly: AlignmentCost;
+  /** Whether it is of an evil alignment (`WorldMob.evil`); absent is unstated. */
+  evil?: RowShare;
   /** Why the realm data says to leave it alone unless it or the party starts the fight. */
   avoid?: MobAvoid;
   armour?: number;

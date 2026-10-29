@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  alignmentCost,
+  shareOfRows,
   answersTo,
   rowNameOf,
   attacksOnSight,
@@ -99,13 +99,13 @@ describe('what attacking one costs the character', () => {
    * that is not unanimous would leave the first monster anybody meets alone.
    */
   it('separates always from sometimes', () => {
-    expect(alignmentCost([true, true])).toBe('always');
-    expect(alignmentCost([true, false])).toBe('sometimes');
-    expect(alignmentCost([false, false])).toBe('never');
+    expect(shareOfRows([true, true])).toBe('always');
+    expect(shareOfRows([true, false])).toBe('sometimes');
+    expect(shareOfRows([false, false])).toBe('never');
   });
 
   it('is never for a name with no rows at all', () => {
-    expect(alignmentCost([])).toBe('never');
+    expect(shareOfRows([])).toBe('never');
   });
 });
 

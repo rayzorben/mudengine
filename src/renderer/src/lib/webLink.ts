@@ -12,6 +12,8 @@ import {
   asRpcFrame,
   GAVE_UP,
   PAGE_CLOSED,
+  PATCH_UNFIT,
+  CLOSE_REASON_CHARS,
   RPC_PATH,
   type RpcHello,
   type RpcInvoke,
@@ -21,6 +23,7 @@ import {
 } from '@shared/rpc';
 
 import { BUILD, buildId } from '@shared/build';
+import { errorMessage } from '@shared/values';
 import { t } from './i18n';
 import { PushPatches } from './patches';
 import { readStored, writeStored } from './storage';
@@ -296,7 +299,25 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
           last = frame.n;
           health.frame(String(event.data).length);
           const { n: _taken, ...message } = frame;
-          events.frame(message.k === 'patch' ? patches.apply(message) : message);
+          if (message.k !== 'patch') {
+            events.frame(message);
+            return;
+          }
+          let rebuilt: RpcOutbound;
+          try {
+            rebuilt = patches.apply(message);
+          } catch (error) {
+            // A fault: what this tab holds is no longer what main patched
+            // against, so the window starts over (`PATCH_UNFIT`).
+            ws.close(
+              PATCH_UNFIT,
+              errorMessage(error)
+                .replace(/[^\x20-\x7e]/g, '?')
+                .slice(0, CLOSE_REASON_CHARS)
+            );
+            return;
+          }
+          events.frame(rebuilt);
           return;
         }
         default: {

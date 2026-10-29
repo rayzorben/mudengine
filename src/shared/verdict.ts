@@ -14,6 +14,7 @@ import {
   MAX_SWINGS,
   PLAIN_ATTACK,
   swing,
+  swingRound,
   type ProwessAttack,
   type ProwessClass,
   type ProwessSheet,
@@ -28,6 +29,7 @@ import type { Odds, Survival } from './survival';
 import { DODGE_ABILITY } from './abilities';
 import { weaponBackstabs } from './backstab';
 import { statedNow } from './stated';
+import { wardOf } from './spellWard';
 import { loadPercent } from './load';
 import { gearEffect } from './blessingeffects';
 import type { CharacterState, RoomOccupant } from './character';
@@ -92,6 +94,12 @@ export interface Verdict {
    */
   rounds: Reckoning<number> | null;
   /**
+   * What the character's attack deals it a round, hit spells included
+   * (`swingRound`): the figure a `stat all <n>` sheet's `Avg/Rnd` is set
+   * beside. Null where the swing is not priced.
+   */
+  dealt: number | null;
+  /**
    * Health this fight is expected to cost: `menace.perRound × rounds`, and
    * its damage shield for each blow the character lands in those rounds.
    *
@@ -144,7 +152,7 @@ export function verdictFor(
     menace === null || rounds === null
       ? null
       : { value: (menace.perRound + back) * rounds.value, from: 'bound' as const };
-  return { menace, rounds, cost };
+  return { menace, rounds, dealt: attack === null ? null : swingRound(attack), cost };
 }
 
 /** What `targetOf` reads off a monster: the realm's columns, its ability slots and what it is. */
@@ -260,13 +268,17 @@ export function menacePlayerOf(
   cls: ProwessClass & { family: RealmFamily | null },
   spellOf: (name: string) => WorldSpell | null
 ): MenacePlayer {
+  const said = statedNow(state);
   return {
     armourClass: state.progress.armourClass,
     damageResist: state.progress.damageResist,
     magicRes: state.progress.magicRes,
     ...protectionOf(state, spellOf),
+    statedVersusEvil: said?.versusEvil ?? null,
+    statedVersusGood: said?.versusGood ?? null,
     dodge: dodge(prowessSheetOf(state, cls), cls.family)?.value ?? null,
-    family: cls.family
+    family: cls.family,
+    ward: wardOf(state.inventory.items, cls.poisonImmune ?? null)
   };
 }
 
@@ -315,7 +327,14 @@ export interface RoomVerdict {
    * `alone` is its fight on its own, run for the character rested, out of the
    * odds book (`OddsBook`, todo 03).
    */
-  monsters: Array<{ name: string; verdict: Verdict; peace?: RowPeace; alone?: Odds }>;
+  monsters: Array<{
+    name: string;
+    verdict: Verdict;
+    peace?: RowPeace;
+    alone?: Odds;
+    /** The server's `Avg/Rnd` against it off a kept `stat all <n>` sheet that still holds (`statedAgainst`). */
+    stated?: number;
+  }>;
   /**
    * Health clearing the room is expected to cost — the sum of every monster's
    * `cost`, and **null the moment one of them is unknown**, because a total
@@ -334,10 +353,24 @@ export interface RoomVerdict {
 
 export const EMPTY_ROOM_VERDICT: RoomVerdict = { monsters: [], cost: null, survival: null };
 
+/** How far the client's round is from the server's, as a share of the server's; null where either is unknown or the server's is none. */
+export function roundGap(dealt: number | null, stated: number | undefined): number | null {
+  if (dealt === null || stated === undefined || stated <= 0) return null;
+  return Math.abs(dealt - stated) / stated;
+}
+
+/** The appraised room's entry for a monster, by `mobKey`, since the fight and the room may spell one differently. */
+export function monsterIn(
+  appraisal: RoomVerdict,
+  name: string
+): RoomVerdict['monsters'][number] | undefined {
+  const key = mobKey(name);
+  return appraisal.monsters.find((entry) => mobKey(entry.name) === key);
+}
+
 /** What the character's row claims about a monster in the appraised room, or null. */
 export function rowPeaceIn(appraisal: RoomVerdict, name: string): RowPeace | null {
-  const key = mobKey(name);
-  return appraisal.monsters.find((entry) => mobKey(entry.name) === key)?.peace ?? null;
+  return monsterIn(appraisal, name)?.peace ?? null;
 }
 
 /** Every occupant the room lists that is not a person — the ones a verdict is about. */
@@ -516,10 +549,12 @@ export function roomVerdictKey(appraisal: RoomVerdict): string {
     reckoning === null ? '-' : `${Math.round(reckoning.value)}${reckoning.from[0]}`;
   return [
     ...appraisal.monsters.map(
-      ({ name, verdict, peace, alone }) =>
+      ({ name, verdict, peace, alone, stated }) =>
         `${name}:${verdict.menace === null ? '-' : Math.round(verdict.menace.perRound)}:${rounds(
           verdict.rounds
-        )}:${health(verdict.cost)}:${peace ?? '-'}:${
+        )}:${health(verdict.cost)}:${peace ?? '-'}:${stated ?? '-'}/${
+          verdict.dealt === null ? '-' : Math.round(verdict.dealt)
+        }:${
           alone === undefined || alone.kind !== 'run'
             ? (alone?.kind ?? '-')
             : Math.round(alone.survival.survives * 100)

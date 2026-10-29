@@ -71,6 +71,7 @@ import { HAZARD_ABILITY, PROTECTION_ABILITY } from './abilities';
 import type { ActiveBuff, CharacterState } from './character';
 import type { RealmFamily } from './realm';
 import type { MobEntity } from './entities';
+import { wardedFrom, type SpellWard } from './spellWard';
 import type { MobAttack, MobProfile, WorldSpell } from './world';
 
 /**
@@ -78,7 +79,7 @@ import type { MobAttack, MobProfile, WorldSpell } from './world';
  * could attach no entity to weighs as `{}`: nothing known, which is `null`.
  */
 export type MenaceSubject = Pick<MobEntity, 'hp' | 'deathSpell' | 'profiles' | 'spells'> &
-  Partial<Pick<MobEntity, 'disposition' | 'uncertain' | 'costly'>>;
+  Partial<Pick<MobEntity, 'disposition' | 'uncertain' | 'costly' | 'evil'>>;
 
 /** The sheet figures a blow or a cast is measured against. Null is *not read yet*. */
 export interface MenacePlayer {
@@ -94,10 +95,20 @@ export interface MenacePlayer {
   versusAll?: number | null;
   versusEvil?: number | null;
   versusGood?: number | null;
+  /**
+   * `stat all`'s `AC vs Evil` and `vs Good` while they hold (`statedNow`):
+   * the whole armour class the blow meets, so they stand in for
+   * `armourClass` and every protection above, which reads only the buffs.
+   * Absent or null is unstated.
+   */
+  statedVersusEvil?: number | null;
+  statedVersusGood?: number | null;
   /** `Player.Dodge`, in points (`prowess.dodge`). Absent or null dodges nothing. */
   dodge?: number | null;
   /** Whose hit roll a blow at the character meets (`hitChance`); absent or null is unread (`UNREAD_HIT`). */
   family?: RealmFamily | null;
+  /** The spells that never reach the character (`wardedFrom`); absent wards nothing. */
+  ward?: SpellWard;
 }
 
 /**
@@ -281,13 +292,15 @@ export function dodgedFraction(dodgeValue: number | null, accuracyValue: number)
 /**
  * Which side of `Mob.DoCombat`'s alignment test a monster is on:
  * `EvilPoints` is 100 for the four evil alignments and −75 for `Good` and
- * `LawfulGood`. Read back off what the realm file carries — a disposition
+ * `LawfulGood`. Read off the realm's alignment where the file carries it
+ * (`evil`, format 79), else back off what it does carry — a disposition
  * every row agrees on that only an evil alignment gives (`hostile`,
  * `hates-good`), or an attack that always costs evil points, which only a
  * good one does. Anything else is null, and null adds no protection.
  */
 export function sideOf(mob: MenaceSubject): 'evil' | 'good' | null {
   if (mob.costly === 'always') return 'good';
+  if (mob.evil === 'always') return 'evil';
   if (mob.uncertain === true) return null;
   if (mob.disposition === 'hostile' || mob.disposition === 'hates-good') return 'evil';
   return null;
@@ -297,6 +310,9 @@ export function sideOf(mob: MenaceSubject): 'evil' | 'good' | null {
 export function facing(player: MenacePlayer, mob: MenaceSubject): MenacePlayer {
   if (player.armourClass === null) return player;
   const side = sideOf(mob);
+  const stated =
+    side === 'evil' ? player.statedVersusEvil : side === 'good' ? player.statedVersusGood : null;
+  if (stated !== undefined && stated !== null) return { ...player, armourClass: stated };
   const ward =
     side === 'evil' ? (player.versusEvil ?? 0) : side === 'good' ? (player.versusGood ?? 0) : 0;
   return { ...player, armourClass: player.armourClass + (player.versusAll ?? 0) + ward };
@@ -563,12 +579,15 @@ function hazardOf(
     harm += amount;
     kinds.add(kind);
   };
-  const wound = woundOf(spell, level, player);
+  // Taken off the character whole; what it calls into the room still comes.
+  const warded = wardedFrom(spell, player.ward);
+  const wound = warded ? null : woundOf(spell, level, player);
   if (wound !== null) {
     harm += ((wound.low + wound.high) / 2) * applications;
     for (const kind of wound.kinds) kinds.add(kind);
   }
   for (const [id, value] of spell.abilities ?? []) {
+    if (warded && id !== HAZARD_ABILITY.summon) continue;
     switch (id) {
       case HAZARD_ABILITY.holdPerson:
         if (!onItself) add('held', weights.held * unit * rounds);

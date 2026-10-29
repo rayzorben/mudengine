@@ -1870,37 +1870,6 @@ function registerIpc(): void {
       caller.send(Push.config, config.snapshot);
     }
     reportSoftwareCompositing(caller);
-
-    /*
-     * Connect on launch, and only on launch.
-     *
-     * `clientReady` is "a renderer is mounted and can receive output", and a
-     * renderer can mount more than once: React's StrictMode deliberately runs
-     * every effect twice in development, a reload or hot update mounts a fresh
-     * one, and — now — a second window mounts another. Treating each of those
-     * as a reason to dial meant `npm run dev` opened two connections a
-     * millisecond apart; the second tore down the first mid-handshake and the
-     * server dropped it, which read as the server refusing the first connection
-     * every time the app started.
-     *
-     * Autoconnect is a property of *starting the app*, so it is latched here by
-     * session id rather than guarded further down. A window appearing is never
-     * a reason to reconnect behind the player's back, even if it worked.
-     */
-    if (launched) return;
-    launched = true;
-
-    /*
-     * Nothing to dial without a character, and nothing said here either:
-     * `syncSessions` already said it, once. Two identical lines on the same
-     * launch is how a message people ought to read becomes one they learn to
-     * scroll past.
-     */
-    for (const profile of profiles?.profiles ?? []) {
-      if (!profile.autoConnect || autoConnected.has(profile.id)) continue;
-      autoConnected.add(profile.id);
-      void host?.connect(profile.id, profile.target);
-    }
   });
 
   on(Send.input, (_caller, session: SessionId, data: string) => {
@@ -2934,6 +2903,7 @@ function registerIpc(): void {
         swept: 0,
         spots: [],
         unmeasured: [],
+        gated: [],
         excluded: { ...NO_EXCLUSIONS },
         assumptions: {
           family: null,
@@ -3704,12 +3674,6 @@ function idRefusal(fault: ProfileIdFault): string {
   }
 }
 
-/** Sessions this launch has already dialled on its own. See `clientReady`. */
-const autoConnected = new Set<SessionId>();
-
-/** Whether this launch has done its autoconnect pass. See `clientReady`. */
-let launched = false;
-
 /** Used only if the store somehow failed to construct; keeps the API total. */
 function fallbackSnapshot() {
   return { config: DEFAULT_CONFIG, path: '', error: null, loadedAt: 0 };
@@ -3988,8 +3952,25 @@ function build(): void {
     record,
     logDirectory
   });
+  connectOnLaunch();
   // Once the window is up, so the first room search does not pay for the parse.
   setTimeout(shippedNicknames, tuning().records.nicknamesReadAfterMs).unref();
+}
+
+/**
+ * Dials every character whose file says `autoConnect`, once, from `build()`.
+ *
+ * Not on `clientReady`: a renderer mounts more than once (StrictMode, reloads,
+ * a second window), and the web server may run for hours before any tab
+ * opens, so a redeployed server sat offline until someone logged in to it.
+ * A window that mounts after the dial takes the terminal, the state and an open
+ * low-lives question from `AttachSnapshot`; a notice said before it mounted is
+ * in stdout only. Nothing is said for no characters: `syncSessions` said it.
+ */
+function connectOnLaunch(): void {
+  for (const profile of profiles?.profiles ?? []) {
+    if (profile.autoConnect) void host?.connect(profile.id, profile.target);
+  }
 }
 
 /** Where the flight recorders keep what stalled: `stalls/` under the log directory. */

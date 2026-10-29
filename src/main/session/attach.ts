@@ -49,6 +49,7 @@ export interface AttachSlot {
   readonly backscroll: { page(lines: number): Promise<BackscrollText> };
   /** The marks of the page's lines, read once it is in hand so none is older than a push (todo 143). */
   readonly marks: { pageOf(page: BackscrollText): BackscrollPage };
+  readonly lowLives: { readonly open: AttachSnapshot['lowLives'] };
 }
 
 /** Where attach looks a character up, and what it reads beside the session. */
@@ -94,6 +95,7 @@ export async function attachSnapshot(
     learned: manager?.learned ?? [],
     finds: manager?.foundHere ?? [],
     shops: slot ? sources.shops(session) : [],
+    lowLives: slot?.lowLives.open ?? null,
     questSaid: { ...(manager?.questProgress ?? {}) },
     questRun: manager?.questDesk.progress ?? IDLE_QUEST_RUN,
     gearTrip: manager?.gearDesk.progress ?? null,

@@ -1665,6 +1665,11 @@ tuning:
     # met raises the level to it and the step is routed again.
     questReachTries: 3
 
+    # How long the reach may plan one step's way, all its tries together,
+    # before that step is given up as unknown and said. The plans run on the
+    # thread that reads the sockets, and fifteen seconds of it is a dead link.
+    questReachLegMs: 4000
+
     # What a room-script teleport costs over an ordinary step, so the router
     # prefers plain corridors unless the portal genuinely shortens the way —
     # usually across maps, which is what most of them are for.
@@ -1867,6 +1872,11 @@ tuning:
     # rooms, so it is not worth keeping them all.
     scatterMovesKept: 32
 
+    # How many scatter solves are kept, by goal and traveller, and how many
+    # travellers' door sweeps. A route asks for its traveller and for nobody,
+    # and the quest reach for each goal at up to questReachTries levels.
+    scatterSolvesKept: 16
+
   # The process itself.
   app:
     # How long a quitting client waits for its last message to reach a pipe
@@ -1888,8 +1898,10 @@ tuning:
     sampleUs: 5000
     # The busy stretch that keeps a chunk: about what a click feels as lag.
     stallMs: 250
-    # Kept profiles; stalls.log keeps every line.
+    # Kept profiles.
     kept: 30
+    # Past this, logs/stalls/stalls.log is moved to stalls.log.1 and started again.
+    logBytes: 5242880
 
   # Watching the files the client owns.
   files:
@@ -2281,6 +2293,10 @@ tuning:
     # sweep is realm-wide, so a move refreshes the steps column on this clock
     # rather than on every room; Ask again is immediate.
     huntReaskMs: 10000
+
+    # Past this percentage apart, the Room card warns that the client's round
+    # against a monster and the server's stat all <number> Avg/Rnd disagree.
+    roundGapSaidPercent: 10
 
     # The server's own combat pulse, in milliseconds. Damage per round is the
     # one figure that needs a length for a round, and the stream carries blows

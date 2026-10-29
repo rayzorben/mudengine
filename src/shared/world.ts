@@ -16,7 +16,7 @@ import type { MonsterNature } from './spellReach';
 import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
-import type { AlignmentCost, MobAvoid, MobDisposition } from './mobs';
+import type { AlignmentCost, MobAvoid, MobDisposition, RowShare } from './mobs';
 import type { Verdict } from './verdict';
 import type { RoomNickname } from './roomNicknames';
 import type { RowPeace } from './mobRules';
@@ -828,6 +828,12 @@ export interface WorldItem {
   notDroppable?: boolean;
   /** `Items.Limit` — how many may exist in the realm at once. */
   limit?: number;
+  /**
+   * `Items.NegateSpell-0..9`, format 79: the spells a worn copy takes off its
+   * wearer whole (`Spell.Cast` skips a target wearing one, `DoesNegateSpell`).
+   * Read through `src/shared/spellWard.ts`.
+   */
+  negates?: number[];
 }
 
 /** One line of a shop's stock, named rather than numbered. */
@@ -2243,6 +2249,11 @@ export interface WorldMob {
    * sharing this name are one of those — see `AlignmentCost`.
    */
   costly: AlignmentCost;
+  /**
+   * Whether its rows are of an evil alignment (`isEvilAlignment`), so its
+   * blows meet `Prev`. Absent is none, or a realm that states no alignment.
+   */
+  evil?: RowShare;
   /** Why the realm data says to leave it alone unless it or the party starts the fight. See `MobAvoid`. */
   avoid?: MobAvoid;
   /**

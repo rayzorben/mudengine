@@ -192,11 +192,11 @@ function GearSlotTile({
                       </span>
                     )}
                   </span>
-                  <span className="gear-meta">{sourceWords(item)}</span>
                   {gain === '' ? null : <span className="gear-gain">{gain}</span>}
                   <span className="gear-price">
                     {item.sold === null ? '' : priceWords(item.charged)}
                   </span>
+                  <span className="gear-meta">{sourceWords(item)}</span>
                 </button>
               </li>
             );

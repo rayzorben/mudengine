@@ -31,6 +31,11 @@ function said(ms: number, owed: 'reply' | 'prompt' = 'reply'): string {
     : t('session.connection.loginStalled', { seconds });
 }
 
+/** The turn after the deadline, where it is judged once the waiting input is read (`deadline`). */
+function turn(): void {
+  vi.runOnlyPendingTimers();
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   dead = [];
@@ -52,7 +57,24 @@ describe('LinkWatch', () => {
     expect(dead).toEqual([]);
 
     vi.advanceTimersByTime(1);
+    turn();
     expect(dead).toEqual([said(AFTER)]);
+    expect(watch.waiting).toBe(false);
+  });
+
+  /*
+   * A thread held past the deadline (2026-10-29 UTC, route plans of 59 to 73
+   * seconds): the timer fires first, then the poll reads the bytes that
+   * arrived meanwhile. One timer run is the timers phase; the byte is the poll.
+   */
+  it('counts the bytes that waited out a stall of this process', () => {
+    const watch = build();
+    watch.noteSent();
+    vi.advanceTimersToNextTimer();
+    expect(dead).toEqual([]);
+    watch.noteReceived();
+    vi.runAllTimers();
+    expect(dead).toEqual([]);
     expect(watch.waiting).toBe(false);
   });
 
@@ -76,6 +98,7 @@ describe('LinkWatch', () => {
     // dead link open for ever by sending into it.
     watch.noteSent();
     vi.advanceTimersByTime(1);
+    turn();
     expect(dead).toEqual([said(AFTER)]);
   });
 
@@ -106,6 +129,7 @@ describe('LinkWatch', () => {
     });
     watch.noteSent();
     vi.advanceTimersByTime(4_000);
+    turn();
     expect(dead).toEqual([said(4_000)]);
   });
 
@@ -145,6 +169,7 @@ describe('LinkWatch on the way in', () => {
     expect(dead).toEqual([]);
 
     vi.advanceTimersByTime(1);
+    turn();
     expect(dead).toEqual([said(AFTER, 'prompt')]);
     expect(watch.waiting).toBe(false);
   });

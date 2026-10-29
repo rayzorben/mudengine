@@ -24,6 +24,7 @@ import {
 } from './menace';
 import { HAZARD_ABILITY } from './abilities';
 import { copiesOf, drawSummons, summonsOf, type Summons } from './summons';
+import { wardedFrom } from './spellWard';
 import type { MobAttack, MobProfile, WorldSpell } from './world';
 
 /** `Mob.DoCombat`: the energy carried into a round is held under 2,000. */
@@ -125,6 +126,12 @@ export function spellEffect(
           ? [heals[1], heals[1]]
           : scaledPower(spell, level, 'mob');
     return { low: 0, high: 0, resist: 0, ticks: 0, held: 0, mends, summons };
+  }
+  // A worn item or ImmuPoison takes it off the character whole; its summons still come.
+  if (wardedFrom(spell, player.ward)) {
+    return summons.length === 0
+      ? null
+      : { low: 0, high: 0, resist: 0, ticks: 0, held: 0, mends: null, summons };
   }
   const wound = woundOf(spell, level, player);
   const held = heldRoundsOf(spell, level);

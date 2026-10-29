@@ -9982,6 +9982,35 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'with the mark above them, the size of a circle',
       JSON.stringify(closed)
     );
+    // The column is the tab track's width at the rail's left edge.
+    const columnMiddle =
+      tucked.tabs.left +
+      Number.parseFloat(
+        String(
+          await evaluate(
+            `getComputedStyle(document.querySelector('.workspace')).gridTemplateColumns`
+          )
+        )
+      ) /
+        2;
+    check(
+      [closed.mark, ...closed.tabs.map((entry) => entry.circle)].every(
+        (b) => b !== null && Math.abs(b.x - columnMiddle) <= 1
+      ),
+      'and the mark and every circle on one line down the middle of the column',
+      JSON.stringify({ columnMiddle, closed })
+    );
+    check(
+      closed.tabs.every(
+        (entry) =>
+          entry.circle !== null &&
+          Math.abs(entry.circle.y - (entry.tab.top + entry.tab.height / 2)) <= 1 &&
+          Math.abs(entry.tab.height - closed.tabs[0].tab.height) <= 1
+      ),
+      'each circle centred on its tab, and every tab one height, so they step evenly',
+      JSON.stringify(closed.tabs)
+    );
+    await capture('smoke-tabs-hidden.png', 'the tab rail hidden down to its column of circles');
     const middle = Math.round(
       Number(
         await evaluate(`document.querySelector('.terminal-stack').getBoundingClientRect().top`)
@@ -13092,9 +13121,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     // Back on, so the screenshots below and the rest of the run see the client
     // as it ships.
     check(await evaluate(markSwitch), 'and the switch turns it back on');
-    await waitFor(
-      async () => await evaluate(`!!document.querySelector('.tab-rail .app-mark')`)
-    );
+    await waitFor(async () => await evaluate(`!!document.querySelector('.tab-rail .app-mark')`));
     check(
       await evaluate(`!!document.querySelector('.tab-rail .app-mark')`),
       'and the mark comes back'

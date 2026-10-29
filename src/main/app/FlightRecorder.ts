@@ -5,9 +5,9 @@
  * A thread is sampled in chunks of `tuning.diagnostics.chunkMs`. At the end of
  * each chunk the profile is read for busy stretches (`stallsIn`); one at least
  * `stallMs` long keeps the chunk as a `.cpuprofile` beside a line in
- * `stalls.log` naming what ran. A quick chunk is dropped. A stall across the
- * end of a chunk is judged as two halves, and the moment between one chunk
- * and the next is not sampled.
+ * `stalls.log` naming what ran (`stalls.log.1` past `logBytes`). A quick
+ * chunk is dropped. A stall across the end of a chunk is judged as two
+ * halves, and the moment between one chunk and the next is not sampled.
  *
  * The thread is whatever `ProfilerPort` reaches: main through `node:inspector`,
  * a window through its debugger. A port that cannot start is said once in the
@@ -17,6 +17,7 @@ import fs from 'node:fs/promises';
 import { Session } from 'node:inspector/promises';
 import path from 'node:path';
 
+import { appendRotating } from './appendRotating';
 import { tuning } from './tuning';
 import { stallsIn } from './stallProfile';
 import type { CpuProfile, ProfilerPort } from '../../shared/profiler';
@@ -138,7 +139,7 @@ export class FlightRecorder {
     }
   }
 
-  /** Only the newest `kept` profiles stay; `stalls.log` keeps every line. */
+  /** Only the newest `kept` profiles stay; `stalls.log` starts afresh past `logBytes`. */
   private async prune(directory: string, kept: number): Promise<void> {
     const profiles = (await fs.readdir(directory))
       .filter((file) => file.endsWith('.cpuprofile'))
@@ -150,9 +151,11 @@ export class FlightRecorder {
 
   private async note(line: string): Promise<void> {
     try {
-      const directory = this.options.directory();
-      await fs.mkdir(directory, { recursive: true });
-      await fs.appendFile(path.join(directory, 'stalls.log'), `${timeOfDay(this.now())} ${line}\n`);
+      await appendRotating(
+        path.join(this.options.directory(), 'stalls.log'),
+        `${timeOfDay(this.now())} ${line}\n`,
+        tuning().diagnostics.logBytes
+      );
     } catch (error) {
       console.error(
         `flight recorder: ${line} (the log could not be written: ${errorMessage(error)})`

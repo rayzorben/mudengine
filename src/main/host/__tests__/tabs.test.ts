@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TabSessions, type Tab, type TabEvents, type TabSocket } from '../web/tabs';
-import { PAGE_CLOSED, type RpcRequest } from '../../../shared/rpc';
+import { PAGE_CLOSED, PATCH_UNFIT, type RpcRequest } from '../../../shared/rpc';
 
 /** A socket that keeps what it was sent and can be told the tab spoke or left. */
 class FakeSocket implements TabSocket {
@@ -193,6 +193,13 @@ describe('a browser tab kept across its sockets', () => {
     const { tabs, ended } = open();
     const { socket, welcome } = join(tabs, FIRST);
     socket.close(PAGE_CLOSED, '');
+    expect(ended).toEqual([welcome.tab]);
+  });
+
+  it('lets a tab go at once that could not apply a patch, so its next hello starts over', () => {
+    const { tabs, ended } = open();
+    const { socket, welcome } = join(tabs, FIRST);
+    socket.close(PATCH_UNFIT, 'A patch keeps 3 items of tally.samples');
     expect(ended).toEqual([welcome.tab]);
   });
 

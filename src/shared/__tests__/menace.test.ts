@@ -142,6 +142,21 @@ describe('the protection the server adds', () => {
     expect(facing(guarded, { ...evil, uncertain: true }).armourClass).toBe(68);
   });
 
+  /*
+   * Todo 2322-01: Festus's sheet printed `AC vs Evil: 113` with Prev up, and a
+   * stationary NeutralEvil monster waits to be struck yet is evil to the roll.
+   */
+  it('takes the sheet’s AC vs Evil whole, and the alignment over the behaviour', () => {
+    const stated: MenacePlayer = { ...guarded, statedVersusEvil: 113, statedVersusGood: 98 };
+    expect(facing(stated, evil).armourClass).toBe(113);
+    expect(facing(stated, good).armourClass).toBe(98);
+    const waiting: MenaceSubject = { disposition: 'passive', uncertain: false, costly: 'never' };
+    expect(facing(stated, waiting).armourClass).toBe(68);
+    expect(facing(stated, { ...waiting, evil: 'always' }).armourClass).toBe(113);
+    // Some of the name's rows evil is no side at all.
+    expect(facing(stated, { ...waiting, evil: 'sometimes' }).armourClass).toBe(68);
+  });
+
   it('rolls the leader and the raider as the server does', () => {
     expect(hitChance(110, 68, 'greatermud')).toBe(0.47);
     expect(hitChance(105, 68, 'greatermud')).toBe(0.41);

@@ -2164,6 +2164,15 @@ const TUNING_DEFAULTS = {
      */
     questReachTries: 3,
     /**
+     * How long the reach may plan one step's way, all its tries together,
+     * before that step is given up as unknown and said (`Router.budgeted`).
+     * The plans run on the thread that reads the sockets; a leg through the
+     * scatter mazes held it for over a minute on the host (2026-10-29 UTC),
+     * and fifteen seconds of it is a dead link. The worst shipped leg plans in
+     * about two seconds on a desktop.
+     */
+    questReachLegMs: 4000,
+    /**
      * What a room-script teleport costs over an ordinary step, so the router
      * prefers plain corridors unless the portal genuinely shortens the way —
      * usually across maps, which is what most of them are for.
@@ -2442,7 +2451,14 @@ const TUNING_DEFAULTS = {
      * covers walking into a maze, being scattered, and re-planning to the same
      * place a dozen times over, which is the shape of every walk this is for.
      */
-    scatterMovesKept: 32
+    scatterMovesKept: 32,
+    /**
+     * How many scatter solves are kept by goal and traveller, and door sweeps
+     * by traveller (`Router.scatterCosts`). A route asks for its traveller and
+     * for nobody, and the quest reach for each goal at up to
+     * `questReachTries` levels; sixteen covers both.
+     */
+    scatterSolvesKept: 16
   },
   /** The process itself. */
   app: {
@@ -2471,8 +2487,10 @@ const TUNING_DEFAULTS = {
     sampleUs: 5_000,
     /** The busy stretch that keeps a chunk: about what a click feels as lag. */
     stallMs: 250,
-    /** Kept profiles; `stalls.log` keeps every line. */
-    kept: 30
+    /** Kept profiles. */
+    kept: 30,
+    /** Past this, `logs/stalls/stalls.log` is moved to `stalls.log.1` and started again. */
+    logBytes: 5_242_880
   },
   /** Watching the files the client owns. */
   files: {
@@ -2962,6 +2980,13 @@ const TUNING_DEFAULTS = {
      * every room. *Ask again* is immediate.
      */
     huntReaskMs: 10000,
+    /**
+     * Past this percentage apart, the Room card warns that the client's round
+     * against a monster and the server's `stat all <n>` `Avg/Rnd` disagree.
+     * Festus's five readings sat within 6% of the server's formula (todo
+     * 2322-01).
+     */
+    roundGapSaidPercent: 10,
     /**
      * The server's own combat pulse, in milliseconds.
      *

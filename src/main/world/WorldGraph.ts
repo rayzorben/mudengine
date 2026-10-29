@@ -2209,15 +2209,9 @@ export class WorldGraph {
   }
 
   /**
-   * Every room, in the order the file listed them.
-   *
-   * A read-only sweep, beside `byId` and `findByName` because it answers the
-   * one question neither can: *does anything in this realm still look like
-   * that*. What reads it is the shipped-realm survey in the tests — the
-   * assertions that say 293 exits carry a cast and 217 of them scatter you —
-   * and those exist because every price in `edgePenalty` is a claim about a
-   * file, and a file that changes underneath a claim should fail loudly rather
-   * than quietly reroute somebody.
+   * Every room, in the order the file listed them: what the shipped-realm
+   * survey in the tests reads, since each price in `edgePenalty` is a claim
+   * about a file, and a file changing under one should fail loudly.
    */
   everyRoom(): IterableIterator<WorldRoom> {
     return this.rooms.values();
@@ -2252,6 +2246,11 @@ export class WorldGraph {
   /** A* from one room to another — `Router.route`. */
   route(from: RoomId, to: RoomId, traveller?: Traveller, options?: RouteOptions): Route {
     return this.router.route(from, to, traveller, options);
+  }
+
+  /** `run` with its searches held to `ms`, or null where they spent it (`Router.budgeted`). */
+  budgeted<T>(ms: number, run: () => T): T | null {
+    return this.router.budgeted(ms, run);
   }
 
   /** What reaching each of these rooms costs, one search for all (`Router.sweepTo`). */

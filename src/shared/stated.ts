@@ -14,6 +14,8 @@
 import type { CharacterState } from './character';
 import { loadPercent } from './load';
 import type { AttackKind } from './prowess';
+import { mobNameCandidates } from './mobs';
+import { mobKey } from './world';
 
 /**
  * The rows `Player.ShowStatAll` prints under `Attacks:`, by the title it
@@ -51,6 +53,12 @@ export interface StatedRound {
    * monster, where the column is the share of every swing that crits.
    */
   crits: number | null;
+  /**
+   * `Avg/Rnd`, the server's own round (`CalcAvgRndAgainstMobDefenses` on a
+   * sheet run against a monster): the bracketed total with the hit spells and
+   * enchantment where it prints one, else the plain figure.
+   */
+  perRound: number;
 }
 
 /**
@@ -78,6 +86,13 @@ export interface StatedSheet {
    */
   baseManaRegen: number | null;
   manaRegen: number | null;
+  /**
+   * `AC vs Evil` and `vs Good`: the whole armour class a blow meets from an
+   * evil or a good monster, the party rank, `Shadow`, `Prev` or `Prgd` and
+   * the vile ward included (`Player.ShowStatAll`).
+   */
+  versusEvil: number | null;
+  versusGood: number | null;
   /** Each attack's row the sheet printed. */
   rounds: Partial<Record<AttackKind, StatedRound>>;
   basis: StatedBasis;
@@ -100,6 +115,9 @@ export interface StatedProwess {
   /** Mana a passive tick returns, and a meditating one. */
   mana?: number;
   meditating?: number;
+  /** `StatedSheet.versusEvil` / `versusGood`, while the load holds: the party rank moves them. */
+  versusEvil?: number;
+  versusGood?: number;
   attacks?: Partial<Record<AttackKind, StatedAttack>>;
 }
 
@@ -141,18 +159,45 @@ export function statedBasis(state: BasisState): StatedBasis {
 export const STATED_SHEETS_KEPT = 16;
 
 /**
- * The sheets with `sheet` added, newest first: one per basis, the one it
- * replaces dropped, the oldest past `STATED_SHEETS_KEPT` dropped. A sheet a
- * player asked against a monster (`stat all <number>`) is not kept: nothing
- * reads one yet (todo 45, open question 1), and it must not displace the own.
+ * The sheets with `sheet` added, newest first: one per basis and monster, the
+ * one it replaces dropped. The own sheets and those a player ran against a
+ * monster (`stat all <number>`, read by `statedAgainst`) are each capped at
+ * `STATED_SHEETS_KEPT`, so a run of monster sheets never displaces the own.
  */
 export function keepSheet(
   sheets: readonly StatedSheet[] | null,
   sheet: StatedSheet
 ): readonly StatedSheet[] | null {
-  if (sheet.against !== null) return sheets;
-  const others = (sheets ?? []).filter((kept) => kept.basis.gear !== sheet.basis.gear);
-  return [sheet, ...others].slice(0, STATED_SHEETS_KEPT);
+  const others = (sheets ?? []).filter(
+    (kept) => kept.basis.gear !== sheet.basis.gear || kept.against !== sheet.against
+  );
+  const all = [sheet, ...others];
+  const own = all.filter((kept) => kept.against === null).slice(0, STATED_SHEETS_KEPT);
+  const run = all.filter((kept) => kept.against !== null).slice(0, STATED_SHEETS_KEPT);
+  return all.filter((kept) => own.includes(kept) || run.includes(kept));
+}
+
+/**
+ * The server's `Avg/Rnd` for this attack against a monster, off a sheet the
+ * player ran against it (`stat all <number>`) whose basis, load included,
+ * is the character's now; null where none holds. The room's name is undone
+ * as the classifier undoes it (`mobNameCandidates`), the whole name first,
+ * so `large lashworm` takes a `lashworm` sheet and never a `lash` one.
+ */
+export function statedAgainst(
+  state: BasisState & Partial<Pick<CharacterState, 'stated'>>,
+  monster: string,
+  kind: AttackKind
+): number | null {
+  const sheets = state.stated;
+  if (sheets === undefined || sheets === null) return null;
+  const { load } = statedBasis(state);
+  const held = sheets.filter((kept) => kept.against !== null && kept.basis.load === load);
+  for (const name of mobNameCandidates(mobKey(monster))) {
+    const sheet = held.find((kept) => mobKey(kept.against ?? '') === name);
+    if (sheet !== undefined) return sheet.rounds[kind]?.perRound ?? null;
+  }
+  return null;
 }
 
 /**
@@ -198,6 +243,8 @@ export function statedNow(
   }
   // Crits move with the load too: quick-and-deadly is the energy six blows leave.
   const loaded = now.load === sheet.basis.load;
+  if (loaded && sheet.versusEvil !== null) figures.versusEvil = sheet.versusEvil;
+  if (loaded && sheet.versusGood !== null) figures.versusGood = sheet.versusGood;
   const attacks: Partial<Record<AttackKind, StatedAttack>> = {};
   for (const [kind, round] of Object.entries(sheet.rounds) as Array<[AttackKind, StatedRound]>) {
     const held: StatedAttack = { damage: { min: round.min, max: round.max } };
@@ -233,6 +280,8 @@ export function readStatAll(
     restingRegen: null,
     baseManaRegen: null,
     manaRegen: null,
+    versusEvil: null,
+    versusGood: null,
     rounds: {},
     basis
   };
@@ -250,7 +299,9 @@ export function readStatAll(
     if (row['healthRegen'] !== undefined) {
       sheet.healthRegen = whole(row['healthRegen']);
       sheet.restingRegen = whole(row['restingRegen']);
+      sheet.versusEvil = whole(row['versusEvil']);
     }
+    if (row['versusGood'] !== undefined) sheet.versusGood = whole(row['versusGood']);
     if (row['manaRegen'] !== undefined) {
       sheet.baseManaRegen = whole(row['baseManaRegen']);
       sheet.manaRegen = whole(row['manaRegen']);
@@ -261,9 +312,11 @@ export function readStatAll(
     const accuracy = whole(row['accuracy']);
     const min = whole(row['min']);
     const max = whole(row['max']);
-    if (swings === null || accuracy === null || min === null || max === null) continue;
+    const perRound = whole(row['withExtra']) ?? whole(row['perRound']);
+    if (swings === null || accuracy === null || min === null || max === null || perRound === null)
+      continue;
     const crits = sheet.against === null ? whole(row['crits']) : null;
-    sheet.rounds[kind] = { swings, accuracy, min, max, crits };
+    sheet.rounds[kind] = { swings, accuracy, min, max, crits, perRound };
   }
   const anything =
     sheet.healthRegen !== null || sheet.manaRegen !== null || Object.keys(sheet.rounds).length > 0;

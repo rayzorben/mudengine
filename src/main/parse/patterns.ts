@@ -3150,9 +3150,10 @@ export const BATCH_RULES: BatchRule[] = [
      * The header is not `st`'s (`Lives/CP:`), and a sheet glued behind a
      * prompt is found on the tail as every batch is. Only the figures
      * something reads are qualified (`src/shared/stated.ts`): both
-     * regeneration lines, the two headings and each attack's row
-     * (`STATED_ATTACK_ROWS`), whose `QnD(Total)` and `(+xtra)` columns are
-     * optional, as the server blanks them; the total in brackets is read.
+     * regeneration lines with `AC vs Evil` and `vs Good`, the two headings
+     * and each attack's row (`STATED_ATTACK_ROWS`), whose `QnD(Total)` and
+     * `(+xtra)` columns are optional, as the server blanks them; both
+     * bracketed totals are read.
      * `Backstab` is printed and not read.
      * `maxLines` is a backstop above the longest shape: nine rows, two
      * headings, seven attacks, a blank and a spell table as long as the last
@@ -3163,11 +3164,12 @@ export const BATCH_RULES: BatchRule[] = [
     shape: 'array',
     maxLines: 40,
     qualifiers: [
-      /^HP Regen:\s+(?<healthRegen>-?\d+)\/(?<restingRegen>-?\d+)\s+AC vs Evil:/,
+      /^HP Regen:\s+(?<healthRegen>-?\d+)\/(?<restingRegen>-?\d+)\s+AC vs Evil:\s+(?<versusEvil>-?\d+)/,
       /^MA Regen:\s+(?<baseManaRegen>-?\d+)\/(?<manaRegen>-?\d+)\s+Shadow:/,
+      /^\s+vs Good:\s+(?<versusGood>-?\d+)\s+Dodge:/,
       /^(?<section>Attacks)(?: against <(?<against>.+)>)?:\s*$/,
       new RegExp(
-        `^(?<attack>${STATED_ATTACK_TITLES})\\s+(?<swings>\\d+(?:\\.\\d+)?)\\s+(?<accuracy>-?\\d+)\\s+(?<min>-?\\d+)\\s+(?<max>-?\\d+)\\s+(?:-?\\d+\\((?<crits>-?\\d+)\\)\\s+)?-?\\d+(?:\\(-?\\d+\\))?\\s*$`
+        `^(?<attack>${STATED_ATTACK_TITLES})\\s+(?<swings>\\d+(?:\\.\\d+)?)\\s+(?<accuracy>-?\\d+)\\s+(?<min>-?\\d+)\\s+(?<max>-?\\d+)\\s+(?:-?\\d+\\((?<crits>-?\\d+)\\)\\s+)?(?<perRound>-?\\d+)(?:\\((?<withExtra>-?\\d+)\\))?\\s*$`
       ),
       /^(?<section>Spells)(?: against <.+>)?:\s*$/
     ]

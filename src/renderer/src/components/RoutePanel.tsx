@@ -16,6 +16,7 @@ import { healthShareWords } from '../lib/healthShare';
 import { t } from '../lib/i18n';
 import { type MapLoader } from '@shared/map';
 import { wayIn } from '@shared/routeLegs';
+import { pathOf } from '@shared/walk';
 import { errorMessage } from '@shared/values';
 import { CLIENT_KEYS } from '@shared/keys';
 import {
@@ -652,17 +653,25 @@ export default function RoutePanel({
     [target]
   );
   /*
-   * The way in on the way shown, drawn as the trail and fitted, the end kept,
-   * so the picture holds the way in as well as the room it ends in. A way in
-   * of one room (it arrives by a way up or down, a portal or a typed exit) is
-   * not fitted, or a one-room fit would zoom right in. With *Stop before
-   * entering* on it ends where the walk does, a room short, as `walk()` trims it.
+   * The whole way shown is drawn as the trail, wherever the map has its
+   * corridors, and the way in is fitted, the end kept, so the picture holds
+   * the way in as well as the room it ends in. A way in of one room (it
+   * arrives by a way up or down, a portal or a typed exit) is not fitted, or
+   * a one-room fit would zoom right in. With *Stop before entering* on, the
+   * trail and the fit end where the walk does, a room short, as `walk()` trims it.
    */
-  const trail = useMemo(() => {
-    if (shown === null || shown.blocked || centre === null) return null;
-    return wayIn(stopping ? stoppedBefore(shown) : shown, shown.steps[0]?.from ?? centre);
-  }, [shown, stopping, centre]);
-  const fit = useMemo(() => (trail !== null && trail.length > 1 ? new Set(trail) : null), [trail]);
+  const walked = useMemo(
+    () =>
+      shown === null || shown.blocked || centre === null
+        ? null
+        : { way: stopping ? stoppedBefore(shown) : shown, from: shown.steps[0]?.from ?? centre },
+    [shown, stopping, centre]
+  );
+  const trail = useMemo(() => (walked === null ? null : pathOf(walked.way.steps)), [walked]);
+  const fit = useMemo(() => {
+    const way = walked === null ? null : wayIn(walked.way, walked.from);
+    return way !== null && way.length > 1 ? new Set(way) : null;
+  }, [walked]);
   /* One element for as long as the reason holds, so the view's memo holds too. */
   const empty = useMemo(() => <div className="empty">{t('cards.map.emptyNoWorldData')}</div>, []);
 

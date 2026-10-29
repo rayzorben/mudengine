@@ -860,7 +860,7 @@ function TabRail({
                   </button>
                 </span>
 
-                {stacked && (room || doing) && <span className="where">{doing ?? room}</span>}
+                {stacked && <span className="where">{doing ?? room}</span>}
               </div>
             </Fragment>
           );

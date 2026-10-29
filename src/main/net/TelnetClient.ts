@@ -23,6 +23,7 @@ import type {
   TelnetEvent,
   TerminalSize
 } from '../../shared/types';
+import { deadline, type Deadline } from '../app/deadline';
 import { tuning } from '../app/tuning';
 
 /**
@@ -185,8 +186,11 @@ export class TelnetClient extends EventEmitter {
        * it would fire during any quiet moment of a game the player is still
        * playing. This one covers the dial and nothing else — it is cleared the
        * moment the socket connects or fails.
+       *
+       * Judged after the input waiting out a stall of this process is read
+       * (`deadline`), so a `connect` the busy thread had not yet seen counts.
        */
-      let dialTimer: NodeJS.Timeout | null = setTimeout(() => {
+      let dialTimer: Deadline | null = deadline(this.connectTimeoutMs, () => {
         if (generation !== this.connectionGeneration) return;
         dialTimer = null;
         this.cancelDial = null;
@@ -198,12 +202,11 @@ export class TelnetClient extends EventEmitter {
             `No answer from ${target.host}:${target.port} after ${this.connectTimeoutMs / 1000}s.`
           )
         );
-      }, this.connectTimeoutMs);
+      });
 
       /** Deterministic cleanup for the dial deadline, whichever way it ends. */
       const clearDial = (): void => {
-        if (dialTimer === null) return;
-        clearTimeout(dialTimer);
+        dialTimer?.clear();
         dialTimer = null;
       };
 

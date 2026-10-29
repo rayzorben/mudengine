@@ -76,6 +76,17 @@ export function costsAlignment(align: number): boolean {
 }
 
 /**
+ * Whether `Monsters.Align` is one of the four evil alignments, the ones
+ * `Mob.DoCombat` gives `EvilPoints` 100 and so meets `Prev` and the sheet's
+ * `AC vs Evil`: Evil, ChaoticEvil, NeutralEvil and LawfulEvil. Read off the
+ * column, so a stationary NeutralEvil monster that waits to be struck is
+ * still evil to the hit roll (todo 2322-01).
+ */
+export function isEvilAlignment(align: number): boolean {
+  return align === 1 || align === 2 || align === 5 || align === 6;
+}
+
+/**
  * Whether attacking a monster of this *name* costs alignment.
  *
  * Three answers, because a name covers several realm rows and they need not
@@ -88,7 +99,10 @@ export function costsAlignment(align: number): boolean {
  * *might* is the same coin toss `WorldMob.uncertain` describes, and belongs to
  * the same setting rather than to a separate blanket refusal.
  */
-export type AlignmentCost = 'never' | 'sometimes' | 'always';
+export type AlignmentCost = RowShare;
+
+/** How many of the rows sharing a name answer yes: none, some or every one. */
+export type RowShare = 'never' | 'sometimes' | 'always';
 
 /**
  * Why the realm data says to leave a monster alone unless it, or the party,
@@ -125,7 +139,7 @@ export function fightable<T extends { costly: AlignmentCost; avoid?: MobAvoid }>
 }
 
 /** Combines the per-row answers for one name. */
-export function alignmentCost(rows: Iterable<boolean>): AlignmentCost {
+export function shareOfRows(rows: Iterable<boolean>): RowShare {
   let any = false;
   let all = true;
   let seen = false;

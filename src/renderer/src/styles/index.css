@@ -4315,6 +4315,31 @@ button.quest-tile-name:hover:not(:disabled) {
 .hunt-rooms li.hunt-subhead {
   margin-top: var(--gap-tight, 6px);
 }
+/* Todo 2322-01: the grounds a level gate shuts, greyed under the rated ones. */
+.hunt-gated {
+  color: var(--text-lo-quiet);
+  padding: var(--gap) var(--pad-card);
+  font-size: var(--font-micro);
+}
+.hunt-gated h4 {
+  margin: 0 0 calc(var(--gap) / 2);
+  font-size: inherit;
+  font-weight: 600;
+}
+.hunt-gated ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) / 4);
+}
+.hunt-gated li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gap) / 2);
+  align-items: baseline;
+}
 .hunt-table tr[data-open='true'] {
   background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
 }
@@ -4749,37 +4774,31 @@ button.quest-tile-name:hover:not(:disabled) {
   background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
   border: var(--rule) solid transparent;
   box-shadow: none;
-  display: grid;
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
   gap: 2px 10px;
-  grid-template-areas:
-    'name gain price'
-    'meta meta meta';
-  grid-template-columns: minmax(0, 1fr) auto auto;
   height: auto;
   padding: 6px 8px;
   text-align: left;
   width: 100%;
 }
 
+/* The gain and price never wrap, so in a narrow tile they move to the next
+   line and the name keeps the width. */
 .gear-option-name {
   align-items: baseline;
   color: var(--text-hi);
   display: inline-flex;
+  flex: 1 1 10em;
   flex-wrap: wrap;
   gap: 6px;
-  grid-area: name;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .gear-option > .gear-meta {
-  grid-area: meta;
-}
-
-.gear-option > .gear-gain {
-  grid-area: gain;
-}
-
-.gear-option > .gear-price {
-  grid-area: price;
+  flex-basis: 100%;
 }
 
 .gear-option[aria-pressed='true'] {
@@ -6048,10 +6067,10 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
- * In the column: the mark and each circle at the column's middle, the grip
- * moved to the tab's far side, and the room under the name and controls only,
- * so no word shows under a circle. On the right the circle is the tab's last
- * column.
+ * In the column: the mark and each circle at the column's middle, each circle
+ * centred on its tab's height, the grip moved to the tab's far side, and the
+ * room under the name and controls only, so no word shows under a circle. On
+ * the right the circle is the tab's last column.
  */
 .workspace[data-tabs-hide] > .tab-rail .rail-head > .app-mark {
   margin-inline: var(--column-inset);
@@ -6075,6 +6094,10 @@ button.quest-tile-name:hover:not(:disabled) {
   right: 5px;
 }
 
+.workspace[data-tabs-hide] > .tab-rail .tab > .char-badge {
+  grid-row: 1 / span 3;
+}
+
 .workspace[data-tabs-hide] > .tab-rail .tab:has(> .char-badge) > .where {
   grid-column: 2;
 }
@@ -6084,7 +6107,7 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 .workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab > .char-badge {
-  grid-area: 1 / 2 / span 2 / 3;
+  grid-area: 1 / 2 / span 3 / 3;
 }
 
 .workspace[data-tabs-hide] > .tab-rail[data-side='right'] .tab > .who {
@@ -6099,17 +6122,27 @@ button.quest-tile-name:hover:not(:disabled) {
   grid-area: 3 / 1;
 }
 
-/* The character being typed at wears the accent seam on its circle, as the tab does. */
-.workspace[data-tabs-hide] > .tab-rail .tab > .char-badge {
+/*
+ * Down a side the circle says which character is being typed at: a ring and a
+ * glow on the accent. The tab keeps no tint, and the seam is the top rail's
+ * alone: down a side it overlapped the circle (user, 2026-10-28).
+ */
+.tab-rail .tab > .char-badge {
   transition: box-shadow var(--dur-tint) var(--ease-out);
 }
 
-.workspace[data-tabs-hide] > .tab-rail .tab:hover > .char-badge {
+.tab-rail .tab:hover > .char-badge {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--tab-accent) 45%, transparent);
 }
 
-.workspace[data-tabs-hide] > .tab-rail .tab[data-active='true'] > .char-badge {
-  box-shadow: 0 0 0 2px var(--tab-accent);
+.tab-rail .tab[data-active='true']:has(> .char-badge) {
+  background: transparent;
+}
+
+.tab-rail .tab[data-active='true'] > .char-badge {
+  box-shadow:
+    0 0 0 2px var(--tab-accent),
+    0 0 12px 2px color-mix(in srgb, var(--tab-accent) 55%, transparent);
 }
 
 .workspace[data-tabs-hide]
@@ -6170,8 +6203,16 @@ button.quest-tile-name:hover:not(:disabled) {
   align-self: center;
 }
 
+/*
+ * One line high, empty or not, so every tab is one height and the circles
+ * step evenly down the hidden column. A `normal` line height followed the
+ * room name's fallback font: 15.3px with text and 11px empty (measured
+ * 2026-10-28).
+ */
 .tab-rail .tab:has(> .char-badge) > .where {
   grid-column: 1 / -1;
+  height: 1lh;
+  line-height: 1.4;
 }
 
 /*
@@ -6412,38 +6453,20 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
- * The seam that says which character you are typing at. A 2px edge on the
- * accent rather than a border on the whole tab: one deliberately loud element,
- * spent where it answers the only question the rail is asked under pressure.
+ * Across the top, the seam that says which character you are typing at. A 2px
+ * edge on the accent rather than a border on the whole tab: one deliberately
+ * loud element, spent where it answers the only question the rail is asked
+ * under pressure. Down a side the circle carries it instead.
  */
-.tab[data-active='true']::after {
+.tab-rail[data-side='top'] .tab[data-active='true']::after {
   content: '';
   position: absolute;
   background: var(--tab-accent);
   border-radius: var(--r-pill);
-}
-
-.tab-rail[data-side='top'] .tab[data-active='true']::after {
   left: 10px;
   right: 10px;
   bottom: 0;
   height: 2px;
-}
-
-.tab-rail[data-side='left'] .tab[data-active='true']::after {
-  top: 8px;
-  bottom: 8px;
-  left: 0;
-  width: 2px;
-}
-
-/* Mirrored, and on the console's side of the tab for the same reason the left
-   rail's is: the seam points at the terminal it is naming. */
-.tab-rail[data-side='right'] .tab[data-active='true']::after {
-  top: 8px;
-  bottom: 8px;
-  right: 0;
-  width: 2px;
 }
 
 .tab .who {

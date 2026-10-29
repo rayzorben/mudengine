@@ -20,10 +20,11 @@ import { QuestReach } from './questReach';
 
 export interface QuestDeskParts {
   world(): Pick<WorldGraph, 'quests'> | undefined;
-  errands: Pick<Errands, 'questErrand' | 'questPlan' | 'travellerNow' | 'legAs'>;
+  errands: Pick<Errands, 'questErrand' | 'questPlan' | 'travellerNow' | 'legWithin' | 'reachKey'>;
   runner: Pick<QuestRunner, 'start' | 'stop' | 'progress'>;
   state(): CharacterState;
   watched(): QuestWatched;
+  notice(message: string): void;
 }
 
 export interface QuestDesk {
@@ -55,7 +56,9 @@ export function questDesk(parts: QuestDeskParts): QuestDesk {
     router: parts.errands,
     state: parts.state,
     watched: parts.watched,
-    traveller: (state) => parts.errands.travellerNow(state)
+    traveller: (state) => parts.errands.travellerNow(state),
+    notice: parts.notice,
+    reachKey: (state) => parts.errands.reachKey(state)
   });
   return {
     errand: (block) => parts.errands.questErrand(block),

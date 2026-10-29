@@ -636,6 +636,15 @@ describe('a character low on lives', () => {
     });
   });
 
+  // A dial at launch is held before any window listens; the one that attaches reads it.
+  it('keeps the question open for a window that attaches later, until it is answered', async () => {
+    const held = holding();
+    await held.connect('thorn', target());
+    expect(held.get('thorn')?.lowLives.open).toEqual({ lives: 2, floor: 2, at: 1 });
+    await held.answerLowLives('thorn', 'stay');
+    expect(held.get('thorn')?.lowLives.open).toBeNull();
+  });
+
   it('dials as ever above the floor, at a floor of 0, with automation off, or lives unread', async () => {
     const cases: Array<Partial<typeof options>> = [
       { livesAt: () => ({ count: 3, at: 1 }) },
@@ -698,6 +707,7 @@ describe('a character low on lives', () => {
     expect(await held.answerLowLives('thorn', 'log-in')).toBe(false);
     expect(accepted).toHaveLength(1);
     expect(held.get('thorn')?.manager.state.phase).toBe('connected');
+    expect(held.get('thorn')?.lowLives.open).toBeNull();
   });
 
   it('logs nobody in when the switch cannot be written', async () => {

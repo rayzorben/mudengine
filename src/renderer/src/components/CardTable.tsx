@@ -182,6 +182,8 @@ export interface CardTableProps<Row> {
   findOpen?: boolean;
   /** Escape in the find row: the card puts the glyph back. */
   onFindDismiss?(): void;
+  /** Drawn under the table inside its scroll, never sorted or found: a card's own tail (the Hunting card's gated grounds). */
+  after?: ReactNode;
 }
 
 /**
@@ -236,7 +238,8 @@ export default function CardTable<Row>({
   detailKey = null,
   onDetailHidden,
   findOpen,
-  onFindDismiss
+  onFindDismiss,
+  after
 }: CardTableProps<Row>): React.JSX.Element {
   const size = useCardSize();
   const columns = declared.filter((column) => drawnAt(size, column.from ?? 'small'));
@@ -402,6 +405,7 @@ export default function CardTable<Row>({
             ))}
           </table>
         )}
+        {after}
       </div>
     </>
   );

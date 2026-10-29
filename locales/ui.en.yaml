@@ -2212,6 +2212,12 @@ cards:
     evil: '{count} where attacking costs evil points.'
     # A level is ready, and the way back from the trainer is an exit for levels up to this one.
     gated: '{count} you could not get back to once the next level is trained.'
+    # Todo 2322-01: lairs a level gate on the way shuts, listed greyed under the rated ones.
+    locked:
+      heading: Behind a level gate
+      row: '{mobs}: from level {level}, {steps} steps'
+      pays: 'up to {exp} a kill'
+      rooms: '{count} rooms'
     # Every unhunted ground's estimate scaled by what hunting measured against the estimate;
     # a ground hunted a few levels ago by its own figure.
     paced: 'Spots not hunted yet are scaled by {pace}x, from what your hunts paid against their
@@ -3578,6 +3584,15 @@ cards:
       charmedChip: charmed
       # Todo 818: the character's row says it does not attack first, shown
       # beside the realm's disposition rather than instead of it.
+      # Todo 2322-01: the server's Avg/Rnd off a `stat all <number>` sheet,
+      # beside the client's own figure for the same round.
+      roundChip: '{server}/rnd'
+      roundAgrees: 'stat all against {target} says {server} a round; the client works it out at
+        {client}.'
+      roundDisagrees: 'stat all against {target} says {server} a round; the client works it out at
+        {client}, {gap}% off. The fight odds use the client''s figure.'
+      roundUnpriced: 'stat all against {target} says {server} a round; the client cannot work out
+        this attack''s round.'
       rowFriendChip: friend (rule)
       rowNotHostileChip: not hostile (rule)
       rowSays: Your monster rule says {target} does not attack first; automation follows it.
@@ -6633,6 +6648,8 @@ automation:
     refusalEscaping: The character is running away.
     refusalNoPlan: There is no plan for this step.
     refusalUnknownStep: 'No quest holds step {block}.'
+    reachSpent: 'The Quests card cannot say what level a step of {quests} needs: the way there
+      took over {seconds}s to plan, so it shows as unknown.'
     refusalPackUnread: Inventory was requested and nothing answered.
     refusalItemGone: Step {nth} needs {item}, which the plan said you had, but you do not.
     refusalNotHandedOver: '{item} should have come from the step at rank {rank}, and you do not have

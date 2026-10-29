@@ -16,6 +16,7 @@ import { exitGates, gateRequirement } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
 import { closedPlaces } from './closedPlaces';
 import { RealmJoins } from './RealmJoins';
+import { TravellerKept } from './travellerKept';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
 import type { Alignment } from '../../shared/alignment';
@@ -353,6 +354,16 @@ export interface RouteOptions {
   within?: number;
 }
 
+/** Thrown out of a search when `budgeted`'s time is spent; caught there and nowhere else. */
+class BudgetSpent extends Error {
+  constructor() {
+    super('The route budget was spent.');
+  }
+}
+
+/** How many rooms a search settles between looks at the clock. */
+const BUDGET_STRIDE = 256;
+
 /** Handed back for the realm that scatters nobody, so no caller allocates to say "none". */
 const EMPTY_COSTS: ReadonlyMap<number, number> = new Map();
 
@@ -371,11 +382,7 @@ function unjoined(): Route {
   };
 }
 
-/**
- * Nobody in particular, for the one solve that is about the realm rather than
- * about a character. A shared constant because `scatterCosts` caches on
- * traveller *identity*, so a fresh `{}` a call would never hit it.
- */
+/** Nobody in particular, for the one solve that is about the realm rather than about a character. */
 const PLAIN_TRAVELLER: Traveller = {};
 
 /** One scattering spell: where it draws from, and every door that fires it. */
@@ -1224,8 +1231,26 @@ export class Router {
   private backward: Map<RoomId, ReverseEdge[]> | null = null;
   /** Every room something leads into, a draw's landings included: `hasWayIn`. */
   private entered: Set<RoomId> | null = null;
-  private solved: { to: RoomId; traveller: Traveller; costs: ReadonlyMap<number, number> } | null =
-    null;
+  /**
+   * The scatter solve's answers per goal and traveller, and the per-spell door
+   * sweeps, which no goal changes, per traveller: one route asks the solve for
+   * the traveller and for nobody (`scatterMoves`), and a quest reach asks for
+   * hundreds of goals as one traveller. Kept by value (`TravellerKept`).
+   */
+  private readonly solved = new TravellerKept<RoomId, Traveller, ReadonlyMap<number, number>>(
+    () => tuning().world.scatterSolvesKept,
+    tuning
+  );
+  private readonly doorSweeps = new TravellerKept<
+    null,
+    Traveller,
+    ReadonlyMap<number, Map<RoomId, number>>
+  >(() => tuning().world.scatterSolvesKept, tuning);
+  /** When the innermost `budgeted` run must stop, by `performance.now()`; null outside one. */
+  private spendBy: number | null = null;
+  private settledSince = 0;
+  /** Every room a scatter lands in, built with `scatterDoors`' first answer. */
+  private landed: ReadonlySet<RoomId> | null = null;
   /**
    * The same solve with nothing priced but the steps, keyed by destination —
    * the figure a reader is *shown*, which has to be a count of moves and not
@@ -1451,6 +1476,37 @@ export class Router {
       }
     }
     return null;
+  }
+
+  /**
+   * `run` with every search and sweep inside it, sub-routes included, held to
+   * `ms` of the thread; null where they spent it. Each loop looks at the clock
+   * every `BUDGET_STRIDE` rooms. Nothing is kept from a search that stopped: each cache is
+   * written when its answer is whole. A budget inside another keeps the
+   * sooner end, and a spent outer one is thrown on to its own caller.
+   */
+  budgeted<T>(ms: number, run: () => T): T | null {
+    const outer = this.spendBy;
+    const by = performance.now() + ms;
+    this.spendBy = outer === null ? by : Math.min(outer, by);
+    try {
+      return run();
+    } catch (error) {
+      if (!(error instanceof BudgetSpent)) throw error;
+      if (outer !== null && performance.now() >= outer) throw error;
+      return null;
+    } finally {
+      this.spendBy = outer;
+    }
+  }
+
+  /** One room settled under a budget: past its time, the search stops (`budgeted`). */
+  private spend(): void {
+    if (this.spendBy === null) return;
+    this.settledSince += 1;
+    if (this.settledSince < BUDGET_STRIDE) return;
+    this.settledSince = 0;
+    if (performance.now() > this.spendBy) throw new BudgetSpent();
   }
 
   /**
@@ -2432,6 +2488,7 @@ export class Router {
     const discount = this.discountFor(traveller);
 
     while (open.size > 0 && outstanding.size > 0 && settled.size < ceiling) {
+      this.spend();
       const id = open.pop()!;
       if (settled.has(id)) continue;
       settled.add(id);
@@ -2508,6 +2565,7 @@ export class Router {
     const discount = this.discountFor(traveller);
 
     while (open.size > 0 && outstanding.size > 0 && settled.size < ceiling) {
+      this.spend();
       const id = open.pop()!;
       if (settled.has(id)) continue;
       settled.add(id);
@@ -2577,37 +2635,24 @@ export class Router {
    * (`WorldGraph.test.ts`: 20,000 plays of the asylum, 10.007 moves against a
    * solved 10).
    *
-   * Cached for the last goal and traveller because one `route` runs the search
-   * twice with the same pair. Spells whose expectation did not converge to a
+   * Kept per goal and traveller, the door sweeps per traveller (`solved`,
+   * `doorSweeps`). Spells whose expectation did not converge to a
    * finite figure are left out, so a door nobody could price is a door the
    * router does not offer.
    */
   private scatterCosts(to: RoomId, traveller: Traveller): ReadonlyMap<number, number> {
     const spells = this.scatterDoors();
     if (spells.size === 0) return EMPTY_COSTS;
-    if (this.solved !== null && this.solved.to === to && this.solved.traveller === traveller) {
-      return this.solved.costs;
-    }
+    const kept = this.solved.get(to, traveller);
+    if (kept !== undefined) return kept;
 
-    const landings = new Set<RoomId>();
-    for (const spell of spells.values()) for (const id of spell.rooms) landings.add(id);
+    const landings = this.scatterLandings();
 
     // `D`: the goal, reached without ever taking a draw.
     const plain = this.sweepBack(new Map([[to, 0]]), landings, traveller);
 
     // `B`: the cheapest door of each spell, and what stepping through it costs.
-    const reach = new Map<number, Map<RoomId, number>>();
-    const discount = this.discountFor(traveller);
-    for (const [id, spell] of spells) {
-      const seeds = new Map<RoomId, number>();
-      for (const { at, exit } of spell.doors) {
-        const price = this.stepCost(at, exit, null, traveller, false, discount);
-        if (price === null) continue;
-        if (price < (seeds.get(at) ?? Infinity)) seeds.set(at, price);
-      }
-      if (seeds.size === 0) continue;
-      reach.set(id, this.sweepBack(seeds, landings, traveller));
-    }
+    const reach = this.doorCosts(traveller);
 
     /*
      * **Can the goal happen at all from here, allowing draws.**
@@ -2711,8 +2756,43 @@ export class Router {
         costs.set(id, value);
       }
     }
-    this.solved = { to, traveller, costs };
+    this.solved.set(to, traveller, costs);
     return costs;
+  }
+
+  /** Every room a scatter lands in. */
+  private scatterLandings(): ReadonlySet<RoomId> {
+    if (this.landed !== null) return this.landed;
+    const landings = new Set<RoomId>();
+    for (const spell of this.scatterDoors().values())
+      for (const id of spell.rooms) landings.add(id);
+    this.landed = landings;
+    return landings;
+  }
+
+  /**
+   * `B` of `scatterCosts`: from each landing, the cost of reaching a door of
+   * each spell and stepping through it. Seeded at the doors, so no goal moves
+   * it, and kept per traveller.
+   */
+  private doorCosts(traveller: Traveller): ReadonlyMap<number, Map<RoomId, number>> {
+    const kept = this.doorSweeps.get(null, traveller);
+    if (kept !== undefined) return kept;
+    const landings = this.scatterLandings();
+    const reach = new Map<number, Map<RoomId, number>>();
+    const discount = this.discountFor(traveller);
+    for (const [id, spell] of this.scatterDoors()) {
+      const seeds = new Map<RoomId, number>();
+      for (const { at, exit } of spell.doors) {
+        const price = this.stepCost(at, exit, null, traveller, false, discount);
+        if (price === null) continue;
+        if (price < (seeds.get(at) ?? Infinity)) seeds.set(at, price);
+      }
+      if (seeds.size === 0) continue;
+      reach.set(id, this.sweepBack(seeds, landings, traveller));
+    }
+    this.doorSweeps.set(null, traveller, reach);
+    return reach;
   }
 
   /**
@@ -3026,6 +3106,7 @@ export class Router {
     }
 
     while (open.size > 0) {
+      this.spend();
       const currentId = open.pop()!;
       if (currentId === to) {
         // A pass that arrived asks nothing further: the flag is read only on

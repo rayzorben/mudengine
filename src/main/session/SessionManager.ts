@@ -174,6 +174,7 @@ import {
 } from '../../shared/config';
 import { errorMessage } from '../../shared/values';
 import { sameTarget } from '../../shared/types';
+import { repeating, type Deadline } from '../app/deadline';
 import { t } from '../app/i18n';
 import type {
   ConnectionEnd,
@@ -567,9 +568,8 @@ export class SessionManager {
      * once a second and holding its whole object graph open. `unref` does not
      * help with that — an unref'd timer still fires.
      */
-    this.reconsiderTimer = setInterval(() => this.reconsider(), tuning().session.reconsiderMs);
-    // Never the reason a process stays alive.
-    this.reconsiderTimer.unref?.();
+    // Each beat after the input waiting at it is read; never the reason a process stays alive.
+    this.reconsiderTimer = repeating(tuning().session.reconsiderMs, () => this.reconsider(), false);
     /*
      * The classifier is handed the two things that can say where a monster's
      * name ends inside a combat line — the room it is standing in and the
@@ -1583,7 +1583,7 @@ export class SessionManager {
     });
     this.questDesk = questDesk({
       ...{ world: () => this.world, errands: this.errands, runner: this.questRunner },
-      ...{ state: () => this.tracker.current, watched: () => this.questWatch.watched }
+      ...{ state: () => this.tracker.current, watched: () => this.questWatch.watched, notice }
     });
     this.extensions = sessionExtensions({
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
@@ -2457,14 +2457,14 @@ export class SessionManager {
    * See `reconsider` for what this drives and what it deliberately does not,
    * and the constructor for why it is armed there and nowhere else.
    */
-  private reconsiderTimer: NodeJS.Timeout | null = null;
+  private reconsiderTimer: Deadline | null = null;
 
   dispose(): void {
     this.carryOver.dispose();
     this.paint.dispose();
     this.forgetPlayers();
     this.feed.dispose();
-    if (this.reconsiderTimer) clearInterval(this.reconsiderTimer);
+    this.reconsiderTimer?.clear();
     this.reconsiderTimer = null;
     this.publisher.dispose();
     this.queue.dispose();

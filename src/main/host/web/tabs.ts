@@ -19,7 +19,7 @@ import type {
   RpcRequest,
   RpcWelcome
 } from '../../../shared/rpc';
-import { asRpcInbound, PAGE_CLOSED } from '../../../shared/rpc';
+import { asRpcInbound, PAGE_CLOSED, PATCH_UNFIT } from '../../../shared/rpc';
 import { BUILD, buildId } from '../../../shared/build';
 import { tuning } from '../../app/tuning';
 import { serialise } from '../serialise';
@@ -130,6 +130,10 @@ export class TabSessions {
       if (this.closing || tab === null || tab.connection !== connection) return;
       if (code === PAGE_CLOSED) {
         this.end(tab, 'was closed');
+        return;
+      }
+      if (code === PATCH_UNFIT) {
+        this.end(tab, `could not apply what it was sent (${reason}), so it starts over`);
         return;
       }
       this.events.log(

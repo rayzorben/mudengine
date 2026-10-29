@@ -5,6 +5,7 @@ import {
   keepSheet,
   readStatAll,
   STATED_SHEETS_KEPT,
+  statedAgainst,
   statedBasis,
   statedNow,
   type StatedSheet
@@ -12,11 +13,29 @@ import {
 
 /** The rows `user-stat-all` builds from the user's own sheet (2026-09-18). */
 const ROWS: Array<Record<string, string>> = [
-  { healthRegen: '6', restingRegen: '18' },
+  { healthRegen: '6', restingRegen: '18', versusEvil: '68' },
   { baseManaRegen: '3', manaRegen: '4' },
+  { versusGood: '58' },
   { section: 'Attacks' },
-  { attack: 'Attack', swings: '3.584', accuracy: '105', min: '8', max: '25', crits: '3' },
-  { attack: 'Bash', swings: '1.792', accuracy: '105', min: '22', max: '82' },
+  {
+    attack: 'Attack',
+    swings: '3.584',
+    accuracy: '105',
+    min: '8',
+    max: '25',
+    crits: '3',
+    perRound: '65',
+    withExtra: '67'
+  },
+  {
+    attack: 'Bash',
+    swings: '1.792',
+    accuracy: '105',
+    min: '22',
+    max: '82',
+    perRound: '93',
+    withExtra: '94'
+  },
   { section: 'Spells' }
 ];
 
@@ -69,9 +88,12 @@ describe('reading stat all', () => {
       restingRegen: 18,
       baseManaRegen: 3,
       manaRegen: 4,
+      versusEvil: 68,
+      versusGood: 58,
       rounds: {
-        attack: { swings: 3.584, accuracy: 105, min: 8, max: 25, crits: 3 },
-        bash: { swings: 1.792, accuracy: 105, min: 22, max: 82, crits: null }
+        // The round with the hit spells, where the sheet brackets one.
+        attack: { swings: 3.584, accuracy: 105, min: 8, max: 25, crits: 3, perRound: 67 },
+        bash: { swings: 1.792, accuracy: 105, min: 22, max: 82, crits: null, perRound: 94 }
       }
     });
   });
@@ -90,7 +112,7 @@ describe('reading stat all', () => {
     const rows: Array<Record<string, string>> = [
       { healthRegen: '6', restingRegen: '18' },
       { section: 'Spells' },
-      { attack: 'Attack', swings: '1', accuracy: '100', min: '5', max: '9' }
+      { attack: 'Attack', swings: '1', accuracy: '100', min: '5', max: '9', perRound: '7' }
     ];
     expect(readStatAll(rows, statedBasis(STATE))?.rounds).toEqual({});
   });
@@ -107,6 +129,8 @@ describe('what of a sheet still holds', () => {
       resting: 18,
       mana: 4,
       meditating: 3,
+      versusEvil: 68,
+      versusGood: 58,
       attacks: {
         attack: { accuracy: 105, swings: 3.584, damage: { min: 8, max: 25 }, crits: 3 },
         bash: { accuracy: 105, swings: 1.792, damage: { min: 22, max: 82 } }
@@ -183,7 +207,7 @@ describe('what of a sheet still holds', () => {
       ...read,
       stated: keepSheet(read.stated, { ...sheetAt(STATE), against: 'black orc captain' })
     };
-    expect(both.stated).toHaveLength(1);
+    expect(both.stated).toHaveLength(2);
     expect(statedNow(both)?.attacks?.attack?.damage).toEqual({ min: 8, max: 25 });
   });
 
@@ -216,5 +240,57 @@ describe('keeping sheets', () => {
     expect(sheets).toHaveLength(STATED_SHEETS_KEPT);
     const levelOne = statedBasis({ ...STATE, progress: { ...STATE.progress, level: 1 } }).gear;
     expect(sheets!.some((sheet) => sheet.basis.gear === levelOne)).toBe(false);
+  });
+
+  /* Todo 2322-01: Festus's `st a <n>` readings, kept to check the client's round against. */
+  it('keeps sheets run against monsters apart, so they never displace the own', () => {
+    let sheets = keepSheet(null, sheetAt(STATE));
+    for (let at = 0; at <= STATED_SHEETS_KEPT; at += 1) {
+      sheets = keepSheet(sheets, { ...sheetAt(STATE), against: `monster ${at}` });
+    }
+    expect(sheets!.filter((sheet) => sheet.against === null)).toHaveLength(1);
+    expect(sheets!.filter((sheet) => sheet.against !== null)).toHaveLength(STATED_SHEETS_KEPT);
+    expect(sheets!.some((sheet) => sheet.against === 'monster 0')).toBe(false);
+  });
+});
+
+describe('the server’s round against a monster', () => {
+  const ran = (state: CharacterState, against: string): CharacterState => ({
+    ...state,
+    stated: keepSheet(state.stated, { ...sheetAt(state), against })
+  });
+
+  it('is the sheet’s Avg/Rnd while the basis holds, by the realm’s name inside the room’s', () => {
+    const read = ran(STATE, 'lashworm');
+    expect(statedAgainst(read, 'large lashworm', 'bash')).toBe(94);
+    expect(statedAgainst(read, 'Lashworm', 'attack')).toBe(67);
+    expect(statedAgainst(read, 'worm', 'attack')).toBeNull();
+    expect(statedAgainst(read, 'giant', 'attack')).toBeNull();
+    // A name in the middle of a longer one is another monster (`mobNameCandidates`).
+    expect(statedAgainst(ran(STATE, 'giant rat'), 'big giant rat queen', 'attack')).toBeNull();
+  });
+
+  it('takes the whole name over a shorter one when both were run', () => {
+    const both = ran(ran(STATE, 'lashworm'), 'large lashworm');
+    const large = {
+      ...both,
+      stated: both.stated!.map((sheet) =>
+        sheet.against === 'large lashworm'
+          ? {
+              ...sheet,
+              rounds: { ...sheet.rounds, attack: { ...sheet.rounds.attack!, perRound: 99 } }
+            }
+          : sheet
+      )
+    };
+    expect(statedAgainst(large, 'large lashworm', 'attack')).toBe(99);
+    expect(statedAgainst(large, 'small lashworm', 'attack')).toBe(67);
+  });
+
+  it('is nothing once the load or the gear moved', () => {
+    const read = ran(STATE, 'lashworm');
+    const heavier = { ...read, inventory: { ...read.inventory, encumbrance: 1900 } };
+    expect(statedAgainst(heavier, 'lashworm', 'attack')).toBeNull();
+    expect(statedAgainst({ ...read, buffs: [] }, 'lashworm', 'attack')).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,6 +14,7 @@ import {
 } from '../WorldGraph';
 import type { RouteOptions, Traveller } from '../WorldGraph';
 import { leg } from '../navigation/plan';
+import { Router } from '../Router';
 import { planRealmOf } from '../navigation/realm';
 import type {
   Direction,
@@ -1068,6 +1069,54 @@ describe('the real realm data', () => {
   });
 
   /*
+   * **One solve for travellers equal in value** (2026-10-29 UTC). Every route
+   * builds its own traveller, and an identity-keyed cache re-solved the realm's
+   * sixteen scatters on each: the quest reach's legs held the host's socket
+   * thread for 59 to 73 seconds. The door sweeps depend on no goal, so a new
+   * goal costs its own sweep and nobody's.
+   */
+  it.runIf(available)('solves the scatters once for travellers equal in value', () => {
+    const sweeps = vi.spyOn(Router.prototype, 'sweepBack');
+    try {
+      const traveller = (): Traveller => ({ level: 37, keys: [], shunned: undefined });
+      graph!.route(roomId(2, 2568), roomId(9, 1259), traveller());
+      const first = sweeps.mock.calls.length;
+      expect(first).toBeGreaterThan(2);
+      graph!.route(roomId(2, 2568), roomId(9, 1259), { ...traveller() });
+      expect(sweeps.mock.calls.length).toBe(first);
+      graph!.route(roomId(2, 2568), roomId(9, 1190), traveller());
+      expect(sweeps.mock.calls.length - first).toBe(2);
+    } finally {
+      sweeps.mockRestore();
+    }
+  });
+
+  /*
+   * **A plan held to a time on the thread** (2026-10-29 UTC): a spent budget
+   * answers null rather than a refusal, and keeps nothing half solved, so the
+   * same route asked plainly afterwards is the one it always was.
+   */
+  it.runIf(available)('stops a plan that spends its time, and keeps nothing of it', () => {
+    const traveller = (): Traveller => ({ level: 41, keys: [] });
+    expect(
+      graph!.budgeted(0, () => graph!.route(roomId(2, 2568), roomId(9, 1259), traveller()))
+    ).toBeNull();
+    const plain = graph!.route(roomId(2, 2568), roomId(9, 1259), traveller());
+    expect(plain.blocked).toBe(false);
+    expect(plain.steps.at(-1)?.scatter?.landing.name).toBe('asylum');
+    const held = graph!.budgeted(60_000, () =>
+      graph!.route(roomId(2, 2568), roomId(9, 1259), traveller())
+    );
+    expect(held).toEqual(plain);
+    // A budget inside a spent one is no way out of it.
+    expect(
+      graph!.budgeted(0, () =>
+        graph!.budgeted(60_000, () => graph!.route(roomId(2, 2568), roomId(9, 1259), traveller()))
+      )
+    ).toBeNull();
+  });
+
+  /*
    * **What the reader is shown is moves; what the router paid is cost.**
    *
    * The solve runs in the A*'s own units, so a lair in the maze prices into
@@ -2057,6 +2106,23 @@ describe('what the realm says a monster is worth', () => {
 
   it('says nothing about a monster it does not carry', () => {
     expect(world.mob('grue')).toBeUndefined();
+  });
+
+  /* Format 79: the alignment side `Prev` meets, folded over a name's rows like the cost. */
+  it('says whether a monster is evil, and carries it to the entity', () => {
+    const evil = makeWorld(
+      corridor(2),
+      [
+        { n: 'gate guard', hp: 80, d: 'p', ev: 'a' },
+        { n: 'giant rat', hp: 12, d: 'h', x: 1, ev: 's' },
+        { n: 'kobold slave', hp: 39, d: 'p' }
+      ],
+      79
+    );
+    expect(evil.mob('gate guard')?.evil).toBe('always');
+    expect(evil.mob('giant rat')?.evil).toBe('sometimes');
+    expect(evil.mob('kobold slave')?.evil).toBeUndefined();
+    expect(evil.buildMobEntity('gate guard', { at: null })?.evil).toBe('always');
   });
 
   /* A realm built before the index existed simply names no monsters. */
@@ -4001,6 +4067,22 @@ describe('where the realm puts an item', () => {
    * them, as a lair settles a monster's row: the Treasure Room's box is its
    * fixed row, not the loot row the name answers with.
    */
+  /* Format 79: what a worn copy negates, read back onto the carried entity. */
+  it('carries the spells an item negates to its entity', () => {
+    const graph = makeWorld(
+      corridor(2),
+      {
+        items: [
+          { id: 7, n: 'large silvery cross', neg: [101, 361] },
+          { id: 8, n: 'plain cross' }
+        ]
+      },
+      79
+    );
+    expect(graph.buildItemEntity('large silvery cross', {}).negates).toEqual([101, 361]);
+    expect(graph.buildItemEntity('plain cross', {}).negates).toBeUndefined();
+  });
+
   it('settles a shared name on the floor to the row the room places', () => {
     const graph = world();
     const box = graph.buildItemEntity('wooden box', {});

@@ -501,7 +501,7 @@ describe('what the server stated', () => {
     expect(caster.meditatingMana).toEqual({ value: 8, from: 'stated' });
   });
 
-  it('takes the blow’s range off the sheet, and still rolls only on GreaterMUD', () => {
+  it('takes the blow’s range off the sheet, and rolls elsewhere only from a whole row', () => {
     const target = { armourClass: 0, damageResist: 0, dodge: null, health: 100 };
     const hit = swing(STATED, null, target, 'greatermud')!;
     // The stated range's mean, and a critical's share at three times its top.
@@ -510,8 +510,16 @@ describe('what the server stated', () => {
     expect(hit.damage.value).toBeCloseTo((1 - crit) * 16.5 + crit * 3 * top, 6);
     expect(hit.damage.from).toBe('stated');
     expect(hit.swings).toEqual({ value: 3.584, from: 'stated' });
-    // The hit roll is GreaterMUD's arithmetic, whoever stated the accuracy.
-    expect(swing(STATED, null, target, 'majormud')).toBeNull();
+    // Paradigm states the whole row (todo 2322-01): nothing is computed, so it prices.
+    // This row states no crits, which only GreaterMUD's formula supplies: the plain mean.
+    const paradigm = swing(STATED, null, target, 'majormud')!;
+    expect(paradigm.damage.value).toBeCloseTo(16.5, 6);
+    expect(paradigm.crit).toBeNull();
+    expect(paradigm.swings).toEqual({ value: 3.584, from: 'stated' });
+    // A row missing its range would need the family's formula: none.
+    const { damage: _range, ...rest } = STATED.stated!.attacks!.attack!;
+    const partial: ProwessSheet = { ...STATED, stated: { attacks: { attack: rest } } };
+    expect(swing(partial, null, target, 'majormud')).toBeNull();
   });
 
   it('falls back to the arithmetic for what it does not state', () => {

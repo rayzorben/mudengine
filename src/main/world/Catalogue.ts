@@ -225,6 +225,8 @@ export class Catalogue {
       if (classes.length > 0) item.classes = classes;
       const races = readIdList(record['race']);
       if (races.length > 0) item.races = races;
+      const negates = readIdList(record['neg']);
+      if (negates.length > 0) item.negates = negates;
       const minLevel = Number(record['lvl']);
       if (Number.isInteger(minLevel) && minLevel > 0) item.minLevel = minLevel;
       /*
@@ -584,6 +586,9 @@ export class Catalogue {
         // it is what every realm without the column also means.
         costly: record['ep'] === 'a' ? 'always' : record['ep'] === 's' ? 'sometimes' : 'never'
       };
+      if (record['ev'] === 'a' || record['ev'] === 's') {
+        mob.evil = record['ev'] === 'a' ? 'always' : 'sometimes';
+      }
       if (ambiguous) mob.span = [lo, hi];
       /*
        * Format 12. Each absent both on an older realm file and on a realm that
@@ -1149,6 +1154,7 @@ export class Catalogue {
     if (known.gettable !== undefined) entity.gettable = known.gettable;
     if (known.notDroppable !== undefined) entity.notDroppable = known.notDroppable;
     if (known.limit !== undefined) entity.limit = known.limit;
+    if (known.negates !== undefined) entity.negates = known.negates;
     if (known.shops !== undefined) entity.shops = known.shops;
     if (known.mobs !== undefined) entity.droppedBy = known.mobs;
   }
@@ -1176,6 +1182,7 @@ export class Catalogue {
       costly: known?.costly ?? 'never'
     };
     if (known === undefined) return entity;
+    if (known.evil !== undefined) entity.evil = known.evil;
 
     if (known.row !== undefined) entity.row = known.row;
     // Every `Monsters` row the name holds, for the number a card prints. The

@@ -2845,12 +2845,30 @@ describe('the stat all sheet', () => {
     const { batch } = feed([...STAT_ALL, '[HP=259/259,MA=49/49]:']);
     expect(batch?.type).toBe('user-stat-all');
     expect(batch?.rows).toEqual([
-      { healthRegen: '6', restingRegen: '18' },
+      { healthRegen: '6', restingRegen: '18', versusEvil: '68' },
       { baseManaRegen: '3', manaRegen: '3' },
+      { versusGood: '58' },
       { section: 'Attacks' },
       // No `QnD(Total)` on a bash, and `(+xtra)` on both: optional columns.
-      { attack: 'Attack', swings: '3.584', accuracy: '105', min: '8', max: '25', crits: '3' },
-      { attack: 'Bash', swings: '1.792', accuracy: '105', min: '22', max: '82' },
+      {
+        attack: 'Attack',
+        swings: '3.584',
+        accuracy: '105',
+        min: '8',
+        max: '25',
+        crits: '3',
+        perRound: '65',
+        withExtra: '67'
+      },
+      {
+        attack: 'Bash',
+        swings: '1.792',
+        accuracy: '105',
+        min: '22',
+        max: '82',
+        perRound: '93',
+        withExtra: '94'
+      },
       { section: 'Spells' }
     ]);
   });
@@ -2877,7 +2895,9 @@ describe('the stat all sheet', () => {
       accuracy: '86',
       min: '5',
       max: '22',
-      crits: '2'
+      crits: '2',
+      perRound: '25',
+      withExtra: '26'
     });
   });
 
@@ -2895,7 +2915,8 @@ describe('the stat all sheet', () => {
       accuracy: '79',
       min: '0',
       max: '0',
-      crits: '-2'
+      crits: '-2',
+      perRound: '0'
     });
   });
 

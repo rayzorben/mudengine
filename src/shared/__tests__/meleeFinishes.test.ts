@@ -37,7 +37,8 @@ describe('whether the melee round is expected to finish the monster', () => {
   it('answers nothing for unknown health or an unpriced swing', () => {
     expect(meleeFinishes(null, SHEET, SWORD, ORC, 'greatermud')).toBeNull();
     expect(meleeFinishes(0, SHEET, SWORD, ORC, 'greatermud')).toBeNull();
-    expect(meleeFinishes(1, SHEET, SWORD, ORC, 'majormud')).toBeNull();
+    // A family whose formula is unknown, with no row of the sheet to price from.
+    expect(meleeFinishes(1, { ...SHEET, stated: null }, SWORD, ORC, 'majormud')).toBeNull();
   });
 });
 
