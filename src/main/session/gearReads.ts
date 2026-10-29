@@ -9,7 +9,8 @@
 import type { AttackOption } from '../../shared/attackOptions';
 import type { CharacterState } from '../../shared/character';
 import { chargedInCopper } from '../../shared/coins';
-import { placesOf, sheetGain } from '../../shared/gearWorth';
+import { sheetGain } from '../../shared/gearWorth';
+import { placesOf } from '../../shared/items';
 import type { GearChoices, SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
 import { roomAddress } from '../../shared/world';
 import type { ExtensionWorld } from '../extensions/api';

@@ -41,8 +41,10 @@
  *
  *   npm run probe:rest
  *   npm run probe:rest -- --cast swan
+ *   npm run probe:rest -- --wear
  */
 import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { OFF_HAND, READIED, sameItem, WEAPON_HAND } from '../src/shared/items.ts';
 import { HOST, PORT, localProfile, skip, target } from './lib/local-realm.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -100,6 +102,28 @@ const CAST = (() => {
   const spell = at === -1 ? null : process.argv[at + 1];
   return spell && !spell.startsWith('--') ? spell.trim() : null;
 })();
+
+/**
+ * And gear, opt-in because it changes what the character has on (todo 860).
+ *
+ * The client sends nothing while a character is down because the server
+ * source stands a resting character up on a wear (`EquipCommand.cs:135,143`),
+ * and a session log on a MajorMUD realm shows `eq sev` at a `(Resting)` prompt
+ * with the next prompt still `(Resting)` (fork, skinny, 2026-09-28). This asks
+ * the sanctioned realm: one worn item, not in a hand, is taken off and then
+ * put back on, each from a fresh `rest`, so the character ends as it began.
+ */
+const WEAR = process.argv.includes('--wear');
+
+/** A worn item outside the hands and the light, as the pack listing has it. */
+function wornItem() {
+  const held = new Set([WEAPON_HAND, OFF_HAND, READIED].map((slot) => slot.toLowerCase()));
+  return (
+    session.character.inventory.items.find(
+      (item) => item.equipped && item.slot !== null && !held.has(item.slot.toLowerCase())
+    )?.name ?? null
+  );
+}
 
 const profile = localProfile();
 if (!profile) skip(`no character on ${HOST}:${PORT} with credentials.`);
@@ -161,6 +185,28 @@ async function measure(command, note) {
   return { command, note, verdict: answer.resting ? 'does NOT break' : 'BREAKS' };
 }
 
+/** Whether `item` is worn, from a fresh pack listing; null when none came back. */
+async function isWorn(item) {
+  if ((await send('i')) === null) return null;
+  return session.character.inventory.items.some(
+    (carried) => carried.equipped && sameItem(carried.name, item)
+  );
+}
+
+/**
+ * A gear command measured like the others, then checked by the pack listing:
+ * a `remove` the server refused leaves the rest up and would read as "does
+ * NOT break", so a command whose effect did not happen is reported refused.
+ */
+async function measureGear(command, item, wornAfter, note) {
+  const result = await measure(command, note);
+  // Nothing was measured, the command never sent or never answered: say that.
+  if (result.verdict === 'could not sit down' || result.verdict === 'no status line') return result;
+  const worn = await isWorn(item);
+  if (worn === null) return { ...result, verdict: 'could not tell' };
+  return worn === wornAfter ? result : { ...result, verdict: 'refused' };
+}
+
 function row({ command, note, verdict }) {
   const shown = command === '' ? '<enter>' : command;
   console.log(`  ${shown.padEnd(16)} ${verdict.padEnd(18)} ${note}`);
@@ -205,6 +251,37 @@ async function main() {
    * loud. Unnamed, it says so rather than guessing at one.
    */
   if (CAST) results.push(await measure(CAST, 'casting — see the note under the table'));
+  let wearNote = '\n  Gear went unasked: pass `--wear` to take one worn item off and back on.';
+  if (WEAR) {
+    await send('i');
+    const item = wornItem();
+    if (item === null)
+      wearNote = '\n  `--wear`: nothing worn outside the hands, so gear went unasked.';
+    else {
+      console.log(`   [probe] taking ${item} off and putting it back on, each while resting`);
+      const off = await measureGear(`remove ${item}`, item, false, 'taking gear off while down');
+      results.push(off);
+      // Still on after a refused remove, a `wear` is refused too and measures nothing.
+      if (off.verdict !== 'BREAKS' && off.verdict !== 'does NOT break') {
+        results.push({
+          command: `wear ${item}`,
+          note: 'not sent: the remove did not happen',
+          verdict: 'not run'
+        });
+      } else {
+        results.push(
+          await measureGear(`wear ${item}`, item, true, 'putting it back on while down')
+        );
+      }
+      const on = await isWorn(item);
+      wearNote =
+        on === true
+          ? `\n  \`${item}\` is worn, as it was before the run.`
+          : on === false
+            ? `\n  WARNING: \`${item}\` is not worn at the end of the run. Put it back on.`
+            : `\n  WARNING: no pack listing came back, so whether \`${item}\` is worn is unknown.`;
+    }
+  }
   for (const result of results) row(result);
 
   /*
@@ -254,6 +331,8 @@ async function main() {
           '  with one this character knows. On Paradigm it breaks a rest\n' +
           '  (2026-09-02); on this realm nothing has asked.'
   );
+
+  console.log(wearNote);
 
   session.disconnect();
   await wait(400);

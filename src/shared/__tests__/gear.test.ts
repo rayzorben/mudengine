@@ -429,7 +429,11 @@ describe('choosing a kit for the situation', () => {
     'brown leather boots': 'Feet',
     lifestealer: WEAPON_HAND,
     'nexus spear': WEAPON_HAND,
-    'golden chalice': OFF_HAND
+    'golden chalice': OFF_HAND,
+    'lightstone ring': 'Finger',
+    'ruby ring': 'Finger',
+    'brass ring': 'Finger',
+    'gold ring': 'Finger'
   };
   const slotOf = (name: string): string | null => SLOTS[name] ?? null;
   const still: GearSituation = {
@@ -547,6 +551,84 @@ describe('choosing a kit for the situation', () => {
   it('leaves alone what is already on', () => {
     const pack = [worn('plate boots', 'Feet'), worn('lifestealer', WEAPON_HAND)];
     expect(swapPlan(kitFor(sets, still, slotOf), pack, 10, () => 1).commands).toEqual([]);
+  });
+
+  /*
+   * Two rings to a hand (todo 859): a finger holds two (`WORN_SLOT_HOLDS`), so
+   * a set naming two keeps both, and a full hand gives up a ring no set names
+   * before a set ring goes on, or the two set rings take each other off.
+   */
+  describe('two rings', () => {
+    const ringed: GearSet[] = [
+      { name: 'Default', when: 'always', mob: '', wear: ['lightstone ring', 'ruby ring'] }
+    ];
+
+    it('keeps both rings a set names', () => {
+      expect([...kitFor(ringed, still, slotOf)]).toEqual([
+        ['finger', 'lightstone ring'],
+        ['finger/2', 'ruby ring']
+      ]);
+    });
+
+    it('takes a ring the set does not name off a full hand first', () => {
+      const pack = [
+        worn('lightstone ring', 'Finger'),
+        worn('brass ring', 'Finger'),
+        carried({ name: 'ruby ring' })
+      ];
+      expect(swapPlan(kitFor(ringed, still, slotOf), pack, 10, () => 1).commands).toEqual([
+        'remove brass ring',
+        'wear ruby ring'
+      ]);
+    });
+
+    it('wears into a free finger without taking anything off', () => {
+      const pack = [worn('lightstone ring', 'Finger'), carried({ name: 'ruby ring' })];
+      expect(swapPlan(kitFor(ringed, still, slotOf), pack, 10, () => 1).commands).toEqual([
+        'wear ruby ring'
+      ]);
+    });
+
+    it('leaves the other ring on when a set names one', () => {
+      const one: GearSet[] = [{ name: 'Default', when: 'always', mob: '', wear: ['ruby ring'] }];
+      const pack = [worn('brass ring', 'Finger'), carried({ name: 'ruby ring' })];
+      expect(swapPlan(kitFor(one, still, slotOf), pack, 10, () => 1).commands).toEqual([
+        'wear ruby ring'
+      ]);
+    });
+
+    it('wears a ring named twice once, as the server refuses a second copy', () => {
+      const twice: GearSet[] = [
+        { name: 'Default', when: 'always', mob: '', wear: ['gold ring', 'gold ring'] }
+      ];
+      expect([...kitFor(twice, still, slotOf)]).toEqual([['finger', 'gold ring']]);
+      const pack = [
+        worn('gold ring', 'Finger'),
+        worn('brass ring', 'Finger'),
+        carried({ name: 'gold ring' })
+      ];
+      expect(swapPlan(kitFor(twice, still, slotOf), pack, 10, () => 1).commands).toEqual([]);
+    });
+
+    it("keeps the base's first ring when an overlay names its second", () => {
+      const over: GearSet[] = [
+        ...ringed,
+        { name: 'Fighting', when: 'fighting', mob: '', wear: ['ruby ring'] }
+      ];
+      expect([...kitFor(over, { ...still, fighting: true }, slotOf)]).toEqual([
+        ['finger', 'lightstone ring'],
+        ['finger/2', 'ruby ring']
+      ]);
+      // Control: an overlay naming a new ring replaces the first.
+      const other: GearSet[] = [
+        ...ringed,
+        { name: 'Fighting', when: 'fighting', mob: '', wear: ['brass ring'] }
+      ];
+      expect([...kitFor(other, { ...still, fighting: true }, slotOf)]).toEqual([
+        ['finger', 'brass ring'],
+        ['finger/2', 'ruby ring']
+      ]);
+    });
   });
 });
 

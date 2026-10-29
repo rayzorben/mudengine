@@ -80,6 +80,12 @@ export function placesIn(code: number): number {
   return WORN_SLOT_HOLDS[code] ?? 1;
 }
 
+/** The places of a slot's kind (two ring fingers), by the listing's word. */
+export function placesOf(slot: string): number {
+  const code = wornOfWord(slot);
+  return code === null ? 1 : placesIn(code);
+}
+
 /**
  * `Worn` code 17, the listing's word for the lit light's slot (`torch
  * (Readied/79)`). Named because re-equipping leaves it to `AutoLight`, which

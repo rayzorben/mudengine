@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { bestOfSlot, placesOf, sheetGain, withinBudget, worth } from '../gearWorth';
+import { bestOfSlot, sheetGain, withinBudget, worth } from '../gearWorth';
+import { placesOf } from '../items';
 import { REALM_ARMOUR_SCALE } from '../menace';
 
 const armour = (ac: number) => ({ expPerHour: null, armourClass: ac, perRound: null, worth: null });

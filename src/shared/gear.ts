@@ -22,6 +22,7 @@ import type { UiLookup } from './i18n';
 import {
   ARMOUR_TYPE,
   OFF_HAND,
+  placesOf,
   READIED,
   sameItem,
   WEAPON_CLASS,
@@ -918,8 +919,21 @@ export function kitFor(
       const item = name.trim();
       if (item.length === 0) continue;
       const slot = (slotOf(item) ?? `item:${item}`).toLowerCase();
-      kit.set(slot, item);
-      laid.add(slot);
+      const places = Array.from({ length: placesOf(slot) }, (_, place) => placeIn(slot, place));
+      /*
+       * A ring already in the kit keeps its finger, so an overlay naming the
+       * base's second ring leaves the first on, and a ring named twice is one
+       * ring: the server refuses a second copy of a worn item.
+       */
+      const kept = places.find((key) => sameItem(kit.get(key) ?? '', item));
+      if (kept !== undefined) {
+        laid.add(kept);
+        continue;
+      }
+      // The next finger this set has not filled; a third ring goes over the last.
+      const key = places.find((place) => !laid.has(place)) ?? places[places.length - 1] ?? slot;
+      kit.set(key, item);
+      laid.add(key);
     }
     return laid;
   };
@@ -942,6 +956,16 @@ export function kitFor(
 
 /** The weapon hand's key in a kit, as `kitFor` files a slot. */
 export const WEAPON_KEY = WEAPON_HAND.toLowerCase();
+
+/** A kit's key for one place of a slot: the slot itself, then `finger/2`. */
+function placeIn(slot: string, place: number): string {
+  return place === 0 ? slot : `${slot}/${place + 1}`;
+}
+
+/** The slot a kit key files under, whichever of its places. */
+function slotOfKey(key: string): string {
+  return key.split('/')[0] ?? key;
+}
 
 /**
  * What to send to get into a kit, in the order it has to be sent.
@@ -997,19 +1021,65 @@ export function swapPlan(
   }
 
   const rest = wanted.filter((row) => row !== weapon);
+  const room = roomFor(kit, items);
   const commands = [
     ...removals,
     ...(weapon === undefined ? [] : [equip(weapon.item)]),
-    ...rest.map((row) => equip(row.item))
+    ...rest.flatMap((row) => {
+      const off = room(slotOfKey(row.slot));
+      return off === null ? [equip(row.item)] : [unequip(off), equip(row.item)];
+    })
   ];
   return capped(commands, missing, max);
 }
 
-/** What is worn in a slot, by the listing's word. */
-function wornIn(items: readonly CarriedItem[], slot: string): CarriedItem | undefined {
-  return items.find(
+/**
+ * What to take off before each wear into a slot of two places, asked once per
+ * wear. With both rings on, `wear` replaces the first place whatever is there
+ * (`EquipCommand.Execute`), which can be a ring the kit names, so the two set
+ * rings would take each other off. A worn ring the kit does not name comes off
+ * first; one it names never does. Null where a place is free, or the slot has
+ * one place and `wear` swaps it.
+ */
+function roomFor(
+  kit: ReadonlyMap<string, string>,
+  items: readonly CarriedItem[]
+): (slot: string) => string | null {
+  const free = new Map<string, number>();
+  const spare = new Map<string, string[]>();
+  return (slot) => {
+    const places = placesOf(slot);
+    if (places < 2) return null;
+    if (!free.has(slot)) {
+      const named = [...kit].filter(([key]) => slotOfKey(key) === slot).map(([, item]) => item);
+      const worn = wornAllIn(items, slot);
+      free.set(slot, places - worn.length);
+      spare.set(
+        slot,
+        worn
+          .filter((item) => !named.some((name) => sameItem(item.name, name)))
+          .map((item) => item.name)
+      );
+    }
+    const left = free.get(slot) ?? 0;
+    if (left > 0) {
+      free.set(slot, left - 1);
+      return null;
+    }
+    return spare.get(slot)?.shift() ?? null;
+  };
+}
+
+/** Everything worn in a slot, by the listing's word: two rings on the fingers. */
+function wornAllIn(items: readonly CarriedItem[], slot: string): CarriedItem[] {
+  return items.filter(
     (item) => item.equipped && (item.slot ?? '').toLowerCase() === slot.toLowerCase()
   );
+}
+
+/** What is worn in a slot, by the listing's word. */
+function wornIn(items: readonly CarriedItem[], slot: string): CarriedItem | undefined {
+  return wornAllIn(items, slot)[0];
 }
 
 /** What is worn in the off-hand, which a two-handed weapon needs taken off first. */

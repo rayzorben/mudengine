@@ -5,7 +5,7 @@
  * (armour class added, or damage a round added for a weapon), unless a survey
  * of the character wearing it measured the exp an hour it moves.
  */
-import { placesIn, wornOfWord } from './items';
+import { placesOf } from './items';
 import { REALM_ARMOUR_SCALE } from './menace';
 import type { GearRow, SlotWorn } from './upgrades';
 
@@ -22,12 +22,6 @@ export interface GearGain {
    * scale like `armourClass`: what the loot ranks by, so the card prices by it too.
    */
   worth: number | null;
-}
-
-/** The places of a slot's kind (two ring fingers), as the realm's `Worn` code holds them. */
-export function placesOf(slot: string): number {
-  const code = wornOfWord(slot);
-  return code === null ? 1 : placesIn(code);
 }
 
 /**
