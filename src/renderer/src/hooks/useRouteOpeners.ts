@@ -9,7 +9,7 @@
 import { useCallback } from 'react';
 
 import type { IpcApi, SessionId } from '@shared/ipc';
-import { asRoomReference, type WorldRoom } from '@shared/world';
+import { asRoomReference, type RoomReference, type WorldRoom } from '@shared/world';
 
 export interface RouteOpenerInputs {
   api: Pick<IpcApi, 'searchRooms'>;
@@ -59,9 +59,16 @@ export function useRouteOpeners({ api, session, openRouteOn }: RouteOpenerInputs
    * with a walk at the end of it. So the *name* goes to the panel and the panel
    * lists what it matched; a name matching exactly one room opens on that room,
    * which is what the search field there already does with a typed name.
+   *
+   * A name line the character was placed in carries that room
+   * (`TerminalMark.room`), and the route panel opens on it.
    */
   const chooseRoomNamed = useCallback(
-    (name: string) => {
+    (name: string, printedIn: RoomReference | null) => {
+      if (printedIn !== null) {
+        chooseOnMap(printedIn.map, printedIn.room);
+        return;
+      }
       void api.searchRooms(session, name).then((rooms) => {
         // Exactly one room, and it is the one meant. Anything else — several
         // rooms sharing the name, or none — is left to the panel's own list
@@ -73,7 +80,7 @@ export function useRouteOpeners({ api, session, openRouteOn }: RouteOpenerInputs
         openRouteOn(one, one === null ? name : null);
       });
     },
-    [api, session, openRouteOn]
+    [api, session, openRouteOn, chooseOnMap]
   );
 
   /**

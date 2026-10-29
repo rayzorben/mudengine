@@ -199,15 +199,19 @@ function parsed(line: string): unknown {
  * A mark as it is kept for the next launch: nothing on it can be pressed.
  * Only the room stood in has live buttons, and a relaunch stands in none of
  * the rooms the backscroll shows, so a kept `go manhole` would be sent into
- * whatever room the character is in. Null where nothing is left to draw.
+ * whatever room the character is in. The room a name line was printed for is
+ * kept: a click on it opens a route, which sends nothing. Null where nothing
+ * is left to draw or route to.
  */
 export function pressless(mark: TerminalMark): TerminalMark | null {
   const inline = mark.inline?.map(({ x, icon, label }) => ({ x, icon, label }));
-  if (mark.icon === undefined && (inline === undefined || inline.length === 0)) return null;
+  const drawn = mark.icon !== undefined || (inline !== undefined && inline.length > 0);
+  if (!drawn && mark.room === undefined) return null;
   return {
     ...(mark.icon !== undefined ? { icon: mark.icon } : {}),
     label: mark.label,
-    ...(inline !== undefined ? { inline } : {})
+    ...(inline !== undefined ? { inline } : {}),
+    ...(mark.room !== undefined ? { room: mark.room } : {})
   };
 }
 
@@ -235,11 +239,18 @@ function asMarkRow(value: unknown): MarkRow | null {
 
 function asTerminalMark(value: unknown): TerminalMark | null {
   if (!isRecord(value) || typeof value['label'] !== 'string') return null;
-  const { icon, actions, inline } = value;
+  const { icon, actions, inline, room } = value;
   if (icon !== undefined && !isIcon(icon)) return null;
+  if (room !== undefined && !isRoomReference(room)) return null;
   if (actions !== undefined && !(Array.isArray(actions) && actions.every(isAction))) return null;
   if (inline !== undefined && !(Array.isArray(inline) && inline.every(isGlyph))) return null;
   return value as unknown as TerminalMark;
+}
+
+function isRoomReference(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const { map, room } = value;
+  return Number.isInteger(map) && Number.isInteger(room);
 }
 
 function isAction(value: unknown): boolean {

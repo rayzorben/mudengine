@@ -38,7 +38,9 @@ terminal:
   # Decorate what the console recognises: a glyph beside a shop or bank's
   # name, and a monster's, item's or spell's name that can be clicked for what
   # the realm knows about it. Drawn outside the character grid, so nothing the
-  # server lays out in rows and columns moves.
+  # server lays out in rows and columns moves. Off, a room name in the
+  # backscroll carries no room, and a click on it lists every room of that
+  # name.
   enrich: true
 
 # Which commands the palette (Ctrl/Cmd K) pins to the top on a fresh client.

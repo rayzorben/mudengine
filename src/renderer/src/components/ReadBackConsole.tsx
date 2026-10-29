@@ -12,6 +12,7 @@ import type { IpcApi, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
 import type { TerminalPalette } from '@shared/themes';
 import type { TerminalSize } from '@shared/types';
+import type { RoomReference } from '@shared/world';
 import { t } from '../lib/i18n';
 import { fillFrom, useBackscrollPages } from '../hooks/useBackscrollPages';
 import type { ScrollEdge } from '../lib/pages';
@@ -44,7 +45,7 @@ export interface ReadBackConsoleProps {
   onSelectPlayer?(name: string, at: PopoverAnchor): void;
   onSelectGang?(name: string, at: PopoverAnchor): void;
   onSelectSlot?(slot: string, at: PopoverAnchor): void;
-  onChooseRoom?(name: string): void;
+  onChooseRoom?(name: string, room: RoomReference | null): void;
 }
 
 /** The copy's own geometry is the live console's; it reports none. */

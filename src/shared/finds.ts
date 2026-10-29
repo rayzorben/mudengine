@@ -20,6 +20,7 @@
  * these, the renderer reads them.
  */
 import type { Coins } from './character';
+import { RARITY_BANDS, type ItemRarity } from './rarity';
 import { DAY_MS } from './values';
 import type { RoomId } from './world';
 
@@ -84,10 +85,21 @@ export interface Find {
    * up is one find in twenty-one searches, not one in one.
    */
   searched: number;
+  /**
+   * How rare the thing is in the realm, from the realm's supply (`RarityBook`):
+   * the band and the hours to one copy at its quickest source. Joined on where
+   * a row is handed out, never kept, so it follows the realm file and
+   * `tuning.rarity`. Null for cash, which is not an item; `unknown` for a name
+   * that is no one item row.
+   */
+  rarity: Pick<ItemRarity, 'rarity' | 'hours'> | null;
 }
 
+/** A row as the log holds it, before the realm's rarity is joined on. */
+export type Logged = Omit<Find, 'rarity'>;
+
 /** One thing one search turned up, before the log has counted it. */
-export type Sighting = Omit<Find, 'room' | 'seen' | 'hits' | 'searched'>;
+export type Sighting = Omit<Logged, 'room' | 'seen' | 'hits' | 'searched'>;
 
 /**
  * Where what a `search` turns up in this realm is written down.
@@ -103,7 +115,7 @@ export type Sighting = Omit<Find, 'room' | 'seen' | 'hits' | 'searched'>;
  */
 export interface RealmFinds {
   /** Counts one search of a room and writes down what it turned up. Returns the first sightings. */
-  search(room: RoomId, found: readonly Sighting[]): Find[];
+  search(room: RoomId, found: readonly Sighting[]): Logged[];
   /** Strikes one out by its `findKey`. Whether there was one to strike. */
   forget(key: string): boolean;
   readonly all: readonly Find[];
@@ -118,25 +130,39 @@ export const NO_FINDS: RealmFinds = {
 
 /**
  * How often a search of its room turns this up, 0–1; null before its room's
- * first counted search.
+ * first counted search. A fact about searching that room, not about how rare
+ * the thing is: a cheap item a player dropped there turns up once in seventy
+ * searches and is still common (`Find.rarity`).
  *
  * Measured, because nothing states it: the server rolls each hidden item
  * against the searcher's Perception (`Player.TrySearch`, source) and whether
  * it is there to roll for is up to whoever hid it. Pooled across every
  * character on the realm, as the log is.
  */
-export function findRate(find: Find): number | null {
+export function findRate(find: Pick<Find, 'hits' | 'searched'>): number | null {
   return find.searched > 0 ? find.hits / find.searched : null;
 }
 
-/** Rarest first, a row with no rate yet last, and newest first among equals. */
+/**
+ * How rare a find is as one number, higher rarer: the band's place in
+ * `RARITY_BANDS`, plus a fraction under one that grows with the hours to one
+ * copy, so the band decides and the hours order within it. A quest reward,
+ * rare with no hours, sits at the top of its band. Unknown is below every
+ * band, listed last like an empty cell, and cash below that. One number so
+ * the card's column sorts by it too.
+ */
+export function rarityRank(find: Pick<Find, 'rarity'>): number {
+  if (find.rarity === null) return -2;
+  const { rarity, hours } = find.rarity;
+  if (rarity === 'unknown') return -1;
+  return (
+    RARITY_BANDS.indexOf(rarity) + (hours === null ? 0.999999 : hours / (hours + 1)) * 0.999999
+  );
+}
+
+/** Rarest in the realm first (`Find.rarity`), and newest first among equals. */
 export function byRarest(a: Find, b: Find): number {
-  const rateA = findRate(a);
-  const rateB = findRate(b);
-  if (rateA === rateB) return byNewest(a, b);
-  if (rateA === null) return 1;
-  if (rateB === null) return -1;
-  return rateA - rateB || byNewest(a, b);
+  return rarityRank(b) - rarityRank(a) || byNewest(a, b);
 }
 
 /**
@@ -153,7 +179,7 @@ export function findKey(find: Pick<Find, 'room' | 'name'>): string {
 }
 
 /** Whether this find is money rather than a thing. */
-export function isCash(find: Find): boolean {
+export function isCash(find: Pick<Find, 'copper'>): boolean {
   return find.copper !== null;
 }
 

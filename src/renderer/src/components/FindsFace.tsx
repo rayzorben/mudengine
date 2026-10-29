@@ -7,7 +7,8 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
-import { findRate, isCash, within, type Find } from '@shared/finds';
+import { bandWord, rarityClock } from '../lib/rarityText';
+import { findRate, rarityRank, isCash, within, type Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
 
 /*
@@ -137,29 +138,19 @@ export default function FindsFace({
         value: (find) => find.seen
       },
       {
-        id: 'chance',
-        label: t('cards.room.finds.chance'),
+        id: 'rarity',
+        label: t('cards.room.finds.rarity'),
         numeric: true,
-        // A fraction is nothing anybody types, and `0` would match every row.
+        // The value is a sort rank, and a rank matches nothing anybody types.
         unsearchable: true,
-        // Blank, never `0%`, before the room's first counted search: a row
-        // written before searches were counted has no rate yet, not a low one.
-        value: (find) => findRate(find),
-        cell: (find) => {
-          const rate = findRate(find);
-          return rate === null ? (
-            ''
-          ) : (
-            <span
-              title={t('cards.room.finds.chanceTooltip', {
-                hits: find.hits,
-                searched: find.searched
-              })}
-            >
-              {percentText(rate)}
-            </span>
-          );
-        }
+        // Sorted by the realm's rarity, drawn as its band. Blank for cash,
+        // which is not an item. Cash and unknown have no value here, so the
+        // column sorts them last either way (`sortRows`); the card's own
+        // order still ranks them (`byRarest`).
+        value: (find) =>
+          find.rarity === null || find.rarity.rarity === 'unknown' ? null : rarityRank(find),
+        cell: (find) =>
+          find.rarity === null ? '' : <span title={rarityTitle(find)}>{bandWord(find.rarity)}</span>
       },
       ...(forget === undefined
         ? []
@@ -211,12 +202,19 @@ export default function FindsFace({
 }
 
 /**
- * A rate as a percentage, a decimal place below ten so one find in three
- * hundred searches does not read as never.
+ * The rarity cell's hover: the hours to one copy at the realm's quickest
+ * source, then how often searching this room has turned it up, which is a
+ * fact about the room rather than the item.
  */
-function percentText(rate: number): string {
-  const percent = rate * 100;
-  return `${percent > 0 && percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+function rarityTitle(find: Find): string {
+  const parts: string[] = [];
+  if (find.rarity?.hours != null) {
+    parts.push(t('cards.room.finds.everyTooltip', { clock: rarityClock(find.rarity.hours) }));
+  }
+  if (findRate(find) !== null) {
+    parts.push(t('cards.room.finds.searchedTooltip', { hits: find.hits, searched: find.searched }));
+  }
+  return parts.join('\n');
 }
 
 /**
@@ -236,9 +234,8 @@ export function findsCopyText(finds: readonly Find[], days: number, now: number)
     .map((find) => {
       const counted = howMany(find);
       const many = counted === '' ? '' : `${counted} `;
-      const rate = findRate(find);
-      const chance = rate === null ? '' : `, ${percentText(rate)}`;
-      return `${many}${find.name} — ${find.roomName} ${find.room}, ${ago(find.at, now)} (${find.seen}${chance})`;
+      const rarity = find.rarity === null ? '' : `, ${bandWord(find.rarity)}`;
+      return `${many}${find.name} — ${find.roomName} ${find.room}, ${ago(find.at, now)} (${find.seen}${rarity})`;
     })
     .join('\n');
 }

@@ -6,6 +6,7 @@ import zlib from 'node:zlib';
 
 import { buildRealm } from '../buildRealm';
 import { Catalogue } from '../Catalogue';
+import { ratedFinds } from '../findRarity';
 import { rarityBook } from '../itemRarity';
 import { openRealm } from '../RealmSource';
 import type { RealmHeader } from '../realmHeader';
@@ -93,5 +94,28 @@ describe.skipIf(!available)('item rarity on gmud.mdb', () => {
       source.close();
     }
     expect({ agree, below }).toEqual({ agree: 913, below: 252 });
+  });
+
+  it('rates a find by the same book: silk gloves are common, whatever the search rate', () => {
+    // The user, 2026-10-29: one in seventy searches read 1.4%, though the
+    // Arlysia Seamstress restocks a pair every minute.
+    const logged = {
+      room: '1/1',
+      roomName: 'Somewhere',
+      name: 'silk gloves',
+      quantity: null,
+      copper: null,
+      coins: null,
+      at: 0,
+      seen: 1,
+      hits: 1,
+      searched: 70
+    };
+    const cash = { ...logged, name: '4 copper farthings', copper: 4 };
+    const nameless = { ...logged, name: 'no such thing' };
+    const [gloves, coins, unknown] = ratedFinds([logged, cash, nameless], world!);
+    expect(gloves!.rarity).toEqual({ rarity: 'common', hours: rarityOf('silk gloves').hours });
+    expect(coins!.rarity).toBeNull();
+    expect(unknown!.rarity).toEqual({ rarity: 'unknown', hours: null });
   });
 });

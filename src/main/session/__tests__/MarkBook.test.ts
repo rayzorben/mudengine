@@ -134,6 +134,24 @@ describe('the marks of the lines in a console', () => {
     expect(rows()).toHaveLength(2);
   });
 
+  it('reads back the room a name line was printed for, which sends nothing', async () => {
+    const first = book();
+    const grate = first.marks.issue(undefined);
+    const road = first.marks.issue(undefined);
+    first.marks.painted([grate, road]);
+    first.marks.change([
+      { id: grate, mark: { ...GRATE, room: { map: 1, room: 11 } } },
+      { id: road, mark: { label: 'North Road', room: { map: 1, room: 20 } } }
+    ]);
+    await vi.waitFor(() => expect(rows()).toHaveLength(2));
+    const next = book();
+    // The buttons go and the room stays, on a plain room with nothing drawn as well.
+    expect(next.marks.painted([grate, road])).toEqual([
+      { id: grate, mark: { label: 'Sewer Grate', room: { map: 1, room: 11 } } },
+      { id: road, mark: { label: 'North Road', room: { map: 1, room: 20 } } }
+    ]);
+  });
+
   it('appends a change in bytes of its own, and writes the whole only at the open and the close', async () => {
     const { marks } = book();
     const file = path.join(dir, MARKS_FILE);
@@ -211,6 +229,12 @@ describe('a row of the record', () => {
     expect(asMarkChange({ id: 'k1.1', mark: null })).toEqual({ id: 'k1.1', mark: null });
     expect(asMarkChange({ id: 'nope', mark: null })).toBeNull();
     expect(asMarkChange({ id: 'k1.1', mark: { label: 'x', icon: 'castle' } })).toBeNull();
+    const room = { label: 'x', room: { map: 1, room: 11 } };
+    expect(asMarkChange({ id: 'k1.1', mark: room })).toEqual({ id: 'k1.1', mark: room });
+    expect(
+      asMarkChange({ id: 'k1.1', mark: { label: 'x', room: { map: '1', room: 11 } } })
+    ).toBeNull();
+    expect(asMarkChange({ id: 'k1.1', mark: { label: 'x', room: { map: 1 } } })).toBeNull();
     expect(
       asMarkChange({ id: 'k1.1', mark: { label: 'x', actions: [{ label: 'a', title: 'b' }] } })
     ).toBeNull();

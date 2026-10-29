@@ -134,3 +134,39 @@ describe('a page and a push that crossed it', () => {
     expect(live().map((entry) => [entry.line, entry.options.x])).toEqual([[0, 16]]);
   });
 });
+
+describe('the room a name line was printed for', () => {
+  const ROAD: TerminalMark = { label: 'Darkwood Forest', room: { map: 2, room: 40 } };
+
+  it('is answered on the row the line starts on, and not on the row it folds onto', async () => {
+    const { term, marks } = console80();
+    // Eighty columns: the name runs past the edge and the pane folds it onto a second row.
+    const name = `${'Darkwood Forest '.repeat(5)}Edge`;
+    await parsed(term, `Town\r\n${lineIdOf('k1.1')}${name}\r\nObvious exits: north\r\n`);
+    marks.push([{ id: 'k1.1', mark: { ...ROAD, label: name } }]);
+    expect(marks.roomOn(1)).toEqual({ map: 2, room: 40 });
+    // The click on the tail asks for the head's row (TerminalView); the tail has no marker.
+    expect(marks.roomOn(2)).toBeNull();
+    expect(marks.roomOn(0)).toBeNull();
+  });
+
+  it('is gone with the change that takes it off, and with the line once it scrolls out', async () => {
+    const term = new Terminal({ cols: 80, rows: 4, scrollback: 2, allowProposedApi: true });
+    const marks = drawMarks(term, { glyph: () => '', send: () => {}, act: () => {} });
+    await parsed(
+      term,
+      `${lineIdOf('k1.1')}Darkwood Forest\r\n${lineIdOf('k1.2')}Darkwood Forest\r\n`
+    );
+    marks.push([
+      { id: 'k1.1', mark: ROAD },
+      { id: 'k1.2', mark: ROAD }
+    ]);
+    // The positive control: both rows carry the room before anything changes.
+    expect([marks.roomOn(0), marks.roomOn(1)]).toEqual([ROAD.room, ROAD.room]);
+    marks.push([{ id: 'k1.2', mark: { label: 'Darkwood Forest' } }]);
+    expect(marks.roomOn(1)).toBeNull();
+    await parsed(term, 'a\r\nb\r\nc\r\nd\r\ne\r\nf\r\ng\r\n');
+    // Row 0 now holds a later line; the first name's marker went with the scrollback.
+    expect(marks.roomOn(0)).toBeNull();
+  });
+});

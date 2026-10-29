@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Marks } from '../Marks';
 import { MarkBook } from '../MarkBook';
 import type { Block } from '../../../shared/blocks';
+import { lineIdOf } from '../../../shared/stamps';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { MarkChange } from '../../../shared/types';
 import type { WorldRoom } from '../../../shared/world';
@@ -61,9 +62,22 @@ function harness() {
     tracker.current = state;
     marks.onCharacter(state);
   };
+  /** The line's own `Obvious exits:`: until it is read, a placement is the room before. */
+  const exits = (): void => {
+    marks.markFor({ type: 'room-exits', text: 'Obvious exits: north' } as Block);
+  };
   const buttons = (id: string): string[] =>
     (book.painted([id])[0]?.mark?.actions ?? []).map((action) => action.label);
-  return { marks, book, pushed, nameLine, standIn, buttons, peekNext: () => (peek = true) };
+  return {
+    marks,
+    book,
+    pushed,
+    nameLine,
+    standIn,
+    exits,
+    buttons,
+    peekNext: () => (peek = true)
+  };
 }
 
 describe('the buttons beside a room name', () => {
@@ -77,7 +91,10 @@ describe('the buttons beside a room name', () => {
     expect(h.buttons(grate)).toEqual([]);
     h.standIn(ROAD);
     expect(h.buttons(road)).toEqual([]);
-    expect(h.pushed.at(-1)).toEqual([{ id: grate, mark: null }]);
+    // The buttons come off; the room it was printed for stays, for a click in the backscroll.
+    expect(h.pushed).toContainEqual([
+      { id: grate, mark: { label: 'Sewer Grate', room: { map: 1, room: 10 } } }
+    ]);
   });
 
   it('come from the placed room once its exits are read', () => {
@@ -86,7 +103,9 @@ describe('the buttons beside a room name', () => {
     const grate = h.nameLine('Sewer Grate');
     h.standIn(NEXT_GRATE);
     expect(h.buttons(grate)).toEqual(['go manhole']);
-    expect(h.pushed).toEqual([]);
+    // The one push is the room placed; the buttons were already right.
+    expect(h.pushed).toHaveLength(1);
+    expect(h.pushed[0]![0]!.mark?.room).toEqual({ map: 1, room: 11 });
   });
 
   it('come off a room left without a name line printed', () => {
@@ -132,5 +151,88 @@ describe('the buttons beside a room name', () => {
     const peeked = h.nameLine('Sewer Grate');
     expect(h.buttons(peeked)).toEqual([]);
     expect(h.buttons(grate)).toEqual(['go manhole']);
+  });
+});
+
+describe('the room a name line was printed for', () => {
+  const roomOf = (h: ReturnType<typeof harness>, id: string) =>
+    h.book.pageOf({ text: lineIdOf(id), older: 0 }).marks[0]?.mark?.room;
+
+  it('is on the line once the character is placed, and stays after walking on', () => {
+    const h = harness();
+    const first = h.nameLine('Sewer Grate');
+    // Two rooms share the name: nothing is chosen before the exits are read.
+    expect(roomOf(h, first)).toBeUndefined();
+    h.standIn(NEXT_GRATE);
+    expect(roomOf(h, first)).toEqual({ map: 1, room: 11 });
+    h.nameLine('North Road');
+    h.standIn(ROAD);
+    expect(roomOf(h, first)).toEqual({ map: 1, room: 11 });
+  });
+
+  it('is on a plain room with no glyph or buttons', () => {
+    const h = harness();
+    const road = h.nameLine('North Road');
+    h.standIn(ROAD);
+    expect(roomOf(h, road)).toEqual({ map: 1, room: 20 });
+  });
+
+  it('is on a room looked at again where the character already stood', () => {
+    const h = harness();
+    h.nameLine('Drain');
+    h.standIn(NEXT_DRAIN);
+    const again = h.nameLine('Drain');
+    h.standIn(NEXT_DRAIN);
+    // Before its exits, the line could be the namesake next door.
+    expect(roomOf(h, again)).toBeUndefined();
+    h.exits();
+    h.standIn(NEXT_DRAIN);
+    expect(roomOf(h, again)).toEqual({ map: 1, room: 31 });
+  });
+
+  it("is never the room before's on a namesake whose exits leave it ambiguous", () => {
+    const h = harness();
+    const first = h.nameLine('Drain');
+    h.standIn(DRAIN);
+    // The positive control: the first line has its room.
+    expect(roomOf(h, first)).toEqual({ map: 1, room: 30 });
+    const next = h.nameLine('Drain');
+    // A publish between the name and the exits still stands in the room before.
+    h.standIn(DRAIN);
+    h.exits();
+    h.standIn({ ...DRAIN, number: null as unknown as number, map: null as unknown as number });
+    expect(roomOf(h, next)).toBeUndefined();
+  });
+
+  it('is not given by the exits of a peeked room', () => {
+    const h = harness();
+    h.nameLine('Drain');
+    h.standIn(DRAIN);
+    const again = h.nameLine('Drain');
+    h.peekNext();
+    h.nameLine('North Road');
+    h.exits();
+    h.standIn(DRAIN);
+    expect(roomOf(h, again)).toBeUndefined();
+  });
+
+  it('is never on a line printed while the character was not placed', () => {
+    const h = harness();
+    const lost = h.nameLine('Sewer Grate');
+    const road = h.nameLine('North Road');
+    h.standIn(ROAD);
+    // The positive control: the placement reached the line printed for it.
+    expect(roomOf(h, road)).toEqual({ map: 1, room: 20 });
+    expect(roomOf(h, lost)).toBeUndefined();
+  });
+
+  it('is never on a peeked room', () => {
+    const h = harness();
+    h.nameLine('North Road');
+    h.standIn(ROAD);
+    h.peekNext();
+    const peeked = h.nameLine('Sewer Grate');
+    h.standIn(ROAD);
+    expect(roomOf(h, peeked)).toBeUndefined();
   });
 });

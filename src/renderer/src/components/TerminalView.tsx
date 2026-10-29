@@ -24,6 +24,7 @@ import type {
   TerminalActionName,
   TerminalSize
 } from '@shared/types';
+import type { RoomReference } from '@shared/world';
 import { consoleWriter, type ConsoleWriter } from '../lib/console';
 import { screenNotices, terminalSurface, type ScreenNotices } from '../lib/screenNotices';
 import type { NameIndex, SpanHit } from '../lib/names';
@@ -130,11 +131,12 @@ export interface TerminalViewProps {
    * A separate handler rather than a kind the reference panel answers,
    * because the question somebody asks about a room they are not standing in
    * is *how do I get there* — the rule the map and the Route face already
-   * follow. The name rather than a `map/room` pair: a room name is routinely
+   * follow. With the room the line was printed for when the character was
+   * placed in it (`TerminalMark.room`), else null: a room name is routinely
    * shared by several rooms, and choosing one of them here would be the guess
    * this project refuses.
    */
-  onChooseRoom?(name: string): void;
+  onChooseRoom?(name: string, room: RoomReference | null): void;
   /**
    * A console button main runs, rather than one that sends text.
    *
@@ -562,7 +564,7 @@ export default function TerminalView({
          * is what makes the console a surface the rest of the client already
          * has, rather than a second vocabulary.
          */
-        const open = (hit: SpanHit, at: PopoverAnchor): void => {
+        const open = (hit: SpanHit, at: PopoverAnchor, bufferRow: number): void => {
           switch (hit.kind) {
             case 'player':
               /*
@@ -597,7 +599,7 @@ export default function TerminalView({
                * the map and the Route face already open, rather than a card
                * restating a name they just read.
                */
-              handlers.current.onChooseRoom?.(hit.text);
+              handlers.current.onChooseRoom?.(hit.text, marks.roomOn(bufferRow));
               return;
             case 'item':
             case 'mob':
@@ -625,7 +627,13 @@ export default function TerminalView({
             },
             text: hit.text,
             activate: (event) => {
-              open(hit, cellAnchor(term, mount, own.from, own.to, own.bufferRow, pointer(event)));
+              // The line's marker is on the row the name starts on, whichever half was clicked.
+              const first = Math.min(own.bufferRow, other?.bufferRow ?? own.bufferRow);
+              open(
+                hit,
+                cellAnchor(term, mount, own.from, own.to, own.bufferRow, pointer(event)),
+                first
+              );
             },
             hover: () => {
               clear();
@@ -659,7 +667,7 @@ export default function TerminalView({
                 activate: (event) => {
                   const from = hit.start.line === 1 ? hit.start.col : 0;
                   const to = hit.end.line === 1 ? hit.end.col : text.length;
-                  open(hit, cellAnchor(term, mount, from, to, row - 1, pointer(event)));
+                  open(hit, cellAnchor(term, mount, from, to, row - 1, pointer(event)), startRow);
                 }
               }
             ];

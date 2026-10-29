@@ -11,10 +11,11 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
 import { actionsFor } from './actions';
 import type { LineMarks } from './MarkBook';
+import { pressless } from './markFile';
 import type { Block } from '../../shared/blocks';
 import { bankKey, type CharacterState } from '../../shared/character';
 import type { LineId, TerminalMark } from '../../shared/types';
-import type { WorldRoom } from '../../shared/world';
+import type { RoomReference, WorldRoom } from '../../shared/world';
 
 /** The purse, the vaults, the rooms the name line can be and whether it is a peek; the realm's places and room commands. */
 export interface MarksParts {
@@ -39,6 +40,8 @@ interface Live {
   placed: string | null;
   /** The room stood in when the name was printed: until the exits are read, the room is still that one. */
   before: string | null;
+  /** Whether this line's own `Obvious exits:` has been read; before it, a placement is the room before. */
+  exitsRead: boolean;
 }
 
 const roomKey = (map: number | null, number: number | null): string | null =>
@@ -49,6 +52,8 @@ export class Marks {
   private readonly world: MarksParts['world'];
   private readonly book: LineMarks;
   private live: Live | null = null;
+  /** A peeked room's name was the last printed: the exits that follow are its, not the live line's. */
+  private peeked = false;
 
   constructor(
     parts: MarksParts,
@@ -61,8 +66,9 @@ export class Marks {
 
   /**
    * The id of a room's name line, recorded with what the console draws beside
-   * it. Every name line gets one, marked or not, so a room placed only once
-   * `Obvious exits:` arrives can have its buttons then.
+   * it and, once placed, the room it was printed for. Every name line gets
+   * one, marked or not, so a room placed only once `Obvious exits:` arrives
+   * can have its buttons then.
    *
    * Asked on the *name* line, before the room is complete, so the mark is
    * answered from the rooms the tracker says the line can be
@@ -77,16 +83,22 @@ export class Marks {
    * its command into the room the character is actually in.
    */
   markFor(block: Block): LineId | undefined {
-    if (!this.session.enrich() || block.type !== 'room-name') return undefined;
+    if (!this.session.enrich()) return undefined;
+    if (block.type === 'room-exits') {
+      if (this.live !== null && !this.peeked) this.live.exitsRead = true;
+      return undefined;
+    }
+    if (block.type !== 'room-name') return undefined;
     const name = block.text.trim();
     const peek = this.tracker.nextRoomIsPeek;
     const mark = this.decide(name, this.tracker.roomsNameCanBe(name), peek);
     const id = this.book.issue(mark ?? undefined);
+    this.peeked = peek;
     if (peek) return id;
     // A room printed again, here or elsewhere: the last line printed is the one stood in.
     this.retire();
     const { map, number } = this.tracker.current.room;
-    this.live = { id, name, mark, placed: null, before: roomKey(map, number) };
+    this.live = { id, name, mark, placed: null, before: roomKey(map, number), exitsRead: false };
     return id;
   }
 
@@ -105,29 +117,31 @@ export class Marks {
       return;
     }
     const placed = roomKey(map, number);
-    if (live.placed === placed) return;
+    if (live.placed === placed && (live.mark?.room !== undefined || !live.exitsRead)) return;
     /*
      * The room stood in when the name was printed: a look here, or a namesake
      * next door whose exits are still to come. Placed, so leaving it without a
-     * name line takes the buttons off, but not decided again from it.
+     * name line takes the buttons off, but neither decided again from it nor
+     * given its room until this line's exits say which it is.
      */
-    if (live.placed === null && placed === live.before) {
+    if (!live.exitsRead && live.placed === null && placed === live.before) {
       live.placed = placed;
       return;
     }
     live.placed = placed;
     const room = this.world?.get(map, number);
-    live.mark = this.decide(name, room ? [room] : [], false);
+    const where: RoomReference = { map, room: number };
+    // The line keeps its room after the buttons come off: a click on the name in the backscroll routes there.
+    live.mark = withRoom(this.decide(name, room ? [room] : [], false), name, where);
     this.book.change([{ id: live.id, mark: live.mark }]);
   }
 
-  /** The live line's buttons off; its glyph is a label, sends nothing, and stays. */
+  /** The live line's buttons off; its glyph is a label, sends nothing, and stays, as does its room. */
   private retire(): void {
     const live = this.live;
     this.live = null;
     if (live === null || live.mark?.actions === undefined) return;
-    const { icon, label } = live.mark;
-    this.book.change([{ id: live.id, mark: icon === undefined ? null : { icon, label } }]);
+    this.book.change([{ id: live.id, mark: pressless(live.mark) }]);
   }
 
   /**
@@ -168,3 +182,9 @@ export class Marks {
     };
   }
 }
+
+/** A line's mark with the room it was printed for; a plain room is a mark with nothing to draw. */
+const withRoom = (mark: TerminalMark | null, label: string, room: RoomReference): TerminalMark => ({
+  ...(mark ?? { label }),
+  room
+});

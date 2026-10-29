@@ -1,12 +1,7 @@
 import type { ItemRarity, RarityFrom, RarityGate, RaritySource } from '@shared/rarity';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
-import { clockText } from '../lib/clockText';
-
-/** Hours to one copy: the lair clock's letters, and days past two of them. */
-function rarityClock(hours: number): string {
-  return hours < 48 ? clockText(hours * 3600) : `${Number((hours / 24).toFixed(1))}d`;
-}
+import { bandWord, rarityClock } from '../lib/rarityText';
 
 /** A percent to three figures: `10`, `0.15`, `33.3`. */
 const figure = (percent: number): number => Number(percent.toPrecision(3));
@@ -143,25 +138,4 @@ export default function RarityRows({ rarity }: { rarity: ItemRarity }) {
       )}
     </>
   );
-}
-
-function bandWord({ rarity }: ItemRarity): string {
-  switch (rarity) {
-    case 'common':
-      return t('cards.reference.item.rarity.band.common');
-    case 'uncommon':
-      return t('cards.reference.item.rarity.band.uncommon');
-    case 'rare':
-      return t('cards.reference.item.rarity.band.rare');
-    case 'veryRare':
-      return t('cards.reference.item.rarity.band.veryRare');
-    case 'extremelyRare':
-      return t('cards.reference.item.rarity.band.extremelyRare');
-    case 'unknown':
-      return t('cards.reference.item.rarity.band.unknown');
-    default: {
-      const never: never = rarity;
-      return never;
-    }
-  }
 }

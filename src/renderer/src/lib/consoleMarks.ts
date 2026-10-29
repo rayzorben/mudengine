@@ -21,6 +21,7 @@ import type {
   TerminalActionName,
   TerminalMark
 } from '@shared/types';
+import type { RoomReference } from '@shared/world';
 
 /**
  * What a button beside a line can do: type, or ask main to act. Two callbacks,
@@ -55,11 +56,14 @@ export interface ConsoleMarks {
    * now has that number.
    */
   cleared(): void;
+  /** The room the name line on this buffer row was printed for; null when the row has none placed. */
+  roomOn(bufferRow: number): RoomReference | null;
 }
 
 interface Row {
   marker: IMarker;
   drawn: IDecoration[];
+  room: RoomReference | null;
 }
 
 export function drawMarks(term: Terminal, dress: MarkDress): ConsoleMarks {
@@ -73,7 +77,7 @@ export function drawMarks(term: Terminal, dress: MarkDress): ConsoleMarks {
     // The same line written again (a refill) is a new row; the old one is gone with the reset.
     rows.get(id)?.marker.dispose();
     const marker = term.registerMarker(0);
-    const row: Row = { marker, drawn: [] };
+    const row: Row = { marker, drawn: [], room: null };
     rows.set(id, row);
     marker.onDispose(() => {
       if (rows.get(id) === row) rows.delete(id);
@@ -88,6 +92,7 @@ export function drawMarks(term: Terminal, dress: MarkDress): ConsoleMarks {
       if (row === undefined || row.marker.isDisposed) continue;
       for (const decoration of row.drawn) decoration.dispose();
       row.drawn = mark === null ? [] : decorate(term, row.marker, mark, dress);
+      row.room = mark?.room ?? null;
     }
   };
 
@@ -112,6 +117,13 @@ export function drawMarks(term: Terminal, dress: MarkDress): ConsoleMarks {
     cleared() {
       for (const row of [...rows.values()]) row.marker.dispose();
       rows.clear();
+    },
+    roomOn(bufferRow) {
+      // Asked on a click, over the rows the console holds: bounded by the scrollback.
+      for (const row of rows.values()) {
+        if (row.marker.line === bufferRow) return row.room;
+      }
+      return null;
     }
   };
 }

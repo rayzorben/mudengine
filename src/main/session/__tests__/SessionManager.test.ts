@@ -27,7 +27,7 @@ import type { AutomationSnapshot } from '../../../shared/automation';
 import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
 import { NO_REALM_PLAYERS, type PlayerRegistry } from '../../../shared/players';
-import type { Find, RealmFinds, Sighting } from '../../../shared/finds';
+import { isCash, type Find, type RealmFinds, type Sighting } from '../../../shared/finds';
 import type { RealmShops, Shelf } from '../../../shared/shops';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
 import type { HuntingAdvice, KeptSpeed, MeasuredRate, SpotMob } from '../../../shared/hunting';
@@ -7291,7 +7291,8 @@ describe('SessionManager finds', () => {
       ...sighting,
       seen: 1,
       hits: 1,
-      searched: searches.filter((room) => room === sighting.room).length
+      searched: searches.filter((room) => room === sighting.room).length,
+      rarity: isCash(sighting) ? null : { rarity: 'unknown', hours: null }
     });
     return {
       rows,

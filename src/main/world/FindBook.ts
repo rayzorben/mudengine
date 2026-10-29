@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { DENOMINATIONS, type Coins } from '../../shared/character';
-import { findKey, FINDS_VERSION, type Find, type Sighting } from '../../shared/finds';
+import { findKey, FINDS_VERSION, type Logged, type Sighting } from '../../shared/finds';
 import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
@@ -29,7 +29,7 @@ interface FindsFile {
 }
 
 /** A row as it is kept: its room's count lives once, in `searches`. */
-type Kept = Omit<Find, 'searched'>;
+type Kept = Omit<Logged, 'searched'>;
 
 /**
  * What searching has turned up in one realm, on disk.
@@ -91,7 +91,7 @@ export class FindBook {
   }
 
   /** Everything found, oldest first, each with its room's count. The card sorts. */
-  get all(): readonly Find[] {
+  get all(): readonly Logged[] {
     return this.finds.map((row) => this.joined(row));
   }
 
@@ -105,7 +105,7 @@ export class FindBook {
    * was the **first** to turn up, so a caller can say so once rather than on
    * every lap; a repeat still moves `at`, `seen` and `hits`.
    */
-  search(room: RoomId, found: readonly Sighting[]): Find[] {
+  search(room: RoomId, found: readonly Sighting[]): Logged[] {
     this.searches.set(room, (this.searches.get(room) ?? 0) + 1);
     const fresh: Kept[] = [];
     const counted = new Set<string>();
@@ -234,7 +234,7 @@ export class FindBook {
     }
   }
 
-  private joined(row: Kept): Find {
+  private joined(row: Kept): Logged {
     return { ...row, searched: this.searches.get(row.room) ?? 0 };
   }
 

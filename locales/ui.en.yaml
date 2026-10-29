@@ -3645,18 +3645,19 @@ cards:
         one: one at a time
     finds:
       caption: What searching has turned up in this realm
-      chance: Chance
-      chanceTooltip: Found by {hits} of the {searched} searches counted here
       empty: Nothing has been found by searching here yet.
       facet:
         cash: coins
         item: items
+      everyTooltip: One every {clock} at its quickest source
       findPlaceholder: Find in what was found
       forget: ''
       forgetAria: Forget the {what} found in {room}
       forgetTooltip: Forget this
       goToTooltip: Plan a route to {room}
       many: How Many
+      rarity: Rarity
+      searchedTooltip: Found by {hits} of the {searched} searches counted here
       seen: Times
       what: What
       when: Found

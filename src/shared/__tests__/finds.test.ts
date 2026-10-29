@@ -27,6 +27,7 @@ function find(over: Partial<Find> = {}): Find {
     seen: 1,
     hits: 1,
     searched: 1,
+    rarity: { rarity: 'common', hours: 0.02 },
     ...over
   };
 }
@@ -52,12 +53,12 @@ describe('the window on the log', () => {
     expect(rows.map((row) => row.at)).toEqual([NOW, NOW - DAY]);
   });
 
-  it('is rarest first, and a row with no rate yet goes last', () => {
-    const common = find({ name: 'coins', hits: 9, searched: 10 });
-    const rare = find({ name: 'rusty key', hits: 1, searched: 10, at: NOW - DAY });
-    const uncounted = find({ name: 'sash', hits: 0, searched: 0, at: NOW + 1 });
-    const rows = within([uncounted, common, rare], 0, NOW);
-    expect(rows.map((row) => row.name)).toEqual(['rusty key', 'coins', 'sash']);
+  it('is rarest in the realm first, and cash goes last', () => {
+    const cash = find({ name: 'coins', copper: 40, rarity: null, at: NOW + 1 });
+    const rare = find({ name: 'rusty key', rarity: { rarity: 'rare', hours: 30 }, at: NOW - DAY });
+    const common = find({ name: 'sash', hits: 0, searched: 0 });
+    const rows = within([cash, common, rare], 0, NOW);
+    expect(rows.map((row) => row.name)).toEqual(['rusty key', 'sash', 'coins']);
   });
 
   it('keeps everything at zero days, which is the shipped answer', () => {
@@ -94,11 +95,33 @@ describe('how often a search turns it up', () => {
     // record, which is no rate at all rather than a perfect one.
     expect(findRate(find({ seen: 9, hits: 0, searched: 0 }))).toBeNull();
   });
+});
 
-  it('puts never-found-since-counting above rare, since it is rarer', () => {
-    const none = find({ hits: 0, searched: 3 });
-    const rare = find({ name: 'ring', hits: 1, searched: 3 });
-    expect(byRarest(none, rare)).toBeLessThan(0);
+describe('rarest first', () => {
+  // The user, 2026-10-29: silk gloves turned up once in about seventy searches
+  // and read 1.4%, though a seamstress restocks them every minute.
+  const gloves = find({ name: 'silk gloves', hits: 1, searched: 70 });
+  const ring = find({ name: 'ring', hits: 9, searched: 10, rarity: { rarity: 'rare', hours: 60 } });
+
+  it("goes by the realm's rarity, never by how often the room turned it up", () => {
+    expect(byRarest(ring, gloves)).toBeLessThan(0);
+  });
+
+  it('goes by the hours within a band', () => {
+    const slower = find({ name: 'amulet', rarity: { rarity: 'rare', hours: 90 } });
+    expect(byRarest(slower, ring)).toBeLessThan(0);
+  });
+
+  it('puts a quest reward with no hours above the timed rares', () => {
+    const reward = find({ name: 'token', rarity: { rarity: 'rare', hours: null } });
+    expect(byRarest(reward, ring)).toBeLessThan(0);
+  });
+
+  it('puts unknown below every band and cash below unknown', () => {
+    const unknown = find({ name: 'odd thing', rarity: { rarity: 'unknown', hours: null } });
+    const cash = find({ name: '4 copper farthings', copper: 4, rarity: null });
+    expect(byRarest(gloves, unknown)).toBeLessThan(0);
+    expect(byRarest(unknown, cash)).toBeLessThan(0);
   });
 });
 

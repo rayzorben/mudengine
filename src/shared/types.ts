@@ -2,6 +2,7 @@
  * Types shared across the main, preload and renderer processes.
  * This module must stay dependency-free so it can be imported from any context.
  */
+import type { RoomReference } from './world';
 
 /** How the engine describes a remote endpoint. */
 export interface ConnectionTarget {
@@ -264,6 +265,12 @@ export interface TerminalMark {
   actions?: TerminalAction[];
   /** Glyphs inside the line, on a line the client drew (`ui.rewrites`). */
   inline?: InlineGlyph[];
+  /**
+   * The room this name line was printed for, once the character is placed in
+   * it. What a click on the name routes to; absent while only the name is
+   * known, and on a peeked room, whose name then opens the rooms sharing it.
+   */
+  room?: RoomReference;
 }
 
 /**

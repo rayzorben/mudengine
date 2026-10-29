@@ -17,6 +17,7 @@ import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
 import type { WalkProgress } from '@shared/walk';
 import type { LostEnter, TerminalActionName, TerminalSize } from '@shared/types';
+import type { RoomReference } from '@shared/world';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { MenuItem } from './PopupMenu';
@@ -36,8 +37,8 @@ export interface SessionTerminalProps {
   onSelectGang?(session: SessionId, name: string, at: PopoverAnchor): void;
   /** A slot word in a listing clicked: the slot's quick view, for this character. */
   onSelectSlot?(session: SessionId, slot: string, at: PopoverAnchor): void;
-  /** A room's name clicked in the console: the route panel, on that room. */
-  onChooseRoom?(name: string): void;
+  /** A room's name clicked in the console: the route panel, on the room the line was printed for when known. */
+  onChooseRoom?(name: string, room: RoomReference | null): void;
   /** A line's gear clicked: the settings behind that decision, for this character (todo 119). */
   onSetting?(session: SessionId, decision: DecisionKind): void;
   /** This character's recent rooms and loops, for the right-click menu (`useRecentMenu`). */

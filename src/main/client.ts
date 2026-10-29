@@ -47,6 +47,7 @@ import { CHARACTER_RECORDS, homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { wearerOf } from './world/wearer';
 import { rarityBook } from './world/itemRarity';
+import { ratedFinds } from './world/findRarity';
 import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
@@ -668,7 +669,7 @@ function findsFor(id: SessionId): RealmFinds | undefined {
     search: (room, found) => book().search(room, found),
     forget: (key) => book().forget(key),
     get all() {
-      return book().all;
+      return ratedFinds(book().all, worldFor(id));
     }
   };
 }
