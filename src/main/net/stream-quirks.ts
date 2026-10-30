@@ -66,12 +66,22 @@ export function applyQuirks(text: string, quirks: QuirkOptions): string {
  * to the next chunk.
  */
 // Compiled once: this runs on every chunk the socket delivers.
-/** A complete CSI sequence ends with a byte in the range 0x40-0x7E. */
-const COMPLETE_CSI = /^\x1B\[[0-9;?]*[\x40-\x7E]/;
+/**
+ * A CSI up to the byte that ends it: its parameters, then its intermediates
+ * (ECMA-48). Shared with `cursorReport.ts`, which must agree on where one ends.
+ */
+export const CSI_HEAD = /\x1B\[([0-?]*)([ -/]*)/;
+/** An OSC sequence, terminated with BEL or ST. */
+export const OSC = /\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/;
+/**
+ * A CSI is over at the first byte past its parameters and intermediates: its
+ * final byte, or a control byte the server sent instead. The Major BBS's RIP
+ * probe is `ESC[!` then `\b`, and held as partial it waited for the next chunk.
+ */
+const COMPLETE_CSI = new RegExp(`^${CSI_HEAD.source}[^0-?\\x20-/]`);
 /** A complete two-character escape (e.g. ESC c, ESC 7) is also finished. */
 const COMPLETE_TWO_CHAR = /^\x1B[^[\]]/;
-/** OSC sequences terminate with BEL or ST. */
-const COMPLETE_OSC = /^\x1B\][^\x07\x1B]*(\x07|\x1B\\)/;
+const COMPLETE_OSC = new RegExp(`^${OSC.source}`);
 
 export function splitTrailingEscape(text: string): { emit: string; hold: string } {
   const start = text.lastIndexOf('\x1B');

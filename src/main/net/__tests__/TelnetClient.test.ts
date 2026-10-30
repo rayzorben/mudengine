@@ -134,6 +134,22 @@ describe('TelnetClient', () => {
     client.disconnect();
   });
 
+  it("answers The Major BBS's cursor-position probe from the wire", async () => {
+    // The opening chunk of OCI 2026-10-30_18-45-39_soul, byte for byte.
+    const probe = Buffer.from('QXV0by1zZW5zaW5nLi4uDQogICAgG1s2bggICAgNICAgIBtbIQgICA0=', 'base64');
+    const server = await startServer((socket) => socket.write(probe));
+    const client = new TelnetClient();
+    const telnet: string[] = [];
+    client.on('telnet', (event) => telnet.push(event.summary));
+    await client.connect({ host: '127.0.0.1', port: server.port, encoding: 'cp437' });
+
+    await until(() => telnet.length === 2);
+    expect(Buffer.concat(server.received).toString('latin1')).toBe('\x1b[2;5R');
+    expect(telnet).toEqual(['ESC[2;5R for ESC[6n', 'ESC[! left unanswered']);
+
+    client.disconnect();
+  });
+
   it('sends commands as CR LF and never leaks a raw 0xFF', async () => {
     const server = await startServer();
     const client = new TelnetClient();

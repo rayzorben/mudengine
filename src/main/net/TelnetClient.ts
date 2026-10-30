@@ -10,6 +10,7 @@ import { EventEmitter } from 'node:events';
 import iconv from 'iconv-lite';
 
 import { TelnetParser } from './TelnetParser';
+import { CursorReport, type TerminalQuery } from './cursorReport';
 import {
   applyQuirks,
   splitTrailingEscape,
@@ -83,6 +84,8 @@ export class TelnetClient extends EventEmitter {
   /** Last geometry actually put on the wire, so repeats are not resent. */
   private reported: TerminalSize | null = null;
   private nawsTimer: NodeJS.Timeout | null = null;
+  /** Where the server has put the cursor, for its `ESC[6n`; one per connection. */
+  private cursor = new CursorReport(() => this.size);
   /** Set on an explicit `disconnect()` so `close` can report a graceful exit. */
   private closingIntentionally = false;
   /** Identifies the current socket so late events from a replaced socket are ignored. */
@@ -153,6 +156,7 @@ export class TelnetClient extends EventEmitter {
     // A fresh parser per connection: option state must never leak across
     // sessions, which is how negotiation loops appear on reconnect.
     this.parser = this.createParser();
+    this.cursor = new CursorReport(() => this.size);
 
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ host: target.host, port: target.port });
@@ -406,10 +410,30 @@ export class TelnetClient extends EventEmitter {
       const { emit, hold } = splitTrailingEscape(combined);
       this.escapeCarry = hold;
 
-      if (emit.length > 0) this.emit('data', applyQuirks(emit, this.quirks));
+      if (emit.length > 0) {
+        // Counted on the painted text: the clear-screen rewrite homes the cursor.
+        const painted = applyQuirks(emit, this.quirks);
+        for (const query of this.cursor.feed(painted)) this.answer(query);
+        this.emit('data', painted);
+      }
     }
 
     for (let i = 0; i < result.promptMarks.length; i += 1) this.emit('prompt');
+  }
+
+  /** Writes the connection's answer to a terminal query, and reports either way. */
+  private answer(query: TerminalQuery): void {
+    const asked = printable(query.asked);
+    if (query.answer !== null && this.socket && !this.socket.destroyed) {
+      this.socket.write(this.parser.encode(query.answer));
+      this.emit('telnet', {
+        at: Date.now(),
+        direction: 'out',
+        summary: `${printable(query.answer)} for ${asked}`
+      });
+      return;
+    }
+    this.emit('telnet', { at: Date.now(), direction: 'in', summary: `${asked} left unanswered` });
   }
 
   private teardown(): void {
@@ -423,4 +447,9 @@ export class TelnetClient extends EventEmitter {
     this.socket.destroy();
     this.socket = null;
   }
+}
+
+/** A control sequence as it reads in the diagnostics: `ESC[6n`. */
+function printable(sequence: string): string {
+  return sequence.replace(/\x1b/g, 'ESC');
 }

@@ -69,6 +69,18 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'the UI copy as a pattern, for tests and harnesses only: nothing the app ships imports ' +
       'it, and each pattern is built from a dictionary string known only when it is read'
   },
+  'src/main/net/stream-quirks.ts': {
+    count: 2,
+    because:
+      'where a CSI and an OSC end is written once (`CSI_HEAD`, `OSC`) and shared with ' +
+      '`cursorReport.ts`, so the hold and the cursor count agree (2026-10-30); module-level'
+  },
+  'src/main/net/cursorReport.ts': {
+    count: 3,
+    because:
+      "built from `stream-quirks.ts`'s `CSI_HEAD` and `OSC` for the same reason, sticky so a " +
+      'chunk of ANSI art is read at an offset without slicing (2026-10-30); module-level'
+  },
   'src/shared/template.ts': {
     count: 2,
     because:

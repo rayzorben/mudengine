@@ -30,6 +30,15 @@ describe('splitTrailingEscape', () => {
     expect(splitTrailingEscape(input)).toEqual({ emit: input, hold: '' });
   });
 
+  it('emits a CSI the server abandoned for a control byte', () => {
+    // The Major BBS's RIP probe, OCI 2026-10-30_18-45-39_soul.
+    expect(splitTrailingEscape('    \x1b[!\b\b\b\r')).toEqual({
+      emit: '    \x1b[!\b\b\b\r',
+      hold: ''
+    });
+    expect(splitTrailingEscape('\x1b[!')).toEqual({ emit: '', hold: '\x1b[!' });
+  });
+
   it('holds back a lone trailing ESC', () => {
     expect(splitTrailingEscape('x\x1b')).toEqual({ emit: 'x', hold: '\x1b' });
   });

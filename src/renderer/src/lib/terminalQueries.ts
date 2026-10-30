@@ -3,11 +3,10 @@
  * a status, device-attributes, mode, setting or colour query through `onData`,
  * and once a server turns focus, mouse or paste reporting on it sends those
  * reports the same way; everything `onData` carries goes to the game as typed.
- * So the queries go unanswered and the reporting modes are never turned on.
- * No recorded session of ours shows a server asking or setting one (every
- * capture and log, checked 2026-09-26), so nothing answers in the terminal's
- * place either. A colour *set* still reaches the terminal; only its query is
- * swallowed.
+ * So the queries go unanswered here and the reporting modes are never turned
+ * on. The one query a server waits on, The Major BBS's `ESC[6n`, is answered
+ * by the connection (`src/main/net/cursorReport.ts`). A colour *set* still
+ * reaches the terminal; only its query is swallowed.
  */
 import type { IParser, Terminal } from '@xterm/xterm';
 
