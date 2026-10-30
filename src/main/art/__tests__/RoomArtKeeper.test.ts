@@ -20,6 +20,9 @@ const MARBLE = 'This narrow passageway is made of smooth white marble.';
 const MARBLE_KEY = roomKey(MARBLE);
 const CRYPT = 'Unlit torches line the walls of this ten foot wide stone hallway.';
 const CRYPT_KEY = roomKey(CRYPT);
+/** The drawing made for 1/78's description and exits, laid on mirrored and turned once. */
+const DRAWING = '0123456789abcdef';
+const SHIPPED = { kind: 'shipped', key: DRAWING, turn: { quarters: 1, mirrored: true } };
 
 /* Todo 20261020-2015-01: the room's picture, shipped, kept or asked for. */
 describe('the picture of the room the character is in', () => {
@@ -82,9 +85,9 @@ describe('the picture of the room the character is in', () => {
     fs.writeFileSync(
       path.join(dir, 'room-index.json'),
       JSON.stringify({
-        format: 1,
-        keys: [MARBLE_KEY],
-        byRoom: { greatermud: { '1/78': MARBLE_KEY } }
+        format: 2,
+        described: { [DRAWING]: MARBLE_KEY },
+        byRoom: { greatermud: { '1/78': `${DRAWING}:5` } }
       })
     );
     shipped = new ShippedRoomArt(path.join(dir, 'room-index.json'), (message) => {
@@ -98,12 +101,24 @@ describe('the picture of the room the character is in', () => {
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  it('shows a shipped picture by its description, asking nothing', async () => {
+  it('shows the drawing made for the room, turned, when it reads as drawn, asking nothing', async () => {
     const one = keeper();
     one.observe(inRoom(room(1, 78, MARBLE)));
     await until(() => one.current().picture !== null);
-    expect(one.current().picture).toEqual({ kind: 'shipped', key: MARBLE_KEY });
+    expect(one.current().picture).toEqual(SHIPPED);
     expect(asked).toEqual([]);
+    one.dispose();
+  });
+
+  it('gives the drawing to no other description at that number, nor the description elsewhere', async () => {
+    const one = keeper();
+    one.observe(inRoom(room(1, 78, CRYPT)));
+    await until(() => one.current().picture?.kind === 'drawn');
+    expect(one.current().picture).toMatchObject({ key: CRYPT_KEY });
+    // Drawn for 1/78's exits: the same words in a room with other exits are asked for.
+    one.observe(inRoom(room(1, 1711, MARBLE)));
+    await until(() => one.current().picture?.key === MARBLE_KEY);
+    expect(asked.map((request) => request.room)).toEqual([78, 1711]);
     one.dispose();
   });
 
@@ -111,7 +126,7 @@ describe('the picture of the room the character is in', () => {
     const one = keeper();
     one.observe(inRoom(room(1, 78, null)));
     await until(() => one.current().picture !== null);
-    expect(one.current().picture).toEqual({ kind: 'shipped', key: MARBLE_KEY });
+    expect(one.current().picture).toEqual(SHIPPED);
     one.observe(inRoom(room(1, 79, null)));
     await until(() => one.current().picture === null);
     // Another realm's numbering is another realm's room: nothing is guessed from this table.
@@ -161,7 +176,7 @@ describe('the picture of the room the character is in', () => {
     answer = { kind: 'refused', reason: 'not a room any world database has' };
     one.observe(inRoom(room(1, 1710, CRYPT)));
     await until(() => said.length === 1);
-    one.observe(inRoom(room(1, 1711, MARBLE)));
+    one.observe(inRoom(room(1, 78, MARBLE)));
     one.observe(inRoom(room(1, 1710, CRYPT)));
     await settled();
     expect(asked).toHaveLength(1);

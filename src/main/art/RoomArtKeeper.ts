@@ -1,12 +1,13 @@
 /**
  * One character's room picture (todo 20261020-2015-01). On each certain room:
- * the description read gives the key; the bundled set has it, or the store on
- * disk does, or with `art.rooms` on the server is asked once per key, one ask
- * in flight, and the drawing kept. A room shown without its description
- * (brief) takes the set's picture for its map and room, and otherwise waits
- * for the look `BriefLook` offers. A room left while its drawing was under way
- * shows it on the next visit. An unreachable server is asked again on the
- * next entry to the realm, as portraits are.
+ * the bundled set's drawing for its map and room, turned to its exits (todo
+ * 20261021-1417-01), where the description read is the one it was drawn from
+ * or brief printed none. Otherwise the description read gives the key: the
+ * store on disk has it, or with `art.rooms` on the server is asked once per
+ * key, one ask in flight, and the drawing kept. A brief room the set has no
+ * drawing for waits for the look `BriefLook` offers. A room left while its
+ * drawing was under way shows it on the next visit. An unreachable server is
+ * asked again on the next entry to the realm, as portraits are.
  */
 import type { CharacterState, RealmFamily, Room } from '../../shared/character';
 import { certainRoom, describedRoom } from '../../shared/descriptions';
@@ -21,10 +22,10 @@ import { errorMessage } from '../../shared/values';
 import { AskLedger } from './AskLedger';
 import { dataUrlOf, type Picture, type PictureCache } from './pictureCache';
 import { roomKey } from './roomKey';
-import type { ShippedRoomArt } from './ShippedRoomArt';
+import type { ShippedDrawing, ShippedRoomArt } from './ShippedRoomArt';
 
 export interface RoomArtKeeperDeps {
-  shipped: Pick<ShippedRoomArt, 'has' | 'keyOf' | 'loaded'>;
+  shipped: Pick<ShippedRoomArt, 'drawingOf' | 'loaded'>;
   source: RoomArtSource;
   cache: PictureCache;
   /** `art.rooms`, read through. */
@@ -94,14 +95,15 @@ export class RoomArtKeeper {
     await this.deps.shipped.loaded;
     if (turn !== this.turn || this.disposed) return;
     const read = describedRoom(room);
+    const shipped = this.deps.shipped.drawingOf(realm, certain.map, certain.number);
     if (read === null) {
-      const key = this.deps.shipped.keyOf(realm, certain.map, certain.number);
-      this.set(key === null ? null : { kind: 'shipped', key });
+      this.set(shipped === null ? null : shippedPicture(shipped));
       return;
     }
     const key = roomKey(read.text);
-    if (this.deps.shipped.has(key)) {
-      this.set({ kind: 'shipped', key });
+    // Another description at that number is another room than the one drawn.
+    if (shipped?.described === key) {
+      this.set(shippedPicture(shipped));
       return;
     }
     if (this.view.picture?.key === key) return;
@@ -169,6 +171,10 @@ export class RoomArtKeeper {
 interface Latest {
   room: Room;
   realm: RealmFamily | null;
+}
+
+function shippedPicture(drawing: ShippedDrawing): RoomPicture {
+  return { kind: 'shipped', key: drawing.key, turn: drawing.turn };
 }
 
 function drawn(key: string, picture: Picture): RoomPicture {

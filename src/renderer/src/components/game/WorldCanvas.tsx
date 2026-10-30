@@ -53,6 +53,7 @@ import {
   FLIGHT_MS,
   standings,
   tokenRadius,
+  type ArenaPicture,
   type Disc,
   type ExitSpot,
   type Flight
@@ -106,7 +107,7 @@ export interface WorldCanvasProps {
   /** The room's beat, drawn as the ring round the arena (todo 154); null for no ring. */
   rounds: RoundAnchor | null;
   /** The room's picture, decoded, under the arena's tokens (todo 20261020-2015-01). */
-  picture: CanvasImageSource | null;
+  picture: ArenaPicture | null;
   /** How opaque the picture is drawn, 0 to 1 (`gameView.roomArtOpacity`). */
   roomArtOpacity: number;
   onFoe(name: string): void;

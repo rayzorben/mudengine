@@ -11,6 +11,7 @@
  */
 import type { MapArea } from '@shared/gameMap';
 import { STEP } from '@shared/map';
+import type { RoomTurn } from '@shared/roomArt';
 import type { Direction } from '@shared/world';
 import type { Blow } from '../../lib/gameBlows';
 import { wrapWords, type ArenaExit, type ArenaToken } from '../../lib/gameArena';
@@ -30,9 +31,15 @@ export interface ArenaRoom {
   /** The line under the facts while the map is detached. */
   detached: string | null;
   /** The room's picture, decoded, or null for the plain disc. */
-  picture: CanvasImageSource | null;
+  picture: ArenaPicture | null;
   /** How opaque the picture is drawn, 0 to 1; the floor's colour shows through the rest. */
   pictureOpacity: number;
+}
+
+/** A room's picture and how it is laid on the disc so north is at the top. */
+export interface ArenaPicture {
+  image: CanvasImageSource;
+  turn: RoomTurn;
 }
 
 export interface Disc {
@@ -421,7 +428,12 @@ export function drawFloor(
     ctx.beginPath();
     ctx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
     ctx.clip();
-    ctx.drawImage(room.picture, disc.x - disc.r, disc.y - disc.r, disc.r * 2, disc.r * 2);
+    // Mirrored first, then turned: the order the art run's turn code is written in.
+    const { image, turn } = room.picture;
+    ctx.translate(disc.x, disc.y);
+    ctx.rotate((turn.quarters * Math.PI) / 2);
+    if (turn.mirrored) ctx.scale(-1, 1);
+    ctx.drawImage(image, -disc.r, -disc.r, disc.r * 2, disc.r * 2);
     ctx.restore();
   }
   if (room.dark) {

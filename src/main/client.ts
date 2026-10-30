@@ -1775,7 +1775,7 @@ function createHost(): SessionHost {
     },
     // Before the index is read it is taken to have the room, so no look is spent on one it has.
     roomArtShipped: (realm, map, room) =>
-      art !== null && (!art.shipped.ready || art.shipped.keyOf(realm, map, room) !== null),
+      art !== null && (!art.shipped.ready || art.shipped.drawingOf(realm, map, room) !== null),
     // Per window: which characters have tabs where is the one roster question
     // that differs between them.
     publishRoster: publishRosters,

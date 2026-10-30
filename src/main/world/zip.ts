@@ -69,8 +69,31 @@ export function isZip(file: string): boolean {
  * do anything with one.
  */
 export function zipEntries(file: string): ZipEntry[] {
+  return indexed(fs.readFileSync(file), path.basename(file));
+}
+
+/** One entry's bytes, decompressed and checked against the archive's own CRC. */
+export function readZipEntry(file: string, entry: ZipEntry): Buffer {
+  return extracted(fs.readFileSync(file), entry, path.basename(file));
+}
+
+/** An archive read once, for a caller taking many entries from it. */
+export interface ZipArchive {
+  entries: ZipEntry[];
+  read(entry: ZipEntry): Buffer;
+}
+
+/** Every file the archive holds, and each one's bytes, from one read of it. */
+export function openZip(file: string): ZipArchive {
   const archive = fs.readFileSync(file);
   const label = path.basename(file);
+  return {
+    entries: indexed(archive, label),
+    read: (entry) => extracted(archive, entry, label)
+  };
+}
+
+function indexed(archive: Buffer, label: string): ZipEntry[] {
   try {
     return index(archive, label);
   } catch (error) {
@@ -79,10 +102,7 @@ export function zipEntries(file: string): ZipEntry[] {
   }
 }
 
-/** One entry's bytes, decompressed and checked against the archive's own CRC. */
-export function readZipEntry(file: string, entry: ZipEntry): Buffer {
-  const archive = fs.readFileSync(file);
-  const label = path.basename(file);
+function extracted(archive: Buffer, entry: ZipEntry, label: string): Buffer {
   try {
     return extract(archive, entry, label);
   } catch (error) {

@@ -116,6 +116,10 @@ docs/
 # and `npm run test:realm` reads.
 *.mdb
 *.accdb
+# The room art run's zip: at 211 MB it is over GitHub's 100 MB limit,
+# and its pictures are tracked unpacked in `src/renderer/public/room-art/`
+# (2026-10-29). `npm run build:room-art` reads it from a copy of the run.
+mdb/room-art.zip
 
 # The gate ledger and its step logs: which checks are green at which inputs,
 # and what the last run of each printed. Local state, rebuilt by running them.
