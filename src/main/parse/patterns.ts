@@ -1296,6 +1296,18 @@ export const RULES: Rule[] = [
   { type: 'conversation-auction', pattern: /^(?<player>\w+) auctions: (?<message>.+)/ },
   { type: 'conversation-telepath', pattern: /^(?<player>\w+) telepaths: (?<message>.+)/ },
   /*
+   * A page, from the BBS around the game: an account name, the module it was
+   * sent from, and the message after a colon and one or two spaces. Paradigm
+   * (the user's own session, 2026-10-30) and stock MajorMUD (captures/025:
+   * `Zoe is paging you from MajorMUD:  can't get in`). `/p soul hi` is
+   * answered with the receipt below, which has no spaces inside its dashes.
+   */
+  {
+    type: 'conversation-page',
+    pattern: /^(?<player>\w+) is paging you from (?<where>[^:]+):\s+(?<message>.+)/
+  },
+  { type: 'conversation-page', pattern: /^---Page sent to (?<player>\w+)---/ },
+  /*
    * The receipts for a message this character addressed to one person, which
    * are the only thing on the wire that says either went out — neither `/Soul
    * hi` nor `>Soul hi` is echoed back as a sentence the way a yell is.

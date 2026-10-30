@@ -18,7 +18,7 @@ export function forYou(block: Block, self: string | null): boolean {
   const said = block.groups['message'];
   // A receipt (`--- Telepath Sent to X ---`) is this character's own; it carries no message.
   if (said === undefined || (speaker !== undefined && isOwnName(self, speaker))) return false;
-  if (block.type === 'conversation-telepath') return true;
+  if (block.type === 'conversation-telepath' || block.type === 'conversation-page') return true;
   const target = block.groups['target'];
   if (block.type === 'conversation-directed' && target !== undefined && isOwnName(self, target))
     return true;

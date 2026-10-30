@@ -129,6 +129,7 @@ export const VOLUNTEERED: ReadonlySet<BlockType> = new Set<BlockType>([
   'conversation-broadcast',
   'conversation-gangpath',
   'conversation-telepath',
+  'conversation-page',
   'conversation-auction',
   'conversation-directed',
   'conversation-yell',

@@ -99,6 +99,9 @@ function rig(
     rememberTheWayBack: () => {
       log.push('wayBack');
     },
+    onTargetGone: () => {
+      log.push('targetGone');
+    },
     onDiscovery: () => {
       log.push('discovery');
     }

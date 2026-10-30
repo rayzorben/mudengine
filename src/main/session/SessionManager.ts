@@ -78,6 +78,7 @@ import { Grounded } from './Grounded';
 import { Safety } from './Safety';
 import { StatsBaseline } from './StatsBaseline';
 import { FleeGoto } from './FleeGoto';
+import { TimedPassage } from './TimedPassage';
 import { Events } from '../automation/Events';
 import type { SessionModule } from '../automation/Module';
 import type { Loop } from '../../shared/loops';
@@ -85,7 +86,6 @@ import {
   roomAddress,
   roomId,
   landingRooms,
-  type Corridor,
   type RoomId,
   type Route,
   type WorldSpell
@@ -498,6 +498,8 @@ export class SessionManager {
   private readonly travel: Travel;
   /** What was underway, kept in the character's record across a relaunch. See `CarryOver`. */
   private readonly carryOver: CarryOver;
+  /** The timed passage the character stands in, said going in and coming out. */
+  private readonly passage: TimedPassage;
 
   constructor(
     private readonly sink: SessionSink,
@@ -528,7 +530,8 @@ export class SessionManager {
       players,
       spellLore,
       deps.lastRoom,
-      harm
+      harm,
+      (target) => notice(t('session.safety.targetGone', { target }))
     );
     this.records = new Records({ tracker: this.tracker, world, memory, finds, shops }, sink);
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
@@ -610,6 +613,7 @@ export class SessionManager {
       (spell) => spellHeals(world?.spellNamed(spell))
     );
     this.world = world;
+    this.passage = new TimedPassage(world, notice);
     this.realmWord = new RealmWordWatch(world, sink);
     this.promptDesign = new PromptDesign(
       { tracker: this.tracker, rewriter: this.rewriter },
@@ -740,7 +744,7 @@ export class SessionManager {
     const realmSpeed = (): number => this.errands.realmSpeed;
     const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
-    const moveOnly = (state: CharacterState): boolean => this.underTimedSpell(state) !== null;
+    const moveOnly = (state: CharacterState): boolean => this.passage.over(state) !== null;
     const signs: FightSigns = {
       monsterSwung: (at) => this.hangUp.monsterSwung(at),
       quarry: (state) => this.combat.quarry(state)
@@ -2876,8 +2880,8 @@ export class SessionManager {
        * fight opened there is a round not spent walking out, and the spell is
        * the deadline. Said once going in and once coming out.
        */
-      const passage = this.underTimedSpell(state);
-      this.noteMoveOnly(passage);
+      const passage = this.passage.over(state);
+      this.passage.note(passage);
       const moveOnly = passage !== null;
       this.combat.noteMoveOnly(moveOnly);
       this.routines.onCharacter(state);
@@ -3033,18 +3037,6 @@ export class SessionManager {
    *   `restBelow` was affected.
    */
   /**
-   * The timed passage the character is standing in, or null (todo 104): the
-   * realm's own reading (`WorldGraph.spellOver`) of the room, never the
-   * spell list, which records what the wire confirmed and the dive's
-   * *holding breath* is confirmed by nothing readable.
-   */
-  private underTimedSpell(state: CharacterState): Corridor | null {
-    const here = roomAddress(state.room);
-    if (here === null || this.world === undefined) return null;
-    return this.world.spellOver(here);
-  }
-
-  /**
    * Nothing else in the middle of something: the escapes, and **the errands**,
    * each of which has phases where nothing is walking and nothing is looping (a
    * shop errand waiting for its listing, a trainer errand waiting for the level
@@ -3055,25 +3047,10 @@ export class SessionManager {
     return this.travel.escaping || this.travel.holdsTrips();
   }
 
-  /** The passage last said, so going in and coming out are each said once. */
-  private passageSaid: Corridor | null = null;
-
-  private noteMoveOnly(passage: Corridor | null): void {
-    if (passage === this.passageSaid) return;
-    if (passage !== null) {
-      this.sink.notice(
-        t('session.corridor.entered', { spell: passage.name, rooms: passage.rooms })
-      );
-    } else if (this.passageSaid !== null) {
-      this.sink.notice(t('session.corridor.left', { spell: this.passageSaid.name }));
-    }
-    this.passageSaid = passage;
-  }
-
   private mayRest(): boolean {
     if (this.travel.isRetreating()) return false;
     // Under a timed spell the way in cast, sitting down is drowning (todo 104).
-    if (this.underTimedSpell(this.tracker.current) !== null) return false;
+    if (this.passage.over(this.tracker.current) !== null) return false;
     // An escape whose answer has not come is a room the character may still
     // be standing in — the one it just tried to leave (todo 06).
     if (this.travel.escapeUnanswered) return false;
@@ -3118,7 +3095,7 @@ export class SessionManager {
     // The quest run's clocks lapse on a quiet wire; first, as its leg walks a passage
     // nothing else may act in. The item errand's too, but never inside one.
     this.questRunner.onCharacter(state);
-    if (this.underTimedSpell(state) !== null) return;
+    if (this.passage.over(state) !== null) return;
     this.itemErrand.tick(state);
     this.heal.onCharacter(state);
     this.potions.onCharacter(state);

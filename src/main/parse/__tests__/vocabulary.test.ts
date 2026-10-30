@@ -212,6 +212,9 @@ describe('every fact the parser produces reaches something', () => {
      * nothing addressable to record.
      */
     'conversation-yell': 'names a direction rather than a player, so nothing can answer it',
+    // A page is the BBS's, between accounts: the Talk card takes it by domain,
+    // and no remote or character in the game can answer one (2026-10-30).
+    'conversation-page': "the BBS's, between accounts; nothing in the game answers it",
     // The attempt, not the outcome. Consuming it would be treating "Attempting
     // to sneak..." as sneaking, which is the bug the stealth model avoids.
     'user-sneak-initiate': 'the attempt, deliberately not the outcome',

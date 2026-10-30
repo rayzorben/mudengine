@@ -112,6 +112,7 @@ const CHANNELS: Record<string, string> = {
   'conversation-gossip': t('cards.talk.channels.gossip'),
   'conversation-broadcast': t('cards.talk.channels.broadcast'),
   'conversation-telepath': t('cards.talk.channels.telepath'),
+  'conversation-page': t('cards.talk.channels.page'),
   'conversation-gangpath': t('cards.talk.channels.gang'),
   'conversation-auction': t('cards.talk.channels.auction'),
   'conversation-yell': t('cards.talk.channels.yell'),
@@ -162,6 +163,7 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
   { id: 'broadcast', label: t('cards.talk.tabs.broadcast'), types: ['conversation-broadcast'] },
   { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'] },
   { id: 'telepath', label: t('cards.talk.tabs.telepath'), types: ['conversation-telepath'] },
+  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'] },
   {
     id: 'local',
     label: t('cards.talk.tabs.local'),
@@ -200,12 +202,17 @@ const ALL_WORDS = ['on', 'off'] as const;
  * the direction, with the server's own line where the body would be, because
  * a body invented for it would be the client misquoting its own player.
  */
-const RECEIPTS = new Set<string>(['conversation-telepath', 'conversation-directed']);
+const RECEIPTS = new Set<string>([
+  'conversation-telepath',
+  'conversation-directed',
+  'conversation-page'
+]);
 
 /** The sigil each receipt's channel was addressed with — see `originalOf`. */
 const SIGILS: Record<string, string> = {
   'conversation-telepath': '/',
-  'conversation-directed': '>'
+  'conversation-directed': '>',
+  'conversation-page': '/p '
 };
 
 /**

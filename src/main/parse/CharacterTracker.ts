@@ -256,12 +256,9 @@ export class CharacterTracker {
     private readonly world?: WorldGraph,
     private readonly lore: MobLore = NO_LORE,
     /**
-     * Told when the character proves the realm data wrong.
-     *
-     * A callback rather than a store, for the reason the realm graph is an
-     * injected interface: this is the parse path, and it may not acquire a file
-     * handle. It reports a fact — the tracker still never *sends* anything —
-     * and what to do with it belongs to whoever wired it up.
+     * Told when the character proves the realm data wrong: a callback, as the
+     * parse path may not acquire a file handle, and what to do with the fact
+     * belongs to whoever wired it up. The tracker still never sends anything.
      */
     onDiscovery?: (discovery: Discovery) => void,
     /** Where fights are written down; nowhere for a session with no character file. */
@@ -281,7 +278,9 @@ export class CharacterTracker {
     /** Where the character's record last placed it, drawn before any dial (`lastRoom.ts`). */
     kept: KeptRoom | null = null,
     /** What each monster did to the character, with the prediction at its opening (todo 26). */
-    harm: HarmSink = NO_HARM
+    harm: HarmSink = NO_HARM,
+    /** Told when a look lets go of a target no fight holds (`room.ts`, `targetGone`). */
+    onTargetGone?: (target: string) => void
   ) {
     this.state = { ...this.state, room: lastRoom.recalledRoom(kept, world) };
     // The book's guard reads the phase, and a kit teaches the pack's slots.
@@ -298,7 +297,8 @@ export class CharacterTracker {
       itemEntity: (name, observed) => this.itemEntity(name, observed),
       stealthAfterMove: () => this.stealth.afterMove(),
       rememberTheWayBack: toldOfSteps(this.backtrail, () => this.fight),
-      onDiscovery
+      onDiscovery,
+      onTargetGone
     });
     // Classification asks the realm's monster table and the roster, so a blow
     // that puts its attacker in the room asks the room (`room.ts`) to do it.

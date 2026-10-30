@@ -35,7 +35,7 @@ import { classifyOccupant, type MobFacts } from '../../shared/mobs';
 import { playerEntity, playerKey, type PlayerRegistry } from '../../shared/players';
 import type { RealmFamily } from '../../shared/realm';
 import type { Direction, RoomId, WorldRoom } from '../../shared/world';
-import { commandRooms, mobKey, roomAddress, roomId } from '../../shared/world';
+import { commandRooms, firstAnswering, mobKey, roomAddress, roomId } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import { resolveByDeadReckoning, resolveRoom, type ResolveGraph } from '../world/resolve';
 import { namedStoppers } from '../world/stoppers';
@@ -101,6 +101,25 @@ export interface RoomSources {
   rememberTheWayBack(s: CharacterState, room: Room, moved: Direction | null): void;
   /** Told when the character proves the realm data wrong. */
   onDiscovery: ((discovery: Discovery) => void) | undefined;
+  /** Told when a look lets go of a fight's target the room no longer lists (`targetGone`). */
+  onTargetGone: ((target: string) => void) | undefined;
+}
+
+/**
+ * The fight's target, when the room the character is still standing in has
+ * just been listed whole without it and no fight is running: null otherwise.
+ *
+ * Nothing else lets go of such a target. `*Combat Off*` never comes for a
+ * fight the server never started, and `fightIsRunning` holds the walk, so no
+ * move clears it either: a target set by a misread line held Rayzor's loop
+ * still for three minutes (2026-10-30). Engaged or attacked, the target
+ * stays, since a fight the server is running is not ended by a listing.
+ */
+function targetGone(s: CharacterState, occupants: readonly RoomOccupant[]): string | null {
+  const target = s.combat.target;
+  if (target === null || s.inCombat || s.combat.engaged || s.combat.attackers.length > 0)
+    return null;
+  return firstAnswering(occupants, target) === undefined ? target : null;
 }
 
 /**
@@ -659,12 +678,16 @@ export class RoomTracker {
      * behind too.
      */
     // The gauges were the last room's monsters, so any move forgets them (todo 20261018-1314-01).
+    const gone = movedSomehow ? null : targetGone(s, room.occupants);
     const combat =
       movedSomehow && (s.combat.attackers.length > 0 || s.combat.target !== null)
         ? { ...s.combat, attackers: [], target: null, health: null, healthHere: {} }
         : movedSomehow
           ? { ...s.combat, healthHere: {} }
-          : s.combat;
+          : gone !== null
+            ? { ...s.combat, target: null, targetEntity: null, health: null }
+            : s.combat;
+    if (gone !== null) this.sources.onTargetGone?.(gone);
     // The same move, read for the other thing it proves — see `stoodUp`.
     const afflictions = movedSomehow ? stoodUp(s) : s.afflictions;
 

@@ -244,8 +244,17 @@ const EMOTE_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>([
   'player-misses'
 ]);
 
-/** The rules that read somebody talking; see `Classifier.coinText`. */
-const TALK_RULES = RULES.filter((rule) => domainOf(rule.type) === 'conversation');
+/**
+ * The rules that read somebody talking, tried before every other rule (see
+ * `matchLine`) and left uncoined (`coinText`). `command-not-understood` is a
+ * `You say` too, and goes with them so its guard still runs ahead of
+ * `conversation-local`.
+ */
+const TALK_RULES = RULES.filter(
+  (rule) => domainOf(rule.type) === 'conversation' || rule.type === 'command-not-understood'
+);
+/** Everything else, in the table's order. */
+const GAME_RULES = RULES.filter((rule) => !TALK_RULES.includes(rule));
 
 export class Classifier {
   private batch: {
@@ -601,14 +610,37 @@ export class Classifier {
      * came back must not hold up every echo behind it, and a command still
      * sitting in the queue long after its turn is one more chance to eat a
      * real line that happens to read the same.
+     *
+     * Trimmed, as the queue is (`observeCommand`): a trailing space the player
+     * typed comes back in the echo and is not part of the command.
      */
-    const echoed = this.pendingEchoes.indexOf(text);
+    const echoed = this.pendingEchoes.indexOf(text.trim());
     if (echoed !== -1) {
       this.pendingEchoes.splice(0, echoed + 1);
       return this.build(line, 'command-echo', {}, text, 1);
     }
 
-    for (const rule of RULES) {
+    /*
+     * A line in a channel's frame is talk, whatever it says (2026-10-30).
+     * The talk rules are tried before the rest of the table, so no rule can
+     * read what a player said as the game's own sentence. They sat below the
+     * damage rules, whose only guard was `[^"]`, which protects the quoted
+     * channels and not gossip, auction, telepath, gangpath or a page: Rayzor
+     * gossiped `You pound obsidian demon for 18 damage!`, the line was read as
+     * his own blow, and the loop waited three minutes on a fight that was not
+     * there. Of 10,963 distinct sentences in the captures, 6,032 were misread
+     * once said on one of those channels. See `mudengine-wire` › *Talk is talk*.
+     */
+    return (
+      this.firstMatch(TALK_RULES, line, text) ??
+      this.firstMatch(GAME_RULES, line, text) ??
+      this.build(line, 'unknown', {}, text, 0)
+    );
+  }
+
+  /** The first rule of `rules` that reads `text`, as a block; null when none does. */
+  private firstMatch(rules: readonly Rule[], line: StreamLine, text: string): Block | null {
+    for (const rule of rules) {
       const match = rule.pattern.exec(text);
       if (!match) continue;
       if (rule.type === 'room-name' && !looksLikeRoomName(text)) continue;
@@ -679,8 +711,7 @@ export class Classifier {
 
       return this.build(line, this.fellHere(rule.type, groups, text), groups, text, confidence);
     }
-
-    return this.build(line, 'unknown', {}, text, 0);
+    return null;
   }
 
   /**
@@ -1022,13 +1053,24 @@ export class Classifier {
    * answer sent by telepath would be read back as the recipient's vitals.
    */
   private bindReceipt(type: BlockType, groups: Record<string, string | undefined>): void {
-    if (type !== 'conversation-telepath' && type !== 'conversation-directed') return;
+    if (
+      type !== 'conversation-telepath' &&
+      type !== 'conversation-directed' &&
+      type !== 'conversation-page'
+    )
+      return;
     // An incoming line on the same channel carries a message; a receipt cannot.
     if (groups['message'] !== undefined) return;
     const to = groups['player']?.toLowerCase();
     if (to === undefined) return;
+    if (type === 'conversation-page') {
+      this.bindPage(to, groups);
+      return;
+    }
     const sigil = type === 'conversation-telepath' ? '/' : '>';
-    const matches = (sent: Addressed): boolean => sent.sigil === sigil && to.startsWith(sent.name);
+    // `/p soul hi` is a page (`bindPage`), never a telepath to somebody named P.
+    const matches = (sent: Addressed): boolean =>
+      sent.sigil === sigil && !(sigil === '/' && sent.name === 'p') && to.startsWith(sent.name);
     const at = this.addressed.findIndex(matches);
     if (at < 0) return;
     const first = this.addressed[at]!;
@@ -1036,6 +1078,24 @@ export class Classifier {
     if (rival < 0) groups['sent'] = first.body;
     const through = rival < 0 ? at : rival;
     this.addressed = this.addressed.filter((sent, i) => i > through || sent.sigil !== sigil);
+  }
+
+  /**
+   * `---Page sent to soul---`, bound to the `/p soul hi` that sent it. The
+   * addressed queue reads that command as a telepath to `p`, so the account
+   * is the body's first word and the message the rest.
+   */
+  private bindPage(to: string, groups: Record<string, string | undefined>): void {
+    const at = this.addressed.findIndex((sent) => {
+      if (sent.sigil !== '/' || sent.name !== 'p') return false;
+      const account = sent.body.split(/\s+/, 1)[0]!.toLowerCase();
+      return to.startsWith(account);
+    });
+    if (at < 0) return;
+    const body = this.addressed[at]!.body;
+    const said = body.slice(body.search(/\s/) + 1).trim();
+    if (said.length > 0 && /\s/.test(body)) groups['sent'] = said;
+    this.addressed = this.addressed.filter((_, i) => i !== at);
   }
 
   /**
@@ -1136,6 +1196,9 @@ export class Classifier {
    * cannot continue through.
    */
   private feedBatch(line: StreamLine, text: string, type: BlockType): BatchBlock | undefined {
+    // Talk that arrives inside a listing is not part of it: a gossip between
+    // two `who` rows would be folded onto the row above, or end a record.
+    if (domainOf(type) === 'conversation') return undefined;
     // A record ends at another listing's header, which opens as it would have:
     // a look's description cut short leaves `He is equipped with:` its kit.
     const open = this.batch?.rule;

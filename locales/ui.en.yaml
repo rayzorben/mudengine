@@ -4146,6 +4146,7 @@ cards:
       gang: gang
       gossip: gossip
       left: left
+      page: page
       say: say
       telepath: telepath
       yell: yell
@@ -4166,6 +4167,7 @@ cards:
       broadcast: Br
       gang: Gang
       telepath: Tele
+      page: Page
       local: Local
       realm: Realm
       # Only the lines with @name in them, from every channel.
@@ -6252,6 +6254,9 @@ session:
         {then}'
     escapeOnlyBackReason: every exit leads back to a room just run from
     escapeStanding: Standing and fighting.
+    # A fight's target that a look of the same room no longer lists, with no
+    # fight running: nothing else would end it, and the loop waits on a fight.
+    targetGone: 'No longer fighting {target}: it is not in the room and no fight is running.'
     escapeStaying: 'Not running: {why}, but nothing is moving this character anywhere, so it stays
       put. {then}'
     escapeStayingReason: nothing is moving this character anywhere

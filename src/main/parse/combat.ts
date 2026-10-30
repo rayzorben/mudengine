@@ -43,7 +43,7 @@ import type { HarmSink } from '../../shared/harm';
 import type { MobLore } from '../../shared/lore';
 import {
   mobKey,
-  nameAnswersTo,
+  firstAnswering,
   roomAddress,
   withoutArticle,
   type Direction,
@@ -210,7 +210,7 @@ function resolveAgainstRoom(s: CharacterState, typed: string): string {
   const key = mobKey(typed);
   if (key.length === 0) return typed;
   const exact = s.room.occupants.find((who) => mobKey(who.name) === key);
-  const found = exact ?? s.room.occupants.find((who) => nameAnswersTo(mobKey(who.name), key));
+  const found = exact ?? firstAnswering(s.room.occupants, typed);
   return found?.name ?? typed;
 }
 

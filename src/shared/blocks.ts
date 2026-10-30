@@ -535,6 +535,12 @@ export type BlockType =
   | 'conversation-yell'
   | 'conversation-local'
   /**
+   * A page, sent through the BBS around the game: `soul4 is paging you from
+   * Paradigm: hi`, and the receipt `---Page sent to soul---`. `player` is the
+   * BBS account, not a character, so nothing files it as a player.
+   */
+  | 'conversation-page'
+  /**
    * Somebody's emote — `You giggle loudly!`, `Soul bows to Yang.` — read off
    * the server's own action table (`src/shared/actions.ts`), never a pattern.
    * `player` is the actor and absent where this character acted; `target` is
@@ -1077,6 +1083,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'conversation-directed': 'conversation',
   'conversation-yell': 'conversation',
   'conversation-local': 'conversation',
+  'conversation-page': 'conversation',
   'conversation-action': 'conversation',
   // Grouped with failures rather than conversation: what it reports is that a
   // command did not run, and the broadcast is the consequence.

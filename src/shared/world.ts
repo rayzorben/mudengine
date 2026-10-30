@@ -2432,6 +2432,15 @@ export function nameAnswersTo(name: string, typed: string): boolean {
   return name === typed || name.startsWith(typed) || name.includes(` ${typed}`);
 }
 
+/** The first of `listed` whose name answers to `typed` (`nameAnswersTo`), or undefined. */
+export function firstAnswering<T extends { name: string }>(
+  listed: readonly T[],
+  typed: string
+): T | undefined {
+  const key = mobKey(typed);
+  return listed.find((who) => nameAnswersTo(mobKey(who.name), key));
+}
+
 /**
  * A passage walked under a timed spell — the dive into the Muddy Underwater
  * Passage: `dive pool` casts *holding breath* (25 ticks), which ends in
