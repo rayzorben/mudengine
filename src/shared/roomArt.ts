@@ -1,21 +1,24 @@
 /**
  * A room's picture in the game view (todo 20261020-2015-01): the bundled set,
  * found by the room's map and number and drawn for its exits (todo
- * 20261021-1417-01), else what the art server draws from the description the
- * character read. A request carries the map and room numbers,
- * the room's name and its description as the realm printed it, and nothing
- * about the character. The port main draws through, what the window is told,
- * and what `Routines` asks before looking at a room for it.
+ * 20261021-1417-01), else what the art server draws for the realm's room and
+ * its exits from the description the character read. A request carries the
+ * realm, the map and room numbers, the room's name and its description as the
+ * realm printed it, and nothing about the character. The port main draws
+ * through, what the window is told, and what `Routines` asks before looking at
+ * a room for it.
  */
 import type { RealmFamily } from './character';
 import type { PortraitResult } from './portrait';
 
 export interface RoomArtRequest {
+  /** Whose world database the server reads the room's exits from. */
+  realm: RealmFamily;
   map: number;
   room: number;
   /** The room's name as printed with the description. */
   name: string;
-  /** As printed, lines joined; the server keys the picture on it with its whitespace collapsed. */
+  /** As printed, lines joined; the server keeps the picture under it, the realm and the room. */
   description: string;
 }
 

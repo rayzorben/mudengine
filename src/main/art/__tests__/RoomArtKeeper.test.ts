@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PictureCache } from '../pictureCache';
 import { RoomArtKeeper } from '../RoomArtKeeper';
-import { roomKey } from '../roomKey';
+import { drawnRoomKey, roomKey } from '../roomKey';
 import { ShippedRoomArt } from '../ShippedRoomArt';
 import {
   EMPTY_CHARACTER,
@@ -19,7 +19,9 @@ const PICTURE = new Uint8Array([0x52, 0x49, 0x46, 0x46, 9]);
 const MARBLE = 'This narrow passageway is made of smooth white marble.';
 const MARBLE_KEY = roomKey(MARBLE);
 const CRYPT = 'Unlit torches line the walls of this ten foot wide stone hallway.';
-const CRYPT_KEY = roomKey(CRYPT);
+/** A picture the server drew for GreaterMUD's map 1 room and its exits. */
+const drawnKey = (number: number, text: string): string =>
+  drawnRoomKey('greatermud', 1, number, text);
 /** The drawing made for 1/78's description and exits, laid on mirrored and turned once. */
 const DRAWING = '0123456789abcdef';
 const SHIPPED = { kind: 'shipped', key: DRAWING, turn: { quarters: 1, mirrored: true } };
@@ -114,10 +116,10 @@ describe('the picture of the room the character is in', () => {
     const one = keeper();
     one.observe(inRoom(room(1, 78, CRYPT)));
     await until(() => one.current().picture?.kind === 'drawn');
-    expect(one.current().picture).toMatchObject({ key: CRYPT_KEY });
+    expect(one.current().picture).toMatchObject({ key: drawnKey(78, CRYPT) });
     // Drawn for 1/78's exits: the same words in a room with other exits are asked for.
     one.observe(inRoom(room(1, 1711, MARBLE)));
-    await until(() => one.current().picture?.key === MARBLE_KEY);
+    await until(() => one.current().picture?.key === drawnKey(1711, MARBLE));
     expect(asked.map((request) => request.room)).toEqual([78, 1711]);
     one.dispose();
   });
@@ -142,14 +144,31 @@ describe('the picture of the room the character is in', () => {
     one.observe(inRoom(room(1, 1710, CRYPT)));
     one.observe(inRoom(room(1, 1710, CRYPT, { light: 'dimly lit' })));
     await until(() => one.current().picture?.kind === 'drawn');
-    expect(asked).toEqual([{ map: 1, room: 1710, name: 'Marble Passage', description: CRYPT }]);
-    expect(one.current().picture).toMatchObject({ kind: 'drawn', key: CRYPT_KEY });
+    expect(asked).toEqual([
+      { realm: 'greatermud', map: 1, room: 1710, name: 'Marble Passage', description: CRYPT }
+    ]);
+    expect(one.current().picture).toMatchObject({ kind: 'drawn', key: drawnKey(1710, CRYPT) });
     one.dispose();
     const again = keeper();
-    again.observe(inRoom(room(2, 5, CRYPT)));
+    again.observe(inRoom(room(1, 1710, CRYPT)));
     await until(() => again.current().picture?.kind === 'drawn');
     expect(asked).toHaveLength(1);
+    // Drawn for 1/1710's exits: the same words in another room, or another realm's, are asked for.
+    again.observe(inRoom(room(1, 1711, CRYPT)));
+    await until(() => asked.length === 2);
+    again.observe(inRoom(room(1, 1711, CRYPT), 'paradigm'));
+    await until(() => asked.length === 3);
+    expect(asked[2]).toMatchObject({ realm: 'paradigm', room: 1711 });
     again.dispose();
+  });
+
+  it('asks nothing for a room on an unknown realm: the server has no world to read its exits from', async () => {
+    const one = keeper();
+    one.observe(inRoom(room(1, 1710, CRYPT), null));
+    await settled();
+    expect(asked).toEqual([]);
+    expect(one.current().picture).toBeNull();
+    one.dispose();
   });
 
   it('asks nothing with the switch off, for an uncertain room, or with a description still unread', async () => {
@@ -224,7 +243,7 @@ describe('the picture of the room the character is in', () => {
     await until(() => asked.length === 2);
     expect(asked[1]).toMatchObject({ room: 1712 });
     // The drawing of the room left shows nowhere; the room stood in is still being drawn.
-    expect(published.every((view) => view.picture?.key !== CRYPT_KEY)).toBe(true);
+    expect(published.every((view) => view.picture?.key !== drawnKey(1710, CRYPT))).toBe(true);
     one.dispose();
   });
 });

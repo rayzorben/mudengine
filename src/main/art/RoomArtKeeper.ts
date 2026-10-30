@@ -2,12 +2,14 @@
  * One character's room picture (todo 20261020-2015-01). On each certain room:
  * the bundled set's drawing for its map and room, turned to its exits (todo
  * 20261021-1417-01), where the description read is the one it was drawn from
- * or brief printed none. Otherwise the description read gives the key: the
- * store on disk has it, or with `art.rooms` on the server is asked once per
- * key, one ask in flight, and the drawing kept. A brief room the set has no
- * drawing for waits for the look `BriefLook` offers. A room left while its
- * drawing was under way shows it on the next visit. An unreachable server is
- * asked again on the next entry to the realm, as portraits are.
+ * or brief printed none. Otherwise the server draws the description read for
+ * that realm's room and its exits: the store on disk has it under all three,
+ * or with `art.rooms` on the server is asked once per key, one ask in flight,
+ * and the drawing kept. An unknown realm has no world to draw it from. A brief
+ * room the set has no drawing for waits for the look `BriefLook` offers. A
+ * room left while its drawing was under way shows it on the next visit. An
+ * unreachable server is asked again on the next entry to the realm, as
+ * portraits are.
  */
 import type { CharacterState, RealmFamily, Room } from '../../shared/character';
 import { certainRoom, describedRoom } from '../../shared/descriptions';
@@ -21,7 +23,7 @@ import {
 import { errorMessage } from '../../shared/values';
 import { AskLedger } from './AskLedger';
 import { dataUrlOf, type Picture, type PictureCache } from './pictureCache';
-import { roomKey } from './roomKey';
+import { drawnRoomKey, roomKey } from './roomKey';
 import type { ShippedDrawing, ShippedRoomArt } from './ShippedRoomArt';
 
 export interface RoomArtKeeperDeps {
@@ -100,12 +102,16 @@ export class RoomArtKeeper {
       this.set(shipped === null ? null : shippedPicture(shipped));
       return;
     }
-    const key = roomKey(read.text);
     // Another description at that number is another room than the one drawn.
-    if (shipped?.described === key) {
+    if (shipped?.described === roomKey(read.text)) {
       this.set(shippedPicture(shipped));
       return;
     }
+    if (realm === null) {
+      this.set(null);
+      return;
+    }
+    const key = drawnRoomKey(realm, certain.map, certain.number, read.text);
     if (this.view.picture?.key === key) return;
     try {
       const kept = await this.deps.cache.get(key);
@@ -123,6 +129,7 @@ export class RoomArtKeeper {
     this.inFlight = true;
     try {
       await this.draw(key, turn, {
+        realm,
         map: certain.map,
         room: certain.number,
         name: certain.name,

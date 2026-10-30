@@ -29,6 +29,7 @@ const FACTS: PortraitFacts = {
 };
 
 const ROOM: RoomArtRequest = {
+  realm: 'greatermud',
   map: 1,
   room: 1710,
   name: 'Darkwood Forest',

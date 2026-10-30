@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ROOM_KEY, roomKey } from '../roomKey';
+import { drawnRoomKey, ROOM_KEY, roomKey } from '../roomKey';
 
 /*
  * Todo 20261020-2015-01: the key the bundled set is filed under. Marble
@@ -22,5 +22,13 @@ describe('a room description key', () => {
 
   it('tells one description from another', () => {
     expect(roomKey('A dark room.')).not.toBe(roomKey('A dark room'));
+  });
+
+  it('keeps a drawn picture under the realm and room as the gateway does', () => {
+    // The art gateway's picture_key("greatermud", "1/1710", " ".join(text.split())).
+    const gateway = 'a049677297f135e1';
+    expect(drawnRoomKey('greatermud', 1, 1710, MARBLE_PASSAGE)).toBe(gateway);
+    expect(drawnRoomKey('paradigm', 1, 1710, MARBLE_PASSAGE)).not.toBe(gateway);
+    expect(drawnRoomKey('greatermud', 1, 1711, MARBLE_PASSAGE)).not.toBe(gateway);
   });
 });
