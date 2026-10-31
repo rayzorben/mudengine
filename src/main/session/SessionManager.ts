@@ -113,6 +113,7 @@ import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel, partyRemotes } from './Travel';
 import { RemoteMoves } from './RemoteMoves';
 import { remoteHangUps } from './remoteHangUps';
+import { remoteRegistry } from './remoteRegistry';
 import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { legPlanner, stopErrandLeg } from './legPlanner';
@@ -1254,10 +1255,12 @@ export class SessionManager {
       ...partyRemotes(() => this.travel),
       held: (who, held) => this.cures.memberHeld(who, held),
       switchAutomation: switchNow,
-      // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
-      commanded: (from, raw, at) => {
-        if (this.tracker.noteRemoteCall(from, raw, at)) this.publisher.players();
-      },
+      quests: () => this.world?.quests() ?? null,
+      ...remoteRegistry(
+        this.tracker,
+        () => this.publisher,
+        (message) => this.sink.notice(message)
+      ),
       // A blessed party member says the spell wore off; recast on the event.
       blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
       stats: this.statsBaseline,
@@ -1268,23 +1271,7 @@ export class SessionManager {
         if (!this.grounded.standsDown(state) && !this.travel.isRetreating())
           this.heal.onCharacter(state);
       },
-      // Which client a player runs, on their registry entry, pushed as `commanded` is.
-      clientNamed: (from, client, extended) => {
-        const facts = { ...(client === undefined ? {} : { client }), extendedRemotes: extended };
-        if (this.tracker.noteRemoteClient(from, Date.now(), facts)) this.publisher.players();
-      },
-      handAnswered: (from, answer) => this.walker.handAnswered(from, answer),
-      placed: (from, map, room, name) => {
-        const address = roomId(map, room);
-        this.sink.notice(
-          t('session.remotes.peerPlaced', {
-            who: from,
-            address,
-            room: name ?? t('session.remotes.peerPlacedUnnamed')
-          })
-        );
-        if (this.tracker.noteRemoteRoom(from, address, name, Date.now())) this.publisher.players();
-      }
+      handAnswered: (from, answer) => this.walker.handAnswered(from, answer)
     });
     // One realm lookup for every caster, handing over the realm's whole row, read at the point of use.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;

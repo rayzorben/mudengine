@@ -4,7 +4,7 @@ import RemoteList from './RemoteList';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { ACTIONABLE_REMOTES, grantIsEmpty, NO_GRANT, type RemoteGrant } from '@shared/remotes';
+import { grantIsEmpty, NO_GRANT, withAll, withStance, type RemoteGrant } from '@shared/remotes';
 
 /**
  * The per-player half of `automation.remotes`, edited from a form.
@@ -111,29 +111,11 @@ export default function PlayerGrants({
           />
           <RemoteList
             allow={grant.allow}
+            allowAll={grant.allowAll}
             deny={grant.deny}
             mode="player"
-            onSet={(remote, stance) =>
-              write(who, {
-                ...grant,
-                allow:
-                  stance === 'allow'
-                    ? [...grant.allow, remote]
-                    : grant.allow.filter((entry) => entry !== remote),
-                deny:
-                  stance === 'deny'
-                    ? [...grant.deny, remote]
-                    : grant.deny.filter((entry) => entry !== remote)
-              })
-            }
-            onSetAll={(stance) =>
-              write(
-                who,
-                stance === 'allow'
-                  ? { ...grant, allow: [...ACTIONABLE_REMOTES], deny: [] }
-                  : { ...grant, allow: [], deny: [] }
-              )
-            }
+            onSet={(remote, stance) => write(who, withStance(grant, remote, stance))}
+            onSetAll={(stance) => write(who, withAll(grant, stance))}
             subject={who}
           />
         </>

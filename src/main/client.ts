@@ -1446,9 +1446,10 @@ function asGrant(value: unknown): RemoteGrant | null {
   const record = value as Record<string, unknown>;
   const allow = asRemoteNames(record['allow']);
   const deny = asRemoteNames(record['deny']);
-  const autoInvite = record['autoInvite'];
-  if (allow === null || deny === null || typeof autoInvite !== 'boolean') return null;
-  return { allow, deny, autoInvite };
+  const { allowAll, autoInvite } = record;
+  if (allow === null || deny === null) return null;
+  if (typeof allowAll !== 'boolean' || typeof autoInvite !== 'boolean') return null;
+  return { allow, deny, allowAll, autoInvite };
 }
 
 /** Every character on disk, and whether a session is open for it. */

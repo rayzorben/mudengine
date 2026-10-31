@@ -154,6 +154,14 @@ export const REMOTE_NAMES = [
    */
   'death',
   /*
+   * Also mudengine's own (the user, 2026-10-31): what GreaterMUD's `abil`
+   * listing says one or more ability ids sum to, asked fresh, with the quest
+   * step that set a quest counter to that rank:
+   * `{GoodQuest(126) - 5 (ask Commander Markus letter)}`. Bare, every quest
+   * counter the listing names. See `formatAbilities`.
+   */
+  'abil',
+  /*
    * The extended pair, and the reason there is such a thing as an extended
    * remote at all.
    *
@@ -481,6 +489,7 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   // Answered in a frame this client chose, from `@have`'s captured `{yes: 1}` / `{no}`.
   stoppers: { name: 'stoppers', support: 'answered' },
   death: { name: 'death', support: 'answered' },
+  abil: { name: 'abil', support: 'answered' },
   /*
    * `@where` with the ambiguity taken out, and `@comeback` made possible by
    * the same fact. See the note beside them in `REMOTE_NAMES`.
@@ -1016,6 +1025,49 @@ export function formatDeaths(deaths: readonly RecentDeath[]): string {
 }
 
 /**
+ * The ability ids an `@abil` asks about: `@abil 126` or `@abil 126 130`
+ * (commas too), `[]` for a bare `@abil`, null when any word is not an id.
+ */
+export function readAbilAsked(argument: string | null): number[] | null {
+  const words = (argument ?? '').split(/[\s,]+/).filter((word) => word.length > 0);
+  const ids = words.map((word) => (/^\d+$/.test(word) ? Number(word) : null));
+  return ids.every((id): id is number => id !== null) ? [...new Set(ids)] : null;
+}
+
+/** One ability `@abil` tells: the realm's name where known, the sum, and the steps that set it. */
+export interface ToldAbility {
+  id: number;
+  name: string | null;
+  /** What the listing says it sums to; null where an incomplete listing leaves it out. */
+  value: number | null;
+  /** The quest steps that set the counter to `value`, in the quest book's words. Several when the realm writes several. */
+  setBy: readonly string[];
+}
+
+/**
+ * `{GoodQuest(126) - 5 (ask Commander Markus letter), Rune(130) - 0}` (the
+ * user, 2026-10-31): each ability as `abil` prints it, its sum, and the step
+ * that set it where a quest step did; `unknown` for a sum the listing did not
+ * reach. Cut to `room` characters with `+N more`, so the frame always closes.
+ * `{none}` for nothing to tell.
+ */
+export function formatAbilities(told: readonly ToldAbility[], room: number): string {
+  if (told.length === 0) return '{none}';
+  const one = ({ id, name, value, setBy }: ToldAbility): string => {
+    const head = `${name ?? ''}(${id}) - ${value ?? 'unknown'}`;
+    return setBy.length === 0 ? head : `${head} (${setBy.join(' or ')})`;
+  };
+  const rows = told.map(one);
+  const body = (count: number): string => {
+    const left = rows.length - count;
+    return `{${rows.slice(0, count).join(', ')}${left > 0 ? ` +${left} more` : ''}}`;
+  };
+  let shown = 1;
+  while (shown < rows.length && body(shown + 1).length <= room) shown += 1;
+  return body(shown);
+}
+
+/**
  * `{ON: Combat,Pre(attacks),Heal,…}` then `{OFF: Nuke,Search,Melee,Hangup}` —
  * two telepaths, MegaMUD's frame with **this client's** switches in it. The
  * words are ours because the settings are: MegaMUD's `Nuke` and `Abils` have
@@ -1442,6 +1494,13 @@ export interface RemoteGrant {
   allow: RemoteName[];
   deny: RemoteName[];
   /**
+   * *Allow all* (the user, 2026-10-31): every remote this client answers or
+   * acts on, those added by a later build included, without naming them.
+   * `deny` still wins, and the four standing refusals are still granted only
+   * by name. Absent on disk reads as off.
+   */
+  allowAll: boolean;
+  /**
    * Send `invite <name>` when they are in the room with this character (todo
    * 851, `AutoInvite`). Not a remote: it answers no request, so it is not in
    * either list. Absent on disk reads as off.
@@ -1450,11 +1509,13 @@ export interface RemoteGrant {
 }
 
 /** An empty grant: the state every name starts in, and the one nothing is allowed by. */
-export const NO_GRANT: RemoteGrant = { allow: [], deny: [], autoInvite: false };
+export const NO_GRANT: RemoteGrant = { allow: [], deny: [], allowAll: false, autoInvite: false };
 
 /** Whether a grant says nothing, so its name is dropped from `players` rather than kept empty. */
 export function grantIsEmpty(grant: RemoteGrant): boolean {
-  return grant.allow.length === 0 && grant.deny.length === 0 && !grant.autoInvite;
+  return (
+    grant.allow.length === 0 && grant.deny.length === 0 && !grant.allowAll && !grant.autoInvite
+  );
 }
 
 /**
@@ -1543,6 +1604,47 @@ function has(list: readonly RemoteName[], name: RemoteName): boolean {
   return list.includes(name);
 }
 
+/** One remote put on exactly one of the two lists, or taken off both. */
+export function withStance(
+  grant: RemoteGrant,
+  remote: RemoteName,
+  stance: RemoteStance
+): RemoteGrant {
+  const allow = grant.allow.filter((entry) => entry !== remote);
+  const deny = grant.deny.filter((entry) => entry !== remote);
+  return {
+    ...grant,
+    allow: stance === 'allow' ? [...allow, remote] : allow,
+    deny: stance === 'deny' ? [...deny, remote] : deny
+  };
+}
+
+/**
+ * *Allow all* or *Clear all* on one player. Allow all sets the flag and drops
+ * the names it covers and every deny; a standing refusal granted by name
+ * stays, since the flag never grants one. Clear takes everything off.
+ */
+export function withAll(grant: RemoteGrant, stance: 'allow' | 'unset'): RemoteGrant {
+  return stance === 'allow'
+    ? {
+        ...grant,
+        allowAll: true,
+        allow: grant.allow.filter((name) => !coveredByAll({ allowAll: true }, name)),
+        deny: []
+      }
+    : { ...grant, allowAll: false, allow: [], deny: [] };
+}
+
+/** Whether *Allow all* covers `name`: one this client answers or acts on, never a standing refusal. */
+export function coveredByAll(grant: Pick<RemoteGrant, 'allowAll'>, name: RemoteName): boolean {
+  return grant.allowAll && isActionable(name);
+}
+
+/** Whether a player's own grant allows `name`: by name, or by *Allow all*. */
+export function grantAllows(grant: RemoteGrant, name: RemoteName): boolean {
+  return has(grant.allow, name) || coveredByAll(grant, name);
+}
+
 /**
  * What this player's own entry says about one remote, ignoring the gang.
  *
@@ -1579,7 +1681,7 @@ export function judgeRemote(
 
   // First and unconditionally. A deny is about one person, by name, on purpose.
   if (has(grant.deny, name)) return { allowed: false, because: 'denied' };
-  if (has(grant.allow, name)) return { allowed: true, because: 'player' };
+  if (grantAllows(grant, name)) return { allowed: true, because: 'player' };
 
   const fromGang = has(access.gang, name);
   if (fromGang && evidence.inGang === true) return { allowed: true, because: 'gang' };
@@ -1610,7 +1712,7 @@ export function judgeRemote(
  */
 export function reachableBy(from: string, access: RemoteAccess, evidence: RemoteEvidence): boolean {
   const grant = grantFor(access, from);
-  if (grant.allow.length > 0) return true;
+  if (grant.allow.length > 0 || grant.allowAll) return true;
   if (evidence.inParty && access.party.length > 0) return true;
   return evidence.inGang === true && access.gang.length > 0;
 }
@@ -1630,7 +1732,11 @@ export function isActionable(name: RemoteName): boolean {
   return support === 'answered' || support === 'acted';
 }
 
-/** Every remote this client answers or acts on, in the vocabulary's own order: what *Allow all* grants. */
+/**
+ * Every remote this client answers or acts on, in the vocabulary's own order:
+ * what the gang's and the party's *Allow all* write by name. A player's is the
+ * `allowAll` flag (`coveredByAll`).
+ */
 export const ACTIONABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isActionable);
 
 /**

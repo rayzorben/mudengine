@@ -270,7 +270,7 @@ describe('following, when the leader hangs up', () => {
         ...config,
         remotes: {
           ...config.remotes,
-          players: { rand: { allow: [], deny: ['join'], autoInvite: false } }
+          players: { rand: { allow: [], deny: ['join'], allowAll: false, autoInvite: false } }
         }
       },
       queue,

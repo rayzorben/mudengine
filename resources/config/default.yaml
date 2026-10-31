@@ -1440,6 +1440,10 @@ automation:
   # Joining the party grants @comeback and @comeback-room whatever the lists
   # say, so a held member can ask the leader back. A `deny` by name still
   # refuses them.
+  # `allowAll: true` is Allow all on the Player flyout: every @ command this
+  # client answers, including ones a later version adds, without naming them.
+  # A `deny` still wins, and @kill, @hangup, @relog and @panic! are granted
+  # only by name.
   # `autoInvite: true` sends them `invite` when they are in the room with this
   # character, unless they are already in the party or invited, or this
   # character is following somebody (Invite When Seen on the Player flyout).
@@ -1451,8 +1455,9 @@ automation:
   #     party: [health, where, bless-expired]
   #     players:
   #       ardren:
-  #         allow: [health, do, get-all]
-  #         deny: []
+  #         allow: []
+  #         deny: [drop-all]
+  #         allowAll: true
   #         autoInvite: true
   #       corwin:
   #         allow: []

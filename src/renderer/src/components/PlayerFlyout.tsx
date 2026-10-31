@@ -16,7 +16,8 @@ import { gangOnRoster, joinedTheParty, ownGang, type CharacterState } from '@sha
 import type { RemotesConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import {
-  ACTIONABLE_REMOTES,
+  withAll,
+  withStance,
   GRANTABLE_REMOTES,
   grantFor,
   judgeRemote,
@@ -912,32 +913,15 @@ function PlayerAccess({
       >
         <RemoteList
           allow={grant.allow}
+          allowAll={grant.allowAll}
           deny={grant.deny}
           fromGang={inGang === true ? remotes.gang : []}
           fromParty={inParty ? partyGrant(remotes) : []}
           mode="player"
-          onSet={(remote, stance) =>
-            set({
-              ...grant,
-              allow:
-                stance === 'allow'
-                  ? [...grant.allow, remote]
-                  : grant.allow.filter((entry) => entry !== remote),
-              deny:
-                stance === 'deny'
-                  ? [...grant.deny, remote]
-                  : grant.deny.filter((entry) => entry !== remote)
-            })
-          }
-          onSetAll={(stance) =>
-            // Clear takes the denies with it: a "clear all" that left half the
-            // state behind is a mode, and this grid has no room for one.
-            set(
-              stance === 'allow'
-                ? { ...grant, allow: [...ACTIONABLE_REMOTES], deny: [] }
-                : { ...grant, allow: [], deny: [] }
-            )
-          }
+          onSet={(remote, stance) => set(withStance(grant, remote, stance))}
+          // Clear takes the denies with it: a "clear all" that left half the
+          // state behind is a mode, and this grid has no room for one.
+          onSetAll={(stance) => set(withAll(grant, stance))}
           returnFocus={returnFocus}
           subject={record.name}
         />

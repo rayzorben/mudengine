@@ -31,7 +31,9 @@ import {
   isExtended,
   plainRemote,
   EXTENDED_REMOTES,
-  formatDeaths
+  formatDeaths,
+  formatAbilities,
+  readAbilAsked
 } from '../remotes';
 import { readRecentDeath } from '../recentDeaths';
 
@@ -605,5 +607,26 @@ describe('isRemoteTalk', () => {
     ]) {
       expect(isRemoteTalk(message), message).toBe(false);
     }
+  });
+});
+
+describe('@abil', () => {
+  it('reads ids by spaces or commas, a bare ask as every quest counter, and anything else as nothing', () => {
+    expect(readAbilAsked('126')).toEqual([126]);
+    expect(readAbilAsked('126, 130 126')).toEqual([126, 130]);
+    expect(readAbilAsked(null)).toEqual([]);
+    expect(readAbilAsked('  ')).toEqual([]);
+    expect(readAbilAsked('goodquest')).toBeNull();
+    expect(readAbilAsked('126 x')).toBeNull();
+  });
+
+  it('cuts a long answer to the room it has, and always closes the frame', () => {
+    const told = [126, 127, 128].map((id) => ({ id, name: 'GoodQuest', value: 5, setBy: [] }));
+    expect(formatAbilities(told, 255)).toBe(
+      '{GoodQuest(126) - 5, GoodQuest(127) - 5, GoodQuest(128) - 5}'
+    );
+    expect(formatAbilities(told, 50)).toBe('{GoodQuest(126) - 5, GoodQuest(127) - 5 +1 more}');
+    expect(formatAbilities([{ id: 9, name: null, value: 1, setBy: [] }], 255)).toBe('{(9) - 1}');
+    expect(formatAbilities([], 255)).toBe('{none}');
   });
 });

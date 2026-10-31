@@ -7648,16 +7648,23 @@ automation:
     stoppersUnlisted:
       '{from} asked @stoppers, and the inventory has not been listed yet; nothing was
       sent back. Type i.'
-    # `@death` reads the realm's own listing, asked with `death` or `pro` (2026-10-29).
-    reasonDeaths: '{from} asked @death'
-    deathsNoWord: '{from} asked @death, and this realm has neither death nor pro; nothing was sent
+    # `@death` and `@abil` read a listing the realm prints when asked (`ListingAsk`, 2026-10-31).
+    reasonListing: '{from} asked {remote}'
+    listingWordsOr: ' or '
+    listingNoWord: '{from} asked {remote}, and this realm has no {words} command; nothing was sent
       back.'
-    deathsNotAsked: '{from} asked @death, and the command queue did not take {command} ({why});
+    listingNotAsked: '{from} asked {remote}, and the command queue did not take {command} ({why});
       nothing was sent back.'
-    deathsUnanswered: '{from} asked @death, and the realm printed no Recent Deaths within {seconds}
+    listingUnanswered: '{from} asked {remote}, and the realm printed no {listing} within {seconds}
       s; nothing was sent back.'
-    deathsNeverSent: '{from} asked @death, and the command queue did not send it within {seconds} s;
-      nothing was sent back.'
+    listingNeverSent: '{from} asked {remote}, and the command queue did not send it within {seconds}
+      s; nothing was sent back.'
+    listingDeaths: Recent Deaths
+    listingAbil: ability listing
+    abilUnread: '{from} asked @abil {argument}, which is not a list of ability numbers; nothing was
+      sent back.'
+    abilNoQuests: '{from} asked @abil for every quest counter, and no world database is loaded to say
+      which abilities are quests; nothing was sent back.'
     haveUncaptured: '{from} asked @have {item}; {count} carried, but MegaMUD has only ever been seen
       answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
@@ -8156,6 +8163,8 @@ remotes:
   allow: Allow
   allowAll: Allow all
   allowAllTitle: Grant every @ command this client can answer
+  allowAllPlayerTitle: Answer every @ command this client can for {name}, including ones a later
+    version adds. A deny by name still wins.
   allowTitle: Answer @{remote} for {name}
   clearAll: Clear all
   clearAllTitle: Remove every @ command setting, allowed and denied
@@ -8165,6 +8174,9 @@ remotes:
   fromGang: from the gang
   fromParty: from the party
   byJoining: by joining
+  byAllowAll: by Allow all
+  byAllowAllTitle: Allow all is on for this player, so this is answered without being named. Deny it
+    to refuse it.
   byJoiningTitle: Anyone who has joined this party may ask for @{remote}, so a held member can ask
     the leader back. Deny it by name on the Player card to refuse one person.
   granted: '{granted} of {total} granted'

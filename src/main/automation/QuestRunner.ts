@@ -25,6 +25,7 @@ import {
 } from './PackAfter';
 import { listedSum, fightIsRunning, packRows, type CharacterState } from '../../shared/character';
 import { t } from '../app/i18n';
+import { actWords } from './questActWords';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { NoticeSink } from '../../shared/decisionSettings';
@@ -1372,11 +1373,7 @@ export class QuestRunner implements SessionModule {
 
   /** The step named by its act, in the words the plan rows use for it. */
   private wordsOf(step: PlanStep): string {
-    const act = step.act;
-    if (act === null) return `#${step.block}`;
-    if (act.verb === 'kill') return t('cards.quests.step.kill', { who: act.mob });
-    if (act.verb === 'ask') return t('cards.quests.step.ask', { who: act.who, word: act.say });
-    return t('cards.quests.step.doHere', { word: act.phrase });
+    return actWords(step.act, step.block);
   }
 
   private phaseWord(phase: Phase): QuestRunPhase | null {

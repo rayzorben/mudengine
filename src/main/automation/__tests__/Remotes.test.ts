@@ -71,7 +71,7 @@ const config: AutomationConfig = {
     players: Object.fromEntries(
       SPEAKERS.map((name) => [
         name.toLowerCase(),
-        { allow: [...ACTIONABLE_REMOTES], deny: [], autoInvite: false }
+        { allow: [...ACTIONABLE_REMOTES], deny: [], allowAll: false, autoInvite: false }
       ])
     )
   },
@@ -190,6 +190,25 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     peers.onBlock(said('conversation-telepath', 'Rand', query), state);
     drain();
   };
+
+  it('answers @abil off a fresh abil listing, and says a word that is not an id', () => {
+    asked('@abil 126', who());
+    expect(sent).toEqual(['abil']);
+    const at = Date.now();
+    const listing = { type: 'user-abilities', domain: 'status', groups: {}, text: '', at, seq: 2 };
+    peers.onBlock(
+      listing as unknown as Block,
+      who({ abilities: { sums: { 126: 5 }, complete: true, at } })
+    );
+    drain();
+    expect(sent).toEqual(['abil', '/Rand {GoodQuest(126) - 5}']);
+
+    asked('@abil goodquest', who());
+    expect(sent).toHaveLength(2);
+    expect(notices).toContain(
+      t('automation.remotes.abilUnread', { from: 'Rand', argument: 'goodquest' })
+    );
+  });
 
   it("answers @death off the realm's own listing, asked with death", () => {
     asked('@death', who());
@@ -775,7 +794,9 @@ describe('joining when invited', () => {
   });
 
   it('says a leader denied @join by name is denied', () => {
-    const players = { swampfox: { allow: [], deny: ['join' as const], autoInvite: false } };
+    const players = {
+      swampfox: { allow: [], deny: ['join' as const], allowAll: false, autoInvite: false }
+    };
     joining({ players }).onBlock(invited('Swampfox'), who());
     drain();
     expect(notices).toEqual([t('automation.remotes.autoJoinDenied', { from: 'Swampfox' })]);
@@ -867,7 +888,12 @@ describe('letting @kill, @hangup, @relog and @panic! through', () => {
       allowKillAndHangup,
       players: {
         ...config.remotes.players,
-        sirkilla: { allow: [...ACTIONABLE_REMOTES, ...standingFour], deny: [], autoInvite: false }
+        sirkilla: {
+          allow: [...ACTIONABLE_REMOTES, ...standingFour],
+          deny: [],
+          allowAll: false,
+          autoInvite: false
+        }
       }
     };
     return new Remotes({ ...config, remotes }, queue, {
@@ -1345,6 +1371,7 @@ describe('the gate: who may ask, and for what', () => {
           {
             allow: [...entry.allow] as never,
             deny: [...(entry.deny ?? [])] as never,
+            allowAll: false,
             autoInvite: false
           }
         ])
@@ -2789,7 +2816,7 @@ describe('the decision behind each line and command (todo 119)', () => {
         ...config.remotes,
         players: {
           ...config.remotes.players,
-          yang: { allow: ['health'], deny: [], autoInvite: false }
+          yang: { allow: ['health'], deny: [], allowAll: false, autoInvite: false }
         }
       }
     });

@@ -3720,6 +3720,7 @@ function playerGrants(
     out[key] = {
       allow: [...new Set([...held.allow, ...remoteNames(grant['allow'], [])])],
       deny: [...new Set([...held.deny, ...remoteNames(grant['deny'], [])])],
+      allowAll: held.allowAll || bool(grant['allowAll'], false),
       autoInvite: held.autoInvite || bool(grant['autoInvite'], false)
     };
   }

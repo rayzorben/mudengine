@@ -1643,7 +1643,12 @@ describe('one player’s @ command permissions', () => {
 
   it('writes what one player may ask for, under a lower-cased key', () => {
     expect(
-      editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false }).ok
+      editor.setRemoteGrant('vaelor', 'Soul', {
+        allow: ['health'],
+        deny: [],
+        allowAll: false,
+        autoInvite: false
+      }).ok
     ).toBe(true);
     expect(grantsOf('vaelor')).toEqual({
       soul: { allow: ['health'], deny: [], autoInvite: false }
@@ -1658,13 +1663,45 @@ describe('one player’s @ command permissions', () => {
    * is a block. It is the user's file and it is read by people.
    */
   it('writes it in block style, like every other list in the file', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     const text = fs.readFileSync(home.profile('vaelor').file, 'utf8');
     expect(text).toMatch(/players:\n\s+soul:\n\s+allow:\n\s+- health/);
   });
 
+  it('writes allowAll only while it is on, and reads it back', () => {
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: [],
+      deny: ['do'],
+      allowAll: true,
+      autoInvite: false
+    });
+    expect(grantsOf('vaelor')['soul']).toEqual({
+      allow: [],
+      deny: ['do'],
+      allowAll: true,
+      autoInvite: false
+    });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
+    expect(grantsOf('vaelor')['soul']).toEqual({ allow: ['health'], deny: [], autoInvite: false });
+  });
+
   it('writes a deny beside it', () => {
-    editor.setRemoteGrant('vaelor', 'Rend', { allow: ['health'], deny: ['do'], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Rend', {
+      allow: ['health'],
+      deny: ['do'],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(grantsOf('vaelor')['rend']).toEqual({
       allow: ['health'],
       deny: ['do'],
@@ -1681,6 +1718,7 @@ describe('one player’s @ command permissions', () => {
     editor.setRemoteGrant('vaelor', 'Soul', {
       allow: ['health', 'do'],
       deny: ['do'],
+      allowAll: false,
       autoInvite: false
     });
     expect(grantsOf('vaelor')['soul']).toEqual({
@@ -1694,6 +1732,7 @@ describe('one player’s @ command permissions', () => {
     editor.setRemoteGrant('vaelor', 'Soul', {
       allow: ['health', 'health'],
       deny: [],
+      allowAll: false,
       autoInvite: false
     });
     expect(grantsOf('vaelor')['soul']!.allow).toEqual(['health']);
@@ -1705,36 +1744,91 @@ describe('one player’s @ command permissions', () => {
    * of people with permissions when it holds people with none.
    */
   it('removes an emptied grant, and the map with the last one', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: [], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: [],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(remotesOf('vaelor')['players']).toBeUndefined();
   });
 
   // Todo 851: Invite When Seen is a decision about them, so a grant holding only it is kept.
   it('keeps a grant that only invites, and reads it back', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: [], deny: [], autoInvite: true });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: [],
+      deny: [],
+      allowAll: false,
+      autoInvite: true
+    });
     expect(grantsOf('vaelor')).toEqual({ soul: { allow: [], deny: [], autoInvite: true } });
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: [], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: [],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(remotesOf('vaelor')['players']).toBeUndefined();
   });
 
   it('keeps the other names when one is emptied', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
-    editor.setRemoteGrant('vaelor', 'Yang', { allow: ['where'], deny: [], autoInvite: false });
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: [], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
+    editor.setRemoteGrant('vaelor', 'Yang', {
+      allow: ['where'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: [],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(grantsOf('vaelor')).toEqual({ yang: { allow: ['where'], deny: [], autoInvite: false } });
   });
 
   it('matches a name however it is capitalised', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
-    editor.setRemoteGrant('vaelor', 'SOUL', { allow: ['where'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
+    editor.setRemoteGrant('vaelor', 'SOUL', {
+      allow: ['where'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(grantsOf('vaelor')).toEqual({ soul: { allow: ['where'], deny: [], autoInvite: false } });
   });
 
   it('is idempotent — clicking the same thing twice writes it once', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     const after = fs.readFileSync(home.profile('vaelor').file, 'utf8');
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(fs.readFileSync(home.profile('vaelor').file, 'utf8')).toBe(after);
   });
 
@@ -1747,7 +1841,12 @@ describe('one player’s @ command permissions', () => {
     fs.mkdirSync(scope.dir, { recursive: true });
     fs.writeFileSync(scope.file, 'name: Sparse\n', 'utf8');
     expect(
-      editor.setRemoteGrant('sparse', 'Soul', { allow: ['do'], deny: [], autoInvite: false }).ok
+      editor.setRemoteGrant('sparse', 'Soul', {
+        allow: ['do'],
+        deny: [],
+        allowAll: false,
+        autoInvite: false
+      }).ok
     ).toBe(true);
     expect(grantsOf('sparse')['soul']!.allow).toEqual(['do']);
   });
@@ -1756,7 +1855,12 @@ describe('one player’s @ command permissions', () => {
     const scope = home.profile('noted');
     fs.mkdirSync(scope.dir, { recursive: true });
     fs.writeFileSync(scope.file, '# Mine, and I wrote it.\nname: Noted\n', 'utf8');
-    editor.setRemoteGrant('noted', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('noted', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     expect(fs.readFileSync(scope.file, 'utf8')).toContain('# Mine, and I wrote it.');
   });
 
@@ -1764,6 +1868,7 @@ describe('one player’s @ command permissions', () => {
     const result = editor.setRemoteGrant('nobody-at-all', 'Soul', {
       allow: ['health'],
       deny: [],
+      allowAll: false,
       autoInvite: false
     });
     expect(result.ok).toBe(false);
@@ -1772,7 +1877,12 @@ describe('one player’s @ command permissions', () => {
 
   it('refuses an empty name', () => {
     expect(
-      editor.setRemoteGrant('vaelor', '   ', { allow: ['health'], deny: [], autoInvite: false }).ok
+      editor.setRemoteGrant('vaelor', '   ', {
+        allow: ['health'],
+        deny: [],
+        allowAll: false,
+        autoInvite: false
+      }).ok
     ).toBe(false);
   });
 
@@ -1783,7 +1893,12 @@ describe('one player’s @ command permissions', () => {
    */
   it('leaves every other setting on the character alone', () => {
     const before = read('vaelor');
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['health'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     const after = read('vaelor');
     expect(after['name']).toEqual(before['name']);
     expect(after['server']).toEqual(before['server']);
@@ -1847,7 +1962,12 @@ describe('the gang list and the gangpath switch', () => {
   });
 
   it('leaves the per-player grants alone', () => {
-    editor.setRemoteGrant('vaelor', 'Soul', { allow: ['do'], deny: [], autoInvite: false });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['do'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false
+    });
     editor.setGangRemotes('vaelor', ['health']);
     const players = remotesOf('vaelor')['players'] as Record<string, unknown>;
     expect(players['soul']).toEqual({ allow: ['do'], deny: [], autoInvite: false });

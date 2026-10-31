@@ -1650,6 +1650,7 @@ function playerGrants(value: unknown): Record<string, RemoteGrant> {
     out[key] = {
       allow: remoteNames(grant['allow']),
       deny: remoteNames(grant['deny']),
+      allowAll: grant['allowAll'] === true,
       autoInvite: grant['autoInvite'] === true
     };
   }

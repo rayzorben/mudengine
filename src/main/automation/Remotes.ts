@@ -70,6 +70,7 @@ import {
   formatExp,
   formatHave,
   formatStoppers,
+  readAbilAsked,
   readStoppersAsked,
   formatMoveAnswer,
   formatPath,
@@ -148,6 +149,8 @@ import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 import { PartyLeavers } from './PartyLeavers';
 import { DeathsRemote } from './DeathsRemote';
+import { AbilitiesRemote } from './AbilitiesRemote';
+import type { Quest } from '../../shared/quests';
 
 /**
  * The standing refusals, spoken to the sender and shown to the player.
@@ -378,6 +381,8 @@ export interface RemoteEvents extends StandingRemoteEvents {
    * written, which decides the `{ok}`.
    */
   switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
+  /** The realm's quests, for the step behind an `@abil` counter; null where no world is loaded. */
+  quests?(): readonly Quest[] | null;
 }
 
 /**
@@ -493,6 +498,8 @@ export class Remotes implements SessionModule {
   private readonly leavers = new PartyLeavers();
   /** `@death`, answered off the realm's own listing. See `DeathsRemote`. */
   private readonly deaths: DeathsRemote;
+  /** `@abil`, answered off a fresh `abil` listing. See `AbilitiesRemote`. */
+  private readonly abilities: AbilitiesRemote;
 
   constructor(
     private config: AutomationConfig,
@@ -546,6 +553,11 @@ export class Remotes implements SessionModule {
     this.deaths = new DeathsRemote(queue, {
       notice,
       reply: (to, body, prefix) => this.reply(to, body, prefix)
+    });
+    this.abilities = new AbilitiesRemote(queue, {
+      notice,
+      reply: (to, body, prefix) => this.reply(to, body, prefix),
+      quests: () => events.quests?.() ?? null
     });
   }
 
@@ -613,6 +625,7 @@ export class Remotes implements SessionModule {
     // Its own switches: a rejoin is the party's, under the master switch alone.
     this.autoJoin.onBlock(block, state);
     this.deaths.onBlock(block);
+    this.abilities.onBlock(block, state);
     if (!this.config.remotes.enabled) return;
     /*
      * The master switch holds what is sent (`askJoined`, `answer`), never
@@ -1140,6 +1153,7 @@ export class Remotes implements SessionModule {
     this.stoppers.reset();
     this.leavers.forget();
     this.deaths.reset();
+    this.abilities.reset();
   }
 
   /** The regroup's and the invitation's clocks are what here outlive a call. */
@@ -1403,6 +1417,18 @@ export class Remotes implements SessionModule {
       case 'death':
         this.deaths.ask(from, prefix);
         return;
+      case 'abil': {
+        const ids = readAbilAsked(command.argument);
+        if (ids === null) {
+          this.events.notice?.(
+            t('automation.remotes.abilUnread', { from, argument: command.argument ?? '' }),
+            ANSWER
+          );
+          return;
+        }
+        this.abilities.ask(from, prefix, ids);
+        return;
+      }
       case 'version':
         this.reply(from, formatVersion(CLIENT_NAME, CLIENT_VERSION), prefix);
         return;

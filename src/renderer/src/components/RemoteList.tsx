@@ -4,6 +4,7 @@ import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
+  coveredByAll,
   GRANTABLE_REMOTES,
   isGrantable,
   PARTY_GRANTS,
@@ -41,12 +42,11 @@ import type { SettingPath } from '@shared/decisionSettings';
  * *no capture shows a reply* beside it says the true thing: this is known, and
  * it is not answerable yet.
  *
- * **Allow all means the answerable ones**, which is `ACTIONABLE_REMOTES`, never
- * the four standing refusals: each of those is granted by name. It
- * writes the names out rather than storing a wildcard, so a later build that
- * makes `@looponce` answerable does not silently hand it to everybody who once
- * pressed a button — the safe direction for a permission is the one that grants
- * less, and a list is auditable in the user's own YAML in a way `*` is not.
+ * **Allow all on a player is a standing grant** (the user, 2026-10-31):
+ * `allowAll: true` covers every remote this client answers, including ones a
+ * later build adds, and never the four standing refusals, each granted by name
+ * (`coveredByAll`). A deny by name still wins. In `gang` and `party` mode it
+ * writes `ACTIONABLE_REMOTES` out by name, as it always has.
  *
  * ## Two shapes, because two questions
  *
@@ -79,6 +79,8 @@ export interface RemoteListProps {
   allow: readonly RemoteName[];
   /** Remotes explicitly denied. Empty and unused in `gang` and `party` mode. */
   deny?: readonly RemoteName[];
+  /** *Allow all* is set on this player (`RemoteGrant.allowAll`). Unused in `gang` and `party` mode. */
+  allowAll?: boolean;
   /**
    * What the gang grants, so a `player` row can say where an unset one lands.
    * Absent in the two-state modes, where the list itself is that answer.
@@ -106,6 +108,7 @@ export default function RemoteList({
   subject,
   allow,
   deny = [],
+  allowAll = false,
   fromGang,
   fromParty,
   onSet,
@@ -130,7 +133,12 @@ export default function RemoteList({
 
   // The party's list also holds what joining grants, which no toggle takes off (`PARTY_GRANTS`).
   const joined = mode === 'party' ? new Set(PARTY_GRANTS) : new Set<RemoteName>();
-  const granted = GRANTABLE_REMOTES.filter((name) => allowed.has(name) || joined.has(name)).length;
+  // Allow all covers an actionable remote nobody denied (`grantAllows`), never a standing refusal.
+  const byAll = (name: RemoteName): boolean =>
+    coveredByAll({ allowAll }, name) && !denied.has(name);
+  const granted = GRANTABLE_REMOTES.filter(
+    (name) => allowed.has(name) || joined.has(name) || byAll(name)
+  ).length;
 
   return (
     <div className="remote-list" data-mode={mode} data-setting={setting}>
@@ -149,11 +157,17 @@ export default function RemoteList({
             no room for.
           */}
           <button
+            aria-pressed={mode === 'player' ? allowAll : undefined}
             className="chip toggle"
             data-bulk="allow"
+            data-on={mode === 'player' ? (allowAll ? 'true' : 'false') : undefined}
             onClick={() => onSetAll('allow')}
             onMouseDown={keepFocus}
-            title={t('remotes.allowAllTitle')}
+            title={
+              mode === 'player'
+                ? t('remotes.allowAllPlayerTitle', { name: subject })
+                : t('remotes.allowAllTitle')
+            }
             type="button"
           >
             {t('remotes.allowAll')}
@@ -275,7 +289,11 @@ export default function RemoteList({
                       column of noise, and the count above already says how
                       much is granted.
                     */}
-                    {!on && !off && gang.has(name) ? (
+                    {!on && byAll(name) ? (
+                      <span className="chip" title={t('remotes.byAllowAllTitle')}>
+                        {t('remotes.byAllowAll')}
+                      </span>
+                    ) : !on && !off && gang.has(name) ? (
                       <span className="chip">{t('remotes.fromGang')}</span>
                     ) : !on && !off && party.has(name) ? (
                       <span className="chip">{t('remotes.fromParty')}</span>

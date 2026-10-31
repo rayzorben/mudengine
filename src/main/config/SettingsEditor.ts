@@ -575,7 +575,12 @@ export class SettingsEditor {
     const key = who.toLowerCase();
     const deny = [...new Set(grant.deny)];
     const allow = [...new Set(grant.allow)].filter((remote) => !deny.includes(remote));
-    const kept: RemoteGrant = { allow, deny, autoInvite: grant.autoInvite };
+    const kept: RemoteGrant = {
+      allow,
+      deny,
+      allowAll: grant.allowAll,
+      autoInvite: grant.autoInvite
+    };
 
     return this.files.edit(file, {
       mutate: (document) => {
@@ -592,7 +597,10 @@ export class SettingsEditor {
           }
           return;
         }
-        document.setIn(['automation', 'remotes', 'players', key], document.createNode(kept));
+        // `allowAll` only while on: absent reads as off, and a key per grant saying so is noise.
+        const { allowAll, ...named } = kept;
+        const written = allowAll ? kept : named;
+        document.setIn(['automation', 'remotes', 'players', key], document.createNode(written));
         /*
          * Block style, explicitly, because the map this writes into is usually
          * the empty `players: {}` a profile save wrote — and `{}` is a *flow*

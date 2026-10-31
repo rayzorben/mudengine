@@ -78,7 +78,13 @@ describe('@death', () => {
 
     const both = harness({ death: 'unavailable', pro: 'unavailable' });
     both.deaths.ask('Rand', '/');
-    expect(both.notices).toEqual([t('automation.remotes.deathsNoWord', { from: 'Rand' })]);
+    expect(both.notices).toEqual([
+      t('automation.remotes.listingNoWord', {
+        from: 'Rand',
+        remote: '@death',
+        words: 'death or pro'
+      })
+    ]);
     both.deaths.ask('Rand', '/');
     expect(both.offered).toHaveLength(4);
   });
@@ -87,8 +93,9 @@ describe('@death', () => {
     const { deaths, notices } = harness({ death: 'switched-off' });
     deaths.ask('Rand', '/');
     expect(notices).toEqual([
-      t('automation.remotes.deathsNotAsked', {
+      t('automation.remotes.listingNotAsked', {
         from: 'Rand',
+        remote: '@death',
         command: 'death',
         why: 'switched-off'
       })
@@ -102,7 +109,11 @@ describe('@death', () => {
     expect(offered[0]!.expiresAt).toBe(replyMs);
     deaths.onBlock(block('status-line', {}, replyMs));
     expect(notices).toEqual([
-      t('automation.remotes.deathsNeverSent', { from: 'Rand', seconds: replyMs / 1000 })
+      t('automation.remotes.listingNeverSent', {
+        from: 'Rand',
+        remote: '@death',
+        seconds: replyMs / 1000
+      })
     ]);
     deaths.ask('Soul', '/');
     offered[0]!.onSent?.();
@@ -149,7 +160,12 @@ describe('@death', () => {
     expect(notices).toEqual([]);
     deaths.onBlock(block('status-line', {}, replyMs));
     expect(notices).toEqual([
-      t('automation.remotes.deathsUnanswered', { from: 'Rand', seconds: replyMs / 1000 })
+      t('automation.remotes.listingUnanswered', {
+        from: 'Rand',
+        remote: '@death',
+        listing: t('automation.remotes.listingDeaths'),
+        seconds: replyMs / 1000
+      })
     ]);
     expect(replies).toEqual([]);
     deaths.ask('Rand', '/');
