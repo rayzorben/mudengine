@@ -7,8 +7,8 @@
  * compass slot is neither (`Exits.SuccessMoveThroughExit`). On landing it sends
  * `par`, invites back a member standing here who is out of the party, and
  * holds the walk (`Holds.holdForParty`) until everyone is here and in it, or
- * `party.regroupMinutes` runs out, or the player walks on (todo 849). See
- * `mudengine-automation` › parts/remotes.md.
+ * `party.regroupMinutes` runs out (0: no limit), or the player walks on (todo
+ * 849). See `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
 import { partyMembers, standingHere, type CharacterState } from '../../shared/character';
@@ -23,6 +23,7 @@ import {
   type RoomId
 } from '../../shared/world';
 import type { CommandQueue, Intent } from './CommandQueue';
+import { PartyCompany } from './PartyCompany';
 import { partyListingIntent } from './PartyListing';
 
 const REGROUP: DecisionKind = 'party-regroup';
@@ -88,13 +89,18 @@ interface Gathering {
   invited: Set<string>;
   /** Whether a party listing has arrived since landing: before it, the roster is the old room's. */
   listed: boolean;
+  /** Whether the queue took the landing's `par` as a new intent; otherwise it is offered on each state (a waiting one joins) until a listing comes. */
+  asked: boolean;
 }
 
 export class PartyRegroup {
   private crossing: Crossing | null = null;
   private gathering: Gathering | null = null;
-  /** The wait's bound, armed at the portal step; null while the walk is not held for the party. */
+  /** Whether the walk is held for the party, from the portal step. */
+  private held = false;
+  /** The wait's bound, armed with `held` when `regroupMinutes` sets one. */
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly company = new PartyCompany();
   /** The draw last said to split the party, so a step sent again after a fight says it once; cleared on leaving `from`. */
   private apartAt: { from: RoomId | null; to: RoomId } | null = null;
 
@@ -115,15 +121,17 @@ export class PartyRegroup {
    * in the room being left, where a fight may have recalled the step itself.
    */
   regrouping(state: CharacterState): boolean {
-    if (this.timer === null) return false;
+    if (!this.held) return false;
     return this.crossing === null || roomAddress(state.room) !== this.crossing.from;
   }
 
   /**
    * A step's command is about to be queued. For `alone` the say goes first in
    * the same band, so it reaches the wire ahead of the step and the followers
-   * hear it in the room they are about to be left in. Only a member standing
-   * here hears it, or follows through an exit.
+   * hear it in the room they are about to be left in. It is said to every
+   * joined member, and the walk waits for those `PartyCompany` saw with this
+   * character here or one room back: the room's roster lags a follower's own
+   * arrival line, which left Brakkle out of Rayzor's `go hole` (2026-10-31).
    */
   stepping(
     command: string,
@@ -139,13 +147,13 @@ export class PartyRegroup {
     // The say is `relayPortals`'; a `together` crossing owes none and is regrouped behind regardless.
     if (crossing === 'alone' && !party.relayPortals) return;
     const from = roomAddress(state.room);
-    const here = standingHere(state);
-    const members = partyMembers(state).filter((member) => here.has(member.toLowerCase()));
-    if (members.length === 0) return;
+    const told = partyMembers(state);
+    if (told.length === 0) return;
     if (crossing === 'apart') {
-      this.apart(from, to, members);
+      this.apart(from, to, told);
       return;
     }
+    const members = this.company.seenWith(told, state);
     // The same step sent again after a fight recalled it: the party already heard it.
     const again = this.crossing;
     if (again !== null && again.said && again.from === from && again.to === to) return;
@@ -164,12 +172,16 @@ export class PartyRegroup {
         }
       });
     }
+    if (members.length === 0) return;
     const minutes = party.regroupMinutes;
-    if (minutes <= 0) return;
+    this.held = true;
     this.events.notice?.(
-      t('automation.party.regrouping', { minutes, members: members.join(', ') }),
+      minutes > 0
+        ? t('automation.party.regrouping', { minutes, members: members.join(', ') })
+        : t('automation.party.regroupingUntilBack', { members: members.join(', ') }),
       REGROUP
     );
+    if (minutes <= 0) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       this.end();
@@ -185,7 +197,7 @@ export class PartyRegroup {
    * timeout ends it, said. False when no regroup is pending.
    */
   release(): boolean {
-    if (this.timer === null) return false;
+    if (!this.held) return false;
     this.end();
     this.events.notice?.(t('automation.party.regroupReleased'), REGROUP);
     return true;
@@ -197,6 +209,7 @@ export class PartyRegroup {
   }
 
   onCharacter(state: CharacterState): void {
+    this.company.note(state);
     const here = roomAddress(state.room);
     if (here === null) return;
     if (this.apartAt !== null && here !== this.apartAt.from) this.apartAt = null;
@@ -211,15 +224,18 @@ export class PartyRegroup {
     }
     if (this.gathering === null) return;
     if (here !== this.gathering.at) this.leave();
+    else if (!this.gathering.listed && !this.gathering.asked) this.askForListing(this.gathering);
     else this.gather(this.gathering, state);
   }
 
   reset(): void {
     this.end();
+    this.company.forget();
   }
 
   dispose(): void {
     this.end();
+    this.company.forget();
   }
 
   /** A draw: each member lands somewhere of their own, so nothing waits; the player is told. */
@@ -232,13 +248,19 @@ export class PartyRegroup {
 
   private land(at: RoomId, members: string[]): void {
     this.crossing = null;
-    this.gathering = { at, members, invited: new Set(), listed: false };
-    this.queue.enqueue(partyListingIntent(this.config, REGROUP));
+    const gathering: Gathering = { at, members, invited: new Set(), listed: false, asked: false };
+    this.gathering = gathering;
+    this.askForListing(gathering);
+  }
+
+  /** `par`, without which the wait cannot see anyone rejoin; with no time limit, a refused one would hold for good. */
+  private askForListing(gathering: Gathering): void {
+    gathering.asked = this.queue.enqueue(partyListingIntent(this.config, REGROUP));
   }
 
   /** Somewhere the portal does not lead: a scatter, or the player walking on by hand. */
   private leave(): void {
-    const held = this.timer !== null;
+    const held = this.held;
     this.end();
     if (held) this.events.notice?.(t('automation.party.regroupLeft'), REGROUP);
   }
@@ -252,7 +274,7 @@ export class PartyRegroup {
       return !joined.has(key) || !here.has(key);
     });
     if (missing.length === 0) {
-      const held = this.timer !== null;
+      const held = this.held;
       this.end();
       if (held) this.events.notice?.(t('automation.party.regrouped'), REGROUP);
       return;
@@ -273,6 +295,7 @@ export class PartyRegroup {
     this.apartAt = null;
     this.crossing = null;
     this.gathering = null;
+    this.held = false;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
   }

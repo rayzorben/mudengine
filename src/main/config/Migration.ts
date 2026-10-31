@@ -335,6 +335,7 @@ function migrateAll(options: MigrationOptions): void {
   statedComebackRooms(home, note, options.template);
   statedReinviteMinutes(home, note, options.template);
   theRejoinWaitsADay(home, note);
+  theRegroupWaitsUntilBack(home, note);
   heldAndComebackFollowWait(home, note);
   collectedRowsSayBuyOff(home, note);
 }
@@ -5139,25 +5140,58 @@ function statedReinviteMinutes(
  * `theDoorsOpenByDefault`'s argument.
  */
 function theRejoinWaitsADay(home: Home, note: (message: string) => void): void {
-  const from = 30;
   const minutes = DEFAULT_CONFIG.automation.party.reinviteMinutes;
-  const moved: string[] = [];
-  for (const file of everySettingsFile(home)) {
-    edit(file, (document) => {
-      const party = document.getIn(['automation', 'party'], true);
-      if (!isMap(party) || party.get('reinviteMinutes') !== from) return false;
-      party.set('reinviteMinutes', minutes);
-      moved.push(file);
-      return true;
-    });
-  }
+  const moved = movedShippedPartyFigure(home, 'reinviteMinutes', 30, minutes);
   if (moved.length === 0) return;
-  const params = { count: moved.length, fileList: moved.join(', '), from, minutes };
+  const params = { count: moved.length, fileList: moved.join(', '), from: 30, minutes };
   note(
     moved.length === 1
       ? t('notices.migration.reinviteADay.one', params)
       : t('notices.migration.reinviteADay.many', params)
   );
+}
+
+/**
+ * `automation.party.regroupMinutes` from 5 to 0, no time limit (2026-10-31, the
+ * user: the leader waits after a portal until the party is back, with the
+ * timeout off by default). Only from 5, the figure the template shipped and
+ * every file on disk states; any other was somebody's and stays.
+ */
+function theRegroupWaitsUntilBack(home: Home, note: (message: string) => void): void {
+  const to = DEFAULT_CONFIG.automation.party.regroupMinutes;
+  const moved = movedShippedPartyFigure(home, 'regroupMinutes', 5, to);
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', '), from: 5 };
+  note(
+    moved.length === 1
+      ? t('notices.migration.regroupUntilBack.one', params)
+      : t('notices.migration.regroupUntilBack.many', params)
+  );
+}
+
+/**
+ * Sets `automation.party.<key>` to `to` in every settings file stating the old
+ * shipped `from`, and returns those files. Nothing records a run, so a player
+ * who later types `from` again is moved again: the price of no run record,
+ * shared with `theDoorsOpenByDefault`.
+ */
+function movedShippedPartyFigure(
+  home: Home,
+  key: 'reinviteMinutes' | 'regroupMinutes',
+  from: number,
+  to: number
+): string[] {
+  const moved: string[] = [];
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const party = document.getIn(['automation', 'party'], true);
+      if (!isMap(party) || party.get(key) !== from) return false;
+      party.set(key, to);
+      moved.push(file);
+      return true;
+    });
+  }
+  return moved;
 }
 
 /**
@@ -8759,6 +8793,8 @@ function theTuningBlockGainedKeys(
     addKey('remotes', 'inviteSeenAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteSeenAgainMs);
     // How often a member's @wait or @heal asks for the party listing (todo 142, 2026-10-15).
     addKey('remotes', 'parOnWordMs', DEFAULT_INTERNAL.tuning.remotes.parOnWordMs);
+    // How long a member the server dropped still counts for @wait and @comeback (2026-10-31).
+    addKey('remotes', 'leftPartyMs', DEFAULT_INTERNAL.tuning.remotes.leftPartyMs);
     // When the console's marks record is written whole again (todo 143, 2026-10-16).
     addKey('session', 'marksWholeAt', DEFAULT_INTERNAL.tuning.session.marksWholeAt);
     // MegaMUD's room names: how many a search shows, and when the list is read (todo 144, 2026-10-16).

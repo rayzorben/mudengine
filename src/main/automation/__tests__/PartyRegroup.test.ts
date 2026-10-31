@@ -161,7 +161,7 @@ describe('leading the party through a portal', () => {
     expect(notices).toHaveLength(2);
   });
 
-  it('says nothing following, alone, switched off, or with nobody here to hear it', () => {
+  it('says nothing following, alone, or switched off', () => {
     regroup().stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul'], ['Soul'], 'Soul'));
     regroup().stepping('go vortex', 'portal', '3/681', state('3/25', []));
     regroup({ relayPortals: false }).stepping(
@@ -170,7 +170,6 @@ describe('leading the party through a portal', () => {
       '3/681',
       state('3/25', ['Soul'])
     );
-    regroup().stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul'], []));
     drain();
     expect(sent).toEqual([]);
   });
@@ -199,7 +198,60 @@ describe('leading the party through a portal', () => {
     expect(it.regrouping(far)).toBe(false);
   });
 
-  it('gives the wait up after regroupMinutes, and never waits at 0', () => {
+  /*
+   * Rayzor on OCI, 2026-10-31: the walk chose `go hole` on the room's prompt,
+   * a line before `Brakkle walks into the room`. The server had moved Brakkle
+   * with him; the room roster had not caught up, so nobody was told.
+   */
+  it('tells a member the room has not shown yet, since the server moved them with the leader', () => {
+    const it = regroup();
+    // Brakkle was seen one room back; his arrival here has not printed yet.
+    it.onCharacter(state('3/24', ['Brakkle']));
+    it.stepping('go hole', 'portal', '3/681', state('3/25', ['Brakkle'], []));
+    drain();
+    expect(sent).toEqual(['.@party go hole']);
+    expect(it.regrouping(far)).toBe(true);
+    it.onCharacter(state('3/681', [], []));
+    drain();
+    expect(sent).toEqual(['.@party go hole', PAR]);
+    it.onBlock(listing);
+    it.onCharacter(state('3/681', [], ['Brakkle']));
+    drain();
+    expect(sent).toEqual(['.@party go hole', PAR, 'invite Brakkle']);
+    expect(it.regrouping(far)).toBe(true);
+    it.onCharacter(state('3/681', ['Brakkle']));
+    expect(it.regrouping(far)).toBe(false);
+  });
+
+  it('tells a member no room has shown lately, and does not wait for them', () => {
+    const it = regroup();
+    it.onCharacter(state('3/24', ['Soul', 'Yang'], ['Soul']));
+    it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul', 'Yang'], []));
+    drain();
+    expect(sent).toEqual(['.@party go vortex']);
+    it.onCharacter(state('3/681', [], []));
+    it.onBlock(listing);
+    it.onCharacter(state('3/681', ['Soul'], ['Soul']));
+    // Back together with Soul alone: Yang was nowhere near.
+    expect(it.regrouping(far)).toBe(false);
+  });
+
+  it('asks for the party listing again when the landing could not', () => {
+    const it = regroup();
+    it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul']));
+    drain();
+    queue.hold('a screen that is not a prompt');
+    it.onCharacter(state('3/681', [], []));
+    queue.release();
+    drain();
+    expect(sent).toEqual(['.@party go vortex']);
+    it.onCharacter(state('3/681', [], []));
+    drain();
+    expect(sent).toEqual(['.@party go vortex', PAR]);
+    it.dispose();
+  });
+
+  it('gives the wait up after regroupMinutes, and at 0 waits until the party is back', () => {
     const it = regroup({ regroupMinutes: 1 });
     it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul']));
     it.onCharacter(state('3/681', [], []));
@@ -209,10 +261,14 @@ describe('leading the party through a portal', () => {
     vi.advanceTimersByTime(1);
     expect(it.regrouping(far)).toBe(false);
 
-    const none = regroup({ regroupMinutes: 0 });
-    none.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul']));
-    none.onCharacter(state('3/681', [], []));
-    expect(none.regrouping(far)).toBe(false);
+    const unbounded = regroup({ regroupMinutes: 0 });
+    unbounded.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul']));
+    unbounded.onCharacter(state('3/681', [], []));
+    vi.advanceTimersByTime(24 * 60 * 60_000);
+    expect(unbounded.regrouping(far)).toBe(true);
+    unbounded.onBlock(listing);
+    unbounded.onCharacter(state('3/681', ['Soul']));
+    expect(unbounded.regrouping(far)).toBe(false);
   });
 
   it('stops waiting when the character is somewhere the portal does not lead', () => {

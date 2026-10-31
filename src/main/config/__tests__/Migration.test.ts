@@ -1082,6 +1082,34 @@ describe('the rejoin window moving from 30 minutes to a day', () => {
   });
 });
 
+/* 2026-10-31, the user: the walk waits behind a portal until the party is back. */
+describe('the rejoin wait moving from 5 minutes to no limit', () => {
+  const party = (minutes: number): string =>
+    `automation:\n  party:\n    relayPortals: true\n    regroupMinutes: ${minutes}\n`;
+  const stated = (file: string): unknown =>
+    (
+      (parse(fs.readFileSync(file, 'utf8')) as Record<string, Record<string, unknown>>)[
+        'automation'
+      ]?.['party'] as Record<string, unknown>
+    )['regroupMinutes'];
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('moves the 5 the client wrote, said, and leaves a figure somebody chose', () => {
+    fs.writeFileSync(home.options, party(5), 'utf8');
+    const chosen = profile('vaelor', party(10));
+    migrate();
+    expect(stated(home.options)).toBe(0);
+    expect(stated(chosen)).toBe(10);
+    expect(notesOf(said, 'notices.migration.regroupUntilBack.one')).toHaveLength(1);
+    expect(said.join(' ')).toContain(home.options);
+    migrate();
+    expect(notesOf(said, 'notices.migration.regroupUntilBack.one')).toEqual([]);
+  });
+});
+
 describe('the hang-up refusal becoming whether the realm charges', () => {
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });

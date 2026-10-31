@@ -458,6 +458,9 @@ notices:
     reinviteADay:
       many: 'Re-form the Party After a Disconnect went from {from} to {minutes} min, so the loop waits for a member who hung up, in {count} files: {fileList}'
       one: 'Re-form the Party After a Disconnect went from {from} to {minutes} min, so the loop waits for a member who hung up, in {fileList}'
+    regroupUntilBack:
+      many: 'Rejoin Wait went from {from} min to 0, so after a room''s command splits the party the walk waits until everyone is back, in {count} files: {fileList}'
+      one: 'Rejoin Wait went from {from} min to 0, so after a room''s command splits the party the walk waits until everyone is back, in {fileList}'
     chanceWays:
       many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
       one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
@@ -5515,7 +5518,7 @@ settings:
     regroupMinutesHint:
       After going through one, or an exit whose spell lands everyone in one room and
       out of the party, send par, invite back a member who is here but not in it, and hold the walk
-      this many minutes for everyone. 0 does not wait.
+      this many minutes for everyone. 0 waits until everyone is back.
     regroupMinutesLabel: Rejoin Wait (minutes)
     comebackRoomsHint:
       When a member says @comeback, walk back the way you came to the room they were last seen in,
@@ -7578,6 +7581,7 @@ automation:
     reasonRelay: 'leading the party through "{command}"'
     reasonReinvite: 'inviting {member} back into the party'
     regrouping: 'Waiting up to {minutes} min for the party to rejoin: {members}.'
+    regroupingUntilBack: 'Waiting for the party to rejoin: {members}.'
     reinvited: '{member} is here but out of the party; inviting them back.'
     regrouped: The party is back together; walking on.
     regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.

@@ -1808,6 +1808,14 @@ const TUNING_DEFAULTS = {
      */
     parOnWordMs: 15_000,
     /**
+     * How long after the server drops a member from the party their `@wait`,
+     * `@held` or `@comeback` still counts as a member's (2026-10-26: Brakkle's
+     * `@wait (can't move)` landed about 3 s after the leader's step dropped
+     * him). It was `party.regroupMinutes` until 2026-10-31, when that became a
+     * wait with no limit by default. Chosen, not measured.
+     */
+    leftPartyMs: 300_000,
+    /**
      * The longest line the server keeps: its `TGSModule` appends a typed
      * character only while the line is under 255 and drops the rest
      * (GreaterMUD source, `TGSModule.cs:299`). A `@loop` or `@goto` answer

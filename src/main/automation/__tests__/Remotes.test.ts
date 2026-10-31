@@ -4,6 +4,7 @@ import { CommandQueue } from '../CommandQueue';
 import { Remotes, SWITCH_REMOTES } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { wireExit, wireItem } from '../../../shared/entities';
@@ -2914,8 +2915,8 @@ describe('a held member: @held and @comeback', () => {
     remotes.onBlock(left, who());
     remotes.onBlock(said('conversation-telepath', 'Killa', '@comeback'), who());
     expect(walkedBack).toEqual(['Killa']);
-    // Past `regroupMinutes`, the party grant no longer covers them.
-    vi.advanceTimersByTime((config.party.regroupMinutes * 60 + 1) * 1000);
+    // Past `leftPartyMs`, the party grant no longer covers them.
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.remotes.leftPartyMs + 1);
     remotes.onBlock(said('conversation-telepath', 'Killa', '@comeback'), who());
     expect(walkedBack).toEqual(['Killa']);
   });

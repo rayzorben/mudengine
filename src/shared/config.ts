@@ -2164,7 +2164,8 @@ export interface PartyConfig {
    * Leading, after going through one, or through an exit whose spell lands the
    * party in one room and out of the party (todo 67), send `par`, invite again
    * a member standing here who is out of it, and hold the walk up to this many
-   * minutes for everyone to be here and in it. 0 invites and does not wait.
+   * minutes for everyone to be here and in it. 0 holds it until they are, or the
+   * player walks on (the user, 2026-10-31: no time limit by default).
    */
   regroupMinutes: number;
   /**
@@ -2634,7 +2635,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       parEveryRounds: 5,
       parAtLoss: 0.25,
       relayPortals: true,
-      regroupMinutes: 5,
+      regroupMinutes: 0,
       comebackRooms: 15,
       reinviteMinutes: 1440,
       helpWithDoors: false

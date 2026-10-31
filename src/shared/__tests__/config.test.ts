@@ -750,7 +750,7 @@ describe('following somebody', () => {
       parEveryRounds: 5,
       parAtLoss: 0.25,
       relayPortals: true,
-      regroupMinutes: 5,
+      regroupMinutes: 0,
       // Walks nothing until a member granted `@comeback` asks.
       comebackRooms: 15,
       reinviteMinutes: 1440,

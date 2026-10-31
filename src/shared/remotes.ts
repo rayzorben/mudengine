@@ -1634,7 +1634,7 @@ export function isActionable(name: RemoteName): boolean {
 export const ACTIONABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isActionable);
 
 /**
- * What a member who left the party within `party.regroupMinutes` may still
+ * What a member who left the party within `tuning.remotes.leftPartyMs` may still
  * send on a party grant (todo 20261023-1950-01): the realm drops a held member
  * as the leader steps off, before its `@comeback` arrives (Killa, 2026-10-24).
  */

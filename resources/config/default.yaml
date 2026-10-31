@@ -2484,8 +2484,9 @@ automation:
     # Leading, after going through one, or through an exit whose spell lands
     # the party in one room and out of it: send par, invite again a member
     # standing in the room who is out of the party, and hold the walk up to
-    # this many minutes for everyone to be here and in it. 0 invites and walks on.
-    regroupMinutes: 5
+    # this many minutes for everyone to be here and in it. 0 holds it until
+    # they are, or you walk on without them.
+    regroupMinutes: 0
 
     # Leading, when a member says @comeback (held, and dropped from the party),
     # walk back the way you came to the room they were last seen in, and up to

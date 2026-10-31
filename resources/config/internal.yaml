@@ -1376,6 +1376,11 @@ tuning:
     # (ParPeriod).
     parOnWordMs: 15000
 
+    # How long after the server drops a member from the party their @wait,
+    # @held or @comeback still counts as a member's. The realm drops a member
+    # who can't move as the leader steps off, and their word arrives after.
+    leftPartyMs: 300000
+
     # The longest line the server keeps: GreaterMUD appends a typed character
     # only while the line is under 255 (TGSModule.cs:299). A @loop or @goto
     # answer listing several matches is cut to fit, on the whole /<name> {...}

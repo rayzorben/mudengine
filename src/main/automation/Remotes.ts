@@ -281,7 +281,7 @@ export interface RemoteEvents extends StandingRemoteEvents {
   notice?: NoticeSink;
   /**
    * Somebody asked this character to stop and wait, or said they are ready;
-   * `left` where they dropped out of the party within `regroupMinutes`.
+   * `left` where they dropped out of the party within `tuning.remotes.leftPartyMs`.
    */
   pace?(who: string, ready: boolean, left: boolean): void;
   /** A member said it is held (`@held`) or free again (`@ok`), for whoever can free it. */
@@ -688,7 +688,7 @@ export class Remotes implements SessionModule {
     const prefix = channel(from, this.config.remotes);
     const leftLately =
       PACING_REMOTES.includes(command.name) &&
-      this.leavers.within(from, this.config.party.regroupMinutes);
+      this.leavers.within(from, tuning().remotes.leftPartyMs);
     const evidence = evidenceAbout(from, state, leftLately);
     /*
      * A channel this client never answers on is not one addressed to this
@@ -1793,7 +1793,7 @@ export class Remotes implements SessionModule {
           return;
         }
         // A `@wait` can land after the realm dropped its sender behind the step (`PartyLeavers`).
-        const left = this.leavers.within(from, this.config.party.regroupMinutes);
+        const left = this.leavers.within(from, tuning().remotes.leftPartyMs);
         this.events.pace?.(from, command.name === 'ok', left);
         this.events.notice?.(followerPaced(command.name, from), WAIT);
         return;
