@@ -4036,7 +4036,7 @@ cards:
       buy: buy
       buyTooltip: Buy it at a shop when you have fewer than the minimum. With buy off, it is only
         picked up where it is found, up to the maximum.
-      doneOnFound: done once found
+      doneOnFound: Auto-collect
       doneOnFoundTooltip: Take the item off this list once you carry its maximum.
       collectOnly: picked up only
       collectOnlyTooltip: Never bought. Picked up from the floor when one is here and you have

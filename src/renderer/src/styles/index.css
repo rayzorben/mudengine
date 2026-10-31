@@ -14328,6 +14328,21 @@ tr:hover .row-action.worn,
   gap: 6px;
 }
 
+/*
+ * A checkbox's own margin and the label's baseline set the box above its word,
+ * and in a narrow popover the label wrapped between them.
+ */
+.supply-control label:has(> input[type='checkbox']) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+
+.supply-control label > input[type='checkbox'] {
+  margin: 0;
+}
+
 .supply-control select {
   min-width: 0;
   max-width: 100%;
