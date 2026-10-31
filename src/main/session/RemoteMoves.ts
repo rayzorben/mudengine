@@ -5,8 +5,8 @@
  * agreed. Only what a `@stop` stopped is resumed, while it is still stopped
  * for that reason. `@loop` (todo 16) starts the loop a path file, name or
  * start room picks out (`matchLoopIn`) as the palette starts one, or resumes
- * the lap it names. `@goto` (todo 17) and `@comeback-room` walk to a room as
- * the player's own route does. `@path` (todo 32) says where the character is
+ * the lap it names. `@goto` (todo 17) walks to a room as the player's own
+ * route does; `@comeback-room` goes to `Travel.walkBackTo`. `@path` (todo 32) says where the character is
  * going, in the words `@loop` and `@goto` read back. See
  * `mudengine-automation` › `parts/remotes.md`.
  */
@@ -62,10 +62,7 @@ export class RemoteMoves {
 
   /** What `Remotes` asks: `@status` and the remotes that move this character. */
   readonly events: Required<
-    Pick<
-      RemoteEvents,
-      'progress' | 'path' | 'stopMoving' | 'resumeMoving' | 'startLoop' | 'goTo' | 'comeBack'
-    >
+    Pick<RemoteEvents, 'progress' | 'path' | 'stopMoving' | 'resumeMoving' | 'startLoop' | 'goTo'>
   > = {
     progress: () => ({
       walk: this.session.walker.progress,
@@ -76,8 +73,7 @@ export class RemoteMoves {
     stopMoving: (from) => this.stop(from),
     resumeMoving: (from) => this.resume(from),
     startLoop: (from, request) => this.loop(from, request),
-    goTo: (from, request) => this.goTo(from, request),
-    comeBack: (from, map, room) => this.comeBack(from, { map, room })
+    goTo: (from, request) => this.goTo(from, request)
   };
 
   private stop(from: string): boolean {
@@ -270,26 +266,6 @@ export class RemoteMoves {
       owed.push(roomId(match.at.map, match.at.room));
     }
     return owed;
-  }
-
-  /** `@comeback-room`: the address the sender stated. */
-  private comeBack(from: string, at: RoomReference): boolean {
-    const walk = this.walkTo(at);
-    if (typeof walk === 'string') {
-      this.notice(
-        t('session.remotes.comebackRefused', { who: from, reason: walk }),
-        'remote-moves'
-      );
-      return false;
-    }
-    const coming = { who: from, stepCount: walk.stepCount, address: roomId(at.map, at.room) };
-    this.notice(
-      this.session.walker.progress.pace === 'running'
-        ? t('session.remotes.comebackRunning', coming)
-        : t('session.remotes.comebackWalking', coming),
-      'remote-moves'
-    );
-    return true;
   }
 
   /** The player's own route to `at`. See `walkTo`. */

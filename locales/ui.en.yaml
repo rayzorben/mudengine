@@ -6136,6 +6136,9 @@ session:
     trailEnded: no confirmed move is left to walk back over
     off: 'Not walking back for {who}: Walk Back For a Member is 0.'
     started: Walking back for {who}, up to {rooms} rooms.
+    startedTo: '{who} asked this character to come to {address}; walking {stepCount} steps.'
+    notThere: 'this character is standing in {address}, and {who} is not here'
+    notFound: Walked to the room {who} asked for and did not find them there; going on.
     stopped: 'Stopped walking back for {who}: {reason}'
   macro:
     dropped:
@@ -6365,10 +6368,6 @@ session:
   remotes:
     peerPlaced: '{who} is in {room} ({address}).'
     peerPlacedUnnamed: a room they did not name
-    comebackWalking: '{who} asked this character to come to {address}; walking {stepCount} steps.'
-    comebackRunning: '{who} asked this character to come to {address}; running {stepCount} steps.'
-    comebackRefused: '{who} asked this character to come to them, and the route was refused:
-      {reason}'
     stopNothing: '{who} sent @stop, and this character was not walking or looping. Nothing was sent
       back.'
     regoNothing: '{who} sent @rego, and nothing stopped by @stop is waiting. Nothing was sent back.'

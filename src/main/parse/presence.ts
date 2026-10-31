@@ -692,13 +692,13 @@ export function withJoined(
   return { ...s, party: { ...s.party, members: [...s.party.members, member(player)] } };
 }
 
-/** Somebody left — the leader, which ends the party, or one member. */
+/** The party ended (its leader left, or the server disbanded it), or one member left. */
 export function withLeft(
   s: CharacterState,
-  leaderLeft: boolean,
+  ended: boolean,
   player: string | undefined
 ): CharacterState | null {
-  if (leaderLeft) return { ...s, party: NO_PARTY };
+  if (ended) return { ...s, party: NO_PARTY };
   if (!player) return null;
   const members = s.party.members.filter((entry) => entry.name !== player);
   const pending = members.some((entry) => entry.invited);

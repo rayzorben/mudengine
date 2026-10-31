@@ -56,7 +56,7 @@ import { recordOf } from '../../shared/players';
 import { KeyBuying } from './KeyBuying';
 import { FareCash, type FareCashStart } from './FareCash';
 import { StopperOutfit, type OutfitVerdict, type StopperOutfitParts } from './StopperOutfit';
-import type { Remotes } from '../automation/Remotes';
+import type { RemoteEvents, Remotes } from '../automation/Remotes';
 import type { RoomHazards } from './RoomHazards';
 import { packHolds } from '../../shared/quests';
 import { playerKey } from '../../shared/players';
@@ -1006,6 +1006,11 @@ export class Travel implements SessionModule {
   /** A member left behind asked to be walked back for (`@comeback`). See `ComeBack`. */
   walkBackFor(who: string): void {
     this.comeBack.asked(who, this.tracker.current);
+  }
+
+  /** A member asked to be walked to where they are (`@comeback-room`); whether it is coming. */
+  walkBackTo(who: string, to: RoomId): boolean {
+    return this.comeBack.askedTo(who, to, this.tracker.current);
   }
 
   /** Leading, whom the party waits for on their health. See `PartyWait.onCharacter`. */
@@ -3046,4 +3051,18 @@ export class Travel implements SessionModule {
      */
     return Date.now() - this.lastEscapeSent < this.automationConfig.safety.retreat.cooldownMs;
   }
+}
+
+/**
+ * The party's remotes that hold this character or walk it back, as `Remotes`
+ * calls them. `travel` is read at the call: `Remotes` is built before `Travel`.
+ */
+export function partyRemotes(
+  travel: () => Travel
+): Required<Pick<RemoteEvents, 'pace' | 'walkBackFor' | 'comeBack'>> {
+  return {
+    pace: (who, ready, left) => travel().pace(who, ready, left),
+    walkBackFor: (who) => travel().walkBackFor(who),
+    comeBack: (from, map, room) => travel().walkBackTo(from, roomId(map, room))
+  };
 }

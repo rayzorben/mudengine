@@ -3288,6 +3288,19 @@ describe('the party this character travels with', () => {
     expect(brackle?.vitals).toMatchObject({ hp: 215, hpMax: 693 });
   });
 
+  /* Rayzor, OCI, 2026-10-31: an invitation still open kept the party past its last member. */
+  it('ends the party when the server disbands it', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=135/135,MA=17/123]:');
+    feed('The following people are in your travel party:');
+    feed('  Rayzor Blade                  (Priest)     [M: 13%] [H: 77%]  - Frontrank');
+    feed('  Brakkle                       (Ninja)               [H:100%]  - Frontrank');
+    feed('[HP=135/135,MA=17/123]:');
+    expect(tracker.current.party.members).toHaveLength(2);
+    feed('Your party has been disbanded.');
+    expect(tracker.current.party.members).toEqual([]);
+  });
+
   /* A letter nothing has established keeps its letter and claims nothing. */
   it('keeps a flag it cannot name rather than expanding it', () => {
     const { tracker, feed } = feeder();

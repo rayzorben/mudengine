@@ -1619,7 +1619,7 @@ export class CharacterTracker {
         return withJoined(s, g['leader'], g['player']);
 
       case 'party-left':
-        return withLeft(s, g['leader'] !== undefined, g['player']);
+        return withLeft(s, g['leader'] !== undefined || g['disbanded'] !== undefined, g['player']);
 
       case 'party-rank-changed':
         return withRank(s, g['player'] ?? s.name ?? undefined, g['rank']);

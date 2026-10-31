@@ -309,3 +309,17 @@ describe('what a new connection forgets', () => {
     expect(named(T + 300)).toEqual([unnamedEffect('You feel zippy!')]);
   });
 });
+
+/* Rayzor, 2026-10-31 (OCI): `cure poison` on himself, then the party's line, kept as its start. */
+describe('what a cast may teach as its start', () => {
+  it('learns nothing from an instant spell, and the next line from one that lasts', () => {
+    const { log, effects } = rig();
+    let s = cast(effects, character(), T, 'flash');
+    s = effects.unread(s, 'Your sight wavers.', T + 50, ALONE) ?? s;
+    s = effects.onset(s, onset('You feel dizzy!', '', T + 60)) ?? s;
+    expect(log).toEqual([]);
+    s = cast(effects, s, T + 1000, 'ward');
+    effects.unread(s, 'A pale light surrounds you.', T + 1050, ALONE);
+    expect(log).toEqual(['learn start ward "A pale light surrounds you."']);
+  });
+});

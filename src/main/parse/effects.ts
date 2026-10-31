@@ -51,6 +51,18 @@ export interface EffectSources {
  */
 const AFFLICTIONS = Object.keys(NO_AFFLICTIONS) as ReadonlyArray<keyof Afflictions>;
 
+/**
+ * This character's own cast, and whether the realm lets it last. An instant
+ * one (`cure poison`) prints no start of its own, so whatever unread line
+ * lands next is not its start: Rayzor learned `Your party has been
+ * disbanded.` as cure poison's (2026-10-31, OCI).
+ */
+interface SelfCast {
+  spell: string;
+  at: number;
+  lasts: boolean;
+}
+
 /** A list-size bound on the buffs, not a knob: nothing legitimate holds this many. */
 const KEPT_BUFFS = 15;
 
@@ -94,7 +106,7 @@ export class EffectTracker {
    * that adjacency. Session-scoped: a buff is re-cast every session and the
    * `st` timer is a live read, so nothing has to persist.
    */
-  private lastSelfCast: { spell: string; at: number } | null = null;
+  private lastSelfCast: SelfCast | null = null;
   /** Learned `onset effect (lower) → spell name`, so the `st` timer can be attributed. */
   private buffEffects = new Map<string, string>();
   /**
@@ -209,8 +221,6 @@ export class EffectTracker {
         ? caster === 'You'
         : target === 'yourself' || target === 'you' || (own !== null && target === own);
     if (!isSelf) return null;
-    // Remember it, so the onset that follows can be learned against it.
-    this.lastSelfCast = { spell, at };
     /*
      * Only what the realm calls a duration spell, where the realm can
      * say: an instant cure tracked as a buff would sit on the list for
@@ -219,7 +229,10 @@ export class EffectTracker {
      * and its life is bounded by the configured fallback clock.
      */
     const known = this.world?.spellNamed(spell) ?? null;
-    if (known !== null && known.duration === undefined) return null;
+    const lasts = known === null || known.duration !== undefined;
+    // Remember it, so the onset that follows can be read, and learned only for a spell that lasts.
+    this.lastSelfCast = { spell, at, lasts };
+    if (!lasts) return null;
     const kept = s.buffs.filter((buff) => buff.spell.toLowerCase() !== spell.toLowerCase());
     return {
       ...s,
@@ -257,7 +270,7 @@ export class EffectTracker {
      * sheet) the buff is still recognised.
      */
     if (candidates.length === 0) {
-      if (followsCast) {
+      if (followsCast && cast.lasts) {
         if (effect) this.buffEffects.set(effect, cast.spell);
         this.spellLore.learn(cast.spell, 'start', block.text.trim(), block.at);
         this.lastSelfCast = null;
@@ -426,7 +439,7 @@ export class EffectTracker {
     const text = raw.trim();
     if (!looksLikeEffectSentence(text) || this.namesSomebody(s, text)) return null;
     const cast = this.lastSelfCast;
-    if (cast !== null && at - cast.at <= tuning().spells.onsetWindowMs) {
+    if (cast !== null && cast.lasts && at - cast.at <= tuning().spells.onsetWindowMs) {
       this.spellLore.learn(cast.spell, 'start', text, at);
       this.lastSelfCast = null;
       return null;

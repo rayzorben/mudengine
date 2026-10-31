@@ -8063,15 +8063,18 @@ describe('starting and stopping a movement', () => {
       expect(sent()).not.toContain('{ok}');
     });
 
-    it('still walks to the address @comeback-room states', async () => {
-      const { socket, notices } = await atTheNorthEnd(granted);
+    /* Rayzor, 2026-10-31: walked as a route of his own, the stopped lap was never gone on with. */
+    it('walks to the address @comeback-room states, keeping the lap it stops', async () => {
+      const { socket } = await atTheNorthEnd(granted);
       const sent = wire(socket);
+      expect(
+        manager!.startLoop({ name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] })
+      ).toEqual({ started: true });
       socket.write('Brackle telepaths: @comeback-room 1/38\r\n');
-      await until(() => manager!.walker.progress.status === 'walking');
+      await until(() => manager!.walker.progress.destination === 'Room 38');
       await until(() => sent().includes('/Brackle {ok}'));
-      expect(notices).toContain(
-        t('session.remotes.comebackRunning', { who: 'Brackle', stepCount: 2, address: '1/38' })
-      );
+      expect(manager!.loops.progress.status).toBe('stopped');
+      expect(manager!.walker.progress.asked).toBe(false);
     });
 
     it('stops nothing when nothing is moving, and says so', async () => {

@@ -3,11 +3,12 @@
  * 20261023-1950-01): back down the trail, one room a leg (`backLeg`), to the
  * room the member was last seen in and up to `party.comebackRooms` rooms past
  * it, until the member is here; then invited, and what was stopped goes on.
- * MegaMUD walks back 5 (`Player is: Backtracking %d rooms.`). See
+ * MegaMUD walks back 5 (`Player is: Backtracking %d rooms.`). `@comeback-room`
+ * states the room, so it is one leg there and the same invite and resume. See
  * `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
-import { backLeg, settleBack } from './trailBack';
+import { backLeg, planned, settleBack } from './trailBack';
 import { standingHere, type CharacterState } from '../../shared/character';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { UnfinishedRoute } from '../../shared/walk';
@@ -50,8 +51,12 @@ interface Walk {
   who: string;
   /** Legs still allowed, down to 0. */
   legsLeft: number;
-  /** The leg on the way: the trail entry it walks back over, and its steps. */
-  leg: { step: TrailStep; steps: number } | null;
+  /**
+   * The leg on the way, and its steps: the trail entry it walks back over, or
+   * null for the one leg to the room `@comeback-room` stated, which leaves the
+   * trail alone.
+   */
+  leg: { step: TrailStep | null; steps: number } | null;
   /** Steps walked back so far, agreed to on the resume. */
   walked: number;
   /** A leg ended on arrival and the next goes on the next state. */
@@ -96,21 +101,7 @@ export class ComeBack {
       this.port.notice(t('session.comeBack.off', { who }), COMEBACK);
       return;
     }
-    if (this.walk?.who.toLowerCase() === who.toLowerCase()) return;
-    if (this.walk !== null) {
-      this.port.notice(t('session.comeBack.busy', { who, busy: this.walk.who }), COMEBACK);
-      return;
-    }
-    if (present(state, who)) {
-      this.port.invite(who);
-      this.port.notice(t('session.comeBack.here', { who }), COMEBACK);
-      return;
-    }
-    const busy = this.port.busy();
-    if (busy !== null) {
-      this.port.notice(t('session.comeBack.notNow', { who, reason: busy }), COMEBACK);
-      return;
-    }
+    if (this.answered(who, state) !== null) return;
     const legs = legsBack(
       this.port.trail(),
       this.port.lastSeen(who),
@@ -121,7 +112,69 @@ export class ComeBack {
       this.port.notice(t('session.comeBack.nothingBehind', { who }), COMEBACK);
       return;
     }
-    const started = t('session.comeBack.started', { who, rooms: legs });
+    this.stop(who, legs, t('session.comeBack.started', { who, rooms: legs }));
+    this.next();
+  }
+
+  /**
+   * `who` said `@comeback-room` from `to`: one leg there, then the member is
+   * invited and what was stopped goes on, as for `@comeback`. Whether this
+   * character is coming or already with them, which is what `{ok}` answers.
+   */
+  askedTo(who: string, to: RoomId, state: CharacterState): boolean {
+    const answered = this.answered(who, state);
+    if (answered !== null) return answered;
+    const leg = planned(this.port.plan(to));
+    if (leg.kind === 'refused') return this.noWay(who, leg.reason);
+    if (leg.kind === 'there') {
+      return this.noWay(who, t('session.comeBack.notThere', { who, address: to }));
+    }
+    const { route } = leg;
+    const steps = route.steps.length;
+    this.stop(who, 1, t('session.comeBack.startedTo', { who, address: to, stepCount: steps }));
+    const walk = this.walk;
+    const notWalked = this.port.walk(route);
+    // Cancelled while the leg started: nothing is coming.
+    if (walk === null || this.walk !== walk) return false;
+    if (notWalked === null) {
+      walk.leg = { step: null, steps };
+      return true;
+    }
+    this.noWay(who, notWalked);
+    this.finish(walk);
+    return false;
+  }
+
+  /** Says why there is no walk back for `who`. */
+  private noWay(who: string, reason: string): false {
+    this.port.notice(t('session.comeBack.noWay', { who, reason }), COMEBACK);
+    return false;
+  }
+
+  /**
+   * What a come-back asked of this character is answered with before any
+   * walk: true where it is already walking for `who` or `who` is here
+   * (invited), false where it cannot walk now (said), null to walk.
+   */
+  private answered(who: string, state: CharacterState): boolean | null {
+    if (this.walk?.who.toLowerCase() === who.toLowerCase()) return true;
+    if (this.walk !== null) {
+      this.port.notice(t('session.comeBack.busy', { who, busy: this.walk.who }), COMEBACK);
+      return false;
+    }
+    if (present(state, who)) {
+      this.port.invite(who);
+      this.port.notice(t('session.comeBack.here', { who }), COMEBACK);
+      return true;
+    }
+    const busy = this.port.busy();
+    if (busy === null) return null;
+    this.port.notice(t('session.comeBack.notNow', { who, reason: busy }), COMEBACK);
+    return false;
+  }
+
+  /** Stops what moves for a walk back of `legs` legs, saying `started`. */
+  private stop(who: string, legs: number, started: string): void {
     const paused = this.port.pause(started);
     if (!paused) this.port.notice(started, COMEBACK);
     // A lap stopped for a member's @wait is this walk's stop too: if that wait gives up first, the walk's end goes on.
@@ -129,7 +182,6 @@ export class ComeBack {
     // Read once the route is stopped, and before the first leg back replaces it.
     this.owed = this.port.unfinished();
     this.walk = { who, legsLeft: legs, leg: null, walked: 0, due: false, stopped };
-    this.next();
   }
 
   /** Every state: the member walking into the room ends it, and the next leg goes. */
@@ -152,6 +204,10 @@ export class ComeBack {
     const leg = walk?.leg ?? null;
     if (walk === null || leg === null) return;
     walk.leg = null;
+    if (leg.step === null) {
+      this.landed(walk, leg.steps, arrived, state);
+      return;
+    }
     const back = settleBack(leg.step, arrived, roomAddress(state.room), (step) =>
       this.port.retraced(step)
     );
@@ -165,6 +221,22 @@ export class ComeBack {
     if (present(state, walk.who)) this.found(walk);
     // The next leg on the next state, after every module has heard this walk end.
     else walk.due = true;
+  }
+
+  /** The leg to a stated room ended: the member here is found, and otherwise the walk is over. */
+  private landed(walk: Walk, steps: number, arrived: boolean, state: CharacterState): void {
+    walk.walked += steps;
+    if (present(state, walk.who)) {
+      this.found(walk);
+      return;
+    }
+    this.port.notice(
+      arrived
+        ? t('session.comeBack.notFound', { who: walk.who })
+        : t('session.comeBack.cutShort', { who: walk.who }),
+      COMEBACK
+    );
+    this.finish(walk);
   }
 
   /**
@@ -205,7 +277,7 @@ export class ComeBack {
     } else {
       refused = leg.kind === 'refused' ? leg.reason : t('session.comeBack.trailEnded');
     }
-    this.port.notice(t('session.comeBack.noWay', { who: walk.who, reason: refused }), COMEBACK);
+    this.noWay(walk.who, refused);
     this.finish(walk);
   }
 

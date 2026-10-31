@@ -2007,6 +2007,14 @@ describe('the cheap eight', () => {
     expect(expectType('Soul is no longer following you.', 'party-left')['removed']).toBeUndefined();
   });
 
+  // Rayzor's screen as the realm dropped Brakkle, live (OCI, 2026-10-31): the party is gone.
+  it('reads the party disbanded, naming nobody', () => {
+    const disbanded = expectType('Your party has been disbanded.', 'party-left');
+    expect(disbanded['disbanded']).toBeDefined();
+    expect(disbanded['player']).toBeUndefined();
+    expect(disbanded['leader']).toBeUndefined();
+  });
+
   it('reads this character’s own rank change, captured live', () => {
     expect(
       expectType('You have moved to the back ranks of your group.', 'party-rank-changed')['rank']

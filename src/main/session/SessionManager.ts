@@ -110,7 +110,7 @@ import { PromptDesign } from './PromptDesign';
 import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
-import { ERRAND_LEG, Travel } from './Travel';
+import { ERRAND_LEG, Travel, partyRemotes } from './Travel';
 import { RemoteMoves } from './RemoteMoves';
 import { remoteHangUps } from './remoteHangUps';
 import { trainTrip } from './trainPlanner';
@@ -1251,9 +1251,8 @@ export class SessionManager {
       }).events,
       ...remoteHangUps(() => this.safety, sink),
       peer: (who) => recordOf(this.tracker.players, who),
-      pace: (who, ready, left) => this.travel.pace(who, ready, left),
+      ...partyRemotes(() => this.travel),
       held: (who, held) => this.cures.memberHeld(who, held),
-      walkBackFor: (who) => this.travel.walkBackFor(who),
       switchAutomation: switchNow,
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
       commanded: (from, raw, at) => {

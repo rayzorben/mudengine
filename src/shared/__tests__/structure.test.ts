@@ -47,6 +47,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the level trip's construction, out beside its planner (`trainTrip`, todo 39).
   // Lowered by `BUSY_PHASES`, gone as a Connect mid-dial dials again (todo 22).
   // Lowered by `@loop`'s lists, handed to `RemoteMoves` whole (todo 32).
+  // Lowered by the party's remotes, handed over by `Travel` whole (`partyRemotes`).
   // Lowered by the canHide and restsHidden comments, condensed as the chosen attack's wiring came (todo 47).
   // Lowered by the decided and canHide comments, condensed as the weapon reach came in (todo 46).
   // Lowered by `AutoInvoke`'s construction, out with the blessings' (`blessingsFor`, todo 41).
@@ -71,7 +72,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the supplies' vault search, one `Errands.cashFrom` beside the fare's (todo 20261024-0804-01).
   // Lowered by a comment that named nothing below it, as a member's `@held` came (todo 20261024-1900-01).
   // Lowered by the timed passage, out whole (`TimedPassage`), as a look that lets go of a gone target came (2026-10-30).
-  'src/main/session/SessionManager.ts': 3299,
+  'src/main/session/SessionManager.ts': 3298,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

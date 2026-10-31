@@ -1549,6 +1549,13 @@ export const RULES: Rule[] = [
       /^(?:(?<player>\w+) is no longer following you|You are no longer following (?<leader>\w+))\.$/
   },
   /*
+   * The leader's screen when the last member's drop empties the party, right
+   * after `<Name> is no longer following you.` (Rayzor, OCI, 2026-10-31;
+   * `party` then answers `You are not in a party`). Names nobody. Unread, it
+   * reached the onset learning and was kept as cure poison's start.
+   */
+  { type: 'party-left', pattern: /^(?<disbanded>Your party has been disbanded)\.$/ },
+  /*
    * `uninvite <name>`, captured live (2026-08-28). The offer is withdrawn before
    * it was ever accepted, so the server answers about the *followers* rather
    * than about the party. Unread, an invitation the player had already cancelled

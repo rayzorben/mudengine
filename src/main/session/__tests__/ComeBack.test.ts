@@ -213,3 +213,58 @@ describe('a leader walking back for a member (@comeback)', () => {
     expect(log).toEqual([t('session.comeBack.notNow', { who: 'Killa', reason: 'an errand' })]);
   });
 });
+
+/* Rayzor, 2026-10-31: Brakkle's @comeback-room 7/732 walked him back as a route of his own, and the lap stayed stopped. */
+describe('a leader walking to the room a member stated (@comeback-room)', () => {
+  it('stops the lap, walks there, invites the member and goes on', () => {
+    const { fake, log, walks, trail } = port(3);
+    const back = new ComeBack(fake);
+    expect(back.askedTo('Brakkle', '7/732', standing('1/3'))).toBe(true);
+    expect(log[0]).toBe(
+      `pause:${t('session.comeBack.startedTo', { who: 'Brakkle', address: '7/732', stepCount: 1 })}`
+    );
+    expect(walks).toEqual(['7/732']);
+    expect(back.owes).toBe(true);
+    back.walkEnded(true, standing('7/732', 'Brakkle'));
+    expect(log.slice(1)).toEqual([
+      'invite:Brakkle',
+      'awaitJoin:Brakkle',
+      t('session.comeBack.here', { who: 'Brakkle' }),
+      'resume:Brakkle:1'
+    ]);
+    // The trail is left alone: the walk went to a stated room, not back over a move.
+    expect(trail).toHaveLength(2);
+  });
+
+  it('goes on when the member is not in the room it walked to', () => {
+    const { fake, log } = port(3);
+    const back = new ComeBack(fake);
+    back.askedTo('Brakkle', '7/732', standing('1/3'));
+    back.walkEnded(true, standing('7/732'));
+    expect(log.slice(-2)).toEqual([
+      t('session.comeBack.notFound', { who: 'Brakkle' }),
+      'resume:Brakkle:1'
+    ]);
+    expect(back.active).toBe(false);
+  });
+
+  it('answers a member already here with an invite, and refuses a room it cannot walk to', () => {
+    const here = port(3);
+    expect(new ComeBack(here.fake).askedTo('Brakkle', '1/3', standing('1/3', 'Brakkle'))).toBe(
+      true
+    );
+    expect(here.walks).toEqual([]);
+    expect(here.log).toContain('invite:Brakkle');
+    const nowhere = port(3, { plan: () => 'no route to 7/732' });
+    expect(new ComeBack(nowhere.fake).askedTo('Brakkle', '7/732', standing('1/3'))).toBe(false);
+    expect(nowhere.log).toEqual([
+      t('session.comeBack.noWay', { who: 'Brakkle', reason: 'no route to 7/732' })
+    ]);
+  });
+
+  it('walks to the stated room whatever Walk Back For a Member is set to', () => {
+    const { fake, walks } = port(3, { rooms: () => 0 });
+    expect(new ComeBack(fake).askedTo('Brakkle', '7/732', standing('1/3'))).toBe(true);
+    expect(walks).toEqual(['7/732']);
+  });
+});
