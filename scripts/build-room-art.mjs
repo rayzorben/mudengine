@@ -9,14 +9,29 @@
  * `room-described.json` (each drawing's `roomKey` of its description) and
  * `<key>.webp` at 512 px. Writes the pictures into `src/renderer/public/room-art/`,
  * removing any not in the set, and the index `ShippedRoomArt` reads at
- * `resources/art/room-index.json`. The reasoning is `mudengine-ui` › `parts/game.md`.
+ * `resources/art/room-index.json`. MajorMUD, which the run did not draw, takes
+ * GreaterMUD's drawing wherever both world databases in `mdb/` give the room
+ * the same name and exits. The reasoning is `mudengine-ui` › `parts/game.md`.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { ROOM_KEY } from '../src/main/art/roomKey.ts';
 import { ROOM_INDEX_FORMAT, shippedRow } from '../src/main/art/ShippedRoomArt.ts';
+import { DIRECTIONS, parseExit } from '../src/main/world/buildRealm.ts';
+import { openRealm } from '../src/main/world/RealmSource.ts';
 import { openZip } from '../src/main/world/zip.ts';
+
+/**
+ * A realm the run did not draw, shown with another's drawings: the world it
+ * plays, the drawn realm and the world that realm was drawn from. The two
+ * worlds number their rooms alike (26,693 of MajorMUD's 26,694 rooms exist in
+ * Gmud), and 24 of 25 MajorMUD descriptions read on the wire, 2026-10-31,
+ * hash to the drawing Gmud's room at that number has.
+ */
+const BORROWED = [
+  { realm: 'majormud', world: 'majormud-v1.11p.zip', from: 'greatermud', drawnFrom: 'gmud.zip' }
+];
 
 /** The art run's index format this reads, the run with exits. */
 const RUN_INDEX_FORMAT = 2;
@@ -74,6 +89,56 @@ for (const [realm, table] of Object.entries(index.byRoom)) {
   }
 }
 
+/** Per map/room, its name and the directions it has exits in: what a drawing is drawn for. */
+const roomsOf = (file) => {
+  const source = openRealm(path.join(root, 'mdb', file));
+  try {
+    const table = source.table('Rooms');
+    if (table === null) throw new Error(`${file} has no Rooms table`);
+    return new Map(
+      table.rows.map((row) => [
+        `${row['Map Number']}/${row['Room Number']}`,
+        `${row['Name']}|${DIRECTIONS.filter((way) => parseExit(row[way]) !== null).join(',')}`
+      ])
+    );
+  } finally {
+    source.close();
+  }
+};
+const borrowedReport = [];
+for (const { realm, world, from, drawnFrom } of BORROWED) {
+  // A realm the run drew keeps its own drawings.
+  if (byRoom[realm] !== undefined) continue;
+  if (byRoom[from] === undefined) {
+    console.error(`build:room-art: the run drew no ${from}, so ${realm} would ship no pictures`);
+    process.exit(1);
+  }
+  for (const file of [world, drawnFrom]) {
+    if (!existsSync(path.join(root, 'mdb', file))) {
+      console.error(`build:room-art: mdb/${file} is not there, so ${realm} would ship no pictures`);
+      process.exit(2);
+    }
+  }
+  const played = roomsOf(world);
+  const drawnRooms = roomsOf(drawnFrom);
+  byRoom[realm] = {};
+  let differ = 0;
+  for (const [room, entry] of Object.entries(byRoom[from])) {
+    const here = played.get(room);
+    if (here === undefined) continue;
+    if (here !== drawnRooms.get(room)) {
+      differ++;
+      continue;
+    }
+    byRoom[realm][room] = entry;
+    rooms++;
+  }
+  borrowedReport.push(
+    `${realm} takes ${Object.keys(byRoom[realm]).length} of ${played.size} rooms from ${from} ` +
+      `(${differ} differ in name or exits)`
+  );
+}
+
 const out = path.join(root, 'src/renderer/public/room-art');
 mkdirSync(out, { recursive: true });
 let written = 0;
@@ -102,3 +167,4 @@ console.log(
   `build:room-art: ${written} written, ${keys.size - written} up to date, ${removed} removed, ` +
     `${rooms} rooms indexed over ${Object.keys(byRoom).join(', ')}, ${unshipped} index rows with no picture`
 );
+for (const line of borrowedReport) console.log(`build:room-art: ${line}`);

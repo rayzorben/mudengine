@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { roomKey } from '../roomKey';
 import { ShippedRoomArt } from '../ShippedRoomArt';
 
 const DRAWING = '0123456789abcdef';
@@ -82,5 +83,33 @@ describe('the shipped room art index', () => {
     expect(shipped.ready).toBe(true);
     expect(shipped.drawingOf('greatermud', 1, 1)).toBeNull();
     expect(said).toHaveLength(1);
+  });
+
+  /*
+   * MajorMUD takes Gmud's drawing at the same number (2026-10-31). The text is
+   * what The Major BBS printed for Newhaven, Village Entrance on `l`, from
+   * Soul's `descriptions-majormud-bbs.themajorbbs.com-23.json` on the OCI host.
+   */
+  it('ships MajorMUD the drawing made from the description its server prints', async () => {
+    const shipped = new ShippedRoomArt(
+      path.join(__dirname, '../../../../resources/art/room-index.json'),
+      (message) => said.push(message)
+    );
+    await shipped.loaded;
+    const majormud = shipped.drawingOf('majormud', 1, 2140);
+    expect(majormud).toEqual(shipped.drawingOf('greatermud', 1, 2140));
+    expect(majormud?.described).toBe(
+      roomKey(
+        'Welcome to Newhaven! You are standing at the crude wooden gates of the village ' +
+          'entrance, in the middle of a dusty path. A low wooden palisade surrounds the ' +
+          'village, to protect against creatures of the night and random raiders. You can ' +
+          'see small buildings to the north and south, and a dusty path that leads to the ' +
+          'west and southeast.'
+      )
+    );
+    // 5/3 is Tournament Arena in MajorMUD and Westwall Street in Gmud: another room.
+    expect(shipped.drawingOf('greatermud', 5, 3)).not.toBeNull();
+    expect(shipped.drawingOf('majormud', 5, 3)).toBeNull();
+    expect(said).toEqual([]);
   });
 });
