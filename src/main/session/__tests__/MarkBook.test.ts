@@ -24,7 +24,11 @@ let dir = '';
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'markbook-'));
 });
-afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+// A book appends off the thread (`MarkRecord.pump`) and no test waits for it,
+// so a row can land in the folder while it is removed (ENOTEMPTY under load,
+// seen in the gate 2026-10-31). Retrying is Node's own answer; a row landing
+// after the folder is gone fails into the book's problems, which no test reads.
+afterEach(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }));
 
 /** The record's rows as they stand on disk. */
 const rows = (): string[] =>
