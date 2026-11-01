@@ -17,6 +17,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Priority } from '../../shared/automation';
+import type { Block } from '../../shared/blocks';
 import { fightIsRunning, type CarriedItem, type CharacterState } from '../../shared/character';
 import type { GearConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
@@ -41,6 +42,7 @@ import { sameItem } from '../../shared/items';
 import { BackstabHands } from './BackstabHands';
 import type { SessionModule } from './Module';
 import { PlaceGear, type PlaceGearSources } from './PlaceGear';
+import { WearRefused } from './WearRefused';
 
 export interface EquipmentSources extends PlaceGearSources {
   /** Which slot the realm says an item goes in, by name, or null. */
@@ -102,6 +104,8 @@ export class EquipmentManager implements SessionModule {
   private readonly hands = new BackstabHands();
   /** Backstab weapons said to be carried while the sets are off, once each a session. */
   private readonly saidBackstab = new Set<string>();
+  /** Weapons the server would not put in hand, left out of the next reach. */
+  private readonly wearRefused = new WearRefused();
 
   constructor(
     private config: GearConfig,
@@ -136,6 +140,7 @@ export class EquipmentManager implements SessionModule {
     this.placeSaid = '';
     this.hands.reset();
     this.saidBackstab.clear();
+    this.wearRefused.reset();
   }
 
   /** The player's own sets. */
@@ -155,6 +160,7 @@ export class EquipmentManager implements SessionModule {
    * it is the one half of the situation that is not on the wire.
    */
   onCharacter(state: CharacterState, moving: boolean): void {
+    this.wearRefused.atLevel(state.progress.level);
     this.dress(state, moving, false);
   }
 
@@ -248,6 +254,26 @@ export class EquipmentManager implements SessionModule {
     const was = this.reached?.was ?? swapped ?? heldWeapon(state.inventory.items)?.name ?? null;
     this.reached = { weapon, was, target: mobKey(target), fought: false };
     this.events.notice?.(t('automation.gear.reachWield', { weapon, target }), SWAP);
+  }
+
+  /**
+   * The server's answer to a `wear` sent by `wieldFor`. A refusal drops the
+   * weapon from the reach for the session (`refusesWield`), so the next round
+   * asks the reach again and the next weapon is tried. What was in hand
+   * before the first swap is still the weapon that goes back after the fight.
+   */
+  onBlock(block: Block, answering: string | null): void {
+    const reached = this.reached;
+    if (reached === null) return;
+    const refused = this.wearRefused.heard(block, answering, reached.weapon);
+    if (refused === null) return;
+    this.reached = reached.was === null ? null : { ...reached, weapon: reached.was };
+    this.events.notice?.(t('automation.gear.reachRefused', { weapon: refused }), SWAP);
+  }
+
+  /** Whether the server would not put `weapon` in hand this session. */
+  refusesWield(weapon: string): boolean {
+    return this.wearRefused.refuses(weapon);
   }
 
   /**

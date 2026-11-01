@@ -10,6 +10,7 @@
  * `mudengine-automation` › *A handover is read off a listing asked for after it*.
  */
 import { tuning } from '../app/tuning';
+import { echoes } from '../../shared/commands';
 
 export interface PackCheck {
   /** When the act went out; null while it waits in the queue. */
@@ -92,5 +93,5 @@ export function packAgain(pack: PackCheck, now: number): PackCheck {
  */
 export function noteListing(pack: PackCheck | null, answering: string | null): void {
   if (pack === null || !pack.listSent) return;
-  if (answering?.trim().toLowerCase() === AFTER_WORD) pack.answered = true;
+  if (echoes(answering, AFTER_WORD)) pack.answered = true;
 }

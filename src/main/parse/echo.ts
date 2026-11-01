@@ -7,6 +7,7 @@
  * refused is a room that is not coming*.
  */
 import type { Block } from '../../shared/blocks';
+import { asEchoed } from '../../shared/commands';
 import { tailAfterPrompt } from './Classifier';
 
 /**
@@ -55,7 +56,7 @@ export class EchoSince {
   private last: string | null = null;
 
   constructor(command: string) {
-    this.command = command.trim().toLowerCase();
+    this.command = asEchoed(command);
   }
 
   /**
@@ -68,8 +69,8 @@ export class EchoSince {
    * (`2026-09-19_00-44-05_vaelor2.mudcap.jsonl`).
    */
   heard(block: Pick<Block, 'text'>, answering: string | null): void {
-    const echoed = answering?.trim().toLowerCase() ?? null;
-    if (echoed !== null && echoed !== block.text.trim().toLowerCase()) this.last = echoed;
+    const echoed = answering === null ? null : asEchoed(answering);
+    if (echoed !== null && echoed !== asEchoed(block.text)) this.last = echoed;
   }
 
   /** Whether the realm has echoed any command since the send. */

@@ -3,10 +3,12 @@
  * monster row, the pack's weapons, the class and race rows, the worn items
  * other than the weapon and the active spells, handed to `weaponReach`.
  * The ranking is the gear planner's own (`GearReads.attacks` holding each
- * weapon), so a swap picks what the Gear card would.
+ * weapon), so a swap picks what the Gear card would. A weapon this character
+ * may not wield (`equipBlock`) or the server refused to put in hand is left
+ * out: Festus, level 47, was handed Darkbane (`MinLevel` 50) every round.
  */
 import type { CarriedItem, CharacterState } from '../../shared/character';
-import { heldWeapon } from '../../shared/gear';
+import { equipBlock, heldWeapon, restrictionsOf } from '../../shared/gear';
 import {
   hitMagicOf,
   reachTarget,
@@ -20,15 +22,20 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import type { GearReads } from './gearReads';
 
+/** The weapons the server would not put in hand this session (`EquipmentManager`). */
+export interface WieldRefusals {
+  refusesWield(weapon: string): boolean;
+}
+
 /** An item's rows, or null where the realm has none for a name off the wire. */
 function unreadAsNull(item: CarriedItem): NonNullable<CarriedItem['abilities']> | null {
   return item.abilities ?? (item.source === 'wire' ? null : []);
 }
 
 export function handReach(
-  errands: Pick<Errands, 'capabilities'>,
+  errands: Pick<Errands, 'capabilities' | 'wearer'>,
   world: () => Pick<WorldGraph, 'spellNamed'> | undefined,
-  gear: () => Pick<GearReads, 'attacks' | 'wearing'>
+  gear: () => { reads: Pick<GearReads, 'attacks' | 'wearing'>; refusals: WieldRefusals }
 ): (state: CharacterState, target: string, handRefused: boolean) => WeaponReach {
   return (state, target, handRefused) => {
     const mob = mobListed(state.room.occupants, target);
@@ -46,14 +53,18 @@ export function handReach(
       abilities: unreadAsNull(item) ?? undefined,
       equipped: item.equipped
     });
+    const wearer = errands.wearer();
+    const { refusals } = gear();
     // An item the realm cannot name may be a weapon: carried as unread, never refusing.
     const carried = items.filter(
       (item) =>
         !item.equipped &&
-        (item.kind === 'weapon' || (item.kind === undefined && item.source === 'wire'))
+        (item.kind === 'weapon' || (item.kind === undefined && item.source === 'wire')) &&
+        equipBlock(restrictionsOf(item), wearer) === null &&
+        !refusals.refusesWield(item.name)
     );
     const rank = (weapon: string): number | null => {
-      const reads = gear();
+      const reads = gear().reads;
       const held = reads.wearing([weapon], state);
       if (held.worn.length === 0) return null;
       const best = reads

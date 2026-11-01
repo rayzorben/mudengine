@@ -943,3 +943,13 @@ function firstWord(input: string): string {
   const space = text.search(/\s/);
   return space < 0 ? text : text.slice(0, space);
 }
+
+/** A command as the realm's echo is compared: trimmed and lower-cased. */
+export function asEchoed(command: string): string {
+  return command.trim().toLowerCase();
+}
+
+/** Whether `answering`, the command the realm last echoed, is `command`. */
+export function echoes(answering: string | null, command: string): boolean {
+  return answering !== null && asEchoed(answering) === asEchoed(command);
+}

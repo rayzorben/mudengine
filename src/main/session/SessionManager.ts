@@ -887,7 +887,7 @@ export class SessionManager {
         reach: handReach(
           this.errands,
           () => this.world,
-          () => this.gearDesk.reads
+          () => ({ reads: this.gearDesk.reads, refusals: this.gear })
         ),
         wield: (state, weapon, target) => this.gear.wieldFor(state, weapon, target),
         // The class row's `ClassStealth` (a Thief also has `Stealth`, todo 28); null never refuses.
@@ -2640,7 +2640,7 @@ export class SessionManager {
      * every one of those was the client saying "rm" out loud to everybody in
      * the room, once per fight, all evening.
      */
-    this.combat.onBlock(block, this.answering);
+    for (const each of [this.combat, this.gear]) each.onBlock(block, this.answering);
     // A listing the server wrapped arrives as a batch: a floor long enough to
     // wrap never reached the loot (todo 03), and the party list never reached
     // the rejoin (Rayzor, 2026-10-28: 1,036 `party` sent, Brakkle still owed).

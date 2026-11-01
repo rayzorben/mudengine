@@ -7407,6 +7407,7 @@ automation:
     offRoundMissing: '{item} is set to be used between rounds but is not in your inventory.'
     reachWield: 'Wielding {weapon}: the weapon in hand has no effect against {target}.'
     reachBack: 'Wielding {weapon} again after the fight.'
+    reachRefused: 'You may not wear {weapon}, so it is left out of the weapons tried this session.'
   hangUp:
     reasonPvpNow: you are in PvP combat with {name}
     reasonPvpUnplaced: '{name} is in the fight and may be a player'

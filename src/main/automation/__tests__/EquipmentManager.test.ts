@@ -9,6 +9,7 @@ import { wireItem } from '../../../shared/entities';
 import { OFF_HAND, WEAPON_HAND } from '../../../shared/items';
 import { UNKNOWN_WEARER, type GearSet } from '../../../shared/gear';
 import { classifyOccupant } from '../../../shared/mobs';
+import { domainOf, type Block } from '../../../shared/blocks';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -554,6 +555,74 @@ describe('the weapon that can hurt the monster', () => {
     manager.onCharacter(standing(holding), false);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['wear golden pike', 'wear club']);
+  });
+
+  /*
+   * Festus, 2026-11-01: `wear Darkbane` answered `You may not wear that item!`
+   * seven times against a crowned spider until he died
+   * (`logs/2026-11-01_06-08-34_festus.log:700`).
+   */
+  const sickleHandOf = (): CarriedItem[] => [
+    worn('golden sickle', WEAPON_HAND),
+    carried('Darkbane')
+  ];
+  const refusal = (groups: Record<string, string> = {}): Block => ({
+    seq: 1,
+    at: 1,
+    type: 'user-equipped-failed',
+    domain: domainOf('user-equipped-failed'),
+    groups,
+    text: 'You may not wear that item!',
+    terminator: 'newline',
+    confidence: 0.8
+  });
+
+  it('drops a weapon the server will not put in hand, and still puts the old one back', () => {
+    const manager = make(off);
+    const sickleHand = [
+      worn('golden sickle', WEAPON_HAND),
+      carried('Darkbane'),
+      carried('ethereal dagger')
+    ];
+    manager.wieldFor(standing(sickleHand, golem), 'Darkbane', 'stone golem');
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear Darkbane']);
+
+    // An answer to some other command is not this weapon's refusal.
+    manager.onBlock(refusal(), 'wear lantern');
+    expect(manager.refusesWield('Darkbane')).toBe(false);
+    manager.onBlock(refusal(), 'wear Darkbane');
+    expect(manager.refusesWield('darkbane')).toBe(true);
+    expect(notices.at(-1)).toContain('Darkbane');
+
+    const dagger = [
+      carried('golden sickle'),
+      carried('Darkbane'),
+      worn('ethereal dagger', WEAPON_HAND)
+    ];
+    manager.wieldFor(standing(sickleHand, golem), 'ethereal dagger', 'stone golem');
+    manager.onCharacter(fighting('stone golem', dagger), false);
+    manager.onCharacter(standing(dagger), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear Darkbane', 'wear ethereal dagger', 'wear golden sickle']);
+
+    manager.reset();
+    expect(manager.refusesWield('Darkbane')).toBe(false);
+  });
+
+  it('forgets a refusal when the level changes, since a new level may lift it', () => {
+    const manager = make(off);
+    const at = (level: number): CharacterState => {
+      const state = standing(sickleHandOf(), golem);
+      return { ...state, progress: { ...state.progress, level } };
+    };
+    manager.onCharacter(at(49), false);
+    manager.wieldFor(at(49), 'Darkbane', 'stone golem');
+    manager.onBlock(refusal(), 'wear Darkbane');
+    manager.onCharacter(at(49), false);
+    expect(manager.refusesWield('Darkbane')).toBe(true);
+    manager.onCharacter(at(50), false);
+    expect(manager.refusesWield('Darkbane')).toBe(false);
   });
 
   it('wields the old weapon again when the monster is gone with no fight', () => {
