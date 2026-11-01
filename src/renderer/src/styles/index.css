@@ -2136,42 +2136,42 @@ kbd {
 /* The tone (`VizTone`, `components/viz/tones.ts`) is set on the piece or on
    its parts; a level of caution or critical outranks it. */
 
-:where(.ring, .split, .histogram, .bar-list) [data-tone],
+:where(.ring, .split, .histogram) [data-tone],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone] {
   --viz: var(--accent);
 }
 
-:where(.ring, .split, .histogram, .bar-list) [data-tone='hp'],
+:where(.ring, .split, .histogram) [data-tone='hp'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='hp'],
-:where(.ring, .split, .histogram, .bar-list) [data-tone='ok'],
+:where(.ring, .split, .histogram) [data-tone='ok'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='ok'],
-:where(.ring, .split, .histogram, .bar-list) [data-tone='b'],
+:where(.ring, .split, .histogram) [data-tone='b'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='b'] {
   --viz: var(--ok);
 }
 
-:where(.ring, .split, .histogram, .bar-list) [data-tone='kai'],
+:where(.ring, .split, .histogram) [data-tone='kai'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='kai'],
-:where(.ring, .split, .histogram, .bar-list) [data-tone='d'],
+:where(.ring, .split, .histogram) [data-tone='d'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='d'] {
   --viz: var(--marker);
 }
 
-:where(.ring, .split, .histogram, .bar-list) [data-tone='foe'],
+:where(.ring, .split, .histogram) [data-tone='foe'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='foe'],
-:where(.ring, .split, .histogram, .bar-list) [data-tone='bad'],
+:where(.ring, .split, .histogram) [data-tone='bad'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='bad'] {
   --viz: var(--danger);
 }
 
-:where(.ring, .split, .histogram, .bar-list) [data-tone='warn'],
+:where(.ring, .split, .histogram) [data-tone='warn'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='warn'],
-:where(.ring, .split, .histogram, .bar-list) [data-tone='c'],
+:where(.ring, .split, .histogram) [data-tone='c'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='c'] {
   --viz: var(--pending);
 }
 
-:where(.ring, .split, .histogram, .bar-list) [data-tone='quiet'],
+:where(.ring, .split, .histogram) [data-tone='quiet'],
 :where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='quiet'] {
   --viz: var(--text-lo-quiet);
 }
@@ -2524,72 +2524,6 @@ kbd {
 .recency[data-unknown='true'] > i {
   background: transparent;
   box-shadow: 0 0 0 0.5px var(--text-lo-quiet) inset;
-}
-
-/*
- * A ranked list (`BarList`): the name, a hairline bar against the longest row,
- * the figure. The name column is as wide as the widest name in the list.
- */
-.bar-list {
-  align-items: center;
-  display: grid;
-  gap: 3px 8px;
-  grid-template-columns: minmax(0, max-content) minmax(24px, 1fr) auto;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.bar-list > li {
-  display: contents;
-}
-
-.bar-list-name {
-  color: var(--text-lo);
-  font-size: var(--font-micro);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bar-list > li > i {
-  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
-  border-radius: var(--r-pill);
-  display: block;
-  height: 4px;
-  overflow: hidden;
-}
-
-.bar-list > li > i::before {
-  background: var(--viz, var(--accent));
-  border-radius: inherit;
-  content: '';
-  display: block;
-  height: 100%;
-  width: calc(var(--share, 0) * 100%);
-}
-
-.bar-list > li > b {
-  color: var(--text-hi);
-  font-size: var(--font-micro);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  text-align: right;
-}
-
-/* A name's initial on a tinted disc (`Initial`), one line of text tall. */
-.initial {
-  background: color-mix(in srgb, var(--viz, var(--text-lo)) var(--tone-strong), transparent);
-  border-radius: 50%;
-  color: var(--text-hi);
-  display: inline-grid;
-  flex: 0 0 auto;
-  font-size: var(--font-micro);
-  font-weight: 600;
-  height: 1.8em;
-  line-height: 1;
-  place-items: center;
-  width: 1.8em;
 }
 
 /*
@@ -9585,8 +9519,9 @@ button.shelf-tile:hover {
 .conversation-log {
   display: flex;
   flex-direction: column;
-  gap: 3px;
   font-size: var(--font-micro);
+  /* Room for a link's focus ring at the start of a line, inside the scroller's clip. */
+  padding-inline: 4px;
 }
 
 /*
@@ -9600,7 +9535,7 @@ button.shelf-tile:hover {
 .conversation-log .line {
   display: grid;
   grid-template-columns: var(--talk-stamp-track,) auto auto minmax(0, 1fr);
-  gap: 3px 6px;
+  gap: 0 6px;
   align-items: baseline;
 }
 
@@ -9656,7 +9591,7 @@ button.shelf-tile:hover {
 .conversation-log[data-layout='condensed-aligned'] {
   display: grid;
   grid-template-columns: var(--talk-stamp-track,) auto auto minmax(0, 1fr);
-  gap: 3px 6px;
+  gap: 0 6px;
   align-content: start;
 }
 
@@ -9789,17 +9724,12 @@ button.shelf-tile:hover {
 }
 
 /*
- * Each line's channel as an edge down its left side, in the channel's own hue,
- * so a column of lines reads by channel before a word of it is read, and still
- * does once a narrow card has dropped the channel's word.
+ * The Talk card's body, the gap between its panes and the composer's padding
+ * are cut down so the log holds as many lines as the card's size allows.
  */
-.conversation-log .line {
-  border-left: 2px solid var(--talk-name, var(--talk-body, transparent));
-  padding-left: 6px;
-}
-
-.conversation-log .line[data-channel^='player-'] {
-  border-left-color: color-mix(in srgb, var(--text-lo) 45%, transparent);
+.conversation-card > .body.paned {
+  gap: 2px;
+  padding: 2px 6px 4px;
 }
 
 /*
@@ -9807,8 +9737,8 @@ button.shelf-tile:hover {
  * columns are the stamp, the channel, the name and what was said, and on a
  * narrow log the first three left what was said a letter wide. A narrow log
  * gives each line its own two columns (the subgrid would keep the tracks the
- * hidden words left) and lets the edge carry the channel; a narrower one drops
- * the stamp too. 420px and 300px were read off the gallery's 330px and 300px
+ * hidden words left), and the line's hue still carries the channel; a
+ * narrower one drops the stamp too. 420px and 300px were read off the gallery's 330px and 300px
  * boxes, where the date stamp, the word `broadcast` and a name left under ten
  * characters for the message.
  */
@@ -9844,123 +9774,6 @@ button.shelf-tile:hover {
   .conversation-log .line .stamp {
     display: none;
   }
-}
-
-/*
- * The summary (`TalkSummary`): when the backlog was busy, the channels and the
- * people who said the most. It shares `.talk-pane` with the feed and is drawn
- * only where the feed keeps room: above it in a pane at least 360px tall,
- * beside it in one at least 640px wide (Talk docked across the foot), and not
- * at all otherwise. Measured in the gallery: a 360px pane keeps the feed
- * about fourteen lines under the summary; the smoke's 324px rail card, whose
- * pane is far shorter, left the feed 93px with the summary drawn.
- */
-.talk-pane {
-  container: talk-pane / size;
-  flex: 1 1 0;
-  min-height: 0;
-}
-
-.talk-split {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.talk-split > .conversation-log {
-  flex: 1 1 0;
-  min-height: 0;
-  min-width: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-@container talk-pane (height < 360px) {
-  .talk-split > .talk-summary {
-    display: none;
-  }
-}
-
-@container talk-pane (width >= 640px) {
-  .talk-split {
-    flex-direction: row;
-  }
-
-  .talk-split > .talk-summary {
-    align-content: start;
-    display: grid;
-    flex: 0 0 auto;
-    border-bottom: 0;
-    border-right: 1px solid var(--seam);
-    margin: 0 10px 0 0;
-    max-height: 100%;
-    overflow: hidden;
-    padding: 0 10px 0 0;
-    width: 240px;
-  }
-}
-
-.talk-summary {
-  border-bottom: 1px solid var(--seam);
-  display: grid;
-  flex: 0 0 auto;
-  gap: 6px 16px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
-  margin-bottom: 6px;
-  padding-bottom: 8px;
-}
-
-.talk-busy {
-  display: grid;
-  gap: 2px;
-  grid-column: 1 / -1;
-}
-
-.talk-busy > em {
-  color: var(--text-lo-quiet);
-  font-size: var(--font-micro);
-  font-style: normal;
-}
-
-.talk-busy > .histogram {
-  height: 22px;
-}
-
-.talk-speakers {
-  align-content: start;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-/* One person: their initial, their name, how many lines they said. */
-.talk-speakers > li {
-  align-items: center;
-  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
-  border-radius: var(--r-pill);
-  display: flex;
-  gap: 5px;
-  max-width: 100%;
-  min-width: 0;
-  padding: 2px 8px 2px 2px;
-}
-
-.talk-speakers .name {
-  color: var(--text-hi);
-  font-size: var(--font-micro);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.talk-speakers b {
-  color: var(--text-lo);
-  font-size: var(--font-micro);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
 }
 
 /* Carried weight: a fraction of a maximum, which is the one shape drawn as a bar. */
@@ -13574,7 +13387,7 @@ tr:hover .row-action.worn,
 .conversation-say {
   display: flex;
   flex: 0 0 auto;
-  gap: 5px;
+  gap: 4px;
 }
 
 /*
@@ -13595,7 +13408,7 @@ tr:hover .row-action.worn,
   flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: var(--font-micro);
-  padding: 5px 4px 5px 6px;
+  padding: 2px 4px 2px 6px;
   transition:
     border-color var(--dur-control) var(--ease-out),
     background var(--dur-control) var(--ease-out);
@@ -13618,7 +13431,7 @@ tr:hover .row-action.worn,
   font-family: var(--font-mono);
   font-size: var(--font-micro);
   min-width: 0;
-  padding: 5px 8px;
+  padding: 2px 6px;
   transition:
     border-color var(--dur-control) var(--ease-out),
     background var(--dur-control) var(--ease-out);

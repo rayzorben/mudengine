@@ -11,7 +11,6 @@ import {
 } from 'react';
 
 import OnCardSize from './OnCardSize';
-import TalkSummary, { type TalkFace } from './TalkSummary';
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
 import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
@@ -140,6 +139,13 @@ const CHANNELS: Record<string, string> = {
   'player-disconnects': t('cards.talk.channels.disconnected')
 };
 
+/** A heading toggle of the card: its id, its word and the block types it folds. */
+interface TalkFace {
+  id: string;
+  label: string;
+  types: readonly string[] | null;
+}
+
 /**
  * The card's channel toggles, in the heading where the mute chips used to
  * spend a row of the body.
@@ -158,28 +164,25 @@ const CHANNELS: Record<string, string> = {
  * same rule the chips followed: a control over nothing is chrome.
  */
 const FACES: readonly TalkFace[] = [
-  { id: 'talk', label: t('cards.talk.tabs.all'), types: null, tone: 'accent' },
-  { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'], tone: 'd' },
+  { id: 'talk', label: t('cards.talk.tabs.all'), types: null },
+  { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'] },
   {
     id: 'auction',
     label: t('cards.talk.tabs.auction'),
-    types: ['conversation-auction'],
-    tone: 'd'
+    types: ['conversation-auction']
   },
   {
     id: 'broadcast',
     label: t('cards.talk.tabs.broadcast'),
-    types: ['conversation-broadcast'],
-    tone: 'warn'
+    types: ['conversation-broadcast']
   },
-  { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'], tone: 'ok' },
+  { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'] },
   {
     id: 'telepath',
     label: t('cards.talk.tabs.telepath'),
-    types: ['conversation-telepath'],
-    tone: 'ok'
+    types: ['conversation-telepath']
   },
-  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'], tone: 'quiet' },
+  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'] },
   {
     id: 'local',
     label: t('cards.talk.tabs.local'),
@@ -189,8 +192,7 @@ const FACES: readonly TalkFace[] = [
       'conversation-local',
       'conversation-directed',
       'conversation-action'
-    ],
-    tone: 'ok'
+    ]
   },
   /*
    * Who arrived and who went, folded into one face the way `local` folds the
@@ -198,14 +200,12 @@ const FACES: readonly TalkFace[] = [
    * line are one question — who is about — and three pills for it would be
    * three controls over one answer.
    */
-  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES, tone: 'quiet' }
+  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES }
 ];
 
 const FACE_IDS = FACES.map((face) => face.id);
 /** Every toggle but the master, which is the set a reader can mute. */
 const CHANNEL_IDS = FACE_IDS.slice(1);
-/** The toggles the large card's head counts lines under. */
-const CHANNEL_FACES = FACES.slice(1);
 /** The master's two remembered words. See the card's own note. */
 const ALL_WORDS = ['on', 'off'] as const;
 
@@ -230,17 +230,6 @@ const RECEIPTS = new Set<string>([
 /** This character's own receipt: the name on it is the recipient, and there is no `message`. */
 function isOutbound(message: Block): boolean {
   return RECEIPTS.has(message.type) && message.groups['message'] === undefined;
-}
-
-/**
- * Who said a line, for the large card's head: null for this character's own
- * receipts (the name there is the recipient) and for the comings and goings,
- * where nobody said anything.
- */
-function speakerOf(message: Block): string | null {
-  if (TALK_PRESENCE_TYPES.includes(message.type)) return null;
-  if (isOutbound(message)) return null;
-  return message.groups['player'] ?? null;
 }
 
 /** The sigil each receipt's channel was addressed with — see `originalOf`. */
@@ -1217,19 +1206,7 @@ function ConversationCard({
         />
       )}
 
-      {/* The summary and the feed share one pane, which decides by its own size
-          whether the summary has room: the feed is the card's point, so the
-          summary never takes height the feed needs. */}
-      <div className="talk-pane">
-        <div className="talk-split">
-          <TalkSummary
-            faces={CHANNEL_FACES}
-            known={people === null ? null : people.known}
-            onSelect={onSelect}
-            speakerOf={speakerOf}
-            talked={talked}
-          />
-          {/*
+      {/*
         `data-layout` and `data-stamped` are what the alignment is done with:
         in `condensed-aligned` the log becomes one grid and each line a
         `subgrid` row, so the columns are sized by the browser from the widest
@@ -1238,35 +1215,33 @@ function ConversationCard({
         chrome font is whatever the options file says). The stamp is a column
         of its own when it is on, which is why the template needs to know.
       */}
-          <div
-            className="conversation-log scroller"
-            data-layout={layout}
-            data-stamped={stamped ? 'true' : undefined}
-            onScroll={noteScroll}
-            ref={logRef}
-          >
-            {shown.length === 0 ? (
-              <div className="empty">
-                {query.length > 0 ? t('cards.talk.empty.noMatch') : t('cards.talk.empty.none')}
-              </div>
-            ) : (
-              shown.map((message) => (
-                <TalkLine
-                  inspect={inspect}
-                  key={`${message.seq}-${message.at}`}
-                  layout={layout}
-                  message={message}
-                  names={names ?? null}
-                  namesVersion={names?.version ?? 0}
-                  onSelect={onSelect}
-                  people={people}
-                  stamped={stamped}
-                  stampFormat={stampFormat}
-                />
-              ))
-            )}
+      <div
+        className="conversation-log scroller"
+        data-layout={layout}
+        data-stamped={stamped ? 'true' : undefined}
+        onScroll={noteScroll}
+        ref={logRef}
+      >
+        {shown.length === 0 ? (
+          <div className="empty">
+            {query.length > 0 ? t('cards.talk.empty.noMatch') : t('cards.talk.empty.none')}
           </div>
-        </div>
+        ) : (
+          shown.map((message) => (
+            <TalkLine
+              inspect={inspect}
+              key={`${message.seq}-${message.at}`}
+              layout={layout}
+              message={message}
+              names={names ?? null}
+              namesVersion={names?.version ?? 0}
+              onSelect={onSelect}
+              people={people}
+              stamped={stamped}
+              stampFormat={stampFormat}
+            />
+          ))
+        )}
       </div>
       {/*
         Something was said while the reader was holding the box still (todo
