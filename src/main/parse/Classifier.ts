@@ -25,6 +25,7 @@ import type { ActionHit } from '../../shared/actions';
 import type { MessageHit } from '../../shared/messages';
 import { mobKey } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import { Receipts } from './receipts';
 
 /*
  * The patterns the per-line path evaluates, compiled once.
@@ -53,14 +54,6 @@ const PRONOUN_LED = /^(You|He|She|It|They|We|I)\b/;
  * with itself.
  */
 const STATUS_LINE_START = /^\[(?:HP|H)=/i;
-/** One addressed message waiting for its receipt; `name` is lower-cased as typed. */
-interface Addressed {
-  sigil: '/' | '>';
-  name: string;
-  body: string;
-}
-
-const ADDRESSED_COMMAND = /^([/>])\s*([A-Za-z][\w'-]*)\s+(\S.*)$/;
 const CAPITALISED_FIRST_WORD = /^([A-Z][\w'-]*)\s/;
 const ARTICLE = /^(?:The|A|An)$/;
 const GRAMMAR_TARGET = /^(?:critically )?\w+ (?:the )?(?<target>[A-Za-z][\w' -]*)$/;
@@ -308,19 +301,15 @@ export class Classifier {
    * Bounded by `tuning.parse.maxPendingEchoes`.
    */
   private pendingEchoes: string[] = [];
+  /** What this character said, bound to the receipt confirming it (`receipts.ts`). */
+  private readonly receipts = new Receipts();
   /**
-   * The addressed messages sent and not yet confirmed (`/soul hi`, `>soul
-   * hi`), oldest first, each split into sigil, the name as typed and the body.
-   *
-   * The receipt the server answers with (`--- Telepath Sent to Soul ---`)
-   * confirms the send and names the resolved recipient, and nothing else: the
-   * body is never echoed, so this is the only record of what was actually
-   * said. A queue, because the server answers in order and a party joining
-   * sends `@health`, `@version` and `@stats` in one burst (todo 03): one slot
-   * bound the first receipt to the second send's words and left the rest
-   * bare. Bounded by `tuning.parse.maxPendingEchoes`, the same in-flight claim.
+   * The command the previous line with any text on it echoed, or null when
+   * that line was anything else. A line straight after an echo is that
+   * command's answer, which is what tells a stun's fumble from its landing
+   * (`asSpellMessage`).
    */
-  private addressed: Addressed[] = [];
+  private echoed: string | null = null;
   /**
    * A bare `search` is out and its answer has not arrived.
    *
@@ -328,7 +317,8 @@ export class Classifier {
    * nothing in the line says which — and the two are different facts, because
    * what a search turns up stays concealed and its coins refuse a bare `get`
    * (see `room-hidden-items`). The only discriminator is the command, which
-   * makes this the same shape as `addressed` above and for the same reason.
+   * makes this the same shape as the receipt queue (`receipts.ts`) and for the
+   * same reason.
    *
    * **Bare only.** `search <direction>` is a different question with its own
    * answers (`You found an exit to the east!`), and `Walker` sends one at every
@@ -452,23 +442,7 @@ export class Classifier {
         this.pendingEchoes.shift();
       }
     }
-    /*
-     * An addressed message joins the receipt queue; anything else leaves it.
-     * An intervening command does not invalidate what a receipt will confirm
-     * — the server answers in order, so the receipt for `/soul hi` still
-     * means `/soul hi` after an `n` has gone out behind it. A refused send
-     * whose receipt never comes is dropped when a later receipt is matched
-     * past it (`bindReceipt`).
-     */
-    const address = ADDRESSED_COMMAND.exec(this.lastCommand);
-    if (address) {
-      this.addressed.push({
-        sigil: address[1] as '/' | '>',
-        name: address[2]!.toLowerCase(),
-        body: address[3]!.trim()
-      });
-      if (this.addressed.length > tuning().parse.maxPendingEchoes) this.addressed.shift();
-    }
+    this.receipts.sent(this.lastCommand);
 
     // A bare `search`, in any of the realm's four spellings for it.
     if (commandOf(this.lastCommand) === 'Search' && !ANY_SPACE.test(this.lastCommand)) {
@@ -542,10 +516,23 @@ export class Classifier {
   reset(): void {
     this.lastCommand = '';
     this.pendingEchoes = [];
-    this.addressed = [];
+    this.receipts.reset();
+    this.echoed = null;
     this.searching = false;
     this.inDescription = false;
     this.batch = null;
+  }
+
+  /**
+   * Moves `echoed` past one line. A fumble straight after a telepath's echo
+   * means the server threw the telepath away, so no receipt is coming for it.
+   */
+  private heard(block: Block, text: string): void {
+    if (text.trim().length === 0) return;
+    if (block.type === 'command-fumbled' && this.echoed !== null) {
+      this.receipts.refused(this.echoed);
+    }
+    this.echoed = block.type === 'command-echo' ? text.trim() : null;
   }
 
   private classifyLine(line: StreamLine, text: string): Block {
@@ -562,6 +549,7 @@ export class Classifier {
         )
       )
     );
+    this.heard(block, text);
 
     /*
      * Anything with a marker of its own ends the description: `Also here:`,
@@ -706,7 +694,7 @@ export class Classifier {
        */
       this.resolveNames(rule, groups);
       if (rule.named && groups['attacker'] === undefined) continue;
-      this.bindReceipt(rule.type, groups);
+      this.receipts.bind(rule.type, groups);
       if (rule.type === 'spell-cast') this.markHeal(groups);
 
       return this.build(line, this.fellHere(rule.type, groups, text), groups, text, confidence);
@@ -760,8 +748,20 @@ export class Classifier {
     ) {
       return block;
     }
+    /*
+     * A stun is confusion at 100%: `CheckConfusion` throws the command away
+     * and prints the spell's `ConfuseMsg` row, and on GreaterMUD that row's
+     * line is `You are stunned!`, the same sentence the stun prints when it
+     * lands. Straight after an echo it is that command's answer, a fumble
+     * (`asRealmMessage`); anywhere else it is the landing. On every capture
+     * the split held: 9 after an echo, 3 after `You reel from the blow!` or a
+     * prompt (2026-11-01). The server echoes input on arrival, so the echo
+     * could in principle be a later command's than the one thrown away; no
+     * capture shows it.
+     */
     const hit = this.spells(text);
     if (!hit) return block;
+    if (this.echoed !== null && this.readsAsFumble(text)) return block;
     const begins = hit.starts.length > 0;
     const ends = hit.stops.length > 0;
     if (begins === ends) return block;
@@ -843,13 +843,7 @@ export class Classifier {
     const hit = this.messages(text);
     if (hit === null) return block;
     const confidence = tuning().parse.baseConfidence;
-    /*
-     * The character's own line of a confusion row (`You retch
-     * uncontrollably!`) is the fumble `You fumble in confusion!` is: the
-     * command was thrown away before the server read it. The room's line
-     * (`%s retches uncontrollably!`) is somebody else's and stays explained.
-     */
-    if (hit.role === 1 && this.fumbles?.(hit.number) === true) {
+    if (this.isFumble(hit)) {
       return this.build(line, 'command-fumbled', this.messageGroups(hit), text, confidence);
     }
     const names = hit.fills.filter((fill, index) => hit.numeric[index] !== true && fill.length > 0);
@@ -879,6 +873,22 @@ export class Classifier {
       return this.build(line, 'spell-cast', groups, text, confidence);
     }
     return this.build(line, 'realm-message', this.messageGroups(hit), text, confidence);
+  }
+
+  /**
+   * The character's own line of a confusion row (`You retch
+   * uncontrollably!`) is the fumble `You fumble in confusion!` is: the
+   * command was thrown away before the server read it. The room's line
+   * (`%s retches uncontrollably!`) is somebody else's and stays explained.
+   */
+  private isFumble(hit: MessageHit): boolean {
+    return hit.role === 1 && this.fumbles?.(hit.number) === true;
+  }
+
+  /** Whether `text` is the character's own line of one of the realm's confusion rows. */
+  private readsAsFumble(text: string): boolean {
+    const hit = this.messages?.(text) ?? null;
+    return hit !== null && this.isFumble(hit);
   }
 
   private messageGroups(hit: MessageHit): Record<string, string> {
@@ -1020,82 +1030,6 @@ export class Classifier {
       const byGrammar = targetByGrammar(rest);
       if (byGrammar !== null) groups['target'] = byGrammar;
     }
-  }
-
-  /**
-   * Attaches what this character said to the receipt confirming it was said.
-   *
-   * `--- Telepath Sent to Soul ---` and `--- Message Directed to Soul ---`
-   * name the resolved recipient and nothing else — the body is never echoed —
-   * so the Talk card could only show the framing of a message this character
-   * sent, never the message. The command that provoked the receipt is the one
-   * record of the words, and it is bound here because blocks are the fact
-   * stream every consumer reads: a body only the sender's composer knew would
-   * be invisible to a telepath typed at the console or sent by `Remotes`.
-   *
-   * The receipt binds the oldest unconfirmed send on its own sigil whose name
-   * as typed it extends, because the server resolves a target by prefix
-   * (`/brack hi` is answered `to Brackle`) and answers in order. Sends on the
-   * same sigil queued ahead of that one were refused (`Why are you
-   * telepathing to yourself?`, an unknown name) and are dropped. Where
-   * nothing matches, `sent` is absent rather than guessed: a wrong body on a
-   * receipt is the client misquoting its own player. So where two sends typed
-   * under different names both match (`/br hi` refused as `Please be more
-   * specific`, then `/brakkle hi`), the receipt could answer either: it stays
-   * unbound and both are dropped, so no later receipt binds a body one send
-   * early.
-   *
-   * Deliberately a group of its own (`sent`), never `message`. Three
-   * consumers — the player registry's sighting, `Remotes` and the tracker's
-   * remote vitals — recognise the receipt as this character's own outbound
-   * half by `message` being absent, and a receipt carrying one would file
-   * this character's own words as the *recipient* speaking: an `@health`
-   * answer sent by telepath would be read back as the recipient's vitals.
-   */
-  private bindReceipt(type: BlockType, groups: Record<string, string | undefined>): void {
-    if (
-      type !== 'conversation-telepath' &&
-      type !== 'conversation-directed' &&
-      type !== 'conversation-page'
-    )
-      return;
-    // An incoming line on the same channel carries a message; a receipt cannot.
-    if (groups['message'] !== undefined) return;
-    const to = groups['player']?.toLowerCase();
-    if (to === undefined) return;
-    if (type === 'conversation-page') {
-      this.bindPage(to, groups);
-      return;
-    }
-    const sigil = type === 'conversation-telepath' ? '/' : '>';
-    // `/p soul hi` is a page (`bindPage`), never a telepath to somebody named P.
-    const matches = (sent: Addressed): boolean =>
-      sent.sigil === sigil && !(sigil === '/' && sent.name === 'p') && to.startsWith(sent.name);
-    const at = this.addressed.findIndex(matches);
-    if (at < 0) return;
-    const first = this.addressed[at]!;
-    const rival = this.addressed.findIndex((sent) => matches(sent) && sent.name !== first.name);
-    if (rival < 0) groups['sent'] = first.body;
-    const through = rival < 0 ? at : rival;
-    this.addressed = this.addressed.filter((sent, i) => i > through || sent.sigil !== sigil);
-  }
-
-  /**
-   * `---Page sent to soul---`, bound to the `/p soul hi` that sent it. The
-   * addressed queue reads that command as a telepath to `p`, so the account
-   * is the body's first word and the message the rest.
-   */
-  private bindPage(to: string, groups: Record<string, string | undefined>): void {
-    const at = this.addressed.findIndex((sent) => {
-      if (sent.sigil !== '/' || sent.name !== 'p') return false;
-      const account = sent.body.split(/\s+/, 1)[0]!.toLowerCase();
-      return to.startsWith(account);
-    });
-    if (at < 0) return;
-    const body = this.addressed[at]!.body;
-    const said = body.slice(body.search(/\s/) + 1).trim();
-    if (said.length > 0 && /\s/.test(body)) groups['sent'] = said;
-    this.addressed = this.addressed.filter((_, i) => i !== at);
   }
 
   /**

@@ -1217,6 +1217,88 @@ describe('the receipt for an addressed message carries what was said', () => {
     const block = classifier.classify(line('--- Telepath Sent to Soul ---')).block;
     expect(block.groups['sent']).toBeUndefined();
   });
+
+  /*
+   * A stun is confusion at 100% on GreaterMUD: `CheckConfusion` throws the
+   * command away and prints row 56's `You are stunned!`, which is also the
+   * sentence row 57 prints when the stun lands. Festus, 2026-11-01: two
+   * stunned `@wait`s to Ire got no receipt, and every later telepath to Ire
+   * showed the words of the one sent two before it.
+   */
+  describe('a send the server threw away', () => {
+    const rows = MessageBook.fromRows(
+      parseMessagesCsv(
+        [
+          'number,kind,line1,line2,line3',
+          '56,spell,"You are stunned!","%s stares about blankly, drooling from the mouth.","You are stunned!"',
+          '57,spell,"You are no longer stunned.","","You are stunned!"'
+        ].join('\n')
+      )
+    );
+    const lore = spellLoreOf(
+      SpellMessageBook.fromRows([
+        { spell: 'stun', start: 'You are stunned!', stop: 'You are no longer stunned.' }
+      ]),
+      new SpellMessageBook()
+    );
+    const stunnable = () => {
+      const classifier = new Classifier(
+        NAMES,
+        (text) => lore.match(text),
+        undefined,
+        undefined,
+        (text) => rows.match(text),
+        (row) => row === 56
+      );
+      const sent = (command: string, echo = command) => {
+        classifier.observeCommand(command);
+        return classifier.classify(line(echo));
+      };
+      const read = (text: string) => classifier.classify(line(text)).block;
+      return { sent, read };
+    };
+
+    it('reads the stun straight after an echo as that command thrown away', () => {
+      const { sent, read } = stunnable();
+      sent('/Ire @ok');
+      expect(read('You are stunned!').type).toBe('command-fumbled');
+    });
+
+    it('reads the stun anywhere else as the stun landing', () => {
+      const { sent, read } = stunnable();
+      sent('/Ire @ok');
+      expect(read('You reel from the blow!').type).not.toBe('command-echo');
+      expect(read('You are stunned!').type).toBe('spell-onset');
+    });
+
+    it('keeps each later receipt bound to its own words', () => {
+      const { sent, read } = stunnable();
+      // Echoed on the prompt, as the server does it.
+      const echoed = sent("/Ire @wait (HP's too low)", "[HP=465/658]:/Ire @wait (HP's too low)");
+      expect(echoed.tails?.[0]?.type).toBe('command-echo');
+      expect(read('You are stunned!').type).toBe('command-fumbled');
+      sent('/ire well crap');
+      expect(read('--- Telepath Sent to Ire ---').groups['sent']).toBe('well crap');
+    });
+
+    it('drops only the oldest of two identical sends', () => {
+      const { sent, read } = stunnable();
+      sent('/Ire @ok');
+      expect(read('You are stunned!').type).toBe('command-fumbled');
+      sent('/Ire @ok');
+      expect(read('--- Telepath Sent to Ire ---').groups['sent']).toBe('@ok');
+      expect(read('--- Telepath Sent to Ire ---').groups['sent']).toBeUndefined();
+    });
+
+    it('leaves the send queued when the stun is a landing', () => {
+      // The landing refuses nothing, so the telepath's own receipt still binds it.
+      const { sent, read } = stunnable();
+      sent('/ire hi');
+      read('Ire telepaths: one sec');
+      expect(read('You are stunned!').type).toBe('spell-onset');
+      expect(read('--- Telepath Sent to Ire ---').groups['sent']).toBe('hi');
+    });
+  });
 });
 
 describe('health', () => {
