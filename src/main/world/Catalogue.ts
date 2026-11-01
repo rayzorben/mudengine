@@ -607,6 +607,7 @@ export class Catalogue {
       // it is here it answers for the fold as exactly as a row would.
       mob.regenHours = positive('rt');
       mob.residentHours = positive('nr');
+      mob.gameLimit = positive('gl');
       mob.coins = readCoins(record['cs'], version);
       mob.follows = positive('fol');
       if (record['und'] === 1) mob.undead = true;
@@ -691,6 +692,7 @@ export class Catalogue {
         kept.regen = stated('rgn');
         kept.regenHours = stated('rt');
         kept.residentHours = stated('nr');
+        kept.gameLimit = stated('gl');
         kept.coins = readCoins(row['cs'], version);
         kept.follows = stated('fol');
         kept.averageDamage = stated('dmg');
@@ -1199,6 +1201,7 @@ export class Catalogue {
     if (known.avoid !== undefined) entity.avoid = known.avoid;
     if (known.regen !== undefined) entity.regen = known.regen;
     if (known.regenHours !== undefined) entity.regenHours = known.regenHours;
+    if (known.gameLimit !== undefined) entity.gameLimit = known.gameLimit;
     if (known.coins !== undefined) entity.coins = known.coins;
     if (known.follows !== undefined) entity.follows = known.follows;
     if (known.undead !== undefined) entity.undead = known.undead;
@@ -2193,6 +2196,7 @@ function overlayRow(entity: MobEntity, row: WorldMobRow | undefined): void {
   entity.experience = row.experience;
   entity.regen = row.regen;
   entity.regenHours = row.regenHours;
+  entity.gameLimit = row.gameLimit;
   entity.coins = row.coins;
   entity.follows = row.follows;
   entity.averageDamage = row.averageDamage;
@@ -2253,6 +2257,7 @@ export function mobAsRow(mob: WorldMob, row: WorldMobRow, choice: MobRowChoice):
   resolved.experience = row.experience;
   resolved.regen = row.regen;
   resolved.regenHours = row.regenHours;
+  resolved.gameLimit = row.gameLimit;
   resolved.coins = row.coins;
   resolved.follows = row.follows;
   resolved.averageDamage = row.averageDamage;

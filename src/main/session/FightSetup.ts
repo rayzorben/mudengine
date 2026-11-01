@@ -67,6 +67,7 @@ export interface FightFoe {
   name: string;
   subject: SurvivalFoe['subject'] & Pick<MobEntity, 'magicResist' | 'nature'>;
   waits?: SurvivalFoe['waits'];
+  limit?: SurvivalFoe['limit'];
 }
 
 /**
@@ -209,10 +210,11 @@ export class FightSetup {
       ...this.arrivals(entity)
     }));
     return {
-      foes: met.map(({ name, subject, waits }) => ({
+      foes: met.map(({ name, subject, waits, limit }) => ({
         name,
         subject,
         ...(waits === true ? { waits } : {}),
+        ...(limit === undefined ? {} : { limit }),
         ...(arriving ? this.arrivals(subject) : {})
       })),
       ...(joiners.length > 0 ? { joiners } : {}),

@@ -2335,7 +2335,9 @@ export class Errands implements SessionModule {
          * priced as though it came back with the rest of the room.
          * `estimateSpot` weights its experience by how often it is up.
          */
-        regenSeconds: regenSeconds(entity.regenHours, speed)
+        regenSeconds: regenSeconds(entity.regenHours, speed),
+        // No more slots than the realm lets be up at once (format 80).
+        limit: entity.gameLimit ?? null
       }));
       // Fought beside the party (todo 152): the members' damage shortens the kill; the blows stay on this character.
       return party === null || fighting === null

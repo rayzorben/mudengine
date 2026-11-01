@@ -149,6 +149,34 @@ describe('what a lair spawns, and how often', () => {
     const found = graph.lairEntities(graph.byId('1/1')!);
     expect(found.map((e) => e.regenHours)).toEqual([1, undefined]);
   });
+
+  /* Format 80: how many may be up at once comes with the clock, off the fold or the row. */
+  it('carries how many of a row may be up at once', () => {
+    const graph = makeWorld(
+      [{ m: 1, r: 1, n: 'Webbed Lair', x: {}, lair: '(Max 3): 867,929,377,50,', dl: 1 }],
+      [
+        { n: 'horned spider', hp: 660, i: [867], xp: 9000 },
+        { n: 'crowned spider', hp: 2600, i: [929], xp: 1_200_000, rt: 15, gl: 1 },
+        {
+          n: 'wild dog',
+          hp: 20,
+          i: [50, 377],
+          xp: 75,
+          rw: [
+            { hp: 20, xp: 75 },
+            { hp: 20, xp: 75, rt: 1, gl: 3 }
+          ]
+        }
+      ]
+    );
+    const found = graph.lairEntities(graph.byId('1/1')!);
+    expect(found.map((e) => [e.name, e.gameLimit])).toEqual([
+      ['horned spider', undefined],
+      ['crowned spider', 1],
+      ['wild dog', 3],
+      ['wild dog', undefined]
+    ]);
+  });
 });
 
 /*

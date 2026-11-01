@@ -171,6 +171,12 @@ export interface SpotMob {
    */
   regenSeconds: number | null;
   /**
+   * How many of this row may be up across the realm at once, where it is on
+   * its own clock (`Monsters.GameLimit`, format 80): no more of a lair's
+   * slots than this hold it. Null is no limit known, every slot.
+   */
+  limit: number | null;
+  /**
    * The monsters it draws into its room (todo 24, `Joiners`): a call for aid
    * while it stands, a death spell's, and what its arrival brings. Absent
    * draws nobody in.
@@ -449,6 +455,63 @@ function mean(values: ReadonlyArray<number | null>): number | null {
   return known.reduce((sum, value) => sum + value, 0) / known.length;
 }
 
+/**
+ * The rows' figures weighed by their share of the slots (`slotShares`); a
+ * row whose figure is unknown is left out and the rest stand for it, as
+ * `mean` does.
+ */
+function mixed(values: ReadonlyArray<number | null>, shares: readonly number[]): number | null {
+  let sum = 0;
+  let weight = 0;
+  values.forEach((value, index) => {
+    if (value === null || !Number.isFinite(value)) return;
+    sum += value * (shares[index] ?? 0);
+    weight += shares[index] ?? 0;
+  });
+  return weight > 0 ? sum / weight : mean(values);
+}
+
+/** A row on a clock of its own (`SpotMob.regenSeconds`); null is the room's clock. */
+function onOwnClock(mob: Pick<SpotMob, 'regenSeconds'>): mob is { regenSeconds: number } {
+  return mob.regenSeconds !== null && mob.regenSeconds > 0;
+}
+
+/**
+ * Which row a lair's slot holds, over `window` seconds in which `slots` of
+ * its slots are visited.
+ *
+ * A row on its own clock comes back `limit` at a time once a clock
+ * (`RegenSlot.cs:69`), so over the window it is up in at most
+ * `limit × window / regenSeconds` of the slots visited, all of them together:
+ * one crowned spider in fifteen hours is one, however many of the Webbed
+ * Lair's rooms a lap walks. An unknown limit is read as one, the reading that
+ * does not raise the rate. A slot that draws a row while it is down stays
+ * empty only to the next regen pass, which draws again (`RegenSlot.cs:20-24`),
+ * so where any row is on the room's clock the slots go to the rows that are
+ * up, in proportion. `shares` sum to one; `filled` is the share of visits
+ * that find the slot taken, below one only where every row is on a clock of
+ * its own, which is a boss's room. A null window weighs every row alike.
+ */
+export function slotShares(
+  mobs: readonly Pick<SpotMob, 'regenSeconds' | 'limit'>[],
+  window: number | null,
+  slots: number
+): { shares: number[]; filled: number } {
+  const up = mobs.map((mob) =>
+    window === null || !onOwnClock(mob)
+      ? 1
+      : Math.min(1, ((mob.limit ?? 1) * window) / (mob.regenSeconds * Math.max(1, slots)))
+  );
+  const total = up.reduce((sum, each) => sum + each, 0);
+  if (mobs.length === 0 || total <= 0) {
+    return { shares: mobs.map(() => 1 / Math.max(1, mobs.length)), filled: 1 };
+  }
+  return {
+    shares: up.map((each) => each / total),
+    filled: mobs.some((mob) => !onOwnClock(mob)) ? 1 : total / mobs.length
+  };
+}
+
 /** `a + b`, unknown when either is. */
 function add(a: number | null, b: number | null): number | null {
   return a === null || b === null ? null : a + b;
@@ -495,6 +558,7 @@ interface JoinedCopies {
  */
 function joinedRoom(
   callers: readonly SpotMob[],
+  shares: readonly number[],
   spawns: number,
   perKill: readonly number[]
 ): { joined: JoinedCopies[]; rounds: number | null; damage: number | null } {
@@ -511,9 +575,9 @@ function joinedRoom(
     diedLinger += total - alive;
   }
   const byName = new Map<string, { mob: SpotMob; copies: number; linger: number }>();
-  // Each slot is any of the callers alike, as the lair draws them.
-  const share = 1 / Math.max(1, callers.length);
-  for (const caller of callers) {
+  // Each slot is a caller at its share of the slots (`slotShares`).
+  callers.forEach((caller, index) => {
+    const share = shares[index] ?? 0;
     for (const joiner of caller.joiners ?? []) {
       const held = byName.get(joiner.mob.name) ?? { mob: joiner.mob, copies: 0, linger: 0 };
       held.copies +=
@@ -525,7 +589,7 @@ function joinedRoom(
           joiner.onArrival * spawns * total);
       byName.set(joiner.mob.name, held);
     }
-  }
+  });
   const room = MOBS_PER_ROOM - spawns;
   const count = [...byName.values()].reduce((sum, each) => sum + each.copies, 0);
   const scale = count > room ? Math.max(0, room) / count : 1;
@@ -551,32 +615,42 @@ function joinedRoom(
  * One room, fought: kill its `spawns` in turn (the pack ramps down — while the
  * k-th dies the rest are still swinging), a backstabber's opener credited as
  * `backstabMultiplier` rounds on the first blow — every kill in a room of
- * singles, the first of a pack. The same arithmetic against an unarmoured
- * character gives the figure the *beneath this level* test reads.
+ * singles, the first of a pack. Each slot holds a row at its `shares`
+ * (`slotShares`). The same arithmetic against an unarmoured character gives
+ * the figure the *beneath this level* test reads.
  */
 function roomCycle(
   stated: number | null,
   mobs: readonly SpotMob[],
+  shares: readonly number[],
   character: SpotCharacter,
   c: HuntingConstants
 ): RoomCycle {
   const spawns = Math.max(1, stated ?? 1);
-  const experience = mean(mobs.map((mob) => mob.experience));
-  const rounds = mean(mobs.map((mob) => mob.rounds));
-  const perRound = mean(mobs.map((mob) => mob.perRound));
+  const experience = mixed(
+    mobs.map((mob) => mob.experience),
+    shares
+  );
+  const rounds = mixed(
+    mobs.map((mob) => mob.rounds),
+    shares
+  );
+  const perRound = mixed(
+    mobs.map((mob) => mob.perRound),
+    shares
+  );
 
+  /** The k-th kill of a pack of `pack`, a kill of `kill` rounds: the opener comes on the first. */
+  const killRounds = (kill: number, k: number, pack: number): number =>
+    character.backstab && (k === 0 || pack === 1)
+      ? Math.max(LEAST_ROUNDS, 1 + Math.max(0, kill - c.backstabMultiplier))
+      : Math.max(LEAST_ROUNDS, kill);
   /*
    * The room's rounds and the ramp its pack dies down, for a kill of `rounds`
    * rounds: while the k-th dies the ones after it are still swinging.
    */
   const fight = (kill: number): { rounds: number; ramp: number; perKill: number[] } => {
-    const plain = Math.max(LEAST_ROUNDS, kill);
-    const opened = Math.max(LEAST_ROUNDS, 1 + Math.max(0, kill - c.backstabMultiplier));
-    const perKill: number[] = [];
-    for (let k = 0; k < spawns; k += 1) {
-      const first = k === 0 || spawns === 1;
-      perKill.push(character.backstab && first ? opened : plain);
-    }
+    const perKill = Array.from({ length: spawns }, (_, k) => killRounds(kill, k, spawns));
     return {
       rounds: perKill.reduce((sum, value) => sum + value, 0),
       ramp: perKill.reduce((sum, value, index) => sum + value * (spawns - index), 0),
@@ -587,7 +661,7 @@ function roomCycle(
   let roomRounds: number | null = null;
   let damage: number | null = null;
   // What the spawns draw in (todo 24), at the rounds known, else the shortest kill.
-  const drawn = joinedRoom(mobs, spawns, fight(rounds ?? LEAST_ROUNDS).perKill);
+  const drawn = joinedRoom(mobs, shares, spawns, fight(rounds ?? LEAST_ROUNDS).perKill);
   const joinedCount = drawn.joined.reduce((sum, each) => sum + each.copies, 0);
   if (rounds !== null) {
     const expected = fight(rounds);
@@ -602,6 +676,13 @@ function roomCycle(
    * a lair naming a ghost, a shadowraith and a crimson mist averaged to half
    * the bar and spawned, one visit in three, a monster that takes it whole.
    *
+   * Each row leads in turn, filling as many slots as its limit lets be up at
+   * once (`SpotMob.limit`, format 80), and the rows that cost most a kill
+   * fill the rest within their own: three crowned spiders (limit 1) never
+   * stand in the Webbed Lair together, and pricing them so left the lair out
+   * as deadly while Festus hunted it (2026-11-01). The lead is killed first,
+   * as the slot that drew it, while the rest swing.
+   *
    * A monster whose rounds are unknown is not a monster that costs nothing:
    * its blows are known, and it swings them for at least the shortest kill
    * the model prices. So the exact figure waits for every spawn's rounds
@@ -614,26 +695,58 @@ function roomCycle(
    * unfinished — except a spawn that cannot hit anybody, whose figure is
    * nought however long it stands there.
    */
+  type Blows = (mob: SpotMob) => number | null;
+  const allowed = (mob: SpotMob): number => Math.min(spawns, Math.max(0, mob.limit ?? spawns));
+  const rosterOf = (lead: SpotMob, blows: Blows): SpotMob[] => {
+    const roster: SpotMob[] = Array.from({ length: allowed(lead) }, () => lead);
+    const costOf = (mob: SpotMob): number => (blows(mob) ?? 0) * (mob.rounds ?? LEAST_ROUNDS);
+    const rest = mobs
+      .filter((mob) => mob !== lead && blows(mob) !== null)
+      .sort((a, b) => costOf(b) - costOf(a));
+    for (const mob of rest) {
+      for (let n = allowed(mob); n > 0 && roster.length < spawns; n -= 1) roster.push(mob);
+    }
+    return roster;
+  };
+  /** A pack's blows taken while it dies in its order, and what it draws in; null joiners unknown. */
+  const packCost = (
+    roster: readonly SpotMob[],
+    blows: Blows
+  ): { cost: number; its: number | null } => {
+    const perKill = roster.map((mob, k) =>
+      killRounds(mob.rounds ?? LEAST_ROUNDS, k, roster.length)
+    );
+    let standing = roster.reduce((sum, mob) => sum + (blows(mob) ?? 0), 0);
+    let cost = 0;
+    roster.forEach((mob, k) => {
+      cost += perKill[k]! * standing;
+      standing -= blows(mob) ?? 0;
+    });
+    const callers = [...new Set(roster)];
+    const callerShares = callers.map(
+      (mob) => roster.filter((one) => one === mob).length / roster.length
+    );
+    return { cost, its: joinedRoom(callers, callerShares, roster.length, perKill).damage };
+  };
   let worstDamage: number | null = null;
   let worstDamageAtLeast: number | null = null;
   let nakedDamage: number | null = null;
-  let roundsComplete = true;
+  let roundsComplete = mobs.every((mob) => mob.rounds !== null);
   let nakedComplete = true;
+  const blows = (one: SpotMob): number | null => one.perRound;
   for (const mob of mobs) {
-    if (mob.rounds === null) roundsComplete = false;
-    const { ramp, perKill } = fight(mob.rounds ?? LEAST_ROUNDS);
-    // The worst spawn filling every slot draws in what it calls; unknown joiners leave the exact figure open.
-    const its = joinedRoom([mob], spawns, perKill).damage;
+    // The worst pack draws in what it calls; unknown joiners leave the exact figure open.
+    const { cost, its } = packCost(rosterOf(mob, blows), blows);
     if (its === null) roundsComplete = false;
     if (mob.perRound !== null) {
-      const cost = mob.perRound * ramp + (its ?? 0);
-      worstDamageAtLeast = Math.max(worstDamageAtLeast ?? 0, cost);
-      if (mob.rounds !== null) worstDamage = Math.max(worstDamage ?? 0, cost);
+      worstDamageAtLeast = Math.max(worstDamageAtLeast ?? 0, cost + (its ?? 0));
+      worstDamage = Math.max(worstDamage ?? 0, cost + (its ?? 0));
     }
     if (mob.nakedPerRound === null || (mob.rounds === null && mob.nakedPerRound > 0)) {
       nakedComplete = false;
     } else {
-      nakedDamage = Math.max(nakedDamage ?? 0, mob.nakedPerRound * ramp);
+      const naked = (one: SpotMob): number | null => one.nakedPerRound;
+      nakedDamage = Math.max(nakedDamage ?? 0, packCost(rosterOf(mob, naked), naked).cost);
     }
   }
   if (!roundsComplete) worstDamage = null;
@@ -736,9 +849,53 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   const ch = input.character;
   const stepMs = ch.stepMs ?? c.stepMs;
 
-  const primary = roomCycle(input.spawns, input.mobs, ch, c);
+  // A lair clock of 0 (refilled on the lap) says nothing about a window not yet worked out.
+  const unworked = input.respawnSeconds === 0 ? null : input.respawnSeconds;
+
+  /**
+   * How long a filler's own rows have between two visits: the cycle, or the
+   * filler's clock where that is longer. A room entered one lap in ten is
+   * entered every ten laps, and ten laps is its clock: so a boss standing in
+   * a filler is weighed against the wait the character actually gives it, not
+   * against the ring's faster cycle.
+   */
+  const visitWindow = (filler: { respawn: number }, window: number | null): number | null => {
+    const seen = window ?? unworked;
+    return seen === null ? null : Math.max(seen, filler.respawn);
+  };
+
+  /*
+   * A room fought with its slots shared by how often each row is up over the
+   * window (`slotShares`): the ring's at the cycle, else the room's own clock;
+   * a filler's at its visit window. Re-run on the second pass with the cycle,
+   * as the experience is.
+   */
+  // The slots a lap visits in the ring: every room's, each lap.
+  const ringSlots = rooms * Math.max(1, input.spawns ?? 1);
+  const ringAt = (window: number | null): RoomCycle =>
+    roomCycle(
+      input.spawns,
+      input.mobs,
+      slotShares(input.mobs, window ?? unworked, ringSlots).shares,
+      ch,
+      c
+    );
+  const fillerAt = (room: FillerInput, window: number | null): RoomCycle =>
+    roomCycle(
+      room.spawns,
+      room.mobs,
+      slotShares(
+        room.mobs,
+        visitWindow({ respawn: room.respawnSeconds }, window),
+        Math.max(1, room.spawns ?? 1)
+      ).shares,
+      ch,
+      c
+    );
+  const primary = ringAt(null);
   const fillers = input.filler.map((room) => ({
-    ...roomCycle(room.spawns, room.mobs, ch, c),
+    ...fillerAt(room, null),
+    room,
     // Kept beside the fold so a filler's rows are weighed by their own clocks
     // exactly as the ring's are — see `weighed`.
     mobs: room.mobs,
@@ -787,8 +944,6 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
    * filler whole, so the cycle it handed the second pass was too long and the
    * filler was then credited more laps than that cycle allows.
    */
-  // A lair clock of 0 (refilled on the lap) says nothing about a window not yet worked out.
-  const unworked = input.respawnSeconds === 0 ? null : input.respawnSeconds;
   const shareOf = (filler: { respawn: number }, window: number | null): number => {
     const seen = window ?? unworked;
     return seen === null ? 1 : Math.min(1, seen / Math.max(1, filler.respawn));
@@ -813,6 +968,7 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   const weighed = (
     mobs: readonly SpotMob[],
     spawns: number,
+    slots: number,
     window: number | null,
     worth: Worth,
     joined: readonly JoinedCopies[]
@@ -821,9 +977,7 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
     const one = (mob: SpotMob): number | null => {
       const paid = worth(mob);
       if (paid === null) return null;
-      if (mob.regenSeconds === null || mob.regenSeconds <= 0 || seen === null) {
-        return paid;
-      }
+      if (!onOwnClock(mob) || seen === null) return paid;
       return paid * Math.min(1, seen / mob.regenSeconds);
     };
     // The joiners pay at their expected copies (todo 24); one whose figure is unknown leaves the room's unknown.
@@ -832,25 +986,16 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
       const paid = copies > 0 ? one(mob) : 0;
       drawnIn = paid === null || drawnIn === null ? null : drawnIn + copies * paid;
     }
-    const each = mean(mobs.map(one));
+    // A slot is paid at its rows' shares, and only on the visits that find it taken (`slotShares`).
+    const { shares, filled } = slotShares(mobs, seen, slots);
+    const each = mixed(mobs.map(worth), shares);
     // However many the lair spawns at once, and those they draw in.
-    return each === null || drawnIn === null ? null : each * spawns + drawnIn;
-  };
-
-  /**
-   * How long a filler's own rows have between two visits: the cycle, or the
-   * filler's clock where that is longer. A room entered one lap in ten is
-   * entered every ten laps, and ten laps is its clock — so a boss standing in
-   * a filler is weighed against the wait the character actually gives it, not
-   * against the ring's faster cycle.
-   */
-  const visitWindow = (filler: { respawn: number }, window: number | null): number | null => {
-    const seen = window ?? unworked;
-    return seen === null ? null : Math.max(seen, filler.respawn);
+    return each === null || drawnIn === null ? null : each * filled * spawns + drawnIn;
   };
 
   const primaryFor = (cycle: number | null, worth: Worth = EXPERIENCE): number | null => {
-    const each = weighed(input.mobs, primary.spawns, cycle, worth, primary.joined);
+    const ring = cycle === null ? primary : ringAt(cycle);
+    const each = weighed(input.mobs, ring.spawns, ringSlots, cycle, worth, ring.joined);
     // Over every room of the ring — `roomCycle`'s own arithmetic, re-run with
     // the weights — and only for the fights won.
     return each === null ? null : each * rooms * (given.wins ?? 1);
@@ -859,12 +1004,14 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   /** What the fillers add to one cycle, each paid at the share it is found up. */
   const fillerFor = (window: number | null, worth: Worth = EXPERIENCE): number =>
     fillers.reduce((sum, filler) => {
+      const joined = window === null ? filler.joined : fillerAt(filler.room, window).joined;
       const paid = weighed(
         filler.mobs,
         filler.spawns,
+        filler.spawns,
         visitWindow(filler, window),
         worth,
-        filler.joined
+        joined
       );
       return paid === null ? sum : sum + paid * shareOf(filler, window);
     }, 0);
@@ -910,10 +1057,12 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
       Math.max(0, input.loopSteps) +
       fillers.reduce((sum, f) => sum + f.detour * shareOf(f, window), 0);
     const walkSeconds = (walkSteps * stepMs) / 1000;
-    let combatSeconds: number | null = primary.seconds === null ? null : primary.seconds * rooms;
-    let damagePerCycle: number | null = primary.damage === null ? null : primary.damage * rooms;
-    let roundsPerCycle: number | null = primary.rounds === null ? null : primary.rounds * rooms;
-    for (const filler of fillers) {
+    const ring = window === null ? primary : ringAt(window);
+    let combatSeconds: number | null = ring.seconds === null ? null : ring.seconds * rooms;
+    let damagePerCycle: number | null = ring.damage === null ? null : ring.damage * rooms;
+    let roundsPerCycle: number | null = ring.rounds === null ? null : ring.rounds * rooms;
+    for (const each of fillers) {
+      const filler = window === null ? each : { ...each, ...fillerAt(each.room, window) };
       const taken = shareOf(filler, window);
       combatSeconds = add(combatSeconds, filler.seconds === null ? null : filler.seconds * taken);
       damagePerCycle = add(damagePerCycle, filler.damage === null ? null : filler.damage * taken);

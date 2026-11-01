@@ -306,6 +306,18 @@ describe('the room’s fight, run', () => {
     expect(pieces.result()).toEqual(simulateFight(input));
   });
 
+  /* 2026-11-01: three crowned spiders (GameLimit 1) never stand in the Webbed Lair at once. */
+  it('meets no more of a limited row than its limit, whatever the lair holds', () => {
+    const crowned = { name: 'crowned spider', subject: { hp: 300, profiles: [biter(70, 6, 12)] } };
+    const once = simulateFight(fight({ foes: [crowned], casting: [null], draw: 1 }))!;
+    const held = simulateFight(
+      fight({ foes: [{ ...crowned, limit: 1 }], casting: [null], draw: 3 })
+    )!;
+    const three = simulateFight(fight({ foes: [crowned], casting: [null], draw: 3 }))!;
+    expect(held).toEqual(once);
+    expect(three.lostMean).toBeGreaterThan(once.lostMean);
+  });
+
   it('lets a caster fight where the swing says nothing', () => {
     const result = simulateFight(
       fight({

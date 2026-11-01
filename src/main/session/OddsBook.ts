@@ -492,7 +492,8 @@ export class OddsBook implements SessionModule {
       met = world.lairEntities(job.room).map((entity) => ({
         name: entity.name,
         subject: entity,
-        waits: waitsToBeStruck(entity, standing)
+        waits: waitsToBeStruck(entity, standing),
+        ...(entity.gameLimit === undefined ? {} : { limit: entity.gameLimit })
       }));
       draw = parseLair(job.room.lair ?? '').max ?? 1;
     }

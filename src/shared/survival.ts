@@ -53,6 +53,12 @@ export interface SurvivalFoe {
    * lair's draw, and on every joiner; absent brings nobody.
    */
   arrives?: Summons;
+  /**
+   * How many a lair's draw may hold at once (`Monsters.GameLimit`, format
+   * 80): a slot that draws it past this draws again, as the server's next
+   * regen pass does (`RegenSlot.cs:69`). Absent is no limit.
+   */
+  limit?: number;
 }
 
 /** A monster the foes may draw in (`Joiners.drawnIn`), by the realm row a summons names. */
@@ -399,14 +405,25 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     minMana <= 0 ||
     (input.manaMax !== null && input.manaMax > 0 && pool / input.manaMax >= minMana);
 
+  /** A lair's slots, each any foe alike that is still under its limit; one with none left stays empty. */
+  const drawLair = (slots: number): number[] => {
+    const held = foes.map(() => 0);
+    const drawn: number[] = [];
+    for (let slot = 0; slot < slots; slot += 1) {
+      const open = foes.flatMap((foe, index) =>
+        held[index]! < (foe.limit ?? Number.POSITIVE_INFINITY) ? [index] : []
+      );
+      if (open.length === 0) break;
+      const index = open[Math.floor(random() * open.length)]!;
+      held[index]! += 1;
+      drawn.push(index);
+    }
+    return drawn.sort((a, b) => position.get(a)! - position.get(b)!);
+  };
+
   let ran = 0;
   const trial = (): void => {
-    const met =
-      count === null
-        ? [...order]
-        : Array.from({ length: count }, () => Math.floor(random() * foes.length)).sort(
-            (a, b) => position.get(a)! - position.get(b)!
-          );
+    const met = count === null ? [...order] : drawLair(count);
     const alive = met.map((index) => sides[index]!.hp);
     const states: MobState[] = met.map(() => freshMobState());
     const swinging = met.map((index) => foes[index]!.waits !== true);

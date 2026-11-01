@@ -625,6 +625,38 @@ describe('naming what a monster is worth in health', () => {
   });
 
   /*
+   * Format 80. A lair slot takes a limited row only while fewer than
+   * `GameLimit` of it are alive (`RegenSlot.cs:69`): Paradigm's crowned
+   * spider is one at a time, and the Hunting card filled all three of the
+   * Webbed Lair's slots with it.
+   */
+  it('keeps how many of a row may be up at once beside its clock', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          {
+            Number: 929,
+            Name: 'crowned spider',
+            HP: 2600,
+            RegenTime: 15,
+            GameLimit: 1,
+            'In Game': 1
+          },
+          { Number: 111, Name: 'minotaur', HP: 200, RegenTime: 48, GameLimit: 0, 'In Game': 1 },
+          { Number: 50, Name: 'wild dog', HP: 20, 'In Game': 1 },
+          { Number: 377, Name: 'wild dog', HP: 20, RegenTime: 1, GameLimit: 3, 'In Game': 1 }
+        ]
+      })
+    );
+    const named = (n: string) => mobs.find((mob) => mob.n === n);
+    expect(named('crowned spider')).toMatchObject({ rt: 15, gl: 1 });
+    expect(named('minotaur')?.gl).toBeUndefined();
+    // Folded as the clock is: the rows disagree, so the name states none and each row keeps its own.
+    expect(named('wild dog')?.gl).toBeUndefined();
+    expect(named('wild dog')?.rw?.map((row) => row.gl)).toEqual([undefined, 3]);
+  });
+
+  /*
    * Format 74. A room's resident comes back through `NPCRegenSlot`, which
    * reads `Regen` whatever `GameLimit` says (`RegenSlot.cs:201`); gmud.zip has
    * no `GameLimit` column at all. The minotaur, placed by no room, stays off.

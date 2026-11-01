@@ -18,6 +18,7 @@ import {
   orderRing,
   respawnSeconds,
   sizeLoop,
+  slotShares,
   timedBy,
   type FillerInput,
   type HuntingConstants,
@@ -140,6 +141,7 @@ const mutant = (over: Partial<SpotMob> = {}): SpotMob => ({
   nakedPerRound: 30,
   afflictions: [],
   regenSeconds: null,
+  limit: null,
   ...over
 });
 
@@ -357,6 +359,72 @@ describe('a monster on its own clock', () => {
     const slow = singles({ respawnSeconds: 7200, mobs: [boss({ regenSeconds: 3600 })] });
     const plain = singles({ respawnSeconds: 7200, mobs: [boss()] });
     expect(estimateSpot(slow, C).expPerHour).toBe(estimateSpot(plain, C).expPerHour);
+  });
+});
+
+/*
+ * 2026-11-01: Paradigm's Webbed Lair spawns horned spiders (9,000) and a
+ * crowned spider (1.2M, 2,600 health, `GameLimit` 1, fifteen hours). Festus
+ * hunted it at 3.1M an hour while the card priced every other slot a crowned
+ * spider's fight, paid half the slots nothing, and left the lair out as
+ * deadly for three crowned spiders at once.
+ */
+describe('a lair with a limited boss among its rows', () => {
+  const spider = mutant({ name: 'horned spider', experience: 9000, rounds: 2, perRound: 2 });
+  const crowned = mutant({
+    name: 'crowned spider',
+    experience: 1_200_000,
+    rounds: 5,
+    perRound: 15,
+    regenSeconds: 15 * 3600,
+    limit: 1
+  });
+  const webbed = (over: Partial<SpotInput> = {}): SpotInput =>
+    singles({ rooms: 7, spawns: 3, mobs: [spider, crowned], loopSteps: 8, ...over });
+
+  it('gives the slots to the rows that are up', () => {
+    const { shares, filled } = slotShares([spider, crowned], 300, 21);
+    expect(filled).toBe(1);
+    expect(shares[0]).toBeGreaterThan(0.999);
+    expect(shares[0]! + shares[1]!).toBeCloseTo(1, 9);
+  });
+
+  it('shares one boss among every slot a lap visits', () => {
+    // One crowned spider a fifteen-hour clock, however many rooms are walked.
+    const few = slotShares([spider, crowned], 300, 3).shares[1]!;
+    const many = slotShares([spider, crowned], 300, 21).shares[1]!;
+    expect(many).toBeCloseTo(few / 7, 6);
+    // An unknown limit is read as one; a known one lets that many be up.
+    expect(slotShares([spider, { ...crowned, limit: null }], 300, 21).shares[1]).toBeCloseTo(
+      many,
+      9
+    );
+    expect(slotShares([spider, { ...crowned, limit: 2 }], 300, 21).shares[1]).toBeCloseTo(
+      2 * many,
+      4
+    );
+  });
+
+  it('leaves a slot empty only where every row is on a clock of its own', () => {
+    expect(slotShares([crowned], 300, 1).filled).toBeCloseTo(300 / (15 * 3600), 9);
+  });
+
+  it('prices a kill as the spiders it is nearly always', () => {
+    const e = estimateSpot(webbed(), C);
+    expect(e.roundsPerKill).toBeCloseTo(2, 2);
+    // Twenty-one spiders a lap and a crowned spider's 1.2M once in fifteen hours.
+    const perHour = 9000 * (3600 / e.cycleSeconds!) * 21;
+    expect(e.expPerHour!).toBeGreaterThan(perHour);
+    expect(e.expPerHour!).toBeLessThan(perHour + 1_200_000 / 15 + 1);
+  });
+
+  it('fills no more slots with the boss than its limit lets be up', () => {
+    const limited = estimateSpot(webbed(), C);
+    const unlimited = estimateSpot(webbed({ mobs: [spider, { ...crowned, limit: null }] }), C);
+    // One crowned spider and two horned, against three crowned.
+    expect(limited.worstDamageAtLeast!).toBeLessThan(unlimited.worstDamageAtLeast! / 2);
+    expect(limited.deadly).toBe(false);
+    expect(unlimited.deadly).toBe(true);
   });
 });
 

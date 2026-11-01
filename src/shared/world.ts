@@ -2117,6 +2117,8 @@ export interface WorldMobRow {
    * `GameLimit` (format 74, `BuiltMob.nr`), a lair's slot does not.
    */
   residentHours?: number;
+  /** How many may be up across the realm at once, beside `regenHours` (format 80, `BuiltMob.gl`). */
+  gameLimit?: number;
   /** This row's coin maxima (`Monsters.R P G S C`, format 49). Absent on an older realm file. */
   coins?: CoinMaxima;
   follows?: number;
@@ -2283,6 +2285,8 @@ export interface WorldMob {
   regenHours?: number;
   /** As a room's resident, where `regenHours` states none (format 74, `WorldMob.residentHours`). */
   residentHours?: number;
+  /** How many may be up at once, beside `regenHours` (format 80, `WorldMobRow.gameLimit`). */
+  gameLimit?: number;
   /**
    * The most of each coin it is made with (`Monsters.R P G S C`, format 49):
    * the row worth least, like `experience`. All zero where it carries none,

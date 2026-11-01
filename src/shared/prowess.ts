@@ -8,6 +8,7 @@ import {
   type HitSpellTarget
 } from './hitSpells';
 import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
+import { roundsToKill } from './killRounds';
 import type { RealmFamily } from './realm';
 import { swingKey, type MeasuredRounds } from './rounds';
 import { spellKey } from './spell-messages';
@@ -777,7 +778,9 @@ export interface Swing {
   hitSpells: readonly HitSpellCast[];
   /**
    * Rounds to take the target's health down, or `null` when the target's
-   * health is not known or nothing gets through its resistance.
+   * health is not known or nothing gets through its resistance. Whole
+   * rounds, expected over the round's spread (`roundsToKill`): a monster dies
+   * on a round, never between two.
    *
    * A **bound**, always, and it errs high: accuracy here is a floor
    * (gear grants the client cannot see), dodge is a floor, and a hit spell is
@@ -910,8 +913,19 @@ export function swing(
 
   let rounds: Reckoning<number> | null = null;
   if (mean !== null && mean + hitSpell > 0 && target.health !== null && target.health > 0) {
-    const perRound = landedPerRound(lands, mean + hitSpell, swings);
-    if (perRound > 0) rounds = { value: target.health / perRound, from: 'bound' };
+    const blow = mean + hitSpell;
+    const perRound = landedPerRound(lands, blow, swings);
+    /*
+     * A round's spread: each swing lands or misses, and a landed blow is
+     * rolled across its range. A crit and a hit spell widen it further and
+     * are left out, which leans towards the next whole round.
+     */
+    const width = low !== null && high !== null && high > low ? high - low : 0;
+    const perSwing = lands * ((width * width) / 12 + blow * blow) - (lands * blow) ** 2;
+    const variance = Math.min(MAX_SWINGS, swings?.value ?? 1) * Math.max(0, perSwing);
+    if (perRound > 0) {
+      rounds = { value: roundsToKill(target.health, perRound, variance), from: 'bound' };
+    }
   }
 
   return {

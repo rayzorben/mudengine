@@ -280,6 +280,8 @@ export interface MobEntity {
   regen?: number;
   /** Hours a placed monster stays dead — `Monsters.RegenTime`. A lair room has its own clock. */
   regenHours?: number;
+  /** How many may be up across the realm at once (`Monsters.GameLimit`); absent is no limit known. */
+  gameLimit?: number;
   /** The most of each coin it is made with (`Monsters.R P G S C`). Absent on an older realm file. */
   coins?: CoinMaxima;
   /** Percentage chance it follows you out when you run. */

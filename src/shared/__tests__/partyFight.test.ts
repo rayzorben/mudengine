@@ -36,7 +36,8 @@ const ORC: SpotMob = {
   perRound: 12,
   nakedPerRound: 20,
   afflictions: [],
-  regenSeconds: null
+  regenSeconds: null,
+  limit: null
 };
 
 describe('who fights beside the character', () => {

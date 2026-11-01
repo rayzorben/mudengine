@@ -165,8 +165,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 77 | **A room's own spell can be a way.** The server casts it on everyone in the room each spell tick, and an instant one as they walk in (`TimedEventManager.spellTick_Fire`, `Player.cs:765`), and `spellHazard.ts` read one that moves somebody as a hazard and nothing else, so the class passages behind 17/3247's training key, the Deep Black Pit's drop to the Platform of Stars, the Sandstone Cavern's fall and Crystal Lake's way aboard the Ancient Galleon led nowhere: 97 of pmud.zip's rooms were unreached with every gate open. `WorldRoom.spellWays` carries each landing and draw with its share of ticks and its line's gates (`spellWaysOf`), and the way is waited out standing in the room (a `room-spell` requirement). Todo 20261024-0804-01 |
  * | 78 | **An item used in a room can land by chance.** `landingsOfItems` reads the first stated `teleport` of an item's chain, so the obsidian talisman, whose spell runs `roomitem 802` then `random 1092` (65% a draw of spell 434 over 1/2417–2430, 10% the talisman taken), had no landing, and five labyrinth dead ends and the rooms behind them were unreached with every gate open. A use with no stated landing is read through `scriptLandings` as a room command, `use <item>` behind carrying it, in each room holding every item its run wants lying there (`itemWays.ts`). Todo 20261025-0750-01 |
  * | 79 | **Whose blows meet `Prev`, and what a worn item takes off its wearer.** `sideOf` read a monster as evil only off a disposition, so a stationary NeutralEvil or LawfulEvil one (`passive`) met no `Prev` and the sheet's `AC vs Evil` never reached its roll. `BuiltMob.ev` folds `isEvilAlignment` over the name's rows as `ep` folds the cost. And `Items.NegateSpell-0..9` was never read, so the large silvery cross's drain life and the gazes a sunstone wristband stops were charged in full; `BuiltItem.neg` carries them for `spellWard.ts`. Todo 20261027-2322-01 |
+ * | 80 | **How many of a limited row may be up at once.** A lair slot takes a row on its own clock only while fewer than `GameLimit` of it are alive across the realm (`RegenSlot.cs:69`), but the limit was not carried, so the Hunting card filled every slot of Paradigm's Webbed Lair with its crowned spider (2,600 health, limit 1, 15 hours) and left the lair out as deadly while Festus hunted its horned spiders there at 3.1M an hour. `BuiltMob.gl` and `BuiltMobRow.gl` carry it where `rt` is written, folded as `rt` is (`gameLimit`). 622 of pmud.zip's limited rows allow one, the rest up to 100; gmud.zip has no `GameLimit` column and carries none |
  */
-export const REALM_FORMAT = 79;
+export const REALM_FORMAT = 80;
 
 /**
  * The slowest room-spell way the file keeps (format 77), in ticks expected:
@@ -798,6 +799,8 @@ export interface BuiltMob {
   rt?: number;
   /** A room's resident's clock where `rt` states none (format 74, `residentClock`), folded as `rt`. */
   nr?: number;
+  /** `Monsters.GameLimit` where `rt` is written (format 80, `gameLimit`), folded as `rt`. */
+  gl?: number;
   /** Its `ask` table (format 72), only where every row of the name has the same one, as `rt`. */
   ak?: BuiltAsk[];
   /**
@@ -930,6 +933,8 @@ export interface BuiltMobRow {
   rt?: number;
   /** A room's resident's clock where `rt` states none (format 74, `residentClock`). */
   nr?: number;
+  /** How many may be up across the realm at once, where `rt` is written (format 80, `gameLimit`). */
+  gl?: number;
   /** This row's coin maxima (format 49), as `BuiltMob.cs`. */
   cs?: number[];
   fol?: number;
@@ -1060,6 +1065,19 @@ function statedClock(row: Record<string, unknown>): number | null {
  */
 function residentClock(row: Record<string, unknown>, resident: boolean): number | null {
   return resident && ownClock(row) === null ? statedClock(row) : null;
+}
+
+/**
+ * How many of a row may be up across the realm at once, where it is on its
+ * own clock (format 80): `RegenSlot` counts the live instances against
+ * `MobType.GameLimit` before a lair slot may take the row (`RegenSlot.cs:69`),
+ * so a lair of three slots holds at most one crowned spider. Null where
+ * `ownClock` is: no limit, or a realm with no `GameLimit` column.
+ */
+function gameLimit(row: Record<string, unknown>): number | null {
+  if (ownClock(row) === null) return null;
+  const limit = number(row['GameLimit']);
+  return limit === null || limit <= 0 || limit === BLANK_AS_NUMBER ? null : limit;
 }
 
 /**
@@ -2291,6 +2309,8 @@ export function indexMobs(
       rts: Set<number>;
       /** Format 74: each row's `residentClock`, gathered as `rts` is. */
       nrs: Set<number>;
+      /** Format 80: each row's `gameLimit`, gathered as `rts` is. */
+      gls: Set<number>;
       /** Format 72: each row's `ask` table as JSON, a row with none counted as `[]`. */
       asks: Map<string, BuiltAsk[]>;
       /** Format 18: gathered rather than reduced, for the reason `ty` states. */
@@ -2371,6 +2391,7 @@ export function indexMobs(
       coins: coinMaxima(row),
       rts: new Set<number>(),
       nrs: new Set<number>(),
+      gls: new Set<number>(),
       asks: new Map<string, BuiltAsk[]>(),
       types: new Set<number>(),
       casts: new Set<number>(),
@@ -2414,6 +2435,7 @@ export function indexMobs(
      */
     entry.rts.add(ownClock(row) ?? 0);
     entry.nrs.add(residentClock(row, resident) ?? 0);
+    entry.gls.add(gameLimit(row) ?? 0);
     // Format 72, gathered as the clocks are: one table is the whole name agreeing.
     const greet = number(row['GreetTXT']);
     const asked = asksOf !== undefined && greet !== null && greet > 0 ? asksOf(greet) : [];
@@ -2471,6 +2493,7 @@ export function indexMobs(
       // Only where `GameLimit` makes it one — see `ownClock`.
       own.rt = ownClock(row) ?? undefined;
       own.nr = residentClock(row, resident) ?? undefined;
+      own.gl = gameLimit(row) ?? undefined;
       if (coins !== null) own.cs = compactCoins(coins);
       own.fol = stated('Follow%');
       own.dmg = stated('AvgDmg');
@@ -2544,6 +2567,11 @@ export function indexMobs(
       if (span.nrs.size === 1) {
         const only = [...span.nrs][0]!;
         if (only > 0) mob.nr = only;
+      }
+      // Format 80, folded as `rt` is.
+      if (span.gls.size === 1) {
+        const only = [...span.gls][0]!;
+        if (only > 0) mob.gl = only;
       }
       if (span.asks.size === 1) {
         const only = [...span.asks.values()][0]!;

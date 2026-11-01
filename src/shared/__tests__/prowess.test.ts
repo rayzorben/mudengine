@@ -606,7 +606,10 @@ describe('a fight without a weapon', () => {
     const crit = critChance(bare, 'attack', null, 'greatermud')!.value;
     expect(fist.range).toEqual({ low: 1, high: 3 });
     expect(fist.damage.value).toBeCloseTo((1 - crit) * 2 + crit * 9, 6);
-    expect(fist.rounds?.value).toBeCloseTo(60 / (fist.lands.value * fist.damage.value * blows), 6);
+    // Whole rounds over the round's spread: above the plain ratio, below the next round but one.
+    const ratio = 60 / (fist.lands.value * fist.damage.value * blows);
+    expect(fist.rounds!.value).toBeGreaterThan(ratio);
+    expect(fist.rounds!.value).toBeLessThan(Math.ceil(ratio) + 1);
   });
 
   it('prices a kick by its own range and multiplier, not the weapon in hand', () => {
