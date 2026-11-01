@@ -5,6 +5,7 @@ import Histogram, { type HistogramSeries } from './viz/Histogram';
 import SplitBar, { type SplitPart } from './viz/SplitBar';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
+import { countByTime } from '../lib/timeBins';
 import type { StreamLine } from '@shared/types';
 
 export interface StreamCardProps extends CardChrome {
@@ -43,16 +44,11 @@ function StreamCard({ lines, quiet, ...chrome }: StreamCardProps) {
     let blank = 0;
     let repaint = 0;
     let flush = 0;
-    const first = lines[0]?.at ?? 0;
-    const span = Math.max(1, (lines[lines.length - 1]?.at ?? 0) - first);
-    const buckets = new Array<number>(PACE_BUCKETS).fill(0);
     for (const line of lines) {
       if (line.terminator === 'repaint') repaint += 1;
       else if (line.terminator === 'flush') flush += 1;
       else if (line.plain.length === 0) blank += 1;
       else text += 1;
-      const at = Math.min(PACE_BUCKETS - 1, Math.floor(((line.at - first) / span) * PACE_BUCKETS));
-      buckets[at] = (buckets[at] ?? 0) + 1;
     }
     const parts: SplitPart[] = [
       { key: 'text', label: t('cards.stream.kinds.text'), value: text, tone: 'accent' },
@@ -60,7 +56,9 @@ function StreamCard({ lines, quiet, ...chrome }: StreamCardProps) {
       { key: 'repaint', label: t('cards.stream.kinds.repaint'), value: repaint, tone: 'warn' },
       { key: 'flush', label: t('cards.stream.kinds.flush'), value: flush, tone: 'd' }
     ];
-    const pace: HistogramSeries[] = [{ key: 'lines', tone: 'accent', values: buckets }];
+    const pace: HistogramSeries[] = [
+      { key: 'lines', tone: 'accent', values: countByTime(lines, (line) => line.at, PACE_BUCKETS) }
+    ];
     return { kinds: parts, pace };
   }, [lines]);
 
@@ -105,7 +103,7 @@ function StreamCard({ lines, quiet, ...chrome }: StreamCardProps) {
               </span>
               {/* An empty line is structural in this game's output — room
                   description, blank, exits — so it gets a visible row. */}
-              <span className="text">{line.plain.length > 0 ? line.plain : ' '}</span>
+              <span className="text">{line.plain.length > 0 ? line.plain : ' '}</span>
             </div>
           ))
         )}

@@ -2749,7 +2749,7 @@ cards:
       inFlight: In flight
       refused: Refused
       acted: Acted
-      blocked: Held by a guard
+      blocked: Blocked
       purposes: What the sent commands were for
       decisions: How the decisions went
     headings:

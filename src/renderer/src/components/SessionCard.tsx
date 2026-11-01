@@ -6,6 +6,7 @@ import Kpi from './viz/Kpi';
 import Sparkline from './viz/Sparkline';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
+import { tuning } from '../lib/tuning';
 import { useMeterHistory } from '../hooks/useMeterHistory';
 import { useMeter, type StreamMeter } from '../hooks/useStreamPressure';
 import type { ConnectionState, TerminalSize } from '@shared/types';
@@ -35,8 +36,8 @@ const PHASE_ICON: Record<ConnectionState['phase'], IconName> = {
   error: 'unplug'
 };
 
-/** How many of the meter's samples the trace holds: half a minute at the shipped 250ms. */
-const TRACE_SAMPLES = 120;
+/** How long the trace looks back, as `cards.session.traceAria` says: half a minute. */
+const TRACE_WINDOW_MS = 30_000;
 
 /** `48K`: a running total of characters, read at a glance. */
 const COMPACT = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
@@ -48,7 +49,7 @@ const COMPACT = new Intl.NumberFormat(undefined, { notation: 'compact', maximumF
  */
 const SessionRate = memo(function SessionRate({ meter }: { meter: StreamMeter }) {
   const { charsPerSecond, total } = useMeter(meter);
-  const trace = useMeterHistory(meter, TRACE_SAMPLES);
+  const trace = useMeterHistory(meter, Math.round(TRACE_WINDOW_MS / tuning().streamSampleMs));
   const peak = trace.length === 0 ? null : Math.max(...trace);
   const mean =
     trace.length === 0

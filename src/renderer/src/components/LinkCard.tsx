@@ -101,7 +101,7 @@ function LinkCard({ negotiated, events, quiet, ...chrome }: LinkCardProps) {
         <Flag label={t('cards.link.flagEcho')} on={negotiated.remoteEcho} />
         <Flag label={t('cards.link.flagBinary')} on={negotiated.binary} />
       </div>
-      <LinkOptions events={events} negotiated={negotiated} />
+      <LinkOptions negotiated={negotiated} />
       <div className="from-medium">
         <SplitBar label={t('cards.link.exchangeAria')} parts={exchange} />
       </div>

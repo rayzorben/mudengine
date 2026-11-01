@@ -158,13 +158,28 @@ const CHANNELS: Record<string, string> = {
  * same rule the chips followed: a control over nothing is chrome.
  */
 const FACES: readonly TalkFace[] = [
-  { id: 'talk', label: t('cards.talk.tabs.all'), types: null },
-  { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'] },
-  { id: 'auction', label: t('cards.talk.tabs.auction'), types: ['conversation-auction'] },
-  { id: 'broadcast', label: t('cards.talk.tabs.broadcast'), types: ['conversation-broadcast'] },
-  { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'] },
-  { id: 'telepath', label: t('cards.talk.tabs.telepath'), types: ['conversation-telepath'] },
-  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'] },
+  { id: 'talk', label: t('cards.talk.tabs.all'), types: null, tone: 'accent' },
+  { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'], tone: 'd' },
+  {
+    id: 'auction',
+    label: t('cards.talk.tabs.auction'),
+    types: ['conversation-auction'],
+    tone: 'd'
+  },
+  {
+    id: 'broadcast',
+    label: t('cards.talk.tabs.broadcast'),
+    types: ['conversation-broadcast'],
+    tone: 'warn'
+  },
+  { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'], tone: 'ok' },
+  {
+    id: 'telepath',
+    label: t('cards.talk.tabs.telepath'),
+    types: ['conversation-telepath'],
+    tone: 'ok'
+  },
+  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'], tone: 'quiet' },
   {
     id: 'local',
     label: t('cards.talk.tabs.local'),
@@ -174,7 +189,8 @@ const FACES: readonly TalkFace[] = [
       'conversation-local',
       'conversation-directed',
       'conversation-action'
-    ]
+    ],
+    tone: 'ok'
   },
   /*
    * Who arrived and who went, folded into one face the way `local` folds the
@@ -182,7 +198,7 @@ const FACES: readonly TalkFace[] = [
    * line are one question — who is about — and three pills for it would be
    * three controls over one answer.
    */
-  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES }
+  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES, tone: 'quiet' }
 ];
 
 const FACE_IDS = FACES.map((face) => face.id);
@@ -211,6 +227,11 @@ const RECEIPTS = new Set<string>([
   'conversation-page'
 ]);
 
+/** This character's own receipt: the name on it is the recipient, and there is no `message`. */
+function isOutbound(message: Block): boolean {
+  return RECEIPTS.has(message.type) && message.groups['message'] === undefined;
+}
+
 /**
  * Who said a line, for the large card's head: null for this character's own
  * receipts (the name there is the recipient) and for the comings and goings,
@@ -218,7 +239,7 @@ const RECEIPTS = new Set<string>([
  */
 function speakerOf(message: Block): string | null {
   if (TALK_PRESENCE_TYPES.includes(message.type)) return null;
-  if (RECEIPTS.has(message.type) && message.groups['message'] === undefined) return null;
+  if (isOutbound(message)) return null;
   return message.groups['player'] ?? null;
 }
 
@@ -340,7 +361,7 @@ function withMentions(
  */
 const TalkLine = memo(function TalkLine(props: TalkLineProps) {
   const { message, layout, stamped, stampFormat, people, names, onSelect, inspect } = props;
-  const outbound = RECEIPTS.has(message.type) && message.groups['message'] === undefined;
+  const outbound = isOutbound(message);
   const self = people?.self ?? null;
   const mentioned = mentions(message, self);
   return (

@@ -1849,8 +1849,8 @@ kbd {
 }
 
 /*
- * The Link card's first face: the three flags and a tile per option spoken
- * about (lit for whichever side performs it, `us` and `them`); from medium
+ * The Link card's first face: the three flags and a tile per option agreed
+ * (lit for whichever side performs it, `us` and `them`); from medium
  * the exchange's two directions and its newest rows.
  */
 .link-agreed {
@@ -1876,7 +1876,7 @@ kbd {
 
 .link-options > li {
   align-items: center;
-  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   border-radius: var(--r-control);
   display: flex;
   gap: 6px;
@@ -1885,21 +1885,13 @@ kbd {
   padding: 4px 6px 4px 8px;
 }
 
-.link-options > li[data-on='true'] {
-  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
-}
-
 .link-option-name {
-  color: var(--text-lo);
+  color: var(--text-hi);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.link-options > li[data-on='true'] .link-option-name {
-  color: var(--text-hi);
 }
 
 .link-option-sides {

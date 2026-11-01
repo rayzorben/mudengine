@@ -32,7 +32,7 @@ function AutomationHead({ automation }: { automation: AutomationSnapshot }) {
     const byPriority = new Map<Priority, number>();
     for (const entry of sent)
       byPriority.set(entry.priority, (byPriority.get(entry.priority) ?? 0) + 1);
-    // Only the priorities that sent anything: six names under a bar of two is a legend of nothing.
+    // Only the priorities that sent something have a part and a legend entry.
     const purposes: SplitPart[] = PRIORITIES.filter((priority) => byPriority.has(priority)).map(
       (priority) => ({
         key: priority,
