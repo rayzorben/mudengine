@@ -314,7 +314,9 @@ function partyBest(members: readonly PartyMember[]): PartyBest {
 /** What `partyBest` reads, as one string: a status line that moves nothing here keeps the scale. */
 function sheetsKey(members: readonly PartyMember[]): string {
   return members
-    .map((m) => `${m.name}:${m.sheet === null ? '' : SHEET_FIGURES.map((f) => m.sheet?.[f]).join('/')}`)
+    .map(
+      (m) => `${m.name}:${m.sheet === null ? '' : SHEET_FIGURES.map((f) => m.sheet?.[f]).join('/')}`
+    )
     .join(',');
 }
 

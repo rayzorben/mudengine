@@ -210,9 +210,14 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
         <div className="vitals-hero from-large">
           <Ring
             arcs={[{ fraction: ratio(vitals.hp, vitals.hpMax), tone: 'hp', level: hpLevel }]}
-            label={t('cards.vitals.ringAria', { label: 'HP', value: meterValue(ratio(vitals.hp, vitals.hpMax), null) })}
+            label={t('cards.vitals.ringAria', {
+              label: 'HP',
+              value: meterValue(ratio(vitals.hp, vitals.hpMax), null)
+            })}
           >
-            <span className="vitals-ring-figure">{meterValue(ratio(vitals.hp, vitals.hpMax), null)}</span>
+            <span className="vitals-ring-figure">
+              {meterValue(ratio(vitals.hp, vitals.hpMax), null)}
+            </span>
             <span className="vitals-ring-tag">HP</span>
           </Ring>
           {vitals.mana !== null && (
@@ -233,7 +238,9 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
                     })
               }
             >
-              <span className="vitals-ring-figure">{meterValue(ratio(vitals.mana, vitals.manaMax), null)}</span>
+              <span className="vitals-ring-figure">
+                {meterValue(ratio(vitals.mana, vitals.manaMax), null)}
+              </span>
               <span className="vitals-ring-tag">{vitals.manaType}</span>
             </Ring>
           )}

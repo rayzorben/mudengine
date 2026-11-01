@@ -24,7 +24,15 @@ export interface RingArc {
 const OUTER = 17;
 const STEP = 5;
 
-function Ring({ arcs, children, label }: { arcs: readonly RingArc[]; children?: ReactNode; label?: string }) {
+function Ring({
+  arcs,
+  children,
+  label
+}: {
+  arcs: readonly RingArc[];
+  children?: ReactNode;
+  label?: string;
+}) {
   return (
     <span aria-label={label} className="ring" role={label === undefined ? undefined : 'img'}>
       <svg aria-hidden="true" viewBox="0 0 40 40">
@@ -32,7 +40,13 @@ function Ring({ arcs, children, label }: { arcs: readonly RingArc[]; children?: 
           const r = OUTER - index * STEP;
           return (
             <g data-level={arc.level ?? undefined} data-tone={arc.tone} key={index}>
-              <circle className="ring-track" cx="20" cy="20" data-unknown={arc.fraction === null} r={r} />
+              <circle
+                className="ring-track"
+                cx="20"
+                cy="20"
+                data-unknown={arc.fraction === null}
+                r={r}
+              />
               {arc.fraction !== null && arc.fraction > 0 && (
                 <circle
                   className="ring-arc"

@@ -57,7 +57,14 @@ function Sparkline({
         </g>
       ))}
       {rule !== null && rule > 0 && (
-        <line className="sparkline-rule" vectorEffect="non-scaling-stroke" x1="0" x2={W} y1={y(rule)} y2={y(rule)} />
+        <line
+          className="sparkline-rule"
+          vectorEffect="non-scaling-stroke"
+          x1="0"
+          x2={W}
+          y1={y(rule)}
+          y2={y(rule)}
+        />
       )}
     </svg>
   );

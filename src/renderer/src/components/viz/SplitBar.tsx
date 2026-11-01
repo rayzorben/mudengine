@@ -48,7 +48,9 @@ function SplitBar({
             <li data-tone={part.tone} key={part.key}>
               <i aria-hidden="true" />
               <span className="split-name">{part.label}</span>
-              <span className="split-value">{format(part.value, total > 0 ? part.value / total : 0)}</span>
+              <span className="split-value">
+                {format(part.value, total > 0 ? part.value / total : 0)}
+              </span>
             </li>
           ))}
         </ul>

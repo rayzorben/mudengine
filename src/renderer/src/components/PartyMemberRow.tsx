@@ -10,7 +10,12 @@ import { memo, type CSSProperties } from 'react';
 import Icon from './Icon';
 import Ring from './viz/Ring';
 import type { VizTone } from './viz/tones';
-import { vitalLevel, type MemberSheet, type PartyActivity, type PartyMember } from '@shared/character';
+import {
+  vitalLevel,
+  type MemberSheet,
+  type PartyActivity,
+  type PartyMember
+} from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import { keepFocus } from '../lib/focus';
