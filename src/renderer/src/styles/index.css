@@ -2131,7 +2131,6 @@ kbd {
   width: 1px;
 }
 
-
 /* ------------------------------------------------------------------ viz */
 
 /*
@@ -2143,43 +2142,43 @@ kbd {
 /* The tone (`VizTone`, `components/viz/tones.ts`) is set on the piece or on
    its parts; a level of caution or critical outranks it. */
 
-:where(.ring, .split, .bar-list) [data-tone],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone] {
   --viz: var(--accent);
 }
 
-:where(.ring, .split, .bar-list) [data-tone='hp'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='hp'],
-:where(.ring, .split, .bar-list) [data-tone='ok'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='ok'],
-:where(.ring, .split, .bar-list) [data-tone='b'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='b'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='hp'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='hp'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='ok'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='ok'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='b'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='b'] {
   --viz: var(--ok);
 }
 
-:where(.ring, .split, .bar-list) [data-tone='kai'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='kai'],
-:where(.ring, .split, .bar-list) [data-tone='d'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='d'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='kai'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='kai'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='d'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='d'] {
   --viz: var(--marker);
 }
 
-:where(.ring, .split, .bar-list) [data-tone='foe'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='foe'],
-:where(.ring, .split, .bar-list) [data-tone='bad'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='bad'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='foe'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='foe'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='bad'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='bad'] {
   --viz: var(--danger);
 }
 
-:where(.ring, .split, .bar-list) [data-tone='warn'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='warn'],
-:where(.ring, .split, .bar-list) [data-tone='c'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='c'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='warn'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='warn'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='c'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='c'] {
   --viz: var(--pending);
 }
 
-:where(.ring, .split, .bar-list) [data-tone='quiet'],
-:where(.sparkline, .stat-cell, .kpi, .initial, .columns)[data-tone='quiet'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='quiet'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='quiet'] {
   --viz: var(--text-lo-quiet);
 }
 
@@ -2408,6 +2407,132 @@ kbd {
 }
 
 /*
+ * Several wholes side by side, each stacked from the foot (`StackChart`): the
+ * room's fight at each round it was read at. Its root is a `.split`, so the
+ * parts take the split bar's tones and legend.
+ */
+.stack-columns {
+  align-items: flex-end;
+  display: flex;
+  gap: 6px;
+}
+
+.stack-column {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stack-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+  height: var(--stack-h, 40px);
+  max-width: 48px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.stack-bar > span {
+  background: var(--viz);
+  flex-basis: 0;
+  min-height: 2px;
+}
+
+.stack-label {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.stack-note {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The dot, the histogram and the recency pips (`Dot`, `Histogram`, `Recency`):
+ * the listings' marks, in the tones above, so a standing's dot on a row and
+ * its share of the bar over the table are one colour.
+ */
+.viz-dot {
+  background: var(--viz);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--viz) inset;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 7px;
+  vertical-align: 0.05em;
+  width: 7px;
+}
+
+.viz-dot[data-hollow='true'] {
+  background: transparent;
+}
+
+.histogram {
+  border-bottom: 1px solid color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.histogram rect {
+  fill: color-mix(in srgb, var(--viz) 60%, transparent);
+}
+
+.recency {
+  align-items: flex-end;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 1.5px;
+  height: 9px;
+  vertical-align: -0.05em;
+}
+
+.recency > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  border-radius: 1px;
+  display: block;
+  width: 2.5px;
+}
+
+.recency > i:nth-child(1) {
+  height: 40%;
+}
+
+.recency > i:nth-child(2) {
+  height: 60%;
+}
+
+.recency > i:nth-child(3) {
+  height: 80%;
+}
+
+.recency > i:nth-child(4) {
+  height: 100%;
+}
+
+.recency > i[data-lit='true'] {
+  background: var(--viz);
+}
+
+.recency[data-unknown='true'] > i {
+  background: transparent;
+  box-shadow: 0 0 0 0.5px var(--text-lo-quiet) inset;
+}
+
+/*
  * A ranked list (`BarList`): the name, a hairline bar against the longest row,
  * the figure. The name column is as wide as the widest name in the list.
  */
@@ -2458,21 +2583,6 @@ kbd {
   text-align: right;
 }
 
-/* Counts as columns (`Columns`); an empty slice is a stub on the floor. */
-.columns {
-  display: block;
-  height: 100%;
-  width: 100%;
-}
-
-.columns > rect {
-  fill: color-mix(in srgb, var(--viz, var(--accent)) 70%, transparent);
-}
-
-.columns > rect[data-zero] {
-  fill: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
-}
-
 /* A name's initial on a tinted disc (`Initial`), one line of text tall. */
 .initial {
   background: color-mix(in srgb, var(--viz, var(--text-lo)) var(--tone-strong), transparent);
@@ -2496,8 +2606,16 @@ kbd {
   color: var(--text-lo);
   display: flex;
   font-size: var(--font-micro);
+  gap: 8px;
   justify-content: space-between;
   margin-bottom: 2px;
+}
+
+.stats-graph-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stats-graph svg {
@@ -2526,8 +2644,133 @@ kbd {
   vector-effect: non-scaling-stroke;
 }
 
-.meter.exchange .fill {
-  background: color-mix(in srgb, var(--ok) 50%, transparent);
+/*
+ * The first face from medium up: the readout, and beside it when there is
+ * width the graph and how the swings went (a ring of the share that landed,
+ * the damage cut by kind). The container is this wrapper, never the scroller.
+ * Large, the graph and the Time face's bar take the height they have.
+ */
+.stats-detail {
+  container: stats-detail / inline-size;
+}
+
+.stats-detail-grid {
+  display: grid;
+  gap: 4px 16px;
+}
+
+.stats-detail-grid > .readout {
+  align-content: start;
+}
+
+/* 400px: `Exp. needed, level 19` with its figure and an `avg 19.9` beside
+   the graph at a readable width, measured in the gallery at 480 wide
+   (2026-10-31). */
+@container stats-detail (min-width: 400px) {
+  .stats-detail-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+/* Small, the bar's own `42%` and the tiles under it are the glance; the
+   sentence under the bar waits for a bigger box. */
+.stats-card[data-card-size='small'] .stats-level > .hint {
+  display: none;
+}
+
+.stats-drawn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.card[data-card-size='large'] .stats-graph svg {
+  height: 64px;
+}
+
+.card[data-card-size='large'] .time-split {
+  height: max(36px, calc(var(--font-micro) * 2.6));
+}
+
+/* Two tiles side by side in the smallest box: the rate and when the level
+   comes are read together. 80px fits two across a 250-wide card with its
+   scrollbar gutter, measured in the gallery (2026-10-31). */
+.stats-card .kpis {
+  margin-bottom: 8px;
+}
+
+.stats-card .kpis.stats-glance {
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+}
+
+/* What one kill costs, five tiles. 110px holds `Time per kill` over
+   `0:02:09` set large, two across in a 300-wide card, measured in the
+   gallery (2026-10-31); the longest name ellipsises before that. */
+.stats-card .kpis.time-kills {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 1fr));
+}
+
+.card[data-card-size='large'].stats-card .kpi > b {
+  font-size: calc(var(--font-ui) + 6px);
+}
+
+/* The More face's shares that are a skill: how often a sneak held, how
+   often a blow was a crit. */
+.stats-rings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+
+.stats-card[data-card-size='small'] .kpi {
+  padding: 3px 8px;
+}
+
+.stats-blows {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.stats-hit {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.stats-hit .ring {
+  --ring-d: 44px;
+}
+
+.stats-hit .ring-centre {
+  font-size: calc(var(--ring-d) * 0.25);
+}
+
+.stats-hit-word,
+.stats-head {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+}
+
+.stats-blows-split {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.stats-split {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
 }
 
 /* The Time face's split: one bar of the time in the realm, its slices in
@@ -2574,21 +2817,6 @@ kbd {
 
 [data-time='other'] {
   background: color-mix(in srgb, var(--text-lo) 45%, transparent);
-}
-
-/* The room's fight, run: green is safe, and the two graver hues are the
-   meter's own `data-level` rules below. */
-.meter.survival[data-level='ok'] .fill {
-  background: color-mix(in srgb, var(--ok) 55%, transparent);
-}
-
-.combat-survival {
-  margin-bottom: 8px;
-}
-
-.combat-survival .hint {
-  display: block;
-  margin-top: -2px;
 }
 
 /*
@@ -7564,8 +7792,12 @@ button.quest-tile-name:hover:not(:disabled) {
  * takes the rest -- the same shape `.readout`'s two columns already have, with
  * one more.
  */
+/* The figures never wrap: `minmax(0, 1fr)` let a narrow card squeeze
+   `avg 19.9` into a column of single characters. Three content-sized tracks
+   packed to the start, so the labels wrap first and only when they must. */
 .readout.paired {
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto;
+  justify-content: start;
 }
 
 .readout.paired dt {
@@ -7573,6 +7805,10 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /* Quieter than the figure it qualifies: it is context, not the answer. */
+.readout.paired dd {
+  white-space: nowrap;
+}
+
 .readout.paired dd.second {
   color: var(--text-lo);
   font-size: var(--font-micro);
@@ -8489,7 +8725,7 @@ button.quest-tile-name:hover:not(:disabled) {
   font-style: normal;
 }
 
-.talk-busy > .columns {
+.talk-busy > .histogram {
   height: 22px;
 }
 
@@ -11743,12 +11979,123 @@ tr:hover .row-action.worn,
    notices do not read as one six-line one. */
 .alert-list td {
   padding-bottom: 3px;
+  vertical-align: top;
+}
+
+/*
+ * A sentence wraps rather than being cut: the table's wide column is a name
+ * elsewhere, and an ellipsis there left a medium card with a dozen
+ * characters of each alert. Small keeps two lines a row.
+ */
+.alert-list td.wide {
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .alert-text {
   color: var(--text-hi);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Small draws no channel at all, as it drew no channel column. */
+.alert-card[data-card-size='small'] .alert-channel-tag {
+  display: none;
+}
+
+.alert-card[data-card-size='small'] .alert-text {
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* The level as a tonal edge down the row's first cell, beside its shape. */
+.alert-list tr[data-level] > td:first-child {
+  box-shadow: inset 2px 0 0 var(--alert-tone, transparent);
+  padding-left: 7px;
+}
+
+.alert-list tr[data-level='critical'] {
+  --alert-tone: var(--danger);
+}
+
+.alert-list tr[data-level='warning'] {
+  --alert-tone: var(--pending);
+}
+
+.alert-list tr[data-level='info'] {
+  --alert-tone: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+}
+
+.alert-level {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.alert-level .icon {
+  height: 13px;
+  width: 13px;
+}
+
+/*
+ * Under 400px of table (the medium and tall gallery boxes, 2026-10-31; the
+ * large one is about 450) the level is its shape alone, its word kept for
+ * hover and reading aloud, and the channel leads the sentence rather than
+ * taking a column, so the sentence has the width.
+ */
+.alert-card .table-scroller {
+  container-type: inline-size;
+}
+
+.alert-channel-tag {
+  color: var(--text-lo-quiet);
+  display: none;
+  font-size: var(--font-micro);
+  margin-right: 6px;
+}
+
+@container (max-width: 400px) {
+  .alert-list :is(th[data-column='channel'], td.channel) {
+    display: none;
+  }
+
+  .alert-list .alert-channel-tag {
+    display: inline;
+  }
+
+  .alert-list .alert-level-word {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+}
+
+/* Large, when the alerts came: the chart, and the record's first and last
+   times under its two ends. */
+.alert-timeline {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 8px;
+}
+
+.alert-timeline-chart {
+  height: 36px;
+}
+
+.alert-timeline figcaption {
+  color: var(--text-lo-quiet);
+  display: flex;
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  justify-content: space-between;
 }
 
 /* A filter that is off is tonal-off, not absent: it still says what it hides. */
@@ -11984,6 +12331,101 @@ tr:hover .row-action.worn,
   margin: 0;
 }
 
+/*
+ * The standings bar and the gangs over the table. A pane row of its own, so
+ * the table still scrolls under it; the legend names the bar's colours only
+ * where there is room for it, since the dot on every row repeats them.
+ */
+.realm-summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.realm-card:not([data-card-size='large']) .realm-summary .split-legend {
+  display: none;
+}
+
+.realm-gangs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.realm-gangs .chip {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.realm-gangs .chip > b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.realm-gangs .chip[data-hostile] {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  color: var(--danger);
+}
+
+.realm-align {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.realm-gang {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  white-space: nowrap;
+}
+
+/*
+ * The table measures its own width: under 290px of content the standing is
+ * its dot alone, the word kept for hover and reading aloud, the heading a dot
+ * too, and the gang column gives its width to the names. 290 sits between the
+ * rail's two-column card (under 290 in `out/gallery`'s 250, 300 and 330px
+ * boxes, 2026-10-31) and the large one (450 in the 480px box).
+ */
+.realm-card .table-scroller {
+  container-type: inline-size;
+}
+
+@container (max-width: 290px) {
+  .realm-list .realm-align-word {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .realm-list :is(th[data-column='gang'], td.gang) {
+    display: none;
+  }
+
+  .realm-list th[data-column='standing'] .sort {
+    font-size: 0;
+  }
+
+  .realm-list th[data-column='standing'] .sort::before {
+    content: '●';
+    font-size: var(--font-micro);
+  }
+
+  .realm-list th[data-column='standing'] .sort .arrow {
+    font-size: var(--font-micro);
+  }
+}
+
 /* ================================================================= player */
 
 /*
@@ -12018,6 +12460,53 @@ tr:hover .row-action.worn,
 
 .player-detail {
   margin: 0;
+}
+
+/* The dot before a name and the pips before an age, each kept on the line of
+   the word it qualifies. */
+.player-who,
+.player-when,
+/* The level chart over the table, large only: a heading row and the bars. */
+.players-levels {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 8px;
+}
+
+.players-levels figcaption {
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  justify-content: space-between;
+}
+
+.players-levels-chart {
+  height: 32px;
+}
+
+/*
+ * A name is the last thing to shorten: on a narrow table (under 290px of
+ * content, the Realm card's measure) the level and class give up their
+ * columns (both stay on the Player flyout, and the level chart above draws
+ * the levels) and the room is cut at a few words.
+ */
+.players-card .table-scroller {
+  container-type: inline-size;
+}
+
+@container (max-width: 290px) {
+  .player-list :is(th[data-column='level'], td.level, th[data-column='class'], td.class) {
+    display: none;
+  }
+
+  .player-list td.where {
+    max-width: 7.5em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /*
@@ -12132,9 +12621,126 @@ tr:hover .row-action.worn,
   gap: 6px;
 }
 
-/* The gang's own head: which gang this character is in. */
-.gang-head {
+/*
+ * The gang's own head: a ring of the members online around their count, and
+ * the gang's name set large beside it with which listing the table is from.
+ */
+.gang-summary {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.gang-summary .ring {
+  --ring-d: 44px;
+}
+
+.gang-summary-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gang-summary-text > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
+.gang-summary-text > b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 2px);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gang-summary-text > b.inert {
+  color: var(--text-lo-quiet);
+}
+
+.gang-summary-text > small {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+/* Somebody not on reads quieter, the Players card's own rule. */
+.gang-table tr[data-offline] .gang-who {
+  color: var(--text-lo-quiet);
+}
+
+/* A level's hairline against the gang's highest, drawn only where large. */
+.gang-level {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gang-level > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 1px;
+  display: none;
+  height: 2px;
+  min-width: 2.5em;
+}
+
+.gang-level > i::before {
+  background: var(--accent);
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
+.card[data-card-size='large'] .gang-level > i {
+  display: block;
+}
+
+/* Every remote a gang grant can carry, a square each, lit where allowed. */
+.gang-grants {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.gang-grants figcaption {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.gang-grants-grid {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(auto-fill, 10px);
+  list-style: none;
   margin: 0;
+  padding: 0;
+}
+
+.gang-grants-grid > li {
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 2px;
+}
+
+.gang-grants-grid > li[data-on='true'] {
+  background: var(--ok);
+}
+
+/* Race gives its width to the names on a narrow table (the Realm card's 290px). */
+.gang-card .table-scroller {
+  container-type: inline-size;
+}
+
+@container (max-width: 290px) {
+  .gang-table :is(th[data-column='race'], td.race) {
+    display: none;
+  }
 }
 
 /*
@@ -13557,7 +14163,9 @@ tr:hover .row-action.worn,
    what anybody would type at an `attack`. */
 .combat-name .name {
   color: var(--text-hi);
+  flex: 0 0 auto;
   font-weight: 600;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -13666,6 +14274,219 @@ tr:hover .row-action.worn,
 
 .damage-key.others::before {
   background: var(--marker);
+}
+
+/*
+ * The glance, at every size: the odds ring beside the target's bar, so the
+ * two questions under pressure (will I walk out, how much is left of it) are
+ * read in one look. Large, the ring grows into the room it has.
+ */
+.combat-glance {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.combat-glance-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.combat-glance-main .combat-target {
+  margin-bottom: 0;
+}
+
+.combat-glance-main .empty {
+  padding: 0;
+  text-align: left;
+}
+
+.combat-odds {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.combat-odds .ring {
+  --ring-d: 44px;
+}
+
+.card[data-card-size='large'] .combat-odds .ring {
+  --ring-d: 60px;
+}
+
+.combat-odds .ring-centre {
+  font-size: calc(var(--ring-d) * 0.27);
+}
+
+.combat-odds-word {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  line-height: 1;
+}
+
+.combat-odds-word[data-level='caution'] {
+  color: var(--pending);
+}
+
+.combat-odds-word[data-level='critical'] {
+  color: var(--danger);
+}
+
+/* What is on you: one row a monster, its health and its odds alone in two
+   columns at the right edge so they line up down the list. */
+.combat-on-you {
+  margin: 0 0 8px;
+}
+
+.combat-on-you > dt {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.combat-on-you > dd {
+  margin: 0;
+}
+
+.combat-attackers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.combat-attacker {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-height: 22px;
+  min-width: 0;
+}
+
+.combat-attacker-mark {
+  color: var(--accent);
+  display: inline-flex;
+  flex: 0 0 14px;
+}
+
+.combat-attacker .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The figures start at one x down the list, whatever the name's length. */
+.combat-attacker .name + * {
+  margin-left: auto;
+}
+
+.combat-attacker > .chip {
+  flex: 0 0 auto;
+}
+
+.combat-tick {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  flex: 0 0 48px;
+  height: 5px;
+  overflow: hidden;
+}
+
+.combat-tick > i {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+  display: block;
+  height: 100%;
+}
+
+.combat-tick[data-level='caution'] > i {
+  background: var(--pending);
+}
+
+.combat-tick[data-level='critical'] > i {
+  background: var(--danger);
+}
+
+.combat-tick[data-level='unknown'] {
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+}
+
+/* The fight run part way: the sentence, the columns by round, how it ended. */
+.combat-outlook-pane > .hint {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.combat-outlook {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.combat-outlook-head {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+}
+
+.combat-alone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* A monster's name keeps the realm's lower case, as `.combat-name` does. */
+.combat-alone .chip {
+  text-transform: none;
+}
+
+.combat-detail {
+  container: combat-detail / inline-size;
+}
+
+.combat-detail-grid {
+  display: grid;
+  gap: 8px 16px;
+}
+
+.combat-detail-grid > .readout {
+  align-content: start;
+}
+
+/* 420px: the readout's longest label (`Experience (Exp)`) with its figure,
+   beside five columns of the chart with their `−74 hp` notes unclipped,
+   measured in the gallery at 480 wide (2026-10-31). */
+@container combat-detail (min-width: 420px) {
+  .combat-detail-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* The name is the last thing to shorten: where the source is beside it, the
+   source gives way first. */
+.combat-name > .from-medium {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card[data-card-size='large'] .combat-outlook {
+  --stack-h: 64px;
 }
 
 /* ---------------------------------------------------------------- party */
@@ -14038,7 +14859,9 @@ tr:hover .row-action.worn,
   --ring-d: 30px;
 }
 
-.party-card .scroller[data-fit='compact'] :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label) {
+.party-card
+  .scroller[data-fit='compact']
+  :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label) {
   display: none;
 }
 

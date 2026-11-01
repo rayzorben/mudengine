@@ -5,8 +5,6 @@
  * costs most, for a player working out why the exp rate is low. See `mudengine-ui` ›
  * *The Combat Stats card*.
  */
-import { Fragment } from 'react';
-
 import type { CombatTally, Pastime } from '@shared/tally';
 import {
   engagedFor,
@@ -20,6 +18,7 @@ import {
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
 import CardTable, { type Column } from './CardTable';
+import Kpi from './viz/Kpi';
 import { t } from '../lib/i18n';
 import { duration, figure, percent } from '../lib/stats';
 import { tuning } from '../lib/tuning';
@@ -52,38 +51,44 @@ function perKill(ms: number, kills: number): string {
   return duration(mean(ms, kills));
 }
 
-/** The readout under the table: what one kill took, in each of its costs. */
+/** A figure for a tile, or null while there is none (the tile draws a quiet dash). */
+function known(value: number | null, show: (value: number) => string): string | null {
+  return value === null ? null : show(value);
+}
+
+/** The tiles under the table: what one kill took, in each of its costs. */
 function killRows(
   shown: CombatTally,
   now: number
-): { key: string; label: string; value: string }[] {
+): { key: string; label: string; value: string | null }[] {
   const kills = shown.kills;
   const rounds = roundsFought(shown, now, tuning().combatRoundMs);
+  const tenth = (value: number): string => figure(value, 1);
   return [
     {
       key: 'exp-per-kill',
       label: t('cards.stats.expPerKillLabel'),
-      value: figure(mean(shown.experience, kills))
+      value: known(mean(shown.experience, kills), (value) => figure(value))
     },
     {
       key: 'kill-every',
       label: t('cards.stats.killEveryLabel'),
-      value: perKill(onlineFor(shown, now), kills)
+      value: known(mean(onlineFor(shown, now), kills), duration)
     },
     {
       key: 'rounds-per-kill',
       label: t('cards.stats.roundsPerKillLabel'),
-      value: figure(rounds === null ? null : mean(rounds, kills), 1)
+      value: known(rounds === null ? null : mean(rounds, kills), tenth)
     },
     {
       key: 'swings-per-kill',
       label: t('cards.stats.swingsPerKillLabel'),
-      value: figure(mean(swings(shown), kills), 1)
+      value: known(mean(swings(shown), kills), tenth)
     },
     {
       key: 'taken-per-kill',
       label: t('cards.stats.takenPerKillLabel'),
-      value: figure(mean(shown.taken.damage, kills), 1)
+      value: known(mean(shown.taken.damage, kills), tenth)
     }
   ];
 }
@@ -95,7 +100,7 @@ export function timeCopyText(shown: CombatTally, now: number): string {
       (row) =>
         `${row.label}: ${duration(row.ms)} · ${percent(shareOfOnline(row.ms, shown, now))} · ${perKill(row.ms, shown.kills)}`
     ),
-    ...killRows(shown, now).map((row) => `${row.label}: ${row.value}`)
+    ...killRows(shown, now).map((row) => `${row.label}: ${row.value ?? '—'}`)
   ].join('\n');
 }
 
@@ -172,14 +177,11 @@ export default function TimeFace({
         rows={rows}
         session={session}
       />
-      <dl className="readout from-medium">
+      <div className="kpis time-kills from-medium">
         {killRows(shown, now).map((row) => (
-          <Fragment key={row.key}>
-            <dt>{row.label}</dt>
-            <dd data-row={row.key}>{row.value}</dd>
-          </Fragment>
+          <Kpi key={row.key} label={row.label} value={row.value} />
         ))}
-      </dl>
+      </div>
     </>
   );
 }

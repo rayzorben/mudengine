@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
-import Columns from './viz/Columns';
+import Histogram, { type HistogramSeries } from './viz/Histogram';
 import SplitBar, { type SplitPart } from './viz/SplitBar';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
@@ -60,7 +60,8 @@ function StreamCard({ lines, quiet, ...chrome }: StreamCardProps) {
       { key: 'repaint', label: t('cards.stream.kinds.repaint'), value: repaint, tone: 'warn' },
       { key: 'flush', label: t('cards.stream.kinds.flush'), value: flush, tone: 'd' }
     ];
-    return { kinds: parts, pace: buckets };
+    const pace: HistogramSeries[] = [{ key: 'lines', tone: 'accent', values: buckets }];
+    return { kinds: parts, pace };
   }, [lines]);
 
   return (
@@ -76,7 +77,7 @@ function StreamCard({ lines, quiet, ...chrome }: StreamCardProps) {
           <SplitBar label={t('cards.stream.kindsAria')} parts={kinds} />
           {/* Large, how the backlog arrived: bursts are rooms and fights, gaps are quiet. */}
           <div className="stream-pace from-large">
-            <Columns label={t('cards.stream.paceAria')} values={pace} />
+            <Histogram label={t('cards.stream.paceAria')} series={pace} />
           </div>
         </div>
       )}

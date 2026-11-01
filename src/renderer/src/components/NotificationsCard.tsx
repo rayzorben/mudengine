@@ -1,9 +1,12 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
+import Icon, { type IconName } from './Icon';
 import NamedText from './NamedText';
+import Histogram, { type HistogramSeries } from './viz/Histogram';
+import type { VizTone } from './viz/tones';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
 import type { NameIndex } from '../lib/names';
@@ -53,6 +56,42 @@ const LEVELS: readonly Facet[] = SEVERITIES.map((severity) => ({
 /** How each level is ranked, so sorting by it puts the loudest at one end. */
 const RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
 
+/** Each level's shape, so it reads without its hue, and its hue on the chart. */
+const GLYPH: Record<Severity, IconName> = {
+  critical: 'alertOctagon',
+  warning: 'alertTriangle',
+  info: 'info'
+};
+const TONE: Record<Severity, VizTone> = { critical: 'bad', warning: 'warn', info: 'quiet' };
+
+/** How many columns the timeline cuts the record's span into. */
+const TIMELINE_BINS = 24;
+
+/**
+ * The record's notices counted into equal slices of the time it spans, one
+ * series per level, loudest at the foot of each column. The span is the
+ * record's own, first notice to last, so no clock is read to draw it.
+ */
+function timeline(notices: readonly Notice[]): HistogramSeries[] {
+  const first = notices[0]?.at ?? 0;
+  const span = (notices[notices.length - 1]?.at ?? first) - first;
+  const counts = Object.fromEntries(
+    SEVERITIES.map((severity) => [severity, Array.from({ length: TIMELINE_BINS }, () => 0)])
+  ) as Record<Severity, number[]>;
+  for (const notice of notices) {
+    const bin =
+      span <= 0
+        ? TIMELINE_BINS - 1
+        : Math.min(TIMELINE_BINS - 1, Math.floor(((notice.at - first) / span) * TIMELINE_BINS));
+    counts[notice.severity][bin] = (counts[notice.severity][bin] ?? 0) + 1;
+  }
+  return SEVERITIES.map((severity) => ({
+    key: severity,
+    tone: TONE[severity],
+    values: counts[severity]
+  }));
+}
+
 /**
  * What has just happened that is worth knowing.
  *
@@ -79,6 +118,9 @@ function NotificationsCard({
   ...card
 }: NotificationsCardProps) {
   const logRef = useRef<HTMLDivElement>(null);
+  const series = useMemo(() => timeline(notices), [notices]);
+  const firstAt = notices[0]?.at ?? null;
+  const lastAt = notices[notices.length - 1]?.at ?? null;
 
   const counts = { critical: 0, warning: 0, info: 0 };
   for (const notice of notices) counts[notice.severity] += 1;
@@ -133,7 +175,14 @@ function NotificationsCard({
       // the order this card is read in, and A-to-Z would put `critical`
       // between them.
       value: (notice) => RANK[notice.severity],
-      cell: (notice) => <span className="alert-level">{LABEL[notice.severity]}</span>
+      /* The level's shape always; its word beside it where the card is wide,
+         and for hover and reading aloud where it is not. */
+      cell: (notice) => (
+        <span className="alert-level" title={LABEL[notice.severity]}>
+          <Icon name={GLYPH[notice.severity]} />
+          <span className="alert-level-word">{LABEL[notice.severity]}</span>
+        </span>
+      )
     },
     {
       id: 'channel',
@@ -156,26 +205,48 @@ function NotificationsCard({
       // An alert quotes the server's sentence, and the names in it are the
       // same names the console makes controls of; the wrapping span keeps the
       // text readable as one run for copy and for the harness.
+      // On a narrow card the channel leaves its column and leads the
+      // sentence instead, so the sentence keeps the width.
       cell: (notice) => (
-        <span className="alert-text">
-          {names && inspect && onSelect ? (
-            <NamedText
-              index={names}
-              self={self}
-              inspect={inspect}
-              onSelect={onSelect}
-              text={notice.text}
-            />
-          ) : (
-            notice.text
-          )}
-        </span>
+        <>
+          <span aria-hidden="true" className="alert-channel-tag">
+            {notice.channel}
+          </span>
+          <span className="alert-text">
+            {names && inspect && onSelect ? (
+              <NamedText
+                index={names}
+                self={self}
+                inspect={inspect}
+                onSelect={onSelect}
+                text={notice.text}
+              />
+            ) : (
+              notice.text
+            )}
+          </span>
+        </>
       )
     }
   ];
 
   return (
     <BentoCard {...card} badge={badge} className="alert-card" paned title={t('cards.alerts.title')}>
+      {/*
+        Large, when the record's alerts came, by level: a burst of red at one
+        end is a fight that went wrong, a steady grey run is the realm talking.
+      */}
+      {notices.length < 2 || firstAt === null || lastAt === null ? null : (
+        <figure className="alert-timeline from-large">
+          <div className="alert-timeline-chart">
+            <Histogram label={t('cards.alerts.timelineLabel')} series={series} />
+          </div>
+          <figcaption>
+            <span>{clock(firstAt)}</span>
+            <span>{clock(lastAt)}</span>
+          </figcaption>
+        </figure>
+      )}
       {/*
         Finding one, as well as filtering to a level: "what was that room called"
         is asked of the record hours later, and the level of the line it was on

@@ -9,7 +9,7 @@ import { memo, useMemo } from 'react';
 
 import BarList, { type BarRow } from './viz/BarList';
 import Initial from './viz/Initial';
-import Columns from './viz/Columns';
+import Histogram, { type HistogramSeries } from './viz/Histogram';
 import type { VizTone } from './viz/tones';
 import { t } from '../lib/i18n';
 import { PlayerName } from '../lib/players';
@@ -85,7 +85,8 @@ function TalkSummary({
       .sort((a, b) => b.value - a.value)
       .slice(0, CHANNEL_ROWS);
     const speakers = [...bySpeaker.entries()].sort((a, b) => b[1] - a[1]).slice(0, SPEAKERS);
-    return { busy, channels, speakers, minutes: Math.max(1, Math.round(span / 60_000)) };
+    const busySeries: HistogramSeries[] = [{ key: 'lines', tone: 'accent', values: busy }];
+    return { busySeries, channels, speakers, minutes: Math.max(1, Math.round(span / 60_000)) };
   }, [talked, faces, speakerOf]);
 
   if (talked.length === 0) return null;
@@ -93,7 +94,7 @@ function TalkSummary({
     <section aria-label={t('cards.talk.summary.label')} className="talk-summary from-large">
       <div className="talk-busy">
         <em>{t('cards.talk.summary.busy', { minutes: drawn.minutes })}</em>
-        <Columns label={t('cards.talk.summary.busyAria')} values={drawn.busy} />
+        <Histogram label={t('cards.talk.summary.busyAria')} series={drawn.busySeries} />
       </div>
       <BarList label={t('cards.talk.summary.channels')} rows={drawn.channels} />
       <ul aria-label={t('cards.talk.summary.speakers')} className="talk-speakers">

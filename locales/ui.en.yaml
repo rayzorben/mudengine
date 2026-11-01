@@ -2188,6 +2188,7 @@ cards:
       warning: warning
       critical: critical
     tableCaption: Event & Alert Log
+    timelineLabel: When the alerts came, by level
     title: Alerts
     vitals:
       crossing: '{label} {level}: {current} of {max}'
@@ -2783,6 +2784,7 @@ cards:
       others: 'Party/Others: {damage}'
     empty: Not in combat.
     noTarget: No target engaged.
+    targetMark: Your target
     # Todo 817: a monster's row in this character's realm list, from the card.
     treatAsTitle: 'Treat {target} as… on this realm'
     treatAsAria: 'Treat {target} as'
@@ -2807,6 +2809,8 @@ cards:
       roundsOnly: 'about {rounds} rounds'
       trials: the room's fight, simulated {count} times as you are now
       unknown: the fight cannot be simulated
+      # Under the odds ring's figure while the odds are safe; a graver level shows its own word.
+      tag: survive
     # The room's fight read part way, beneath the survival meter: at each
     # round, the share of fights still alive and already won, and the health
     # lost by then; the worst single round; each monster fought on its own.
@@ -2823,6 +2827,12 @@ cards:
       alonePending: '{name} being simulated'
       aloneUnread: '{name} waits for your stats'
       aloneUnrun: '{name} cannot be rated'
+      chartHead: By round, with hp lost
+      lostShort: '−{mean}'
+      partWon: won
+      partFighting: still fighting
+      partRan: run from
+      partDead: dead
     title: Combat
   copyMenu:
     copy: Copy
@@ -2847,6 +2857,14 @@ cards:
       race: Race
     find: Find a member
     fromListing: '{online} of {total} online'
+    grantsCount: '{allowed} of {total} remotes allowed'
+    figures:
+      level: Average level
+      levelRange: '{low} to {high}'
+      online: Online
+      onlineOf: 'of {total}'
+      remotes: Allowed
+      remotesOf: 'of {total} remotes'
     fromRoster: Online gang members only. Request the gang list for all members, with levels and
       offline members.
     levelShort: 'L{level}'
@@ -3294,6 +3312,9 @@ cards:
       asking: asking
       gone: offline
       here: here
+    levelsHeading: Levels
+    levelsRange: '{low} to {high}, {known} known'
+    online: online
     title: Players
   realm:
     badge:
@@ -3301,6 +3322,7 @@ cards:
       online: '{count} online'
     caption: Who else is in the realm
     column:
+      gang: Gang
       name: Name
       standing: Standing
       title: Title
@@ -3312,9 +3334,11 @@ cards:
       neutral: neutral
       unknown: unknown
     findPlaceholder: Find a name
+    gangsLabel: Gangs in the realm, and how many of each are on
     justArrived: just arrived
     nameTitle: Show what is known about {name}
     selfTitle: This is you
+    summaryLabel: Standings of everyone on the who list
     title: Realm
   verdict:
     label: Fight
@@ -4112,6 +4136,11 @@ cards:
     expRateLabel: Exp. rate
     exchangeFigure: '{dealt} dealt · {taken} taken'
     exchangeLabel: Dealt against taken
+    # The Combat Stats card's drawings: the ring of swings that landed, and the splits.
+    hitTag: hit
+    damageByKind: Damage by attack type
+    incomingLabel: Blows aimed at you
+    incomingHit: Hit you
     faceMore: More
     faceTime: Time
     graphEmpty: nothing measured in this window yet
