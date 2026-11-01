@@ -14,7 +14,7 @@ import { experienceOf, workedOut, type ExperienceLevel } from '@shared/experienc
 import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
-import { levelWord } from '../lib/vitals';
+import { levelWord, meterValue } from '../lib/vitals';
 import LevelMeter, { levelReading } from './LevelMeter';
 import Kpi from './viz/Kpi';
 import Ring from './viz/Ring';
@@ -103,12 +103,6 @@ function Meter({
 }
 
 /** A figure the realm has not stated reads as a dash, never as zero. */
-/** A pool as a whole percentage for a ring's centre, or a dash while unknown. */
-function percentOf(value: number | null, max: number | null): string {
-  const share = ratio(value, max);
-  return share === null ? '—' : `${Math.round(share * 100)}%`;
-}
-
 function figure(value: number | null): string {
   return value === null ? '—' : value.toLocaleString();
 }
@@ -216,9 +210,9 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
         <div className="vitals-hero from-large">
           <Ring
             arcs={[{ fraction: ratio(vitals.hp, vitals.hpMax), tone: 'hp', level: hpLevel }]}
-            label={t('cards.vitals.ringAria', { label: 'HP', value: percentOf(vitals.hp, vitals.hpMax) })}
+            label={t('cards.vitals.ringAria', { label: 'HP', value: meterValue(ratio(vitals.hp, vitals.hpMax), null) })}
           >
-            <span className="vitals-ring-figure">{percentOf(vitals.hp, vitals.hpMax)}</span>
+            <span className="vitals-ring-figure">{meterValue(ratio(vitals.hp, vitals.hpMax), null)}</span>
             <span className="vitals-ring-tag">HP</span>
           </Ring>
           {vitals.mana !== null && (
@@ -230,12 +224,16 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
                   level: manaLevel
                 }
               ]}
-              label={t('cards.vitals.ringAria', {
-                label: vitals.manaType ?? '',
-                value: percentOf(vitals.mana, vitals.manaMax)
-              })}
+              label={
+                vitals.manaType === null
+                  ? undefined
+                  : t('cards.vitals.ringAria', {
+                      label: vitals.manaType,
+                      value: meterValue(ratio(vitals.mana, vitals.manaMax), null)
+                    })
+              }
             >
-              <span className="vitals-ring-figure">{percentOf(vitals.mana, vitals.manaMax)}</span>
+              <span className="vitals-ring-figure">{meterValue(ratio(vitals.mana, vitals.manaMax), null)}</span>
               <span className="vitals-ring-tag">{vitals.manaType}</span>
             </Ring>
           )}
@@ -264,7 +262,11 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
             when none is up; `unknown` draws nothing, since nobody having said
             is not `no` (todo 16). */}
         {afflicted.length > 0 && (
-          <div aria-label={t('cards.vitals.labels.afflicted')} className="vitals-afflicted">
+          <div
+            aria-label={t('cards.vitals.labels.afflicted')}
+            className="vitals-afflicted"
+            role="group"
+          >
             {afflicted.map((word) => (
               <span className="chip bad" key={word}>
                 {word}

@@ -4255,7 +4255,7 @@ cards:
       critical: critical
     # The units under the Vitals card's figures.
     expUnit: exp
-    rateUnit: exp/hr
+    rateUnit: an hour
     # A pool drawn as a ring on a large Vitals card.
     ringAria: '{label} {value}'
     sessionExp: +{sessionExp}

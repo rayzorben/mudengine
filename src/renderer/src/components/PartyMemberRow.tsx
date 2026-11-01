@@ -9,6 +9,7 @@ import { memo, type CSSProperties } from 'react';
 
 import Icon from './Icon';
 import Ring from './viz/Ring';
+import type { VizTone } from './viz/tones';
 import { vitalLevel, type MemberSheet, type PartyActivity, type PartyMember } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
@@ -26,8 +27,8 @@ export type PartyFit = (typeof PARTY_FITS)[number];
 export type SheetFigure = TrainedAttribute | 'traps' | 'picklocks';
 export const SHEET_FIGURES: readonly SheetFigure[] = [...TRAINED_ATTRIBUTES, 'traps', 'picklocks'];
 
-/** The party's highest of each figure, the scale each member's is drawn against. */
-export type PartyBest = Readonly<Partial<Record<SheetFigure, number>>>;
+/** The party's highest of each figure and who holds it: the scale each member's is drawn against. */
+export type PartyBest = Readonly<Partial<Record<SheetFigure, { name: string; value: number }>>>;
 
 /** Who a member is, beyond the listing's name and class. */
 export interface Who {
@@ -36,9 +37,9 @@ export interface Who {
   level: number | null;
 }
 
-export interface PartyMemberRowProps {
+/** Who as scalars, so a memoised row holds between equal pushes. */
+export interface PartyMemberRowProps extends Who {
   member: PartyMember;
-  who: Who;
   fit: PartyFit;
   best: PartyBest;
   thresholds: VitalsUiConfig;
@@ -104,8 +105,12 @@ function Bar({
         <span style={fraction === null ? undefined : { width: `${fraction * 100}%` }} />
       </span>
       <span className="party-meter-value">
-        {meterValue(fraction, max)}
-        {word === null ? '' : ` ${word}`}
+        <span className="party-meter-full">
+          {meterValue(fraction, max)}
+          {word === null ? '' : ` ${word}`}
+        </span>
+        {/* The narrowest one-line drawing has room for the percentage alone. */}
+        <span className="party-meter-short">{meterValue(fraction, null)}</span>
       </span>
     </span>
   );
@@ -123,7 +128,7 @@ function StatLine({ sheet, best }: { sheet: MemberSheet | null; best: PartyBest 
     <span className="party-stats" title={t('cards.party.statScale')}>
       {SHEET_FIGURES.map((figure) => {
         const value = sheet[figure];
-        const top = best[figure];
+        const top = best[figure]?.value;
         return (
           <span
             className="stat-cell"
@@ -133,7 +138,7 @@ function StatLine({ sheet, best }: { sheet: MemberSheet | null; best: PartyBest 
           >
             <em>{STAT_LABELS[figure]}</em>
             <b>{value ?? t('cards.party.sheetUnknown')}</b>
-            <i />
+            {value !== null && <i />}
           </span>
         );
       })}
@@ -143,7 +148,9 @@ function StatLine({ sheet, best }: { sheet: MemberSheet | null; best: PartyBest 
 
 function PartyMemberRow({
   member,
-  who,
+  race: listedRace,
+  className,
+  level,
   fit,
   best,
   thresholds,
@@ -157,12 +164,12 @@ function PartyMemberRow({
   ask
 }: PartyMemberRowProps) {
   const hpLevel = vitalLevel(member.health, 1, thresholds.hp);
-  const manaTone = member.pool === 'KAI' ? 'kai' : 'mana';
+  const manaTone: VizTone = member.pool === 'KAI' ? 'kai' : 'mana';
   const listed = !member.invited && member.health !== null;
   const ringLabel = listed
     ? t('cards.party.ringAria', { name: member.name, value: meterValue(member.health, null) })
     : undefined;
-  const race = member.invited ? null : (who.race ?? t('cards.party.raceUnknown'));
+  const race = member.invited ? null : (listedRace ?? t('cards.party.raceUnknown'));
 
   return (
     <li
@@ -222,12 +229,12 @@ function PartyMemberRow({
             </button>
           )}
         </div>
-        {(race !== null || who.className !== null || who.level !== null) && (
+        {(race !== null || className !== null || level !== null) && (
           <span className="party-what">
             {race !== null && <span className="party-race">{race}</span>}
-            {who.className !== null && <span className="party-class">{who.className}</span>}
-            {who.level !== null && (
-              <span className="party-level">{t('cards.party.level', { level: who.level })}</span>
+            {className !== null && <span className="party-class">{className}</span>}
+            {level !== null && (
+              <span className="party-level">{t('cards.party.level', { level })}</span>
             )}
           </span>
         )}
@@ -278,11 +285,6 @@ function PartyMemberRow({
         )}
         {fit === 'full' && !member.invited && <StatLine best={best} sheet={member.sheet} />}
       </div>
-      {listed && (
-        <span className="party-glance" data-level={hpLevel}>
-          {meterValue(member.health, null)}
-        </span>
-      )}
     </li>
   );
 }

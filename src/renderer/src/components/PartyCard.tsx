@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import Icon, { type IconName } from './Icon';
@@ -6,13 +6,13 @@ import PartyMemberRow, {
   PARTY_FITS,
   SHEET_FIGURES,
   type PartyBest,
+  type SheetFigure,
   type Who
 } from './PartyMemberRow';
 import {
   ratio,
   vitalLevel,
   type CharacterState,
-  type MemberSheet,
   type PartyActivity,
   type PartyMember
 } from '@shared/character';
@@ -175,7 +175,10 @@ function PartyCard({
     drawn
   );
   const fit = PARTY_FITS[tier] ?? 'compact';
-  const best = partyBest(members);
+  // Held by value: the party is rebuilt on every status line, and a new scale
+  // object would redraw every memoised row with it.
+  const sheets = sheetsKey(members);
+  const best = useMemo(() => partyBest(members), [sheets]);
 
   return (
     <BentoCard
@@ -224,7 +227,7 @@ function PartyCard({
                       selected={playerKey(member.name) === subject}
                       self={isSelf(character, member.name)}
                       thresholds={thresholds}
-                      who={whoIs(character, players, member)}
+                      {...whoIs(character, players, member)}
                     />
                   ))}
                 </ul>
@@ -232,7 +235,7 @@ function PartyCard({
             );
           })
         )}
-        {members.length > 0 && <BestHands members={members} />}
+        {members.length > 0 && <BestHands best={best} />}
       </div>
     </BentoCard>
   );
@@ -288,34 +291,38 @@ function whoIs(character: CharacterState, players: PlayerRegistry, member: Party
   };
 }
 
-/** The party's highest of each sheet figure, over the members whose sheet states it. */
+/**
+ * The party's highest of each sheet figure and who holds it, in one pass over
+ * the members whose sheet states it: the scale each stat line is drawn against
+ * and the names the footer gives.
+ */
 function partyBest(members: readonly PartyMember[]): PartyBest {
-  const best: Partial<Record<(typeof SHEET_FIGURES)[number], number>> = {};
+  const best: Partial<Record<SheetFigure, { name: string; value: number }>> = {};
   for (const member of members) {
     if (member.sheet === null) continue;
     for (const figure of SHEET_FIGURES) {
       const value = member.sheet[figure];
-      if (value !== null && value > (best[figure] ?? -Infinity)) best[figure] = value;
+      const held = best[figure];
+      if (value !== null && (held === undefined || value > held.value)) {
+        best[figure] = { name: member.name, value };
+      }
     }
   }
   return best;
 }
 
+/** What `partyBest` reads, as one string: a status line that moves nothing here keeps the scale. */
+function sheetsKey(members: readonly PartyMember[]): string {
+  return members
+    .map((m) => `${m.name}:${m.sheet === null ? '' : SHEET_FIGURES.map((f) => m.sheet?.[f]).join('/')}`)
+    .join(',');
+}
+
 /** The three hands the footer names, each with its glyph and the sheet figure it reads. */
-const HANDS: ReadonlyArray<{
-  key: string;
-  label: string;
-  icon: IconName;
-  figure(sheet: MemberSheet): number | null;
-}> = [
-  { key: 'traps', label: t('cards.party.stat.traps'), icon: 'eye', figure: (sheet) => sheet.traps },
-  {
-    key: 'picks',
-    label: t('cards.party.stat.picklocks'),
-    icon: 'key',
-    figure: (sheet) => sheet.picklocks
-  },
-  { key: 'bash', label: t('cards.party.bash'), icon: 'hammer', figure: (sheet) => sheet.strength }
+const HANDS: ReadonlyArray<{ key: SheetFigure; label: string; icon: IconName }> = [
+  { key: 'traps', label: t('cards.party.stat.traps'), icon: 'eye' },
+  { key: 'picklocks', label: t('cards.party.stat.picklocks'), icon: 'key' },
+  { key: 'strength', label: t('cards.party.bash'), icon: 'hammer' }
 ];
 
 /**
@@ -323,22 +330,16 @@ const HANDS: ReadonlyArray<{
  * and Strength among the members whose sheet states one. The question those
  * three figures answer, asked once for the party.
  */
-function BestHands({ members }: { members: readonly PartyMember[] }) {
+function BestHands({ best }: { best: PartyBest }) {
   return (
     <div className="party-best from-medium">
-      {HANDS.map(({ key, label, icon, figure }) => {
-        let found: { name: string; value: number } | null = null;
-        for (const member of members) {
-          const value = member.sheet === null ? null : figure(member.sheet);
-          if (value !== null && (found === null || value > found.value)) {
-            found = { name: member.name, value };
-          }
-        }
+      {HANDS.map(({ key, label, icon }) => {
+        const found = best[key];
         return (
-          <span className="party-hand" data-known={found !== null} key={key} title={label}>
+          <span className="party-hand" data-known={found !== undefined} key={key} title={label}>
             <Icon name={icon} />
             <em>{label}</em>
-            {found === null ? (
+            {found === undefined ? (
               <b>{t('cards.party.sheetUnknown')}</b>
             ) : (
               <>

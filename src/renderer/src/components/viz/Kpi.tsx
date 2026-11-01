@@ -7,6 +7,8 @@
  */
 import { memo, type ReactNode } from 'react';
 
+import type { KpiTone } from './tones';
+
 function Kpi({
   label,
   value,
@@ -17,8 +19,8 @@ function Kpi({
   /** Null while unknown. */
   value: ReactNode | null;
   hint?: ReactNode;
-  /** `ok`, `warn`, `bad` or `accent` for a figure that is itself a condition. */
-  tone?: string;
+  /** For a figure that is itself a condition. */
+  tone?: KpiTone;
 }) {
   return (
     <div className="kpi" data-tone={tone}>

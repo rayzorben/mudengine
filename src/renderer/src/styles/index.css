@@ -1946,48 +1946,55 @@ kbd {
  * same on every card, so a member's health on the Party card and the
  * character's own on Vitals read as one thing. `mudengine-ui` › parts/viz.md.
  */
-:is(.ring, .sparkline, .split, .stat-cell) [data-tone],
-.sparkline[data-tone],
-.stat-cell[data-tone] {
+/* The tone (`VizTone`, `components/viz/tones.ts`) is set on the piece or on
+   its parts; a level of caution or critical outranks it. */
+
+:where(.ring, .split) [data-tone],
+:where(.sparkline, .stat-cell, .kpi)[data-tone] {
   --viz: var(--accent);
 }
 
-:is(.ring, .split, .stat-cell) [data-tone='hp'],
-.stat-cell[data-tone='hp'],
-.sparkline[data-tone='ok'],
-.split [data-tone='ok'] {
+:where(.ring, .split) [data-tone='hp'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='hp'],
+:where(.ring, .split) [data-tone='ok'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='ok'],
+:where(.ring, .split) [data-tone='b'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='b'] {
   --viz: var(--ok);
 }
 
-:is(.ring, .split) [data-tone='kai'],
-.split [data-tone='d'] {
+:where(.ring, .split) [data-tone='kai'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='kai'],
+:where(.ring, .split) [data-tone='d'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='d'] {
   --viz: var(--marker);
 }
 
-:is(.ring, .split) [data-tone='foe'],
-.split [data-tone='bad'] {
+:where(.ring, .split) [data-tone='foe'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='foe'],
+:where(.ring, .split) [data-tone='bad'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='bad'] {
   --viz: var(--danger);
 }
 
-.split [data-tone='b'] {
-  --viz: var(--ok);
-}
-
-.split [data-tone='c'],
-.split [data-tone='warn'] {
+:where(.ring, .split) [data-tone='warn'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='warn'],
+:where(.ring, .split) [data-tone='c'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='c'] {
   --viz: var(--pending);
 }
 
-.split [data-tone='quiet'] {
+:where(.ring, .split) [data-tone='quiet'],
+:where(.sparkline, .stat-cell, .kpi)[data-tone='quiet'] {
   --viz: var(--text-lo-quiet);
 }
 
-:is(.ring, .stat-cell) [data-level='caution'],
+:where(.ring, .stat-cell) [data-level='caution'],
 .stat-cell[data-level='caution'] {
   --viz: var(--pending);
 }
 
-:is(.ring, .stat-cell) [data-level='critical'],
+:where(.ring, .stat-cell) [data-level='critical'],
 .stat-cell[data-level='critical'] {
   --viz: var(--danger);
 }
@@ -2161,20 +2168,8 @@ kbd {
   white-space: nowrap;
 }
 
-.kpi[data-tone='ok'] > b {
-  color: var(--ok);
-}
-
-.kpi[data-tone='warn'] > b {
-  color: var(--pending);
-}
-
-.kpi[data-tone='bad'] > b {
-  color: var(--danger);
-}
-
-.kpi[data-tone='accent'] > b {
-  color: var(--accent);
+.kpi[data-tone] > b {
+  color: var(--viz);
 }
 
 /*
@@ -13219,7 +13214,9 @@ tr:hover .row-action.worn,
 .party-list {
   display: grid;
   gap: 6px;
-  /* A member is a tile; a card wide enough for two side by side lays them so. */
+  /* A member is a tile; a card wide enough for two side by side lays them so.
+     270px is the narrowest tile whose bar keeps `100% of 4,434 critical`
+     beside a usable track, measured in the gallery. */
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
   list-style: none;
   margin: 0;
@@ -13379,22 +13376,6 @@ tr:hover .row-action.worn,
   width: 11px;
 }
 
-.party-glance {
-  align-self: center;
-  color: var(--text-hi);
-  display: none;
-  font-size: var(--font-micro);
-  font-variant-numeric: tabular-nums;
-}
-
-.party-glance[data-level='caution'] {
-  color: var(--pending);
-}
-
-.party-glance[data-level='critical'] {
-  color: var(--danger);
-}
-
 .party-rank-group {
   display: flex;
   flex-direction: column;
@@ -13522,6 +13503,10 @@ tr:hover .row-action.worn,
   white-space: nowrap;
 }
 
+.party-meter-short {
+  display: none;
+}
+
 .party-bar {
   background: color-mix(in srgb, var(--text-hi) 10%, transparent);
   border-radius: var(--r-pill);
@@ -13575,6 +13560,9 @@ tr:hover .row-action.worn,
    giving it up changes what is measured and never the scroller's own box. */
 .party-card .scroller {
   container: party / inline-size;
+  /* A scrollbar that came and went with the drawing would change the width,
+     the tile count and the height, and `useFitTier` would start over. */
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
 }
@@ -13587,7 +13575,7 @@ tr:hover .row-action.worn,
   --ring-d: 30px;
 }
 
-.party-card .scroller[data-fit='compact'] :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label, .party-meter-value) {
+.party-card .scroller[data-fit='compact'] :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label) {
   display: none;
 }
 
@@ -13609,12 +13597,27 @@ tr:hover .row-action.worn,
 }
 
 .party-card .scroller[data-fit='compact'] .party-meter {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
+/* Under 220px (measured in the gallery at the 250px card: the name, the glyph
+   and a bar under 40px could not share a line) the bar goes and the figure stays. */
 @container party (width < 220px) {
-  .party-card .scroller[data-fit='compact'] .party-meters {
+  .party-card .scroller[data-fit='compact'] .party-bar {
     display: none;
+  }
+
+  .party-card .scroller[data-fit='compact'] .party-meter {
+    grid-template-columns: auto;
+    justify-content: end;
+  }
+
+  .party-card .scroller[data-fit='compact'] .party-meter-full {
+    display: none;
+  }
+
+  .party-card .scroller[data-fit='compact'] .party-meter-short {
+    display: inline;
   }
 
   .party-card .scroller[data-fit='compact'] .party-who {
@@ -13633,10 +13636,6 @@ tr:hover .row-action.worn,
 
 .party-card .scroller[data-fit='compact'] .party-member > .ring {
   --ring-d: 22px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-glance {
-  display: block;
 }
 
 .party-card .scroller[data-fit='compact'] .party-rank-group + .party-rank-group {

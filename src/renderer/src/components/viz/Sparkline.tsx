@@ -7,6 +7,8 @@
  */
 import { memo } from 'react';
 
+import type { VizTone } from './tones';
+
 const W = 100;
 const H = 32;
 
@@ -17,7 +19,7 @@ function Sparkline({
   label
 }: {
   values: ReadonlyArray<number | null>;
-  tone?: string;
+  tone?: VizTone;
   rule?: number | null;
   label?: string;
 }) {

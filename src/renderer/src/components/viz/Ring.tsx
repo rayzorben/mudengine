@@ -8,13 +8,16 @@
  */
 import { memo, type ReactNode } from 'react';
 
+import type { VitalLevel } from '@shared/character';
+import type { VizTone } from './tones';
+
 export interface RingArc {
   /** 0 to 1, or null while unknown. */
   fraction: number | null;
-  /** What the arc measures, for its colour: `hp`, `mana`, `kai`, `exp`, `foe`. */
-  tone: string;
-  /** `ok`, `caution` or `critical` where the arc has a level, else absent. */
-  level?: string | null;
+  /** What the arc measures, for its colour. */
+  tone: VizTone;
+  /** Where the arc has a level, `caution` and `critical` override the tone. */
+  level?: VitalLevel | null;
 }
 
 /** The ring is drawn in a 40-unit box; each arc inward is one track narrower. */

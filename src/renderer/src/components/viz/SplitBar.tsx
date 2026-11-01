@@ -6,12 +6,13 @@
  */
 import { memo } from 'react';
 
+import type { VizTone } from './tones';
+
 export interface SplitPart {
   key: string;
   label: string;
   value: number;
-  /** A token the stylesheet maps to a colour (`.split-bar [data-tone]`). */
-  tone: string;
+  tone: VizTone;
 }
 
 function SplitBar({
