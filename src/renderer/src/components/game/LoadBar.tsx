@@ -7,7 +7,8 @@ import { memo } from 'react';
 
 import { t } from '../../lib/i18n';
 import type { Load } from '../../lib/packGroups';
-import { LOAD_PART_LABEL, LOAD_PARTS, loadFree, loadWidth } from '../../lib/packLoad';
+import { widthOf } from '../../lib/widths';
+import { LOAD_PART_LABEL, LOAD_PARTS, loadFree } from '../../lib/packLoad';
 
 function LoadBar({ load }: { load: Load | null }) {
   if (load === null) return <div className="gv-quiet">{t('game.pack.loadUnknown')}</div>;
@@ -19,7 +20,7 @@ function LoadBar({ load }: { load: Load | null }) {
         aria-label={t('game.pack.loadAria', { now: load.now, max: load.max })}
       >
         {LOAD_PARTS.map((part) => (
-          <i data-part={part} key={part} style={{ width: loadWidth(load[part], load.max) }} />
+          <i data-part={part} key={part} style={{ width: widthOf(load[part], load.max) }} />
         ))}
       </div>
       <div className="gv-load-key">

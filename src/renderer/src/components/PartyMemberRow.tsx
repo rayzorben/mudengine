@@ -99,12 +99,13 @@ function Bar({
   fraction: number | null;
   max: number | null;
   thresholds: VitalsUiConfig['hp'];
-  tone: string;
+  /** The pool, as the smoke and the stylesheet read it (`.party-meter.hp`). */
+  tone: Extract<VizTone, 'hp' | 'mana' | 'kai'>;
 }) {
   const level = vitalLevel(fraction, 1, thresholds);
   const word = levelWord(level);
   return (
-    <span className={`party-meter ${tone}`} data-level={level}>
+    <span className={`party-meter ${tone === 'kai' ? 'mana kai' : tone}`} data-level={level}>
       <span className="party-meter-label">{label}</span>
       <span className="party-bar">
         <span style={fraction === null ? undefined : { width: `${fraction * 100}%` }} />
@@ -283,7 +284,7 @@ function PartyMemberRow({
                 label={member.pool === 'KAI' ? t('cards.party.bar.kai') : t('cards.party.bar.mana')}
                 max={member.vitals?.manaMax ?? null}
                 thresholds={thresholds.mana}
-                tone={member.pool === 'KAI' ? 'mana kai' : 'mana'}
+                tone={manaTone}
               />
             )}
           </div>

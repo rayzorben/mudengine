@@ -10,6 +10,7 @@ import { DENOMINATIONS, type Coins, type Denomination } from '@shared/character'
 import { COPPER_PER } from '@shared/coins';
 import { COIN_NAME } from '../lib/coins';
 import { t } from '../lib/i18n';
+import { percent } from '../lib/outlook';
 import SplitBar, { type SplitPart } from './viz/SplitBar';
 import type { VizTone } from './viz/tones';
 
@@ -22,7 +23,7 @@ const COIN_TONE: Readonly<Record<Denomination, VizTone>> = {
   copper: 'b'
 };
 
-const share = (_value: number, part: number): string => `${Math.round(part * 100)}%`;
+const share = (_value: number, part: number): string => `${percent(part)}%`;
 
 function PurseMix({ coins, legend }: { coins: Coins; legend: boolean }) {
   const parts = useMemo<SplitPart[]>(

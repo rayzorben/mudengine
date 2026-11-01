@@ -2135,42 +2135,42 @@ kbd {
    its parts; a level of caution or critical outranks it. */
 
 :where(.ring, .split, .histogram, .bar-list) [data-tone],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone] {
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone] {
   --viz: var(--accent);
 }
 
 :where(.ring, .split, .histogram, .bar-list) [data-tone='hp'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='hp'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='hp'],
 :where(.ring, .split, .histogram, .bar-list) [data-tone='ok'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='ok'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='ok'],
 :where(.ring, .split, .histogram, .bar-list) [data-tone='b'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='b'] {
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='b'] {
   --viz: var(--ok);
 }
 
 :where(.ring, .split, .histogram, .bar-list) [data-tone='kai'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='kai'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='kai'],
 :where(.ring, .split, .histogram, .bar-list) [data-tone='d'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='d'] {
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='d'] {
   --viz: var(--marker);
 }
 
 :where(.ring, .split, .histogram, .bar-list) [data-tone='foe'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='foe'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='foe'],
 :where(.ring, .split, .histogram, .bar-list) [data-tone='bad'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='bad'] {
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='bad'] {
   --viz: var(--danger);
 }
 
 :where(.ring, .split, .histogram, .bar-list) [data-tone='warn'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='warn'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='warn'],
 :where(.ring, .split, .histogram, .bar-list) [data-tone='c'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='c'] {
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='c'] {
   --viz: var(--pending);
 }
 
 :where(.ring, .split, .histogram, .bar-list) [data-tone='quiet'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='quiet'] {
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='quiet'] {
   --viz: var(--text-lo-quiet);
 }
 

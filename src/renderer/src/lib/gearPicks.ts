@@ -8,17 +8,11 @@ import { t } from './i18n';
 import { bankedCopper } from '@shared/coins';
 import type { GearPick } from '@shared/gearTrip';
 import { withinBudget, type GearGain } from '@shared/gearWorth';
-import { share } from '@shared/tally';
 import type { GearChoice, GearChoices, GearSlot } from '@shared/upgrades';
 
 /** A copper figure as the card says it. */
 export function copperWords(value: number): string {
   return t('cards.gear.copper', { copper: value.toLocaleString() });
-}
-
-/** A track filled to `part` of `whole`, as a width; empty where the whole is nothing. */
-export function widthOf(part: number, whole: number): string {
-  return `${Math.min(100, (share(part, whole) ?? 0) * 100)}%`;
 }
 
 /** What an item adds, as the sheet says it; empty where nothing can be said. */

@@ -9,7 +9,7 @@ import Histogram, { type HistogramSeries } from './viz/Histogram';
 import type { VizTone } from './viz/tones';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
-import { timeBin } from '../lib/timeBins';
+import { countByTime } from '../lib/timeBins';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { SessionId } from '@shared/ipc';
@@ -76,17 +76,15 @@ const TIMELINE_BINS = 24;
 function timeline(notices: readonly Notice[]): HistogramSeries[] {
   const first = notices[0]?.at ?? 0;
   const last = notices[notices.length - 1]?.at ?? first;
-  const counts = Object.fromEntries(
-    SEVERITIES.map((severity) => [severity, Array.from({ length: TIMELINE_BINS }, () => 0)])
-  ) as Record<Severity, number[]>;
-  for (const notice of notices) {
-    const bin = timeBin(notice.at, first, last, TIMELINE_BINS);
-    counts[notice.severity][bin] = (counts[notice.severity][bin] ?? 0) + 1;
-  }
   return SEVERITIES.map((severity) => ({
     key: severity,
     tone: TONE[severity],
-    values: counts[severity]
+    values: countByTime(
+      notices.filter((notice) => notice.severity === severity),
+      (notice) => notice.at,
+      TIMELINE_BINS,
+      { first, last }
+    )
   }));
 }
 

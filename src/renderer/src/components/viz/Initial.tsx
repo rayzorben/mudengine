@@ -6,11 +6,9 @@
  */
 import { memo } from 'react';
 
-import type { VizTone } from './tones';
-
-function Initial({ name, tone }: { name: string; tone?: VizTone }) {
+function Initial({ name }: { name: string }) {
   return (
-    <span aria-hidden="true" className="initial" data-tone={tone}>
+    <span aria-hidden="true" className="initial">
       {name.trim().charAt(0).toUpperCase() || '?'}
     </span>
   );

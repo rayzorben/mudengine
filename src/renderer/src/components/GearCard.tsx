@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 
+import { widthOf } from '../lib/widths';
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import GearBlessFace from './GearBlessFace';
 import GearBudget from './GearBudget';
@@ -19,7 +20,6 @@ import {
   toggled,
   tripPicks,
   unpricedWords,
-  widthOf,
   type GearSay
 } from '../lib/gearPicks';
 import type { BankBalance } from '@shared/character';

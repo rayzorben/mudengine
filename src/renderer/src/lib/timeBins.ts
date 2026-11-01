@@ -11,15 +11,20 @@ export function timeBin(at: number, first: number, last: number, bins: number): 
   return Math.max(0, Math.min(bins - 1, Math.floor(((at - first) / span) * bins)));
 }
 
-/** How many of `items` fall in each of `bins` slices of their span, oldest first. */
+/**
+ * How many of `items` fall in each of `bins` slices of their span, oldest
+ * first. `span` is given when several series share one record's span, as the
+ * Alerts card's levels do; otherwise it is the items' own.
+ */
 export function countByTime<T>(
   items: readonly T[],
   at: (item: T) => number,
-  bins: number
+  bins: number,
+  span?: { first: number; last: number }
 ): number[] {
   const counts = Array.from({ length: bins }, () => 0);
-  const first = items.length === 0 ? 0 : at(items[0]!);
-  const last = items.length === 0 ? 0 : at(items[items.length - 1]!);
+  const first = span?.first ?? (items.length === 0 ? 0 : at(items[0]!));
+  const last = span?.last ?? (items.length === 0 ? 0 : at(items[items.length - 1]!));
   for (const item of items) {
     const bin = timeBin(at(item), first, last, bins);
     counts[bin] = (counts[bin] ?? 0) + 1;

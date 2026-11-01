@@ -9,7 +9,8 @@ import { memo } from 'react';
 
 import { t } from '../lib/i18n';
 import type { Load } from '../lib/packGroups';
-import { LOAD_PART_LABEL, LOAD_PARTS, loadFree, loadWidth } from '../lib/packLoad';
+import { widthOf } from '../lib/widths';
+import { LOAD_PART_LABEL, LOAD_PARTS, loadFree } from '../lib/packLoad';
 
 /** The pack's own grading: heavy from 70% of the maximum, near the limit from 90%. */
 function levelOf(share: number): 'ok' | 'caution' | 'critical' {
@@ -30,7 +31,7 @@ function PackLoad({ load }: { load: Load }) {
               className="fill"
               data-part={part}
               key={part}
-              style={{ width: loadWidth(load[part], load.max) }}
+              style={{ width: widthOf(load[part], load.max) }}
             />
           ))}
         </span>

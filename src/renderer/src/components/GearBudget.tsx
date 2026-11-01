@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from 'react';
 
 import { t } from '../lib/i18n';
-import { copperWords, widthOf } from '../lib/gearPicks';
+import { copperWords } from '../lib/gearPicks';
+import { widthOf } from '../lib/widths';
 
 /**
  * The Gear card's budget: what to spend, the figure typed in place beside a
