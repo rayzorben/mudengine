@@ -16,6 +16,8 @@ import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { levelWord } from '../lib/vitals';
 import LevelMeter, { levelReading } from './LevelMeter';
+import Kpi from './viz/Kpi';
+import Ring from './viz/Ring';
 
 export interface VitalsCardProps extends CardChrome {
   character: CharacterState;
@@ -101,6 +103,12 @@ function Meter({
 }
 
 /** A figure the realm has not stated reads as a dash, never as zero. */
+/** A pool as a whole percentage for a ring's centre, or a dash while unknown. */
+function percentOf(value: number | null, max: number | null): string {
+  const share = ratio(value, max);
+  return share === null ? '—' : `${Math.round(share * 100)}%`;
+}
+
 function figure(value: number | null): string {
   return value === null ? '—' : value.toLocaleString();
 }
@@ -174,6 +182,16 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
     afflictions.afraid === 'yes' ? t('cards.vitals.afflicted.afraid') : null
   ].filter((word): word is string => word !== null);
 
+  const hpLevel = vitalLevel(vitals.hp, vitals.hpMax, thresholds.hp);
+  const manaLevel = vitalLevel(vitals.mana, vitals.manaMax, thresholds.mana);
+  const who = [
+    character.className,
+    character.race,
+    progress.level === null ? null : t('cards.party.level', { level: progress.level })
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
+
   const badge = inCombat ? (
     <span className="chip bad">{t('cards.vitals.badge.combat')}</span>
   ) : vitals.resting ? (
@@ -193,6 +211,39 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
       <div className="empty">{t('cards.vitals.emptyNotInRealm')}</div>
     ) : (
       <>
+        {/* Large, the two pools as rings beside who this is: the shape of the
+            character at a glance, with the exact figures in the bars below. */}
+        <div className="vitals-hero from-large">
+          <Ring
+            arcs={[{ fraction: ratio(vitals.hp, vitals.hpMax), tone: 'hp', level: hpLevel }]}
+            label={t('cards.vitals.ringAria', { label: 'HP', value: percentOf(vitals.hp, vitals.hpMax) })}
+          >
+            <span className="vitals-ring-figure">{percentOf(vitals.hp, vitals.hpMax)}</span>
+            <span className="vitals-ring-tag">HP</span>
+          </Ring>
+          {vitals.mana !== null && (
+            <Ring
+              arcs={[
+                {
+                  fraction: ratio(vitals.mana, vitals.manaMax),
+                  tone: vitals.manaType === 'KAI' ? 'kai' : 'mana',
+                  level: manaLevel
+                }
+              ]}
+              label={t('cards.vitals.ringAria', {
+                label: vitals.manaType ?? '',
+                value: percentOf(vitals.mana, vitals.manaMax)
+              })}
+            >
+              <span className="vitals-ring-figure">{percentOf(vitals.mana, vitals.manaMax)}</span>
+              <span className="vitals-ring-tag">{vitals.manaType}</span>
+            </Ring>
+          )}
+          <div className="vitals-hero-who">
+            <b className={character.name ? '' : 'inert'}>{character.name ?? '—'}</b>
+            <span>{who}</span>
+          </div>
+        </div>
         <Meter max={vitals.hpMax} tag="HP" thresholds={thresholds.hp} tone="hp" value={vitals.hp} />
         {/* No mana row at all for a class that has none — an empty bar would
             imply a resource that does not exist. */}
@@ -206,86 +257,68 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
           />
         )}
 
-        {/* Small, the card is the two bars and what is wrong with them; large,
-            it adds the way into the level. See `lib/cardSize.ts`. */}
+        {/* What is wrong, at every size: the conditions the wire has stated,
+            and only those. An affliction is not one of the badge's conditions:
+            the badge names the one most urgent thing a character is *doing*,
+            and these can be true at once and alongside any of them. Absent
+            when none is up; `unknown` draws nothing, since nobody having said
+            is not `no` (todo 16). */}
         {afflicted.length > 0 && (
-          <div className="vitals-afflicted only-small">{afflicted.join(' · ')}</div>
+          <div aria-label={t('cards.vitals.labels.afflicted')} className="vitals-afflicted">
+            {afflicted.map((word) => (
+              <span className="chip bad" key={word}>
+                {word}
+              </span>
+            ))}
+          </div>
         )}
+        <div className="vitals-who-line from-medium">{who}</div>
         {reading !== null && (
-          <div className="from-large">
+          <div className="from-medium">
             <LevelMeter reading={reading} />
           </div>
         )}
-
-        <dl className="readout from-medium">
-          <dt>{t('cards.realm.column.name')}</dt>
-          <dd className={character.name ? '' : 'inert'}>{character.name ?? '—'}</dd>
-          <dt>{t('cards.vitals.labels.class')}</dt>
-          <dd className={character.className ? '' : 'inert'}>
-            {character.className ?? '—'}
-            {character.race ? ` · ${character.race}` : ''}
-          </dd>
-          <dt>{t('cards.vitals.labels.level')}</dt>
-          <dd className={progress.level === null ? 'inert' : ''}>{progress.level ?? '—'}</dd>
-          {/*
-            The conditions the wire has stated, and only those. An affliction
-            is not one of the badge's conditions above: the badge names the one
-            most urgent thing a character is *doing*, and these are several
-            things that can be true at once and at the same time as any of them.
-            Absent entirely when none is up — a row saying `none` on every
-            healthy character would be chrome, and the reason disease needs
-            drawing at all is that it is invisible everywhere else (todo 16).
-            `unknown` draws nothing: nobody having said is not `no`.
-          */}
-          {afflicted.length > 0 && (
-            <>
-              <dt>{t('cards.vitals.labels.afflicted')}</dt>
-              <dd className="bad">{afflicted.join(' · ')}</dd>
-            </>
-          )}
-          {/*
-            Only when it differs from the granted level, and accented when it
-            does: a character standing on experience it has not trained for is
-            the one case this whole face exists to state, and a row that said
-            `Earned 3` beside `Level 3` on every other character would bury it.
-          */}
+        <div className="kpis from-medium">
+          {/* Only when it differs from the granted level: a character standing
+              on experience it has not trained for is the case this states, and
+              `Earned 3` beside `Level 3` on every other character would bury it.
+              Said out loud where the figure is this client's arithmetic. */}
           {standing !== null && standing.ahead && (
-            <>
-              <dt>{t('cards.vitals.labels.earned')}</dt>
-              <dd className="ahead">
-                {standing.earned}
-                {/* Said out loud where the row that established it is this
-                    client's arithmetic rather than the realm's. A level
-                    somebody is told they have already earned is exactly the
-                    figure that must not be taken on trust. */}
-                {standing.earnedSource !== null && workedOut(standing.earnedSource) && (
-                  <span className="hint"> {t('cards.vitals.workedOut')}</span>
-                )}
-              </dd>
-            </>
+            <Kpi
+              hint={
+                standing.earnedSource !== null && workedOut(standing.earnedSource)
+                  ? t('cards.vitals.workedOut')
+                  : undefined
+              }
+              label={t('cards.vitals.labels.earned')}
+              tone="accent"
+              value={standing.earned}
+            />
           )}
-          <dt>
-            {standing?.next == null
-              ? t('cards.vitals.labels.toLevel')
-              : t('cards.vitals.toLevelFormat', { level: standing.next })}
-          </dt>
-          <dd className={owed.value === null ? 'inert' : ''}>
-            {figure(owed.value)}
-            {owed.derived && <span className="hint"> {t('cards.vitals.workedOut')}</span>}
-          </dd>
-          <dt>{t('cards.session.title')}</dt>
-          <dd>
-            {t('cards.vitals.sessionExpFormat', {
+          <Kpi
+            hint={owed.derived ? t('cards.vitals.workedOut') : t('cards.vitals.expUnit')}
+            label={
+              standing?.next == null
+                ? t('cards.vitals.labels.toLevel')
+                : t('cards.vitals.toLevelFormat', { level: standing.next })
+            }
+            value={owed.value === null ? null : figure(owed.value)}
+          />
+          <Kpi
+            hint={t('cards.vitals.expUnit')}
+            label={t('cards.session.title')}
+            value={t('cards.vitals.sessionExp', {
               sessionExp: progress.expThisSession.toLocaleString()
             })}
-          </dd>
-          <dt>{t('cards.session.rate')}</dt>
+          />
           {/* Meaningless for the first couple of minutes: 40 exp in ten
               seconds extrapolates to a rate nobody is earning. */}
-          <dd className={rate === null ? 'inert' : ''}>
-            {rate === null ? '—' : t('cards.vitals.rateFormat', { rate: rate.toLocaleString() })}
-          </dd>
-        </dl>
+          <Kpi
+            hint={t('cards.vitals.rateUnit')}
+            label={t('cards.session.rate')}
+            value={rate === null ? null : rate.toLocaleString()}
+          />
+        </div>
       </>
     );
 

@@ -3160,7 +3160,6 @@ cards:
       mana: MA
     # The footer: who has the best figure for a trap, a lock and a door.
     bash: Bash
-    best: '{name} {figure}'
     empty: Not in a party (solo)
     groups:
       back: Back
@@ -3171,7 +3170,6 @@ cards:
     fighting: 'fighting {target}'
     fightingRoom: fighting everyone in the room
     followAria: 'Follow {name}'
-    followButton: Follow
     hitBy: 'hit by {target}'
     level: 'level {level}'
     leaveAction: Leave Party
@@ -3179,7 +3177,11 @@ cards:
     notYetListed: not yet listed
     ofMax: '{percent}% of {max}'
     raceUnknown: race unknown
+    # The ring around a member's initial: health outside, mana or kai inside.
+    ringAria: '{name}: health {value}'
     sheetUnknown: '?'
+    # The hairline under each stat: drawn against the party's best.
+    statScale: Each line is drawn against the party's best
     stat:
       agility: Agi
       charm: Cha
@@ -4251,8 +4253,12 @@ cards:
     level:
       caution: low
       critical: critical
-    rateFormat: '{rate} exp/hr'
-    sessionExpFormat: +{sessionExp} exp
+    # The units under the Vitals card's figures.
+    expUnit: exp
+    rateUnit: exp/hr
+    # A pool drawn as a ring on a large Vitals card.
+    ringAria: '{label} {value}'
+    sessionExp: +{sessionExp}
     tabExp: Exp
     title: Vitals
     # Which level the figure beside it is counting towards. `To level` on its

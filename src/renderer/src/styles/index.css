@@ -1937,6 +1937,287 @@ kbd {
   width: 1px;
 }
 
+
+/* ------------------------------------------------------------------ viz */
+
+/*
+ * The drawing pieces every card shares (`components/viz/`): a ring, a
+ * sparkline, a split bar and a stat cell. One colour per thing measured, the
+ * same on every card, so a member's health on the Party card and the
+ * character's own on Vitals read as one thing. `mudengine-ui` › parts/viz.md.
+ */
+:is(.ring, .sparkline, .split, .stat-cell) [data-tone],
+.sparkline[data-tone],
+.stat-cell[data-tone] {
+  --viz: var(--accent);
+}
+
+:is(.ring, .split, .stat-cell) [data-tone='hp'],
+.stat-cell[data-tone='hp'],
+.sparkline[data-tone='ok'],
+.split [data-tone='ok'] {
+  --viz: var(--ok);
+}
+
+:is(.ring, .split) [data-tone='kai'],
+.split [data-tone='d'] {
+  --viz: var(--marker);
+}
+
+:is(.ring, .split) [data-tone='foe'],
+.split [data-tone='bad'] {
+  --viz: var(--danger);
+}
+
+.split [data-tone='b'] {
+  --viz: var(--ok);
+}
+
+.split [data-tone='c'],
+.split [data-tone='warn'] {
+  --viz: var(--pending);
+}
+
+.split [data-tone='quiet'] {
+  --viz: var(--text-lo-quiet);
+}
+
+:is(.ring, .stat-cell) [data-level='caution'],
+.stat-cell[data-level='caution'] {
+  --viz: var(--pending);
+}
+
+:is(.ring, .stat-cell) [data-level='critical'],
+.stat-cell[data-level='critical'] {
+  --viz: var(--danger);
+}
+
+.ring {
+  --ring-d: 36px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  height: var(--ring-d);
+  place-items: center;
+  position: relative;
+  width: var(--ring-d);
+}
+
+.ring > svg {
+  grid-area: 1 / 1;
+  height: 100%;
+  width: 100%;
+}
+
+.ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--viz) var(--tone), transparent);
+  stroke-width: 3.5;
+}
+
+.ring-track[data-unknown='true'] {
+  stroke: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  stroke-dasharray: 2 3;
+}
+
+.ring-arc {
+  fill: none;
+  stroke: var(--viz);
+  stroke-linecap: round;
+  stroke-width: 3.5;
+  transition: stroke-dasharray var(--dur-control) var(--ease-out);
+}
+
+.ring-centre {
+  color: var(--text-hi);
+  font-size: calc(var(--ring-d) * 0.34);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  grid-area: 1 / 1;
+  line-height: 1;
+}
+
+.sparkline {
+  display: block;
+  height: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.sparkline-area {
+  fill: color-mix(in srgb, var(--viz) var(--tone), transparent);
+}
+
+.sparkline-line {
+  fill: none;
+  stroke: var(--viz);
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.sparkline-rule {
+  stroke: color-mix(in srgb, var(--text-hi) 45%, transparent);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.split {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.split-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.split-bar > span {
+  background: var(--viz);
+  flex-basis: 0;
+  min-width: 2px;
+}
+
+.split-legend {
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 2px 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.split-legend li {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.split-legend i {
+  background: var(--viz);
+  border-radius: 2px;
+  height: 8px;
+  width: 8px;
+}
+
+.split-value {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Figures set large in a row of tiles that wraps to the card (`Kpi`). */
+.kpis {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
+.kpi {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-control);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 9px;
+}
+
+.kpi > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi > b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 2px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi > b.inert {
+  color: var(--text-lo-quiet);
+}
+
+.kpi > small {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi[data-tone='ok'] > b {
+  color: var(--ok);
+}
+
+.kpi[data-tone='warn'] > b {
+  color: var(--pending);
+}
+
+.kpi[data-tone='bad'] > b {
+  color: var(--danger);
+}
+
+.kpi[data-tone='accent'] > b {
+  color: var(--accent);
+}
+
+/*
+ * A figure over a hairline drawn to its share of a scale (`--share`, 0 to 1):
+ * the party's six stats against the party's best, an attribute against its
+ * race's range.
+ */
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stat-cell > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
+.stat-cell > b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.stat-cell > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 1px;
+  display: block;
+  height: 3px;
+  overflow: hidden;
+}
+
+.stat-cell > i::before {
+  background: var(--viz);
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
 .stats-graph {
   margin: 4px 0 10px;
 }
@@ -7416,8 +7697,67 @@ button.quest-tile-name:hover:not(:disabled) {
 
 /* What a small Vitals card keeps of its sheet: the afflictions, under the bars. */
 .vitals-afflicted {
-  margin-top: 6px;
-  color: var(--danger);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 6px;
+}
+
+.vitals-who-line {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin-bottom: 6px;
+}
+
+.card[data-card-size='large'] .vitals-who-line {
+  display: none;
+}
+
+.vitals-card .kpis {
+  margin-top: 8px;
+}
+
+.vitals-hero {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.vitals-hero > .ring {
+  --ring-d: 68px;
+}
+
+.vitals-hero .ring-centre {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  font-size: calc(var(--font-ui) + 2px);
+  gap: 1px;
+}
+
+.vitals-ring-tag {
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 500;
+}
+
+.vitals-hero-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vitals-hero-who > b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 4px);
+  font-weight: 600;
+}
+
+.vitals-hero-who > span {
+  color: var(--text-lo);
   font-size: var(--font-micro);
 }
 
@@ -12877,30 +13217,60 @@ tr:hover .row-action.worn,
  * command rather than a second connection.
  */
 .party-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
+  /* A member is a tile; a card wide enough for two side by side lays them so. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.party-list li {
+.party-member {
+  align-items: start;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-control);
+  column-gap: 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 7px 8px;
+}
+
+.party-member > .ring {
+  --ring-d: 38px;
+}
+
+.party-member[data-hurt] {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+}
+
+.party-member[data-selected] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.party-member[data-invited] {
+  background: transparent;
+  outline: var(--rule) dashed var(--ink-edge);
+  outline-offset: -1px;
+}
+
+.party-member[data-invited] > .ring {
+  opacity: 0.6;
+}
+
+.party-member-main {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-/*
- * Who they are, and what they are doing: the line somebody scans down before
- * deciding which member to act on. The class takes the slack so the condition
- * and the rank make columns of their own whatever a name costs.
- */
 .party-who {
-  align-items: baseline;
+  align-items: center;
   display: flex;
   gap: 6px;
+  min-height: 20px;
   min-width: 0;
 }
 
@@ -12908,12 +13278,13 @@ tr:hover .row-action.worn,
   color: var(--text-hi);
   flex: 0 1 auto;
   font-weight: 600;
+  min-width: 3ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* A person's name inside a row of text is text that happens to be clickable:
+/* A name that opens the Player flyout is a `PlayerName` button inside the span:
    it takes the row's face and colour, and stays inline so the row's own
    ellipsis still shortens a long name rather than clipping it. */
 .party-name > .name,
@@ -12924,21 +13295,14 @@ tr:hover .row-action.worn,
   font: inherit;
 }
 
-/* The row the flyout is about, in the listings' own recipe (`tr[data-selected]`). */
-.party-list li[data-selected] {
-  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
-  border-radius: 4px;
-}
-
 .party-name[data-leader='true']::after {
-  color: var(--text-lo-quiet);
+  color: var(--pending);
   content: ' ★';
   font-size: var(--font-micro);
 }
 
 .party-what {
   color: var(--text-lo-quiet);
-  flex: 1 1 auto;
   font-size: var(--font-micro);
   min-width: 0;
   overflow: hidden;
@@ -12947,100 +13311,140 @@ tr:hover .row-action.worn,
 }
 
 .party-what > span + span::before {
-  content: ' ';
+  content: ' · ';
 }
 
-/*
- * The formation, boxed by rank rather than stated at the end of every row.
- *
- * A tonal panel and a hairline seam, per §9 — the grouping is *structure*, and
- * structure here is a half-step of surface tone, never an outline. The heading
- * is the card's own word for the rank (`Middle`, not `Midrank`), quiet and
- * small: it labels a box somebody is scanning past, not a thing they act on.
- *
- * A rank with nobody in it is not drawn at all — see `GROUPS` — so this box
- * appears and disappears as the party is arranged. That is safe here and
- * nowhere else on the rail: the card's height is fixed and its body scrolls, so
- * a group arriving moves nothing below the card.
- */
-.party-rank-group {
-  background: color-mix(in srgb, var(--text-lo) 7%, transparent);
-  border: var(--rule) solid var(--ink-line);
-  border-radius: var(--r-control);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 8px 8px;
-}
-
-.party-rank-group + .party-rank-group {
-  margin-top: 8px;
-}
-
-/*
- * An offer, not a rank. The seam says provisional rather than a second colour
- * saying it: the heading already reads `Invited`, and a hue here would make an
- * invitation look like a condition somebody has to act on.
- */
-.party-rank-group[data-rank='invited'] {
-  background: transparent;
-  border-style: dashed;
-}
-
-.party-rank-head {
-  color: var(--text-lo-quiet);
-  font-size: var(--font-micro);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  margin: 0;
-  text-transform: uppercase;
-}
-
-/*
- * Resting or meditating: a condition, so tonal rather than plain text per §9,
- * and the one thing on the row that says whether a member will answer.
- */
 .party-activity {
+  align-items: center;
   background: color-mix(in srgb, var(--pending) var(--tone-weak), transparent);
   border-radius: var(--r-chip);
   color: var(--pending);
+  display: inline-flex;
   flex: 0 0 auto;
   font-size: var(--font-micro);
+  gap: 3px;
   padding: 0 5px;
 }
 
-/* A letter the client cannot expand states no condition, so it takes no hue. */
+.party-activity .icon {
+  height: 12px;
+  width: 12px;
+}
+
 .party-activity[data-state='unknown'] {
   background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
   color: var(--text-lo);
   font-family: var(--font-mono);
 }
 
-/*
- * A member's six stats, Traps and Picklocks (todo 86): facts, quiet under the
- * meters, each label quieter than its figure. Wraps on the narrowest rail.
- */
-.party-stats {
-  color: var(--text-lo);
-  display: flex;
-  flex-wrap: wrap;
-  font-size: var(--font-micro);
-  font-variant-numeric: tabular-nums;
-  gap: 0 8px;
+.party-follow {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  margin-left: auto;
+  min-height: 0;
+  padding: 1px 5px;
 }
 
-.party-stats em,
-.party-best em {
+.party-follow .icon {
+  height: 15px;
+  width: 15px;
+}
+
+.party-fight {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.party-fight > .chip {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 3px;
+  min-width: 0;
+  text-transform: none;
+}
+
+.party-fight > .chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.party-fight .icon {
+  flex: 0 0 auto;
+  height: 11px;
+  width: 11px;
+}
+
+.party-glance {
+  align-self: center;
+  color: var(--text-hi);
+  display: none;
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.party-glance[data-level='caution'] {
+  color: var(--pending);
+}
+
+.party-glance[data-level='critical'] {
+  color: var(--danger);
+}
+
+.party-rank-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.party-rank-group + .party-rank-group {
+  margin-top: 8px;
+}
+
+/* A rank is a label over a hairline, never a box: the members are the surfaces. */
+.party-rank-head {
+  align-items: center;
   color: var(--text-lo-quiet);
-  font-style: normal;
-  margin-right: 3px;
+  display: flex;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.party-rank-head::after {
+  border-top: var(--rule) solid var(--ink-line);
+  content: '';
+  flex: 1 1 auto;
+}
+
+.party-stats {
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  margin-top: 3px;
+}
+
+.party-stats .stat-cell > b {
+  font-size: var(--font-micro);
+}
+
+.party-stats .stat-cell[data-best] > i::before {
+  background: var(--pending);
 }
 
 .party-stats.none {
   color: var(--text-lo-quiet);
+  display: block;
+  font-size: var(--font-micro);
 }
 
-/* Who the party has for a trap, a lock and a door: a pane under the list. */
 .party-best {
   border-top: var(--rule) solid var(--ink-line);
   color: var(--text-lo);
@@ -13048,118 +13452,102 @@ tr:hover .row-action.worn,
   flex: 0 0 auto;
   flex-wrap: wrap;
   font-size: var(--font-micro);
-  gap: 0 12px;
-  margin-top: 6px;
-  padding-top: 5px;
+  gap: 4px 14px;
+  margin-top: auto;
+  padding-top: 6px;
 }
 
-/*
- * The drawing that fits (`useFitTier` on the scroller): `vitals` gives up the
- * stat line, `compact` puts each member on one line with the meters stacked
- * beside the name. The footer still names the best hands in both.
- */
-.party-card .scroller[data-fit='vitals'] .party-stats,
-.party-card .scroller[data-fit='compact'] .party-stats,
-.party-card .scroller[data-fit='compact'] .party-race {
-  display: none;
+.party-rank-group:last-of-type {
+  margin-bottom: 8px;
 }
 
-.party-card .scroller[data-fit='compact'] .party-list {
-  gap: 2px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-rank-group {
-  gap: 2px;
-  padding: 4px 8px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-list li {
+.party-hand {
   align-items: center;
-  column-gap: 8px;
-  display: grid;
-  /* The meters keep their figures whole (`4,434` is the point of them);
-     the name gives way and is shortened. */
-  grid-template-columns: minmax(0, 1fr) max-content;
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.party-card .scroller[data-fit='compact'] .party-meters {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  gap: 0;
+.party-hand .icon {
+  color: var(--text-lo-quiet);
+  height: 13px;
+  width: 13px;
 }
 
-/*
- * Two meters share a row while they fit and stack when they do not. A meter's
- * value grew longer once a member's maximum is known (`40% of 4,434 low`),
- * and a row that stayed one line regardless would push the second meter past
- * the card's edge on the narrowest rail. Wrapping is decided on each meter's
- * *content* width (`flex-basis: auto`) — measured by layout, no constant —
- * and `min-width: 0` keeps a meter able to shrink afterwards, so nothing here
- * puts a floor under the row that the card's `overflow: hidden` would then
- * clip in silence. The card does not grow for it: the body scrolls.
- */
+.party-hand em {
+  color: var(--text-lo-quiet);
+  font-style: normal;
+}
+
+.party-hand b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.party-hand[data-known='false'] {
+  opacity: 0.6;
+}
+
 .party-meters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
 .party-meter {
   align-items: center;
   color: var(--text-lo);
-  display: flex;
-  flex: 1 1 auto;
+  display: grid;
   font-size: var(--font-micro);
-  gap: 5px;
+  gap: 6px;
+  grid-template-columns: 3ch minmax(24px, 1fr) auto;
   min-width: 0;
 }
 
 .party-meter-label {
   color: var(--text-lo-quiet);
-  flex: 0 0 auto;
   font-family: var(--font-mono);
 }
 
-/* A value that still cannot fit is shortened with an ellipsis, which says it
-   was shortened; a clipped `4,434` reading `4,4` would be a wrong maximum
-   stated confidently, the exact thing the maximum is there to prevent. */
+/* The figure gives way before the bar does: a clipped `4,434` reading `4,4`
+   would be a wrong maximum stated confidently, so it shortens whole. */
 .party-meter-value {
-  flex: 0 1 auto;
   font-variant-numeric: tabular-nums;
   min-width: 0;
   overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .party-bar {
   background: color-mix(in srgb, var(--text-hi) 10%, transparent);
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   display: block;
-  flex: 1 1 auto;
-  height: 4px;
-  min-width: 20px;
+  height: 5px;
   overflow: hidden;
 }
 
 .party-bar > span {
   background: var(--ok);
+  border-radius: inherit;
   display: block;
   height: 100%;
+  transition: width var(--dur-control) var(--ease-out);
 }
 
 .party-meter.mana > .party-bar > span {
   background: var(--accent);
 }
 
-/* Kai, the `[K:` column, has its own colour. */
 .party-meter.kai > .party-bar > span {
   background: var(--marker);
 }
 
-/* Level outranks the resource, and equal specificity plus source order is what
-   makes that true — the same arrangement the Vitals meters use. */
+/* The level drives the hue, and the level word beside the figure says it in
+   words as well — the same arrangement the Vitals meters use. */
 .party-meter[data-level='caution'] > .party-bar > span {
   background: var(--pending);
 }
@@ -13170,6 +13558,89 @@ tr:hover .row-action.worn,
 
 .party-meter[data-level='critical'] > .party-bar > span {
   background: var(--danger);
+}
+
+/*
+ * The four drawings, fullest first, chosen by measurement (`PARTY_FITS`):
+ * `full` adds each member's stats; `detail` is the row without them; `brief`
+ * drops the race line and the mana bar, which the ring still draws; `compact`
+ * is one line a member, the ring, the name and the percentage.
+ */
+.party-card .scroller[data-fit='brief'] :is(.party-what, .party-meter.mana) {
+  display: none;
+}
+
+/* The footer is the first thing a short card gives up: the members come first.
+   It sits inside the measured scroller, at its foot while there is room, so
+   giving it up changes what is measured and never the scroller's own box. */
+.party-card .scroller {
+  container: party / inline-size;
+  display: flex;
+  flex-direction: column;
+}
+
+.party-card .scroller:is([data-fit='brief'], [data-fit='compact']) .party-best {
+  display: none;
+}
+
+.party-card .scroller[data-fit='brief'] .party-member > .ring {
+  --ring-d: 30px;
+}
+
+.party-card .scroller[data-fit='compact'] :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label, .party-meter-value) {
+  display: none;
+}
+
+/* One line a member: the name, then the health bar in whatever width is left. */
+.party-card .scroller[data-fit='compact'] .party-member-main {
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.party-card .scroller[data-fit='compact'] .party-who {
+  flex: 0 1 auto;
+  max-width: 60%;
+}
+
+.party-card .scroller[data-fit='compact'] .party-meters {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.party-card .scroller[data-fit='compact'] .party-meter {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container party (width < 220px) {
+  .party-card .scroller[data-fit='compact'] .party-meters {
+    display: none;
+  }
+
+  .party-card .scroller[data-fit='compact'] .party-who {
+    max-width: none;
+  }
+}
+
+.party-card .scroller[data-fit='compact'] .party-list {
+  gap: 2px;
+}
+
+.party-card .scroller[data-fit='compact'] .party-member {
+  align-items: center;
+  padding: 2px 6px 2px 2px;
+}
+
+.party-card .scroller[data-fit='compact'] .party-member > .ring {
+  --ring-d: 22px;
+}
+
+.party-card .scroller[data-fit='compact'] .party-glance {
+  display: block;
+}
+
+.party-card .scroller[data-fit='compact'] .party-rank-group + .party-rank-group {
+  margin-top: 4px;
 }
 
 /*
