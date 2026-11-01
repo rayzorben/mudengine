@@ -245,8 +245,19 @@ function PartyMemberRow({
           </span>
         )}
         {/* The fact `assistLeader` acts on, and the monster a heal or a defence
-            is for, while each sighting is fresh. */}
-        {(fighting !== null || hitBy !== null) && (
+            is for, while each sighting is fresh. A member's line is held open
+            between fights by an unseen chip, so a fight starting or ending
+            never changes the row's height and the card's drawing. */}
+        {fighting === null && hitBy === null ? (
+          member.invited ? null : (
+            <span aria-hidden="true" className="party-fight" data-empty="true">
+              <span className="chip quiet">
+                <Icon name="sword" />
+                <span>{'\u00a0'}</span>
+              </span>
+            </span>
+          )
+        ) : (
           <span className="party-fight">
             {fighting !== null && (
               <span className="chip quiet party-fighting" title={fighting}>

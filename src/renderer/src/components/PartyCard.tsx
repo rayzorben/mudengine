@@ -154,20 +154,12 @@ function PartyCard({
    * fits is measured on the scroller: every row with its stat line, then the
    * stat lines dropped, then one line a member. What a row draws changes only
    * with who is in it and what is known of them, so that is what starts the
-   * measuring again; a resize does too.
+   * measuring again; a resize does too. A fight or a rest coming and going is
+   * not: the fight line keeps its place in the row and the rest sits on the
+   * name line, so neither moves the card's drawing mid-fight.
    */
   const drawn = members
-    .map((m) =>
-      [
-        m.name,
-        m.invited,
-        m.sheet !== null,
-        m.mana !== null,
-        m.activity?.state,
-        fightingWord(character, m.name),
-        hitByWord(character, m.name)
-      ].join(':')
-    )
+    .map((m) => [m.name, m.invited, m.health !== null, m.sheet !== null, m.mana !== null].join(':'))
     .join(',');
   const [scroller, tier] = useFitTier<HTMLDivElement>(
     PARTY_FITS.length,

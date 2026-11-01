@@ -17,7 +17,7 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 export function useFitTier<T extends HTMLElement>(
   count: number,
   overflows: (node: T) => boolean,
-  drawn: unknown
+  drawn: string
 ): [RefObject<T>, number] {
   const ref = useRef<T>(null);
   const [tier, setTier] = useState(0);
@@ -30,9 +30,20 @@ export function useFitTier<T extends HTMLElement>(
     return () => observer.disconnect();
   }, []);
 
-  useLayoutEffect(() => setTier(0), [drawn]);
-
+  /*
+   * One effect both restarts and steps. As two, a change to `drawn` queued tier
+   * 0 and then, from the same commit's stale tier, tier + 1; the later update
+   * won, so the box skipped straight to a smaller drawing than it needed.
+   */
+  const measured = useRef(drawn);
   useLayoutEffect(() => {
+    if (!Object.is(measured.current, drawn)) {
+      measured.current = drawn;
+      if (tier !== 0) {
+        setTier(0);
+        return;
+      }
+    }
     const node = ref.current;
     if (node === null || tier >= count - 1) return;
     if (overflows(node)) setTier(tier + 1);
