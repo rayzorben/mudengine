@@ -1,8 +1,11 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import RemoteList from './RemoteList';
+import Dot from './viz/Dot';
+import Kpi from './viz/Kpi';
+import Ring from './viz/Ring';
 import { t } from '../lib/i18n';
 import { membersOf, type Member } from '../lib/gangs';
 import { PlayerName } from '../lib/players';
@@ -11,7 +14,12 @@ import { ownGang, type CharacterState } from '@shared/character';
 import { playerKey, type PlayerRegistry } from '@shared/players';
 import type { RemotesConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
-import { ACTIONABLE_REMOTES, type RemoteName, type RemoteStance } from '@shared/remotes';
+import {
+  ACTIONABLE_REMOTES,
+  GRANTABLE_REMOTES,
+  type RemoteName,
+  type RemoteStance
+} from '@shared/remotes';
 
 export interface GangCardProps extends CardChrome {
   character: CharacterState;
@@ -141,8 +149,19 @@ function GangCard({
      race and class columns are filled from. Drives the note under the table. */
   const listed = members.some((row) => !row.rosterOnly);
   const online = members.filter((row) => row.online).length;
+  /* The highest level a listing stated, which each level's hairline is drawn
+     against; null while no level is known. */
+  const topLevel = members.reduce<number | null>(
+    (top, row) => (row.level === null ? top : Math.max(top ?? 0, row.level)),
+    null
+  );
+  /* The arcs by value, so the memoised ring redraws only when a count moves. */
+  const share = members.length === 0 ? null : online / members.length;
+  const ringArcs = useMemo(() => [{ fraction: share, tone: 'ok' as const }], [share]);
+  const allowed = useMemo(() => new Set(remotes.gang), [remotes.gang]);
+  const granted = GRANTABLE_REMOTES.filter((name) => allowed.has(name)).length;
+  const levels = members.flatMap((row) => (row.level === null ? [] : [row.level]));
 
-  const granted = remotes.gang.length;
   const badge =
     granted > 0 ? (
       <span className="chip on">{t('cards.gang.badge.allowed', { count: granted })}</span>
@@ -157,7 +176,14 @@ function GangCard({
       wide: true,
       value: (row) => row.name,
       cell: (row) => (
-        <>
+        <span className="gang-who">
+          {/* On or not before everything else, so the column reads at a glance;
+              the Status column says it in words where the card is large. */}
+          <Dot
+            hollow={!row.online}
+            label={row.online ? t('cards.gang.online') : t('cards.gang.offline')}
+            tone={row.online ? 'ok' : 'quiet'}
+          />
           {/* The leader's mark, before the name, so the column still starts in
               one place: a star drawn after a name of variable length is a mark
               nobody can scan down. Titled, because a glyph states nothing on
@@ -175,7 +201,7 @@ function GangCard({
           ) : (
             row.name
           )}
-        </>
+        </span>
       )
     },
     {
@@ -185,7 +211,19 @@ function GangCard({
       from: 'medium',
       numeric: true,
       value: (row) => row.level,
-      cell: (row) => (row.level === null ? <span className="quiet-note">—</span> : row.level)
+      /* Large, a hairline under the figure against the gang's highest level. */
+      cell: (row) =>
+        row.level === null ? (
+          <span className="quiet-note">—</span>
+        ) : (
+          <span
+            className="gang-level"
+            style={{ '--share': topLevel ? row.level / topLevel : 0 } as CSSProperties}
+          >
+            {row.level}
+            <i aria-hidden="true" />
+          </span>
+        )
     },
     {
       id: 'race',
@@ -204,6 +242,8 @@ function GangCard({
     {
       id: 'online',
       label: t('cards.gang.column.online'),
+      // The dot before each name says it below large.
+      from: 'large',
       /* Sorted by the word, so pointing the column puts one group together
          rather than interleaving them; the card's own order already leads with
          the online half. */
@@ -219,10 +259,70 @@ function GangCard({
 
   const membersFace = (
     <>
-      <dl className="readout gang-head from-medium">
-        <dt>{t('cards.gang.title')}</dt>
-        <dd>{gang === undefined ? <span className="quiet-note">—</span> : (gang ?? '—')}</dd>
-      </dl>
+      {/*
+        Which gang, and how much of it is on: a ring of the members online
+        around their count, the gang's name beside it, and which listing the
+        table is drawn from under the name, because the two answer different
+        questions and the columns look identical either way. Without the
+        button pressed this is who is *online* in the gang; with it, the
+        membership.
+      */}
+      <div className="gang-summary from-medium">
+        <Ring
+          arcs={ringArcs}
+          label={t('cards.gang.fromListing', { online, total: members.length })}
+        >
+          {members.length === 0 ? '—' : online}
+        </Ring>
+        <div className="gang-summary-text">
+          <em>{t('cards.gang.title')}</em>
+          <b className={gang === undefined || gang === null ? 'inert' : undefined}>{gang ?? '—'}</b>
+          {gang === undefined || gang === null ? null : (
+            <small>
+              {listed
+                ? t('cards.gang.fromListing', { online, total: members.length })
+                : t('cards.gang.fromRoster')}
+            </small>
+          )}
+        </div>
+      </div>
+
+      {/*
+        Large, the figures the table adds up to: who is on, the levels a gang
+        list stated, and how much the other face lets them ask for.
+      */}
+      {gang === undefined || gang === null ? null : (
+        <div className="kpis gang-figures from-large">
+          <Kpi
+            hint={t('cards.gang.figures.onlineOf', { total: members.length })}
+            label={t('cards.gang.figures.online')}
+            tone={online > 0 ? 'ok' : undefined}
+            value={online}
+          />
+          <Kpi
+            hint={
+              levels.length === 0
+                ? undefined
+                : t('cards.gang.figures.levelRange', {
+                    low: Math.min(...levels),
+                    high: Math.max(...levels)
+                  })
+            }
+            label={t('cards.gang.figures.level')}
+            value={
+              levels.length === 0
+                ? null
+                : Math.round(levels.reduce((sum, level) => sum + level, 0) / levels.length)
+            }
+          />
+          <Kpi
+            hint={t('cards.gang.figures.remotesOf', { total: GRANTABLE_REMOTES.length })}
+            label={t('cards.gang.figures.remotes')}
+            tone={granted > 0 ? 'accent' : undefined}
+            value={granted}
+          />
+        </div>
+      )}
 
       {/*
         Said before the list, in the order somebody reads: whether anything the
@@ -235,19 +335,6 @@ function GangCard({
       ) : gang === null ? (
         <p className="settings-warn">{t('cards.gang.noGang')}</p>
       ) : null}
-
-      {/*
-        Which listing the table is drawn from, because the two answer different
-        questions and the columns look identical either way. Without the button
-        pressed this is who is *online* in the gang; with it, the membership.
-      */}
-      {gang === undefined || gang === null ? null : (
-        <p className="settings-note from-medium">
-          {listed
-            ? t('cards.gang.fromListing', { online, total: members.length })
-            : t('cards.gang.fromRoster')}
-        </p>
-      )}
 
       {/*
         A listing that lost a row says so. The server's own count and the rows
@@ -321,6 +408,20 @@ function GangCard({
       )}
 
       <div className="scroller">
+        {/*
+          Every remote a grant can carry as one square each, lit where the gang
+          may send it: how much is shared, before the rows.
+        */}
+        <figure className="gang-grants from-medium">
+          <figcaption>
+            {t('cards.gang.grantsCount', { allowed: granted, total: GRANTABLE_REMOTES.length })}
+          </figcaption>
+          <ul aria-hidden="true" className="gang-grants-grid">
+            {GRANTABLE_REMOTES.map((name) => (
+              <li data-on={allowed.has(name) ? 'true' : undefined} key={name} title={`@${name}`} />
+            ))}
+          </ul>
+        </figure>
         <h4 className="gang-legend">
           {gang === undefined || gang === null
             ? t('cards.gang.legendUnknown')
@@ -402,6 +503,7 @@ function GangCard({
           : undefined
       }
       badge={badge}
+      className="gang-card"
       tabs={tabs}
       title={t('cards.gang.title')}
     />

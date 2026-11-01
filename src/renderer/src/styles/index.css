@@ -1937,7 +1937,6 @@ kbd {
   width: 1px;
 }
 
-
 /* ------------------------------------------------------------------ viz */
 
 /*
@@ -1949,43 +1948,43 @@ kbd {
 /* The tone (`VizTone`, `components/viz/tones.ts`) is set on the piece or on
    its parts; a level of caution or critical outranks it. */
 
-:where(.ring, .split) [data-tone],
-:where(.sparkline, .stat-cell, .kpi)[data-tone] {
+:where(.ring, .split, .histogram) [data-tone],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone] {
   --viz: var(--accent);
 }
 
-:where(.ring, .split) [data-tone='hp'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='hp'],
-:where(.ring, .split) [data-tone='ok'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='ok'],
-:where(.ring, .split) [data-tone='b'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='b'] {
+:where(.ring, .split, .histogram) [data-tone='hp'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='hp'],
+:where(.ring, .split, .histogram) [data-tone='ok'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='ok'],
+:where(.ring, .split, .histogram) [data-tone='b'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='b'] {
   --viz: var(--ok);
 }
 
-:where(.ring, .split) [data-tone='kai'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='kai'],
-:where(.ring, .split) [data-tone='d'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='d'] {
+:where(.ring, .split, .histogram) [data-tone='kai'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='kai'],
+:where(.ring, .split, .histogram) [data-tone='d'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='d'] {
   --viz: var(--marker);
 }
 
-:where(.ring, .split) [data-tone='foe'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='foe'],
-:where(.ring, .split) [data-tone='bad'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='bad'] {
+:where(.ring, .split, .histogram) [data-tone='foe'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='foe'],
+:where(.ring, .split, .histogram) [data-tone='bad'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='bad'] {
   --viz: var(--danger);
 }
 
-:where(.ring, .split) [data-tone='warn'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='warn'],
-:where(.ring, .split) [data-tone='c'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='c'] {
+:where(.ring, .split, .histogram) [data-tone='warn'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='warn'],
+:where(.ring, .split, .histogram) [data-tone='c'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='c'] {
   --viz: var(--pending);
 }
 
-:where(.ring, .split) [data-tone='quiet'],
-:where(.sparkline, .stat-cell, .kpi)[data-tone='quiet'] {
+:where(.ring, .split, .histogram) [data-tone='quiet'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='quiet'] {
   --viz: var(--text-lo-quiet);
 }
 
@@ -2211,6 +2210,78 @@ kbd {
   display: block;
   height: 100%;
   width: calc(var(--share, 0) * 100%);
+}
+
+/*
+ * The dot, the histogram and the recency pips (`Dot`, `Histogram`, `Recency`):
+ * the listings' marks, in the tones above, so a standing's dot on a row and
+ * its share of the bar over the table are one colour.
+ */
+.viz-dot {
+  background: var(--viz);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--viz) inset;
+  display: inline-block;
+  flex: 0 0 auto;
+  height: 7px;
+  vertical-align: 0.05em;
+  width: 7px;
+}
+
+.viz-dot[data-hollow='true'] {
+  background: transparent;
+}
+
+.histogram {
+  border-bottom: 1px solid color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.histogram rect {
+  fill: color-mix(in srgb, var(--viz) 60%, transparent);
+}
+
+.recency {
+  align-items: flex-end;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 1.5px;
+  height: 9px;
+  vertical-align: -0.05em;
+}
+
+.recency > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  border-radius: 1px;
+  display: block;
+  width: 2.5px;
+}
+
+.recency > i:nth-child(1) {
+  height: 40%;
+}
+
+.recency > i:nth-child(2) {
+  height: 60%;
+}
+
+.recency > i:nth-child(3) {
+  height: 80%;
+}
+
+.recency > i:nth-child(4) {
+  height: 100%;
+}
+
+.recency > i[data-lit='true'] {
+  background: var(--viz);
+}
+
+.recency[data-unknown='true'] > i {
+  background: transparent;
+  box-shadow: 0 0 0 0.5px var(--text-lo-quiet) inset;
 }
 
 .stats-graph {
@@ -11280,12 +11351,123 @@ tr:hover .row-action.worn,
    notices do not read as one six-line one. */
 .alert-list td {
   padding-bottom: 3px;
+  vertical-align: top;
+}
+
+/*
+ * A sentence wraps rather than being cut: the table's wide column is a name
+ * elsewhere, and an ellipsis there left a medium card with a dozen
+ * characters of each alert. Small keeps two lines a row.
+ */
+.alert-list td.wide {
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .alert-text {
   color: var(--text-hi);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Small draws no channel at all, as it drew no channel column. */
+.alert-card[data-card-size='small'] .alert-channel-tag {
+  display: none;
+}
+
+.alert-card[data-card-size='small'] .alert-text {
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* The level as a tonal edge down the row's first cell, beside its shape. */
+.alert-list tr[data-level] > td:first-child {
+  box-shadow: inset 2px 0 0 var(--alert-tone, transparent);
+  padding-left: 7px;
+}
+
+.alert-list tr[data-level='critical'] {
+  --alert-tone: var(--danger);
+}
+
+.alert-list tr[data-level='warning'] {
+  --alert-tone: var(--pending);
+}
+
+.alert-list tr[data-level='info'] {
+  --alert-tone: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+}
+
+.alert-level {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.alert-level .icon {
+  height: 13px;
+  width: 13px;
+}
+
+/*
+ * Under 400px of table (the medium and tall gallery boxes, 2026-10-31; the
+ * large one is about 450) the level is its shape alone, its word kept for
+ * hover and reading aloud, and the channel leads the sentence rather than
+ * taking a column, so the sentence has the width.
+ */
+.alert-card .table-scroller {
+  container-type: inline-size;
+}
+
+.alert-channel-tag {
+  color: var(--text-lo-quiet);
+  display: none;
+  font-size: var(--font-micro);
+  margin-right: 6px;
+}
+
+@container (max-width: 400px) {
+  .alert-list :is(th[data-column='channel'], td.channel) {
+    display: none;
+  }
+
+  .alert-list .alert-channel-tag {
+    display: inline;
+  }
+
+  .alert-list .alert-level-word {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+}
+
+/* Large, when the alerts came: the chart, and the record's first and last
+   times under its two ends. */
+.alert-timeline {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 8px;
+}
+
+.alert-timeline-chart {
+  height: 36px;
+}
+
+.alert-timeline figcaption {
+  color: var(--text-lo-quiet);
+  display: flex;
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  justify-content: space-between;
 }
 
 /* A filter that is off is tonal-off, not absent: it still says what it hides. */
@@ -11521,6 +11703,101 @@ tr:hover .row-action.worn,
   margin: 0;
 }
 
+/*
+ * The standings bar and the gangs over the table. A pane row of its own, so
+ * the table still scrolls under it; the legend names the bar's colours only
+ * where there is room for it, since the dot on every row repeats them.
+ */
+.realm-summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.realm-card:not([data-card-size='large']) .realm-summary .split-legend {
+  display: none;
+}
+
+.realm-gangs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.realm-gangs .chip {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.realm-gangs .chip > b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.realm-gangs .chip[data-hostile] {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  color: var(--danger);
+}
+
+.realm-align {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.realm-gang {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  white-space: nowrap;
+}
+
+/*
+ * The table measures its own width: under 290px of content the standing is
+ * its dot alone, the word kept for hover and reading aloud, the heading a dot
+ * too, and the gang column gives its width to the names. 290 sits between the
+ * rail's two-column card (under 290 in `out/gallery`'s 250, 300 and 330px
+ * boxes, 2026-10-31) and the large one (450 in the 480px box).
+ */
+.realm-card .table-scroller {
+  container-type: inline-size;
+}
+
+@container (max-width: 290px) {
+  .realm-list .realm-align-word {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .realm-list :is(th[data-column='gang'], td.gang) {
+    display: none;
+  }
+
+  .realm-list th[data-column='standing'] .sort {
+    font-size: 0;
+  }
+
+  .realm-list th[data-column='standing'] .sort::before {
+    content: '●';
+    font-size: var(--font-micro);
+  }
+
+  .realm-list th[data-column='standing'] .sort .arrow {
+    font-size: var(--font-micro);
+  }
+}
+
 /* ================================================================= player */
 
 /*
@@ -11555,6 +11832,53 @@ tr:hover .row-action.worn,
 
 .player-detail {
   margin: 0;
+}
+
+/* The dot before a name and the pips before an age, each kept on the line of
+   the word it qualifies. */
+.player-who,
+.player-when,
+/* The level chart over the table, large only: a heading row and the bars. */
+.players-levels {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 8px;
+}
+
+.players-levels figcaption {
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  justify-content: space-between;
+}
+
+.players-levels-chart {
+  height: 32px;
+}
+
+/*
+ * A name is the last thing to shorten: on a narrow table (under 290px of
+ * content, the Realm card's measure) the level and class give up their
+ * columns (both stay on the Player flyout, and the level chart above draws
+ * the levels) and the room is cut at a few words.
+ */
+.players-card .table-scroller {
+  container-type: inline-size;
+}
+
+@container (max-width: 290px) {
+  .player-list :is(th[data-column='level'], td.level, th[data-column='class'], td.class) {
+    display: none;
+  }
+
+  .player-list td.where {
+    max-width: 7.5em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 /*
@@ -11669,9 +11993,126 @@ tr:hover .row-action.worn,
   gap: 6px;
 }
 
-/* The gang's own head: which gang this character is in. */
-.gang-head {
+/*
+ * The gang's own head: a ring of the members online around their count, and
+ * the gang's name set large beside it with which listing the table is from.
+ */
+.gang-summary {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.gang-summary .ring {
+  --ring-d: 44px;
+}
+
+.gang-summary-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gang-summary-text > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
+.gang-summary-text > b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 2px);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gang-summary-text > b.inert {
+  color: var(--text-lo-quiet);
+}
+
+.gang-summary-text > small {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+/* Somebody not on reads quieter, the Players card's own rule. */
+.gang-table tr[data-offline] .gang-who {
+  color: var(--text-lo-quiet);
+}
+
+/* A level's hairline against the gang's highest, drawn only where large. */
+.gang-level {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gang-level > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 1px;
+  display: none;
+  height: 2px;
+  min-width: 2.5em;
+}
+
+.gang-level > i::before {
+  background: var(--accent);
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
+.card[data-card-size='large'] .gang-level > i {
+  display: block;
+}
+
+/* Every remote a gang grant can carry, a square each, lit where allowed. */
+.gang-grants {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.gang-grants figcaption {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.gang-grants-grid {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(auto-fill, 10px);
+  list-style: none;
   margin: 0;
+  padding: 0;
+}
+
+.gang-grants-grid > li {
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 2px;
+}
+
+.gang-grants-grid > li[data-on='true'] {
+  background: var(--ok);
+}
+
+/* Race gives its width to the names on a narrow table (the Realm card's 290px). */
+.gang-card .table-scroller {
+  container-type: inline-size;
+}
+
+@container (max-width: 290px) {
+  .gang-table :is(th[data-column='race'], td.race) {
+    display: none;
+  }
 }
 
 /*
@@ -13575,7 +14016,9 @@ tr:hover .row-action.worn,
   --ring-d: 30px;
 }
 
-.party-card .scroller[data-fit='compact'] :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label) {
+.party-card
+  .scroller[data-fit='compact']
+  :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label) {
   display: none;
 }
 

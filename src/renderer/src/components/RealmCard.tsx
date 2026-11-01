@@ -7,6 +7,9 @@ import type { PopoverAnchor } from '../lib/popover';
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
+import Dot from './viz/Dot';
+import SplitBar, { type SplitPart } from './viz/SplitBar';
+import type { VizTone } from './viz/tones';
 import { isHostile, type Adventurer } from '@shared/character';
 import { playerKey } from '@shared/players';
 import type { SessionId } from '@shared/ipc';
@@ -64,17 +67,39 @@ const RANK: Record<string, number> = {
  * The standing itself stays in the first column, in the realm's own word, so
  * grouping them costs no detail.
  */
+/** The four groups, in the bar's order: worst first, unknown next to it. */
+const STANDING_IDS = ['hostile', 'unknown', 'neutral', 'lawful'] as const;
+type Standing = (typeof STANDING_IDS)[number];
+
+const STANDING_LABEL: Record<Standing, string> = {
+  hostile: t('cards.realm.facet.hostile'),
+  neutral: t('cards.realm.facet.neutral'),
+  lawful: t('cards.realm.facet.lawful'),
+  unknown: t('cards.realm.facet.unknown')
+};
+
 const STANDINGS: readonly Facet[] = [
-  { id: 'hostile', label: t('cards.realm.facet.hostile'), level: 'critical' },
-  { id: 'neutral', label: t('cards.realm.facet.neutral') },
-  { id: 'lawful', label: t('cards.realm.facet.lawful') },
-  { id: 'unknown', label: t('cards.realm.facet.unknown'), level: 'warning' }
+  { id: 'hostile', label: STANDING_LABEL.hostile, level: 'critical' },
+  { id: 'neutral', label: STANDING_LABEL.neutral },
+  { id: 'lawful', label: STANDING_LABEL.lawful },
+  { id: 'unknown', label: STANDING_LABEL.unknown, level: 'warning' }
 ];
+
+/*
+ * Each group's hue on the dot and the bar: the danger hue for hostile, the
+ * pending hue for unknown (neither safe nor an alarm), quiet for neutral.
+ */
+const TONE: Record<Standing, VizTone> = {
+  hostile: 'bad',
+  unknown: 'warn',
+  neutral: 'quiet',
+  lawful: 'ok'
+};
 
 /** What a name with no title yet says in the Title column, in one place. */
 const JUST_ARRIVED = t('cards.realm.justArrived');
 
-function standing(entry: Adventurer): string {
+function standing(entry: Adventurer): Standing {
   if (entry.alignment === null) return 'unknown';
   if (isHostile(entry.alignment)) return 'hostile';
   return entry.alignment === 'Lawful' || entry.alignment === 'Good' || entry.alignment === 'Saint'
@@ -92,6 +117,40 @@ function rankOf(alignment: Adventurer['alignment']): number {
 function order(a: Adventurer, b: Adventurer): number {
   const difference = rankOf(a.alignment) - rankOf(b.alignment);
   return difference !== 0 ? difference : a.name.localeCompare(b.name);
+}
+
+/** The roster cut into the four groups, as the bar over the table draws it. */
+function standingParts(roster: readonly Adventurer[]): SplitPart[] {
+  const counts = new Map<Standing, number>();
+  for (const entry of roster) counts.set(standing(entry), (counts.get(standing(entry)) ?? 0) + 1);
+  return STANDING_IDS.map((id) => ({
+    key: id,
+    label: STANDING_LABEL[id],
+    value: counts.get(id) ?? 0,
+    tone: TONE[id]
+  }));
+}
+
+interface GangCount {
+  gang: string;
+  count: number;
+  /** Whether anybody listed in it is hostile, which tints its chip. */
+  hostile: boolean;
+}
+
+/** The gangs the roster names, the largest first. */
+function gangsOf(roster: readonly Adventurer[]): GangCount[] {
+  const gangs = new Map<string, GangCount>();
+  for (const entry of roster) {
+    if (entry.gang === null) continue;
+    const known = gangs.get(entry.gang) ?? { gang: entry.gang, count: 0, hostile: false };
+    gangs.set(entry.gang, {
+      ...known,
+      count: known.count + 1,
+      hostile: known.hostile || isHostile(entry.alignment)
+    });
+  }
+  return [...gangs.values()].sort((a, b) => b.count - a.count || a.gang.localeCompare(b.gang));
 }
 
 /**
@@ -133,6 +192,8 @@ function RealmCard({
 }: RealmCardProps) {
   const roster = useMemo(() => [...online].sort(order), [online]);
   const hostile = roster.filter((entry) => isHostile(entry.alignment)).length;
+  const parts = useMemo(() => standingParts(roster), [roster]);
+  const gangs = useMemo(() => gangsOf(roster), [roster]);
   /* The `who` listing includes the character reading it. See the name column. */
   const self = name === null ? null : playerKey(name);
 
@@ -163,11 +224,18 @@ function RealmCard({
       // before `Good` is the order that means something here, and A-to-Z would
       // put `Criminal` next to `Good` and call it a sort.
       value: (entry) => rankOf(entry.alignment),
-      cell: (entry) => (
+      cell: (entry) => {
         /* The standing is a word, never only a hue: §6, and this is the card
-           where that matters most. */
-        <span className="realm-align">{entry.alignment ?? t('cards.realm.facet.unknown')}</span>
-      )
+           where that matters most. A narrow card draws the dot and keeps the
+           word for hover and for anything reading aloud. */
+        const word = entry.alignment ?? t('cards.realm.facet.unknown');
+        return (
+          <span className="realm-align">
+            <Dot label={word} tone={TONE[standing(entry)]} />
+            <span className="realm-align-word">{word}</span>
+          </span>
+        );
+      }
     },
     {
       id: 'name',
@@ -208,6 +276,14 @@ function RealmCard({
           {entry.title ?? (entry.provisional ? JUST_ARRIVED : '')}
         </span>
       )
+    },
+    {
+      id: 'gang',
+      label: t('cards.realm.column.gang'),
+      from: 'large',
+      value: (entry) => entry.gang,
+      cell: (entry) =>
+        entry.gang === null ? null : <span className="realm-gang">{entry.gang}</span>
     }
   ];
 
@@ -219,6 +295,30 @@ function RealmCard({
       paned
       title={t('cards.realm.title')}
     >
+      {/*
+        The standings as one bar, worst first, over the table: how much of the
+        realm is hostile before a single row is read. Large adds what each
+        colour is and the gangs present, sized by how many of each are on.
+      */}
+      {roster.length === 0 ? null : (
+        <div className="realm-summary">
+          <SplitBar label={t('cards.realm.summaryLabel')} parts={parts} />
+          {gangs.length === 0 ? null : (
+            <ul aria-label={t('cards.realm.gangsLabel')} className="realm-gangs from-large">
+              {gangs.map((entry) => (
+                <li
+                  className="chip"
+                  data-hostile={entry.hostile ? 'true' : undefined}
+                  key={entry.gang}
+                >
+                  {entry.gang}
+                  <b>{entry.count}</b>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {/*
         A busy realm lists forty people and the one being asked about is a name
         somebody has just been told over telepath. Finding it by eye down a
