@@ -3301,15 +3301,17 @@ describe('the party this character travels with', () => {
     expect(tracker.current.party.members).toEqual([]);
   });
 
-  /* A letter nothing has established keeps its letter and claims nothing. */
-  it('keeps a flag it cannot name rather than expanding it', () => {
+  /* Capture 039's rows; `P` is poison by GreaterMUD's `PartyCommand.cs`. A
+     letter nothing has established keeps its letter and claims nothing. */
+  it('reads P as poisoned and keeps a flag it cannot name as printed', () => {
     const { tracker, feed } = feeder();
     feed('[HP=590/754]:');
     feed('The following people are in your travel party:');
     feed('  Alucard Vampire                (Gypsy)      [M: 81%] [H:100%]P  - Frontrank');
-    feed('  Ultralisk SevenHundred         (Witchunter)          [H: 78%]P  - Frontrank');
+    feed('  Ultralisk SevenHundred         (Witchunter)          [H: 78%]Q  - Frontrank');
     feed('[HP=590/754]:');
-    expect(tracker.current.party.members[0]?.activity).toEqual({ state: 'unknown', flag: 'P' });
+    expect(tracker.current.party.members[0]?.activity).toEqual({ state: 'poisoned' });
+    expect(tracker.current.party.members[1]?.activity).toEqual({ state: 'unknown', flag: 'Q' });
   });
 
   /*

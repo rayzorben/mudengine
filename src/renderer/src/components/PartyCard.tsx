@@ -2,13 +2,7 @@ import { memo, useMemo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import Icon, { type IconName } from './Icon';
-import PartyMemberRow, {
-  PARTY_FITS,
-  SHEET_FIGURES,
-  type PartyBest,
-  type SheetFigure,
-  type Who
-} from './PartyMemberRow';
+import PartyMemberRow from './PartyMemberRow';
 import {
   ratio,
   vitalLevel,
@@ -23,7 +17,6 @@ import { playerKey, recordOf, type PlayerRegistry } from '@shared/players';
 import { memberSheetOf } from '@shared/remotes';
 import type { PopoverAnchor } from '../lib/popover';
 import { tuning } from '../lib/tuning';
-import { useFitTier } from '../hooks/useFitTier';
 
 export interface PartyCardProps extends CardChrome {
   character: CharacterState;
@@ -149,24 +142,6 @@ function PartyCard({
       ? party.members
       : [...party.members].sort((a, b) => Number(isHead(b)) - Number(isHead(a)));
 
-  /*
-   * Eight members fit only when each row gives something up, and which drawing
-   * fits is measured on the scroller: every row with its stat line, then the
-   * stat lines dropped, then one line a member. What a row draws changes only
-   * with who is in it and what is known of them, so that is what starts the
-   * measuring again; a resize does too. A fight or a rest coming and going is
-   * not: the fight line keeps its place in the row and the rest sits on the
-   * name line, so neither moves the card's drawing mid-fight.
-   */
-  const drawn = members
-    .map((m) => [m.name, m.invited, m.health !== null, m.sheet !== null, m.mana !== null].join(':'))
-    .join(',');
-  const [scroller, tier] = useFitTier<HTMLDivElement>(
-    PARTY_FITS.length,
-    (node) => node.scrollHeight > node.clientHeight,
-    drawn
-  );
-  const fit = PARTY_FITS[tier] ?? 'compact';
   // Held by value: the party is rebuilt on every status line, and a new scale
   // object would redraw every memoised row with it.
   const sheets = sheetsKey(members);
@@ -193,39 +168,41 @@ function PartyCard({
       paned
       title={t('cards.party.title')}
     >
-      <div className="scroller" data-fit={fit} ref={scroller}>
+      <div className="scroller">
         {members.length === 0 ? (
           <div className="empty">{t('cards.party.empty')}</div>
         ) : (
-          GROUPS.map(({ key, label }) => {
-            const inRank = members.filter((entry) => groupOf(entry) === key);
-            if (inRank.length === 0) return null;
-            return (
-              <section className="party-rank-group" data-rank={key} key={key}>
-                <h4 className="party-rank-head">{label}</h4>
-                <ul className="party-list">
-                  {inRank.map((member) => (
-                    <PartyMemberRow
-                      ask={ask}
-                      best={best}
-                      fighting={fightingWord(character, member.name)}
-                      fit={fit}
-                      head={isHead(member)}
-                      hitBy={hitByWord(character, member.name)}
-                      key={member.name}
-                      member={member}
-                      onSelect={onSelect}
-                      person={isKnownPlayer(players, character, member.name)}
-                      selected={playerKey(member.name) === subject}
-                      self={isSelf(character, member.name)}
-                      thresholds={thresholds}
-                      {...whoIs(character, players, member)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })
+          /* One grid for every group, each row a subgrid of it, so names and
+             classes line up down the whole card, by measurement. */
+          <div className="party-roster">
+            {GROUPS.map(({ key, label }) => {
+              const inRank = members.filter((entry) => groupOf(entry) === key);
+              if (inRank.length === 0) return null;
+              return (
+                <section className="party-rank-group" data-rank={key} key={key}>
+                  <h4 className="party-rank-head">{label}</h4>
+                  <ul className="party-list">
+                    {inRank.map((member) => (
+                      <PartyMemberRow
+                        ask={ask}
+                        className={classOf(character, players, member)}
+                        fighting={fightingWord(character, member.name)}
+                        head={isHead(member)}
+                        hitBy={hitByWord(character, member.name)}
+                        key={member.name}
+                        member={member}
+                        onSelect={onSelect}
+                        person={isKnownPlayer(players, character, member.name)}
+                        selected={playerKey(member.name) === subject}
+                        self={isSelf(character, member.name)}
+                        thresholds={thresholds}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
         )}
         {members.length > 0 && <BestHands best={best} />}
       </div>
@@ -246,11 +223,15 @@ function ownRow(character: CharacterState, member: PartyMember): PartyMember {
   const sheet = memberSheetOf(character.progress);
   const health = ratio(hp, hpMax);
   const magic = ratio(mana, manaMax);
+  // The server's order on the listing: resting, then meditating, then poison,
+  // which the prompt never shows and the character's own sentences do.
   const activity: PartyActivity | null = resting
     ? { state: 'resting' }
     : meditating
       ? { state: 'meditating' }
-      : null;
+      : character.afflictions.poisoned === 'yes'
+        ? { state: 'poisoned' }
+        : null;
   return {
     ...member,
     health: health ?? member.health,
@@ -263,57 +244,50 @@ function ownRow(character: CharacterState, member: PartyMember): PartyMember {
 }
 
 /**
- * Race, class and level: this character's own off its stat sheet, anyone
- * else's off the player record (`bg` states all three) and their `@stats`
- * answer, the newer source for a level. Unknown stays unknown.
+ * A member's class: this character's own off its stat sheet, anyone else's
+ * off the listing, else the player record (`bg` states it). Unknown stays
+ * unknown.
  */
-function whoIs(character: CharacterState, players: PlayerRegistry, member: PartyMember): Who {
-  if (isSelf(character, member.name)) {
-    return {
-      race: character.race,
-      className: character.className ?? member.className,
-      level: character.progress.level ?? member.sheet?.level ?? null
-    };
-  }
-  const record = recordOf(players, member.name);
-  return {
-    race: record?.race ?? null,
-    className: member.className ?? record?.className ?? null,
-    level: member.sheet?.level ?? record?.level ?? null
-  };
+function classOf(
+  character: CharacterState,
+  players: PlayerRegistry,
+  member: PartyMember
+): string | null {
+  if (isSelf(character, member.name)) return character.className ?? member.className;
+  return member.className ?? recordOf(players, member.name)?.className ?? null;
 }
 
-/**
- * The party's highest of each sheet figure and who holds it, in one pass over
- * the members whose sheet states it: the scale each stat line is drawn against
- * and the names the footer gives.
- */
+/** A sheet figure the footer names: who goes at a trap, a lock and a door. */
+type HandFigure = 'traps' | 'picklocks' | 'strength';
+
+/** The party's highest of each figure the footer names, and who holds it. */
+type PartyBest = Readonly<Partial<Record<HandFigure, { name: string; value: number }>>>;
+
+/** The party's highest of each footer figure, in one pass over the members whose sheet states it. */
 function partyBest(members: readonly PartyMember[]): PartyBest {
-  const best: Partial<Record<SheetFigure, { name: string; value: number }>> = {};
+  const best: Partial<Record<HandFigure, { name: string; value: number }>> = {};
   for (const member of members) {
     if (member.sheet === null) continue;
-    for (const figure of SHEET_FIGURES) {
-      const value = member.sheet[figure];
-      const held = best[figure];
+    for (const { key } of HANDS) {
+      const value = member.sheet[key];
+      const held = best[key];
       if (value !== null && (held === undefined || value > held.value)) {
-        best[figure] = { name: member.name, value };
+        best[key] = { name: member.name, value };
       }
     }
   }
   return best;
 }
 
-/** What `partyBest` reads, as one string: a status line that moves nothing here keeps the scale. */
+/** What `partyBest` reads, as one string: a status line that moves nothing here keeps it. */
 function sheetsKey(members: readonly PartyMember[]): string {
   return members
-    .map(
-      (m) => `${m.name}:${m.sheet === null ? '' : SHEET_FIGURES.map((f) => m.sheet?.[f]).join('/')}`
-    )
+    .map((m) => `${m.name}:${m.sheet === null ? '' : HANDS.map((h) => m.sheet?.[h.key]).join('/')}`)
     .join(',');
 }
 
 /** The three hands the footer names, each with its glyph and the sheet figure it reads. */
-const HANDS: ReadonlyArray<{ key: SheetFigure; label: string; icon: IconName }> = [
+const HANDS: ReadonlyArray<{ key: HandFigure; label: string; icon: IconName }> = [
   { key: 'traps', label: t('cards.party.stat.traps'), icon: 'eye' },
   { key: 'picklocks', label: t('cards.party.stat.picklocks'), icon: 'key' },
   { key: 'strength', label: t('cards.party.bash'), icon: 'hammer' }

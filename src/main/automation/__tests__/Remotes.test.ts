@@ -5,7 +5,13 @@ import { Remotes, SWITCH_REMOTES } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyActivity,
+  type CharacterState,
+  type PartyMember,
+  type RoomOccupant
+} from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { wireExit, wireItem } from '../../../shared/entities';
 import type { AutomationConfig, AutomationSwitch } from '../../../shared/config';
@@ -2601,7 +2607,7 @@ describe('party pacing', () => {
       }
     );
   };
-  const member = (name: string, health: number | null) => ({
+  const member = (name: string, health: number | null): PartyMember => ({
     name,
     className: null,
     health,
@@ -2639,9 +2645,13 @@ describe('party pacing', () => {
     expect(wait(' (poisoned)')).toEqual(['Soul:wait']);
     // No reading of the member, or a flag this client cannot read: the @wait stands.
     expect(wait('', member('Soul', null))).toEqual(['Soul:wait']);
-    expect(
-      wait('', { ...member('Soul', 0.6), activity: { state: 'unknown', flag: 'P' } as never })
-    ).toEqual(['Soul:wait']);
+    expect(wait('', { ...member('Soul', 0.6), activity: partyActivity('X') })).toEqual([
+      'Soul:wait'
+    ]);
+    // A row the listing marks poisoned (`P`) is a condition, so the @wait stands.
+    expect(wait('', { ...member('Soul', 0.6), activity: partyActivity('P') })).toEqual([
+      'Soul:wait'
+    ]);
     expect(wait('', member('Soul', 0.6), { manageParty: false })).toEqual(['Soul:wait']);
   });
 

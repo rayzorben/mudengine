@@ -12183,8 +12183,7 @@ button.lookup:focus-visible {
   .settings-name,
   .combat-name .name,
   .party-name,
-  .party-what,
-  .party-meter-value,
+  .party-pill > span,
   .rewrite-list .rewrite-name,
   .rewrite-tag .hint,
   .settings-saving,
@@ -15689,33 +15688,38 @@ tr:hover .row-action.worn,
 
 /*
  * The only place another character's health is visible, and it costs one
- * command rather than a second connection.
+ * command rather than a second connection. Drawn as one list in formation
+ * (the user, 2026-11-01): every group and row is a subgrid of `.party-roster`,
+ * so names and classes line up down the card. The name column is as wide as
+ * the longest name up to 45% of the card; a longer one is shortened.
  */
-.party-list {
+.party-roster {
+  column-gap: 10px;
   display: grid;
-  gap: 6px;
-  /* A member is a tile; a card wide enough for two side by side lays them so.
-     270px is the narrowest tile whose bar keeps `100% of 4,434 critical`
-     beside a usable track, measured in the gallery. */
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  grid-template-columns: fit-content(45%) max-content minmax(0, 1fr);
+  row-gap: 2px;
+}
+
+.party-rank-group,
+.party-list,
+.party-member {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.party-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  row-gap: 2px;
 }
 
 .party-member {
-  align-items: start;
-  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
-  border-radius: var(--r-control);
-  column-gap: 9px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-width: 0;
-  padding: 7px 8px;
-}
-
-.party-member > .ring {
-  --ring-d: 38px;
+  align-items: center;
+  border-radius: var(--r-chip);
+  padding: 3px 4px;
+  row-gap: 2px;
 }
 
 .party-member[data-hurt] {
@@ -15727,35 +15731,13 @@ tr:hover .row-action.worn,
 }
 
 .party-member[data-invited] {
-  background: transparent;
-  outline: var(--rule) dashed var(--ink-edge);
-  outline-offset: -1px;
-}
-
-.party-member[data-invited] > .ring {
   opacity: 0.6;
-}
-
-.party-member-main {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.party-who {
-  align-items: center;
-  display: flex;
-  gap: 6px;
-  min-height: 20px;
-  min-width: 0;
 }
 
 .party-name {
   color: var(--text-hi);
-  flex: 0 1 auto;
   font-weight: 600;
-  min-width: 3ch;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -15778,99 +15760,173 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
 }
 
-.party-what {
-  color: var(--text-lo-quiet);
-  font-size: var(--font-micro);
+.party-class {
+  color: var(--text-lo);
+  white-space: nowrap;
+}
+
+/* The fight pills shrink first when the name line is short of room. */
+.party-fight {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  min-height: 20px;
   min-width: 0;
+}
+
+.party-pill {
+  align-items: center;
+  border: var(--rule) solid;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  flex: 0 1 auto;
+  font-size: var(--font-micro);
+  gap: 4px;
+  line-height: 1.35;
+  min-width: 0;
+  padding: 0 7px;
+}
+
+.party-pill > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.party-what > span + span::before {
-  content: ' · ';
-}
-
-.party-activity {
-  align-items: center;
-  background: color-mix(in srgb, var(--pending) var(--tone-weak), transparent);
-  border-radius: var(--r-chip);
-  color: var(--pending);
-  display: inline-flex;
+.party-pill .icon {
   flex: 0 0 auto;
-  font-size: var(--font-micro);
-  gap: 3px;
-  padding: 0 5px;
+  height: 11px;
+  width: 11px;
 }
 
-.party-activity .icon {
-  height: 12px;
-  width: 12px;
+.party-fighting {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text-hi));
 }
 
-.party-activity[data-state='unknown'] {
-  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
-  color: var(--text-lo);
-  font-family: var(--font-mono);
+.party-hit-by {
+  background: color-mix(in srgb, var(--pending) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--pending) var(--tone-strong), transparent);
+  color: var(--pending);
 }
 
 .party-follow {
   align-items: center;
   display: inline-flex;
   flex: 0 0 auto;
-  gap: 4px;
-  margin-left: auto;
   min-height: 0;
-  padding: 1px 5px;
+  padding: 1px 4px;
 }
 
 .party-follow .icon {
-  height: 15px;
-  width: 15px;
+  height: 14px;
+  width: 14px;
 }
 
-.party-fight {
-  display: flex;
-  gap: 4px;
+.party-unlisted {
+  grid-column: 1 / -1;
+}
+
+/* Health two parts, mana one, side by side under the name line. */
+.party-meters {
+  column-gap: 12px;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 2fr 1fr;
   min-width: 0;
 }
 
-.party-fight[data-empty] {
-  visibility: hidden;
-}
-
-.party-fight > .chip {
+.party-meter {
+  /* The bar's own hue; the pill's figure takes a tint of it. */
+  --party-fill: var(--ok);
   align-items: center;
-  display: inline-flex;
-  flex: 0 1 auto;
-  gap: 3px;
+  display: grid;
+  height: 18px;
   min-width: 0;
-  text-transform: none;
+  position: relative;
 }
 
-.party-fight > .chip > span {
+.party-meter[data-level='caution'] {
+  --party-fill: var(--pending);
+}
+
+.party-meter[data-level='critical'] {
+  --party-fill: var(--danger);
+}
+
+.party-meter.mana {
+  --party-fill: var(--accent);
+}
+
+.party-meter.kai {
+  --party-fill: var(--marker);
+}
+
+.party-bar {
+  background: color-mix(in srgb, var(--text-hi) 10%, transparent);
+  border-radius: var(--r-pill);
+  display: block;
+  height: 3px;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.party-bar > span {
+  background: var(--party-fill);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width var(--dur-control) var(--ease-out);
+}
+
+/* The pill sits in the bar's middle, over the line, on the card's own ground. */
+.party-meter-value {
+  align-items: center;
+  background: var(--ink-card);
+  border: var(--rule) solid var(--ink-edge);
+  border-radius: var(--r-chip);
+  color: color-mix(in srgb, var(--party-fill) 55%, var(--text-hi));
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  gap: 5px;
+  left: 50%;
+  line-height: 1.35;
+  max-width: 100%;
+  padding: 0 6px;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
   white-space: nowrap;
 }
 
-.party-fight .icon {
-  flex: 0 0 auto;
-  height: 11px;
-  width: 11px;
+/* The flag after a hairline, in its own hue, which the pill's rim takes too. */
+.party-meter-value[data-state] {
+  --party-state: var(--text-lo);
+  border-color: color-mix(in srgb, var(--party-state) 60%, transparent);
 }
 
-.party-rank-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+.party-meter-value[data-state='resting'] {
+  --party-state: var(--accent);
 }
 
-.party-rank-group + .party-rank-group {
-  margin-top: 8px;
+.party-meter-value[data-state='meditating'] {
+  --party-state: var(--marker);
 }
 
-/* A rank is a label over a hairline, never a box: the members are the surfaces. */
+.party-meter-value[data-state='poisoned'] {
+  --party-state: color-mix(in srgb, var(--ok) 55%, var(--pending));
+}
+
+.party-activity {
+  border-left: var(--rule) solid var(--ink-edge);
+  color: var(--party-state);
+  letter-spacing: 0.04em;
+  padding-left: 5px;
+}
+
 .party-rank-head {
   align-items: center;
   color: var(--text-lo-quiet);
@@ -15878,36 +15934,21 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
   font-weight: 600;
   gap: 8px;
+  grid-column: 1 / -1;
   letter-spacing: 0.08em;
-  margin: 0;
+  margin: 6px 0 0;
   text-transform: uppercase;
 }
 
+.party-rank-group:first-child > .party-rank-head {
+  margin-top: 0;
+}
+
+/* A rank is a label over a hairline, never a box. */
 .party-rank-head::after {
   border-top: var(--rule) solid var(--ink-line);
   content: '';
   flex: 1 1 auto;
-}
-
-.party-stats {
-  display: grid;
-  gap: 4px 8px;
-  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
-  margin-top: 3px;
-}
-
-.party-stats .stat-cell > b {
-  font-size: var(--font-micro);
-}
-
-.party-stats .stat-cell[data-best] > i::before {
-  background: var(--pending);
-}
-
-.party-stats.none {
-  color: var(--text-lo-quiet);
-  display: block;
-  font-size: var(--font-micro);
 }
 
 .party-best {
@@ -15920,10 +15961,6 @@ tr:hover .row-action.worn,
   gap: 4px 14px;
   margin-top: auto;
   padding-top: 6px;
-}
-
-.party-rank-group:last-of-type {
-  margin-bottom: 8px;
 }
 
 .party-hand {
@@ -15954,184 +15991,26 @@ tr:hover .row-action.worn,
   opacity: 0.6;
 }
 
-.party-meters {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.party-meter {
-  align-items: center;
-  color: var(--text-lo);
-  display: grid;
-  font-size: var(--font-micro);
-  gap: 6px;
-  grid-template-columns: 3ch minmax(0, 1fr) max-content;
-  min-width: 0;
-}
-
-.party-meter-label {
-  color: var(--text-lo-quiet);
-  font-family: var(--font-mono);
-}
-
-/* The bar gives way before the figure does: a clipped `4,434` reading `4,4`
-   would be a wrong maximum stated confidently, so the figure's track is its
-   own width (`max-content`) and the smoke measures it whole at the floor. */
-.party-meter-value {
-  font-variant-numeric: tabular-nums;
-  min-width: 0;
-  overflow: hidden;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.party-meter-short {
-  display: none;
-}
-
-.party-bar {
-  background: color-mix(in srgb, var(--text-hi) 10%, transparent);
-  border-radius: var(--r-pill);
-  display: block;
-  height: 5px;
-  overflow: hidden;
-}
-
-.party-bar > span {
-  background: var(--ok);
-  border-radius: inherit;
-  display: block;
-  height: 100%;
-  transition: width var(--dur-control) var(--ease-out);
-}
-
-.party-meter.mana > .party-bar > span {
-  background: var(--accent);
-}
-
-.party-meter.kai > .party-bar > span {
-  background: var(--marker);
-}
-
-/* The level drives the hue, and the level word beside the figure says it in
-   words as well — the same arrangement the Vitals meters use. */
-.party-meter[data-level='caution'] > .party-bar > span {
-  background: var(--pending);
-}
-
-.party-meter[data-level='critical'] {
-  color: var(--danger);
-}
-
-.party-meter[data-level='critical'] > .party-bar > span {
-  background: var(--danger);
-}
-
 /*
- * The four drawings, fullest first, chosen by measurement (`PARTY_FITS`):
- * `full` adds each member's stats; `detail` is the row without them; `brief`
- * drops the race line and the mana bar, which the ring still draws; `compact`
- * is one line a member, the ring, the name and the percentage.
+ * On a narrow card mana goes under health, each bar the full width. 280px:
+ * the widest health pill the smoke draws (`1,774/4,434` and `resting`) is
+ * 139px and needs two thirds of the row less the gap, and a mana pill as
+ * wide as `4,434/4,434` needs a third (measured in the smoke at the rail's floor).
  */
-.party-card .scroller[data-fit='brief'] :is(.party-what, .party-meter.mana) {
-  display: none;
+@container party (width < 280px) {
+  .party-meters {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 2px;
+  }
 }
 
-/* The footer is the first thing a short card gives up: the members come first.
-   It sits inside the measured scroller, at its foot while there is room, so
-   giving it up changes what is measured and never the scroller's own box. */
+/* The footer sits at the scroller's foot while there is room. */
 .party-card .scroller {
   container: party / inline-size;
-  /* A scrollbar that came and went with the drawing would change the width,
-     the tile count and the height, and `useFitTier` would start over. */
-  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
-}
-
-.party-card .scroller:is([data-fit='brief'], [data-fit='compact']) .party-best {
-  display: none;
-}
-
-.party-card .scroller[data-fit='brief'] .party-member > .ring {
-  --ring-d: 30px;
-}
-
-.party-card
-  .scroller[data-fit='compact']
-  :is(.party-what, .party-fight, .party-unlisted, .party-meter.mana, .party-meter-label) {
-  display: none;
-}
-
-/* One line a member: the name, then the health bar in whatever width is left. */
-.party-card .scroller[data-fit='compact'] .party-member-main {
-  align-items: center;
-  flex-direction: row;
   gap: 8px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-who {
-  flex: 0 1 auto;
-  max-width: 60%;
-}
-
-.party-card .scroller[data-fit='compact'] .party-meters {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.party-card .scroller[data-fit='compact'] .party-meter {
-  grid-template-columns: minmax(0, 1fr) max-content;
-}
-
-/* Under 220px (measured in the gallery at the 250px card: the name, the glyph
-   and a bar under 40px could not share a line) the bar goes and the figure stays. */
-@container party (width < 220px) {
-  .party-card .scroller[data-fit='compact'] .party-bar {
-    display: none;
-  }
-
-  .party-card .scroller[data-fit='compact'] .party-meter {
-    grid-template-columns: auto;
-    justify-content: end;
-  }
-
-  .party-card .scroller[data-fit='compact'] .party-meter-full {
-    display: none;
-  }
-
-  .party-card .scroller[data-fit='compact'] .party-meter-short {
-    display: inline;
-  }
-
-  /* The name gives way here, not the figure the smoke measures whole. */
-  .party-card .scroller[data-fit='compact'] .party-who {
-    max-width: none;
-  }
-
-  .party-card .scroller[data-fit='compact'] .party-meters {
-    flex: 0 0 auto;
-  }
-}
-
-.party-card .scroller[data-fit='compact'] .party-list {
-  gap: 2px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-member {
-  align-items: center;
-  padding: 2px 6px 2px 2px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-member > .ring {
-  --ring-d: 22px;
-}
-
-.party-card .scroller[data-fit='compact'] .party-rank-group + .party-rank-group {
-  margin-top: 4px;
+  scrollbar-gutter: stable;
 }
 
 /*

@@ -4,7 +4,12 @@ import { CommandQueue } from '../CommandQueue';
 import { PartyCures } from '../PartyCures';
 import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyActivity,
+  type CharacterState,
+  type PartyMember
+} from '../../../shared/character';
 import type { RealmFamily } from '../../../shared/realm';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 
@@ -25,7 +30,7 @@ const member = (name: string, flag: string | null): PartyMember => ({
   health: 1,
   mana: null,
   rank: 'front',
-  activity: flag === null ? null : { state: 'unknown', flag },
+  activity: flag === null ? null : partyActivity(flag),
   invited: false,
   vitals: null,
   pool: null,

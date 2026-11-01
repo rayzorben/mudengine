@@ -35,9 +35,6 @@ import type { WorldSpell } from '../../shared/world';
 import type { SessionModule } from './Module';
 import type { NoticeSink } from '../../shared/decisionSettings';
 
-/** The listing's letter for a poisoned member, on GreaterMUD. */
-const POISONED_FLAG = 'P';
-
 export interface PartyCureParts {
   queue: CommandQueue;
   realmSpell: (name: string) => WorldSpell | null;
@@ -50,11 +47,7 @@ export interface PartyCureParts {
 
 /** Whether the listing marks this member poisoned. */
 function poisoned(member: PartyMember): boolean {
-  return (
-    !member.invited &&
-    member.activity?.state === 'unknown' &&
-    member.activity.flag.trim().toUpperCase() === POISONED_FLAG
-  );
+  return !member.invited && member.activity?.state === 'poisoned';
 }
 
 /** A member to cure, and of what. */

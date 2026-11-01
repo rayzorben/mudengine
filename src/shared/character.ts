@@ -1219,14 +1219,20 @@ export type MemberSheet = Readonly<Record<TrainedAttribute, number>> & {
  * `(Resting)` while its row carries `R`. `M` is meditating, the kai classes'
  * form of the same thing, seen live on 2026-08-27.
  *
- * **An unrecognised letter keeps its letter and claims nothing.** `P` sits on
- * every member of a five-strong party mid-fight in both of capture 039's
- * listings and nothing on the wire says what it stands for; a plausible
- * expansion here would be a condition the card states in the server's own voice
- * without the server having said it.
+ * `P` is poisoned. GreaterMUD's `PartyCommand.cs` prints `R`, else `M`, else
+ * `P` when the member carries a poison, so a resting member's poison is not on
+ * the row. That rests on the server's source; the wire shows `P` on a whole
+ * party mid-fight with tasloi shamans (capture 039) and nothing contradicts it.
+ * `PartyCures` cures on it.
+ *
+ * **An unrecognised letter keeps its letter and claims nothing**: expanding it
+ * would put a condition on the card the server never stated.
  */
 export type PartyActivity =
-  { state: 'resting' } | { state: 'meditating' } | { state: 'unknown'; flag: string };
+  | { state: 'resting' }
+  | { state: 'meditating' }
+  | { state: 'poisoned' }
+  | { state: 'unknown'; flag: string };
 
 /**
  * The letter as printed, read for what has actually been established.
@@ -1241,6 +1247,7 @@ export function partyActivity(flag: string | undefined): PartyActivity | null {
   const letter = flag.toUpperCase();
   if (letter === 'R') return { state: 'resting' };
   if (letter === 'M') return { state: 'meditating' };
+  if (letter === 'P') return { state: 'poisoned' };
   return { state: 'unknown', flag };
 }
 

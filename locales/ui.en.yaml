@@ -459,8 +459,8 @@ notices:
       many: 'Re-form the Party After a Disconnect went from {from} to {minutes} min, so the loop waits for a member who hung up, in {count} files: {fileList}'
       one: 'Re-form the Party After a Disconnect went from {from} to {minutes} min, so the loop waits for a member who hung up, in {fileList}'
     regroupUntilBack:
-      many: 'Rejoin Wait went from {from} min to 0, so after a room''s command splits the party the walk waits until everyone is back, in {count} files: {fileList}'
-      one: 'Rejoin Wait went from {from} min to 0, so after a room''s command splits the party the walk waits until everyone is back, in {fileList}'
+      many: "Rejoin Wait went from {from} min to 0, so after a room's command splits the party the walk waits until everyone is back, in {count} files: {fileList}"
+      one: "Rejoin Wait went from {from} min to 0, so after a room's command splits the party the walk waits until everyone is back, in {fileList}"
     chanceWays:
       many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
       one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
@@ -3254,24 +3254,12 @@ cards:
     hitBy: 'hit by {target}'
     level: 'level {level}'
     leaveAction: Leave Party
-    noSheet: 'no stat sheet: only MudEngine answers @stats'
     notYetListed: not yet listed
-    ofMax: '{percent}% of {max}'
-    raceUnknown: race unknown
-    # The ring around a member's initial: health outside, mana or kai inside.
-    ringAria: '{name}: health {value}'
+    ofMax: '{current}/{max}'
     sheetUnknown: '?'
-    # The hairline under each stat: drawn against the party's best.
-    statScale: Each line is drawn against the party's best
     stat:
-      agility: Agi
-      charm: Cha
-      health: Hea
-      intellect: Int
       picklocks: Picks
-      strength: Str
       traps: Traps
-      willpower: Wil
     title: Party
   picker:
     away: '{cardCount} put away'
@@ -3681,10 +3669,10 @@ cards:
       roundChip: '{server}/rnd'
       roundAgrees: 'stat all against {target} says {server} a round; the client works it out at
         {client}.'
-      roundDisagrees: 'stat all against {target} says {server} a round; the client works it out at
-        {client}, {gap}% off. The fight odds use the client''s figure.'
-      roundUnpriced: 'stat all against {target} says {server} a round; the client cannot work out
-        this attack''s round.'
+      roundDisagrees: "stat all against {target} says {server} a round; the client works it out at
+        {client}, {gap}% off. The fight odds use the client's figure."
+      roundUnpriced: "stat all against {target} says {server} a round; the client cannot work out
+        this attack's round."
       rowFriendChip: friend (rule)
       rowNotHostileChip: not hostile (rule)
       rowSays: Your monster rule says {target} does not attack first; automation follows it.
@@ -4717,7 +4705,8 @@ settings:
       tabsRight: Down the right
       tabsTop: Across the top
       tabsAutoHide: Auto-Hide Character Tabs
-      tabsAutoHideHint: Down the left or right, a strip at the edge shows each character as a circle,
+      tabsAutoHideHint:
+        Down the left or right, a strip at the edge shows each character as a circle,
         with its portrait once one is drawn. The pointer on the strip slides the tabs out beside it.
       cardsSideLabel: Cards
       cardsSideHint: On the same side as the character tabs, the tabs take the window's edge.
@@ -5573,7 +5562,8 @@ settings:
     askHealthHint: Telepath @health to a member who joins, so their health is known before they
       are hurt.
     askHealthLabel: Request Party Health
-    attackLastHint: Attack each monster a party member attacks, after them every time they attack it,
+    attackLastHint:
+      Attack each monster a party member attacks, after them every time they attack it,
       so it turns on this character. For the character with the most AC and health. Two members both
       set to attack last answer each other; after a few re-attacks with no round between, this one
       stops attacking last on that monster until the next.
@@ -6542,7 +6532,8 @@ session:
     keptOutDemand: crossing {word}, which you avoid
     fareOverShare: This way pays {fare} in fares, more than {share}% of the {wealth} you carry and
       have in banks. Open it on the route panel and say to pay it, or raise Highest Fare.
-    fareDrawFirst: This way pays {fare} in fares and you carry {purse} after withdrawing, still {short}
+    fareDrawFirst:
+      This way pays {fare} in fares and you carry {purse} after withdrawing, still {short}
       short. The fare is taken from what you carry.
     fareCash:
       going: 'This way pays {fare} in fares, {short} more than you carry: withdrawing it at {bank}
@@ -7786,7 +7777,8 @@ automation:
     listingAbil: ability listing
     abilUnread: '{from} asked @abil {argument}, which is not a list of ability numbers; nothing was
       sent back.'
-    abilNoQuests: '{from} asked @abil for every quest counter, and no world database is loaded to say
+    abilNoQuests:
+      '{from} asked @abil for every quest counter, and no world database is loaded to say
       which abilities are quests; nothing was sent back.'
     haveUncaptured: '{from} asked @have {item}; {count} carried, but MegaMUD has only ever been seen
       answering for one ({yes: 1}), so nothing was sent.'
@@ -8082,7 +8074,8 @@ automation:
     chanceItemGone: '{command} needs {missing}, and the last try took it; getting another.'
     passageWaiting: 'Waiting out the passage {command} paid for.'
     roomSpellWaiting: Waiting in this room for its spell to move you to {room}, about {ticks} ticks.
-    roomSpellGaveUp: The room's spell has not moved you to {room} after {count} waits; taking another
+    roomSpellGaveUp:
+      The room's spell has not moved you to {room} after {count} waits; taking another
       way.
     # A step on the wire when the character dropped: refused there, and handed
     # no state, so not a silence (todo 764).
@@ -8191,7 +8184,8 @@ mobFind:
   rooms: 'In walking order: {rooms}'
   unreached: 'No way from here: {rooms}'
   combatOff: Auto-combat is off, so a monster that attacks on the way is not fought, and the find stops.
-  whatHappens: 'Walks to each lair in turn and stops in the first room the monster is in. What happens
+  whatHappens:
+    'Walks to each lair in turn and stops in the first room the monster is in. What happens
     then is up to auto-combat and your monster rules. Stop ends the walk.'
   cancel: Cancel
   start: Find

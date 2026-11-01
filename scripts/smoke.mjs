@@ -13684,7 +13684,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         leader: li.querySelector('.party-name')?.dataset.leader ?? '',
         klass: li.querySelector('.party-class')?.innerText.trim() ?? '',
         health: li.querySelector('.party-meter.hp')?.innerText.trim() ?? '',
-        healthValue: li.querySelector('.party-meter.hp .party-meter-value')?.innerText.trim() ?? '',
+        healthSaid: li.querySelector('.party-meter.hp')?.getAttribute('aria-label') ?? '',
         level: li.querySelector('.party-meter.hp')?.dataset.level ?? '',
         mana: li.querySelector('.party-meter.mana')?.innerText.trim() ?? '',
         activity: li.querySelector('.party-activity')?.innerText.trim() ?? '',
@@ -13701,7 +13701,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      nothing, two members became one, and one member is not a party. */
   check(members.length === 2, 'and lists everyone in it', JSON.stringify(members));
   check(
-    members.some((m) => m.name.startsWith('Soul') && /40%/.test(m.health)),
+    members.some(
+      (m) =>
+        m.name.startsWith('Soul') &&
+        copyRx('cards.party.ofMax', { current: '1,774', max: '4,434' }).test(m.health)
+    ),
     'with the one fact a second connection would otherwise be needed for',
     JSON.stringify(members)
   );
@@ -13716,7 +13720,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   /* Mana is the other half of "can they still act", and the roster is the only
      place it is visible either. */
   check(
-    members.some((m) => m.name.startsWith('Soul') && /62%/.test(m.mana)),
+    members.some(
+      (m) =>
+        m.name.startsWith('Soul') &&
+        copyRx('cards.party.ofMax', { current: '320', max: '516' }).test(m.mana)
+    ),
     'and the mana a caster has left',
     JSON.stringify(members)
   );
@@ -13727,17 +13735,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.stringify(members)
   );
   /*
-   * The maximum, once Soul's client has answered `@health`. The `/40%/` check
-   * above passes as a substring of this and proves nothing about the branch,
-   * so the whole phrase is asserted -- and localised: `4,434`, not `4434`.
+   * The figures are Soul's `@health` answer, 1774/4434: the listing states 40%
+   * and the pair agrees with it, so the card draws the pair. Localised, so
+   * `4,434` and not `4434`.
    */
   check(
     members.some(
       (m) =>
         m.name.startsWith('Soul') &&
-        copyRx('cards.party.ofMax', { percent: 40, max: '4,434' }).test(m.health)
+        !/%/.test(m.health) &&
+        copyRx('cards.party.ofMax', { current: '1,774', max: '4,434' }).test(m.health)
     ),
-    'and, once that member answered @health, the maximum beside the percentage',
+    'and, once that member answered @health, the figure over the maximum',
     JSON.stringify(members.map((m) => m.health))
   );
   // Party ships floating; its row is measured on the rail, so it is docked.
@@ -13845,8 +13854,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     members.some(
       (m) =>
         m.level === 'caution' &&
-        new RegExp(`\\s${escapeRegExp(copy('cards.vitals.level.caution'))}$`, 'i').test(
-          m.healthValue
+        new RegExp(`\\s${escapeRegExp(copy('cards.vitals.level.caution'))}\\b`, 'i').test(
+          m.healthSaid
         )
     ),
     'and says in words that somebody is hurt',

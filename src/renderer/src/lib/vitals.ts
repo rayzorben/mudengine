@@ -18,26 +18,23 @@ export function levelWord(level: string): string | null {
 }
 
 /**
- * The number beside a party member's bar.
- *
- * The party listing gives a percentage and nothing else; `@health` gives the
- * absolute figures, once, when a member's own client answers. The two are not
- * printed side by side as `hp/max`: the percentage is refreshed by every
- * listing and the figures are a quotation from the moment the reply arrived,
- * so a bar at 40% beside `3000/4434` would be the card contradicting itself
- * within one row. What the reply adds that stays true is the **maximum** —
- * 30% of 4,434 and 30% of 62 are the same bar and different emergencies, and
- * the maximum is what tells them apart. An unknown fraction is a dash, never a
- * zero, whatever else is known.
+ * The figure in a party member's bar: `current/max` once a maximum is known
+ * (this character's own prompt, or the member's `@health` answer kept by
+ * `listedVitals`, which moves the current figure to every listing's share), the
+ * listing's percentage until then, and a dash, never a zero, while nothing has
+ * said. Localised like the purse, so `4,434` reads as `2,199,807` does.
  */
-export function meterValue(fraction: number | null, max: number | null): string {
+export function meterValue(
+  fraction: number | null,
+  current: number | null,
+  max: number | null
+): string {
   if (fraction === null) return '—';
-  const percent = Math.round(fraction * 100);
-  // Localised like every other large figure in the chrome — the purse, the
-  // experience — so `4,434` here reads as `2,199,807` does two cards up.
-  return max === null
-    ? `${percent}%`
-    : t('cards.party.ofMax', { percent, max: max.toLocaleString() });
+  if (current === null || max === null) return `${Math.round(fraction * 100)}%`;
+  return t('cards.party.ofMax', {
+    current: current.toLocaleString(),
+    max: max.toLocaleString()
+  });
 }
 
 /**

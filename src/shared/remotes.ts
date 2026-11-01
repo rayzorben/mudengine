@@ -646,9 +646,10 @@ export function readWaitReason(argument: string | null): WaitReason | 'unstated'
  * Whether a leader under `party.manageParty` walks on through this `@wait`:
  * one about health or mana, or a bare one (mudengine before 0.8.6 said no
  * reason, and waited only on vitals and the rest flag), from a member whose
- * health the party listing states and whose row carries no flag this client
- * cannot read. Everything else (a condition, a bracket nobody here wrote, a
- * member the leader has no reading of) still stops the lap for its `@ok`.
+ * health the party listing states and whose row says nothing worse than
+ * sitting down. Everything else (a poisoned row, a flag this client cannot
+ * read, a bracket nobody here wrote, a member the leader has no reading of)
+ * still stops the lap for its `@ok`.
  */
 export function walksOnThroughWait(
   member: PartyMember | undefined,
@@ -656,7 +657,19 @@ export function walksOnThroughWait(
 ): boolean {
   if (reason !== 'health' && reason !== 'mana' && reason !== 'unstated') return false;
   if (member === undefined || member.health === null) return false;
-  return member.activity?.state !== 'unknown';
+  if (member.activity === null) return true;
+  switch (member.activity.state) {
+    case 'resting':
+    case 'meditating':
+      return true;
+    case 'poisoned':
+    case 'unknown':
+      return false;
+    default: {
+      const unread: never = member.activity;
+      return unread;
+    }
+  }
 }
 
 /**

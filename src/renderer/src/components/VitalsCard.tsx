@@ -212,11 +212,11 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
             arcs={[{ fraction: ratio(vitals.hp, vitals.hpMax), tone: 'hp', level: hpLevel }]}
             label={t('cards.vitals.ringAria', {
               label: 'HP',
-              value: meterValue(ratio(vitals.hp, vitals.hpMax), null)
+              value: meterValue(ratio(vitals.hp, vitals.hpMax), null, null)
             })}
           >
             <span className="vitals-ring-figure">
-              {meterValue(ratio(vitals.hp, vitals.hpMax), null)}
+              {meterValue(ratio(vitals.hp, vitals.hpMax), null, null)}
             </span>
             <span className="vitals-ring-tag">HP</span>
           </Ring>
@@ -234,12 +234,12 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
                   ? undefined
                   : t('cards.vitals.ringAria', {
                       label: vitals.manaType,
-                      value: meterValue(ratio(vitals.mana, vitals.manaMax), null)
+                      value: meterValue(ratio(vitals.mana, vitals.manaMax), null, null)
                     })
               }
             >
               <span className="vitals-ring-figure">
-                {meterValue(ratio(vitals.mana, vitals.manaMax), null)}
+                {meterValue(ratio(vitals.mana, vitals.manaMax), null, null)}
               </span>
               <span className="vitals-ring-tag">{vitals.manaType}</span>
             </Ring>
