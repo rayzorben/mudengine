@@ -2775,6 +2775,7 @@ cards:
       others: 'Party/Others: {damage}'
     empty: Not in combat.
     noTarget: No target engaged.
+    targetMark: Your target
     # Todo 817: a monster's row in this character's realm list, from the card.
     treatAsTitle: 'Treat {target} as… on this realm'
     treatAsAria: 'Treat {target} as'
@@ -2799,6 +2800,8 @@ cards:
       roundsOnly: 'about {rounds} rounds'
       trials: the room's fight, simulated {count} times as you are now
       unknown: the fight cannot be simulated
+      # Under the odds ring's figure while the odds are safe; a graver level shows its own word.
+      tag: survive
     # The room's fight read part way, beneath the survival meter: at each
     # round, the share of fights still alive and already won, and the health
     # lost by then; the worst single round; each monster fought on its own.
@@ -2815,6 +2818,12 @@ cards:
       alonePending: '{name} being simulated'
       aloneUnread: '{name} waits for your stats'
       aloneUnrun: '{name} cannot be rated'
+      chartHead: By round, with hp lost
+      lostShort: '−{mean}'
+      partWon: won
+      partFighting: still fighting
+      partRan: run from
+      partDead: dead
     title: Combat
   copyMenu:
     copy: Copy
@@ -4091,6 +4100,11 @@ cards:
     expRateLabel: Exp. rate
     exchangeFigure: '{dealt} dealt · {taken} taken'
     exchangeLabel: Dealt against taken
+    # The Combat Stats card's drawings: the ring of swings that landed, and the splits.
+    hitTag: hit
+    damageByKind: Damage by attack type
+    incomingLabel: Blows aimed at you
+    incomingHit: Hit you
     faceMore: More
     faceTime: Time
     graphEmpty: nothing measured in this window yet

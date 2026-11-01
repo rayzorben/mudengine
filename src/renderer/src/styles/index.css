@@ -2213,6 +2213,60 @@ kbd {
   width: calc(var(--share, 0) * 100%);
 }
 
+/*
+ * Several wholes side by side, each stacked from the foot (`StackChart`): the
+ * room's fight at each round it was read at. Its root is a `.split`, so the
+ * parts take the split bar's tones and legend.
+ */
+.stack-columns {
+  align-items: flex-end;
+  display: flex;
+  gap: 6px;
+}
+
+.stack-column {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stack-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+  height: var(--stack-h, 40px);
+  max-width: 48px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.stack-bar > span {
+  background: var(--viz);
+  flex-basis: 0;
+  min-height: 2px;
+}
+
+.stack-label {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.stack-note {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .stats-graph {
   margin: 4px 0 10px;
 }
@@ -2221,8 +2275,16 @@ kbd {
   color: var(--text-lo);
   display: flex;
   font-size: var(--font-micro);
+  gap: 8px;
   justify-content: space-between;
   margin-bottom: 2px;
+}
+
+.stats-graph-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stats-graph svg {
@@ -2251,8 +2313,133 @@ kbd {
   vector-effect: non-scaling-stroke;
 }
 
-.meter.exchange .fill {
-  background: color-mix(in srgb, var(--ok) 50%, transparent);
+/*
+ * The first face from medium up: the readout, and beside it when there is
+ * width the graph and how the swings went (a ring of the share that landed,
+ * the damage cut by kind). The container is this wrapper, never the scroller.
+ * Large, the graph and the Time face's bar take the height they have.
+ */
+.stats-detail {
+  container: stats-detail / inline-size;
+}
+
+.stats-detail-grid {
+  display: grid;
+  gap: 4px 16px;
+}
+
+.stats-detail-grid > .readout {
+  align-content: start;
+}
+
+/* 400px: `Exp. needed, level 19` with its figure and an `avg 19.9` beside
+   the graph at a readable width, measured in the gallery at 480 wide
+   (2026-10-31). */
+@container stats-detail (min-width: 400px) {
+  .stats-detail-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+/* Small, the bar's own `42%` and the tiles under it are the glance; the
+   sentence under the bar waits for a bigger box. */
+.stats-card[data-card-size='small'] .stats-level > .hint {
+  display: none;
+}
+
+.stats-drawn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.card[data-card-size='large'] .stats-graph svg {
+  height: 64px;
+}
+
+.card[data-card-size='large'] .time-split {
+  height: max(36px, calc(var(--font-micro) * 2.6));
+}
+
+/* Two tiles side by side in the smallest box: the rate and when the level
+   comes are read together. 80px fits two across a 250-wide card with its
+   scrollbar gutter, measured in the gallery (2026-10-31). */
+.stats-card .kpis {
+  margin-bottom: 8px;
+}
+
+.stats-card .kpis.stats-glance {
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+}
+
+/* What one kill costs, five tiles. 110px holds `Time per kill` over
+   `0:02:09` set large, two across in a 300-wide card, measured in the
+   gallery (2026-10-31); the longest name ellipsises before that. */
+.stats-card .kpis.time-kills {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 110px), 1fr));
+}
+
+.card[data-card-size='large'].stats-card .kpi > b {
+  font-size: calc(var(--font-ui) + 6px);
+}
+
+/* The More face's shares that are a skill: how often a sneak held, how
+   often a blow was a crit. */
+.stats-rings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+
+.stats-card[data-card-size='small'] .kpi {
+  padding: 3px 8px;
+}
+
+.stats-blows {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.stats-hit {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.stats-hit .ring {
+  --ring-d: 44px;
+}
+
+.stats-hit .ring-centre {
+  font-size: calc(var(--ring-d) * 0.25);
+}
+
+.stats-hit-word,
+.stats-head {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+}
+
+.stats-blows-split {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.stats-split {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
 }
 
 /* The Time face's split: one bar of the time in the realm, its slices in
@@ -2299,21 +2486,6 @@ kbd {
 
 [data-time='other'] {
   background: color-mix(in srgb, var(--text-lo) 45%, transparent);
-}
-
-/* The room's fight, run: green is safe, and the two graver hues are the
-   meter's own `data-level` rules below. */
-.meter.survival[data-level='ok'] .fill {
-  background: color-mix(in srgb, var(--ok) 55%, transparent);
-}
-
-.combat-survival {
-  margin-bottom: 8px;
-}
-
-.combat-survival .hint {
-  display: block;
-  margin-top: -2px;
 }
 
 /*
@@ -7228,8 +7400,12 @@ button.quest-tile-name:hover:not(:disabled) {
  * takes the rest -- the same shape `.readout`'s two columns already have, with
  * one more.
  */
+/* The figures never wrap: `minmax(0, 1fr)` let a narrow card squeeze
+   `avg 19.9` into a column of single characters. Three content-sized tracks
+   packed to the start, so the labels wrap first and only when they must. */
 .readout.paired {
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto;
+  justify-content: start;
 }
 
 .readout.paired dt {
@@ -7237,6 +7413,10 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /* Quieter than the figure it qualifies: it is context, not the answer. */
+.readout.paired dd {
+  white-space: nowrap;
+}
+
 .readout.paired dd.second {
   color: var(--text-lo);
   font-size: var(--font-micro);
@@ -13094,7 +13274,9 @@ tr:hover .row-action.worn,
    what anybody would type at an `attack`. */
 .combat-name .name {
   color: var(--text-hi);
+  flex: 0 0 auto;
   font-weight: 600;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -13203,6 +13385,219 @@ tr:hover .row-action.worn,
 
 .damage-key.others::before {
   background: var(--marker);
+}
+
+/*
+ * The glance, at every size: the odds ring beside the target's bar, so the
+ * two questions under pressure (will I walk out, how much is left of it) are
+ * read in one look. Large, the ring grows into the room it has.
+ */
+.combat-glance {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.combat-glance-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.combat-glance-main .combat-target {
+  margin-bottom: 0;
+}
+
+.combat-glance-main .empty {
+  padding: 0;
+  text-align: left;
+}
+
+.combat-odds {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.combat-odds .ring {
+  --ring-d: 44px;
+}
+
+.card[data-card-size='large'] .combat-odds .ring {
+  --ring-d: 60px;
+}
+
+.combat-odds .ring-centre {
+  font-size: calc(var(--ring-d) * 0.27);
+}
+
+.combat-odds-word {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  line-height: 1;
+}
+
+.combat-odds-word[data-level='caution'] {
+  color: var(--pending);
+}
+
+.combat-odds-word[data-level='critical'] {
+  color: var(--danger);
+}
+
+/* What is on you: one row a monster, its health and its odds alone in two
+   columns at the right edge so they line up down the list. */
+.combat-on-you {
+  margin: 0 0 8px;
+}
+
+.combat-on-you > dt {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.combat-on-you > dd {
+  margin: 0;
+}
+
+.combat-attackers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.combat-attacker {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-height: 22px;
+  min-width: 0;
+}
+
+.combat-attacker-mark {
+  color: var(--accent);
+  display: inline-flex;
+  flex: 0 0 14px;
+}
+
+.combat-attacker .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The figures start at one x down the list, whatever the name's length. */
+.combat-attacker .name + * {
+  margin-left: auto;
+}
+
+.combat-attacker > .chip {
+  flex: 0 0 auto;
+}
+
+.combat-tick {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  flex: 0 0 48px;
+  height: 5px;
+  overflow: hidden;
+}
+
+.combat-tick > i {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+  display: block;
+  height: 100%;
+}
+
+.combat-tick[data-level='caution'] > i {
+  background: var(--pending);
+}
+
+.combat-tick[data-level='critical'] > i {
+  background: var(--danger);
+}
+
+.combat-tick[data-level='unknown'] {
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+}
+
+/* The fight run part way: the sentence, the columns by round, how it ended. */
+.combat-outlook-pane > .hint {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.combat-outlook {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.combat-outlook-head {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.04em;
+}
+
+.combat-alone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* A monster's name keeps the realm's lower case, as `.combat-name` does. */
+.combat-alone .chip {
+  text-transform: none;
+}
+
+.combat-detail {
+  container: combat-detail / inline-size;
+}
+
+.combat-detail-grid {
+  display: grid;
+  gap: 8px 16px;
+}
+
+.combat-detail-grid > .readout {
+  align-content: start;
+}
+
+/* 420px: the readout's longest label (`Experience (Exp)`) with its figure,
+   beside five columns of the chart with their `−74 hp` notes unclipped,
+   measured in the gallery at 480 wide (2026-10-31). */
+@container combat-detail (min-width: 420px) {
+  .combat-detail-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* The name is the last thing to shorten: where the source is beside it, the
+   source gives way first. */
+.combat-name > .from-medium {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card[data-card-size='large'] .combat-outlook {
+  --stack-h: 64px;
 }
 
 /* ---------------------------------------------------------------- party */

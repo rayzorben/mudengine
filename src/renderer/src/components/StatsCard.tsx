@@ -1,4 +1,4 @@
-import { memo, useCallback, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, type ReactNode } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import { useRememberedChoice } from '../hooks/useRemembered';
@@ -29,12 +29,17 @@ import {
   type StatsGraph
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
+import { useCardSize } from '../hooks/useCardSize';
 import { t } from '../lib/i18n';
-import { rate } from '../lib/rates';
+import { compact, rate } from '../lib/rates';
 import { tuning } from '../lib/tuning';
 import { duration, figure, percent } from '../lib/stats';
 import TimeFace, { timeCopyText } from './TimeFace';
 import LevelMeter, { levelReading } from './LevelMeter';
+import Kpi from './viz/Kpi';
+import Ring from './viz/Ring';
+import SplitBar, { type SplitPart } from './viz/SplitBar';
+import type { VizTone } from './viz/tones';
 
 export interface StatsCardProps extends CardChrome {
   character: CharacterState;
@@ -88,6 +93,76 @@ const KIND_LABEL: Record<BlowKind, string> = {
   spell: t('cards.stats.kind.cast'),
   proc: t('cards.stats.kind.proc')
 };
+
+/** Each kind of blow's colour in the damage split, the same on every drawing of it. */
+const KIND_TONE: Record<BlowKind, VizTone> = {
+  melee: 'accent',
+  critical: 'warn',
+  backstab: 'bad',
+  spell: 'd',
+  proc: 'b'
+};
+
+/** A split's figures as the legend prints them. */
+const asFigure = (value: number): string => figure(value);
+const asShare = (_: number, of: number): string => percent(of);
+
+/**
+ * A split's parts, held while the figures they are made of hold, so the
+ * memoised `SplitBar` redraws when a figure moves rather than on every push.
+ * The labels and tones are fixed per key.
+ */
+function useSplit(parts: readonly SplitPart[]): readonly SplitPart[] {
+  const key = parts.map((part) => `${part.key}:${part.value}`).join(',');
+  return useMemo(() => parts, [key]);
+}
+
+/**
+ * A share drawn as a ring with its whole percent in the middle and its name
+ * under it: how often a swing landed, a sneak held, a blow was a crit. Null
+ * is a dashed ring and a dash.
+ */
+function ShareRing({ fraction, word }: { fraction: number | null; word: string }) {
+  const arcs = useMemo(() => [{ fraction, tone: 'accent' as const }], [fraction]);
+  const figureOf =
+    fraction === null ? '—' : t('cards.stats.percent', { value: Math.round(fraction * 100) });
+  return (
+    <span className="stats-hit">
+      <Ring arcs={arcs} label={`${word} ${figureOf}`}>
+        {figureOf}
+      </Ring>
+      <span className="stats-hit-word">{word}</span>
+    </span>
+  );
+}
+
+/**
+ * How the swings went, drawn: a ring of the share that landed, and the damage
+ * dealt cut by kind of blow. The kinds are the ones this session has used, as
+ * the table's rows are, so a reset never takes a part out from under the eye.
+ */
+function BlowsDrawn({ shown, tally }: { shown: CombatTally; tally: CombatTally }) {
+  const total = swings(shown);
+  const landed = share(total - shown.missed, total);
+  const parts = useSplit(
+    BLOW_KINDS.filter((kind) => tally.dealt[kind].hits > 0).map((kind) => ({
+      key: kind,
+      label: KIND_LABEL[kind],
+      value: shown.dealt[kind].damage,
+      tone: KIND_TONE[kind]
+    }))
+  );
+  if (swings(tally) === 0 && parts.length === 0) return null;
+  return (
+    <div className="stats-blows">
+      <ShareRing fraction={landed} word={t('cards.stats.hitTag')} />
+      <div className="stats-blows-split">
+        <span className="stats-head">{t('cards.stats.damageByKind')}</span>
+        <SplitBar format={asShare} label={t('cards.stats.damageByKind')} parts={parts} />
+      </div>
+    </div>
+  );
+}
 
 /**
  * How this character has been fighting, added up.
@@ -264,6 +339,8 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const expRate = experienceRate(shown, now, tuning().rateFloorMs);
   // What is still owed, from the table as well as the realm's summary.
   const { standing, owed } = experienceOf(progress);
+  const levelInMs = levelIn(owed.value, expRate);
+  const size = useCardSize();
 
   /*
    * **Which rows exist is read from the session, not from the reset.**
@@ -375,10 +452,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
       {
         key: 'level-in',
         label: t('cards.stats.willLevelLabel'),
-        value: (() => {
-          const ms = levelIn(owed.value, expRate);
-          return ms === null ? '—' : duration(ms);
-        })()
+        value: duration(levelInMs)
       },
       { key: 'killed', label: t('cards.stats.killedLabel'), value: figure(shown.kills) },
       {
@@ -457,6 +531,20 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const mainRows = readout.filter((row) => !MORE_ROWS.has(row.key));
   const moreRows = readout.filter((row) => MORE_ROWS.has(row.key));
   const exchange = share(dealt, dealt + shown.taken.damage);
+  const exchangeParts = useSplit([
+    { key: 'dealt', label: t('cards.stats.dealtLabel'), value: dealt, tone: 'ok' },
+    { key: 'taken', label: t('cards.stats.takenLabel'), value: shown.taken.damage, tone: 'bad' }
+  ]);
+  const incomingParts = useSplit([
+    { key: 'hit', label: t('cards.stats.incomingHit'), value: shown.taken.hits, tone: 'bad' },
+    {
+      key: 'deflected',
+      label: t('cards.stats.deflectedLabel'),
+      value: shown.turned,
+      tone: 'accent'
+    },
+    { key: 'dodged', label: t('cards.stats.dodgedLabel'), value: shown.dodged, tone: 'ok' }
+  ]);
 
   const rowLines = (list: typeof readout): string[] =>
     list.map((row) =>
@@ -496,6 +584,10 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
 
   const copyTime = useCallback((): string => timeCopyText(shown, Date.now()), [shown]);
 
+  const graphOf = (
+    <RateGraph current={expRate} graph={graph} hours={hours} now={now} tally={tally} />
+  );
+
   const empty = shown.since === null ? <div className="empty">{t('cards.stats.empty')}</div> : null;
   const pairs = (list: typeof readout): React.JSX.Element[] =>
     list.map((row) => (
@@ -513,18 +605,39 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
           {empty ?? (
             <>
               {level !== null && <LevelMeter reading={level} />}
+              {/* Small, the face is the level meter, the rate and when the
+                  level comes, and the graph; the readout says both from
+                  medium up, so the tiles give way to it (`lib/cardSize.ts`). */}
+              <div className="kpis stats-glance only-small">
+                <Kpi
+                  hint={t('cards.vitals.rateUnit')}
+                  label={t('cards.stats.expRateLabel')}
+                  tone="accent"
+                  value={expRate === null ? null : compact(expRate)}
+                />
+                <Kpi
+                  label={t('cards.stats.willLevelLabel')}
+                  value={levelInMs === null ? null : duration(levelInMs)}
+                />
+              </div>
+              {size === 'small' && graphOf}
               {/*
                 One `<dl>` for the face, and the table under it rather than
                 between two of them: a `.readout` sizes its label column from
                 its own children. Three columns: an average, a share or a rate
                 is a *second figure* with a track of its own (`.readout.paired`),
                 and `dt` is pinned to column one so a row with no second figure
-                still starts a new row.
+                still starts a new row. Wide, the drawings sit beside it.
               */}
-              {/* Small, the face is the level meter and the graph; the
-                  figures wait for a bigger box (`lib/cardSize.ts`). */}
-              <dl className="readout paired from-medium">{pairs(mainRows)}</dl>
-              <RateGraph current={expRate} graph={graph} hours={hours} now={now} tally={tally} />
+              <div className="stats-detail from-medium">
+                <div className="stats-detail-grid">
+                  <dl className="readout paired">{pairs(mainRows)}</dl>
+                  <div className="stats-drawn">
+                    {size !== 'small' && graphOf}
+                    <BlowsDrawn shown={shown} tally={tally} />
+                  </div>
+                </div>
+              </div>
               <div className="from-medium">
                 <CardTable
                   caption={t('cards.stats.tableCaption')}
@@ -562,25 +675,46 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         <div className="scroller">
           {empty ?? (
             <>
-              <dl className="readout paired from-medium">{pairs(moreRows)}</dl>
+              {/* Small, the two splits: what was dealt against what was
+                  taken, and how the blows aimed at you went. */}
               {exchange !== null && (
-                <div className="stats-level">
-                  <div className="meter exchange">
-                    <div className="fill" style={{ width: `${exchange * 100}%` }} />
-                    <span className="meter-label">
-                      {t('cards.stats.percent', { value: (exchange * 100).toFixed(0) })}
-                    </span>
-                  </div>
-                  <span className="hint">
-                    {t('cards.stats.exchangeLabel')}
-                    {': '}
-                    {t('cards.stats.exchangeFigure', {
+                <div className="stats-split">
+                  <span className="stats-head">{t('cards.stats.exchangeLabel')}</span>
+                  <SplitBar
+                    format={asFigure}
+                    label={t('cards.stats.exchangeFigure', {
                       dealt: figure(dealt),
                       taken: figure(shown.taken.damage)
                     })}
-                  </span>
+                    parts={exchangeParts}
+                  />
                 </div>
               )}
+              {incoming > 0 && (
+                <div className="stats-split">
+                  <span className="stats-head">{t('cards.stats.incomingLabel')}</span>
+                  <SplitBar
+                    format={asShare}
+                    label={t('cards.stats.incomingLabel')}
+                    parts={incomingParts}
+                  />
+                </div>
+              )}
+              {/* The shares that are a skill, once the thing has happened. */}
+              {(everHappened(tally.sneakTried) || everHappened(tally.dealt.critical.hits)) && (
+                <div className="stats-rings from-medium">
+                  {everHappened(tally.sneakTried) && (
+                    <ShareRing
+                      fraction={share(shown.sneakTried - shown.sneakFailed, shown.sneakTried)}
+                      word={t('cards.stats.sneakLabel')}
+                    />
+                  )}
+                  {everHappened(tally.dealt.critical.hits) && (
+                    <ShareRing fraction={critShare(shown)} word={t('cards.stats.critRateLabel')} />
+                  )}
+                </div>
+              )}
+              <dl className="readout paired from-medium">{pairs(moreRows)}</dl>
             </>
           )}
         </div>
