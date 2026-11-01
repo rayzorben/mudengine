@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import OnCardSize from './OnCardSize';
+import TalkSummary, { type TalkFace } from './TalkSummary';
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
 import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
@@ -156,7 +157,7 @@ const CHANNELS: Record<string, string> = {
  * directed. A toggle appears only while its channel has said something, the
  * same rule the chips followed: a control over nothing is chrome.
  */
-const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[] | null }> = [
+const FACES: readonly TalkFace[] = [
   { id: 'talk', label: t('cards.talk.tabs.all'), types: null },
   { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'] },
   { id: 'auction', label: t('cards.talk.tabs.auction'), types: ['conversation-auction'] },
@@ -187,6 +188,8 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
 const FACE_IDS = FACES.map((face) => face.id);
 /** Every toggle but the master, which is the set a reader can mute. */
 const CHANNEL_IDS = FACE_IDS.slice(1);
+/** The toggles the large card's head counts lines under. */
+const CHANNEL_FACES = FACES.slice(1);
 /** The master's two remembered words. See the card's own note. */
 const ALL_WORDS = ['on', 'off'] as const;
 
@@ -207,6 +210,17 @@ const RECEIPTS = new Set<string>([
   'conversation-directed',
   'conversation-page'
 ]);
+
+/**
+ * Who said a line, for the large card's head: null for this character's own
+ * receipts (the name there is the recipient) and for the comings and goings,
+ * where nobody said anything.
+ */
+function speakerOf(message: Block): string | null {
+  if (TALK_PRESENCE_TYPES.includes(message.type)) return null;
+  if (RECEIPTS.has(message.type) && message.groups['message'] === undefined) return null;
+  return message.groups['player'] ?? null;
+}
 
 /** The sigil each receipt's channel was addressed with — see `originalOf`. */
 const SIGILS: Record<string, string> = {
@@ -1182,6 +1196,13 @@ function ConversationCard({
         />
       )}
 
+      <TalkSummary
+        faces={CHANNEL_FACES}
+        known={people === null ? null : people.known}
+        onSelect={onSelect}
+        speakerOf={speakerOf}
+        talked={talked}
+      />
       {/*
         `data-layout` and `data-stamped` are what the alignment is done with:
         in `condensed-aligned` the log becomes one grid and each line a

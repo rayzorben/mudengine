@@ -1,5 +1,6 @@
 import { memo } from 'react';
 
+import AutomationHead from './AutomationHead';
 import BentoCard, { type CardChrome } from './BentoCard';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
@@ -46,73 +47,75 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
       {...chrome}
       badge={badge}
       className="automation-card"
-      scroll
+      paned
       title={t('cards.automation.title')}
     >
-      {!enabled && <div className="empty">{t('cards.automation.emptyDisabled')}</div>}
+      <AutomationHead automation={automation} />
+      <div className="automation-trace scroller">
+        {!enabled && <div className="empty">{t('cards.automation.emptyDisabled')}</div>}
 
-      {queue.pending.length > 0 && (
-        <>
-          <div className="trace-heading">{t('cards.automation.headings.queued')}</div>
-          <div className="trace">
-            {queue.pending.map((intent, index) => (
-              <div className="row" key={`${intent.command}-${index}`}>
-                <span className="trace-priority from-medium">{intent.priority}</span>
-                <span className="trace-command">{intent.command}</span>
-                <span className="trace-reason">{intent.reason ?? ''}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <div className="trace-heading">{t('cards.automation.headings.sent')}</div>
-      <div className="trace">
-        {sent.length === 0 ? (
-          <div className="empty">{t('cards.automation.emptySent')}</div>
-        ) : (
-          sent.slice(0, 12).map((entry, index) => (
-            <div className="row" key={`${entry.at}-${index}`}>
-              <span className="trace-at from-medium">{clock(entry.at)}</span>
-              <span className="trace-command">{entry.command}</span>
-              <span className="trace-reason">{entry.reason ?? entry.priority}</span>
+        {queue.pending.length > 0 && (
+          <>
+            <div className="trace-heading">{t('cards.automation.headings.queued')}</div>
+            <div className="trace">
+              {queue.pending.map((intent, index) => (
+                <div className="row" key={`${intent.command}-${index}`}>
+                  <span className="trace-priority from-medium">{intent.priority}</span>
+                  <span className="trace-command">{intent.command}</span>
+                  <span className="trace-reason">{intent.reason ?? ''}</span>
+                </div>
+              ))}
             </div>
-          ))
+          </>
         )}
-      </div>
 
-      {/*
+        <div className="trace-heading">{t('cards.automation.headings.sent')}</div>
+        <div className="trace">
+          {sent.length === 0 ? (
+            <div className="empty">{t('cards.automation.emptySent')}</div>
+          ) : (
+            sent.slice(0, 12).map((entry, index) => (
+              <div className="row" key={`${entry.at}-${index}`}>
+                <span className="trace-at from-medium">{clock(entry.at)}</span>
+                <span className="trace-command">{entry.command}</span>
+                <span className="trace-reason">{entry.reason ?? entry.priority}</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/*
         Safety first, and above the rules, because it is the half somebody comes
         to this card to read: "why did the bot run?" — and, just as often,
         "why did it *not* hang up?". A refusal is recorded as well as an action,
         because somebody who turned a safety feature on and saw nothing happen
         needs to see that it decided not to, and what decided it.
       */}
-      {safety.length > 0 && (
-        <>
-          <div className="trace-heading">{t('cards.automation.headings.safety')}</div>
-          <div className="trace">
-            {safety.slice(0, 8).map((decision, index) => (
-              <div
-                className={`row${decision.acted ? '' : ' blocked'}`}
-                key={`${decision.at}-${index}`}
-              >
-                <span className="trace-at from-medium">{clock(decision.at)}</span>
-                <span className="trace-command">{decision.action}</span>
-                <span className="trace-reason">
-                  {decision.acted
-                    ? decision.because
-                    : t('cards.automation.safetyRefusedPrefix', {
-                        reason: decision.refused ?? decision.because
-                      })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+        {safety.length > 0 && (
+          <>
+            <div className="trace-heading">{t('cards.automation.headings.safety')}</div>
+            <div className="trace">
+              {safety.slice(0, 8).map((decision, index) => (
+                <div
+                  className={`row${decision.acted ? '' : ' blocked'}`}
+                  key={`${decision.at}-${index}`}
+                >
+                  <span className="trace-at from-medium">{clock(decision.at)}</span>
+                  <span className="trace-command">{decision.action}</span>
+                  <span className="trace-reason">
+                    {decision.acted
+                      ? decision.because
+                      : t('cards.automation.safetyRefusedPrefix', {
+                          reason: decision.refused ?? decision.because
+                        })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
-      {/*
+        {/*
         And fighting, under the escapes and above the rules, in the order the
         client itself consults them.
 
@@ -123,59 +126,60 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
         than per prompt; `AutoCombat` does that filtering, because it is the
         only thing that knows when the answer changed.
       */}
-      {engagements.length > 0 && (
-        <>
-          <div className="trace-heading">{t('cards.automation.headings.engagements')}</div>
-          <div className="trace">
-            {engagements.slice(0, 8).map((decision, index) => (
-              <div
-                className={`row${decision.acted ? '' : ' blocked'}`}
-                key={`${decision.at}-${index}`}
-              >
-                <span className="trace-at from-medium">{clock(decision.at)}</span>
-                <span className="trace-command">
-                  {decision.attack === undefined
-                    ? decision.target
-                    : `${decision.attack} ${decision.target}`}
-                </span>
-                <span className="trace-reason">
-                  {decision.acted
-                    ? decision.because === undefined
-                      ? t('cards.automation.engagedPrefix')
-                      : t('cards.automation.engagedBecause', { reason: decision.because })
-                    : t('cards.automation.safetyRefusedPrefix', {
-                        reason: decision.refused ?? ''
-                      })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+        {engagements.length > 0 && (
+          <>
+            <div className="trace-heading">{t('cards.automation.headings.engagements')}</div>
+            <div className="trace">
+              {engagements.slice(0, 8).map((decision, index) => (
+                <div
+                  className={`row${decision.acted ? '' : ' blocked'}`}
+                  key={`${decision.at}-${index}`}
+                >
+                  <span className="trace-at from-medium">{clock(decision.at)}</span>
+                  <span className="trace-command">
+                    {decision.attack === undefined
+                      ? decision.target
+                      : `${decision.attack} ${decision.target}`}
+                  </span>
+                  <span className="trace-reason">
+                    {decision.acted
+                      ? decision.because === undefined
+                        ? t('cards.automation.engagedPrefix')
+                        : t('cards.automation.engagedBecause', { reason: decision.because })
+                      : t('cards.automation.safetyRefusedPrefix', {
+                          reason: decision.refused ?? ''
+                        })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
-      {firings.length > 0 && (
-        <>
-          <div className="trace-heading">{t('cards.automation.headings.rules')}</div>
-          <div className="trace">
-            {firings.slice(0, 12).map((firing, index) => (
-              <div
-                className={`row${firing.blockedBy === undefined ? '' : ' blocked'}`}
-                key={`${firing.at}-${index}`}
-              >
-                <span className="trace-at from-medium">{clock(firing.at)}</span>
-                <span className="trace-command">{firing.rule}</span>
-                <span className="trace-reason">
-                  {/* A blocked rule names the guard that rejected it, which is
+        {firings.length > 0 && (
+          <>
+            <div className="trace-heading">{t('cards.automation.headings.rules')}</div>
+            <div className="trace">
+              {firings.slice(0, 12).map((firing, index) => (
+                <div
+                  className={`row${firing.blockedBy === undefined ? '' : ' blocked'}`}
+                  key={`${firing.at}-${index}`}
+                >
+                  <span className="trace-at from-medium">{clock(firing.at)}</span>
+                  <span className="trace-command">{firing.rule}</span>
+                  <span className="trace-reason">
+                    {/* A blocked rule names the guard that rejected it, which is
                       the answer to "why did nothing happen?". */}
-                  {firing.blockedBy === undefined
-                    ? firing.commands.join(', ')
-                    : t('cards.automation.ruleBlockedPrefix', { guard: firing.blockedBy })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+                    {firing.blockedBy === undefined
+                      ? firing.commands.join(', ')
+                      : t('cards.automation.ruleBlockedPrefix', { guard: firing.blockedBy })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </BentoCard>
   );
 }
