@@ -2590,6 +2590,43 @@ kbd {
   width: 1.8em;
 }
 
+/*
+ * A chain as a segment a step (`StepBar`), in the progression grammar: done
+ * filled in `--viz`, the next one outlined in it, what is left the track. Past
+ * sixteen steps, one bar filled to `--share`.
+ */
+.step-bar {
+  --viz: var(--accent);
+  display: flex;
+  flex: 1 1 auto;
+  gap: 3px;
+  height: 6px;
+  min-width: 0;
+}
+
+.step-bar > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  flex: 1 1 0;
+  min-width: 2px;
+}
+
+.step-bar > i[data-progress='done'] {
+  background: var(--viz);
+}
+
+.step-bar > i[data-progress='now'] {
+  background: color-mix(in srgb, var(--viz) var(--tone), transparent);
+  box-shadow: inset 0 0 0 1px var(--viz);
+}
+
+.step-bar[data-whole='true'] {
+  background:
+    linear-gradient(var(--viz), var(--viz)) left / calc(var(--share) * 100%) 100% no-repeat,
+    color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+}
+
 .stats-graph {
   margin: 4px 0 10px;
 }
@@ -5512,7 +5549,46 @@ button.quest-plan-back {
 }
 
 .quest-tile {
+  container-type: inline-size;
   gap: 6px;
+}
+
+/*
+ * Two tiles a row from 490px of book: a tile's head needs 240px before a
+ * quest's name is shortened (PhoenixQuest beside its number and Hide, in the
+ * gallery), and a name is the last thing to shorten.
+ */
+.quest-book .tile-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+}
+
+.quest-tile-next > .quest-plan-btn + .quest-plan-btn {
+  margin-left: 0;
+}
+
+/*
+ * The book in figures over a large card (`QuestBookHead`): a ring of the
+ * quests done, the shelves as one split bar, the exp the open shelf pays.
+ */
+.quest-summary {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+}
+
+.quest-summary > .split {
+  flex: 1 1 140px;
+}
+
+.quest-summary > .ring {
+  --ring-d: 44px;
+}
+
+.quest-summary > .kpi {
+  flex: 1 0 7em;
 }
 
 /* The tile whose track is open, marked by its rim, as a selection is. */
@@ -5598,21 +5674,15 @@ button.quest-tile-name:hover:not(:disabled) {
   opacity: 1;
 }
 
-/* How far along: the bar is the figure drawn, the count beside it is the figure. */
+/* How far along: a segment a step is the figure drawn, the count beside it is the figure. */
 .quest-tile-progress {
   align-items: center;
   display: flex;
   gap: 8px;
 }
 
-.quest-tile-track {
-  background:
-    linear-gradient(var(--slot-tone), var(--slot-tone)) left / calc(var(--share) * 100%) 100%
-      no-repeat,
-    color-mix(in srgb, var(--slot-tone) var(--tone), transparent);
-  border-radius: var(--r-pill);
-  flex: 1 1 auto;
-  height: 4px;
+.quest-tile .step-bar {
+  --viz: var(--slot-tone);
 }
 
 .quest-tile-count {
@@ -5647,6 +5717,17 @@ button.quest-tile-name:hover:not(:disabled) {
   font-size: var(--font-micro);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/*
+ * A tile under 280px (the medium card's, measured in the gallery at 270px)
+ * gives the next step's act its own line and keeps Plan it and Run it
+ * together under it.
+ */
+@container (max-width: 280px) {
+  .quest-tile-act {
+    flex-basis: 100%;
+  }
 }
 
 /* What it pays along the foot: big exp is the headline, the rest are chips. */
@@ -5688,6 +5769,168 @@ button.quest-tile-name:hover:not(:disabled) {
 .hunt-head .hunt-note {
   color: var(--text-lo);
   font-size: var(--font-size-small, 0.9em);
+}
+
+/*
+ * By size: small is the best lair alone (the table and the note come back
+ * where no lair has a rate to set large); medium adds a line of the note
+ * and the table; large adds where a lap's time goes and two more lines of
+ * the note. The whole note is always its tooltip.
+ */
+.hunt-head .hunt-note {
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+.card[data-card-size='large'] .hunt-head .hunt-note {
+  -webkit-line-clamp: 3;
+}
+
+.card[data-card-size='small'] .hunt-best ~ :is(.hunt-head, .table-tools, .table-scroller) {
+  display: none;
+}
+
+/* The best lair, set large (`HuntBest`): a tonal tile in the accent. */
+.hunt-best {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), var(--ink-raised));
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1), var(--glass-rim);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+}
+
+.hunt-best-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hunt-best-glyph {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: 50%;
+  color: var(--accent);
+  display: grid;
+  flex: 0 0 auto;
+  height: 28px;
+  place-items: center;
+  width: 28px;
+}
+
+.hunt-best-who {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hunt-best-who > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hunt-best-who > button.lookup {
+  color: var(--text-hi);
+  font-weight: 600;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hunt-best-rate {
+  align-items: flex-end;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+}
+
+.hunt-best-rate > b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 4px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.hunt-best-rate[data-measured='true'] > b {
+  color: var(--ok);
+}
+
+.hunt-best-rate > small {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.hunt-best-facts {
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 2px 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hunt-best-facts li {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.hunt-best-facts .icon {
+  height: 12px;
+  width: 12px;
+}
+
+/* The worst spawn's cost as a short bar of the health it takes. */
+.hunt-best-cost {
+  --viz: var(--text-lo);
+}
+
+.hunt-best-cost[data-costly='true'] {
+  --viz: var(--pending);
+  color: var(--pending);
+}
+
+.hunt-best-cost > i {
+  background:
+    linear-gradient(var(--viz), var(--viz)) left / calc(var(--share) * 100%) 100% no-repeat,
+    color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  display: block;
+  height: 4px;
+  width: 36px;
+}
+
+/* A rate or a cost in the table: the figure over its hairline, at the cell's right. */
+.hunt-bar {
+  align-items: flex-end;
+  display: inline-flex;
+}
+
+.hunt-bar > i {
+  align-self: stretch;
+}
+
+/* A cost nobody could price has no hairline, so it cannot read as no cost. */
+.hunt-bar[data-unknown='true'] > i {
+  visibility: hidden;
+}
+
+.hunt-detail > .split {
+  flex: 0 0 auto;
 }
 .hunt-lair {
   display: inline-flex;
@@ -5812,16 +6055,21 @@ button.quest-tile-name:hover:not(:disabled) {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 8px 12px;
 }
 
+/* The figure and its slider share a line, wrapping only where neither fits. */
 .gear-budget-top {
   align-items: center;
+  column-gap: 14px;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--gap);
-  justify-content: space-between;
+}
+
+.gear-budget-top > .gear-slider {
+  flex: 1 1 120px;
+  margin: 0;
 }
 
 .gear-cash {
@@ -5833,6 +6081,7 @@ button.quest-tile-name:hover:not(:disabled) {
 .gear-budget-figure {
   align-items: baseline;
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
 }
 
@@ -5857,7 +6106,7 @@ button.quest-tile-name:hover:not(:disabled) {
   font-weight: 600;
   padding: 2px 0;
   text-align: right;
-  width: 11ch;
+  width: 9ch;
 }
 
 .gear-budget-figure > input:focus {
@@ -5946,6 +6195,128 @@ button.quest-tile-name:hover:not(:disabled) {
 
 .gear-slots[data-loading='true'] {
   opacity: 0.6;
+}
+
+/*
+ * Under the large size a slot is one line (`GearSlotRow`): the glyph, the
+ * slot's name, which opens it into its tile, and the suggestion's toggle at
+ * the right. Over the rows on a large card, how the kit stands (`.split`).
+ */
+.gear-scroller > .split {
+  margin: 2px 2px 10px;
+}
+
+.gear-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tile.gear-row {
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.gear-row > .gear-slot-glyph {
+  height: 22px;
+  width: 22px;
+}
+
+.gear-row > .gear-slot-glyph .icon {
+  height: 12px;
+  width: 12px;
+}
+
+button.gear-fold {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  cursor: pointer;
+  height: auto;
+  padding: 0;
+  text-align: left;
+}
+
+.gear-row > button.gear-fold {
+  flex: 0 0 auto;
+}
+
+button.gear-fold:hover:not(:disabled) {
+  background: none;
+  border: 0;
+  color: var(--slot-tone);
+}
+
+.gear-row-what {
+  align-items: stretch;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.gear-row-note {
+  align-items: center;
+  align-self: flex-end;
+  color: var(--text-lo);
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gear-row[data-state='best'] .gear-row-note {
+  color: var(--slot-tone);
+}
+
+.gear-row-note .icon {
+  flex: 0 0 auto;
+  height: 12px;
+  width: 12px;
+}
+
+.gear-toggle[data-compact='true'] {
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 3px 8px;
+}
+
+.gear-toggle[data-compact='true'] .gear-toggle-mark {
+  height: 16px;
+  width: 16px;
+}
+
+.gear-toggle[data-compact='true'] .gear-toggle-mark .icon {
+  height: 10px;
+  width: 10px;
+}
+
+/*
+ * A row under 300px (a medium card on the rail's 20 cells, measured in the
+ * gallery at 270px) keeps the item's name and drops its price, which the
+ * foot's total and the opened tile still say.
+ */
+@container (max-width: 300px) {
+  .gear-toggle[data-compact='true'] .gear-price {
+    display: none;
+  }
+}
+
+.gear-toggle[data-compact='true'] .gear-item-name {
+  font-size: var(--font-micro);
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gear-slot {
@@ -6123,6 +6494,21 @@ button.quest-tile-name:hover:not(:disabled) {
     grid-column: 2;
     grid-row: 2;
   }
+
+  /* And the price beside the gain, so the name has the line to itself. */
+  .gear-toggle:not([data-compact='true']) .gear-toggle-body {
+    grid-column: 2 / 4;
+  }
+
+  .gear-toggle:not([data-compact='true']) .gear-price {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .gear-toggle .gear-gain {
+    min-width: 0;
+    white-space: normal;
+  }
 }
 
 .gear-slot-foot {
@@ -6194,19 +6580,24 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /* The foot of both faces: what it comes to, and the presses. */
+/* One line at every size: the words ellipsise and the press keeps its label. */
 .gear-bar {
   align-items: center;
   border-top: var(--rule) solid var(--ink-line);
   display: flex;
   flex: 0 0 auto;
-  flex-wrap: wrap;
   gap: var(--gap);
-  padding: 10px 2px 0;
+  padding: 8px 2px 0;
+}
+
+/* A small card is its slots alone; the budget and the foot come back from medium. */
+.card[data-card-size='small'] .gear-bar {
+  display: none;
 }
 
 .gear-bar-figures {
   display: flex;
-  flex: 1 1 160px;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
@@ -6216,6 +6607,9 @@ button.quest-tile-name:hover:not(:disabled) {
   color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gear-spend.meter {
@@ -6240,7 +6634,8 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 .gear-plan {
-  padding: 0 16px;
+  flex: 0 0 auto;
+  padding: 0 12px;
 }
 
 /* The trip: its figures, then the stops as a stepper joined by a line. */
@@ -11234,6 +11629,69 @@ button.shelf-tile:hover {
 
 .reference-detail .quiet {
   color: var(--text-lo-quiet);
+}
+
+/* A match's kind as a glyph before its name, quiet until the row is chosen. */
+.reference li > .glyph {
+  align-self: center;
+  color: var(--text-lo-quiet);
+  display: grid;
+  flex: 0 0 auto;
+}
+
+.reference li > .glyph .icon {
+  height: 12px;
+  width: 12px;
+}
+
+.reference li[data-active='true'] > .glyph {
+  color: var(--accent);
+}
+
+/*
+ * The figures a thing is looked up for, as tiles over its readout
+ * (`ReferenceFacts`), with an item's picture beside them on a large card. A
+ * small card keeps the tiles and leaves the readout to a larger one.
+ */
+.reference-facts {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 2px 0 8px;
+}
+
+/*
+ * Two tiles a row (four at 100px each clipped the defence at a large card's
+ * 420px), and under the picture where two beside it would be narrower than
+ * 90px each.
+ */
+.reference-facts > .kpis {
+  flex: 1 1 200px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+/* As tall as the two rows of tiles beside it (92px in the gallery). */
+.reference-art {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-control);
+  flex: 0 0 auto;
+  height: 96px;
+  object-fit: contain;
+  width: 96px;
+}
+
+.card[data-card-size='small'] .reference-detail > .readout {
+  display: none;
+}
+
+/*
+ * The labels take at most two fifths of the line and wrap past it, so a long
+ * one (*Disposition / Aggression*) never leaves its value a word a line.
+ */
+.reference-detail > .readout {
+  grid-template-columns: fit-content(40%) minmax(0, 1fr);
 }
 
 /*

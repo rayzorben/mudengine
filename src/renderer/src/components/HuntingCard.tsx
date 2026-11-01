@@ -1,10 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import GatedGrounds, { gatedRow } from './GatedGrounds';
+import HuntBest from './HuntBest';
+import HuntCycle from './HuntCycle';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
+import { atLeast, hours, percent, seconds } from '../lib/huntWords';
 import { tuning } from '../lib/tuning';
 import {
   compareSpots,
@@ -81,10 +84,6 @@ const AFFLICTION_WORD: Record<AfflictionKind, () => string> = {
 const unknownWords = (parts: readonly HuntingUnknown[]): string =>
   parts.map((part) => UNKNOWN_WORD[part]()).join(', ');
 
-const hours = (rate: number | null): string =>
-  rate === null ? '?' : Math.round(rate).toLocaleString();
-const seconds = (value: number | null): string => (value === null ? '?' : `${Math.round(value)}s`);
-
 /** A spot's regen, said with where its clock came from (`HuntingSpot.clock`). */
 const REGEN: Record<NonNullable<HuntingSpot['clock']>, (value: number) => string> = {
   delay: seconds,
@@ -93,11 +92,6 @@ const REGEN: Record<NonNullable<HuntingSpot['clock']>, (value: number) => string
   timed: (value) => t('cards.hunting.detail.respawnTimed', { time: seconds(value) }),
   usual: (value) => t('cards.hunting.detail.respawnUsual', { time: seconds(value) })
 };
-const percent = (share: number | null): string =>
-  share === null ? '?' : `${Math.round(share * 100)}%`;
-/** A floor, marked as one: the least the room can cost where a spawn's rounds are unknown. */
-const atLeast = (share: number | null): string =>
-  share === null ? '?' : `\u2265 ${percent(share)}`;
 
 function mobsOf(spot: HuntingSpot): string {
   return spot.mobs.map((mob) => mob.name).join(', ');
@@ -207,6 +201,26 @@ function HuntingCard({
     [advice]
   );
   const rough = useMemo(() => new Set(advice?.unmeasured.map((spot) => spot.key) ?? []), [advice]);
+  /** A lair's row opened or closed, from its name in the table or on the best lair's tile. */
+  const toggle = useCallback(
+    (key: string) => {
+      setOpen((was) => (was === key ? null : key));
+      if (rough.has(key)) setMeasure(key);
+    },
+    [rough]
+  );
+  /*
+   * What each rate bar is drawn against: the best rate or ceiling on the
+   * card, so the first row's bar is full and the rest read as a share of it.
+   */
+  const top = useMemo(
+    () => Math.max(0, ...rows.map((spot) => spotRate(spot) ?? spot.estimate.ceilingPerHour ?? 0)),
+    [rows]
+  );
+  const best =
+    rows[0] !== undefined && spotRate(rows[0]) !== null && !rows[0].estimate.deadly
+      ? rows[0]
+      : null;
 
   const spotColumns: Array<Column<HuntingSpot>> = useMemo(
     () => [
@@ -220,10 +234,7 @@ function HuntingCard({
             <button
               aria-expanded={open === spot.key}
               className="lookup"
-              onClick={() => {
-                setOpen(open === spot.key ? null : spot.key);
-                if (rough.has(spot.key)) setMeasure(spot.key);
-              }}
+              onClick={() => toggle(spot.key)}
               onMouseDown={keepFocus}
               type="button"
             >
@@ -248,14 +259,14 @@ function HuntingCard({
             <span className="chip bad">{t('cards.hunting.deadly')}</span>
           ) : spot.estimate.measured ? (
             // What hunting it paid at this level, over the estimate (todo 70).
-            <span
-              className="chip ok"
+            <RateCell
+              rate={spot.estimate.measured.perHour}
               title={t('cards.hunting.measuredHint', {
                 minutes: Math.round(spot.estimate.measured.minutes)
               })}
-            >
-              {hours(spot.estimate.measured.perHour)}
-            </span>
+              tone="ok"
+              top={top}
+            />
           ) : spot.estimate.expPerHour === null ? (
             <span
               className="chip quiet"
@@ -266,13 +277,15 @@ function HuntingCard({
               {t('cards.hunting.ceiling', { rate: hours(spot.estimate.ceilingPerHour) })}
             </span>
           ) : (
-            hours(spot.estimate.expPerHour)
+            <RateCell rate={spot.estimate.expPerHour} tone="accent" top={top} />
           )
       },
       {
         id: 'rooms',
-        // Small, a spot is its lair and what it pays (`lib/cardSize.ts`).
-        from: 'medium',
+        // Small, a spot is its lair and what it pays (`lib/cardSize.ts`); the
+        // rooms a lap walks wait for a large card, so a medium one keeps the
+        // lair's name readable beside the rate, the steps and the cost.
+        from: 'large',
         label: t('cards.hunting.columns.rooms'),
         numeric: true,
         value: (spot) => spot.walk.length,
@@ -300,13 +313,10 @@ function HuntingCard({
           const share = spot.estimate.worstShare ?? spot.estimate.worstShareAtLeast;
           return share === null ? null : Math.round(share * 100);
         },
-        cell: (spot) =>
-          spot.estimate.worstShare === null
-            ? atLeast(spot.estimate.worstShareAtLeast)
-            : percent(spot.estimate.worstShare)
+        cell: (spot) => <CostCell estimate={spot.estimate} />
       }
     ],
-    [open, rough]
+    [open, rough, toggle, top]
   );
 
   const opened = rows.find((spot) => spot.key === open) ?? null;
@@ -391,6 +401,27 @@ function HuntingCard({
             .filter((sentence) => sentence !== '')
             .join(' ');
 
+  const note =
+    advice?.refusal !== null && advice?.refusal !== undefined
+      ? advice.refusal
+      : loading
+        ? t('cards.hunting.loading')
+        : advice === null
+          ? ''
+          : [
+              t('cards.hunting.from', {
+                room: advice.from?.name ?? '',
+                count: rows.length.toLocaleString(),
+                swept: advice.swept.toLocaleString()
+              }),
+              measured,
+              party,
+              leftOut,
+              unpriced
+            ]
+              .filter((sentence) => sentence !== '')
+              .join(' ');
+
   return (
     <BentoCard
       {...chrome}
@@ -399,27 +430,10 @@ function HuntingCard({
       paned
       title={t('cards.hunting.title')}
     >
+      {best === null ? null : <HuntBest onOpen={toggle} open={open === best.key} spot={best} />}
       <div className="hunt-head">
-        <span className="hunt-note">
-          {advice?.refusal !== null && advice?.refusal !== undefined
-            ? advice.refusal
-            : loading
-              ? t('cards.hunting.loading')
-              : advice === null
-                ? ''
-                : [
-                    t('cards.hunting.from', {
-                      room: advice.from?.name ?? '',
-                      count: rows.length.toLocaleString(),
-                      swept: advice.swept.toLocaleString()
-                    }),
-                    measured,
-                    party,
-                    leftOut,
-                    unpriced
-                  ]
-                    .filter((sentence) => sentence !== '')
-                    .join(' ')}
+        <span className="hunt-note" title={note}>
+          {note}
         </span>
       </div>
       <CardTable
@@ -485,6 +499,7 @@ function SpotDetail({
     // `scroller`, so the paned body gives it a bounded share and it moves
     // inside it — the card's own rule for anything of a length nobody controls.
     <div className="scroller hunt-detail">
+      <HuntCycle estimate={estimate} />
       <div className="readout-box">
         <dl className="readout columns">
           <dt>{t('cards.hunting.detail.rate')}</dt>
@@ -751,6 +766,55 @@ function RoomRow({
             })}
       </span>
     </li>
+  );
+}
+
+/**
+ * A rate as its figure over a hairline drawn against the best on the card:
+ * the ranking the column sorts by, seen at a glance. `ok` where hunting there
+ * measured it, in the accent where it is the estimate.
+ */
+function RateCell({
+  rate,
+  top,
+  tone,
+  title
+}: {
+  rate: number | null;
+  top: number;
+  tone: 'ok' | 'accent';
+  title?: string;
+}) {
+  return (
+    <span
+      className="stat-cell hunt-bar"
+      data-tone={tone}
+      style={{ '--share': rate === null || top <= 0 ? 0 : rate / top } as CSSProperties}
+      title={title}
+    >
+      <b>{hours(rate)}</b>
+      <i aria-hidden="true" />
+    </span>
+  );
+}
+
+/**
+ * What the worst spawn costs, over a hairline drawn as that share of the
+ * health bar: red where it is expected to take all of it, amber where the
+ * survey calls the room costly, quiet otherwise. A floor is marked as one.
+ */
+function CostCell({ estimate }: { estimate: HuntingSpot['estimate'] }) {
+  const share = estimate.worstShare ?? estimate.worstShareAtLeast;
+  return (
+    <span
+      className="stat-cell hunt-bar"
+      data-tone={estimate.deadly ? 'bad' : estimate.costly ? 'warn' : 'quiet'}
+      data-unknown={share === null ? 'true' : undefined}
+      style={{ '--share': Math.min(1, share ?? 0) } as CSSProperties}
+    >
+      <b>{estimate.worstShare === null ? atLeast(estimate.worstShareAtLeast) : percent(share)}</b>
+      <i aria-hidden="true" />
+    </span>
   );
 }
 

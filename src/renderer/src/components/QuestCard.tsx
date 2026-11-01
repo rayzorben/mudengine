@@ -4,10 +4,10 @@ import type { Gate } from '@shared/gates';
 import { gateWords as gateWordsIn } from '@shared/gateWords';
 import BentoCard, { type CardChrome } from './BentoCard';
 import Icon from './Icon';
-import { ListTools, useListFilter, type Facet } from './ListTools';
+import { useListFilter, type Facet } from './ListTools';
+import QuestBookHead from './QuestBookHead';
 import { Name, Reward } from './QuestName';
 import QuestTile from './QuestTile';
-import { useCardSize } from '../hooks/useCardSize';
 import { useRemembered, useRememberedRanks } from '../hooks/useRemembered';
 import { useQuestReach } from '../hooks/useQuestReach';
 import { useRunPress } from '../hooks/useRunPress';
@@ -927,8 +927,6 @@ function QuestCard({
     onDetailHidden: closeTrack
   });
   const shelves = shelve(filter.kept, GROUPS, (row) => row.group);
-  const size = useCardSize();
-  const roomy = size !== 'small';
 
   // A plan belongs to the quest it was asked about, so another opening drops it.
   const toggleOpen = useCallback((id: number) => {
@@ -1021,12 +1019,7 @@ function QuestCard({
       paned
       title={t('cards.quests.title')}
     >
-      <ListTools
-        chips={roomy && filter.present.length > 1}
-        filter={filter}
-        find={t('cards.quests.find')}
-        finding={roomy}
-      />
+      <QuestBookHead filter={filter} groups={GROUPS} rows={filter.kept} />
       <div aria-label={t('cards.quests.caption')} className="scroller quest-book">
         {rows.length === 0 ? (
           <div className="empty">{t('cards.quests.none')}</div>

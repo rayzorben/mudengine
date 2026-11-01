@@ -2267,6 +2267,21 @@ cards:
       steps: Steps
       cost: Cost
     roomsCell: '{loop} of {total}'
+    # The best lair, set large at the head of the card (`HuntBest`).
+    best:
+      label: Best from here
+      unit: an hour
+      steps: '{steps} steps away'
+      rooms: '{loop} of {total} rooms a lap'
+      costTitle: What its worst spawn takes of your health
+    # Where a lap's time goes (`HuntCycle`), the seconds of *One lap* drawn.
+    cycle:
+      label: Where a lap's time goes
+      fight: Fight
+      rest: Rest
+      meditate: Meditate
+      walk: Walk
+      wait: Wait for regen
     boss: boss
     deadly: deadly
     deadlyLong: One room of this is expected to take all your health.
@@ -2382,6 +2397,14 @@ cards:
       one: 1 other choice
       many: '{count} other choices'
     hideChoices: Hide the choices
+    unfold: Show the slot whole
+    fold: Back to one line
+    kit:
+      label: How the slots stand
+      buy: Buying
+      declined: Not buying
+      best: Wearing the best
+      reach: Out of reach
     backToSuggestion: Back to the suggestion
     pickedNone: Nothing to buy.
     pickedCost:
@@ -2443,6 +2466,13 @@ cards:
       nothingPicked: nothing is picked to buy
       noWay: no shop selling any of them can be reached from here
   quests:
+    # The book in figures over a large card (`QuestBookHead`).
+    summary:
+      label: The quest book
+      ring: '{done} of {total} quests done'
+      shelves: The quests on each shelf
+      exp: Exp to earn
+      expHint: on the Open shelf
     anyOf: Any one of
     # A copied exp figure while the class's own routes are unread.
     atLeast: at least {amount}

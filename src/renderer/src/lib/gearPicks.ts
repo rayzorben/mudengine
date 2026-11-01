@@ -193,3 +193,19 @@ export function toggled(slot: GearSlot, current: readonly number[], item: number
   if (current.includes(item)) return current.filter((id) => id !== item);
   return [...current, item].slice(-roomFor(slot));
 }
+
+/** What a slot is doing, which tints its tile and its row: buying, all declined, its best on, or out of reach. */
+export type SlotState = 'buy' | 'declined' | 'best' | 'reach';
+export const SLOT_STATES: readonly SlotState[] = ['buy', 'declined', 'best', 'reach'];
+
+export function slotState(
+  slot: GearSlot,
+  suggested: readonly GearChoice[],
+  declined: GearSay['declined']
+): SlotState {
+  if (slot.items.length === 0) return 'best';
+  if (suggested.length === 0) return 'reach';
+  return suggested.some((item) => !declined.has(declineKey(slot.slot, item.item)))
+    ? 'buy'
+    : 'declined';
+}

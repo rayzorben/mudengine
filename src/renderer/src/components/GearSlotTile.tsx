@@ -3,7 +3,8 @@ import { memo, useState } from 'react';
 import Icon from './Icon';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
-import { declineKey, gainWords, priceWords, sourceWords } from '../lib/gearPicks';
+import GearToggle from './GearToggle';
+import { declineKey, gainWords, priceWords, slotState, sourceWords } from '../lib/gearPicks';
 import type { GearChoice, GearSlot } from '@shared/upgrades';
 
 /**
@@ -26,10 +27,9 @@ export interface GearSlotTileProps {
   onDecline(slot: string, item: number): void;
   onChoose(slot: GearSlot, item: number): void;
   onReset(slot: string): void;
+  /** Folds the tile back into its row, where the card draws slots as rows; absent where it does not. */
+  onFold?(slot: string): void;
 }
-
-/** The tile's state, which tints it: something to buy, all declined, the best on, or out of reach. */
-type TileState = 'buy' | 'declined' | 'best' | 'reach';
 
 function GearSlotTile({
   slot,
@@ -39,19 +39,12 @@ function GearSlotTile({
   budget,
   onDecline,
   onChoose,
-  onReset
+  onReset,
+  onFold
 }: GearSlotTileProps) {
   const [open, setOpen] = useState(false);
   const best = slot.items[0];
-  const buying = suggested.filter((item) => !declined.has(declineKey(slot.slot, item.item)));
-  const state: TileState =
-    best === undefined
-      ? 'best'
-      : suggested.length === 0
-        ? 'reach'
-        : buying.length === 0
-          ? 'declined'
-          : 'buy';
+  const state = slotState(slot, suggested, declined);
   const others = slot.items.length - (best === undefined ? 0 : 1);
   return (
     <li className="gear-slot tile" data-state={state} data-slot={slot.slot}>
@@ -59,7 +52,20 @@ function GearSlotTile({
         <span className="gear-slot-glyph" aria-hidden="true">
           <Icon name={slot.ranking === 'weapon' ? 'sword' : 'shield'} />
         </span>
-        <span className="gear-slot-name">{slot.slot}</span>
+        {onFold === undefined ? (
+          <span className="gear-slot-name">{slot.slot}</span>
+        ) : (
+          <button
+            aria-expanded
+            className="gear-slot-name gear-fold"
+            onClick={() => onFold(slot.slot)}
+            onMouseDown={keepFocus}
+            title={t('cards.gear.fold')}
+            type="button"
+          >
+            {slot.slot}
+          </button>
+        )}
         {state === 'best' ? (
           <span className="chip on cased">
             <Icon name="check" /> {t('cards.gear.bestWorn')}
@@ -102,40 +108,15 @@ function GearSlotTile({
         <p className="gear-reach">{t('cards.gear.outOfReach')}</p>
       ) : (
         <div className="gear-suggest">
-          {suggested.map((item) => {
-            const buy = !declined.has(declineKey(slot.slot, item.item));
-            const gain = gainWords(item.gain);
-            return (
-              <button
-                aria-pressed={buy}
-                className="gear-toggle"
-                data-buy={buy ? 'true' : 'false'}
-                key={item.item}
-                onClick={() => onDecline(slot.slot, item.item)}
-                onMouseDown={keepFocus}
-                title={buy ? t('cards.gear.declineTitle') : t('cards.gear.buyTitle')}
-                type="button"
-              >
-                <span className="gear-toggle-mark" aria-hidden="true">
-                  <Icon name={buy ? 'check' : 'close'} />
-                </span>
-                <span className="gear-toggle-body">
-                  <span className="gear-item-name">{item.name}</span>
-                  <span className="gear-meta">
-                    {item.sold === null
-                      ? buy
-                        ? t('cards.gear.buying')
-                        : t('cards.gear.declined')
-                      : buy
-                        ? t('cards.gear.buyingAt', { shop: item.sold.shop })
-                        : t('cards.gear.declinedAt', { shop: item.sold.shop })}
-                  </span>
-                </span>
-                {gain === '' ? null : <span className="gear-gain">{gain}</span>}
-                <span className="gear-price">{priceWords(item.charged)}</span>
-              </button>
-            );
-          })}
+          {suggested.map((item) => (
+            <GearToggle
+              buy={!declined.has(declineKey(slot.slot, item.item))}
+              item={item}
+              key={item.item}
+              onDecline={onDecline}
+              slot={slot.slot}
+            />
+          ))}
         </div>
       )}
 

@@ -4,6 +4,7 @@ import EntityNumber from './EntityNumber';
 import MobAsks from './MobAsks';
 import MobFactRow from './MobFactRow';
 import RarityRows from './RarityRows';
+import ReferenceFacts from './ReferenceFacts';
 import { regenClockText, residentClockText } from '../lib/clockText';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
@@ -36,45 +37,17 @@ import type {
 import type { MobLoreEntry } from '@shared/lore';
 import type { FightSummary } from '@shared/fights';
 import type { ItemRarity } from '@shared/rarity';
-import { entryNumber, entryWord, type ReferenceEntry } from '../lib/reference';
+import {
+  entryNumber,
+  entryWord,
+  mobDefence,
+  mobHealth,
+  type ReferenceEntry
+} from '../lib/reference';
 
 /** A mean as a figure: whole above ten, one decimal below, never a rounded-away zero. */
 function figure(mean: number): string {
   return mean >= 10 ? String(Math.round(mean)) : (Math.round(mean * 10) / 10).toString();
-}
-
-/** The monster's health figure, honest about a range the rows disagree on. */
-export function mobHealth(mob: WorldMob): string {
-  return mob.span
-    ? t('cards.reference.mob.healthRange', { low: mob.span[0], high: mob.span[1] })
-    : t('cards.reference.mob.healthSingle', { hp: mob.hp });
-}
-
-/** The one figure a list row carries: the one that says how big it is. */
-export function entryFigure(entry: ReferenceEntry): string | null {
-  if (entry.kind === 'mob') return mobHealth(entry.mob);
-  if (entry.kind === 'spell')
-    return entry.spell.level === undefined
-      ? null
-      : t('cards.reference.spell.levelFigure', { level: entry.spell.level });
-  /*
-   * A race's figure is its strength ceiling and a class's is how well it
-   * fights: the one number somebody scanning a list of either is comparing
-   * them by. Null where the realm does not state it, never a zero.
-   */
-  if (entry.kind === 'race')
-    return entry.race.str === undefined
-      ? null
-      : t('cards.reference.race.strFigure', { high: entry.race.str[1] });
-  if (entry.kind === 'class')
-    return entry.className.combat === undefined
-      ? null
-      : t('cards.reference.class.combatFigure', { combat: entry.className.combat });
-  const { item } = entry;
-  if (item.weapon) return `${item.weapon.min}–${item.weapon.max}`;
-  if (item.armour?.ac !== undefined)
-    return t('cards.reference.item.armour.acFigure', { ac: item.armour.ac });
-  return item.price === undefined ? null : String(item.price);
 }
 
 /**
@@ -437,12 +410,7 @@ function MobDetail({
       {(mob.armour !== undefined || mob.damageResist !== undefined) && (
         <>
           <dt>{t('cards.reference.mob.defenceLabel')}</dt>
-          <dd>
-            {t('cards.reference.mob.defenceFigure', {
-              ac: mob.armour ?? '—',
-              dr: mob.damageResist ?? '—'
-            })}
-          </dd>
+          <dd>{mobDefence(mob)}</dd>
         </>
       )}
       <MobFactRow fact="magicResist" mob={mob} />
@@ -1338,6 +1306,7 @@ export default function ReferenceDetail({
           <EntityNumber of={entryNumber(entry)} />
         </div>
       )}
+      <ReferenceFacts entry={entry} realm={realm} />
       {entry.kind === 'mob' && (
         <MobDetail
           fights={entry.fights}

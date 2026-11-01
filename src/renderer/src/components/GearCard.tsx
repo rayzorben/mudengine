@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } f
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import GearBlessFace from './GearBlessFace';
 import GearBudget from './GearBudget';
-import GearSlotTile from './GearSlotTile';
+import GearSlots from './GearSlots';
 import GearTripFace from './GearTripFace';
 import Icon from './Icon';
 import { t } from '../lib/i18n';
@@ -188,6 +188,21 @@ function GearCard({
   const running = trip !== null && trip.stage !== 'ended';
   const slots = useMemo(() => (choices === null ? [] : inOrder(choices.slots)), [choices]);
 
+  const spendWords = `${
+    cost.count === 0
+      ? t('cards.gear.pickedNone')
+      : cost.count === 1
+        ? t('cards.gear.pickedCost.one', {
+            cost: copperWords(cost.copper),
+            budget: copperWords(budget)
+          })
+        : t('cards.gear.pickedCost.many', {
+            count: cost.count,
+            cost: copperWords(cost.copper),
+            budget: copperWords(budget)
+          })
+  }${cost.unpriced > 0 ? ` ${unpricedWords(cost.unpriced)}` : ''}`;
+
   const slotsFace = (
     <>
       <GearBudget
@@ -206,39 +221,22 @@ function GearCard({
         {slots.length === 0 ? (
           <p className="gear-reach">{loading ? t('cards.gear.loading') : t('cards.gear.none')}</p>
         ) : (
-          <ul className="gear-slots tile-grid" data-loading={loading ? 'true' : 'false'}>
-            {slots.map((slot) => (
-              <GearSlotTile
-                budget={budget}
-                chosen={say.chosen[slot.slot] !== undefined}
-                declined={say.declined}
-                key={slot.slot}
-                onChoose={choose}
-                onDecline={decline}
-                onReset={reset}
-                slot={slot}
-                suggested={suggested.get(slot.slot) ?? []}
-              />
-            ))}
-          </ul>
+          <GearSlots
+            budget={budget}
+            loading={loading}
+            onChoose={choose}
+            onDecline={decline}
+            onReset={reset}
+            say={say}
+            slots={slots}
+            suggested={suggested}
+          />
         )}
       </div>
       <footer className="gear-bar">
         <div className="gear-bar-figures">
-          <span className="gear-bar-words">
-            {cost.count === 0
-              ? t('cards.gear.pickedNone')
-              : cost.count === 1
-                ? t('cards.gear.pickedCost.one', {
-                    cost: copperWords(cost.copper),
-                    budget: copperWords(budget)
-                  })
-                : t('cards.gear.pickedCost.many', {
-                    count: cost.count,
-                    cost: copperWords(cost.copper),
-                    budget: copperWords(budget)
-                  })}
-            {cost.unpriced > 0 ? ` ${unpricedWords(cost.unpriced)}` : ''}
+          <span className="gear-bar-words" title={spendWords}>
+            {spendWords}
           </span>
           <div className="meter gear-spend" aria-hidden="true">
             <div

@@ -3,8 +3,10 @@ import { memo, useEffect, useMemo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import EntityNumber from './EntityNumber';
-import ReferenceDetail, { entryFigure } from './ReferenceDetail';
+import Icon, { type IconName } from './Icon';
+import ReferenceDetail from './ReferenceDetail';
 import {
+  entryFigure,
   entryKey,
   entryNumber,
   entryWord,
@@ -42,6 +44,26 @@ export interface ReferenceCardProps extends CardChrome {
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /** This character's supplies list and the write. See `ReferenceDetailProps`. */
   supplies?: SupplyList | null;
+}
+
+/** A match's glyph, by what kind of thing it is, so a long list reads by shape. */
+function glyphOf(entry: ReferenceEntry): IconName {
+  switch (entry.kind) {
+    case 'mob':
+      return 'crosshair';
+    case 'item':
+      return entry.item.weapon ? 'sword' : entry.item.armour ? 'shield' : 'bag';
+    case 'spell':
+      return 'flame';
+    case 'race':
+      return 'users';
+    case 'class':
+      return 'user';
+    default: {
+      const never: never = entry;
+      return never;
+    }
+  }
 }
 
 /**
@@ -171,6 +193,9 @@ function ReferenceCard({
                   {...list.hover(index)}
                   role="option"
                 >
+                  <span aria-hidden="true" className="glyph">
+                    <Icon name={glyphOf(entry)} />
+                  </span>
                   <span className="what">{entry.name}</span>
                   {/* Small, a match is its name and its figure (`lib/cardSize.ts`). */}
                   <span className="kind from-medium">{entryWord(entry)}</span>

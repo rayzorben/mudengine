@@ -131,3 +131,46 @@ export function entryNumber(entry: ReferenceEntry): Numbered {
       return entry.className;
   }
 }
+
+/** The monster's health figure, honest about a range the rows disagree on. */
+export function mobHealth(mob: WorldMob): string {
+  return mob.span
+    ? t('cards.reference.mob.healthRange', { low: mob.span[0], high: mob.span[1] })
+    : t('cards.reference.mob.healthSingle', { hp: mob.hp });
+}
+
+/** The one figure a list row carries: the one that says how big it is. */
+export function entryFigure(entry: ReferenceEntry): string | null {
+  if (entry.kind === 'mob') return mobHealth(entry.mob);
+  if (entry.kind === 'spell')
+    return entry.spell.level === undefined
+      ? null
+      : t('cards.reference.spell.levelFigure', { level: entry.spell.level });
+  /*
+   * A race's figure is its strength ceiling and a class's is how well it
+   * fights: the one number somebody scanning a list of either is comparing
+   * them by. Null where the realm does not state it, never a zero.
+   */
+  if (entry.kind === 'race')
+    return entry.race.str === undefined
+      ? null
+      : t('cards.reference.race.strFigure', { high: entry.race.str[1] });
+  if (entry.kind === 'class')
+    return entry.className.combat === undefined
+      ? null
+      : t('cards.reference.class.combatFigure', { combat: entry.className.combat });
+  const { item } = entry;
+  if (item.weapon) return `${item.weapon.min}–${item.weapon.max}`;
+  if (item.armour?.ac !== undefined)
+    return t('cards.reference.item.armour.acFigure', { ac: item.armour.ac });
+  return item.price === undefined ? null : String(item.price);
+}
+
+/** A monster's armour and damage resist, `—` for the one the realm leaves out; null where it states neither. */
+export function mobDefence(mob: WorldMob): string | null {
+  if (mob.armour === undefined && mob.damageResist === undefined) return null;
+  return t('cards.reference.mob.defenceFigure', {
+    ac: mob.armour ?? '—',
+    dr: mob.damageResist ?? '—'
+  });
+}

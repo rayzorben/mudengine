@@ -2,6 +2,7 @@ import { memo } from 'react';
 
 import Icon, { type IconName } from './Icon';
 import { Reward } from './QuestName';
+import StepBar from './viz/StepBar';
 import { useRunPress } from '../hooks/useRunPress';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -19,6 +20,7 @@ import type {
   QuestBar,
   QuestGroup,
   QuestPays,
+  QuestReward,
   QuestRunProgress,
   QuestSide,
   QuestStep
@@ -62,6 +64,16 @@ const GLYPH: Readonly<Record<QuestGroup, IconName>> = {
   later: 'stopwatch',
   done: 'check',
   barred: 'close'
+};
+
+/** A reward's glyph on its chip, by what it is; exp is the figure set large, not a chip. */
+const REWARD_GLYPH: Readonly<Record<Exclude<QuestReward['kind'], 'exp'>, IconName>> = {
+  item: 'bag',
+  coins: 'coins',
+  ability: 'key',
+  spell: 'flame',
+  lives: 'heart',
+  alignment: 'flag'
 };
 
 function QuestTile({
@@ -121,7 +133,7 @@ function QuestTile({
         >
           {name}
         </button>
-        <span className="entity-id" title={t('cards.quests.counterTooltip')}>
+        <span className="entity-id from-medium" title={t('cards.quests.counterTooltip')}>
           {t('cards.quests.counter', { id })}
         </span>
         {side === 'any' ? null : <span className="chip quiet cased">{sideWords(side)}</span>}
@@ -137,12 +149,9 @@ function QuestTile({
         </button>
       </header>
 
-      {done > 0 && (
+      {total > 0 && (
         <div className="quest-tile-progress" title={progressTitle({ observed, watched })}>
-          <span
-            className="quest-tile-track"
-            style={{ '--share': total === 0 ? 0 : done / total } as React.CSSProperties}
-          />
+          <StepBar done={done} next={doing} total={total} />
           <span className="quest-tile-count">
             {done}/{total}
           </span>
@@ -150,7 +159,7 @@ function QuestTile({
       )}
 
       {ahead !== null && (
-        <p className="quest-tile-ahead">
+        <p className="quest-tile-ahead from-medium">
           {ahead.opens === true
             ? t('cards.quests.tile.aheadOpens', { level: ahead.level })
             : t('cards.quests.tile.ahead', { rank: ahead.rank, level: ahead.level })}
@@ -162,10 +171,12 @@ function QuestTile({
         </p>
       )}
 
-      {group === 'barred' && <p className="quest-tile-why">{bars.map(barWords).join(' · ')}</p>}
+      {group === 'barred' && (
+        <p className="quest-tile-why from-medium">{bars.map(barWords).join(' · ')}</p>
+      )}
 
       {doing && act !== null && target !== null && (
-        <div className="quest-tile-next">
+        <div className="quest-tile-next from-medium">
           <span className="quest-tile-act">{act}</span>
           {onPlan !== null && (
             <button
@@ -196,7 +207,7 @@ function QuestTile({
         <p className="quiet-note">{t('cards.quests.plan.runRefused', { reason: press.refused })}</p>
       )}
 
-      <footer className="quest-tile-pays">
+      <footer className="quest-tile-pays from-medium">
         {pays.exp > 0 && (
           <span className="quest-tile-exp" title={pays.exp.toLocaleString()}>
             {t('cards.quests.reward.exp', { amount: COMPACT.format(pays.exp) })}
@@ -204,6 +215,7 @@ function QuestTile({
         )}
         {pays.rewards.map((reward, at) => (
           <span className="chip quiet cased" key={at}>
+            {reward.kind === 'exp' ? null : <Icon name={REWARD_GLYPH[reward.kind]} />}
             <Reward onName={onName} reward={reward} />
           </span>
         ))}
