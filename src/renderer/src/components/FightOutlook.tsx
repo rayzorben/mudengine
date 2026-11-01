@@ -63,7 +63,7 @@ export default function FightOutlook({ verdict }: { verdict: RoomVerdict }) {
 }
 
 /** One monster fought on its own, said for each state the odds book can be in. */
-function aloneFigure(name: string, odds: Odds): string {
+export function aloneFigure(name: string, odds: Odds): string {
   switch (odds.kind) {
     case 'run':
       return t('cards.combat.outlook.alone', {

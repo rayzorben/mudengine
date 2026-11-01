@@ -10,7 +10,7 @@
  *
  * See `mudengine-world` › *The realm decides a monster's maximum*.
  */
-import { Fragment } from 'react';
+import { Fragment, type CSSProperties } from 'react';
 
 import EntityNumber, { entityNumberText } from './EntityNumber';
 import { clockText, regenClockText } from '../lib/clockText';
@@ -41,6 +41,11 @@ export function healthOf(mob: WorldMob): string {
   return mob.span === undefined
     ? t('cards.room.lair.health', { hp: mob.hp })
     : t('cards.room.lair.healthSpan', { low: mob.span[0], high: mob.span[1] });
+}
+
+/** The most health a row can have: the top of its range where rows sharing the name disagree. */
+function mostHealth(mob: WorldMob): number {
+  return mob.span === undefined ? mob.hp : mob.span[1];
 }
 
 /** One line per thing that can spawn, with its health, for pasting. */
@@ -91,6 +96,8 @@ export default function LairList({ lair, standing, inspect }: LairListProps) {
      */
     return <div className="empty">{t('cards.room.lair.unnamed')}</div>;
   }
+  // Each row's health is drawn against the lair's toughest, so the one to fear stands out.
+  const toughest = Math.max(1, ...lair.mobs.map(mostHealth));
   return (
     <>
       {(lair.max !== null || lair.respawnSeconds !== null) && (
@@ -147,6 +154,11 @@ export default function LairList({ lair, standing, inspect }: LairListProps) {
                 <EntityNumber of={mob} />
               </dt>
               <dd>
+                <span
+                  aria-hidden="true"
+                  className="lair-hp"
+                  style={{ '--share': mostHealth(mob) / toughest } as CSSProperties}
+                />
                 {healthOf(mob)}
                 {/* The same words the occupant line uses, so a lair reads as
                     the room it is: hostile in words, uncertain with a mark. */}

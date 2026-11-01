@@ -111,6 +111,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           verdict={view.verdict}
           asks={view.asks}
           searchRooms={ctx.searchRooms}
+          art={ctx.roomArt}
         />
       );
     case 'map':

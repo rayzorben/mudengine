@@ -11,10 +11,10 @@ import type { IpcApi, SessionId } from '@shared/ipc';
 import { NO_ROOM_ART, roomPictureUrl, turnOf, type RoomArtView } from '@shared/roomArt';
 import type { ArenaPicture } from '../components/game/drawArena';
 
-export function useRoomArt(
-  api: Pick<IpcApi, 'roomArt' | 'onRoomArt'>,
-  session: SessionId
-): ArenaPicture | null {
+/** What the hook reads the pictures through: the bridge's two room-art calls. */
+export type RoomArtApi = Pick<IpcApi, 'roomArt' | 'onRoomArt'>;
+
+export function useRoomArt(api: RoomArtApi, session: SessionId): ArenaPicture | null {
   const [view, setView] = useState<RoomArtView>(NO_ROOM_ART);
   const [image, setImage] = useState<ArenaPicture | null>(null);
   useEffect(() => {
