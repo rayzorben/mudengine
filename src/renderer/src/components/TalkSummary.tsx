@@ -85,7 +85,7 @@ function TalkSummary({
 
   if (talked.length === 0) return null;
   return (
-    <section aria-label={t('cards.talk.summary.label')} className="talk-summary from-large">
+    <section aria-label={t('cards.talk.summary.label')} className="talk-summary">
       <div className="talk-busy">
         <em>{t('cards.talk.summary.busy', { minutes: drawn.minutes })}</em>
         <Histogram label={t('cards.talk.summary.busyAria')} series={drawn.busySeries} />

@@ -1217,14 +1217,19 @@ function ConversationCard({
         />
       )}
 
-      <TalkSummary
-        faces={CHANNEL_FACES}
-        known={people === null ? null : people.known}
-        onSelect={onSelect}
-        speakerOf={speakerOf}
-        talked={talked}
-      />
-      {/*
+      {/* The summary and the feed share one pane, which decides by its own size
+          whether the summary has room: the feed is the card's point, so the
+          summary never takes height the feed needs. */}
+      <div className="talk-pane">
+        <div className="talk-split">
+          <TalkSummary
+            faces={CHANNEL_FACES}
+            known={people === null ? null : people.known}
+            onSelect={onSelect}
+            speakerOf={speakerOf}
+            talked={talked}
+          />
+          {/*
         `data-layout` and `data-stamped` are what the alignment is done with:
         in `condensed-aligned` the log becomes one grid and each line a
         `subgrid` row, so the columns are sized by the browser from the widest
@@ -1233,33 +1238,35 @@ function ConversationCard({
         chrome font is whatever the options file says). The stamp is a column
         of its own when it is on, which is why the template needs to know.
       */}
-      <div
-        className="conversation-log scroller"
-        data-layout={layout}
-        data-stamped={stamped ? 'true' : undefined}
-        onScroll={noteScroll}
-        ref={logRef}
-      >
-        {shown.length === 0 ? (
-          <div className="empty">
-            {query.length > 0 ? t('cards.talk.empty.noMatch') : t('cards.talk.empty.none')}
+          <div
+            className="conversation-log scroller"
+            data-layout={layout}
+            data-stamped={stamped ? 'true' : undefined}
+            onScroll={noteScroll}
+            ref={logRef}
+          >
+            {shown.length === 0 ? (
+              <div className="empty">
+                {query.length > 0 ? t('cards.talk.empty.noMatch') : t('cards.talk.empty.none')}
+              </div>
+            ) : (
+              shown.map((message) => (
+                <TalkLine
+                  inspect={inspect}
+                  key={`${message.seq}-${message.at}`}
+                  layout={layout}
+                  message={message}
+                  names={names ?? null}
+                  namesVersion={names?.version ?? 0}
+                  onSelect={onSelect}
+                  people={people}
+                  stamped={stamped}
+                  stampFormat={stampFormat}
+                />
+              ))
+            )}
           </div>
-        ) : (
-          shown.map((message) => (
-            <TalkLine
-              inspect={inspect}
-              key={`${message.seq}-${message.at}`}
-              layout={layout}
-              message={message}
-              names={names ?? null}
-              namesVersion={names?.version ?? 0}
-              onSelect={onSelect}
-              people={people}
-              stamped={stamped}
-              stampFormat={stampFormat}
-            />
-          ))
-        )}
+        </div>
       </div>
       {/*
         Something was said while the reader was holding the box still (todo

@@ -15006,6 +15006,22 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * proves the detail is drawn from the registry rather than from the roster —
    * a panel fed by `character.online` would find nobody by that name at all.
    */
+  /*
+   * Scrolled to first, as a player would: a row below the card's own scroll
+   * opened a panel level with a row nobody could see, low enough to cover the
+   * Realm card's names that the next checks press (2026-10-31). Settled before
+   * the click, since a scroll of the list that holds the row closes the panel.
+   */
+  await evaluate(`
+    (() => {
+      const name = [...document.querySelectorAll('.players-card .player-name')]
+        .find((b) => b.innerText.trim() === 'Rayth');
+      name?.scrollIntoView({ block: 'nearest' });
+      return !!name;
+    })()
+  `);
+  await painted();
+  await painted();
   const chose = await evaluate(`
     (() => {
       const name = [...document.querySelectorAll('.players-card .player-name')]
@@ -15103,6 +15119,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         return JSON.stringify({
           onName: !!(name && at && name.contains(at)),
           hit: at ? (at.className || at.tagName) : null,
+          // Which card the thing in the way belongs to, and what it says.
+          card: at?.closest('[data-card]')?.getAttribute('data-card') ?? null,
+          text: at ? (at.textContent ?? '').trim().slice(0, 60) : null,
+          nameBox: r ? [r.left, r.top, r.right, r.bottom].map(Math.round) : null,
+          panelBox: (() => {
+            const p = document.querySelector('.player-flyout')?.getBoundingClientRect();
+            return p ? [p.left, p.top, p.right, p.bottom].map(Math.round) : null;
+          })(),
+          cards: [...document.querySelectorAll('.rail-cell > .card')]
+            .filter((c) => ['realm', 'players'].includes(c.dataset.card))
+            .map((c) => { const b = c.getBoundingClientRect(); return [c.dataset.card, ...[b.left, b.top, b.right, b.bottom].map(Math.round)]; }),
           scrim: [...document.querySelectorAll('.palette-scrim')]
             .map((el) => el.firstElementChild?.className ?? '?')
             .join(',')
@@ -15793,10 +15820,15 @@ check(
   'room card shows the room',
   roomCard.slice(0, 90)
 );
+// The exits are a compass of short codes (`n`, `s`), as the world database
+// writes them; the compass names each way in words as its label (role img).
+const roomExits = await evaluate(
+  `document.querySelector('.room-card .compass[role="img"]')?.getAttribute('aria-label') ?? ''`
+);
 check(
-  /north/i.test(roomCard) && /south/i.test(roomCard),
+  /north/i.test(roomExits) && /south/i.test(roomExits),
   'room card shows exits',
-  roomCard.slice(0, 90)
+  `${roomExits} :: ${roomCard.slice(0, 90)}`
 );
 check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0, 90));
 
@@ -15853,14 +15885,16 @@ check(/Nathaniel/.test(roomCard), 'room card shows occupants', roomCard.slice(0,
       })()
     `)
   );
+  // At most one: the occupants are their own list now (2026-10-31), so a room
+  // with nothing banked, cast, hidden or lying about draws no readout at all.
   check(
-    layout.lists === 1,
+    layout.lists <= 1,
     'the room card states its rows in one grid, so one label column serves them all',
     String(layout.lists)
   );
   const dds = [...new Set(layout.rows.map((r) => r.ddLeft))];
   check(
-    dds.length === 1,
+    dds.length <= 1,
     'and every value starts at the same x, whichever row it is on',
     JSON.stringify(layout.rows)
   );

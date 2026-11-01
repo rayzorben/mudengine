@@ -1930,7 +1930,9 @@ kbd {
  * Where, how fast, how big. The trace takes whatever height the card has left
  * over, so a taller card is a longer look at the rate rather than empty space.
  */
-.session-card > .body.paned {
+.session-body {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -9845,11 +9847,59 @@ button.shelf-tile:hover {
 }
 
 /*
- * The large card's head (`TalkSummary`): when the backlog was busy across the
- * top, then the channels and the people who said the most side by side, or
- * one under the other on a narrow card. It never scrolls; the feed under it
- * does.
+ * The summary (`TalkSummary`): when the backlog was busy, the channels and the
+ * people who said the most. It shares `.talk-pane` with the feed and is drawn
+ * only where the feed keeps room: above it in a pane at least 360px tall,
+ * beside it in one at least 640px wide (Talk docked across the foot), and not
+ * at all otherwise. Measured in the gallery: a 360px pane keeps the feed
+ * about fourteen lines under the summary; the smoke's 324px rail card, whose
+ * pane is far shorter, left the feed 93px with the summary drawn.
  */
+.talk-pane {
+  container: talk-pane / size;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.talk-split {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.talk-split > .conversation-log {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@container talk-pane (height < 360px) {
+  .talk-split > .talk-summary {
+    display: none;
+  }
+}
+
+@container talk-pane (width >= 640px) {
+  .talk-split {
+    flex-direction: row;
+  }
+
+  .talk-split > .talk-summary {
+    align-content: start;
+    display: grid;
+    flex: 0 0 auto;
+    border-bottom: 0;
+    border-right: 1px solid var(--seam);
+    margin: 0 10px 0 0;
+    max-height: 100%;
+    overflow: hidden;
+    padding: 0 10px 0 0;
+    width: 240px;
+  }
+}
+
 .talk-summary {
   border-bottom: 1px solid var(--seam);
   display: grid;
@@ -16100,7 +16150,7 @@ tr:hover .row-action.worn,
   display: grid;
   font-size: var(--font-micro);
   gap: 6px;
-  grid-template-columns: 3ch minmax(24px, 1fr) auto;
+  grid-template-columns: 3ch minmax(0, 1fr) max-content;
   min-width: 0;
 }
 
@@ -16109,8 +16159,9 @@ tr:hover .row-action.worn,
   font-family: var(--font-mono);
 }
 
-/* The figure gives way before the bar does: a clipped `4,434` reading `4,4`
-   would be a wrong maximum stated confidently, so it shortens whole. */
+/* The bar gives way before the figure does: a clipped `4,434` reading `4,4`
+   would be a wrong maximum stated confidently, so the figure's track is its
+   own width (`max-content`) and the smoke measures it whole at the floor. */
 .party-meter-value {
   font-variant-numeric: tabular-nums;
   min-width: 0;
@@ -16216,7 +16267,7 @@ tr:hover .row-action.worn,
 }
 
 .party-card .scroller[data-fit='compact'] .party-meter {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
 }
 
 /* Under 220px (measured in the gallery at the 250px card: the name, the glyph
@@ -16239,8 +16290,13 @@ tr:hover .row-action.worn,
     display: inline;
   }
 
+  /* The name gives way here, not the figure the smoke measures whole. */
   .party-card .scroller[data-fit='compact'] .party-who {
     max-width: none;
+  }
+
+  .party-card .scroller[data-fit='compact'] .party-meters {
+    flex: 0 0 auto;
   }
 }
 

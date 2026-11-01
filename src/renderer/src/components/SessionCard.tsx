@@ -111,29 +111,33 @@ function SessionCard({ state, size, meter, ...chrome }: SessionCardProps) {
       paned
       title={t('cards.session.title')}
     >
-      <div className="session-where" data-tone={tone}>
-        <Icon name={PHASE_ICON[state.phase]} />
-        <span className={target ? 'session-host' : 'session-host inert'}>
-          {target ? `${target.host}:${target.port}` : t('cards.session.noTarget')}
-        </span>
-        {state.connectedAt !== null && state.phase === 'connected' && (
-          <small className="from-medium">
-            {t('cards.session.since', { at: clock(state.connectedAt) })}
-          </small>
+      {/* One scroll region, so a short card scrolls rather than growing; the
+          trace still takes whatever height is left over. */}
+      <div className="scroller session-body">
+        <div className="session-where" data-tone={tone}>
+          <Icon name={PHASE_ICON[state.phase]} />
+          <span className={target ? 'session-host' : 'session-host inert'}>
+            {target ? `${target.host}:${target.port}` : t('cards.session.noTarget')}
+          </span>
+          {state.connectedAt !== null && state.phase === 'connected' && (
+            <small className="from-medium">
+              {t('cards.session.since', { at: clock(state.connectedAt) })}
+            </small>
+          )}
+        </div>
+        {state.detail !== null && (state.phase === 'closed' || state.phase === 'error') && (
+          <div className="session-detail">{state.detail}</div>
         )}
-      </div>
-      {state.detail !== null && (state.phase === 'closed' || state.phase === 'error') && (
-        <div className="session-detail">{state.detail}</div>
-      )}
-      <SessionRate meter={meter} />
-      {/* Small, a session is where and how fast (`lib/cardSize.ts`). */}
-      <div className="kpis from-medium">
-        <Kpi label={t('cards.session.encoding')} value={target?.encoding ?? null} />
-        <Kpi
-          hint={<ScreenShape size={size} />}
-          label={t('cards.session.grid')}
-          value={t('cards.session.gridValue', { cols: size.cols, rows: size.rows })}
-        />
+        <SessionRate meter={meter} />
+        {/* Small, a session is where and how fast (`lib/cardSize.ts`). */}
+        <div className="kpis from-medium">
+          <Kpi label={t('cards.session.encoding')} value={target?.encoding ?? null} />
+          <Kpi
+            hint={<ScreenShape size={size} />}
+            label={t('cards.session.grid')}
+            value={t('cards.session.gridValue', { cols: size.cols, rows: size.rows })}
+          />
+        </div>
       </div>
     </BentoCard>
   );
