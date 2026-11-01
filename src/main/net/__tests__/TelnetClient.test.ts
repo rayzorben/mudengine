@@ -144,6 +144,8 @@ describe('TelnetClient', () => {
     await client.connect({ host: '127.0.0.1', port: server.port, encoding: 'cp437' });
 
     await until(() => telnet.length === 2);
+    // The event fires as the answer is written; give it time to cross the socket.
+    await until(() => Buffer.concat(server.received).length >= '\x1b[2;5R'.length);
     expect(Buffer.concat(server.received).toString('latin1')).toBe('\x1b[2;5R');
     expect(telnet).toEqual(['ESC[2;5R for ESC[6n', 'ESC[! left unanswered']);
 
