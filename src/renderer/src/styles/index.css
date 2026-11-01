@@ -2763,6 +2763,391 @@ kbd {
   width: 1px;
 }
 
+/*
+ * The Room card's head: the compass of the ways out, and who the room is
+ * beside it. Small, the compass is a glyph grid beside the name; medium, its
+ * hub is a thumbnail of the room's picture; large, the picture is the hub at
+ * a third of the card's width. `.room-face` is the width container, never
+ * `.card > .body` (`mudengine-ui` › parts/viz.md).
+ */
+.room-face {
+  container-type: inline-size;
+}
+
+.room-hero {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-bottom: 6px;
+}
+
+.room-hero-text {
+  min-width: 0;
+}
+
+.room-hero .room-name {
+  margin-bottom: 4px;
+}
+
+/* Small, the name gives the occupant counts under it a line. */
+.card[data-card-size='small'] .room-hero .room-name {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  overflow: hidden;
+}
+
+/* The room's words and the occupants' asks, as one run of chips. */
+.room-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.room-acts:empty {
+  display: none;
+}
+
+.room-acts > .exits {
+  display: contents;
+}
+
+.card[data-card-size='medium'] .room-hero .compass {
+  --compass-way: 18px;
+  --compass-hub: 56px;
+}
+
+.card[data-card-size='large'] .room-hero .compass {
+  --compass-way: 22px;
+  --compass-hub: clamp(96px, 32cqi, 168px);
+}
+
+/*
+ * A large card narrower than the compass and a readable column beside it
+ * stacks them. Measured in the gallery: the 300px-wide tall card's face is
+ * 270px across, the 480px one's 450px; the compass at its widest takes 220px,
+ * and a name column under 140px wraps every word.
+ */
+@container (max-width: 360px) {
+  .card[data-card-size='large'] .room-hero {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .card[data-card-size='large'] .room-hero-text {
+    justify-self: stretch;
+  }
+
+  .card[data-card-size='large'] .room-hero .compass {
+    --compass-hub: clamp(96px, 52cqi, 168px);
+  }
+}
+
+/* With no picture to hold, the hub stays the medium card's size whatever the card's. */
+.card[data-card-size='large'] .room-hero .compass:not(:has(.room-picture)) {
+  --compass-hub: 56px;
+}
+
+.room-picture {
+  height: 100%;
+  object-fit: cover;
+  transform: rotate(var(--turn, 0deg)) scaleX(var(--mirror, 1));
+  width: 100%;
+}
+
+/* Small, the room's fight as a chip beside who is here, counted by kind. */
+.room-glance {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+/* Who is here, counted by kind: the small card's glance at the occupant line. */
+.occupant-tally {
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  gap: 2px 10px;
+  margin-top: 2px;
+}
+
+.occupant-tally > span {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.occupant-tally .icon,
+.room-occupants .icon {
+  height: 12px;
+  width: 12px;
+}
+
+.occupant-tally [data-hostile='true'],
+.room-occupants [data-hostile='true'] > .icon {
+  color: var(--danger);
+}
+
+/*
+ * Each occupant with its kind's mark, its name and its chips: wrapping in a
+ * line at medium, a row each at large, where the odds of fighting it alone
+ * stand at the row's right edge.
+ */
+.room-occupants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.room-occupants > li {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.room-occupants > li > .icon {
+  color: var(--text-lo);
+}
+
+.occupants.room-occupants .chip {
+  margin-left: 0;
+}
+
+.card[data-card-size='large'] .room-occupants {
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card[data-card-size='large'] .room-occupants > li {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  padding: 3px 6px;
+}
+
+.card[data-card-size='large'] .room-occupants .occupant-odds {
+  margin-left: auto;
+}
+
+/* The room's fight: the share survived as a ring, the cost against your health as a bar. */
+.room-fight {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.room-fight .ring {
+  --ring-d: 34px;
+}
+
+.card[data-card-size='large'] .room-fight .ring {
+  --ring-d: 44px;
+}
+
+.room-fight-words {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  font-size: var(--font-micro);
+  gap: 4px;
+  min-width: 0;
+}
+
+.room-fight-label {
+  color: var(--text-lo-quiet);
+  letter-spacing: 0.04em;
+}
+
+/* A lair's row, its health as a short bar against the lair's toughest (`--share`). */
+.lair-hp {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 1px;
+  display: inline-block;
+  height: 4px;
+  margin-right: 6px;
+  overflow: hidden;
+  vertical-align: middle;
+  width: 40px;
+}
+
+.lair-hp::before {
+  background: var(--danger);
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
+/*
+ * A room's ways out (`Compass`): eight tiles round a hub and up and down in a
+ * column beside them. The edge tiles run the hub's length, so a way out reads
+ * as a doorway in the side of the room. `--compass-way` is a tile's depth and
+ * `--compass-hub` the hub's side.
+ */
+.compass {
+  --compass-way: 15px;
+  --compass-hub: 15px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  gap: 2px;
+  grid-template-columns: var(--compass-way) var(--compass-hub) var(--compass-way) var(--compass-way);
+  grid-template-rows: var(--compass-way) var(--compass-hub) var(--compass-way);
+}
+
+.compass-way {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+  border-radius: 4px;
+  color: var(--text-hi);
+  display: grid;
+  font-family: var(--font-mono);
+  font-size: max(9px, calc(var(--compass-way) * 0.55));
+  font-weight: 600;
+  line-height: 1;
+  overflow: hidden;
+  place-items: center;
+}
+
+.compass-way[data-state='noted'] {
+  background: color-mix(in srgb, var(--pending) var(--tone-strong), transparent);
+}
+
+.compass-way[data-state='none'] {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+}
+
+.compass-way[data-state='unknown'] {
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  outline-offset: -1px;
+}
+
+.compass-way[data-point='nw'] {
+  grid-area: 1 / 1;
+}
+
+.compass-way[data-point='n'] {
+  grid-area: 1 / 2;
+}
+
+.compass-way[data-point='ne'] {
+  grid-area: 1 / 3;
+}
+
+.compass-way[data-point='w'] {
+  grid-area: 2 / 1;
+}
+
+.compass-way[data-point='e'] {
+  grid-area: 2 / 3;
+}
+
+.compass-way[data-point='sw'] {
+  grid-area: 3 / 1;
+}
+
+.compass-way[data-point='s'] {
+  grid-area: 3 / 2;
+}
+
+.compass-way[data-point='se'] {
+  grid-area: 3 / 3;
+}
+
+.compass-way[data-point='u'] {
+  grid-area: 1 / 4;
+  margin-left: 3px;
+}
+
+.compass-way[data-point='d'] {
+  grid-area: 3 / 4;
+  margin-left: 3px;
+}
+
+.compass-hub {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: 6px;
+  display: grid;
+  grid-area: 2 / 2;
+  overflow: hidden;
+  place-items: center;
+}
+
+.compass-dot {
+  background: var(--accent);
+  border-radius: 50%;
+  height: 5px;
+  width: 5px;
+}
+
+/*
+ * A lap as a ring of its stops (`LapRing`), in the progression's words: done
+ * quiet, now the accent and larger, left at ordinary ink. `--ring-d` sets its
+ * diameter, as the ring's does.
+ */
+.lap-ring {
+  --ring-d: 56px;
+  display: inline-grid;
+  flex: 0 0 auto;
+  height: var(--ring-d);
+  place-items: center;
+  width: var(--ring-d);
+}
+
+.lap-ring > svg {
+  grid-area: 1 / 1;
+  height: 100%;
+  overflow: visible;
+  width: 100%;
+}
+
+.lap-ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+  stroke-width: 1.5;
+}
+
+.lap-ring-arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.lap-ring-stop {
+  fill: var(--text-hi);
+  stroke: var(--ink-card);
+  stroke-width: 0.8;
+}
+
+.lap-ring-stop[data-progress='done'] {
+  fill: var(--text-lo-quiet);
+}
+
+.lap-ring-stop[data-progress='now'] {
+  fill: var(--accent);
+}
+
+.lap-ring-centre {
+  color: var(--text-hi);
+  font-size: calc(var(--ring-d) * 0.22);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  grid-area: 1 / 1;
+  line-height: 1;
+  text-align: center;
+}
+
 /* ============================================================== stream log */
 
 .line-log {
@@ -3048,6 +3433,165 @@ kbd {
   color: var(--text-lo);
   font-size: var(--font-micro);
   margin-top: 6px;
+}
+
+/*
+ * Either face's head: the route's ring (steps walked round it, steps left in
+ * the middle) or the lap's ring of stops, with where it is going beside it.
+ * The glance at every size; a large card draws the ring larger.
+ */
+.nav-hero {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.nav-hero .ring {
+  --ring-d: 54px;
+}
+
+.nav-hero .lap-ring {
+  --ring-d: 58px;
+}
+
+.card[data-card-size='large'] .nav-hero .ring,
+.card[data-card-size='large'] .nav-hero .lap-ring {
+  --ring-d: 84px;
+}
+
+.nav-hero .ring-centre {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-ring-figure {
+  font-size: calc(var(--ring-d) * 0.3);
+}
+
+.nav-ring-tag {
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 500;
+}
+
+.nav-hero-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nav-hero-text .walk-destination {
+  font-size: var(--font-ui);
+  margin-bottom: 2px;
+}
+
+.nav-hero-line {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The stop being walked to, in the accent the progression gives `now`. */
+.nav-hero-line.nav-stop {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/*
+ * Narrower tiles than the shared row's: three across a medium card. Measured
+ * in the gallery, the 330px card's body is 300px across, where 96px tiles
+ * left the third on a row of its own and 84px ones keep three abreast.
+ */
+.nav-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  margin-bottom: 8px;
+}
+
+/* The loops play could start, a tile each, the picked one tinted. */
+.loop-tiles {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr));
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.loop-tiles button {
+  align-items: center;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-control);
+  color: var(--text-hi);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 0 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.loop-tiles button:hover {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+}
+
+.loop-tiles button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-color: color-mix(in srgb, var(--accent) var(--tone), transparent);
+}
+
+.loop-tiles .lap-ring {
+  --ring-d: 30px;
+  grid-row: span 2;
+}
+
+.loop-tile-name {
+  font-size: var(--font-micro);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-tile-stops {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+/* Nothing moving: the route glyph, quiet, over the sentence that says so. */
+.nav-idle {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-block: 8px;
+}
+
+.nav-idle > .icon {
+  height: 28px;
+  width: 28px;
+}
+
+.card[data-card-size='small'] .nav-idle {
+  flex-direction: row;
+  padding-block: 0;
+}
+
+.card[data-card-size='small'] .nav-idle > .icon {
+  height: 16px;
+  width: 16px;
 }
 
 /* A row of buttons in a card's body, always drawn and never folded: the Hunting card's three. */
@@ -3412,6 +3956,20 @@ kbd {
   padding: 0 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * Small, the picture is a few rows high, so the finder keeps the pager and
+ * the fields and drops the sentence naming the jump the page ends in (said
+ * again from medium up), and the matches list stops at a few rows rather than
+ * running past the card's foot.
+ */
+.card[data-card-size='small'] .map-leg-text {
+  display: none;
+}
+
+.card[data-card-size='small'] .room-field-matches {
+  max-height: 6em;
 }
 
 .map-finder-note {

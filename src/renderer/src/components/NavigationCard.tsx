@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react';
 
 import BentoCard, { type CardAction, type CardChrome, type CardTab } from './BentoCard';
 import { keepFocus } from '../lib/focus';
@@ -6,7 +6,12 @@ import { t } from '../lib/i18n';
 import type { CharacterState } from '@shared/character';
 import { expRateSince, loopIsResting, type LoopProgress } from '@shared/loops';
 import { expectedFromWords } from '@shared/hunting';
-import { rate } from '../lib/rates';
+import { compact } from '../lib/rates';
+import Icon from './Icon';
+import Kpi from './viz/Kpi';
+import LoopTiles from './LoopTiles';
+import LapRing from './viz/LapRing';
+import Ring from './viz/Ring';
 import { movementOf, navigationFace } from '@shared/movement';
 import {
   isAfflictionHold,
@@ -106,6 +111,31 @@ function NavigationCard({
     const id = window.setInterval(() => setNow(Date.now()), tuning().clockTickMs);
     return () => window.clearInterval(id);
   }, [ticking]);
+
+  /*
+   * Held by value: the card redraws on every tick, the steps far less often.
+   * No route is no share and a dash, never `0 left`; the arc is the accent
+   * only while the walk is walking.
+   */
+  const through = walk.total > 0 ? Math.min(1, walk.done / walk.total) : null;
+  const left = walk.total > 0 ? Math.max(0, walk.total - walk.done) : null;
+  const walkArcs = useMemo(
+    () => [
+      { fraction: through, tone: walking ? ('accent' as const) : ('quiet' as const), level: null }
+    ],
+    [through, walking]
+  );
+  const walkCentre = useMemo(
+    () => (
+      <>
+        <span className="nav-ring-figure">{left ?? '—'}</span>
+        <span className="nav-ring-tag">{t('cards.navigation.route.leftTag')}</span>
+      </>
+    ),
+    [left]
+  );
+  const lapCentre = useMemo(() => `${loop.stop}/${loop.stops}`, [loop.stop, loop.stops]);
+  const walkLabel = t('cards.navigation.route.meterLabel', { done: walk.done, total: walk.total });
 
   /*
    * **The picker is what play will move**, which is one control and one
@@ -272,48 +302,74 @@ function NavigationCard({
   /*
    * The route, on its own: where the walk is going and how far through it is.
    *
-   * The reason matters more than the bar. A walk ends on a shut door, a room
-   * the route did not predict, a fight, or the player taking the wheel — and
-   * "it stopped and I do not know why" is exactly the state
-   * docs/legacy-assessment.md §6 argues a decision trace exists to prevent. So
-   * the reason is shown in full, and it stays on screen after the walk ends
-   * rather than the face going blank with the answer.
+   * The reason matters more than the progress. A walk ends on a shut door, a
+   * room the route did not predict, a fight, or the player taking the wheel,
+   * and "it stopped and I do not know why" is the state a decision trace
+   * exists to prevent; so the reason stays on screen after the walk ends.
    *
-   * Nothing here says a word about loops, and nothing here stops anything: the
-   * heading holds the movement's one play and one stop, and a `Stop` button of
-   * this face's own was half of why *stop* meant two things.
+   * Nothing here stops anything: the heading holds the movement's one play and
+   * one stop.
    */
+  const arriving =
+    walking && walk.arrivalAt !== null && walk.hold === null
+      ? duration(walk.arrivalAt - now)
+      : null;
   const routeFace = (
     <>
       {canPick && picker}
-      <div className="walk-destination">
-        <span className="walk-name" title={walk.destination ?? undefined}>
-          {walk.destination === null ? '—' : place(walk.destination, walk.destinationRoom)}
-        </span>
-      </div>
-
-      {/* Steps confirmed, not steps sent: the difference is the whole design.
-          A bar that filled on send would show progress through a route the
-          character may not be walking. */}
-      <div className="meter walk-meter" data-level={walking ? 'ok' : 'unknown'}>
-        <div
-          className="fill"
-          style={{ width: `${walk.total === 0 ? 0 : (walk.done / walk.total) * 100}%` }}
-        />
-        <span className="meter-label">
-          {t('cards.navigation.route.meterLabel', { done: walk.done, total: walk.total })}
-        </span>
+      {/* Steps confirmed, not steps sent: a ring that filled on send would
+          show progress through a route the character may not be walking. */}
+      <div className="nav-hero">
+        <Ring arcs={walkArcs} label={walkLabel}>
+          {walkCentre}
+        </Ring>
+        <div className="nav-hero-text">
+          <div className="walk-destination">
+            <span className="walk-name" title={walk.destination ?? undefined}>
+              {walk.destination === null ? '—' : place(walk.destination, walk.destinationRoom)}
+            </span>
+          </div>
+          <span className="nav-hero-line">{walkLabel}</span>
+          {/* Small, the arrival is a line here; from medium it is a tile. */}
+          {arriving !== null && (
+            <span className="nav-hero-line only-small">
+              {t('cards.navigation.route.arrivingLine', { duration: arriving })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/*
-        And what is left, which is the half this face never showed.
-        
-        A bar says how far along and the row below says what is happening now;
-        between them they answer *what have I done* and *what am I doing*,
-        leaving *what is left* — the one a player actually acts on. Drawn as the
-        shared progression grammar (`.progression`), so a lap's stops and a
-        quest's steps read the same way as this.
+        What is being sent, where it leads, and when the walk is expected to
+        end: the arrival the walker projected at the last confirmed step
+        (`WalkProgress.arrivalAt`), not shown while the walk holds, since the
+        chip says why it is standing and a countdown stuck at zero under a
+        fight would read as a broken clock.
       */}
+      {walking && walk.step && (
+        <div className="kpis nav-kpis from-medium">
+          <Kpi
+            label={t('cards.navigation.route.sendingLabel')}
+            value={<span className="step-command">{walk.step.command}</span>}
+          />
+          <Kpi
+            label={t('cards.navigation.route.towardLabel')}
+            value={place(walk.step.name, walk.step.to)}
+          />
+          {arriving !== null && (
+            <Kpi label={t('cards.navigation.route.arrivingLabel')} value={arriving} />
+          )}
+          {walk.step.note !== null && (
+            <Kpi
+              label={t('cards.navigation.route.gatedLabel')}
+              tone="warn"
+              value={walk.step.note}
+            />
+          )}
+        </div>
+      )}
+
+      {/* What is left, the half a player acts on, in the shared progression grammar. */}
       {walking && walk.ahead.length > 0 && (
         <div className="progression-scroller from-medium">
           <ol className="progression">
@@ -326,46 +382,10 @@ function NavigationCard({
         </div>
       )}
 
-      {walking && walk.step && (
-        <dl className="readout from-medium">
-          <dt>{t('cards.navigation.route.sendingLabel')}</dt>
-          <dd>
-            <span className="step-command">{walk.step.command}</span>
-          </dd>
-          <dt>{t('cards.navigation.route.towardLabel')}</dt>
-          <dd>{place(walk.step.name, walk.step.to)}</dd>
-          {/*
-            Counting down to the arrival the walker projected at the last
-            confirmed step (`WalkProgress.arrivalAt`). Not shown while the
-            walk holds: the chip says why it is standing still, and a
-            countdown stuck at zero under a fight would read as a broken
-            clock. It is clamped at zero in `duration`, since a step slower
-            than the average runs past the figure.
-          */}
-          {walk.arrivalAt !== null && walk.hold === null && (
-            <>
-              <dt>{t('cards.navigation.route.arrivingLabel')}</dt>
-              <dd>{duration(walk.arrivalAt - now)}</dd>
-            </>
-          )}
-          {walk.step.note !== null && (
-            <>
-              <dt>{t('cards.navigation.route.gatedLabel')}</dt>
-              <dd className="inert">{walk.step.note}</dd>
-            </>
-          )}
-        </dl>
-      )}
-
-      {/* A reason only ever exists on a walk that has *stopped* — `start`
-          clears it and an arrival sets it to null — so it is labelled as the
-          outcome it is. Drawn bare it read as a live condition, and
-          `you are in combat` sat under a Combat card saying the opposite for
-          as long as the card was open. Not a `<dl>` row: the readout above is
-          this card's one grid, and a second would be two label columns of
-          different widths inside one card. */}
+      {/* A reason only exists on a walk that has *stopped*, so it is labelled
+          as the outcome it is; drawn bare it read as a live condition. */}
       {walk.reason !== null && (
-        <div className="walk-reason from-medium">
+        <div className="walk-reason">
           {t('cards.navigation.route.endedReason', { reason: walk.reason })}
         </div>
       )}
@@ -377,54 +397,102 @@ function NavigationCard({
     stops: loop.stops,
     stopName: loop.stopName ?? '—'
   });
+  // Ahead of what the hunt expected of it, or behind: the rate tile's tone.
+  const pace =
+    measured === null || loop.expected === null
+      ? undefined
+      : measured >= loop.expected.perHour
+        ? ('ok' as const)
+        : ('warn' as const);
 
   /*
    * The loop: which one, how far round it, and what it has bought.
    *
-   * Laid out as the route face is — the name, then a bar, then the figures —
-   * because they answer the same question and reading one should not be a
-   * different gesture from reading the other. The bar replaced `Stop: 1/2 ·
-   * Newhaven, Arena` as a row of text, which was a fraction rendered as words
-   * beside a card that was already drawing the identical fraction as a bar.
-   *
-   * `stop` is the stop the loop is *at or heading for*, so the bar reads full
-   * on the last one and starts again at the next lap. Deliberately not
-   * `(stop - 1) / stops`, which is the more literal reading of "progress
-   * round the lap" and would draw an empty bar under a label saying `1/2`.
-   *
-   * Every figure is a difference between two numbers the client has, and none
-   * is a `0` standing in for "unknown": experience made is claimed only when
-   * the count was known when the loop started.
+   * Laid out as the route face is, a ring and the name beside it, because they
+   * answer the same question. `stop` is the stop the loop is *at or heading
+   * for*, so the ring reads full on the last one and starts again at the next
+   * lap. Every figure is a difference between two numbers the client has, and
+   * none is a `0` standing in for unknown.
    */
   const loopFace = (
     <>
-      {canPick ? (
-        picker
-      ) : (
-        <div className="walk-destination">
-          <span className="walk-name" title={loop.name ?? undefined}>
-            {loop.name ?? '—'}
-          </span>
-        </div>
-      )}
-
-      {loop.stops > 0 && (
-        <div className="meter walk-meter" data-level={running ? 'ok' : 'unknown'}>
-          <div className="fill" style={{ width: `${(loop.stop / loop.stops) * 100}%` }} />
-          <span className="meter-label">
-            <span className="meter-text" title={stopLabel}>
-              {stopLabel}
+      <div className="nav-hero">
+        {loop.stops > 0 && (
+          <LapRing at={live ? loop.stop : 0} label={stopLabel} stops={loop.stops}>
+            {lapCentre}
+          </LapRing>
+        )}
+        <div className="nav-hero-text">
+          {canPick ? (
+            picker
+          ) : (
+            <div className="walk-destination">
+              <span className="walk-name" title={loop.name ?? undefined}>
+                {loop.name ?? '—'}
+              </span>
+            </div>
+          )}
+          {loop.stopName !== null && (
+            <span className="nav-hero-line nav-stop" title={stopLabel}>
+              {loop.stopName}
             </span>
-          </span>
+          )}
+          {loop.status !== 'idle' && (
+            <span className="nav-hero-line">
+              {loop.laps === 1
+                ? t('cards.navigation.loop.lapsLine.one')
+                : t('cards.navigation.loop.lapsLine.many', { laps: loop.laps })}
+              {loop.bounce && live && (
+                <>
+                  {' · '}
+                  {loop.forward
+                    ? t('cards.navigation.loop.directionForward')
+                    : t('cards.navigation.loop.directionBackward')}
+                </>
+              )}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* What the run pays, only while it runs: a stopped lap has not been
+          running for another minute, and experience won by hand afterwards is
+          not experience the lap made. */}
+      {running && (
+        <div className="kpis nav-kpis from-medium">
+          <Kpi
+            hint={t('cards.vitals.rateUnit')}
+            label={t('cards.navigation.loop.rateLabel')}
+            tone={pace}
+            value={measured === null ? null : compact(measured)}
+          />
+          {loop.expected !== null && (
+            <Kpi
+              hint={
+                <span title={expectedFromWords(loop.expected.from, t)}>
+                  {t('cards.vitals.rateUnit')}
+                </span>
+              }
+              label={t('cards.navigation.loop.expectedLabel')}
+              value={compact(loop.expected.perHour)}
+            />
+          )}
+          <Kpi
+            hint={t('cards.vitals.expUnit')}
+            label={t('cards.navigation.loop.madeLabel')}
+            value={made === null ? null : made.toLocaleString()}
+          />
+          <Kpi
+            label={t('cards.navigation.loop.runningForLabel')}
+            value={ranFor === null ? null : duration(ranFor)}
+          />
         </div>
       )}
 
       {/*
         The lap, all of it: the stops behind, the one being walked to, and the
-        ones still owed. `stop` is one-based and names the stop it is *at or
-        heading for*, so it is the `now` row and everything before it is done.
-        Every stop the player wrote, including the ones no room could be found
-        for — the lap they wrote is the lap they want to read.
+        ones still owed. Every stop the player wrote, including the ones no
+        room could be found for.
       */}
       {loop.stopNames.length > 0 && (
         <div className="progression-scroller from-medium">
@@ -449,62 +517,11 @@ function NavigationCard({
         </div>
       )}
 
-      {/* Small, a lap is its name and its bar under the heading's transport;
-          the stops and the figures wait for a bigger box (`lib/cardSize.ts`). */}
-      <dl className="readout from-medium">
-        {loop.bounce && live && (
-          <>
-            <dt>{t('cards.navigation.loop.directionLabel')}</dt>
-            <dd>
-              {loop.forward
-                ? t('cards.navigation.loop.directionForward')
-                : t('cards.navigation.loop.directionBackward')}
-            </dd>
-          </>
-        )}
-
-        {loop.status !== 'idle' && (
-          <>
-            <dt>{t('cards.navigation.loop.lapsLabel')}</dt>
-            <dd>{loop.laps}</dd>
-          </>
-        )}
-
-        {ranFor !== null && (
-          <>
-            <dt>{t('cards.navigation.loop.runningForLabel')}</dt>
-            <dd>{duration(ranFor)}</dd>
-          </>
-        )}
-
-        {running && (
-          <>
-            <dt>{t('cards.navigation.loop.madeLabel')}</dt>
-            <dd>{made === null ? '—' : made.toLocaleString()}</dd>
-          </>
-        )}
-
-        {running && loop.expected !== null && (
-          <>
-            <dt>{t('cards.navigation.loop.expectedLabel')}</dt>
-            <dd title={expectedFromWords(loop.expected.from, t)}>{rate(loop.expected.perHour)}</dd>
-          </>
-        )}
-
-        {running && (
-          <>
-            <dt>{t('cards.navigation.loop.rateLabel')}</dt>
-            <dd>{rate(measured)}</dd>
-          </>
-        )}
-
-        {loop.status === 'stopped' && loop.reason !== null && (
-          <>
-            <dt>{t('cards.navigation.loop.endedLabel')}</dt>
-            <dd className="inert">{loop.reason}</dd>
-          </>
-        )}
-      </dl>
+      {loop.status === 'stopped' && loop.reason !== null && (
+        <div className="walk-reason">
+          {t('cards.navigation.loop.endedLine', { reason: loop.reason })}
+        </div>
+      )}
     </>
   );
 
@@ -517,7 +534,15 @@ function NavigationCard({
   const idleFace = (
     <>
       {canPick && picker}
-      <div className="walk-reason">{t('cards.navigation.idle.nothing')}</div>
+      <div className="nav-idle">
+        <Icon name="route" />
+        <span className="walk-reason">{t('cards.navigation.idle.nothing')}</span>
+      </div>
+      {canPick && (
+        <div className="from-medium">
+          <LoopTiles chosen={choice} loops={loops} onChoose={setPicked} />
+        </div>
+      )}
     </>
   );
 

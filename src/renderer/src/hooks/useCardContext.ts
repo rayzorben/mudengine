@@ -30,6 +30,7 @@ import { stockCeiling, supplyFor, withSupply } from '@shared/supplies';
 import type { Find } from '@shared/finds';
 import type { GearPick } from '@shared/gearTrip';
 import type { HuntingRoom } from '@shared/hunting';
+import type { RoomArtApi } from './useRoomArt';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
 import type { MapLoader } from '@shared/map';
@@ -85,6 +86,8 @@ export interface CardContext {
   routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
   /** This character's walk under way, in the Map card's pages. */
   walkPages(): ReturnType<IpcApi['walkPages']>;
+  /** The room pictures main holds, read and followed per character by the Room card. */
+  roomArt: RoomArtApi;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
@@ -263,6 +266,8 @@ export type CardApi = Pick<
   | 'searchRooms'
   | 'routeBetween'
   | 'walkPages'
+  | 'roomArt'
+  | 'onRoomArt'
   | 'lookup'
   | 'questBook'
   | 'questErrand'
@@ -608,6 +613,8 @@ export function useCardContext({
         searchRooms: bound.searchRooms,
         routeBetween: bound.routeBetween,
         walkPages: bound.walkPages,
+        // The bridge itself: the session is the card's, and the bridge never changes.
+        roomArt: api,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
         peekRoom: shown ? peekRoom : null,

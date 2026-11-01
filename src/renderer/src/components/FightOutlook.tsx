@@ -35,10 +35,7 @@ const CHIP: Record<ReturnType<typeof survivalVital>, string> = {
 export function AloneChip({ name, odds, named }: { name: string; odds: Odds; named: boolean }) {
   if (odds.kind === 'run') {
     const figure = t('cards.combat.survival.figure', { percent: percent(odds.survival.survives) });
-    const words = t('cards.combat.outlook.alone', {
-      name,
-      percent: percent(odds.survival.survives)
-    });
+    const words = aloneFigure(name, odds);
     return (
       <span className={CHIP[survivalVital(odds.survival.level)]} title={words}>
         {named ? words : figure}
@@ -51,6 +48,13 @@ export function AloneChip({ name, odds, named }: { name: string; odds: Odds; nam
       {named ? words : '…'}
     </span>
   );
+}
+
+/** One monster fought on its own, said for each state the odds book can be in. */
+export function aloneFigure(name: string, odds: Odds): string {
+  return odds.kind === 'run'
+    ? t('cards.combat.outlook.alone', { name, percent: percent(odds.survival.survives) })
+    : aloneWords(name, odds);
 }
 
 /** The odds book's state for a fight it has not run, in words. */

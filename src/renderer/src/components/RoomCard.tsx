@@ -1,46 +1,35 @@
-import { memo, Fragment } from 'react';
+import { memo, useMemo, Fragment } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
-import { exitsUnseen, lightNote } from '../lib/room';
+import { lightNote } from '../lib/room';
 import Icon from './Icon';
-import RowPeaceChip from './RowPeaceChip';
-import RoundChip from './RoundChip';
-import { avoidNote } from '../lib/avoid';
 import { nicknameMarks } from '../lib/nicknames';
+import { useCardSize } from '../hooks/useCardSize';
 import { useRoomNickname } from '../hooks/useRoomNickname';
+import ExitCompass, { ExitNotes, exitWords, sortExits } from './RoomExits';
+import RoomFight, { FightChip } from './RoomFight';
+import RoomOccupants, { OccupantTally } from './RoomOccupants';
+import RoomPicture from './RoomPicture';
+import type { RoomArtApi } from '../hooks/useRoomArt';
 import type { FoundRoom } from '@shared/destinations';
 import type { RoomNickname } from '@shared/roomNicknames';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText } from './LairList';
 import RoomSpellRows, { hazardAtLevel, roomSpellCopyLines } from './RoomSpellRows';
-import {
-  DIRECTION_NAME,
-  roomId,
-  type Direction,
-  type RoomCommand,
-  type SpellHazard,
-  type WorldShop
-} from '@shared/world';
+import { roomId, type RoomCommand, type SpellHazard, type WorldShop } from '@shared/world';
 import { type Discovery } from '@shared/memory';
 import type { Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
-import {
-  standingOf,
-  type CharacterState,
-  type RoomExit,
-  type RoomOccupant
-} from '@shared/character';
+import { standingOf, type CharacterState } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import type { RoomAsk } from '@shared/quests';
 import { askLine } from '@shared/asking';
 import { gatesWords } from '@shared/gateWords';
-import { DISPOSITION_WORD, type Standing } from '@shared/mobs';
-import { occupantAttacksOnSight } from '@shared/mobRules';
 import { countedLabel } from '@shared/items';
 import type { Wearer } from '@shared/gear';
 import { useWearer } from '../hooks/useWearer';
@@ -114,18 +103,8 @@ export interface RoomCardProps extends CardChrome {
   asks: readonly RoomAsk[];
   /** The room search, asked for MegaMUD's name for this room (todo 144); absent, none is shown. */
   searchRooms?(query: string): Promise<FoundRoom[]>;
-}
-
-/** Compass order, so exits always read in the same sequence regardless of the
- *  order the server happened to list them. */
-const ORDER = ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw', 'u', 'd'];
-
-function sortExits(exits: RoomExit[]): RoomExit[] {
-  return [...exits].sort((a, b) => {
-    const ai = ORDER.indexOf(a.direction);
-    const bi = ORDER.indexOf(b.direction);
-    return (ai === -1 ? ORDER.length : ai) - (bi === -1 ? ORDER.length : bi);
-  });
+  /** The room's picture as main holds it, drawn in the compass on a card past small; absent, a dot. */
+  art?: RoomArtApi;
 }
 
 /**
@@ -150,6 +129,7 @@ function RoomCard({
   verdict,
   searchRooms,
   loadWearer,
+  art,
   ...chrome
 }: RoomCardProps) {
   const { room } = character;
@@ -201,6 +181,8 @@ function RoomCard({
   const face = (
     <RoomBody
       answers={answers}
+      art={art}
+      session={session}
       ask={ask}
       asks={asks}
       character={character}
@@ -269,12 +251,7 @@ function RoomCard({
     if (room.exits.length > 0) {
       lines.push(
         t('cards.room.copy.exitsLine', {
-          exitList: sortExits(room.exits)
-            .map((exit) => {
-              const name = DIRECTION_NAME[exit.direction as Direction] ?? exit.direction;
-              return exit.note ? `${name} (${exit.note})` : name;
-            })
-            .join(', ')
+          exitList: sortExits(room.exits).map(exitWords).join(', ')
         })
       );
     }
@@ -504,48 +481,20 @@ function RoomCard({
   );
 }
 
-/**
- * What one occupant is, in the words a person would use, for the tooltip.
- *
- * The name alone is what the server printed; this is everything the client
- * worked out about it. `unknown` says so rather than picking one — a named NPC
- * and a player nobody has listed yet look identical from here, and reassuring
- * somebody that a stranger is harmless is the guess this project refuses.
- */
-function describe(who: RoomOccupant, standing: Standing): string {
-  if (who.kind === 'player') {
-    return who.free ? t('cards.room.occupant.playerFree') : t('cards.room.occupant.player');
-  }
-  if (who.kind === 'unknown') return t('cards.room.occupant.unknownKind');
-  if (who.disposition === null) return t('cards.room.occupant.unplacedMonster');
-
-  const word = DISPOSITION_WORD[who.disposition];
-  const sure = occupantAttacksOnSight(who, standing);
-  const parts = [sure === null ? t('cards.room.occupant.dependsOnStanding', { word }) : word];
-  if (who.uncertain) parts.push(t('cards.room.occupant.uncertainName'));
-  /*
-   * The cost, which is about the *character* rather than the fight: ten evil
-   * points, cumulative, moving you towards Outlaw. Worth saying out loud
-   * because nothing else ever will — the server charges it silently.
-   */
-  if (who.costly === 'always') parts.push(t('cards.room.occupant.alwaysCostly'));
-  if (who.costly === 'sometimes') parts.push(t('cards.room.occupant.sometimesCostly'));
-  if (who.mob?.avoid !== undefined) parts.push(avoidNote(who.mob.avoid));
-  return parts.join('; ');
-}
-
 function RoomBody({
   answers,
+  art,
   ask,
   asks,
   character,
   inspect,
   nickname,
+  session,
   shop,
   spellHazard,
   verdict,
   wearer
-}: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict'> & {
+}: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict' | 'art' | 'session'> & {
   /** Who this character is, for the floor's use marks. */
   wearer: Wearer;
   /** MegaMUD's name for the room, or null (`useRoomNickname`). */
@@ -557,37 +506,35 @@ function RoomBody({
   answers: RoomCommand[];
 }) {
   const { room, phase } = character;
-  const standing = standingOf(character);
   const light = lightNote(room);
+  // The picture is a medium card's and up: a small one holds no subscription for it.
+  const pictured = useCardSize() !== 'small' && art !== undefined;
+  // One element while the picture's inputs hold, so the memoised compass does not redraw per status line.
+  const hub = useMemo(
+    () => (pictured && art !== undefined ? <RoomPicture art={art} session={session} /> : undefined),
+    [pictured, art, session]
+  );
   /*
    * What the vault holds, on the **first** face rather than only on the Bank
-   * one behind it.
-   *
-   * A bank is the one kind of shop where the room's own subject *is* a number
-   * about this character. Standing in one and reading `ROOM · BANK` says the
-   * place is a bank and withholds the only thing anybody came in to find out,
-   * behind a face that has to be opened — while the balance is already on
-   * state, already restored across sessions, and already what the `Deposit
-   * All` button beside the console is offered from.
-   *
-   * Null in every other room, so no other room grows a row.
+   * one behind it: in a bank the room's own subject is a number about this
+   * character, already on state and restored across sessions. Null in every
+   * other room, so no other room grows a row.
    */
   const vault = shop?.kind === 'bank' ? balanceHere(shop, character.banks) : null;
   const inBank = shop?.kind === 'bank';
-  /*
-   * The two floors' coins, in the same words the Carrying card uses for the
-   * purse — one vocabulary, in `lib/coins.ts`, because two copies is how one
-   * card comes to say `plat` and another `pl`. Always the longest tier: this
-   * row wraps, unlike the purse, so there is nothing to measure against.
-   */
+  // The floors' coins in the purse's own words (`lib/coins.ts`), the longest tier: this row wraps.
   const floorCoins = coinText(room.cash);
   const hiddenCoins = coinText(room.hiddenCash);
+  if (phase !== 'in-game' || (room.name === null && light === null)) {
+    return <div className="empty">{t('cards.room.empty')}</div>;
+  }
   return (
-    <>
-      {phase !== 'in-game' || (room.name === null && light === null) ? (
-        <div className="empty">{t('cards.room.empty')}</div>
-      ) : (
-        <>
+    <div className="room-face">
+      {/* The compass and who the room is beside it: the glance at every size.
+          Large, the compass's hub is the room's picture. */}
+      <div className="room-hero">
+        <ExitCompass hub={hub} room={room} />
+        <div className="room-hero-text">
           {room.name !== null && <div className="room-name">{room.name}</div>}
           {/* MegaMUD's name and what its goto list records: marks, deciding nothing. */}
           {nickname !== null && (
@@ -603,16 +550,11 @@ function RoomBody({
 
           {/*
             The light, in the server's words, and what the client did about a
-            room it could not see. `pitch black` is a fact about the room and is
-            always shown; *placed by dead reckoning* is a fact about the
-            location — inferred from the last room and the step, at 0.75 — and
-            is what the badge's lower confidence was quietly meaning. A name
-            still on the card when the dark arrived with no move pending is
-            the last one *read*, not one read now, and says so; the badge is
-            reassuring there (`movement`, 0.9+) for a room the character can
-            no longer see. A room the realm data would not let it place says so
-            instead of saying nothing: refusing is only worth anything said
-            out loud.
+            room it could not see: `pitch black` is a fact about the room;
+            *placed by dead reckoning* is a fact about the location, and is
+            what the badge's lower confidence means. A name still on the card
+            when the dark arrived is the last one *read*, and says so; a room
+            the realm data would not let it place says so instead of nothing.
           */}
           {light !== null && (
             <div className="room-light" data-light={light.phrase}>
@@ -638,370 +580,190 @@ function RoomBody({
             </div>
           )}
 
-          {/* Clamped rather than scrolled: the description is context, and the
-              exits below it are what the card is actually consulted for. The
-              full text is in the terminal, a few lines up. */}
+          <ExitNotes room={room} />
+          <div className="only-small room-glance">
+            <FightChip verdict={verdict} />
+            <OccupantTally character={character} />
+          </div>
+
+          {/* Clamped at medium, whole at large: context, while the exits are
+              what the card is consulted for. The full text is in the terminal. */}
           {room.description !== null && (
             <p className="room-description from-medium">{room.description}</p>
           )}
+        </div>
+      </div>
 
-          <div className="exits">
-            {/* Null is not zero: exits the server would not print are unseen,
-                not absent, and `no exits` would be a claim nothing supports. */}
-            {exitsUnseen(room) ? (
-              <span className="chip warn">{t('cards.room.exits.unseen')}</span>
-            ) : room.exits.length === 0 ? (
-              <span className="chip bad">{t('cards.room.exits.none')}</span>
-            ) : (
-              sortExits(room.exits).map((exit) => (
-                // A blocked exit is still an exit; saying why beats hiding it.
-                <span
-                  className={`chip${exit.note ? ' warn' : ''}`}
-                  key={exit.direction}
-                  title={exit.note ?? undefined}
+      {/* One run of chips for both rows below: each is a few words, and a row apiece left most of each line empty. */}
+      <div className="room-acts from-medium">
+        {/*
+        What the room answers to, as controls, on the face that is on screen
+        (todo 11). The detail (where each phrase leads, what it wants) stays on
+        the ANSWERS face; this row says *there is something to do here*. Only
+        the first spelling of each, as the face does.
+      */}
+        {answers.length > 0 && (
+          <div className="exits room-answers from-medium">
+            {answers.map((answer, index) => {
+              const phrase = answer.say[0] ?? '';
+              return ask && phase === 'in-game' ? (
+                <button
+                  className="chip"
+                  key={`${phrase}-${index}`}
+                  onClick={() => ask(phrase)}
+                  onMouseDown={keepFocus}
+                  title={t('cards.room.answers.sendTooltip', { phrase })}
+                  type="button"
                 >
-                  {/* Short codes are canonical; expanded for reading where the
-                      card has room, as they are typed where it has not. */}
-                  <span className="from-medium">
-                    {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
-                  </span>
-                  <span className="only-small">{exit.direction}</span>
-                  {exit.note && <span className="exit-note from-medium"> {exit.note}</span>}
+                  {phrase}
+                </button>
+              ) : (
+                <span className="chip" key={`${phrase}-${index}`}>
+                  {phrase}
                 </span>
-              ))
-            )}
+              );
+            })}
           </div>
+        )}
 
-          {/*
-            What the room answers to, as controls, on the face that is on
-            screen (todo 11).
-            
-            The detail — where each phrase leads and what it wants — stays on
-            the ANSWERS face; this is the row that says *there is something to
-            do here*, because a phrase behind a crumb is a command nobody can
-            find. The room this was reported from has `Obvious exits: None` and
-            one way out, `touch gem`, which is exactly the case where the card
-            drew a dead end.
-
-            Only the first spelling of each, as the face does: a script writes
-            four ways to say one thing.
-          */}
-          {answers.length > 0 && (
-            <div className="exits room-answers from-medium">
-              {answers.map((answer, index) => {
-                const phrase = answer.say[0] ?? '';
-                return ask && phase === 'in-game' ? (
-                  <button
-                    className="chip"
-                    key={`${phrase}-${index}`}
-                    onClick={() => ask(phrase)}
-                    onMouseDown={keepFocus}
-                    title={t('cards.room.answers.sendTooltip', { phrase })}
-                    type="button"
-                  >
-                    {phrase}
-                  </button>
-                ) : (
-                  <span className="chip" key={`${phrase}-${index}`}>
-                    {phrase}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {/*
-            And what the things *standing* here answer to (todo 01).
-
-            The same row and the same grammar as the room's own words, because
-            it is the same fact about a different subject: the realm scripts
-            `ask Morukai phoenix` exactly as it scripts `go manhole`, and until
-            now the first was in the quest book, on a card in another tab,
-            behind a row the player had to know to open. A chip is drawn only
-            where every gate the client has read is met — the counter's rank
-            above all, which is what makes this one chip on Morukai rather than
-            the four words he answers across four ranks.
-
-            A step that still wants something is drawn and marked, never
-            removed: the exits row above does exactly that with a blocked exit,
-            and what it wants is an errand the client can say where to run.
-          */}
-          {asks.length > 0 && (
-            <div className="exits room-asks from-medium">
-              {asks.map((offer, index) => {
-                const line = askLine(offer.who, offer.say);
-                const wants = offer.wants?.join(', ');
-                const title =
-                  wants === undefined
-                    ? t('cards.room.asks.sendTooltip', { quest: offer.quest, line })
-                    : t('cards.room.asks.wantsTooltip', { quest: offer.quest, items: wants });
-                const body = (
-                  <>
-                    {line}
-                    {wants !== undefined && (
-                      <span className="exit-note">
-                        {' '}
-                        {t('cards.room.asks.wants', { items: wants })}
-                      </span>
-                    )}
-                  </>
-                );
-                return ask && phase === 'in-game' ? (
-                  <button
-                    className={`chip${wants === undefined ? '' : ' warn'}`}
-                    key={`${offer.who}-${offer.say}-${index}`}
-                    onClick={() => ask(line)}
-                    onMouseDown={keepFocus}
-                    title={title}
-                    type="button"
-                  >
-                    {body}
-                  </button>
-                ) : (
-                  <span
-                    className={`chip${wants === undefined ? '' : ' warn'}`}
-                    key={`${offer.who}-${offer.say}-${index}`}
-                    title={title}
-                  >
-                    {body}
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {/*
-            One grid, not one per row -- and that is the whole reason `Here` and
-            `Items` are inside a single `<dl>` rather than beside each other in
-            two. A CSS grid sizes an `auto` column from *its own* container's
-            children, so two `.readout` blocks each measured their label column
-            against their own longest label: `Here` set one width and `Items`
-            set another, and the two value columns started at different x inside
-            one card. Splitting them again re-opens it silently.
-          */}
-          {(inBank ||
-            room.spell ||
-            room.passage ||
-            room.occupants.length > 0 ||
-            room.items.length > 0 ||
-            room.hidden.length > 0 ||
-            floorCoins.length > 0 ||
-            hiddenCoins.length > 0) && (
-            <dl className="readout from-medium">
-              {/*
-               * First, and before `Here` and `Items`, because in a bank it is
-               * what the room is *for*. The order is fixed whether or not each
-               * group is present, so a row never moves out from under the
-               * pointer as the room fills and empties.
-               *
-               * **The absence is stated as itself.** A vault nobody has asked
-               * is not a vault holding nothing, and here the reassuring reading
-               * is wrong twice over: a character told they have no savings may
-               * well have some. The time beside the figure is not decoration
-               * either — see `BankBalance.at`.
-               */}
-              {inBank && (
+        {/*
+        And what the things *standing* here answer to (todo 01), in the same
+        row grammar: a chip only where every gate the client has read is met.
+        A step that still wants something is drawn and marked, never removed.
+      */}
+        {asks.length > 0 && (
+          <div className="exits room-asks from-medium">
+            {asks.map((offer, index) => {
+              const line = askLine(offer.who, offer.say);
+              const wants = offer.wants?.join(', ');
+              const title =
+                wants === undefined
+                  ? t('cards.room.asks.sendTooltip', { quest: offer.quest, line })
+                  : t('cards.room.asks.wantsTooltip', { quest: offer.quest, items: wants });
+              const body = (
                 <>
-                  <dt>{t('cards.room.bank.onDeposit')}</dt>
-                  <dd>
-                    {vault === null ? (
-                      <span className="quiet-note">{t('cards.room.bank.unasked')}</span>
-                    ) : (
-                      <>
-                        {t('cards.room.bank.copper', { copper: vault.copper.toLocaleString() })}{' '}
-                        <span className="quiet-note">({ago(vault.at, Date.now())})</span>
-                      </>
-                    )}
-                  </dd>
+                  {line}
+                  {wants !== undefined && (
+                    <span className="exit-note">
+                      {' '}
+                      {t('cards.room.asks.wants', { items: wants })}
+                    </span>
+                  )}
                 </>
-              )}
+              );
+              return ask && phase === 'in-game' ? (
+                <button
+                  className={`chip${wants === undefined ? '' : ' warn'}`}
+                  key={`${offer.who}-${offer.say}-${index}`}
+                  onClick={() => ask(line)}
+                  onMouseDown={keepFocus}
+                  title={title}
+                  type="button"
+                >
+                  {body}
+                </button>
+              ) : (
+                <span
+                  className={`chip${wants === undefined ? '' : ' warn'}`}
+                  key={`${offer.who}-${offer.say}-${index}`}
+                  title={title}
+                >
+                  {body}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-              {/*
-               * What the room casts on whoever stands in it (todo 72), before
-               * the verdict: it is what standing here costs before anything
-               * in it is fought.
-               */}
-              {(room.spell || room.passage) && (
-                <RoomSpellRows
-                  hazard={spellHazard}
-                  hpMax={character.vitals.hpMax}
-                  inspect={inspect}
-                  passage={room.passage}
-                  spell={room.spell ?? null}
-                  stoppedBy={room.spellStoppedBy}
-                />
-              )}
-
-              {/*
-               * The verdict before the names, because it is the question the
-               * names raise: *can I fight this room?* One row for the room —
-               * the Reference card answers about one monster — and the figure
-               * is the health clearing it is expected to cost, held against
-               * the health the character has, which is the one comparison
-               * that decides anything. A bound, so *up to*; loud only when the
-               * bound reaches the character's own health. Unknown is said as
-               * itself: a stranger the realm cannot weigh leaves the total
-               * unknown rather than smaller. The same `Verdict` auto-combat
-               * ranks on (`src/shared/verdict.ts`), so this row and the
-               * engine's choice cannot disagree.
-               */}
-              {verdict.monsters.length > 0 && (
-                <>
-                  <dt>{t('cards.verdict.label')}</dt>
-                  <dd>
-                    {verdict.cost === null ? (
-                      <span className="quiet-note">{t('cards.verdict.roomUnknown')}</span>
-                    ) : (
-                      <>
-                        <span
-                          className={
-                            character.vitals.hp !== null &&
-                            verdict.cost.value >= character.vitals.hp
-                              ? 'chip bad'
-                              : undefined
-                          }
-                        >
-                          {verdict.cost.from === 'bound'
-                            ? t('cards.verdict.roomCostBound', {
-                                hp: Math.round(verdict.cost.value)
-                              })
-                            : t('cards.verdict.roomCostAbout', {
-                                hp: Math.round(verdict.cost.value)
-                              })}
-                        </span>
-                        {character.vitals.hp !== null && (
-                          <span className="quiet-note">
-                            {' '}
-                            {t('cards.verdict.ofYours', { hp: character.vitals.hp })}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </dd>
-                </>
-              )}
-
-              {room.occupants.length > 0 && (
-                <>
-                  <dt>{t('cards.room.readout.hereLabel')}</dt>
-                  <dd className="occupants">
-                    {room.occupants.map((who, index) => (
-                      <span key={`${who.name}-${index}`}>
-                        {/*
-                      A monster's name opens the Reference card — health,
-                      temper, the alignment cost spelled out. A player's does
-                      not: the realm data has nothing to say about a person,
-                      and a click that does nothing teaches people to stop
-                      clicking. `keepFocus` because this is clicked, never
-                      typed into — the caret stays with the game.
-                    */}
-                        {inspect && who.kind !== 'player' ? (
-                          <button
-                            className={`occupant ${who.kind} lookup`}
-                            onClick={(event) => inspect(who.name, event.currentTarget)}
-                            onMouseDown={keepFocus}
-                            title={describe(who, standing)}
-                            type="button"
-                          >
-                            {who.name}
-                          </button>
-                        ) : (
-                          <span className={`occupant ${who.kind}`} title={describe(who, standing)}>
-                            {who.name}
-                          </span>
-                        )}
-                        {/* A monster that will open the fight itself, which is the
-                        one thing on this line worth deciding on. A word, not a
-                        hue: docs/ui-design.md §6, and this is the readout a
-                        decision about whether to keep walking is made off. */}
-                        {occupantAttacksOnSight(who, standing) === true && (
-                          <span className={`chip warn${who.uncertain ? ' quiet' : ''}`}>
-                            {who.uncertain
-                              ? t('cards.room.occupant.hostileUncertainChip')
-                              : t('cards.realm.facet.hostile')}
-                          </span>
-                        )}
-                        {/* And the player's own row, beside the realm's word (todo 818). */}
-                        <RowPeaceChip character={character} name={who.name} verdict={verdict} />
-                        {/* And the server's own round against it, where a sheet says (todo 2322-01). */}
-                        <RoundChip name={who.name} verdict={verdict} />
-                        {who.mob?.avoid !== undefined && (
-                          <span className="chip quiet" title={avoidNote(who.mob.avoid)}>
-                            {t('cards.room.occupant.avoidChip')}
-                          </span>
-                        )}
-                        {/*
-                        Not a fight cost but a standing one, and the server
-                        charges it in silence — which is why it is on the card
-                        rather than left to be noticed later.
-
-                        `−10 align` rather than `costs align`, and `?` rather
-                        than `may cost`, because this line carries up to three
-                        chips *per occupant* and a room with four monsters in it
-                        was a wall of words. The `?` is the same mark `hostile?`
-                        already uses for the same fact — the realm data
-                        disagrees with itself about this name — so it is one
-                        thing to learn rather than two. The sentence is still
-                        there, on the name's own tooltip.
-                      */}
-                        {who.costly !== 'never' && (
-                          <span className="chip quiet" title={describe(who, standing)}>
-                            {who.costly === 'always'
-                              ? t('cards.room.occupant.alignCostChip')
-                              : t('cards.room.occupant.alignCostUncertainChip')}
-                          </span>
-                        )}
-                        {who.charmed && (
-                          <span className="chip quiet">{t('cards.room.occupant.charmedChip')}</span>
-                        )}
-                        {index < room.occupants.length - 1 && ', '}
-                      </span>
-                    ))}
-                  </dd>
-                </>
-              )}
-
-              {/*
-                What a `search` turned up, which the room's own listing does not
-                carry — until this it was parsed and read by nothing, because a
-                search answers long after `Obvious exits:` closed the room and
-                the draft it was written into had already been discarded.
-
-                Its own row rather than folded into `Items`, for the reason it
-                is its own list in state: these are not lying in the open. The
-                distinction is also what stops the client asking for the cash
-                the way that does not work — see `AutoLoot`.
-              */}
-              {(room.hidden.length > 0 || hiddenCoins.length > 0) && (
-                <>
-                  <dt title={t('cards.room.readout.hiddenTooltip')}>
-                    {t('cards.room.readout.hiddenLabel')}
-                  </dt>
-                  <FloorItems
-                    coins={hiddenCoins}
-                    inspect={inspect}
-                    items={room.hidden}
-                    wearer={wearer}
-                  />
-                </>
-              )}
-
-              {(room.items.length > 0 || floorCoins.length > 0) && (
-                <>
-                  <dt>{t('cards.room.readout.itemsLabel')}</dt>
-                  <FloorItems
-                    coins={floorCoins}
-                    inspect={inspect}
-                    items={room.items}
-                    wearer={wearer}
-                  />
-                </>
-              )}
-            </dl>
-          )}
-        </>
+      {/* The verdict before the names, because it is the question the names
+          raise: *can I fight this room?* */}
+      {verdict.monsters.length > 0 && (
+        <div className="from-medium">
+          <RoomFight hp={character.vitals.hp} verdict={verdict} />
+        </div>
       )}
-    </>
+      {room.occupants.length > 0 && (
+        <div className="from-medium">
+          <RoomOccupants character={character} inspect={inspect} verdict={verdict} />
+        </div>
+      )}
+
+      {/*
+        One grid, not one per row: a CSS grid sizes an `auto` column from its
+        own container's children, so two `.readout` blocks would each measure
+        their label column and the value columns would start at different x.
+      */}
+      {(inBank ||
+        room.spell ||
+        room.passage ||
+        room.items.length > 0 ||
+        room.hidden.length > 0 ||
+        floorCoins.length > 0 ||
+        hiddenCoins.length > 0) && (
+        <dl className="readout from-medium">
+          {/*
+           * First in a bank, because it is what the room is *for*. **The
+           * absence is stated as itself**: a vault nobody has asked is not a
+           * vault holding nothing. See `BankBalance.at` for the time beside it.
+           */}
+          {inBank && (
+            <>
+              <dt>{t('cards.room.bank.onDeposit')}</dt>
+              <dd>
+                {vault === null ? (
+                  <span className="quiet-note">{t('cards.room.bank.unasked')}</span>
+                ) : (
+                  <>
+                    {t('cards.room.bank.copper', { copper: vault.copper.toLocaleString() })}{' '}
+                    <span className="quiet-note">({ago(vault.at, Date.now())})</span>
+                  </>
+                )}
+              </dd>
+            </>
+          )}
+
+          {/* What the room casts on whoever stands in it (todo 72). */}
+          {(room.spell || room.passage) && (
+            <RoomSpellRows
+              hazard={spellHazard}
+              hpMax={character.vitals.hpMax}
+              inspect={inspect}
+              passage={room.passage}
+              spell={room.spell ?? null}
+              stoppedBy={room.spellStoppedBy}
+            />
+          )}
+
+          {/*
+            What a `search` turned up, which the room's own listing does not
+            carry: its own row, since these are not lying in the open, and the
+            difference is what stops the client asking for the cash the way
+            that does not work (`AutoLoot`).
+          */}
+          {(room.hidden.length > 0 || hiddenCoins.length > 0) && (
+            <>
+              <dt title={t('cards.room.readout.hiddenTooltip')}>
+                {t('cards.room.readout.hiddenLabel')}
+              </dt>
+              <FloorItems
+                coins={hiddenCoins}
+                inspect={inspect}
+                items={room.hidden}
+                wearer={wearer}
+              />
+            </>
+          )}
+
+          {(room.items.length > 0 || floorCoins.length > 0) && (
+            <>
+              <dt>{t('cards.room.readout.itemsLabel')}</dt>
+              <FloorItems coins={floorCoins} inspect={inspect} items={room.items} wearer={wearer} />
+            </>
+          )}
+        </dl>
+      )}
+    </div>
   );
 }
 

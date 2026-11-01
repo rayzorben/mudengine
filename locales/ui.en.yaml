@@ -3135,10 +3135,17 @@ cards:
         reverse: Reverse Direction
       directionBackward: backward
       directionForward: forward
-      directionLabel: Direction
-      endedLabel: Ended
-      expectedLabel: Expected Exp Rate
+      endedLine: 'Ended: {reason}'
+      expectedLabel: Expected
       lapsLabel: Laps Completed
+      lapsLine:
+        one: 1 lap completed
+        many: '{laps} laps completed'
+      # Nothing moving: the loops play could start, one tile each.
+      loopsCaption: Your loops
+      stopsLine:
+        one: 1 stop
+        many: '{stops} stops'
       madeLabel: Exp Gained
       meterLabel: '{stop}/{stops} · {stopName}'
       pickerLabel: Select Path / Loop
@@ -3175,6 +3182,9 @@ cards:
       title: Route
       towardLabel: Heading
       arrivingLabel: Arriving in
+      arrivingLine: 'arriving in {duration}'
+      # Under the steps left in the middle of the route's ring.
+      leftTag: left
     title: Navigation
   party:
     badge:
@@ -3644,6 +3654,11 @@ cards:
       uncertainName: the world data contradicts itself about this name
       unknownKind: nothing has said whether this is a player or a monster
       unplacedMonster: a monster the world data cannot place
+    # The bar under the room's fight: your health, cut into what clearing the
+    # room costs and what it leaves you.
+    fight:
+      left: Health left after
+      cost: Health it costs
     readout:
       hereLabel: Here
       hiddenLabel: Hidden
