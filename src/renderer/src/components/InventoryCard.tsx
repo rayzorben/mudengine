@@ -1,7 +1,10 @@
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
+import ItemThumb from './ItemThumb';
+import PackLoad from './PackLoad';
+import PurseMix from './PurseMix';
 import { findAction } from './findAction';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
@@ -10,7 +13,9 @@ import { keepFocus } from '../lib/focus';
 import { entityNumber } from '@shared/entities';
 import { equipVerdict, type GearAction, type Wearer } from '@shared/gear';
 import { useFitTier } from '../hooks/useFitTier';
+import { useItemArt } from '../hooks/useItemArt';
 import { useWearer } from '../hooks/useWearer';
+import { loadOf } from '../lib/packGroups';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
@@ -262,7 +267,7 @@ export function InventoryBody({
   finding,
   onFindDismiss
 }: InventoryBodyProps) {
-  const { items, keys, wealth, coins, encumbrance, encumbranceMax } = character.inventory;
+  const { items, keys, wealth, coins, encumbrance } = character.inventory;
   const stash = stashRooms(character.stash);
   // Unknown never refuses: a pack greyed out before the stats print would hide wearable kit.
   const wearer = useWearer(character, loadWearer);
@@ -286,10 +291,12 @@ export function InventoryBody({
   const hasPurse = wealth !== null || coinLine.length > 0;
 
   // Null is not zero: an unknown maximum draws no bar rather than a full one.
-  const carried =
-    encumbrance !== null && encumbranceMax !== null && encumbranceMax > 0
-      ? Math.min(1, encumbrance / encumbranceMax)
-      : null;
+  const load = useMemo(() => {
+    const read = loadOf(character.inventory);
+    return read !== null && read.max > 0 ? read : null;
+  }, [character.inventory]);
+  const art = useItemArt();
+  const realm = character.realm;
 
   /**
    * The pack, as three columns: what it is, what it weighs, and where it is worn.
@@ -381,23 +388,28 @@ export function InventoryBody({
       label: t('cards.room.shop.columnItem'),
       wide: true,
       value: (item) => item.name,
-      cell: (item) =>
-        inspect ? (
-          /* The name opens the Reference card: price, provenance, everything
+      cell: (item) => (
+        <>
+          {/* Large, each row carries the thing's picture. */}
+          <ItemThumb art={art} className="from-large" realm={realm} thing={item} />
+          {inspect ? (
+            /* The name opens the Reference card: price, provenance, everything
              the weight figure here leaves out. Clicked, never typed into, so
              the caret stays with the game. */
-          <button
-            className="what lookup"
-            onClick={(event) => inspect(item.name, event.currentTarget)}
-            onMouseDown={keepFocus}
-            title={t('cards.room.itemLookupTooltip')}
-            type="button"
-          >
-            {item.name}
-          </button>
-        ) : (
-          <span className="what">{item.name}</span>
-        )
+            <button
+              className="what lookup"
+              onClick={(event) => inspect(item.name, event.currentTarget)}
+              onMouseDown={keepFocus}
+              title={t('cards.room.itemLookupTooltip')}
+              type="button"
+            >
+              {item.name}
+            </button>
+          ) : (
+            <span className="what">{item.name}</span>
+          )}
+        </>
+      )
     },
     {
       /*
@@ -482,25 +494,17 @@ export function InventoryBody({
         <div className="empty">{t('cards.inventory.emptyUnseen')}</div>
       ) : (
         <>
-          {carried !== null && (
-            <div
-              className="meter"
-              data-level={carried >= 0.9 ? 'critical' : carried >= 0.7 ? 'caution' : 'ok'}
-            >
-              <span className="track">
-                <span className="fill" style={{ width: `${carried * 100}%` }} />
-              </span>
-              <span className="figures">
-                {encumbrance}/{encumbranceMax}
-              </span>
-            </div>
-          )}
+          {load !== null && <PackLoad load={load} />}
 
           <dl className="readout from-medium">
             {hasPurse && (
               <>
                 <dt>{t('cards.inventory.wealthLabel')}</dt>
                 <Purse coins={coins} wealth={wealth} />
+                {/* Large, the coins' worth as a bar under the row that counts them. */}
+                <dd className="purse-mix from-large">
+                  <PurseMix coins={coins} legend />
+                </dd>
               </>
             )}
             {keys.length > 0 && (

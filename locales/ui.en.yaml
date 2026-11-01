@@ -2715,7 +2715,9 @@ cards:
     copyRow: '{name}: {copper} copper coins (cc)'
     none: No balance recorded. Send 'bank' to check it.
     title: Banks
-    total: '{copper} copper coins (cc) in all'
+    banked: Banked
+    unit: copper
+    splitAria: Wealth and each bank
   shops:
     badge: '{count} shops'
     caption: Every shop's list in this realm
@@ -2730,6 +2732,12 @@ cards:
     findPlaceholder: Find an item or shop
     goToTooltip: Plan a route to {room}
     listedBy: Listed by {name}
+    priceShare: '{share}% of your wealth'
+    priceOver: More than your wealth
+    stripAria: Each shop's list
+    tileLines:
+      one: 1 item
+      many: '{count} items'
     title: Shops
   autoLayout:
     label: Auto layout
@@ -2935,6 +2943,7 @@ cards:
     tableEmpty: Carrying nothing.
     title: Inventory
     wealthLabel: Wealth
+    purseMix: Wealth by coin
   link:
     flagBinary: BINARY
     flagEcho: ECHO
@@ -3973,6 +3982,7 @@ cards:
       attributes: Attributes
       skills: Skills
       sight: Sight
+      worn: Worn
     labels:
       agility: Agility
       armour: Armour class / DR
@@ -3999,6 +4009,8 @@ cards:
     # On an attribute the realm states a range for: the tint on the figure is
     # its share of that range, so the tooltip says what the range is.
     statRange: 'this race runs {low} to {high}'
+    statRangeShort: '{low}–{high}'
+    wornTooltip: '{item}, {slot}'
     sight:
       # Beside the night-vision figure while the stat sheet has not named the race.
       raceUnknown: race not yet read
@@ -4049,6 +4061,7 @@ cards:
       foundTooltip: No shop sells it. Picked up from the floor when one is here and you have fewer
         than the maximum.
       # And the sentence under the table, about both ends of the list.
+      howItWorks: How this list works
       collects: Anything on this list is picked up when found, up to its maximum, and extras over
         the maximum are dropped.
       tableCaption: Items kept in stock
@@ -4236,7 +4249,6 @@ cards:
     workedOut: calculated
     labels:
       afflicted: Afflicted
-      class: Class
       earned: Earned
       level: Level
       toLevel: To level

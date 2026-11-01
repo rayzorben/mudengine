@@ -2488,6 +2488,38 @@ kbd {
   color: var(--text-hi);
 }
 
+/* A supply's stock (`StockBar`): carried against the most to keep, the
+   fewest as a tick, short in the danger ink. */
+.stock-bar {
+  --viz: var(--ok);
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 1px;
+  display: block;
+  height: 3px;
+  position: relative;
+  width: 100%;
+}
+
+.stock-bar[data-short='true'] {
+  --viz: var(--danger);
+}
+
+.stock-bar::before {
+  background: var(--viz);
+  border-radius: inherit;
+  content: '';
+  inset: 0 auto 0 0;
+  position: absolute;
+  width: calc(var(--share, 0) * 100%);
+}
+
+.stock-bar > i {
+  background: color-mix(in srgb, var(--text-hi) 60%, transparent);
+  inset: -2px auto -2px calc(var(--floor, 0) * 100%);
+  position: absolute;
+  width: 1px;
+}
+
 /* ============================================================== stream log */
 
 .line-log {
@@ -7756,11 +7788,181 @@ button.quest-tile-name:hover:not(:disabled) {
   font-size: var(--font-micro);
 }
 
-/* A small Banks card is one figure, drawn as the figure a glance reads. */
-.banks-total {
+/*
+ * The Banks card: what is banked and carried as tiles at every size, then
+ * from medium the money as one bar and a vault a row, each row's bar against
+ * the richest vault in the bank's ink (`c`, as the split bar draws a vault).
+ */
+.banks-kpis,
+.banks-split {
+  margin-bottom: 8px;
+}
+
+/* Two tiles side by side even on a small card, where the shared row's
+   96px minimum stacked them and hid the second below the fold (gallery,
+   250px card). */
+.banks-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6em), 1fr));
+}
+
+/* The key names every vault from large; smaller, the rows below name them. */
+.card:not([data-card-size='large']) .banks-split .split-legend {
+  display: none;
+}
+
+/* Small, the two figures share a 250px card: set at the text size, so
+   seven digits and their separators fit a tile (gallery, 250px card). */
+.card[data-card-size='small'] .banks-kpis .kpi > b {
+  font-size: var(--font-ui);
+}
+
+.card[data-card-size='large'] .bank-rows {
+  gap: 12px;
+}
+
+.card[data-card-size='large'] .bank-bar {
+  height: 8px;
+}
+
+.bank-share {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.bank-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bank-rows li {
+  align-items: baseline;
+  column-gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  row-gap: 3px;
+}
+
+.bank-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-age {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+}
+
+.bank-figure {
   color: var(--text-hi);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.bank-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  display: block;
+  grid-column: 1 / -1;
+  height: 4px;
+  overflow: hidden;
+}
+
+.bank-bar::before {
+  background: var(--pending);
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
+/*
+ * The Shops card: a price over a hairline at its share of the wealth carried,
+ * in the danger ink where it costs more; from large, a tile a counter.
+ */
+.shop-price {
+  align-items: flex-end;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shop-price[data-over='true'] {
+  color: var(--danger);
+}
+
+.shop-price > i {
+  align-self: stretch;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: 1px;
+  display: block;
+  height: 3px;
+  overflow: hidden;
+}
+
+.shop-price > i::before {
+  background: var(--ok);
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
+.shop-price[data-over='true'] > i::before {
+  background: var(--danger);
+}
+
+.shelf-strip {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 8px;
+  /* Two rows of tiles at most; more scroll inside the strip. */
+  max-height: 5.6em;
+  overflow-y: auto;
+  padding: 0;
+  scrollbar-gutter: stable;
+}
+
+.shelf-tile {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border: 0;
+  border-radius: var(--r-control);
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+  gap: 1px;
+  max-width: 12em;
+  min-width: 7em;
+  padding: 5px 9px;
+  text-align: left;
+}
+
+button.shelf-tile:hover {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+}
+
+.shelf-tile > b {
+  color: var(--text-hi);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-tile > span {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  white-space: nowrap;
 }
 
 /* The highlighted option, wherever a filtered list is shown. */
@@ -8091,17 +8293,140 @@ button.quest-tile-name:hover:not(:disabled) {
   transition: width var(--dur-control) var(--ease-out);
 }
 
-:is(.inventory-card, .self-card) .meter[data-level='caution'] .fill {
-  background: var(--pending);
-}
-:is(.inventory-card, .self-card) .meter[data-level='critical'] .fill {
-  background: var(--danger);
-}
-
 :is(.inventory-card, .self-card) .figures {
   color: var(--text-lo-quiet);
   font-family: var(--font-mono);
   font-size: var(--font-micro);
+}
+
+/*
+ * The load cut into worn, carried and what cannot be weighed (`PackLoad`):
+ * one hue, the pack's level, stepping down in strength part by part, so the
+ * bar still reads as one level and the parts as what makes it.
+ */
+.pack-load {
+  --load: var(--ok);
+  margin-bottom: 8px;
+}
+
+.pack-load[data-level='caution'] {
+  --load: var(--pending);
+}
+
+.pack-load[data-level='critical'] {
+  --load: var(--danger);
+}
+
+.pack-load .meter {
+  margin-bottom: 0;
+}
+
+.pack-load .track {
+  display: flex;
+  gap: 1px;
+}
+
+.pack-load .meter .fill[data-part] {
+  background: var(--load);
+  border-radius: 0;
+  flex: 0 0 auto;
+}
+
+.pack-load .meter .fill[data-part='carried'],
+.pack-load-key [data-part='carried'] > i {
+  background: color-mix(in srgb, var(--load) 60%, transparent);
+}
+
+.pack-load .meter .fill[data-part='rest'],
+.pack-load-key [data-part='rest'] > i {
+  background: color-mix(in srgb, var(--load) 30%, transparent);
+}
+
+.pack-load .figures > em {
+  color: var(--text-lo);
+  font-style: normal;
+}
+
+.pack-load-key {
+  color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 2px 12px;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.pack-load-key li {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.pack-load-key i {
+  background: var(--load);
+  border-radius: 2px;
+  height: 8px;
+  width: 8px;
+}
+
+.pack-load-key [data-part='free'] > i {
+  background: color-mix(in srgb, var(--ink-line) 70%, transparent);
+}
+
+.pack-load-key b {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* Under the purse row, in the value column: what each coin is worth. */
+.readout dd.purse-mix {
+  grid-column: 2;
+  margin-top: 2px;
+}
+
+/* A thing's picture beside its name (`ItemThumb`), sized to the line. */
+.item-thumb {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  display: inline-grid;
+  flex: 0 0 auto;
+  height: 1.5em;
+  margin-right: 5px;
+  overflow: hidden;
+  place-items: center;
+  vertical-align: middle;
+  width: 1.5em;
+}
+
+.item-thumb > img {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.item-thumb > .icon {
+  height: 65%;
+  width: 65%;
+}
+
+/*
+ * A row's picture only where the table is wide enough to keep the name: in
+ * the gallery a 300px-wide large card (a 270px scroller) left `…` for every
+ * name with the picture beside it, and a 480px one kept them whole.
+ */
+:is(.inventory-card, .self-card, .shops-card) .table-scroller {
+  container: rows / inline-size;
+}
+
+@container rows (width < 360px) {
+  .card-table .item-thumb {
+    display: none;
+  }
 }
 
 /* ======================================= a card that states a long listing */
@@ -14748,7 +15073,7 @@ tr:hover .row-action.worn,
   color: var(--group-hue, var(--text-lo));
 }
 
-.self-card .readout dt.group[data-group='1'] {
+:is(.self-card .readout dt.group, .self-group)[data-group='1'] {
   --group-hue: var(--section-a);
 }
 
@@ -14778,8 +15103,193 @@ tr:hover .row-action.worn,
  * on a stat sheet is the least interesting one on it, and a ramp that starts
  * at full ink has nowhere quiet to start from.
  */
-.self-card .readout dd.stat {
+.self-attrs .stat-cell > b.stat {
   color: color-mix(in srgb, var(--accent) calc(var(--stat-share, 0) * 100%), var(--text-lo));
+}
+
+/* The range itself, under the hairline from large. */
+.self-attrs .stat-cell > small {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Six tiles, three across where the card is wide enough and two where not. */
+.self-attrs {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 6em), 1fr));
+}
+
+/* The sheet's head (`SelfHero`): the picture beside who it is. */
+.self-hero {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.self-portrait {
+  --portrait: 2.9em;
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: var(--r-control);
+  color: var(--accent);
+  display: grid;
+  flex: 0 0 auto;
+  font-size: calc(var(--font-ui) + 6px);
+  font-weight: 600;
+  height: var(--portrait);
+  overflow: hidden;
+  place-items: center;
+  width: var(--portrait);
+}
+
+.card[data-card-size='large'] .self-portrait {
+  --portrait: 5.5em;
+}
+
+.self-portrait > img {
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  width: 100%;
+}
+
+.self-hero-facts {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.self-hero-who {
+  color: var(--text-hi);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.self-hero-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.self-hero-cells .stat-cell > em {
+  white-space: nowrap;
+}
+
+.self-hero-cells .stat-cell > b.inert {
+  color: var(--text-lo-quiet);
+}
+
+.self-hero-exp {
+  min-width: 0;
+}
+
+/* A heading outside the readout, in the same rotation as its group rows. */
+.self-group {
+  color: var(--group-hue, var(--text-lo));
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: var(--gap) 0 6px;
+  text-transform: uppercase;
+}
+
+.self-group[data-group='4'] {
+  --group-hue: var(--section-d);
+}
+
+/*
+ * The worn slots (`WornGrid`), a square each in body order, the edge in the
+ * game view's colour for the body part: dashed where nothing is worn.
+ */
+.worn-grid {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(3.3em, 1fr));
+}
+
+.worn-slot {
+  aspect-ratio: 1;
+  background: none;
+  border: 1px dashed color-mix(in srgb, var(--region, var(--text-lo)) 45%, transparent);
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  display: grid;
+  font: inherit;
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px;
+  place-items: center;
+}
+
+.worn-slot[data-filled='true'] {
+  background: color-mix(in srgb, var(--region, var(--accent)) var(--tone-wash), transparent);
+  border-style: solid;
+  cursor: pointer;
+}
+
+.worn-slot .item-thumb {
+  background: none;
+  height: 100%;
+  margin: 0;
+  width: 100%;
+}
+
+.worn-word {
+  font-size: calc(var(--font-micro) * 0.85);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.worn-slot[data-region='head'] {
+  --region: var(--game-region-head);
+}
+
+.worn-slot[data-region='torso'] {
+  --region: var(--game-region-torso);
+}
+
+.worn-slot[data-region='arms'] {
+  --region: var(--game-region-arms);
+}
+
+.worn-slot[data-region='held'] {
+  --region: var(--game-region-held);
+}
+
+.worn-slot[data-region='lower'] {
+  --region: var(--game-region-lower);
+}
+
+/* A supply's count over its stock bar. */
+.supply-have {
+  align-items: flex-end;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 2em;
+}
+
+/* How the list works, in one line below large; large writes it out. */
+.supplies-help {
+  align-items: center;
+  color: var(--text-lo-quiet);
+  cursor: help;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  gap: 5px;
+  margin: 6px 0 0;
+}
+
+.card[data-card-size='large'] .supplies-help {
+  display: none;
 }
 
 /*
