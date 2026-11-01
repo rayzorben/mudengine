@@ -1,6 +1,8 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import LinkOptions from './LinkOptions';
+import SplitBar, { type SplitPart } from './viz/SplitBar';
 import { t } from '../lib/i18n';
 import type { NegotiatedOptions, TelnetEvent } from '@shared/types';
 
@@ -10,6 +12,52 @@ export interface LinkCardProps extends CardChrome {
   events: TelnetEvent[];
   /** Under pressure the wash animation is suppressed; see docs/ui-design.md 3.7. */
   quiet: boolean;
+}
+
+/** How many of the newest exchanges the agreement draws under it, from medium. */
+const LATEST = 8;
+
+/**
+ * The exchange, a row each, newest last; the newest washes once unless the
+ * stream is busy. `follow` makes it a scroller kept on its newest row.
+ */
+function TelnetLog({
+  events,
+  quiet,
+  follow = false
+}: {
+  events: readonly TelnetEvent[];
+  quiet: boolean;
+  follow?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (follow && node !== null) node.scrollTop = node.scrollHeight;
+  }, [follow, events.length]);
+  return (
+    <div className={follow ? 'telnet-log scroller' : 'telnet-log'} ref={ref}>
+      {events.length === 0 ? (
+        <div className="empty">{t('cards.link.trafficEmpty')}</div>
+      ) : (
+        events.map((event, index) => (
+          <div
+            className={[
+              'row',
+              event.direction,
+              !quiet && index === events.length - 1 ? 'fresh' : ''
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            key={`${event.at}-${index}`}
+          >
+            <span className="dir">{event.direction === 'in' ? '<<' : '>>'}</span>
+            <span>{event.summary}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
 }
 
 function Flag({ on, label }: { on: boolean; label: string }) {
@@ -38,54 +86,30 @@ function Flag({ on, label }: { on: boolean; label: string }) {
  * something almost nobody needs to look at, so it should not cost a cell.
  */
 function LinkCard({ negotiated, events, quiet, ...chrome }: LinkCardProps) {
-  const bodyRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const node = bodyRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [events.length]);
-
+  /* Medium adds the exchange's two directions and its newest rows (`lib/cardSize.ts`). */
+  const exchange = useMemo<SplitPart[]>(() => {
+    const sent = events.filter((event) => event.direction === 'out').length;
+    return [
+      { key: 'in', label: t('cards.link.received'), value: events.length - sent, tone: 'accent' },
+      { key: 'out', label: t('cards.link.sent'), value: sent, tone: 'd' }
+    ];
+  }, [events]);
   const agreed = (
-    <dl className="readout">
-      {/* Small, the link is its three flags (`lib/cardSize.ts`). */}
-      <dt className="from-medium">{t('cards.link.localLabel')}</dt>
-      <dd className={negotiated.localEnabled.length ? 'from-medium' : 'inert from-medium'}>
-        {negotiated.localEnabled.join(', ') || t('cards.link.noneValue')}
-      </dd>
-      <dt className="from-medium">{t('cards.link.remoteLabel')}</dt>
-      <dd className={negotiated.remoteEnabled.length ? 'from-medium' : 'inert from-medium'}>
-        {negotiated.remoteEnabled.join(', ') || t('cards.link.noneValue')}
-      </dd>
-      <dt>{t('cards.link.flagsLabel')}</dt>
-      <dd className="flags">
+    <div className="link-agreed">
+      <div className="flags">
         <Flag label={t('cards.link.flagSga')} on={negotiated.suppressGoAhead} />
         <Flag label={t('cards.link.flagEcho')} on={negotiated.remoteEcho} />
         <Flag label={t('cards.link.flagBinary')} on={negotiated.binary} />
-      </dd>
-    </dl>
-  );
-
-  const traffic = (
-    <div className="telnet-log">
-      {events.length === 0 ? (
-        <div className="empty">{t('cards.link.trafficEmpty')}</div>
-      ) : (
-        events.map((event, index) => (
-          <div
-            className={[
-              'row',
-              event.direction,
-              !quiet && index === events.length - 1 ? 'fresh' : ''
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            key={`${event.at}-${index}`}
-          >
-            <span className="dir">{event.direction === 'in' ? '<<' : '>>'}</span>
-            <span>{event.summary}</span>
-          </div>
-        ))
-      )}
+      </div>
+      <LinkOptions negotiated={negotiated} />
+      <div className="from-medium">
+        <SplitBar label={t('cards.link.exchangeAria')} parts={exchange} />
+      </div>
+      {/* The newest of the exchange, the Traffic face's own rows. */}
+      <section className="link-latest from-medium">
+        <em>{t('cards.link.latest')}</em>
+        <TelnetLog events={events.slice(-LATEST)} quiet />
+      </section>
     </div>
   );
 
@@ -93,13 +117,18 @@ function LinkCard({ negotiated, events, quiet, ...chrome }: LinkCardProps) {
     <BentoCard
       {...chrome}
       badge={<span className="chip off">{events.length}</span>}
-      bodyRef={bodyRef}
       className="link-card"
       scroll
       tabs={[
         // The first face is the card itself, so its label is the card's title.
         { id: 'agreed', label: t('cards.link.title'), content: agreed },
-        { id: 'traffic', label: t('cards.link.tabTrafficLabel'), content: traffic }
+        {
+          id: 'traffic',
+          label: t('cards.link.tabTrafficLabel'),
+          // Its own scroller, so following the newest row never scrolls the agreement.
+          paned: true,
+          content: <TelnetLog events={events} follow quiet={quiet} />
+        }
       ]}
       title={t('cards.link.title')}
     />

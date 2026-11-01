@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import OnCardSize from './OnCardSize';
+import TalkSummary, { type TalkFace } from './TalkSummary';
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
 import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
@@ -156,14 +157,29 @@ const CHANNELS: Record<string, string> = {
  * directed. A toggle appears only while its channel has said something, the
  * same rule the chips followed: a control over nothing is chrome.
  */
-const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[] | null }> = [
-  { id: 'talk', label: t('cards.talk.tabs.all'), types: null },
-  { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'] },
-  { id: 'auction', label: t('cards.talk.tabs.auction'), types: ['conversation-auction'] },
-  { id: 'broadcast', label: t('cards.talk.tabs.broadcast'), types: ['conversation-broadcast'] },
-  { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'] },
-  { id: 'telepath', label: t('cards.talk.tabs.telepath'), types: ['conversation-telepath'] },
-  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'] },
+const FACES: readonly TalkFace[] = [
+  { id: 'talk', label: t('cards.talk.tabs.all'), types: null, tone: 'accent' },
+  { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'], tone: 'd' },
+  {
+    id: 'auction',
+    label: t('cards.talk.tabs.auction'),
+    types: ['conversation-auction'],
+    tone: 'd'
+  },
+  {
+    id: 'broadcast',
+    label: t('cards.talk.tabs.broadcast'),
+    types: ['conversation-broadcast'],
+    tone: 'warn'
+  },
+  { id: 'gang', label: t('cards.talk.tabs.gang'), types: ['conversation-gangpath'], tone: 'ok' },
+  {
+    id: 'telepath',
+    label: t('cards.talk.tabs.telepath'),
+    types: ['conversation-telepath'],
+    tone: 'ok'
+  },
+  { id: 'page', label: t('cards.talk.tabs.page'), types: ['conversation-page'], tone: 'quiet' },
   {
     id: 'local',
     label: t('cards.talk.tabs.local'),
@@ -173,7 +189,8 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
       'conversation-local',
       'conversation-directed',
       'conversation-action'
-    ]
+    ],
+    tone: 'ok'
   },
   /*
    * Who arrived and who went, folded into one face the way `local` folds the
@@ -181,12 +198,14 @@ const FACES: ReadonlyArray<{ id: string; label: string; types: readonly string[]
    * line are one question — who is about — and three pills for it would be
    * three controls over one answer.
    */
-  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES }
+  { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES, tone: 'quiet' }
 ];
 
 const FACE_IDS = FACES.map((face) => face.id);
 /** Every toggle but the master, which is the set a reader can mute. */
 const CHANNEL_IDS = FACE_IDS.slice(1);
+/** The toggles the large card's head counts lines under. */
+const CHANNEL_FACES = FACES.slice(1);
 /** The master's two remembered words. See the card's own note. */
 const ALL_WORDS = ['on', 'off'] as const;
 
@@ -207,6 +226,22 @@ const RECEIPTS = new Set<string>([
   'conversation-directed',
   'conversation-page'
 ]);
+
+/** This character's own receipt: the name on it is the recipient, and there is no `message`. */
+function isOutbound(message: Block): boolean {
+  return RECEIPTS.has(message.type) && message.groups['message'] === undefined;
+}
+
+/**
+ * Who said a line, for the large card's head: null for this character's own
+ * receipts (the name there is the recipient) and for the comings and goings,
+ * where nobody said anything.
+ */
+function speakerOf(message: Block): string | null {
+  if (TALK_PRESENCE_TYPES.includes(message.type)) return null;
+  if (isOutbound(message)) return null;
+  return message.groups['player'] ?? null;
+}
 
 /** The sigil each receipt's channel was addressed with — see `originalOf`. */
 const SIGILS: Record<string, string> = {
@@ -326,7 +361,7 @@ function withMentions(
  */
 const TalkLine = memo(function TalkLine(props: TalkLineProps) {
   const { message, layout, stamped, stampFormat, people, names, onSelect, inspect } = props;
-  const outbound = RECEIPTS.has(message.type) && message.groups['message'] === undefined;
+  const outbound = isOutbound(message);
   const self = people?.self ?? null;
   const mentioned = mentions(message, self);
   return (
@@ -1182,6 +1217,13 @@ function ConversationCard({
         />
       )}
 
+      <TalkSummary
+        faces={CHANNEL_FACES}
+        known={people === null ? null : people.known}
+        onSelect={onSelect}
+        speakerOf={speakerOf}
+        talked={talked}
+      />
       {/*
         `data-layout` and `data-stamped` are what the alignment is done with:
         in `condensed-aligned` the log becomes one grid and each line a

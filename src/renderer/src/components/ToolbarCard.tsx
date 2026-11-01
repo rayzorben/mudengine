@@ -22,6 +22,8 @@ export interface ToolbarCardProps extends CardChrome {
 
 /**
  * One row of glyphs: what this character is doing on its own, and the dial.
+ * Docked or small it is that row; from medium (on the rail or floating) each
+ * key is a tile with its name, so a card given the room reads without hovering.
  *
  * A card like every other — it can sit on the rail, be dragged over the
  * console or be docked in a strip — but it ships **docked above the console**,
@@ -90,6 +92,9 @@ export default function ToolbarCard({
         >
           <Icon name="more" />
           <span className="sr-only">{t('cards.toolbar.pickButtons')}</span>
+          <span aria-hidden="true" className="toolbar-key-label from-medium">
+            {t('cards.toolbar.pickButtons')}
+          </span>
         </button>
       </div>
 
@@ -145,6 +150,10 @@ function ToolbarKey({ button }: { button: ToolbarButton }) {
     >
       <Icon name={button.icon} />
       <span className="sr-only">{button.label}</span>
+      {/* From medium the key is a tile with its name beside the glyph. */}
+      <span aria-hidden="true" className="toolbar-key-label from-medium">
+        {button.label}
+      </span>
     </button>
   );
 }

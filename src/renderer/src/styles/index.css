@@ -1848,6 +1848,192 @@ kbd {
   color: var(--marker);
 }
 
+/*
+ * The Link card's first face: the three flags and a tile per option agreed
+ * (lit for whichever side performs it, `us` and `them`); from medium
+ * the exchange's two directions and its newest rows.
+ */
+.link-agreed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.link-agreed > .flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.link-options {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.link-options > li {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  border-radius: var(--r-control);
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 4px 6px 4px 8px;
+}
+
+.link-option-name {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-option-sides {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.link-option-sides > i {
+  border-radius: var(--r-chip);
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+  padding: 0 4px;
+}
+
+.link-option-sides > i[data-on='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+.link-latest {
+  display: grid;
+  gap: 4px;
+}
+
+.link-latest > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+}
+
+/* ========================================================== session card */
+
+/*
+ * Where, how fast, how big. The trace takes whatever height the card has left
+ * over, so a taller card is a longer look at the rate rather than empty space.
+ */
+.session-card > .body.paned {
+  gap: 8px;
+}
+
+.session-where {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-width: 0;
+}
+
+.session-where > .icon {
+  flex: 0 0 auto;
+  height: 16px;
+  width: 16px;
+}
+
+.session-where[data-tone='on'] > .icon {
+  color: var(--ok);
+}
+
+.session-where[data-tone='warn'] > .icon {
+  color: var(--pending);
+}
+
+.session-where[data-tone='bad'] > .icon {
+  color: var(--danger);
+}
+
+.session-host {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-where > small {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.session-detail {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+}
+
+.session-rate {
+  align-items: baseline;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.session-rate > b {
+  color: var(--text-hi);
+  font-size: calc(var(--font-ui) + 4px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.session-rate > b.inert {
+  color: var(--text-lo-quiet);
+}
+
+.session-rate > small {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.session-trace {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-control);
+  flex: 1 1 0;
+  min-height: 24px;
+  overflow: hidden;
+}
+
+.session-card .kpis {
+  flex: 0 0 auto;
+}
+
+/* The grid's own shape under its figure, a line of text tall. */
+.session-screen {
+  display: block;
+  height: 1.4em;
+  margin-top: 2px;
+  width: auto;
+}
+
+.session-screen > rect {
+  fill: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  stroke: color-mix(in srgb, var(--accent) 55%, transparent);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
 /* ==================================================================== HUD */
 
 /*
@@ -1948,43 +2134,43 @@ kbd {
 /* The tone (`VizTone`, `components/viz/tones.ts`) is set on the piece or on
    its parts; a level of caution or critical outranks it. */
 
-:where(.ring, .split, .histogram) [data-tone],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone] {
   --viz: var(--accent);
 }
 
-:where(.ring, .split, .histogram) [data-tone='hp'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='hp'],
-:where(.ring, .split, .histogram) [data-tone='ok'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='ok'],
-:where(.ring, .split, .histogram) [data-tone='b'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='b'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='hp'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='hp'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='ok'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='ok'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='b'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='b'] {
   --viz: var(--ok);
 }
 
-:where(.ring, .split, .histogram) [data-tone='kai'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='kai'],
-:where(.ring, .split, .histogram) [data-tone='d'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='d'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='kai'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='kai'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='d'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='d'] {
   --viz: var(--marker);
 }
 
-:where(.ring, .split, .histogram) [data-tone='foe'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='foe'],
-:where(.ring, .split, .histogram) [data-tone='bad'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='bad'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='foe'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='foe'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='bad'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='bad'] {
   --viz: var(--danger);
 }
 
-:where(.ring, .split, .histogram) [data-tone='warn'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='warn'],
-:where(.ring, .split, .histogram) [data-tone='c'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='c'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='warn'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='warn'],
+:where(.ring, .split, .histogram, .bar-list) [data-tone='c'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='c'] {
   --viz: var(--pending);
 }
 
-:where(.ring, .split, .histogram) [data-tone='quiet'],
-:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency)[data-tone='quiet'] {
+:where(.ring, .split, .histogram, .bar-list) [data-tone='quiet'],
+:where(.sparkline, .stat-cell, .kpi, .viz-dot, .recency, .initial)[data-tone='quiet'] {
   --viz: var(--text-lo-quiet);
 }
 
@@ -2336,6 +2522,72 @@ kbd {
 .recency[data-unknown='true'] > i {
   background: transparent;
   box-shadow: 0 0 0 0.5px var(--text-lo-quiet) inset;
+}
+
+/*
+ * A ranked list (`BarList`): the name, a hairline bar against the longest row,
+ * the figure. The name column is as wide as the widest name in the list.
+ */
+.bar-list {
+  align-items: center;
+  display: grid;
+  gap: 3px 8px;
+  grid-template-columns: minmax(0, max-content) minmax(24px, 1fr) auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bar-list > li {
+  display: contents;
+}
+
+.bar-list-name {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-list > li > i {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  display: block;
+  height: 4px;
+  overflow: hidden;
+}
+
+.bar-list > li > i::before {
+  background: var(--viz, var(--accent));
+  border-radius: inherit;
+  content: '';
+  display: block;
+  height: 100%;
+  width: calc(var(--share, 0) * 100%);
+}
+
+.bar-list > li > b {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  text-align: right;
+}
+
+/* A name's initial on a tinted disc (`Initial`), one line of text tall. */
+.initial {
+  background: color-mix(in srgb, var(--viz, var(--text-lo)) var(--tone-strong), transparent);
+  border-radius: 50%;
+  color: var(--text-hi);
+  display: inline-grid;
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: 1.8em;
+  line-height: 1;
+  place-items: center;
+  width: 1.8em;
 }
 
 .stats-graph {
@@ -3180,8 +3432,9 @@ kbd {
   border-left-color: color-mix(in srgb, var(--pending) 55%, transparent);
 }
 
+/* A flush is the marker's colour, the same as its part of the head's bar. */
 .line-log .row.flush {
-  border-left-color: color-mix(in srgb, var(--text-lo) 45%, transparent);
+  border-left-color: color-mix(in srgb, var(--marker) 55%, transparent);
 }
 
 .line-log .mark {
@@ -3191,6 +3444,31 @@ kbd {
 
 .line-log .row.repaint .mark {
   color: var(--pending);
+}
+
+.line-log .at {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+}
+
+/*
+ * The head: each line's ending as a share of the backlog, its legend from
+ * medium, and on a large card the pace the backlog arrived at. It stays put
+ * while the log under it scrolls.
+ */
+.stream-head {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.card[data-card-size='small'] .stream-head .split-legend {
+  display: none;
+}
+
+.stream-pace {
+  height: 28px;
 }
 
 .line-log .text {
@@ -6423,6 +6701,41 @@ button.quest-tile-name:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/*
+ * The head over the trace (`AutomationHead`): the queue and the refusals as
+ * figures from medium, and on a large card the two bars counted off the
+ * trace. It stays put while the trace under it scrolls.
+ */
+.automation-head {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Three figures side by side at every width the head is drawn at. */
+.automation-head > .kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.automation-splits {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
+.automation-splits > section {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.automation-splits em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+}
+
 /* ============================================================== search bar */
 
 .search-bar {
@@ -9076,6 +9389,133 @@ button.shelf-tile:hover {
 .conversation-log .line[data-channel='conversation-directed'] {
   --talk-name: var(--ok);
   --talk-body: var(--ok);
+}
+
+/*
+ * Each line's channel as an edge down its left side, in the channel's own hue,
+ * so a column of lines reads by channel before a word of it is read, and still
+ * does once a narrow card has dropped the channel's word.
+ */
+.conversation-log .line {
+  border-left: 2px solid var(--talk-name, var(--talk-body, transparent));
+  padding-left: 6px;
+}
+
+.conversation-log .line[data-channel^='player-'] {
+  border-left-color: color-mix(in srgb, var(--text-lo) 45%, transparent);
+}
+
+/*
+ * The log narrows by its own width, never the card's size: the condensed
+ * columns are the stamp, the channel, the name and what was said, and on a
+ * narrow log the first three left what was said a letter wide. A narrow log
+ * gives each line its own two columns (the subgrid would keep the tracks the
+ * hidden words left) and lets the edge carry the channel; a narrower one drops
+ * the stamp too. 420px and 300px were read off the gallery's 330px and 300px
+ * boxes, where the date stamp, the word `broadcast` and a name left under ten
+ * characters for the message.
+ */
+.conversation-log {
+  container: talk-log / inline-size;
+}
+
+@container talk-log (width < 420px) {
+  .conversation-log .line .channel {
+    display: none;
+  }
+
+  .conversation-log[data-layout] .line {
+    grid-column: 1 / -1;
+    grid-template-columns: var(--talk-stamp-track,) minmax(0, max-content) minmax(0, 1fr);
+  }
+
+  .conversation-log[data-layout='original'] .line {
+    grid-template-columns: var(--talk-stamp-track,) minmax(0, 1fr);
+  }
+
+  .conversation-log .who {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@container talk-log (width < 300px) {
+  .conversation-log .line {
+    --talk-stamp-track: ;
+  }
+
+  .conversation-log .line .stamp {
+    display: none;
+  }
+}
+
+/*
+ * The large card's head (`TalkSummary`): when the backlog was busy across the
+ * top, then the channels and the people who said the most side by side, or
+ * one under the other on a narrow card. It never scrolls; the feed under it
+ * does.
+ */
+.talk-summary {
+  border-bottom: 1px solid var(--seam);
+  display: grid;
+  flex: 0 0 auto;
+  gap: 6px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  margin-bottom: 6px;
+  padding-bottom: 8px;
+}
+
+.talk-busy {
+  display: grid;
+  gap: 2px;
+  grid-column: 1 / -1;
+}
+
+.talk-busy > em {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  font-style: normal;
+}
+
+.talk-busy > .histogram {
+  height: 22px;
+}
+
+.talk-speakers {
+  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One person: their initial, their name, how many lines they said. */
+.talk-speakers > li {
+  align-items: center;
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-pill);
+  display: flex;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 8px 2px 2px;
+}
+
+.talk-speakers .name {
+  color: var(--text-hi);
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.talk-speakers b {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
 }
 
 /* Carried weight: a fraction of a maximum, which is the one shape drawn as a bar. */
@@ -16443,6 +16883,104 @@ tr:hover .row-action.worn,
   padding-inline: 4px;
 }
 
+/*
+ * From medium the toolbar is a panel of tiles, a glyph and its name each, in
+ * as many columns as the card is wide. Only a card on the rail or floating is
+ * ever that size: docked, the band is one row high and draws as small.
+ */
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) > header {
+  padding: var(--pad-card) var(--pad-card) 0;
+}
+
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) > .body {
+  align-items: stretch;
+  display: block;
+  padding: var(--pad-card);
+}
+
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) .toolbar-row {
+  align-content: start;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 120px), 1fr));
+  overflow: visible;
+}
+
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) .toolbar-key {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-radius: var(--r-control);
+  gap: 8px;
+  height: auto;
+  justify-content: flex-start;
+  min-height: var(--control-h);
+  min-width: 0;
+  padding: 6px 8px;
+  width: auto;
+}
+
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) .toolbar-key.on {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+}
+
+.toolbar-card:is([data-card-size='medium'], [data-card-size='large']) .toolbar-more {
+  margin-left: 0;
+  position: static;
+}
+
+/*
+ * Large, the tiles share out the card's height as a pad of buttons, the glyph
+ * over its name, so a card given the room is filled by the keys rather than
+ * by blank space under them.
+ */
+.toolbar-card[data-card-size='large'] > .body {
+  display: flex;
+}
+
+.toolbar-card[data-card-size='large'] .toolbar-row {
+  align-content: stretch;
+  align-items: stretch;
+  flex: 1 1 auto;
+  grid-auto-rows: minmax(calc(var(--control-h) * 1.6), 1fr);
+}
+
+.toolbar-card[data-card-size='large'] .toolbar-key {
+  flex-direction: column;
+  justify-content: center;
+}
+
+.toolbar-card[data-card-size='large'] .toolbar-key .icon {
+  height: 20px;
+  width: 20px;
+}
+
+.toolbar-card[data-card-size='large'] .toolbar-key-label {
+  max-width: 100%;
+  text-align: center;
+}
+
+/*
+ * Small on the rail or floating, the glyphs wrap into as many rows as the box
+ * holds. Docked it stays the one row the band has room for.
+ */
+:not(.dock) > .toolbar-card[data-card-size='small'] .toolbar-row {
+  align-content: center;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.toolbar-key-label {
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ------------------------------------------------------------------------ */
 /* The Self card and the supplies controls                                  */
 /* ------------------------------------------------------------------------ */
@@ -16922,6 +17460,23 @@ tr:hover .row-action.worn,
   width: 100%;
   border: 0;
   background: transparent;
+}
+
+/* With nothing to frame, the card says so in the middle of its box, under a glyph. */
+.extension-empty {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  text-align: center;
+}
+
+.extension-empty > .icon {
+  height: 28px;
+  opacity: 0.6;
+  width: 28px;
 }
 
 /* The Gear card's Bless Items face (todo 44): a tile per item, those whose uses come back tinted. */

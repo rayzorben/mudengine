@@ -2752,6 +2752,14 @@ cards:
       standingDown: paused
     emptyDisabled: Automation disabled.
     emptySent: No automated commands sent.
+    # The figures over the trace, and on a large card two bars counted off it.
+    head:
+      inFlight: In flight
+      refused: Refused
+      acted: Acted
+      blocked: Blocked
+      purposes: What the sent commands were for
+      decisions: How the decisions went
     headings:
       engagements: Fights
       queued: Queued
@@ -2967,10 +2975,16 @@ cards:
     flagEcho: ECHO
     flagOff: no {flagLabel}
     flagSga: SGA
-    flagsLabel: Flags
-    localLabel: Local
+    # Who performs an option: this client (local) or the server (remote).
+    localLabel: 'Local: this client performs it'
+    localShort: us
     noneValue: none
-    remoteLabel: Remote
+    remoteLabel: 'Remote: the server performs it'
+    remoteShort: them
+    received: Received
+    sent: Sent
+    exchangeAria: Negotiation messages each way
+    latest: Latest
     tabTrafficLabel: Traffic
     title: Link
     trafficEmpty: No negotiation yet.
@@ -3967,10 +3981,17 @@ cards:
     encoding: Encoding
     grid: Grid
     gridValue: '{cols}×{rows}'
-    host: Host
     noTarget: no realm
     rate: Rate
     rateValue: '{rate} c/s'
+    # The characters the realm has sent since the connection opened.
+    received: '{total} received'
+    since: since {at}
+    traceAria: Characters a second over the last half minute
+    # Over the same half minute the trace draws; the mean is its dashed rule.
+    peak: Peak
+    mean: Average
+    perSecond: chars a second
     title: Session
   settings:
     followsClient: Follow the client's own theme
@@ -4195,6 +4216,15 @@ cards:
     willLevelLabel: Will level in
   stream:
     empty: No lines framed yet.
+    # How each framed line ended: a newline with words, an empty one, the
+    # status line redrawn in place, or the server stopping mid-line (a prompt).
+    kinds:
+      text: Lines
+      blank: Blank
+      repaint: Repaint
+      flush: Flush
+    kindsAria: How the framed lines ended
+    paceAria: Lines framed over the backlog, oldest on the left
     terminatorTooltip: terminated by {terminator}
     title: Stream
   talk:
@@ -4248,6 +4278,13 @@ cards:
     # The direction on this character's own receipts: `telepath to Brackle`.
     sentTo: to
     title: Talk
+    # The large card's head: when the backlog was busy, which channels and who.
+    summary:
+      label: What was said, at a glance
+      busy: Lines over the last {minutes} min
+      busyAria: How many lines were said, oldest on the left
+      channels: Lines per channel
+      speakers: Who said the most
   # The toolbar: one row of glyphs, no text on the row itself. Every label
   # here is a tooltip, an accessible name and a row in the kebab's menu.
   toolbar:

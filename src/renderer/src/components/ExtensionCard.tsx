@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import Icon from './Icon';
 import { useExtensions } from '../hooks/useExtensions';
 import { writeClipboard } from '../lib/clipboard';
 import { t } from '../lib/i18n';
@@ -125,7 +126,10 @@ function ExtensionCard({ session, views, ...chrome }: ExtensionCardProps) {
         </div>
       )}
       {current === null || current.page === null ? (
-        <div className="empty">{t('cards.extension.none')}</div>
+        <div className="empty extension-empty">
+          <Icon name="layout" />
+          <span>{t('cards.extension.none')}</span>
+        </div>
       ) : (
         <iframe
           className="extension-frame"
