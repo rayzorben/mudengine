@@ -20,12 +20,16 @@
  * First on the rail, before Vitals: the shipped arrangement is what a rail
  * that has never been arranged looks like, and the character is step one.
  */
-import { memo, useState, type CSSProperties } from 'react';
+import { memo, useState } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
 import { InventoryBody, type InventoryBodyProps } from './InventoryCard';
+import SelfAttributes from './SelfAttributes';
+import SelfHero from './SelfHero';
+import WornGrid from './WornGrid';
+import StockBar from './viz/StockBar';
 import { findAction } from './findAction';
 import type { CharacterState } from '@shared/character';
 import { type SupplyItem } from '@shared/packConfig';
@@ -37,6 +41,7 @@ import { useRememberedChoice } from '../hooks/useRemembered';
 import { useSupplyCounters } from '../hooks/useSupplyCounters';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import { figure } from '../lib/stats';
 
 export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'returnFocus'> {
   character: CharacterState;
@@ -52,56 +57,26 @@ export interface SelfCardProps extends CardChrome, Omit<InventoryBodyProps, 'ret
 const FACES = ['self', 'pack', 'supplies'] as const;
 const FACE_IDS: readonly string[] = FACES;
 
-/** A figure the sheet has not printed reads as a dash, never as zero. */
-function figure(value: number | null): string {
-  return value === null ? '—' : value.toLocaleString();
-}
-
 /**
- * One label and one number, drawn against whatever says how big the number is.
- *
- * Three readings, and the card gets whichever it can honestly make:
- *
- * - **Against the race's own range** (`span`), where the realm states one.
- *   93 strength says nothing on its own; 93 in a Kang's 55-to-160 says the
- *   character is a third of the way up its own race. The share is handed to
- *   the stylesheet as a number and the tint is mixed from it, so nothing here
- *   picks a threshold: the reading *is* the number.
- * - **A stated zero is quiet**, because *trained to nothing* is a real answer
- *   and one worth telling apart from the dash below at a glance.
- * - **A dash for what has not printed**, which is `inert` and not zero.
+ * One label and one number. A stated zero is quiet, because *trained to
+ * nothing* is a real answer and one worth telling apart at a glance from the
+ * dash for what has not printed, which is `inert`.
  */
 function Row({
   label,
   value,
-  span,
   className
 }: {
   label: string;
   value: number | null;
-  span?: [number, number];
   /** Set on the label and the value both, as a size class (`lib/cardSize.ts`). */
   className?: string;
 }) {
-  const share =
-    value === null || span === undefined || span[1] <= span[0]
-      ? null
-      : Math.min(1, Math.max(0, (value - span[0]) / (span[1] - span[0])));
-  const tone = value === null ? 'inert' : share !== null ? 'stat' : value === 0 ? 'none' : '';
+  const tone = value === null ? 'inert' : value === 0 ? 'none' : '';
   return (
     <>
       <dt className={className}>{label}</dt>
-      <dd
-        className={className === undefined ? tone : `${tone} ${className}`}
-        style={share === null ? undefined : ({ '--stat-share': share } as CSSProperties)}
-        title={
-          span === undefined
-            ? undefined
-            : t('cards.self.statRange', { low: span[0], high: span[1] })
-        }
-      >
-        {figure(value)}
-      </dd>
+      <dd className={className === undefined ? tone : `${tone} ${className}`}>{figure(value)}</dd>
     </>
   );
 }
@@ -217,162 +192,129 @@ function SelfCard({
    * the answer is.
    */
   // Small, the sheet is who this is and how far along; the attributes, the
-  // skills and the sight wait for a bigger box (`lib/cardSize.ts`).
+  // skills and the sight wait for medium, the worn slots for large.
   const selfFace = (
-    <div className="readout-box">
-      <dl className="readout columns">
-        <dt className="span">{t('cards.vitals.labels.class')}</dt>
-        <dd className={`span${character.className ? '' : ' inert'}`}>
-          {character.className ?? '—'}
-          {character.race ? ` · ${character.race}` : ''}
-        </dd>
-        <Row label={t('cards.vitals.labels.level')} value={progress.level} />
-        <dt className="span">{t('cards.self.labels.lives')}</dt>
-        <dd className={`span${progress.lives === null ? ' inert' : ''}`}>
-          {figure(progress.lives)}
-          {progress.cp !== null ? ` / ${progress.cp}` : ''}
-        </dd>
-        {/* The one figure that runs to seven digits: paired, it would be the
-            row that pushes the sheet wider than the card. */}
-        <dt className="span">{t('cards.self.labels.exp')}</dt>
-        <dd className={`span${progress.exp === null ? ' inert' : ''}`}>{figure(progress.exp)}</dd>
+    <>
+      <SelfHero
+        className={character.className}
+        progress={progress}
+        race={character.race}
+        title={title}
+      />
+      <h4 className="self-group from-medium" data-group="1">
+        {t('cards.self.groups.attributes')}
+      </h4>
+      <div className="from-medium">
+        <SelfAttributes progress={progress} spans={spans} />
+      </div>
+      <h4 className="self-group from-large" data-group="4">
+        {t('cards.self.groups.worn')}
+      </h4>
+      <div className="from-large">
+        <WornGrid inspect={inspect} inventory={character.inventory} realm={character.realm} />
+      </div>
+      <div className="readout-box from-medium">
+        <dl className="readout columns">
+          <dt className="group from-medium" data-group="2">
+            {t('cards.self.groups.skills')}
+          </dt>
+          <dd className="group from-medium" />
+          <dt className="span from-medium">{t('cards.self.labels.armour')}</dt>
+          <dd className={`span from-medium${progress.armourClass === null ? ' inert' : ''}`}>
+            {figure(progress.armourClass)}
+            {progress.damageResist !== null ? ` / ${progress.damageResist}` : ''}
+          </dd>
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.perception')}
+            value={progress.perception}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.stealth')}
+            value={progress.stealthSkill}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.thievery')}
+            value={progress.thievery}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.traps')}
+            value={progress.traps}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.picklocks')}
+            value={progress.picklocks}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.tracking')}
+            value={progress.tracking}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.martialArts')}
+            value={progress.martialArts}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.magicRes')}
+            value={progress.magicRes}
+          />
+          <Row
+            className="from-medium"
+            label={t('cards.self.labels.spellcasting')}
+            value={progress.spellcasting}
+          />
 
-        <dt className="group from-medium" data-group="1">
-          {t('cards.self.groups.attributes')}
-        </dt>
-        <dd className="group from-medium" />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.strength')}
-          value={progress.strength}
-          span={spans?.strength}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.intellect')}
-          value={progress.intellect}
-          span={spans?.intellect}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.willpower')}
-          value={progress.willpower}
-          span={spans?.willpower}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.agility')}
-          value={progress.agility}
-          span={spans?.agility}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.health')}
-          value={progress.health}
-          span={spans?.health}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.charm')}
-          value={progress.charm}
-          span={spans?.charm}
-        />
-
-        <dt className="group from-medium" data-group="2">
-          {t('cards.self.groups.skills')}
-        </dt>
-        <dd className="group from-medium" />
-        <dt className="span from-medium">{t('cards.self.labels.armour')}</dt>
-        <dd className={`span from-medium${progress.armourClass === null ? ' inert' : ''}`}>
-          {figure(progress.armourClass)}
-          {progress.damageResist !== null ? ` / ${progress.damageResist}` : ''}
-        </dd>
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.perception')}
-          value={progress.perception}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.stealth')}
-          value={progress.stealthSkill}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.thievery')}
-          value={progress.thievery}
-        />
-        <Row className="from-medium" label={t('cards.self.labels.traps')} value={progress.traps} />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.picklocks')}
-          value={progress.picklocks}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.tracking')}
-          value={progress.tracking}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.martialArts')}
-          value={progress.martialArts}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.magicRes')}
-          value={progress.magicRes}
-        />
-        <Row
-          className="from-medium"
-          label={t('cards.self.labels.spellcasting')}
-          value={progress.spellcasting}
-        />
-
-        <dt className="group from-medium" data-group="3">
-          {t('cards.self.groups.sight')}
-        </dt>
-        <dd className="group from-medium" />
-        <dt className="span from-medium">{t('cards.self.labels.nightVision')}</dt>
-        <dd className={`span from-medium${sight === null ? ' inert' : ''}`}>
-          {sight === null ? '—' : sight.vision}
-          {sight !== null && !sight.raceKnown && (
-            <span className="hint"> {t('cards.self.sight.raceUnknown')}</span>
-          )}
-        </dd>
-        <dt className="span from-medium">{t('cards.self.labels.lit')}</dt>
-        <dd className={`span from-medium${sight?.lit ? '' : ' inert'}`}>
-          {sight?.lit
-            ? t('cards.self.sight.litFormat', { item: sight.lit, reach: sight.reach })
-            : t('cards.self.sight.nothingLit')}
-        </dd>
-        <dt className="span from-medium">{t('cards.self.labels.seesDownTo')}</dt>
-        <dd className={`span from-medium${darkestUnlit === null ? ' inert' : ''}`}>
-          {darkestUnlit === null
-            ? '—'
-            : darkestLit === null
-              ? String(darkestUnlit)
-              : t('cards.self.sight.downToFormat', { unlit: darkestUnlit, lit: darkestLit })}
-        </dd>
-        <dt className="span from-medium">{t('cards.self.labels.here')}</dt>
-        <dd className={`span from-medium${seen === null ? ' inert' : ''}`}>
-          {seen === null
-            ? t('cards.self.sight.hereUnknown')
-            : t('cards.self.sight.hereFormat', {
-                level: level ?? 0,
-                seen,
-                reading: phrase ?? t('cards.self.sight.readable')
-              })}
-          {/* The server's own word, where it printed one: the check on the sum. */}
-          {room.light !== null && (
-            <span className="hint">
-              {' '}
-              {t('cards.self.sight.serverSaid', { phrase: room.light })}
-            </span>
-          )}
-        </dd>
-      </dl>
-    </div>
+          <dt className="group from-medium" data-group="3">
+            {t('cards.self.groups.sight')}
+          </dt>
+          <dd className="group from-medium" />
+          <dt className="span from-medium">{t('cards.self.labels.nightVision')}</dt>
+          <dd className={`span from-medium${sight === null ? ' inert' : ''}`}>
+            {sight === null ? '—' : sight.vision}
+            {sight !== null && !sight.raceKnown && (
+              <span className="hint"> {t('cards.self.sight.raceUnknown')}</span>
+            )}
+          </dd>
+          <dt className="span from-medium">{t('cards.self.labels.lit')}</dt>
+          <dd className={`span from-medium${sight?.lit ? '' : ' inert'}`}>
+            {sight?.lit
+              ? t('cards.self.sight.litFormat', { item: sight.lit, reach: sight.reach })
+              : t('cards.self.sight.nothingLit')}
+          </dd>
+          <dt className="span from-medium">{t('cards.self.labels.seesDownTo')}</dt>
+          <dd className={`span from-medium${darkestUnlit === null ? ' inert' : ''}`}>
+            {darkestUnlit === null
+              ? '—'
+              : darkestLit === null
+                ? String(darkestUnlit)
+                : t('cards.self.sight.downToFormat', { unlit: darkestUnlit, lit: darkestLit })}
+          </dd>
+          <dt className="span from-medium">{t('cards.self.labels.here')}</dt>
+          <dd className={`span from-medium${seen === null ? ' inert' : ''}`}>
+            {seen === null
+              ? t('cards.self.sight.hereUnknown')
+              : t('cards.self.sight.hereFormat', {
+                  level: level ?? 0,
+                  seen,
+                  reading: phrase ?? t('cards.self.sight.readable')
+                })}
+            {/* The server's own word, where it printed one: the check on the sum. */}
+            {room.light !== null && (
+              <span className="hint">
+                {' '}
+                {t('cards.self.sight.serverSaid', { phrase: room.light })}
+              </span>
+            )}
+          </dd>
+        </dl>
+      </div>
+    </>
   );
 
   const packFace = (
@@ -425,7 +367,12 @@ function SelfCard({
           );
         }
         const have = carriedCount(character, row.name);
-        return <span className={have < row.min ? 'short' : ''}>{have}</span>;
+        return (
+          <span className="supply-have">
+            <span className={have < row.min ? 'short' : ''}>{have}</span>
+            <StockBar have={have} max={row.max} min={row.buy ? row.min : 0} />
+          </span>
+        );
       }
     },
     {
@@ -544,6 +491,14 @@ function SelfCard({
         <p className="settings-note">{t('cards.self.supplies.switchedOff')}</p>
       )}
       <CardTable
+        /* Large, how the list works is written out under the rows and scrolls
+           with them; smaller, it is the one line below that says it on hover. */
+        after={
+          <>
+            <p className="settings-note from-large">{t('cards.self.supplies.collects')}</p>
+            <p className="settings-note from-large">{t('cards.self.supplies.howToAdd')}</p>
+          </>
+        }
         caption={t('cards.self.supplies.tableCaption')}
         className="supplies"
         columns={columns}
@@ -554,8 +509,12 @@ function SelfCard({
         rows={rows}
         session={session}
       />
-      <p className="settings-note">{t('cards.self.supplies.collects')}</p>
-      <p className="settings-note">{t('cards.self.supplies.howToAdd')}</p>
+      <p
+        className="supplies-help hint"
+        title={`${t('cards.self.supplies.collects')}\n\n${t('cards.self.supplies.howToAdd')}`}
+      >
+        <Icon name="help" /> {t('cards.self.supplies.howItWorks')}
+      </p>
     </>
   );
 

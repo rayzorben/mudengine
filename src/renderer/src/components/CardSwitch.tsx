@@ -327,6 +327,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           inspect={ctx.inspect}
+          purse={character.inventory.wealth}
           self={character.name}
           session={ctx.session}
           shelves={view.shops}

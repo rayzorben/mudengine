@@ -1,6 +1,8 @@
-import { memo, Fragment } from 'react';
+import { memo, useMemo, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import Kpi from './viz/Kpi';
+import SplitBar, { type SplitPart } from './viz/SplitBar';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { bankKey, type BankBalance, type CharacterState } from '@shared/character';
@@ -58,6 +60,9 @@ function ordered(banks: readonly BankBalance[]): BankBalance[] {
   );
 }
 
+/** A figure for the split bar's key, with thousands separated. */
+const plainFigure = (value: number): string => value.toLocaleString();
+
 /** One line per vault, for pasting to somebody who asked. */
 export function banksCopyText(banks: readonly BankBalance[]): string {
   const rows = ordered(banks);
@@ -70,7 +75,7 @@ export function banksCopyText(banks: readonly BankBalance[]): string {
 }
 
 function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element {
-  const banks = ordered(character.banks);
+  const banks = useMemo(() => ordered(character.banks), [character.banks]);
   /*
    * Read once for the whole render rather than per row, so two vaults read in
    * the same second cannot print different ages for the same instant.
@@ -78,7 +83,37 @@ function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element 
   const now = Date.now();
 
   const total = bankedCopper(banks);
-  const totalWords = t('cards.banks.total', { copper: total.toLocaleString() });
+  const wealth = character.inventory.wealth;
+  const richest = banks[0]?.copper ?? 0;
+  // A share of all the money, drawn only once the purse is read: an unread
+  // purse counted as none would make every vault's share a claim.
+  const all = wealth === null ? null : total + wealth;
+  /*
+   * The cash on hand beside each vault, so where the money is reads as one
+   * bar. The purse is left out while it is unread: a zero there would be a
+   * claim the listing did not make.
+   */
+  const parts = useMemo<SplitPart[]>(
+    () => [
+      ...(wealth === null
+        ? []
+        : [
+            {
+              key: 'purse',
+              label: t('cards.inventory.wealthLabel'),
+              value: wealth,
+              tone: 'a' as const
+            }
+          ]),
+      ...banks.map((bank) => ({
+        key: keyOf(bank),
+        label: bank.name,
+        value: bank.copper,
+        tone: 'c' as const
+      }))
+    ],
+    [banks, wealth]
+  );
 
   return (
     <BentoCard
@@ -96,41 +131,56 @@ function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element 
         <div className="aside">{t('cards.banks.none')}</div>
       ) : (
         <>
-          {/* Small, the card is what is banked in all (`lib/cardSize.ts`). */}
-          <div className="banks-total only-small">{totalWords}</div>
-          <dl className="readout from-medium">
-            {banks.map((bank) => (
-              /*
-                A fragment and **not** a wrapping element. `.readout` is one
-                grid and CSS sizes its `auto` column from one container's own
-                children, so a div around each pair would make every vault its
-                own grid — the label column would stop aligning down the card,
-                which is the exact failure the Room card had when it stated its
-                rows in two `<dl>`s.
-
-                Keyed by the realm's shop id where there is one and the folded
-                name otherwise — the same key the merge uses, so a vault cannot
-                be one row for the merge and two for React.
-              */
-              <Fragment key={bank.shop === null ? bankKey(bank.name) : `#${bank.shop}`}>
-                <dt>{bank.name}</dt>
-                <dd>
-                  {t('cards.banks.copper', { copper: bank.copper.toLocaleString() })}{' '}
-                  <span className="quiet-note">({ago(bank.at, now)})</span>
-                </dd>
-              </Fragment>
-            ))}
-          </dl>
+          {/* At every size, what is banked in all and what is carried. */}
+          <div className="kpis banks-kpis">
+            <Kpi
+              hint={t('cards.banks.unit')}
+              label={t('cards.banks.banked')}
+              tone="accent"
+              value={total.toLocaleString()}
+            />
+            <Kpi
+              hint={t('cards.banks.unit')}
+              label={t('cards.inventory.wealthLabel')}
+              value={wealth === null ? null : wealth.toLocaleString()}
+            />
+          </div>
+          <div className="banks-split">
+            <SplitBar format={plainFigure} label={t('cards.banks.splitAria')} parts={parts} />
+          </div>
           {/*
-            Stated only where it says something the rows do not. One vault's
-            total is that vault's row again, and a card repeating itself reads
-            as two facts where there is one.
+            A vault a row, each with a bar against the richest, so the one the
+            money is in is the long bar. Keyed as the merge keys a vault, so a
+            vault cannot be one row for the merge and two for React.
           */}
-          {banks.length > 1 ? <div className="aside from-medium">{totalWords}</div> : null}
+          <ul className="bank-rows from-medium">
+            {banks.map((bank) => (
+              <li
+                key={keyOf(bank)}
+                title={t('cards.banks.copper', { copper: bank.copper.toLocaleString() })}
+              >
+                <span className="bank-name">{bank.name}</span>
+                <span className="bank-age">{ago(bank.at, now)}</span>
+                <span className="bank-share from-large">
+                  {all !== null && all > 0 ? `${Math.round((100 * bank.copper) / all)}%` : ''}
+                </span>
+                <b className="bank-figure">{bank.copper.toLocaleString()}</b>
+                <i
+                  className="bank-bar"
+                  style={{ '--share': richest > 0 ? bank.copper / richest : 0 } as CSSProperties}
+                />
+              </li>
+            ))}
+          </ul>
         </>
       )}
     </BentoCard>
   );
+}
+
+/** The realm's shop id where the header printed one, else the folded name. */
+function keyOf(bank: BankBalance): string {
+  return bank.shop === null ? bankKey(bank.name) : `#${bank.shop}`;
 }
 
 export default memo(BanksCard);
