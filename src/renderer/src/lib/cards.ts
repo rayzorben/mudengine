@@ -14,6 +14,7 @@ import type { TalkLayout, TalkStamp } from '@shared/talk';
 import type { StatsGraph } from '@shared/tally';
 import type { CardSizeBounds } from './cardSize';
 import type { GridBox, GridSize, GridSpot, RailWidth } from './railGrid';
+import type { WorkspaceBox } from './workspaceBox';
 
 /**
  * Every card the rail can hold, and the order a rail that has never been
@@ -233,12 +234,7 @@ export const LEAST_CARD: GridSize = { w: 6, h: 4 };
 export const MIN_FLOAT = { w: 0.12, h: 0.1 } as const;
 
 /** Where a float stands and how big it is, in fractions of the workspace. */
-export interface FloatBox {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+export type FloatBox = WorkspaceBox;
 
 /**
  * A card lifted off the rail and left over the console.

@@ -36,6 +36,7 @@ import {
   type RailWidth
 } from '../lib/railGrid';
 import { reordered } from '../lib/reorder';
+import { clamp, inWorkspace } from '../lib/workspaceBox';
 import { gridCell, gridGap } from './useRailGrid';
 
 const IDS: readonly CardId[] = CARDS.map((card) => card.id);
@@ -107,16 +108,9 @@ export function floatAlphas(solidity: number): { fill: number; text: number } {
   };
 }
 
-/**
- * Where on the slider a stated fill alpha sits. The inverse of `floatAlphas`.
- *
- * Its own arithmetic rather than `clamp`, which is declared further down the
- * module: `DEFAULT_FLOAT` calls this while the module is still initialising,
- * and a `const` arrow read from above its declaration throws.
- */
+/** Where on the slider a stated fill alpha sits. The inverse of `floatAlphas`. */
 export function solidityForFill(fill: number): number {
-  const t = (fill - FLOAT_FILL.min) / (FLOAT_FILL.max - FLOAT_FILL.min);
-  return Math.min(1, Math.max(0, t));
+  return clamp((fill - FLOAT_FILL.min) / (FLOAT_FILL.max - FLOAT_FILL.min), 0, 1);
 }
 
 /**
@@ -149,9 +143,6 @@ export const DEFAULT_FLOAT = {
 const DEFAULT_FLOATS: readonly FloatState[] = [
   { id: 'party', x: 0.372, y: 0.284, w: 0.206, h: 0.184, solidity: 1 }
 ];
-
-const clamp = (value: number, low: number, high: number): number =>
-  Math.min(high, Math.max(low, value));
 
 /**
  * The floats with one moved to the end, which is the top of the paint order.
@@ -343,10 +334,15 @@ export function lifted(
 ): FloatState {
   return {
     id,
-    x: clamp(at.x, 0, 0.98),
-    y: clamp(at.y, 0, 0.98),
-    w: clamp(size?.w ?? existing?.w ?? DEFAULT_FLOAT.w, MIN_FLOAT.w, 1),
-    h: clamp(size?.h ?? existing?.h ?? DEFAULT_FLOAT.h, MIN_FLOAT.h, 1),
+    ...inWorkspace(
+      {
+        x: at.x,
+        y: at.y,
+        w: size?.w ?? existing?.w ?? DEFAULT_FLOAT.w,
+        h: size?.h ?? existing?.h ?? DEFAULT_FLOAT.h
+      },
+      MIN_FLOAT
+    ),
     solidity: existing?.solidity ?? DEFAULT_FLOAT.solidity,
     ...(existing?.pinned === true ? { pinned: true } : {})
   };
@@ -473,10 +469,15 @@ function readFloat(value: unknown): FloatState | null {
     // Clamped on the way in as well as on the way out: a layout written by an
     // older build, or by a window that was a different shape, must not put a
     // card somewhere it cannot be dragged back from.
-    x: clamp(number('x', 0.4), 0, 0.98),
-    y: clamp(number('y', 0.3), 0, 0.98),
-    w: clamp(number('w', DEFAULT_FLOAT.w), MIN_FLOAT.w, 1),
-    h: clamp(number('h', DEFAULT_FLOAT.h), MIN_FLOAT.h, 1),
+    ...inWorkspace(
+      {
+        x: number('x', 0.4),
+        y: number('y', 0.3),
+        w: number('w', DEFAULT_FLOAT.w),
+        h: number('h', DEFAULT_FLOAT.h)
+      },
+      MIN_FLOAT
+    ),
     // `opacity` is what this field was called when it meant the fill alpha
     // directly. Read so an arrangement made before the two-alpha model is not
     // silently thrown away; the value means the same end of the range.
@@ -815,14 +816,11 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         const base = without(layout, id);
         store({ ...base, floats: [...base.floats, lifted(id, existing, at, size)] });
       },
-      moveFloat: (id, at) => patchFloat(id, { x: clamp(at.x, 0, 0.98), y: clamp(at.y, 0, 0.98) }),
-      sizeFloat: (id, box) =>
-        patchFloat(id, {
-          x: clamp(box.x, 0, 0.98),
-          y: clamp(box.y, 0, 0.98),
-          w: clamp(box.w, MIN_FLOAT.w, 1),
-          h: clamp(box.h, MIN_FLOAT.h, 1)
-        }),
+      moveFloat: (id, at) => {
+        const found = layout.floats.find((entry) => entry.id === id);
+        if (found) patchFloat(id, inWorkspace({ ...found, ...at }, MIN_FLOAT));
+      },
+      sizeFloat: (id, box) => patchFloat(id, inWorkspace(box, MIN_FLOAT)),
       setSolidity: (id, solidity) => patchFloat(id, { solidity: clamp(solidity, 0, 1) }),
       pin: (id, pinned) => patchFloat(id, pinned ? { pinned: true } : { pinned: undefined }),
       settingsOf: (id) => layout.settings[id] ?? NO_CARD_SETTINGS,

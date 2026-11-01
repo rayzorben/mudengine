@@ -19,14 +19,10 @@
  * Pure, and tested as such: the arithmetic of a drag is the half that goes
  * wrong, and it cannot be reached through a pointer in a unit test.
  */
+import { clamp, inWorkspace, type WorkspaceBox } from './workspaceBox';
 
 /** A panel's box, every figure a fraction of the workspace. */
-export interface PanelBox {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+export type PanelBox = WorkspaceBox;
 
 /**
  * The smallest a panel may be dragged to.
@@ -52,27 +48,19 @@ export const PANEL_MIN = { w: 0.3, h: 0.3 } as const;
  */
 export const DEFAULT_PANEL: PanelBox = { x: 0.03, y: 0.05, w: 0.94, h: 0.9 };
 
-const clamp = (value: number, low: number, high: number): number =>
-  value < low ? low : value > high ? high : value;
-
-/**
- * A stored or dragged box, made legal.
- *
- * The size is clamped first and the position against the size, so a panel is
- * always wholly inside the workspace: clamping the position first would let a
- * later width push its right edge out with nothing to pull it back.
- */
+/** A stored or dragged box, made legal: wholly inside the workspace (`inWorkspace`). */
 export function normalizePanel(box: Partial<PanelBox> | null | undefined): PanelBox {
   const number = (value: unknown, fallback: number): number =>
     typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-  const w = clamp(number(box?.w, DEFAULT_PANEL.w), PANEL_MIN.w, 1);
-  const h = clamp(number(box?.h, DEFAULT_PANEL.h), PANEL_MIN.h, 1);
-  return {
-    w,
-    h,
-    x: clamp(number(box?.x, DEFAULT_PANEL.x), 0, 1 - w),
-    y: clamp(number(box?.y, DEFAULT_PANEL.y), 0, 1 - h)
-  };
+  return inWorkspace(
+    {
+      x: number(box?.x, DEFAULT_PANEL.x),
+      y: number(box?.y, DEFAULT_PANEL.y),
+      w: number(box?.w, DEFAULT_PANEL.w),
+      h: number(box?.h, DEFAULT_PANEL.h)
+    },
+    PANEL_MIN
+  );
 }
 
 /** The box a drag of `dx`/`dy` fractions from `from` lands on. */

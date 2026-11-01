@@ -148,6 +148,15 @@ describe('a float read back off disk', () => {
     expect(float.solidity).toBeLessThanOrEqual(1);
   });
 
+  // festus's Combat Stats float, 2026-10-31: its corner at 0.98, 0.98 put
+  // all but a sliver of the card outside the window.
+  it('keeps a float in the corner wholly inside the workspace', () => {
+    const layout = normalizeLayout({
+      floats: [{ id: 'stats', x: 0.98, y: 0.98, w: 0.26, h: 0.3, solidity: 0.87 }]
+    });
+    expect(layout.floats[0]).toMatchObject({ x: 0.74, y: 0.7, w: 0.26, h: 0.3 });
+  });
+
   it('discards a float with nonsense in it rather than failing the whole layout', () => {
     const layout = normalizeLayout({
       floats: [
@@ -346,7 +355,10 @@ describe('lifting a card over the console', () => {
   });
 
   it('clamps a card into the workspace and off its floor', () => {
-    expect(lifted('map', undefined, { x: -1, y: 4 })).toMatchObject({ x: 0, y: 0.98 });
+    expect(lifted('map', undefined, { x: -1, y: 4 })).toMatchObject({
+      x: 0,
+      y: 1 - DEFAULT_FLOAT.h
+    });
     expect(lifted('map', undefined, where, { w: 0.001, h: 9 })).toMatchObject({ w: 0.12, h: 1 });
   });
 });
