@@ -642,6 +642,34 @@ interface Parsed {
   migrated: 'before-grid' | 'before-columns' | null;
 }
 
+/**
+ * A layout written as JSON, read field by field: what is kept for a character
+ * and what a card layout file holds. Lists that are not lists are left to the
+ * shipped arrangement; `normalizeLayout` reads the rest and drops what is not
+ * what it should be.
+ */
+export function layoutOf(raw: Readonly<Record<string, unknown>>): CardLayout {
+  return normalizeLayout({
+    rail: Array.isArray(raw['rail']) ? (raw['rail'] as CardId[]) : undefined,
+    above: Array.isArray(raw['above']) ? (raw['above'] as CardId[]) : undefined,
+    below: Array.isArray(raw['below']) ? (raw['below'] as CardId[]) : undefined,
+    floats: Array.isArray(raw['floats']) ? (raw['floats'] as FloatState[]) : undefined,
+    away: Array.isArray(raw['away']) ? (raw['away'] as CardId[]) : undefined,
+    // Cast like the lists above it: `normalizeLayout` is what actually reads
+    // this, field by field, and drops whatever is not what it should be.
+    settings: raw['settings'] as CardLayout['settings'],
+    /*
+     * Read back as they are written: `heights`, their forerunner, was once
+     * written by `store` and never read here, so a card dragged taller came
+     * back at its shipped height on the next launch.
+     */
+    sizes: raw['sizes'] as CardLayout['sizes'],
+    spots: raw['spots'] as CardLayout['spots'],
+    columns: raw['columns'] as number,
+    rolled: Array.isArray(raw['rolled']) ? (raw['rolled'] as CardId[]) : undefined
+  });
+}
+
 function parse(stored: string | null, measure: () => RailMeasure): Parsed | null {
   if (stored === null) return null;
   try {
@@ -649,25 +677,7 @@ function parse(stored: string | null, measure: () => RailMeasure): Parsed | null
     if (typeof value !== 'object' || value === null) return null;
     const gridded = withGridSizes(value as Record<string, unknown>, measure);
     const raw = withRailColumns(gridded);
-    const layout = normalizeLayout({
-      rail: Array.isArray(raw['rail']) ? (raw['rail'] as CardId[]) : undefined,
-      above: Array.isArray(raw['above']) ? (raw['above'] as CardId[]) : undefined,
-      below: Array.isArray(raw['below']) ? (raw['below'] as CardId[]) : undefined,
-      floats: Array.isArray(raw['floats']) ? (raw['floats'] as FloatState[]) : undefined,
-      away: Array.isArray(raw['away']) ? (raw['away'] as CardId[]) : undefined,
-      // Cast like the lists above it: `normalizeLayout` is what actually reads
-      // this, field by field, and drops whatever is not what it should be.
-      settings: raw['settings'] as CardLayout['settings'],
-      /*
-       * Read back as they are written: `heights`, their forerunner, was once
-       * written by `store` and never read here, so a card dragged taller came
-       * back at its shipped height on the next launch.
-       */
-      sizes: raw['sizes'] as CardLayout['sizes'],
-      spots: raw['spots'] as CardLayout['spots'],
-      columns: raw['columns'] as number,
-      rolled: Array.isArray(raw['rolled']) ? (raw['rolled'] as CardId[]) : undefined
-    });
+    const layout = layoutOf(raw);
     const migrated = gridded !== value ? 'before-grid' : raw !== gridded ? 'before-columns' : null;
     return { layout, migrated };
   } catch {
@@ -803,6 +813,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         if (next !== layout) store(next);
       },
       restoreRail: (kept) => store(restoredRail(layout, kept)),
+      apply: (arrangement) => store(normalizeLayout({ ...arrangement, settings: layout.settings })),
       laneOf: (id) =>
         layout.rail.includes(id)
           ? 'rail'

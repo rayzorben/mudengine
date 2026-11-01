@@ -14,10 +14,10 @@ import {
   cardLabel,
   hidesWhenEmpty,
   HIDES_WHEN_EMPTY,
-  type AutoLayoutApi,
   type CardId,
   type CardLayoutApi
 } from './cards';
+import type { NamedLayoutsApi, RailLayoutsApi } from './cardLayouts';
 import { t } from './i18n';
 import type { HeldLoop } from './loops';
 import { chord } from './platform';
@@ -118,7 +118,11 @@ export interface PaletteDeps {
     CardLayoutApi,
     'show' | 'away' | 'isShown' | 'settingsOf' | 'setSettings' | 'floats' | 'rolled' | 'reset'
   >;
-  autoLayout: AutoLayoutApi;
+  /** Auto layout and the saved card layouts. */
+  layouts: {
+    auto: RailLayoutsApi['auto'];
+    named: Pick<NamedLayoutsApi, 'layouts' | 'shown' | 'apply'>;
+  };
   widths: {
     columns: number | null;
     tabs: number | null;
@@ -195,7 +199,7 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
     showTabs,
     connected,
     cards,
-    autoLayout,
+    layouts,
     widths,
     panes,
     paneFlow,
@@ -1028,9 +1032,9 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       hint: t('palette.layout.autoLayoutHint'),
       keywords: ['auto', 'layout', 'arrange', 'fit', 'tidy', 'rail', 'cards', 'size'],
       group: 'layout' as const,
-      run: autoLayout.run
+      run: layouts.auto.run
     },
-    ...(autoLayout.canUndo
+    ...(layouts.auto.canUndo
       ? [
           {
             id: 'cards:auto-layout-undo',
@@ -1039,10 +1043,22 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
             hint: t('palette.layout.autoLayoutUndoHint'),
             keywords: ['undo', 'auto', 'layout', 'rail', 'cards'],
             group: 'layout' as const,
-            run: autoLayout.undo
+            run: layouts.auto.undo
           }
         ]
       : []),
+    // The saved layout the cards already stand in is not offered: it would do nothing.
+    ...layouts.named.layouts
+      .filter((entry) => entry.name !== layouts.named.shown)
+      .map((entry) => ({
+        id: `cards:layout:${entry.name}`,
+        icon: 'layout' as const,
+        label: t('palette.layout.namedLayoutLabel', { layoutName: entry.name }),
+        hint: t('palette.layout.namedLayoutHint'),
+        keywords: ['layout', 'saved', 'rail', 'cards'],
+        group: 'layout' as const,
+        run: () => layouts.named.apply(entry.name)
+      })),
     // A rail dragged somewhere awkward, put back to the density's default.
     ...(widths.columns !== null ||
     widths.tabs !== null ||

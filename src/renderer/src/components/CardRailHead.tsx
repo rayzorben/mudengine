@@ -2,9 +2,11 @@ import type { PointerEvent } from 'react';
 
 import CardPicker from './CardPicker';
 import Icon from './Icon';
+import LayoutMenu from './LayoutMenu';
 import ViewSwitch from './ViewSwitch';
 import { useExtensions } from '../hooks/useExtensions';
-import type { AutoLayoutApi, CardId } from '../lib/cards';
+import type { RailLayoutsApi } from '../lib/cardLayouts';
+import type { CardId } from '../lib/cards';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 
@@ -15,20 +17,20 @@ export interface CardRailHeadProps {
   onFloat(id: CardId): void;
   onGrab?(id: CardId, event: PointerEvent<HTMLElement>): void;
   dragging?: boolean;
-  /** Auto layout, and the undo of it while there is an arrangement kept. */
-  autoLayout: AutoLayoutApi;
+  /** Auto layout and its undo, and the saved card layouts. */
+  layouts: RailLayoutsApi;
   /** Into the game view (todo 04). */
   onGameView(): void;
 }
 
 /**
  * The row at the head of the card rail: the put-away chip, auto layout and
- * its undo, and the switch into the game view. The client's mark leads the
+ * its undo, the saved card layouts, and the switch into the game view. The client's mark leads the
  * character tabs (`AppMark`).
  */
 export default function CardRailHead({
   away: put,
-  autoLayout,
+  layouts: { auto: autoLayout, named, files },
   onGameView,
   ...picker
 }: CardRailHeadProps) {
@@ -63,6 +65,7 @@ export default function CardRailHead({
           <Icon name="undo" />
         </button>
       )}
+      <LayoutMenu files={files} named={named} />
       <ViewSwitch className="chip" game={false} onToggle={onGameView} />
     </div>
   );

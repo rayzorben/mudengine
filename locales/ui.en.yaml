@@ -59,9 +59,17 @@ app:
     realmDatabaseFilter: World database
     savePortraitTitle: Save portrait
     pictureFilter: Picture
+    saveCardLayoutTitle: Save card layout
+    loadCardLayoutTitle: Load card layout
+    cardLayoutFilter: Card layout
   portrait:
     none: There is no drawn portrait of this character to save yet.
     saveFailed: 'The portrait could not be saved: {message}'
+  cardLayout:
+    notALayout: This is not a card layout saved by mudengine.
+    saveFailed: 'The card layout could not be saved: {message}'
+  files:
+    unreadable: 'Could not read {file}: {message}'
   errorBoundary:
     body: Active character sessions are unaffected. Reload to restore the interface.
     heading: UI Rendering Error
@@ -1457,6 +1465,8 @@ palette:
     autoLayoutHint: each card sized to what it shows, kept in view where they fit
     autoLayoutLabel: Auto layout the card rail
     autoLayoutUndoHint: the card rail as it was before auto layout
+    namedLayoutHint: the card layout you saved under this name
+    namedLayoutLabel: 'Card layout: {layoutName}'
     cardAlwaysHint: otherwise it leaves the rail while it has nothing to show
     cardAlwaysLabel: '{cardName} card: always show'
     cardHideEmptyHint: it stays on the rail even when it has nothing to show
@@ -2775,6 +2785,26 @@ cards:
     tooltip: Size each card to what it shows, and keep them in view where they fit
     undo: Undo auto layout
     undoTooltip: Put the rail back as it was before auto layout
+  layouts:
+    label: Layouts
+    tooltip: Card layouts you have saved, to put back with one click
+    menuLabel: Card layouts
+    none: No layouts saved yet.
+    applyTooltip: Put the cards where {layoutName} has them
+    shownTooltip: The cards are where {layoutName} has them
+    fileTooltip: Save {layoutName} to a file
+    removeTooltip: Delete {layoutName}
+    nameLabel: Name for this layout
+    namePlaceholder: Name this layout
+    save: Save
+    saveTooltip: Save where the cards are now under this name; the same name replaces it
+    saveFile: Save to a file
+    saveFileTooltip: Save where the cards are now to a file
+    loadFile: Load from a file
+    loadFileTooltip: Load a card layout file, add it here and put the cards where it has them
+    savedFile: 'Saved to {file}.'
+    loaded: Loaded {layoutName}.
+    fileName: card
   automation:
     badge:
       off: off

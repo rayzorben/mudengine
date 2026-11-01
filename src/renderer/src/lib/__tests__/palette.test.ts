@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { NO_CARD_SETTINGS } from '../cards';
+import { NO_CARD_SETTINGS, type CardArrangement } from '../cards';
 import { t } from '../i18n';
 import { paletteCommands, paletteKeys, type PaletteDeps } from '../palette';
 import { chord } from '../platform';
@@ -10,6 +10,8 @@ import { NO_SESSION, type Revealed, type SessionId } from '@shared/ipc';
 const HERO = 'hero' as SessionId;
 const HEALER = 'healer' as SessionId;
 const OPENED: Revealed = { how: 'opened' };
+const NO_AUTO_LAYOUT = { run: vi.fn(), undo: vi.fn(), canUndo: false };
+const NO_NAMED_LAYOUTS = { layouts: [], shown: null, apply: vi.fn() };
 
 /** A window showing one character in the realm, standing still, nothing dragged. */
 function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
@@ -81,7 +83,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
       rolled: [],
       reset: vi.fn()
     },
-    autoLayout: { run: vi.fn(), undo: vi.fn(), canUndo: false },
+    layouts: { auto: NO_AUTO_LAYOUT, named: NO_NAMED_LAYOUTS },
     widths: { columns: null, tabs: null, above: null, below: null, reset: vi.fn() },
     openSettings: vi.fn(),
     manageServers: vi.fn(),
@@ -239,13 +241,40 @@ describe('the palette commands', () => {
   });
 
   it('always offers auto layout, and its undo only while there is a layout kept', () => {
-    const autoLayout = { run: vi.fn(), undo: vi.fn(), canUndo: false };
-    find('cards:auto-layout', { autoLayout }).run();
-    expect(autoLayout.run).toHaveBeenCalledOnce();
-    expect(ids({ autoLayout })).not.toContain('cards:auto-layout-undo');
-    const kept = { ...autoLayout, canUndo: true };
-    find('cards:auto-layout-undo', { autoLayout: kept }).run();
-    expect(autoLayout.undo).toHaveBeenCalledOnce();
+    const auto = { run: vi.fn(), undo: vi.fn(), canUndo: false };
+    const withAuto = (a: typeof auto) => ({ layouts: { auto: a, named: NO_NAMED_LAYOUTS } });
+    find('cards:auto-layout', withAuto(auto)).run();
+    expect(auto.run).toHaveBeenCalledOnce();
+    expect(ids(withAuto(auto))).not.toContain('cards:auto-layout-undo');
+    find('cards:auto-layout-undo', withAuto({ ...auto, canUndo: true })).run();
+    expect(auto.undo).toHaveBeenCalledOnce();
+  });
+
+  it('offers each saved card layout but the one the cards stand in', () => {
+    const layout: CardArrangement = {
+      rail: ['map'],
+      above: [],
+      below: [],
+      floats: [],
+      away: [],
+      sizes: {},
+      spots: {},
+      columns: 49,
+      rolled: []
+    };
+    const named = {
+      ...NO_NAMED_LAYOUTS,
+      layouts: [
+        { name: 'Hunting', layout },
+        { name: 'Shopping', layout }
+      ],
+      shown: 'Shopping',
+      apply: vi.fn()
+    };
+    const deps = { layouts: { auto: NO_AUTO_LAYOUT, named } };
+    expect(ids(deps)).not.toContain('cards:layout:Shopping');
+    find('cards:layout:Hunting', deps).run();
+    expect(named.apply).toHaveBeenCalledWith('Hunting');
   });
 
   it('shortens the options path to its two ends', () => {

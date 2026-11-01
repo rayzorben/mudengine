@@ -207,6 +207,9 @@ export type SavedFile =
 /** The bug report written, with its download link as `SavedFile`'s, or the failure. */
 export type DebugSave = { path: string; download: string | null } | { error: string };
 
+/** A small text file the player picked, read whole, or why it could not be: a card layout. */
+export type TextFileRead = { kind: 'read'; text: string } | { kind: 'refused'; error: string };
+
 /** What importing one did, and what the player should know about it. */
 export type CharacterImport =
   | { kind: 'imported'; id: string; name: string; notes: string[] }
@@ -810,6 +813,12 @@ export const Invoke = {
   savePortrait: 'art:save-portrait',
   /** The picture of the room the character is in, for a game view that opens (todo 20261020-2015-01). */
   roomArt: 'art:room',
+  /** A card layout, as the window wrote it, saved to a file the player picks. */
+  saveCardLayout: 'cards:save-layout',
+  /** A native picker for a file `saveCardLayout` wrote. */
+  chooseCardLayoutFile: 'cards:choose-layout-file',
+  /** That file's text, for the window to read as a card layout. */
+  readCardLayout: 'cards:read-layout',
   /** Stop waiting for the party behind a portal and walk on (todo 849). */
   walkOnWithoutParty: 'move:without-party',
   /**
@@ -1443,6 +1452,11 @@ export interface IpcApi {
   savePortrait(session: SessionId): Promise<SavedFile>;
   /** The picture of the room the character is in, as main holds it; asks the art server nothing. */
   roomArt(session: SessionId): Promise<RoomArtView>;
+  /** A card layout's file text, saved where the player picks (a browser tab downloads it). */
+  saveCardLayout(name: string, text: string): Promise<SavedFile>;
+  /** Pick a card layout file; null if the picker was dismissed. */
+  chooseCardLayoutFile(): Promise<string | null>;
+  readCardLayout(file: string): Promise<TextFileRead>;
   /** Stop waiting for the party behind a portal and walk on; nothing while not waiting. */
   walkOnWithoutParty(session: SessionId): Promise<void>;
   /**

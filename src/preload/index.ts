@@ -72,6 +72,9 @@ const api: WireApi = {
   inheritedMobRules: (scope, realm) => ipcRenderer.invoke(Invoke.inheritedMobRules, scope, realm),
   portrait: (session) => ipcRenderer.invoke(Invoke.portrait, session),
   savePortrait: (session) => ipcRenderer.invoke(Invoke.savePortrait, session),
+  saveCardLayout: (name, text) => ipcRenderer.invoke(Invoke.saveCardLayout, name, text),
+  chooseCardLayoutFile: () => ipcRenderer.invoke(Invoke.chooseCardLayoutFile),
+  readCardLayout: (file) => ipcRenderer.invoke(Invoke.readCardLayout, file),
   roomArt: (session) => ipcRenderer.invoke(Invoke.roomArt, session),
   treatMonster: (session, mob, treat) =>
     ipcRenderer.invoke(Invoke.treatMonster, session, mob, treat),

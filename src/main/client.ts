@@ -160,6 +160,7 @@ import type { ProfilerPort } from '../shared/profiler';
 import { t } from './app/i18n';
 import { listHome } from './app/browse';
 import { handleCharacterTransfer } from './app/transfer';
+import { handleLayoutFiles } from './app/layoutFiles';
 import { claimHome, type HomeLock } from './app/homeLock';
 import type { Caller, Host } from './host/Host';
 import {
@@ -3466,6 +3467,7 @@ function registerIpc(): void {
       profiles?.reload();
     }
   });
+  handleLayoutFiles({ host: platform });
   handlePortraitFiles({
     host: platform,
     picture: (id) => art?.portraits.picture(id) ?? null,

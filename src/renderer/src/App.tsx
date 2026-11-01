@@ -62,7 +62,7 @@ import { Splitter } from './components/Splitter';
 import { useCardDrag } from './hooks/useCardDrag';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useHomeBrowser } from './hooks/useHomeBrowser';
-import { useAutoLayout } from './hooks/useAutoLayout';
+import { useRailLayouts } from './hooks/useRailLayouts';
 import { useRailGrid } from './hooks/useRailGrid';
 import { useDensity } from './hooks/useDensity';
 import { useAlerts } from './hooks/useAlerts';
@@ -343,7 +343,7 @@ export default function App() {
   /* The card rail's grid, which a drop and a resize are measured against. */
   const railGrid = useRailGrid();
   const drag = useCardDrag(cards, workspaceRef, railGrid.view);
-  const autoLayout = useAutoLayout(session, cards, railGrid.view);
+  const layouts = useRailLayouts(session, cards, railGrid.view);
 
   /** What each splitter measures, and the range a drag of it may move within. */
   const {
@@ -902,7 +902,7 @@ export default function App() {
     closePane,
     turnPanes,
     cards,
-    autoLayout,
+    layouts,
     widths,
     openSettings,
     manageServers,
@@ -1293,7 +1293,7 @@ export default function App() {
               Adding one back where its gap is, and the view switch (`CardRailHead`).
             */}
             <CardRailHead
-              autoLayout={autoLayout}
+              layouts={layouts}
               away={cards.away}
               dragging={drag.state?.live === true}
               onAdd={cards.show}

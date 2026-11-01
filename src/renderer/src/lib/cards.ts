@@ -456,6 +456,13 @@ export interface CardLayout {
 /** What a layout keeps of the rail's arrangement: its order, and where and how big each card is. */
 export type RailArrangement = Pick<CardLayout, 'rail' | 'spots' | 'sizes' | 'columns'>;
 
+/**
+ * Where every card is, without what is set on each: what a named card layout
+ * keeps (`lib/cardLayouts.ts`), so putting one back leaves a card's theme,
+ * filters and auto-hide as the character had them, as `reset` does.
+ */
+export type CardArrangement = Omit<CardLayout, 'settings'>;
+
 /** Where a card stands when it is not floating and not put away. */
 export type Lane = 'rail' | 'above' | 'below';
 
@@ -486,6 +493,8 @@ export interface CardLayoutApi extends CardLayout {
   placeAll(boxes: ReadonlyMap<CardId, GridBox>, rail: RailWidth): void;
   /** Put back an arrangement of the rail kept before: auto layout's undo. */
   restoreRail(kept: RailArrangement): void;
+  /** Put every card where a saved card layout has it; what is set on each card stays. */
+  apply(arrangement: CardArrangement): void;
   /** Which lane holds this card, if a lane does. */
   laneOf(id: CardId): Lane | undefined;
   /**

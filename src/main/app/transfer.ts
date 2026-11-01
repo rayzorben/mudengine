@@ -8,18 +8,15 @@
  * (`WebHost.chooseSaveFile`, `Host.deliver`), and the tab's own home picker
  * for an import (`lib/pickers.ts`).
  */
-import fs from 'node:fs';
-
 import { asProfileId } from '../../shared/drafts';
 import { fileSlug } from '../../shared/files';
 import { Invoke, type CharacterImport, type SavedFile } from '../../shared/ipc';
-import { errorMessage } from '../../shared/values';
 import { exportCharacter, importCharacter } from '../config/CharacterTransfer';
 import type { Host } from '../host/Host';
 import type { Home } from './home';
 import { t } from './i18n';
 import { tuning } from './tuning';
-import { writeChosenFile } from './chosenFile';
+import { readChosenFile, unreadable, writeChosenFile } from './chosenFile';
 
 export interface TransferDeps {
   home: Home;
@@ -65,25 +62,17 @@ export function handleCharacterTransfer({ home, host, loaded, imported }: Transf
   );
 
   handle(Invoke.importCharacter, async (_caller, rawFile: unknown): Promise<CharacterImport> => {
-    if (typeof rawFile !== 'string' || rawFile.length === 0) {
-      return { kind: 'refused', error: t('app.transfer.notACharacter') };
-    }
     const { maxImportBytes } = tuning().transfer;
+    const read = await readChosenFile(rawFile, maxImportBytes, t('app.transfer.notACharacter'));
+    if (!read.ok) return { kind: 'refused', error: read.error };
     let result: CharacterImport;
     try {
-      // Asked before reading: a device, a directory or a huge log picked by
-      // mistake is refused without main holding it.
-      const info = await fs.promises.stat(rawFile);
-      if (!info.isFile() || info.size > maxImportBytes) {
-        return { kind: 'refused', error: t('app.transfer.notACharacter') };
-      }
-      const bytes = await fs.promises.readFile(rawFile);
-      result = await importCharacter(home, bytes, { maxBytes: maxImportBytes, taken: loaded });
+      result = await importCharacter(home, read.bytes, {
+        maxBytes: maxImportBytes,
+        taken: loaded
+      });
     } catch (error) {
-      return {
-        kind: 'refused',
-        error: t('app.transfer.unreadable', { file: `${rawFile}: ${errorMessage(error)}` })
-      };
+      return { kind: 'refused', error: unreadable(String(rawFile), error) };
     }
     if (result.kind === 'imported') imported();
     return result;

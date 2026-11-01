@@ -12251,6 +12251,72 @@ button.lookup:focus-visible {
   display: flex;
 }
 
+/*
+ * The saved card layouts. The chip carries the shown layout's name, so it is
+ * the one chip in the rail head that may give up width on a narrow rail.
+ */
+.layout-menu {
+  display: flex;
+  min-width: 0;
+}
+
+.card-rail-head .layout-menu .chip {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.layout-menu .chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layouts-menu {
+  gap: 2px;
+}
+
+.layouts-menu > .hint {
+  margin: 0;
+  padding: 7px 10px;
+  color: var(--text-lo-quiet);
+  font-size: 0.78rem;
+}
+
+.layouts-save {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 4px 2px;
+  box-shadow: 0 -1px 0 var(--seam);
+}
+
+.layouts-save input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.layouts-menu .picker-float:disabled,
+.layouts-menu .entry:disabled {
+  color: var(--text-lo-quiet);
+  cursor: default;
+}
+
+.layouts-said {
+  margin: 4px 0 0;
+  padding: 6px 10px;
+  /* As wide as the menu's rows, never wider: a long saved path wraps. */
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+  color: var(--text-lo-normal);
+}
+
+.layouts-said[data-tone='error'] {
+  color: var(--danger);
+}
+
 .card-rail-head .chip {
   /*
    * One control, and the third of the three bands across the top of the

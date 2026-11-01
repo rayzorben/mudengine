@@ -2517,7 +2517,12 @@ const TUNING_DEFAULTS = {
      * largest character here was 73 MB unpacked (2026-09-28: 48 MB of fights,
      * 22 MB of scrollback); past this it is not a file the client wrote.
      */
-    maxImportBytes: 524_288_000
+    maxImportBytes: 524_288_000,
+    /**
+     * The most a card layout file may be. One with every card placed is about
+     * 4 KB; past this it is not a layout the client wrote.
+     */
+    maxLayoutBytes: 1_048_576
   },
   /**
    * Serving the window over HTTP (`MUDENGINE_WEB=1`; see `main/host/web/`).
