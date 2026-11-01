@@ -7,6 +7,9 @@ import type { PopoverAnchor } from '../lib/popover';
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
+import Dot from './viz/Dot';
+import Histogram from './viz/Histogram';
+import Recency from './viz/Recency';
 import { knownPlayers, playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import type { SessionId } from '@shared/ipc';
 
@@ -52,6 +55,35 @@ function groupOf(record: PlayerRecord): string {
   if (record.commandsSent > 0) return 'asking';
   if (record.inParty) return 'party';
   return record.online ? 'here' : 'gone';
+}
+
+/** How many levels one column of the level chart covers. */
+const LEVEL_BAND = 5;
+
+interface LevelSpread {
+  /** Players in each band, lowest band first. */
+  counts: number[];
+  low: number;
+  high: number;
+  known: number;
+}
+
+/**
+ * How the players whose level a gang list stated spread over the levels, in
+ * bands of five; null while nobody's level is known. A player with no level
+ * is left out rather than counted as level 0.
+ */
+function levelSpread(players: readonly PlayerRecord[]): LevelSpread | null {
+  const levels = players.flatMap((record) => (record.level === null ? [] : [record.level]));
+  if (levels.length === 0) return null;
+  const low = Math.floor(Math.min(...levels) / LEVEL_BAND) * LEVEL_BAND;
+  const high = Math.max(...levels);
+  const counts = Array.from({ length: Math.floor((high - low) / LEVEL_BAND) + 1 }, () => 0);
+  for (const level of levels) {
+    const band = Math.floor((level - low) / LEVEL_BAND);
+    counts[band] = (counts[band] ?? 0) + 1;
+  }
+  return { counts, low, high, known: levels.length };
 }
 
 /**
@@ -103,6 +135,12 @@ function PlayersCard({
   }, [inGame]);
   const now = useMemo(() => Date.now(), [registry, tick]);
   const asking = players.filter((record) => record.commandsSent > 0).length;
+  const spread = useMemo(() => levelSpread(players), [players]);
+  const spreadSeries = useMemo(
+    () =>
+      spread === null ? [] : [{ key: 'level', tone: 'accent' as const, values: spread.counts }],
+    [spread]
+  );
 
   /*
    * The badge reports the actionable number. Somebody trying to drive this
@@ -128,12 +166,20 @@ function PlayersCard({
        * Realm card's cannot drift apart.
        */
       cell: (record) => (
-        <PlayerName
-          className="player-name"
-          name={record.name}
-          offline={!record.online}
-          onSelect={onSelect}
-        />
+        <span className="player-who">
+          {/* On or not as a shape too, so the column reads at a glance. */}
+          <Dot
+            hollow={!record.online}
+            label={record.online ? t('cards.players.online') : t('cards.players.facet.gone')}
+            tone={record.online ? 'ok' : 'quiet'}
+          />
+          <PlayerName
+            className="player-name"
+            name={record.name}
+            offline={!record.online}
+            onSelect={onSelect}
+          />
+        </span>
       )
     },
     {
@@ -166,12 +212,18 @@ function PlayersCard({
        */
       label: t('cards.players.column.seen'),
       value: (record) => record.lastRoomAt ?? 0,
-      cell: (record) =>
-        record.lastRoomAt === null ? (
-          <span className="player-seen quiet-note">{t('cards.player.neverInRoom')}</span>
-        ) : (
-          <span className="player-seen">{ago(record.lastRoomAt, now)}</span>
-        )
+      /* The pips go out one by one with the sighting's age, so a column of
+         them shows at a glance who was seen lately; the words stay beside. */
+      cell: (record) => (
+        <span className="player-when">
+          <Recency at={record.lastRoomAt} now={now} tone={record.online ? 'ok' : 'quiet'} />
+          {record.lastRoomAt === null ? (
+            <span className="player-seen quiet-note">{t('cards.player.neverInRoom')}</span>
+          ) : (
+            <span className="player-seen">{ago(record.lastRoomAt, now)}</span>
+          )}
+        </span>
+      )
     },
     {
       id: 'level',
@@ -198,6 +250,27 @@ function PlayersCard({
       paned
       title={t('cards.players.title')}
     >
+      {/*
+        Large, how the levels a gang list stated spread, in bands of five:
+        whether the people about are above this character or below it.
+      */}
+      {spread === null ? null : (
+        <figure className="players-levels from-large">
+          <figcaption>
+            <span>{t('cards.players.levelsHeading')}</span>
+            <span className="quiet-note">
+              {t('cards.players.levelsRange', {
+                low: spread.low,
+                high: spread.high,
+                known: spread.known
+              })}
+            </span>
+          </figcaption>
+          <div className="players-levels-chart">
+            <Histogram label={t('cards.players.levelsHeading')} series={spreadSeries} />
+          </div>
+        </figure>
+      )}
       <CardTable
         caption={t('cards.players.caption')}
         className="player-list"

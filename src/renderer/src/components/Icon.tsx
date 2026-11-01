@@ -92,6 +92,9 @@ export type IconName =
   | 'eye'
   | 'eyeOff'
   | 'heart'
+  | 'alertOctagon'
+  | 'alertTriangle'
+  | 'info'
   | 'moon'
   | 'bed'
   | 'at'
@@ -529,6 +532,29 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
   heart: (
     <path d="M12 20.3s-7.8-4.6-7.8-9.7a4.3 4.3 0 0 1 7.8-2.5 4.3 4.3 0 0 1 7.8 2.5c0 5.1-7.8 9.7-7.8 9.7Z" />
+  ),
+  // The three alert levels, one shape each so the level reads without its hue:
+  // a stop sign for critical, a warning triangle, a lettered circle for info.
+  alertOctagon: (
+    <>
+      <path d="M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3Z" />
+      <path d="M12 7.8v5" />
+      <path d="M12 16.4h.01" />
+    </>
+  ),
+  alertTriangle: (
+    <>
+      <path d="M10.3 4.2 2.6 17.6A2 2 0 0 0 4.3 20.6h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9.3v4.4" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5" />
+      <path d="M12 7.6h.01" />
+    </>
   ),
   moon: <path d="M20.4 14.3A8.6 8.6 0 0 1 9.7 3.6a8.6 8.6 0 1 0 10.7 10.7Z" />,
   // A bed seen from the side, a pillow at the head: Auto-Rest.
