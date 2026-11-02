@@ -67,7 +67,7 @@ describe('the order a counter reaches out in', () => {
     const { log, ledger } = rig();
     const s = ledger.bought(
       shopper(),
-      { item: 'rope', quantity: '2', price: '40', coin: 'copper farthings' },
+      { item: 'rope', quantity: '2', price: '40 copper farthings' },
       7
     );
     expect(log).toEqual(['stock rope', 'pack +2 rope @7']);
@@ -92,11 +92,7 @@ describe('the order a counter reaches out in', () => {
 
   it('tells the pack of a sale and nothing else, and puts nothing on the floor', () => {
     const { log, ledger } = rig();
-    const holding = ledger.bought(
-      shopper(),
-      { item: 'lantern', price: '4', coin: 'copper farthings' },
-      1
-    )!;
+    const holding = ledger.bought(shopper(), { item: 'lantern', price: '4 copper farthings' }, 1)!;
     log.length = 0;
     const s = ledger.sold(holding, { item: 'lantern', price: '2' }, 9);
     expect(log).toEqual(['pack -1 lantern @9']);

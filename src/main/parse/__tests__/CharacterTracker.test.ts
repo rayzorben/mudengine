@@ -8549,6 +8549,13 @@ describe('a figure the server quoted moves the purse', () => {
     expect(purse(['You just bought bone charm for 3 bronze bits.'], 33_800)).toBeNull();
   });
 
+  /* majormud, 2026-11-02: a price that is not whole coins of one kind is a list of them. */
+  it('takes a purchase quoted in more than one coin', () => {
+    expect(purse(['You just bought brass lamp for 4 gold crowns, 2 silver nobles.'], 33_800)).toBe(
+      33_380
+    );
+  });
+
   /* A coin this client cannot read: money went, so the purse is unknown, never a guess. */
   it('makes the purse unknown when the price is in a coin it cannot read', () => {
     expect(

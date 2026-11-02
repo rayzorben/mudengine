@@ -698,7 +698,7 @@ describe('conversation, movement, items', () => {
     expect(expectType('You give 1 runic coin to Killa', 'user-gives')['coin']).toBe('runic coin');
     expect(
       expectType('You just bought 2 healing potion for 40 copper farthings.', 'user-buys')
-    ).toMatchObject({ quantity: '2', item: 'healing potion', price: '40' });
+    ).toMatchObject({ quantity: '2', item: 'healing potion', price: '40 copper farthings' });
   });
 
   it('reads presence announcements', () => {
@@ -1523,7 +1523,16 @@ describe('a shop listing', () => {
 describe('buying and selling', () => {
   it('reads what was bought and what it cost', () => {
     const g = expectType('You just bought quarterstaff for 0 copper farthings.', 'user-buys');
-    expect(g).toMatchObject({ item: 'quarterstaff', price: '0' });
+    expect(g).toMatchObject({ item: 'quarterstaff', price: '0 copper farthings' });
+  });
+
+  /* majormud, 2026-11-02: a price in two coins went unread and Supplies gave up on the lamp. */
+  it('reads a purchase whose price is a list of coins', () => {
+    const g = expectType(
+      'You just bought brass lamp for 4 gold crowns, 2 silver nobles.',
+      'user-buys'
+    );
+    expect(g).toMatchObject({ item: 'brass lamp', price: '4 gold crowns, 2 silver nobles' });
   });
 
   it('reads what was sold, which mirrors it', () => {
@@ -1537,7 +1546,7 @@ describe('buying and selling', () => {
       expectType('You just bought iron-capped staff for 78 copper farthings.', 'user-buys')
     ).toMatchObject({
       item: 'iron-capped staff',
-      price: '78'
+      price: '78 copper farthings'
     });
     expect(expectType('You are now holding iron-capped staff.', 'user-equipped')).toMatchObject({
       item: 'iron-capped staff'

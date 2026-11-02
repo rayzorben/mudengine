@@ -247,6 +247,13 @@ const ITEM_NAME = "[\\w' .-]";
 /** The five coins as the server spells a count of them, one or many. */
 const COIN_NOUN = 'copper farthings?|silver nobles?|gold crowns?|platinum pieces?|runic coins?';
 
+/**
+ * One part of a quoted price, `2 silver nobles`. Any one or two words: a coin
+ * this client cannot name still means the purchase happened, and `spent` makes
+ * the purse unknown rather than the line unread.
+ */
+const COIN_AMOUNT = '\\d+ [a-z]+(?: [a-z]+)?';
+
 /** The rank titles with ` of ` inside them, as one alternation (the `who` row). */
 const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(/ /g, '\\s+')).join(
   '|'
@@ -2161,8 +2168,12 @@ export const RULES: Rule[] = [
     // are on the wire and the second was read while the first was not. The
     // coin is any on the ladder: MajorMUD quotes `30 gold crowns` and `1
     // platinum piece` (bearfather, `2026-09-17_16-16-56_soul:1027,1213`; 815).
+    // A price that does not come to whole coins of one kind is a list, `4 gold
+    // crowns, 2 silver nobles` (majormud, 2026-11-02, the user's pasted session,
+    // a brass lamp). With one coin allowed the purchase went unread and Supplies
+    // gave up on it. Captures only ever separate coins with `, `.
     pattern: new RegExp(
-      `^You just bought (?:(?<quantity>\\d+) )?(?<item>${ITEM_NAME}+) for (?:(?<price>\\d+) (?<coin>[a-z]+(?: [a-z]+)?)|nothing)\\.$`
+      `^You just bought (?:(?<quantity>\\d+) )?(?<item>${ITEM_NAME}+) for (?<price>${COIN_AMOUNT}(?:, ${COIN_AMOUNT})*|nothing)\\.$`
     )
   },
   /*

@@ -369,12 +369,12 @@ export class Ledger {
      */
     /*
      * And the purse went down by exactly what the server quoted, up the coin
-     * ladder: GreaterMUD quotes copper, MajorMUD any coin (todo 815). See
+     * ladder: GreaterMUD quotes copper, MajorMUD any coin or a list of them
+     * (todo 815; `4 gold crowns, 2 silver nobles`). See
      * `spent` for a coin off the ladder.
      */
     const carried = withItem(s, item, bought) ?? s;
-    if (g['price'] === undefined) return carried;
-    return spent(carried, quotedInCopper(`${g['price']} ${g['coin'] ?? ''}`)) ?? carried;
+    return spent(carried, coinsInCopper(list(g['price']))) ?? carried;
   }
 
   /**
