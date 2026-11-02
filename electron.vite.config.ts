@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
+import { artSecret as readArtSecret } from './scripts/lib/art-key.mjs';
 import { buildStamp } from './scripts/lib/build-stamp.mjs';
 import { bundleSizePlugin } from './scripts/lib/bundle-size.mjs';
 import { yamlPlugin } from './scripts/lib/yaml-module.mjs';
@@ -13,12 +14,11 @@ const stamp = { __BUILD_STAMP__: JSON.stringify(buildStamp(resolve('.'))) };
 
 /**
  * The art server's registration secret, main only, from the environment the
- * build runs in (`main/art/buildSecret.ts`). Never in the repository, and
- * never in the window's bundle.
+ * build runs in or the machine's secret file (`scripts/lib/art-key.mjs`,
+ * `main/art/buildSecret.ts`). Never in the repository, and never in the
+ * window's bundle.
  */
-const artSecret = {
-  __ART_BUILD_SECRET__: JSON.stringify(process.env['ART_BUILD_SECRET']?.trim() ?? '')
-};
+const artSecret = { __ART_BUILD_SECRET__: JSON.stringify(readArtSecret() ?? '') };
 
 /**
  * Bundled rather than externalised.

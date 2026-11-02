@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { artKeyId, artSecret } from './lib/art-key.mjs';
+import { artKeyId, artSecret, secretFile } from './lib/art-key.mjs';
 import { buildStamp } from './lib/build-stamp.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,15 +75,21 @@ function run(command, args) {
 }
 
 /**
- * The art server's secret from this shell's `ART_BUILD_SECRET`, as a build
- * secret plus the fingerprint the Dockerfile keys its build layer on. Unset,
- * the image is built without it, draws no portraits, and this says so.
+ * The art server's secret from this shell's `ART_BUILD_SECRET` or the
+ * machine's secret file, as a build secret plus the fingerprint the Dockerfile
+ * keys its build layer on. Unset, the image is built without it, draws no
+ * portraits, and this says so.
  */
 function artSecretArgs() {
-  if (artSecret() === null) {
-    console.warn('ART_BUILD_SECRET is not set, so this image draws no portraits.');
+  const secret = artSecret();
+  if (secret === null) {
+    console.warn(
+      `ART_BUILD_SECRET is not set and ${secretFile()} is missing, so this image draws no portraits.`
+    );
     return [];
   }
+  // `docker build` reads the secret from its own environment, which `run` inherits.
+  process.env['ART_BUILD_SECRET'] = secret;
   return [
     '--secret',
     'id=art_build_secret,env=ART_BUILD_SECRET',

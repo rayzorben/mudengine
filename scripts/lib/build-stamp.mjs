@@ -10,7 +10,8 @@
  * read one answer.
  */
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+
+import { runDirectly } from './run-directly.mjs';
 
 /** The short hash of HEAD at this length everywhere, so a tag and a tooltip match. */
 export const COMMIT_LENGTH = 8;
@@ -41,7 +42,7 @@ export function buildStamp(root) {
 }
 
 // Run directly, prints `<commit> <1 when dirty>` for a shell (`deploy/azure.sh`).
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (runDirectly(import.meta.url)) {
   const { commit, dirty } = buildStamp(process.argv[2] ?? process.cwd());
   console.log(`${commit ?? ''} ${dirty ? '1' : ''}`);
 }

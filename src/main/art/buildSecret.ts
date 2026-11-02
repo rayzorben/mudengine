@@ -1,7 +1,7 @@
 /**
  * The art server's registration secret, put in when the client is built from
- * the `ART_BUILD_SECRET` environment variable (`electron.vite.config.ts`, main
- * only) and never kept in the repository. It tells a mudengine build from a
+ * `ART_BUILD_SECRET` or the machine's secret file (`scripts/lib/art-key.mjs`;
+ * `electron.vite.config.ts`, main only) and never kept in the repository. It tells a mudengine build from a
  * casual caller and nothing more: anyone who unpacks the app can find it, and
  * the server takes no prompt text and limits every new drawing. A build made
  * without it draws no portraits and says so.
