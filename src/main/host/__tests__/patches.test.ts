@@ -50,6 +50,25 @@ describe('a character push sent as what changed', () => {
     expect(onTheWire(patcher.patch(character('rayzor', { hp: 1 }))).set).toEqual({ hp: 1 });
   });
 
+  it('sends the players book as the players whose record changed', () => {
+    const patcher = new PushPatcher();
+    const players = (payload: Record<string, unknown>): RpcPush => ({
+      k: 'push',
+      c: Push.players,
+      p: { session: 'festus', payload }
+    });
+    const rayzor = { name: 'Rayzor', lastRoom: 'pa/1' };
+    const soul = { name: 'Soul', lastRoom: 'pa/2' };
+    patcher.patch(players({ rayzor, soul }));
+    const moved = { ...soul, lastRoom: 'pa/3' };
+    expect(onTheWire(patcher.patch(players({ rayzor, soul: moved })))).toMatchObject({
+      c: Push.players,
+      set: {},
+      deep: { soul: { k: 'fields', set: { lastRoom: 'pa/3' }, deep: {}, drop: [] } },
+      drop: []
+    });
+  });
+
   it('sends every other push whole', () => {
     expect(new PushPatcher().patch({ k: 'push', c: Push.notice, p: { message: 'x' } })).toBeNull();
   });

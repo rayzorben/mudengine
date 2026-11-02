@@ -1,5 +1,5 @@
 /**
- * A character push to a browser tab, sent as what changed.
+ * A whole-state push to a browser tab (`PATCHED_PUSHES`), sent as what changed.
  *
  * Every change to a character republishes its whole state, about 42 KB with
  * the room, the who list and the inventory, four times a second in a fight:

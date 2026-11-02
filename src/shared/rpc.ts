@@ -175,8 +175,16 @@ export type RpcFieldPatch =
 /** How deep a field patch may go: a field, its members, and an array among them. */
 export const PATCH_DEPTH = 2;
 
-/** The pushes sent to a browser tab as patches: each a whole state per character, mostly unchanged. */
-export const PATCHED_PUSHES: ReadonlySet<string> = new Set([Push.character, Push.automation]);
+/**
+ * The pushes sent to a browser tab as patches: each a whole state per character, mostly unchanged.
+ * The players book is one record per player seen, 40 to 75 KB on a busy realm and pushed whenever
+ * one player's record changes (2026-11-02, `logs/web.log` on the hosted client: 1 to 2 MB a minute).
+ */
+export const PATCHED_PUSHES: ReadonlySet<string> = new Set([
+  Push.character,
+  Push.automation,
+  Push.players
+]);
 
 /** A message as it crosses: `n` is its place among everything sent to the tab. */
 export type RpcNumbered = (RpcOutbound | RpcPatch) & { n: number };

@@ -32,7 +32,14 @@ function patched(before: unknown, patch: RpcFieldPatch, field: string): unknown 
       }
       const next: Record<string, unknown> = { ...before, ...patch.set };
       for (const [member, inner] of Object.entries(patch.deep)) {
-        next[member] = patched(before[member], inner, `${field}.${member}`);
+        // Defined, not assigned: a players book is keyed by name, and `next['__proto__'] =` would
+        // set the prototype instead of a member.
+        Object.defineProperty(next, member, {
+          value: patched(before[member], inner, `${field}.${member}`),
+          enumerable: true,
+          writable: true,
+          configurable: true
+        });
       }
       for (const member of patch.drop) delete next[member];
       return next;
