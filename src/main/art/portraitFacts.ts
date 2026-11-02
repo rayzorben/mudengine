@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 
 import { hairWords } from '../../shared/appearance';
 import type { CharacterState } from '../../shared/character';
-import { READIED } from '../../shared/items';
+import { READIED, slotNameOf } from '../../shared/items';
 import { bandOf, LOOK_STATS, type LookStat } from '../../shared/lookBands';
 import type { PortraitFacts, PortraitGear } from '../../shared/portrait';
 
@@ -37,7 +37,9 @@ export function portraitFactsOf(state: CharacterState): PortraitFacts | null {
       (item) =>
         item.equipped && item.slot !== null && item.slot !== READIED && item.slotSource !== 'realm'
     )
-    .map((item) => ({ slot: item.slot!, item: item.name }))
+    // The gateway knows the realm's slot names; a listing alias such as
+    // `(Two handed)` sent as printed refused the whole portrait.
+    .map((item) => ({ slot: slotNameOf(item.slot!) ?? item.slot!, item: item.name }))
     .sort((a, b) => a.slot.localeCompare(b.slot) || a.item.localeCompare(b.item));
   return {
     race,

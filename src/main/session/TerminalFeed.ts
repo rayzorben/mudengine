@@ -282,6 +282,15 @@ export function rawIndexOf(text: string, count: number): number {
 const STYLING = /\x1B\[[0-9;]*m/y;
 
 /**
+ * A tail of nothing but colour, which is how a prompt can begin: MajorBBS
+ * sends `ESC[79D ESC[K ESC[0;36m` at the end of one write and the statline
+ * text in the next, 2 to 99ms later (Soul, 2026-11-01, 770 of 19,262
+ * prompts). Painted, it counts as the prompt's first bytes and the design is
+ * lost. A cursor query (`ESC[6n`) is not this and is never held.
+ */
+const ONLY_STYLING = new RegExp(`^(?:${STYLING.source})+$`);
+
+/**
  * Past the styling the server prints at `at`.
  *
  * The state left standing when a prompt ends is what paints the echo, so on a
@@ -717,7 +726,7 @@ export class TerminalFeed {
       this.forwarded === 0 &&
       this.source.designing?.() === true &&
       !status &&
-      PROMPT_OPENING.test(plain);
+      (PROMPT_OPENING.test(plain) || ONLY_STYLING.test(pending));
 
     // A status line is always shown, whatever it acknowledged and whatever
     // is queued behind it: it is the prompt row.

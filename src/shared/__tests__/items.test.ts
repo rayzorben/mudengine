@@ -7,6 +7,7 @@ import {
   countedName,
   itemHitProcs,
   itemInvocation,
+  slotNameOf,
   WEAPON_WORN,
   wornOfWord
 } from '../items';
@@ -265,5 +266,11 @@ describe('a printed slot word, back to its Worn code', () => {
     expect(wornOfWord('off-hand')).toBe(12);
     expect(wornOfWord('Two handed')).toBe(WEAPON_WORN);
     expect(wornOfWord('Resting')).toBeNull();
+  });
+
+  it('names the realm’s slot for an alias, and nothing for a word that names none', () => {
+    expect(slotNameOf('Two handed')).toBe('Weapon Hand');
+    expect(slotNameOf('off-hand')).toBe('Off-Hand');
+    expect(slotNameOf('Resting')).toBeNull();
   });
 });

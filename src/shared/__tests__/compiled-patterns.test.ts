@@ -34,6 +34,13 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       '(todo 20261019-0931-01); module-level, in ' +
       '`RULES` and `BATCH_RULES`'
   },
+  'src/main/session/TerminalFeed.ts': {
+    count: 1,
+    because:
+      '`ONLY_STYLING` repeats `STYLING`, the one colour sequence a drawn prompt outlives, ' +
+      'anchored, so the tail held as a prompt beginning and the styling skipped after one ' +
+      'cannot drift (2026-11-01); module-level'
+  },
   'src/shared/stamps.ts': {
     count: 3,
     because:

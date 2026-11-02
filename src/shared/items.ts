@@ -178,6 +178,15 @@ export function wornOfWord(word: string): number | null {
   return null;
 }
 
+/**
+ * The realm's own name for the slot a printed word names (`Two handed` is
+ * `Weapon Hand`), or null for a word that names none.
+ */
+export function slotNameOf(word: string): string | null {
+  const code = wornOfWord(word);
+  return code === null ? null : (WORN_SLOT[code] ?? null);
+}
+
 /** Every word the listing prints for a slot, lower-cased: what the console makes a control. */
 export const SLOT_WORDS: ReadonlySet<string> = new Set([
   ...Object.values(WORN_SLOT).map((slot) => slot.toLowerCase()),

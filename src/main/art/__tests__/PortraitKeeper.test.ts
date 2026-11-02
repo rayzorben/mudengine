@@ -66,6 +66,25 @@ describe('what a portrait request says', () => {
     });
   });
 
+  it('sends the realm’s slot name for a two-handed weapon, which the gateway knows', () => {
+    const facts = portraitFactsOf({
+      ...PROBE,
+      inventory: {
+        ...PROBE.inventory,
+        items: [
+          {
+            name: 'ebony greataxe',
+            slot: 'Two handed',
+            equipped: true,
+            charges: null,
+            source: 'wire'
+          }
+        ]
+      }
+    } as CharacterState);
+    expect(facts?.gear).toEqual([{ slot: 'Weapon Hand', item: 'ebony greataxe' }]);
+  });
+
   it('leaves out what the look did not say', () => {
     const facts = portraitFactsOf({
       ...PROBE,

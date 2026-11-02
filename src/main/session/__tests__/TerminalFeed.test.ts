@@ -473,6 +473,29 @@ describe('a status line the client draws itself', () => {
     expect(h.released).toEqual([]);
   });
 
+  it('holds a colour sent ahead of the prompt in its own write, and draws the prompt', () => {
+    // MajorBBS (Soul, 2026-11-01): the repaint and the prompt's colour end
+    // one write, the statline text opens the next.
+    const h = harness(['rm'], designer);
+    expect(h.chunk('You took fine platinum chain.\r\n' + PROMPT_REPAINT + '\x1b[0;36m')).toBe(
+      'You took fine platinum chain.\r\n' + PROMPT_REPAINT
+    );
+    vi.advanceTimersByTime(99);
+    expect(h.released).toEqual([]);
+    expect(h.chunk('[HP=34/MA=12]:')).toBe(DRAWN);
+  });
+
+  it('paints a held colour once something other than a prompt follows it', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk('\x1b[0;36m')).toBe('');
+    expect(h.chunk('You dance about.')).toBe('\x1b[0;36mYou dance about.');
+  });
+
+  it('never holds a cursor query, which is not a prompt beginning', () => {
+    const h = harness(['rm'], designer);
+    expect(h.chunk('\x1b[6n')).toBe('\x1b[6n');
+  });
+
   it('paints a half-prompt as sent once the hold runs out, and finishes it raw', () => {
     const h = harness(['rm'], designer);
     expect(h.chunk('[HP=3')).toBe('');
