@@ -12,9 +12,14 @@
 /** Where the reader is: the oldest line held, the live edge, or neither. */
 export type ScrollEdge = 'top' | 'latest' | 'between';
 
+/** Whether a viewport shows the last line, the console following what arrives. */
+export function atLiveEdge(viewportY: number, baseY: number): boolean {
+  return viewportY >= baseY;
+}
+
 /** The edge a viewport is at, from xterm's `viewportY` and `baseY`. */
 export function edgeOf(viewportY: number, baseY: number): ScrollEdge {
-  if (viewportY >= baseY) return 'latest';
+  if (atLiveEdge(viewportY, baseY)) return 'latest';
   return viewportY === 0 ? 'top' : 'between';
 }
 

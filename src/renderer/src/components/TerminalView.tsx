@@ -37,7 +37,7 @@ import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
 import { drawStamps, type ConsoleStamps } from '../lib/consoleStamps';
 import { drawMarks } from '../lib/consoleMarks';
-import { edgeOf, type ScrollEdge } from '../lib/pages';
+import { atLiveEdge, edgeOf, type ScrollEdge } from '../lib/pages';
 import { linesOf, placeAt, rowOf, rowsOf, type Place } from '../lib/readBack';
 import { whenIdle } from '../lib/idle';
 
@@ -220,7 +220,8 @@ export default function TerminalView({
 }: TerminalViewProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
+  /** Fits the grid to the element, keeping a following console at the live edge. */
+  const fitRef = useRef<(() => void) | null>(null);
   const stampsRef = useRef<ConsoleStamps | null>(null);
   const [pinned, setPinned] = useState(true);
 
@@ -352,7 +353,7 @@ export default function TerminalView({
     const term = termRef.current;
     if (!reportSize || wasReporting || !term) return;
     webglRef.current?.();
-    fitRef.current?.fit();
+    fitRef.current?.();
     handlers.current.onResize({ cols: term.cols, rows: term.rows });
   }, [reportSize]);
 
@@ -450,7 +451,6 @@ export default function TerminalView({
     });
 
     const fit = new FitAddon();
-    fitRef.current = fit;
     // The terminal answers no query a server sends and turns on no reporting
     // mode: xterm's answer would be typed into the game (todo 832).
     silenceQueries(term);
@@ -691,13 +691,43 @@ export default function TerminalView({
     // WebGL keeps frame times flat during combat bursts. It is unavailable in
     // some VMs and on stale drivers, and it can be lost at runtime, so both
     // failure paths fall back to the DOM renderer rather than breaking.
+    /*
+     * A box that grows under a following console shortens the viewport's
+     * scroll range before xterm 5.5 redraws it. The browser clamps the
+     * viewport's scroll offset, xterm reads that clamp as the reader scrolling
+     * up a row or two and stops following, and nothing puts it back until
+     * Jump to latest (Festus, 2026-11-01; measured in a harness: the
+     * ResizeObserver fires at the live edge, and the clamp's scroll event
+     * lands the next frame). So a scroll in the two frames after a fit is the
+     * fit's, and a following console is put back on its last line. A wheel in
+     * those frames is undone with it. A scroll the console makes on purpose
+     * (a page refilled, the reader's place shown) ends the window.
+     */
+    /** The frame that ends the window after a fit, while one is open. */
+    let fitFrame: number | null = null;
+    const endFitWindow = (): void => {
+      if (fitFrame !== null) cancelAnimationFrame(fitFrame);
+      fitFrame = null;
+    };
     /**
      * Fits the grid to the element. Skipped at zero size, the measurement that
      * fires while the window is minimised and would report a 1x1 grid over NAWS.
      */
     const refit = (): void => {
-      if (mount.clientWidth > 0 && mount.clientHeight > 0) fit.fit();
+      if (mount.clientWidth <= 0 || mount.clientHeight <= 0) return;
+      const buffer = term.buffer.active;
+      const following = !holdRef.current && atLiveEdge(buffer.viewportY, buffer.baseY);
+      fit.fit();
+      if (!following) return;
+      term.scrollToBottom();
+      endFitWindow();
+      fitFrame = requestAnimationFrame(() => {
+        fitFrame = requestAnimationFrame(() => {
+          fitFrame = null;
+        });
+      });
     };
+    fitRef.current = refit;
     let rendered = false;
     /** The live WebGL context, released by hand at unmount; null on the DOM renderer. */
     let context: WebGL2RenderingContext | null = null;
@@ -792,7 +822,7 @@ export default function TerminalView({
     const startSelecting = (event: MouseEvent): void => {
       if (event.button !== 0) return;
       selecting = true;
-      followingAtPress = term.buffer.active.viewportY >= term.buffer.active.baseY;
+      followingAtPress = atLiveEdge(term.buffer.active.viewportY, term.buffer.active.baseY);
       holdRef.current = true;
     };
     const stopSelecting = (): void => {
@@ -910,6 +940,11 @@ export default function TerminalView({
     let edge: ScrollEdge | null = null;
     const syncPin = (): void => {
       const buffer = term.buffer.active;
+      if (fitFrame !== null && !holdRef.current && !atLiveEdge(buffer.viewportY, buffer.baseY)) {
+        // Scrolling raises `onScroll`, which runs this again at the live edge.
+        term.scrollToBottom();
+        return;
+      }
       const now = edgeOf(buffer.viewportY, buffer.baseY);
       setPinned(now === 'latest');
       if (now === edge) return;
@@ -966,7 +1001,7 @@ export default function TerminalView({
     handlers.current.onReady({
       write: (chunk) => {
         const buffer = term.buffer.active;
-        const wasPinned = buffer.viewportY >= buffer.baseY;
+        const wasPinned = atLiveEdge(buffer.viewportY, buffer.baseY);
         /*
          * The line the reader is on, captured before the write moves the
          * buffer underneath it. A viewport already at the live edge follows
@@ -1034,6 +1069,7 @@ export default function TerminalView({
           done();
           // Said again once it is done: the edges it passed while filling were not heard.
           edge = null;
+          endFitWindow();
           term.scrollToLine(Math.max(0, term.buffer.active.baseY - above));
           syncPin();
         });
@@ -1050,6 +1086,7 @@ export default function TerminalView({
         const buffer = term.buffer.active;
         const row = rowOf(linesOf(rowsOf(buffer)), place, tuning().readBackReach);
         if (row === null) return false;
+        endFitWindow();
         term.scrollToLine(row);
         // Said afresh: the edges a fill passed were not heard by the reader.
         edge = null;
@@ -1085,6 +1122,7 @@ export default function TerminalView({
 
     return () => {
       waiting();
+      endFitWindow();
       webglRef.current = null;
       window.removeEventListener('keydown', watchEnter, { capture: true });
       if (enterTimer !== null) clearTimeout(enterTimer);
@@ -1131,7 +1169,7 @@ export default function TerminalView({
     term.options.cursorBlink = settings.cursorBlink;
     term.options.cursorStyle = settings.cursorStyle;
 
-    if (metricsChanged) fitRef.current?.fit();
+    if (metricsChanged) fitRef.current?.();
   }, [fontStack, settings, scrollback]);
 
   useEffect(() => stampsRef.current?.show(timestamps), [timestamps]);
