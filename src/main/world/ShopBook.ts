@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import type { ShopListedItem } from '../../shared/character';
@@ -7,6 +6,7 @@ import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { DeferredFile } from './DeferredFile';
+import { everyRow, readRecordFile } from './recordFile';
 
 interface ShopsFile {
   version: typeof SHOPS_VERSION;
@@ -73,33 +73,20 @@ export class ShopBook implements RealmShops {
   }
 
   private load(): void {
-    const { file } = this.disk;
-    const fileName = path.basename(file);
-    try {
-      if (!fs.existsSync(file)) return;
-      const read: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!isShopsFile(read) || !read.shelves.every(isShelf)) {
-        // Kept beside it, since the next listing writes this file afresh.
-        fs.copyFileSync(file, `${file}.bak`);
-        this.onError?.(t('notices.world.shops.invalidFile', { fileName }));
-        return;
-      }
-      if (read.realm !== this.realm) return;
-      for (const shelf of read.shelves) this.shelves.set(shelf.room, shelf);
-    } catch (error) {
-      this.onError?.(
-        t('notices.world.shops.readError', { fileName, message: errorMessage(error) })
-      );
-    }
+    const rows = readRecordFile(
+      this.disk.file,
+      this.realm,
+      {
+        version: SHOPS_VERSION,
+        field: 'shelves',
+        rows: everyRow(isShelf),
+        invalid: (fileName) => t('notices.world.shops.invalidFile', { fileName }),
+        readError: (fileName, message) => t('notices.world.shops.readError', { fileName, message })
+      },
+      this.onError
+    );
+    for (const shelf of rows) this.shelves.set(shelf.room, shelf);
   }
-}
-
-function isShopsFile(value: unknown): value is Omit<ShopsFile, 'shelves'> & { shelves: Shelf[] } {
-  if (typeof value !== 'object' || value === null) return false;
-  const file = value as Partial<ShopsFile>;
-  return (
-    file.version === SHOPS_VERSION && typeof file.realm === 'string' && Array.isArray(file.shelves)
-  );
 }
 
 function isShelf(value: unknown): value is Shelf {

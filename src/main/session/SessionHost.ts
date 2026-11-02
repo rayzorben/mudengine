@@ -54,6 +54,7 @@ import type { RealmMemory } from '../../shared/memory';
 import type { RealmFinds } from '../../shared/finds';
 import type { RealmShops } from '../../shared/shops';
 import type { RealmDescriptions } from '../../shared/descriptions';
+import type { RealmFloor } from '../../shared/floor';
 import {
   Push,
   type Addressed,
@@ -292,6 +293,8 @@ export interface SessionHostOptions {
   shopsFor?(id: SessionId): RealmShops | undefined;
   /** Where each room's description is written down as it is read, keyed like `findsFor`. */
   descriptionsFor?(id: SessionId): RealmDescriptions | undefined;
+  /** Where the items seen lying in a room are kept, for an item's lookup. */
+  floorFor?(id: SessionId): RealmFloor | undefined;
   /**
    * Where this character's record last placed it, read from the record for the
    * realm its file says it plays, so the tab draws that room before any dial.
@@ -505,6 +508,7 @@ export class SessionHost {
 
     // Where what each room says is written down, opened once for the session.
     const descriptions = this.options.descriptionsFor?.(id);
+    const floor = this.options.floorFor?.(id);
     const manager = new SessionManager(
       {
         /*
@@ -560,6 +564,8 @@ export class SessionHost {
           this.options.toAll(Push.character, { session: id, payload: state });
           // What the room said, for the next pass over the world's look (todo 140).
           descriptions?.saw(state.room, Date.now());
+          // And what lay on its floor, for an item's lookup.
+          floor?.saw(state.room, Date.now());
           this.options.characterSeen?.(id, state);
           /*
            * A tab is named after the character, and the realm does not say who

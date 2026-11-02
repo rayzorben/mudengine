@@ -11604,10 +11604,12 @@ button.shelf-tile:hover {
  * sentence; this is a *sentence per entry* — a verb, a monster, the words, a
  * room — so two of them run together would read as one act with two places in
  * it. A block per handover, and the whole thing wraps, on the panel's measured
- * width.
+ * width. The places an item was seen are one sighting per line for the same
+ * reason.
  */
 .reference-detail .item-given,
-.reference-detail .item-rarity {
+.reference-detail .item-rarity,
+.reference-detail .item-seen {
   display: flex;
   flex-direction: column;
   gap: 2px;

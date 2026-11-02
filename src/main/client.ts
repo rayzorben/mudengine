@@ -55,6 +55,9 @@ import { FindBook } from './world/FindBook';
 import { ShopBook } from './world/ShopBook';
 import { DescriptionBook } from './world/DescriptionBook';
 import type { RealmDescriptions } from '../shared/descriptions';
+import { FloorBook } from './world/FloorBook';
+import type { RealmFloor } from '../shared/floor';
+import { itemSeen } from './world/itemSeen';
 import type { RealmFinds } from '../shared/finds';
 import type { RealmShops } from '../shared/shops';
 import { WorldBook } from './world/WorldBook';
@@ -655,17 +658,9 @@ function playedBy(id: SessionId): string {
 const realmFinds = new Map<string, FindBook>();
 
 function findsFor(id: SessionId): RealmFinds | undefined {
-  const world = worldFor(id)?.info.source;
   // Nothing to be wrong about and nothing to write against: see `memoryFor`.
-  if (world === undefined) return undefined;
-  const book = (): FindBook =>
-    keptPerPlayed(
-      realmFinds,
-      world,
-      playedBy(id),
-      (file, stamp) => new FindBook(file, stamp, (message) => announce('memory', message)),
-      'finds'
-    );
+  const book = realmStoreFor(id, realmFinds, FindBook, 'finds');
+  if (book === undefined) return undefined;
   return {
     search: (room, found) => book().search(room, found),
     forget: (key) => book().forget(key),
@@ -679,16 +674,8 @@ function findsFor(id: SessionId): RealmFinds | undefined {
 const realmShops = new Map<string, ShopBook>();
 
 function shopsFor(id: SessionId): RealmShops | undefined {
-  const world = worldFor(id)?.info.source;
-  if (world === undefined) return undefined;
-  const book = (): ShopBook =>
-    keptPerPlayed(
-      realmShops,
-      world,
-      playedBy(id),
-      (file, stamp) => new ShopBook(file, stamp, (message) => announce('memory', message)),
-      'shops'
-    );
+  const book = realmStoreFor(id, realmShops, ShopBook, 'shops');
+  if (book === undefined) return undefined;
   return {
     stock: (shelf) => book().stock(shelf),
     get all() {
@@ -701,19 +688,50 @@ function shopsFor(id: SessionId): RealmShops | undefined {
 const realmDescriptions = new Map<string, DescriptionBook>();
 
 function descriptionsFor(id: SessionId): RealmDescriptions | undefined {
-  const world = worldFor(id)?.info.source;
-  if (world === undefined) return undefined;
+  const book = realmStoreFor(id, realmDescriptions, DescriptionBook, 'descriptions');
+  if (book === undefined) return undefined;
+  return { saw: (room, at) => book().saw(room, at) };
+}
+
+/** The items seen lying in each realm played on one world, kept as `realmShops` is. */
+const realmFloors = new Map<string, FloorBook>();
+
+function floorFor(id: SessionId): RealmFloor | undefined {
+  const book = realmStoreFor(id, realmFloors, FloorBook, 'floor');
+  if (book === undefined) return undefined;
   return {
-    saw: (room, at) =>
-      keptPerPlayed(
-        realmDescriptions,
-        world,
-        playedBy(id),
-        (file, stamp) => new DescriptionBook(file, stamp, (message) => announce('memory', message)),
-        'descriptions'
-      ).saw(room, at)
+    saw: (room, at) => book().saw(room, at),
+    get all() {
+      return book().all;
+    }
   };
 }
+
+/**
+ * The store of one kind for the realm a session plays, opened on first ask
+ * and read through the realm at each, so a menu's choice moves it. Undefined
+ * while the session has no world.
+ */
+function realmStoreFor<T>(
+  id: SessionId,
+  open: Map<string, T>,
+  Store: new (file: string, stamp: string, onError: (message: string) => void) => T,
+  kind: KeptKind
+): (() => T) | undefined {
+  const world = worldFor(id)?.info.source;
+  if (world === undefined) return undefined;
+  return () =>
+    keptPerPlayed(
+      open,
+      world,
+      playedBy(id),
+      (file, stamp) => new Store(file, stamp, (message) => announce('memory', message)),
+      kind
+    );
+}
+
+/** The stores kept per realm played, each its own file. */
+type KeptKind = 'finds' | 'shops' | 'descriptions' | 'floor';
 
 /**
  * The store for one realm played on one world, opened on first use at
@@ -725,7 +743,7 @@ function keptPerPlayed<T>(
   world: string,
   played: string,
   create: (file: string, stamp: string) => T,
-  kind: 'finds' | 'shops' | 'descriptions'
+  kind: KeptKind
 ): T {
   const key = playedKey(world, played);
   const existing = open.get(key);
@@ -1759,6 +1777,7 @@ function createHost(): SessionHost {
     findsFor,
     shopsFor,
     descriptionsFor,
+    floorFor,
     // What the realm called itself, by the realm played, so the next session
     // built for it starts on the right world.
     realmTold: (_id, realm, word) => worldBook?.learn(realmName(realm), word),
@@ -3145,6 +3164,16 @@ function registerIpc(): void {
     const book = found.items.length > 0 ? rarityBook(world) : null;
     const rarity: Record<number, ItemRarity> = {};
     for (const item of found.items) if (book !== null) rarity[item.id] = book.of(item.id);
+    // And where this client has seen each one, from the realm's own records.
+    const seen = itemSeen(
+      found.items,
+      {
+        floor: floorFor(session)?.all ?? [],
+        shelves: shopsFor(session)?.all ?? [],
+        finds: findsFor(session)?.all ?? []
+      },
+      world
+    );
     return {
       ...found,
       ...(Object.keys(learned).length > 0 ? { learned } : {}),
@@ -3153,7 +3182,8 @@ function registerIpc(): void {
       ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
       ...(Object.keys(verdicts).length > 0 ? { verdicts } : {}),
       ...(Object.keys(rowPeace).length > 0 ? { rowPeace } : {}),
-      ...(Object.keys(rarity).length > 0 ? { rarity } : {})
+      ...(Object.keys(rarity).length > 0 ? { rarity } : {}),
+      ...(Object.keys(seen).length > 0 ? { seen } : {})
     };
   });
 
@@ -4066,6 +4096,8 @@ function teardown(): void {
   for (const [realm, rooms] of realmDescriptions)
     settle(`descriptions ${realm}`, () => rooms.close());
   realmDescriptions.clear();
+  for (const [realm, floor] of realmFloors) settle(`floor ${realm}`, () => floor.close());
+  realmFloors.clear();
   // Same reason again: a fight that ended in the last two seconds is held on a
   // timer, and quitting is when that timer has not fired.
   for (const [id, log] of fightLogs) settle(`fights ${id}`, () => log.dispose());

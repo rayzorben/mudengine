@@ -1668,6 +1668,16 @@ tuning:
     # (hunting.maxSpots spots of up to hunting.maxLoopRooms rooms).
     keptSweeps: 512
 
+    # How many items seen lying in rooms the realm's floor record keeps: one
+    # row per item per room, the longest unseen dropped first. Players drop
+    # things everywhere, so the pairs grow without it.
+    floorSeenRows: 20000
+
+    # How long an item seen on a floor keeps its last-seen time before a
+    # sighting moves it on. The room is pushed with every statline, and a minute
+    # does not change when it was last seen.
+    floorSeenRefreshMs: 60000
+
     # How many level walls are routed past on the way to one step: each wall
     # met raises the level to it and the step is routed again.
     questReachTries: 3
@@ -2282,6 +2292,10 @@ tuning:
     # kind with the name-prefix matches first, so the cap trims the substring
     # tail; typing one more letter is how the list narrows, not scrolling.
     paletteFoundRows: 12
+
+    # How many places an item's lookup lists under Seen in before the rest
+    # wait behind a control, newest first.
+    itemSeenRows: 8
 
     # How many bars or points the Combat Stats card's rate graph draws across
     # its window, whatever the window is.

@@ -14,6 +14,7 @@ import type { MobLoreEntry } from '@shared/lore';
 import type { ItemRarity } from '@shared/rarity';
 import type { RowPeace } from '@shared/mobRules';
 import type { Verdict } from '@shared/verdict';
+import type { ItemSeen } from '@shared/itemSeen';
 import type {
   MobPlaces,
   WorldClass,
@@ -39,8 +40,14 @@ export type ReferenceEntry =
       /** The character's row saying it does not attack first; null where none does. */
       peace: RowPeace | null;
     }
-  /** `rarity` is null where the lookup carried none. */
-  | { kind: 'item'; name: string; item: WorldItem; rarity: ItemRarity | null }
+  /** `rarity` is null where the lookup carried none; `seen` is newest first. */
+  | {
+      kind: 'item';
+      name: string;
+      item: WorldItem;
+      rarity: ItemRarity | null;
+      seen: readonly ItemSeen[];
+    }
   | { kind: 'spell'; name: string; spell: WorldSpell }
   | { kind: 'race'; name: string; race: WorldRace }
   | { kind: 'class'; name: string; className: WorldClass };
@@ -61,7 +68,8 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       kind: 'item',
       name: item.name,
       item,
-      rarity: found.rarity?.[item.id] ?? null
+      rarity: found.rarity?.[item.id] ?? null,
+      seen: found.seen?.[item.id] ?? []
     })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
     ...found.races.map((race): ReferenceEntry => ({ kind: 'race', name: race.name, race })),

@@ -9,6 +9,7 @@
  * in the renderer.
  */
 import type { ItemRarity } from './rarity';
+import type { ItemSeen } from './itemSeen';
 import { asGates, type AbilityBounds, type Gate } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellDamage';
@@ -1834,6 +1835,8 @@ export interface WorldLookup {
   mobPlaces?: Record<string, MobPlaces>;
   /** How rare each item named is, by the item's row (`world/itemRarity.ts`, todo 13). */
   rarity?: Record<number, ItemRarity>;
+  /** Where this client saw each item named, by row, newest first (`main/world/itemSeen.ts`). */
+  seen?: Record<number, ItemSeen[]>;
 }
 
 /** The answer to a query that found nothing. */

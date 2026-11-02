@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -12,6 +11,7 @@ import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { DeferredFile } from './DeferredFile';
+import { everyRow, readRecordFile } from './recordFile';
 
 interface DescriptionsFile {
   version: typeof DESCRIPTIONS_VERSION;
@@ -70,37 +70,21 @@ export class DescriptionBook implements RealmDescriptions {
   }
 
   private load(): void {
-    const { file } = this.disk;
-    const fileName = path.basename(file);
-    try {
-      if (!fs.existsSync(file)) return;
-      const read: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!isDescriptionsFile(read) || !read.rooms.every(isDescription)) {
-        // Kept beside it, once, since the next room read writes this file afresh.
-        if (!fs.existsSync(`${file}.bak`)) fs.copyFileSync(file, `${file}.bak`);
-        this.onError?.(t('notices.world.descriptions.invalidFile', { fileName }));
-        return;
-      }
-      if (read.realm !== this.realm) return;
-      for (const room of read.rooms) this.rooms.set(room.room, room);
-    } catch (error) {
-      this.onError?.(
-        t('notices.world.descriptions.readError', { fileName, message: errorMessage(error) })
-      );
-    }
+    const rows = readRecordFile(
+      this.disk.file,
+      this.realm,
+      {
+        version: DESCRIPTIONS_VERSION,
+        field: 'rooms',
+        rows: everyRow(isDescription),
+        invalid: (fileName) => t('notices.world.descriptions.invalidFile', { fileName }),
+        readError: (fileName, message) =>
+          t('notices.world.descriptions.readError', { fileName, message })
+      },
+      this.onError
+    );
+    for (const room of rows) this.rooms.set(room.room, room);
   }
-}
-
-function isDescriptionsFile(
-  value: unknown
-): value is Omit<DescriptionsFile, 'rooms'> & { rooms: RoomDescription[] } {
-  if (typeof value !== 'object' || value === null) return false;
-  const file = value as Partial<DescriptionsFile>;
-  return (
-    file.version === DESCRIPTIONS_VERSION &&
-    typeof file.realm === 'string' &&
-    Array.isArray(file.rooms)
-  );
 }
 
 function isDescription(value: unknown): value is RoomDescription {

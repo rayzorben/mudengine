@@ -2165,6 +2165,18 @@ const TUNING_DEFAULTS = {
      */
     keptSweeps: 512,
     /**
+     * How many items seen lying in rooms the realm's floor record keeps
+     * (`FloorBook`): one row per item per room, the longest unseen dropped
+     * first. Players drop things everywhere, so the pairs grow without it.
+     */
+    floorSeenRows: 20_000,
+    /**
+     * How long an item seen on a floor keeps its last-seen time before a
+     * sighting moves it on. The room is pushed with every statline, and a
+     * minute does not change when it was last seen.
+     */
+    floorSeenRefreshMs: 60_000,
+    /**
      * How many level walls are routed past on the way to one step
      * (`questReach.ts`, todo 132): each wall met raises the level to it and
      * the step is routed again. MerchantCaptain's crate lies past a 40 and
@@ -2967,6 +2979,11 @@ const TUNING_DEFAULTS = {
      * scrolling.
      */
     paletteFoundRows: 12,
+    /**
+     * How many places an item's lookup lists under *Seen in* before the rest
+     * wait behind a control, newest first.
+     */
+    itemSeenRows: 8,
     /**
      * How many bars or points the Combat Stats card's rate graph draws across
      * its window, whatever the window is. Two dozen is what its width holds

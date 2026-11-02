@@ -1069,13 +1069,18 @@ notices:
       coinsUpgraded: '{fileName} now keeps the coins each search turned up. Coins found before this
         show blank until their room is searched again. The old file is kept as {fileName}.bak.'
     shops:
-      invalidFile: '{fileName} is not a shop record, so shops start empty. The old file is kept as
-        {fileName}.bak.'
+      invalidFile: '{fileName} is not a shop record, so shops start empty. The first such file is
+        kept as {fileName}.bak.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
     descriptions:
       invalidFile: '{fileName} is not a room description record, so it starts empty. The first such
         file is kept as {fileName}.bak.'
+      readError: 'Could not read {fileName}: {message}'
+      saveError: 'Could not save {fileName}: {message}'
+    floor:
+      invalidFile: '{fileName} is not a record of items seen on the floor, so it starts empty. The
+        first such file is kept as {fileName}.bak.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
     belongings:
@@ -3495,6 +3500,22 @@ cards:
         sayRooms:
           one: '{say} in {room} and 1 other room'
           many: '{say} in {room} and {count} other rooms'
+      # Where this client has seen one (the realm's floors, shop lists and
+      # searches), newest first, each with how long ago.
+      seen:
+        label: Seen in
+        hint: 'Where you have seen one in this realm, newest first: lying on the floor, on a shop
+          list, or found by searching.'
+        ago: ' · {ago}'
+        floor: on the floor
+        firstTitle: First seen {ago}
+        shop: 'for {price}'
+        shopLeft: 'for {price}, {count} left'
+        search:
+          one: found by searching
+          many: found by searching, {count} times
+        showAll: Show all {count}
+        showFewer: Show fewer
       shopPlaces: (in {count} places)
       shopRouteTitle: Plan a route to {room}
       soldByLabel: Sold by

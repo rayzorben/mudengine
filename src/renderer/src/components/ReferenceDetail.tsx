@@ -22,7 +22,9 @@ import type { RealmFamily } from '@shared/character';
 import type { Verdict } from '@shared/verdict';
 import { roomId } from '@shared/world';
 import { GivenBy, SoldBy } from './ReferenceSources';
+import { SeenIn } from './ReferenceSeen';
 import SpellLearning from './SpellLearning';
+import type { ItemSeen } from '@shared/itemSeen';
 import type {
   MobPlaces,
   MobSpawn,
@@ -799,6 +801,7 @@ function DroppedBy({
 function ItemDetail({
   item,
   rarity,
+  seen,
   realm,
   names,
   shopPlaces,
@@ -808,6 +811,7 @@ function ItemDetail({
 }: {
   item: WorldItem;
   rarity: ItemRarity | null;
+  seen: readonly ItemSeen[];
   realm: RealmFamily | null;
   names: EffectNames;
   shopPlaces: Record<string, ShopPlace>;
@@ -827,7 +831,7 @@ function ItemDetail({
     !item.from?.length &&
     item.placed === undefined &&
     !item.abilities?.length;
-  if (nothing && supplies === null && rarity === null) {
+  if (nothing && supplies === null && rarity === null && seen.length === 0) {
     return <div className="empty">{t('cards.reference.item.noDetail')}</div>;
   }
 
@@ -920,6 +924,14 @@ function ItemDetail({
             onRoom={onRoom}
             spawns={item.placed.groups}
           />
+        </>
+      )}
+      {seen.length > 0 && (
+        <>
+          <dt title={t('cards.reference.item.seen.hint')}>
+            {t('cards.reference.item.seen.label')}
+          </dt>
+          <SeenIn onResize={onResize} onRoom={onRoom} seen={seen} />
         </>
       )}
       {rarity !== null && <RarityRows rarity={rarity} />}
@@ -1326,6 +1338,7 @@ export default function ReferenceDetail({
         <ItemDetail
           item={entry.item}
           rarity={entry.rarity}
+          seen={entry.seen}
           names={names}
           onResize={onResize}
           onRoom={onRoom}
