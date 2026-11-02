@@ -1590,6 +1590,9 @@ terminal:
   loadMore: Load {count} more lines ↑
   loadingMore: Loading earlier lines…
   loadMoreFailed: Could not load earlier lines ({message}).
+  # The console's WebGL drawing was lost (a GPU reset, or the window's
+  # limit of WebGL contexts) and it went on with the plain renderer.
+  webglLost: The graphics card stopped drawing this console. It is drawn without it until the tab is opened again, and may lag when lines come fast.
   readBackLost: The line you were reading was not found in the lines brought back, so this starts at the newest of them.
   # The run of a quest plan, as a banner over the top of this character's
   # console (2026-09-22): the chain as a row of numbered stops with the one

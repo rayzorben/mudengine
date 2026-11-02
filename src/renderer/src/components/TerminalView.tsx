@@ -691,15 +691,38 @@ export default function TerminalView({
     // WebGL keeps frame times flat during combat bursts. It is unavailable in
     // some VMs and on stale drivers, and it can be lost at runtime, so both
     // failure paths fall back to the DOM renderer rather than breaking.
+    /**
+     * Fits the grid to the element. Skipped at zero size, the measurement that
+     * fires while the window is minimised and would report a 1x1 grid over NAWS.
+     */
+    const refit = (): void => {
+      if (mount.clientWidth > 0 && mount.clientHeight > 0) fit.fit();
+    };
     let rendered = false;
+    /** The live WebGL context, released by hand at unmount; null on the DOM renderer. */
+    let context: WebGL2RenderingContext | null = null;
     const drawWithWebgl = (): void => {
       waiting();
       if (rendered) return;
       rendered = true;
       try {
         const webgl = new WebglAddon();
-        webgl.onContextLoss(() => webgl.dispose());
+        webgl.onContextLoss(() => {
+          context = null;
+          webgl.dispose();
+          /*
+           * The DOM renderer's rows are shorter than WebGL's for the same
+           * font, and nothing resizes the element, so without a refit the
+           * grid keeps WebGL's row count and leaves a black band under the
+           * last line, with Jump to latest up at the live edge.
+           */
+          refit();
+          postNotice(t('terminal.webglLost'));
+        });
         term.loadAddon(webgl);
+        context =
+          mount.querySelector<HTMLCanvasElement>('.xterm-screen canvas')?.getContext('webgl2') ??
+          null;
       } catch {
         // DOM renderer remains active; nothing further to do.
       }
@@ -1057,11 +1080,7 @@ export default function TerminalView({
       }
     });
 
-    const observer = new ResizeObserver(() => {
-      // Guard against the zero-size measurement that fires while the window is
-      // minimised, which would otherwise report a 1x1 grid over NAWS.
-      if (mount.clientWidth > 0 && mount.clientHeight > 0) fit.fit();
-    });
+    const observer = new ResizeObserver(refit);
     observer.observe(mount);
 
     return () => {
@@ -1076,7 +1095,14 @@ export default function TerminalView({
       selectionListener.dispose();
       mount.removeEventListener('mousedown', startSelecting);
       document.removeEventListener('mouseup', stopSelecting);
+      /*
+       * The addon's dispose leaves its context to the garbage collector, and
+       * Chromium holds sixteen at once: every read-back copy opened adds one,
+       * and the seventeenth takes the oldest, a live console's. After the
+       * dispose, so the addon's own loss handler is gone and does not fire.
+       */
       term.dispose();
+      context?.getExtension('WEBGL_lose_context')?.loseContext();
       termRef.current = null;
       stampsRef.current = null;
       fitRef.current = null;
