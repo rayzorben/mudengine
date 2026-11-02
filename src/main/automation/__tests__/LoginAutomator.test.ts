@@ -167,6 +167,36 @@ describe('answering the sequence', () => {
     expect(notesOf(notices, 'automation.login.promptRepeated')).toEqual([]);
   });
 
+  it('leaves a pager alone when the BBS carried on past it', () => {
+    /*
+     * The Major BBS v10 ends a screen with the pager prompt and `\r\n` and
+     * goes on without input (`logs/2026-11-01_04-10-22_soul.mudcap.jsonl`).
+     * The `Q` answering it landed on `Make your selection (G,...,Q,...)`,
+     * which opened QWK-mail and sent the menu's own `G` into it.
+     */
+    const pager = '(N)onstop, (Q)uit, or (C)ontinue?';
+    const bbs = new LoginAutomator(
+      {
+        ...credentials,
+        steps: [
+          { when: 'Make your selection', send: 'G' },
+          { when: pager, send: 'Q', repeat: true }
+        ]
+      },
+      queue,
+      { notice: (m) => notices.push(m) }
+    );
+
+    bbs.onBlock(block('unknown', pager));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['Q']);
+
+    bbs.onBlock(block('unknown', pager, 'newline'));
+    bbs.onBlock(block('unknown', 'Make your selection (G,T,C,F,E,L,A,P,D,R,Q,I,? for help): '));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['Q', 'G']);
+  });
+
   it('still answers a menu once, even next to a pager', () => {
     // The flag is per row, so the default stays *once* and nothing that works
     // today changes.

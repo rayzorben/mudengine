@@ -348,6 +348,15 @@ export class LoginAutomator implements SessionModule {
       // config, and `Please Select A Realm` is the same prompt as
       // `Please select a realm`. Being strict here would fail silently.
       if (step.when.length === 0 || !text.includes(step.when.toLowerCase())) continue;
+      /*
+       * A `repeat` row is answered only on a line that ends as a prompt. The Major BBS v10 prints
+       * `(N)onstop, (Q)uit, or (C)ontinue?` with `\r\n` straight after it when
+       * the screen it pages has ended, and carries on without input; the `Q`
+       * answering that line reached the TOP menu and opened QWK-mail on every
+       * login (`logs/2026-11-01_04-10-22_soul.mudcap.jsonl`, OCI). A newline
+       * after the pager line means the BBS has already moved on.
+       */
+      if (step.repeat === true && !isPromptLine) continue;
       const names = credentialsNamed(step.send);
       if (names.length > 0) {
         // A credential answers a *prompt* and nothing else. See `isPromptLine`.

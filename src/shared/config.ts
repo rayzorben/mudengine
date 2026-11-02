@@ -134,7 +134,9 @@ export interface LoginStep {
   /** What to send. May be empty, for a bare Enter. */
   send: string;
   /**
-   * Whether this row answers its prompt every time it arrives.
+   * Whether this row answers its prompt every time it arrives. Answered only
+   * when the line ends as a prompt: a pager line followed by `\r\n` is one the
+   * BBS has already moved past.
    *
    * Off by default, because *once per connection* is what a menu wants: a menu
    * that comes back means the answer was refused, and answering again loops.
