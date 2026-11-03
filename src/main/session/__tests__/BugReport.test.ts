@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_AUTOMATION } from '../../../shared/automation';
 import { EMPTY_CHARACTER } from '../../../shared/character';
@@ -55,6 +55,25 @@ describe('the bug report', () => {
     expect(text).toContain(t('app.debug.section.character'));
     expect(text).toContain('hang up refused: no exit');
     expect(text).toContain('look');
+  });
+
+  it('never writes into the report under its own name, so a half report is never there to pick up', async () => {
+    // The smoke read a report the moment it appeared and found it empty (gate, 2026-11-03).
+    const written: string[] = [];
+    const real = fs.promises.writeFile;
+    const spy = vi.spyOn(fs.promises, 'writeFile').mockImplementation((file, ...rest) => {
+      written.push(String(file));
+      return real(file, ...rest);
+    });
+    try {
+      const saved = await writeBugReport(inputs());
+      if (!('path' in saved)) throw new Error('no report written');
+      expect(written.length).toBeGreaterThan(0);
+      expect(written).not.toContain(saved.path);
+      expect(fs.readdirSync(dir)).toEqual([path.basename(saved.path)]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('writes nothing when the text holds a configured password', async () => {

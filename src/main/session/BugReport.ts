@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type { AutomationSnapshot } from '../../shared/automation';
@@ -15,6 +14,7 @@ import type { DebugSave } from '../../shared/ipc';
 import type { RealmBuild } from '../../shared/realm';
 import { secretIn, type Secret } from '../../shared/secrets';
 import { t } from '../app/i18n';
+import { writeWhole } from '../app/writeWhole';
 
 /**
  * The bug report, built and written (todo 75). See `mudengine-session` for why
@@ -46,8 +46,8 @@ export async function writeBugReport(inputs: BugReportInputs): Promise<DebugSave
   if (found !== null) return { error: t('app.debug.secretFound', { owner: found.owner }) };
   const stamp = new Date(inputs.header.at).toISOString().replace(/[:.]/g, '-');
   const file = path.join(inputs.directory, `debug-${inputs.slug}-${stamp}.txt`);
-  await fs.mkdir(inputs.directory, { recursive: true });
-  await fs.writeFile(file, text, 'utf8');
+  // Whole or not at all: the report is picked up from the folder as soon as it is there.
+  await writeWhole(file, text);
   return { path: file, download: inputs.deliver(file) };
 }
 
