@@ -93,6 +93,7 @@ import {
 import { planNotices } from './automation/gearNotices';
 import { restoreKit } from './automation/restoreKit';
 import { Belongings, peekLives, peekRealm, peekRoom, peekSpellbook } from './session/Belongings';
+import { OpenRecords } from './session/OpenRecords';
 import type { CharacterRecord, KeptLives, KeptRoom } from '../shared/belongings';
 import { asLowLivesAnswer } from '../shared/lives';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
@@ -891,7 +892,7 @@ function talkFor(id: SessionId): TalkSink {
  * A session that re-dials a *different* realm gets a different record, and the
  * one it had is closed on the way out so its deferred write lands.
  */
-const belongings = new Map<SessionId, Belongings>();
+const belongings = new OpenRecords<Belongings>('belongings');
 
 /** The loops each character started by name (todo 28), opened on first use. */
 const loopHistories = new Map<SessionId, LoopHistory>();
@@ -908,18 +909,16 @@ function loopHistoryFor(id: SessionId): LoopHistory {
 
 function belongingsAt(id: SessionId, played: Realm): CharacterRecord {
   const realm = realmName(played);
-  const existing = belongings.get(id);
-  if (existing) {
-    if (existing.realm === realm) return existing;
-    existing.close();
-  }
-  const record = new Belongings({
-    file: home.record('belongings', id),
+  return belongings.at(
+    id,
     realm,
-    notify: (message) => announce('belongings', message, 'warn', id)
-  });
-  belongings.set(id, record);
-  return record;
+    () =>
+      new Belongings({
+        file: home.record('belongings', id),
+        realm,
+        notify: (message) => announce('belongings', message, 'warn', id)
+      })
+  );
 }
 
 /**
@@ -1817,10 +1816,8 @@ function createHost(): SessionHost {
       lapIndexes.get(id)?.dispose();
       lapIndexes.delete(id);
       peers?.forget(id);
-      // A tab closed while connected gets no socket close, so its record's
-      // online clock is settled here, as at quit.
-      belongings.get(id)?.close();
-      belongings.delete(id);
+      // A tab closed while connected gets no socket close (`OpenRecords`).
+      belongings.release(id);
     },
     peerSheets: (id) => peers?.sheetsFor(id) ?? [],
     characterSeen: (id, state) => {
@@ -4154,8 +4151,7 @@ function teardown(): void {
   talkLogs.clear();
   // And once more for the character's own record: a `bank` answered or a helm
   // put on in the last two seconds is on the same kind of deferred timer.
-  for (const [id, record] of belongings) settle(`belongings ${id}`, () => record.close());
-  belongings.clear();
+  belongings.releaseAll(settle);
   // And the loops started by name, on the same deferred timer.
   for (const [id, history] of loopHistories) settle(`recent loops ${id}`, () => history.close());
   loopHistories.clear();
