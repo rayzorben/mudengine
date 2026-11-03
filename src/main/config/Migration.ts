@@ -8829,6 +8829,10 @@ function theTuningBlockGainedKeys(
     addKey('view', 'mapFinderIdleMs', DEFAULT_INTERNAL.tuning.view.mapFinderIdleMs);
     // When the Room card's round against a monster disagrees with stat all's (todo 2322-01).
     addKey('view', 'roundGapSaidPercent', DEFAULT_INTERNAL.tuning.view.roundGapSaidPercent);
+    // The Map card keeps placements and cells, and is sent only what it lacks (todo 1008-02, 2026-11-02).
+    addKey('world', 'mapPlacementsKept', DEFAULT_INTERNAL.tuning.world.mapPlacementsKept);
+    for (const key of ['mapHeldWindows', 'mapFramesKept'] as const)
+      addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

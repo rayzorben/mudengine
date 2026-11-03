@@ -140,7 +140,7 @@ import { areaLimits, type AreaSearchPreview } from '../shared/areaSearch';
 import type { MobFindPreview } from '../shared/mobFind';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
-import { decorate, pageMapsOf, type LairLevel } from './world/localMap';
+import { pageMapsOf, pieceOf, type LairLevel } from './world/localMap';
 import { MapPlacements } from './world/MapPlacements';
 import { GameMaps } from './world/GameMaps';
 import { loadThemePack, type ThemePack } from './world/themePack';
@@ -202,7 +202,7 @@ import { extensionOn } from '../shared/extensionSwitches';
 import { readExtensionSwitches } from './config/extensionSwitches';
 import { loadExtensions, pageFile, type LoadedExtension } from './extensions/ExtensionLoader';
 import { prowessSheetOf } from '../shared/verdict';
-import { asMapWindow, EMPTY_MAP } from '../shared/map';
+import { asMapAsk, NO_PIECE } from '../shared/mapPiece';
 import {
   asRoomIds,
   asRoute,
@@ -348,7 +348,7 @@ let workspace: Workspace | null = null;
  */
 const windows = new WindowRegistry();
 let host: SessionHost | null = null;
-/* The Map card's placement per session, so a pan decorates without placing again. */
+/* The Map card's placements per realm world, so a step inside one places nothing again. */
 const mapPlacements = new MapPlacements();
 /** The extensions found in the home at startup (todo 84). */
 let extensions: readonly LoadedExtension[] = [];
@@ -1784,7 +1784,6 @@ function createHost(): SessionHost {
     // Not a domain concern: see `keepSignalsWorking`.
     onConnected: keepSignalsWorking,
     removed: (id) => {
-      mapPlacements.forget(id);
       art?.portraits.remove(id);
       art?.rooms.remove(id);
       lapIndexes.get(id)?.dispose();
@@ -2897,12 +2896,10 @@ function registerIpc(): void {
     Invoke.localMap,
     (_caller, session: SessionId, map: number, room: number, asked: unknown) => {
       const world = worldFor(session);
-      const window = asMapWindow(asked);
-      if (!world || world.size === 0 || window === null) return EMPTY_MAP;
-      const placement = mapPlacements.of(session, world, roomId(map, room));
-      return placement === null
-        ? EMPTY_MAP
-        : decorate(world, placement, window, lairLevelOf(session));
+      const ask = asMapAsk(asked, tuning().view.mapHeldWindows);
+      if (!world || world.size === 0 || ask === null) return NO_PIECE;
+      const placed = mapPlacements.of(world, roomId(map, room), ask.held?.frame ?? null);
+      return placed === null ? NO_PIECE : pieceOf(world, placed, ask, lairLevelOf(session));
     }
   );
   handle(Invoke.gameMap, (_caller, session: SessionId, ask: unknown) => {

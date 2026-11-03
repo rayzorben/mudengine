@@ -19,6 +19,7 @@ import { ZERO_METER, type Pressure, type StreamMeter } from './useStreamPressure
 import type { PinnedToolbar } from './useToolbarPins';
 import { t } from '../lib/i18n';
 import type { LoopDestination } from '../lib/loops';
+import { keptCellsLoader } from '../lib/mapCells';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { ToolbarSubject } from '../lib/toolbar';
@@ -455,7 +456,7 @@ export function useCardContext({
         forgetFind: (find) => void api.forgetFind(sid, find),
         gear: (action, item) => void api.gear(sid, action, item),
         loadWearer: () => api.wearer(sid),
-        loadMap: (map, room, area) => api.localMap(sid, map, room, area),
+        loadMap: keptCellsLoader((map, room, ask) => api.localMap(sid, map, room, ask)),
         searchRooms: (query) => api.searchRooms(sid, query),
         routeBetween: (from, to) => api.routeBetween(sid, from, to),
         walkPages: () => api.walkPages(sid),

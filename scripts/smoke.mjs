@@ -6445,7 +6445,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      */
     const shopRoom = await evaluate(`
       (async () => {
-        const map = await window.mudengine.localMap('${SESSION}', 1, 2141, { minX: -1, maxX: 1, minY: -1, maxY: 1 });
+        const map = await window.mudengine.localMap('${SESSION}', 1, 2141, { window: { minX: -1, maxX: 1, minY: -1, maxY: 1 }, held: null });
         const cell = map.cells.find((entry) => entry.id === '1/2141');
         if (!cell) return null;
         return {
@@ -6626,7 +6626,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
        */
       const scripted = await evaluate(`
         (async () => {
-          const map = await window.mudengine.localMap('${SESSION}', 3, 613, { minX: -1, maxX: 1, minY: -1, maxY: 1 });
+          const map = await window.mudengine.localMap('${SESSION}', 3, 613, { window: { minX: -1, maxX: 1, minY: -1, maxY: 1 }, held: null });
           const cell = map.cells.find((entry) => entry.id === '3/613');
           if (!cell) return null;
           /*
@@ -6744,7 +6744,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
          */
         const portal = await evaluate(`
           (async () => {
-            const map = await window.mudengine.localMap('${SESSION}', 3, 613, { minX: -1, maxX: 1, minY: -1, maxY: 1 });
+            const map = await window.mudengine.localMap('${SESSION}', 3, 613, { window: { minX: -1, maxX: 1, minY: -1, maxY: 1 }, held: null });
             const cell = map.cells.find((entry) => entry.id === '3/613');
             const way = (cell?.away ?? []).find((entry) => entry.kind === 'teleport');
             return way === undefined ? null : { to: way.to, name: way.name };
@@ -14613,7 +14613,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         const character = await window.mudengine.getCharacter('${SESSION}');
         const here = character.room;
         if (here.map === null || here.number === null) return JSON.stringify(null);
-        const map = await window.mudengine.localMap('${SESSION}', here.map, here.number, { minX: -2, maxX: 2, minY: -2, maxY: 2 });
+        const map = await window.mudengine.localMap('${SESSION}', here.map, here.number, { window: { minX: -2, maxX: 2, minY: -2, maxY: 2 }, held: null });
         const centre = map.cells.find((cell) => cell.id === map.centre);
         if (!centre) return JSON.stringify(null);
         const step = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0], ne: [1, -1], nw: [-1, -1], se: [1, 1], sw: [-1, 1] };

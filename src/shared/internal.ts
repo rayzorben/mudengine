@@ -2135,6 +2135,12 @@ const TUNING_DEFAULTS = {
      */
     mapCells: 20_000,
     /**
+     * Flat placements the maps keep per realm world (todo 20261102-1008-02):
+     * a centre inside a kept one is answered on it, so a step moves no cell
+     * and a tab is sent only the cells it lacks. Each placement is one region.
+     */
+    mapPlacementsKept: 8,
+    /**
      * How the Map card's route preview gathers stretches onto one page: up to
      * `routePageStretches` of them, while they walk `routePageSteps` flat
      * steps or fewer between them. A way down five times, or a few rooms
@@ -2822,6 +2828,13 @@ const TUNING_DEFAULTS = {
      * inner half, so a pan has rooms under it before the next answer lands.
      */
     mapWindowMargin: 0.5,
+    /**
+     * How many rectangles of one placement a map names as already held when
+     * it asks again, and how many placements the tab keeps the cells of
+     * (todo 20261102-1008-02). Main sends only the cells outside them.
+     */
+    mapHeldWindows: 8,
+    mapFramesKept: 6,
     /**
      * The smallest a room may be drawn when the wheel zooms out, in pixels
      * (user, 2026-10-14). Below `mapRoomPixelsDense` a room is its plain

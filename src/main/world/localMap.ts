@@ -25,6 +25,8 @@ import { describeObstacle, leverOpening } from './obstacle';
 import { landsInOneRoom, offPlaneWays, type PlaneGraph } from './planeSteps';
 import type { WorldGraph } from './WorldGraph';
 import { placeFlat, type FlatPlacement } from './flatPlacement';
+import type { PlacedMap } from './MapPlacements';
+import { shiftWindow, type MapAsk, type MapPiece } from '../../shared/mapPiece';
 
 /**
  * Which way a room leaves the plane.
@@ -167,6 +169,42 @@ export function decorate(
   return {
     centre: placement.centre,
     cells,
+    dropped: placement.dropped,
+    placed: placement.rooms.length,
+    extent: placement.extent
+  };
+}
+
+/**
+ * The Map card's answer (`MapPiece`): the placed cells inside the asked
+ * window that the tab does not already hold, in the placement's own
+ * coordinates, and this character's odds for every lair in the window.
+ */
+export function pieceOf(
+  graph: MapCellGraph,
+  placed: PlacedMap,
+  ask: MapAsk,
+  lairLevel: LairLevel = () => null
+): MapPiece {
+  const { frame, placement, at, centre } = placed;
+  const window = shiftWindow(ask.window, at);
+  const held = ask.held?.frame === frame ? ask.held.windows : [];
+  const cells: MapCell[] = [];
+  const odds: MapPiece['odds'] = {};
+  for (const { room, gx, gy } of placement.rooms) {
+    if (!inWindow(window, gx, gy)) continue;
+    const level = room.lair === undefined ? null : lairLevel(room);
+    if (level !== null) odds[roomId(room.map, room.room)] = level;
+    if (held.some((rect) => inWindow(rect, gx, gy))) continue;
+    cells.push(mapCellOf(graph, room, gx, gy));
+  }
+  return {
+    frame,
+    centre,
+    at,
+    window,
+    cells,
+    odds,
     dropped: placement.dropped,
     placed: placement.rooms.length,
     extent: placement.extent

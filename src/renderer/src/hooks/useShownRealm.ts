@@ -6,11 +6,13 @@
  * Out of `App` (todo 733). Two characters may be on two realms, so nothing
  * here is asked of the client. See `mudengine-ui` › `parts/map.md`.
  */
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { MapLoader } from '@shared/map';
 import { asRoomReference, type RoomId, type Route } from '@shared/world';
+
+import { keptCellsLoader } from '../lib/mapCells';
 
 export interface ShownRealmInputs {
   api: Pick<
@@ -48,8 +50,8 @@ export function useShownRealm({ api, session }: ShownRealmInputs) {
   );
 
   /* The window is the view's own, measured from its laid-out box (`windowForView`). */
-  const loadMap = useCallback<MapLoader>(
-    (map, room, area) => api.localMap(session, map, room, area),
+  const loadMap = useMemo<MapLoader>(
+    () => keptCellsLoader((map, room, ask) => api.localMap(session, map, room, ask)),
     [api, session]
   );
   /**

@@ -153,7 +153,7 @@ export function asMapWindow(value: unknown): MapWindow | null {
   return window;
 }
 
-/** How a surface asks for the map round a room, decorated inside `area` (`IpcApi.localMap`). */
+/** How a surface asks for the map round a room, decorated inside `area` (`keptCellsLoader`). */
 export type MapLoader = (map: number, room: number, area: MapWindow) => Promise<LocalMap>;
 
 /** Whether a cell lies inside a window, edges included. */
