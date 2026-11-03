@@ -19,7 +19,6 @@ import {
   type ChecksSignature
 } from '../shared/peerWire';
 import { errorMessage } from '../shared/values';
-import type { ClaimBook } from './ClaimBook';
 import { ByteBudgets } from './ByteBudget';
 import { InstallLink } from './InstallLink';
 import type { GatewayLimits } from './limits';
@@ -28,7 +27,6 @@ import { Registrar } from './Registrar';
 
 export interface GatewayOptions {
   buildSecret: string;
-  claims: ClaimBook;
   verify: ChecksSignature;
   limits: GatewayLimits;
   now(): number;
@@ -159,7 +157,6 @@ export function createGateway(options: GatewayOptions): Gateway {
     });
     const link = new InstallLink(connection, {
       registrar,
-      claims: options.claims,
       router,
       verify: options.verify,
       limits,

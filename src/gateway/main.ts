@@ -2,9 +2,9 @@
  * The peer gateway (todo 20261031-1156-01), its own program in its own
  * container on the OCI host (`deploy/gateway.sh`), built to
  * `out/gateway/main.mjs` by `scripts/build-gateway.mjs`. It reads the build
- * secret from `<data>/build-secret` and keeps name claims in
- * `<data>/claims.json`; everything else is in memory and goes with a restart,
- * after which every install registers and claims again.
+ * secret from `<data>/build-secret` and writes nothing: every claim, share and
+ * sheet is in memory and goes with a restart, after which every install
+ * registers and claims again.
  *
  *   PEER_DATA   the data directory (`/data`)
  *   PEER_HOST   the address to listen on (`0.0.0.0` in the container)
@@ -16,7 +16,6 @@ import path from 'node:path';
 
 import { verifyEd25519 } from '../node/ed25519';
 import { errorMessage } from '../shared/values';
-import { ClaimBook } from './ClaimBook';
 import { GATEWAY_LIMITS } from './limits';
 import { createGateway } from './server';
 
@@ -35,15 +34,8 @@ async function start(): Promise<void> {
   const buildSecret = (await fs.promises.readFile(secretFile, 'utf8')).trim();
   if (buildSecret.length === 0) throw new Error(`${secretFile} is empty`);
 
-  const claims = await ClaimBook.open(path.join(data, 'claims.json'), {
-    idleMs: GATEWAY_LIMITS.claimIdleMs,
-    mostPins: GATEWAY_LIMITS.mostPins,
-    now: Date.now,
-    log
-  });
   const gateway = createGateway({
     buildSecret,
-    claims,
     verify: verifyEd25519,
     limits: GATEWAY_LIMITS,
     now: Date.now,
@@ -57,7 +49,6 @@ async function start(): Promise<void> {
     log(`${signal}: stopping`);
     gateway
       .close()
-      .then(() => claims.settle())
       .then(() => process.exit(0))
       .catch((error: unknown) => {
         log(`stopping failed: ${errorMessage(error)}`);

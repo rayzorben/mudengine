@@ -4,8 +4,6 @@
  * Byte figures are from the todo's `peer-feed-bytes.mjs` over an 8.8 h
  * capture: a sheet is 0.11 KB/s on average and 1.5 KB in its busiest second.
  */
-import { DAY_MS } from '../shared/values';
-
 export interface GatewayLimits {
   /** Zero bits the registration's proof of work must find: about a million hashes at 20, as the art server. */
   powBits: number;
@@ -37,10 +35,6 @@ export interface GatewayLimits {
   burstBytes: number;
   /** Characters one install may claim at once. */
   mostClaims: number;
-  /** Names pinned to keys on disk; past it a new name is refused. */
-  mostPins: number;
-  /** How long a pinned name must go unclaimed before another key may take it: a character remade after this long. */
-  claimIdleMs: number;
   /** How often each socket is pinged; one that has not answered the last is closed. */
   pingEveryMs: number;
   /** The largest registration body. */
@@ -63,8 +57,6 @@ export const GATEWAY_LIMITS: GatewayLimits = {
   bytesPerSecond: 4096,
   burstBytes: 131_072,
   mostClaims: 8,
-  mostPins: 100_000,
-  claimIdleMs: 90 * DAY_MS,
   pingEveryMs: 30_000,
   maxBodyBytes: 4096
 };

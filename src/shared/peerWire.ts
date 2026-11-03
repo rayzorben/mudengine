@@ -2,11 +2,13 @@
  * The peer gateway's wire (todo 20261031-1156-01): registration over HTTP, as
  * the art server's, then one WebSocket per install carrying JSON frames each
  * way. Every frame off the wire is read here into its type or null. A
- * character is claimed by proving it holds that character's key (an Ed25519
- * key pair made on the sharer's install, the user's answer of 2026-11-02);
- * the gateway pins the key to the name, and each side of a share keeps the
- * other's key so a remade character of the same name gets nothing. See
- * `mudengine-session` › *Peers*.
+ * character is claimed by proving it holds the key it presents (an Ed25519
+ * key pair made per character on each install). The gateway never refuses a
+ * name because another key claimed it: the same player plays one character
+ * from two installs. The key is pinned by the share (the user's answer of
+ * 2026-11-02): a share entry names the receiver keys the sharer granted, a
+ * receiver is told the sharer's key, and a key the grant does not name is
+ * sent nothing. See `mudengine-session` › *Peers*.
  */
 import { asPeerKey, isPeerName, SHARE_LEVELS, type PeerKey, type ShareLevel } from './peers';
 import { asTopPatch, type RpcPatch } from './rpc';
@@ -96,14 +98,21 @@ export function claimText(peer: PeerKey, nonce: string): string {
  */
 export type ChecksSignature = (key: string, text: string, signature: string) => boolean;
 
-/** A name a sharer lists, the level it gives, and the receiver's key once seen (else null). */
+/**
+ * A name a sharer lists, the level it gives, and the receiver keys the grant
+ * holds: one for each of that player's installs. Empty until the sharer has
+ * seen a key to pin, when every claim of the name is sent the sheet.
+ */
 export interface ShareEntry {
   name: string;
   share: Exclude<ShareLevel, 'off'>;
-  key: string | null;
+  keys: string[];
 }
 
-/** A name and the key that holds it, as the gateway tells a sharer who is listening. */
+/** The most receiver keys one share entry may pin. */
+export const MOST_SHARE_KEYS = 8;
+
+/** A name and a key that holds it, as the gateway tells a sharer who is listening. */
 export interface Listener {
   name: string;
   key: string;
@@ -122,12 +131,9 @@ export type PeerUp =
   | ({ k: 'patch'; peer: PeerKey } & SheetPatch)
   | { k: 'leave'; peer: PeerKey };
 
-/**
- * Why a claim was refused: another key holds the name, the answer did not
- * verify, the install claims too many, or the gateway holds all the names it may.
- */
-export type UnclaimedWhy = 'held' | 'answer' | 'too-many' | 'full';
-export const UNCLAIMED_WHYS: readonly UnclaimedWhy[] = ['held', 'answer', 'too-many', 'full'];
+/** Why a claim was refused: the answer did not verify, or the install claims too many. */
+export type UnclaimedWhy = 'answer' | 'too-many';
+export const UNCLAIMED_WHYS: readonly UnclaimedWhy[] = ['answer', 'too-many'];
 
 /** Why a sharer's sheet stopped: the sharer logged off, or no longer shares with this install. */
 export type GoneWhy = 'left' | 'unshared';
@@ -169,22 +175,24 @@ export type PeerDown =
   | { k: 'claimed'; peer: PeerKey }
   | { k: 'unclaimed'; peer: PeerKey; why: UnclaimedWhy }
   | { k: 'audience'; peer: PeerKey; to: Listener[] }
-  | { k: 'unshared'; peer: PeerKey; name: string; why: 'another-key' }
+  | { k: 'unshared'; peer: PeerKey; name: string; key: string; why: 'another-key' }
   | { k: 'shared'; from: PeerKey; key: string; to: string[] }
-  | { k: 'sheet'; from: PeerKey; sheet: Record<string, unknown> }
-  | ({ k: 'patch'; from: PeerKey } & SheetPatch)
-  | { k: 'gone'; from: PeerKey; why: GoneWhy };
+  | { k: 'sheet'; from: PeerKey; key: string; sheet: Record<string, unknown> }
+  | ({ k: 'patch'; from: PeerKey; key: string } & SheetPatch)
+  | { k: 'gone'; from: PeerKey; key: string; why: GoneWhy };
 
-/** The most names one share list or audience may carry. */
+/** The most names one share list may carry. */
 export const MOST_SHARE_NAMES = 32;
+/** The most listeners one audience may carry: every key of every name. */
+const MOST_LISTENERS = MOST_SHARE_NAMES * MOST_SHARE_KEYS;
 
 function asShareEntry(value: unknown): ShareEntry | null {
   if (!isRecord(value)) return null;
-  const { name, key } = value;
+  const { name } = value;
   const share = memberOf(value['share'], SHARE_LEVELS);
   if (!isPeerName(name) || share === null || share === 'off') return null;
-  if (key !== null && !isPublicKey(key)) return null;
-  return { name, share, key };
+  const keys = everyOf(value['keys'], (each) => (isPublicKey(each) ? each : null), MOST_SHARE_KEYS);
+  return keys === null ? null : { name, share, keys };
 }
 
 function asListener(value: unknown): Listener | null {
@@ -258,32 +266,33 @@ export function asPeerDown(value: unknown): PeerDown | null {
       const why = memberOf(value['why'], UNCLAIMED_WHYS);
       return why === null ? null : { k, peer, why };
     }
-    const to = listOf(value['to'], asListener);
+    const to = everyOf(value['to'], asListener, MOST_LISTENERS);
     return to === null ? null : { k, peer, to };
   }
+  const key = value['key'];
+  if (!isPublicKey(key)) return null;
   if (k === 'unshared') {
     const peer = asPeerKey(value['peer']);
     const name = value['name'];
     if (peer === null || !isPeerName(name) || value['why'] !== 'another-key') return null;
-    return { k, peer, name, why: 'another-key' };
+    return { k, peer, name, key, why: 'another-key' };
   }
   const from = asPeerKey(value['from']);
   if (from === null) return null;
   switch (k) {
     case 'shared': {
-      const key = value['key'];
       const to = listOf(value['to'], (each) => (isPeerName(each) ? each : null));
-      return isPublicKey(key) && to !== null ? { k, from, key, to } : null;
+      return to === null ? null : { k, from, key, to };
     }
     case 'sheet':
-      return isRecord(value['sheet']) ? { k, from, sheet: value['sheet'] } : null;
+      return isRecord(value['sheet']) ? { k, from, key, sheet: value['sheet'] } : null;
     case 'patch': {
       const fields = asTopPatch(value);
-      return fields === null ? null : { k, from, ...fields };
+      return fields === null ? null : { k, from, key, ...fields };
     }
     case 'gone': {
       const why = memberOf(value['why'], GONE_WHYS);
-      return why === null ? null : { k, from, why };
+      return why === null ? null : { k, from, key, why };
     }
     default:
       return null;

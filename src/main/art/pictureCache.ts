@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { errorMessage, isRecord } from '../../shared/values';
-import { writeWhole } from '../../node/writeWhole';
+import { writeWhole } from '../app/writeWhole';
 
 export interface Picture {
   bytes: Uint8Array;

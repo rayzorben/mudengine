@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createHmac, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 
 import { verifyEd25519 } from '../../node/ed25519';
 import { solveProofOfWork } from '../../node/proofOfWork';
@@ -18,7 +15,6 @@ import {
   type PeerToken,
   type PeerUp
 } from '../../shared/peerWire';
-import { ClaimBook } from '../ClaimBook';
 import { GATEWAY_LIMITS, type GatewayLimits } from '../limits';
 import { createGateway, type Gateway } from '../server';
 
@@ -33,26 +29,15 @@ const brakkle: PeerKey = { realm: REALM, name: 'Brakkle' };
 const soul: PeerKey = { realm: REALM, name: 'Soul' };
 const LIMITS: GatewayLimits = { ...GATEWAY_LIMITS, powBits: 4, pingEveryMs: 60_000 };
 
-let dir: string;
 let gateway: Gateway;
 let base: string;
 let limits: GatewayLimits;
 const sockets: WebSocket[] = [];
-/** Every claim book opened, settled before its folder is removed. */
-const books: ClaimBook[] = [];
 
 async function start(with_: Partial<GatewayLimits> = {}): Promise<void> {
   limits = { ...LIMITS, ...with_ };
-  const claims = await ClaimBook.open(path.join(dir, 'claims.json'), {
-    idleMs: limits.claimIdleMs,
-    mostPins: limits.mostPins,
-    now: Date.now,
-    log: () => {}
-  });
-  books.push(claims);
   gateway = createGateway({
     buildSecret: SECRET,
-    claims,
     verify: verifyEd25519,
     limits,
     now: Date.now,
@@ -63,15 +48,9 @@ async function start(with_: Partial<GatewayLimits> = {}): Promise<void> {
   base = `127.0.0.1:${port}`;
 }
 
-beforeEach(async () => {
-  dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'gateway-'));
-});
-
 afterEach(async () => {
   for (const socket of sockets.splice(0)) socket.close();
   await gateway.close();
-  for (const book of books.splice(0)) await book.settle();
-  await fs.promises.rm(dir, { recursive: true, force: true });
 });
 
 async function register(secret = SECRET): Promise<Response> {
@@ -244,7 +223,7 @@ describe('the socket', () => {
     const receiver = await installWith();
     const brakkleKeys = keys();
     expect(await sharer.claim(brakkle, brakkleKeys)).toEqual({ k: 'claimed', peer: brakkle });
-    sharer.send({ k: 'shares', peer: brakkle, to: [{ name: 'Soul', share: 'state', key: null }] });
+    sharer.send({ k: 'shares', peer: brakkle, to: [{ name: 'Soul', share: 'state', keys: [] }] });
     expect(await sharer.next('audience')).toEqual({ k: 'audience', peer: brakkle, to: [] });
 
     const soulKeys = keys();
@@ -263,13 +242,19 @@ describe('the socket', () => {
     expect(await receiver.next('sheet')).toEqual({
       k: 'sheet',
       from: brakkle,
+      key: brakkleKeys.public,
       sheet: { v: 1, level: 12 }
     });
     sharer.send({ k: 'patch', peer: brakkle, set: { level: 13 }, deep: {}, drop: [] });
     expect(await receiver.next('patch')).toMatchObject({ from: brakkle, set: { level: 13 } });
 
     sharer.socket.close();
-    expect(await receiver.next('gone')).toEqual({ k: 'gone', from: brakkle, why: 'left' });
+    expect(await receiver.next('gone')).toEqual({
+      k: 'gone',
+      from: brakkle,
+      key: brakkleKeys.public,
+      why: 'left'
+    });
   });
 
   it('refuses a claim whose answer was signed by another key', async () => {
@@ -288,18 +273,42 @@ describe('the socket', () => {
     expect(await install.claim(brakkle, mine)).toEqual({ k: 'claimed', peer: brakkle });
   });
 
-  it('refuses a name another key holds, from another install', async () => {
+  it('lets two installs claim one name under two keys', async () => {
+    const desktop = await installWith();
+    const hosted = await installWith();
+    expect(await desktop.claim(brakkle, keys())).toEqual({ k: 'claimed', peer: brakkle });
+    expect(await hosted.claim(brakkle, keys())).toEqual({ k: 'claimed', peer: brakkle });
+    // And both stay claimed: each may still list its shares.
+    hosted.send({ k: 'shares', peer: brakkle, to: [] });
+    desktop.send({ k: 'shares', peer: brakkle, to: [] });
+    expect(await hosted.next('audience')).toEqual({ k: 'audience', peer: brakkle, to: [] });
+    expect(await desktop.next('audience')).toEqual({ k: 'audience', peer: brakkle, to: [] });
+  });
+
+  it('sends a share pinned to one key nothing under another, and tells the sharer', async () => {
+    const sharer = await installWith();
+    const stranger = await installWith();
     const owner = await installWith();
-    const first = keys();
-    await owner.claim(brakkle, first);
-    const other = await installWith();
-    expect(await other.claim(brakkle, keys())).toEqual({
-      k: 'unclaimed',
+    const soulKeys = keys();
+    const otherKeys = keys();
+    await sharer.claim(brakkle, keys());
+    await stranger.claim(soul, otherKeys);
+    sharer.send({
+      k: 'shares',
       peer: brakkle,
-      why: 'held'
+      to: [{ name: 'Soul', share: 'state', keys: [soulKeys.public] }]
     });
-    // The key that holds it may claim it again, from anywhere.
-    expect(await other.claim(brakkle, first)).toEqual({ k: 'claimed', peer: brakkle });
+    expect(await sharer.next('unshared')).toEqual({
+      k: 'unshared',
+      peer: brakkle,
+      name: 'Soul',
+      key: otherKeys.public,
+      why: 'another-key'
+    });
+    // The key the share was pinned to is sent it: the control, after which the stranger still has nothing.
+    await owner.claim(soul, soulKeys);
+    expect(await owner.next('shared')).toMatchObject({ from: brakkle, to: ['Soul'] });
+    expect(stranger.heard.some((frame) => frame.k === 'shared')).toBe(false);
   });
 
   it('refuses a claim past the most one install may hold', async () => {

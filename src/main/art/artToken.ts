@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 
 import { errorMessage, isRecord } from '../../shared/values';
-import { writeWhole } from '../../node/writeWhole';
+import { writeWhole } from '../app/writeWhole';
 
 export interface ArtToken {
   token: string;

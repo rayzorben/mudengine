@@ -18,7 +18,6 @@ import {
 } from '../shared/peerWire';
 import { errorMessage } from '../shared/values';
 import type { ByteBudget, ByteBudgets } from './ByteBudget';
-import type { ClaimBook } from './ClaimBook';
 import type { GatewayLimits } from './limits';
 import type { InstallLine, PeerRouter } from './PeerRouter';
 import type { Registrar } from './Registrar';
@@ -31,7 +30,6 @@ export type InstallSocket = Pick<
 
 export interface InstallLinkDeps {
   registrar: Pick<Registrar, 'hello'>;
-  claims: Pick<ClaimBook, 'claim'>;
   router: PeerRouter;
   /** Each install's byte budget, kept across its sockets. */
   budgets: Pick<ByteBudgets, 'of'>;
@@ -196,11 +194,6 @@ export class InstallLink implements InstallLine {
     this.pending.delete(id);
     if (!this.deps.verify(pending.key, claimText(pending.peer, pending.nonce), sig)) {
       this.send({ k: 'unclaimed', peer, why: 'answer' });
-      return null;
-    }
-    const answer = this.deps.claims.claim(pending.peer, pending.key);
-    if (answer === 'held' || answer === 'full') {
-      this.send({ k: 'unclaimed', peer, why: answer });
       return null;
     }
     // Said before the router tells it who listens or what is shared with it.

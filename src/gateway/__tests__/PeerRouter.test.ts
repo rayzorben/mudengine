@@ -6,6 +6,7 @@ import { PeerRouter, type InstallLine } from '../PeerRouter';
 const REALM = 'orohost:2427/GreaterMUD';
 const brakkle = { realm: REALM, name: 'Brakkle' };
 const soul = { realm: REALM, name: 'Soul' };
+const rayzor = { realm: REALM, name: 'Rayzor' };
 const KEY_B = 'B'.repeat(43);
 const KEY_S = 'S'.repeat(43);
 const KEY_X = 'X'.repeat(43);
@@ -23,7 +24,8 @@ class Line implements InstallLine {
   }
 }
 
-const toSoul: ShareEntry[] = [{ name: 'Soul', share: 'state', key: null }];
+const share = (name: string, keys: string[] = []): ShareEntry => ({ name, share: 'state', keys });
+const toSoul = [share('Soul')];
 
 function setUp(): { router: PeerRouter; sharer: Line; receiver: Line } {
   const router = new PeerRouter(10_000);
@@ -37,32 +39,35 @@ describe('the router', () => {
   it('sends a receiver the whole sheet when it connects, then each patch', () => {
     const { router, sharer, receiver } = setUp();
     const other = new Line();
-    router.claim(other, { realm: REALM, name: 'Rayzor' }, KEY_X);
-    expect(
-      router.setShares(sharer, brakkle, [...toSoul, { name: 'Rayzor', share: 'state', key: null }])
-    ).toBeNull();
+    router.claim(other, rayzor, KEY_X);
+    expect(router.setShares(sharer, brakkle, [...toSoul, share('Rayzor')])).toBeNull();
     expect(router.sheet(sharer, brakkle, { v: 1, level: 12 })).toBeNull();
 
     router.claim(receiver, soul, KEY_S);
     expect(receiver.take()).toEqual([
       { k: 'shared', from: brakkle, key: KEY_B, to: ['Soul'] },
-      { k: 'sheet', from: brakkle, sheet: { v: 1, level: 12 } }
+      { k: 'sheet', from: brakkle, key: KEY_B, sheet: { v: 1, level: 12 } }
     ]);
     expect(router.patch(sharer, brakkle, { set: { level: 13 }, deep: {}, drop: [] })).toBeNull();
     expect(receiver.take()).toEqual([
-      { k: 'patch', from: brakkle, set: { level: 13 }, deep: {}, drop: [] }
+      { k: 'patch', from: brakkle, key: KEY_B, set: { level: 13 }, deep: {}, drop: [] }
     ]);
     // A receiver that connects now is sent the sheet as patched, not as first sent.
     const late = new Line();
-    router.leave(other, { realm: REALM, name: 'Rayzor' });
-    router.claim(late, { realm: REALM, name: 'Rayzor' }, KEY_X);
-    expect(late.heard).toContainEqual({ k: 'sheet', from: brakkle, sheet: { v: 1, level: 13 } });
+    router.leave(other, rayzor);
+    router.claim(late, rayzor, KEY_X);
+    expect(late.heard).toContainEqual({
+      k: 'sheet',
+      from: brakkle,
+      key: KEY_B,
+      sheet: { v: 1, level: 13 }
+    });
   });
 
   it('sends nothing to a name the sharer does not list, until it lists it', () => {
     const { router, sharer, receiver } = setUp();
     router.claim(receiver, soul, KEY_S);
-    router.setShares(sharer, brakkle, [{ name: 'Rayzor', share: 'state', key: null }]);
+    router.setShares(sharer, brakkle, [share('Rayzor')]);
     router.sheet(sharer, brakkle, { v: 1 });
     expect(receiver.heard).toEqual([]);
     router.setShares(sharer, brakkle, toSoul);
@@ -104,21 +109,40 @@ describe('the router', () => {
     expect(away.heard).toEqual([]);
   });
 
-  it('sends nothing to a listed name held by another key, and tells the sharer once', () => {
+  it('lets two installs claim one name under two keys, and an unpinned share reaches both', () => {
+    const { router, sharer, receiver } = setUp();
+    const second = new Line();
+    router.claim(receiver, soul, KEY_S);
+    router.claim(second, soul, KEY_X);
+    router.setShares(sharer, brakkle, toSoul);
+    expect(receiver.kinds()).toEqual(['shared']);
+    expect(second.kinds()).toEqual(['shared']);
+    expect(sharer.heard).toContainEqual({
+      k: 'audience',
+      peer: brakkle,
+      to: [
+        { name: 'Soul', key: KEY_S },
+        { name: 'Soul', key: KEY_X }
+      ]
+    });
+  });
+
+  it('sends a share pinned to one key nothing under another, and tells the sharer once', () => {
     const { router, sharer, receiver } = setUp();
     router.claim(receiver, soul, KEY_X);
-    router.setShares(sharer, brakkle, [{ name: 'Soul', share: 'state', key: KEY_S }]);
+    router.setShares(sharer, brakkle, [share('Soul', [KEY_S])]);
     expect(receiver.heard).toEqual([]);
     expect(sharer.take()).toEqual([
       { k: 'audience', peer: brakkle, to: [] },
-      { k: 'unshared', peer: brakkle, name: 'Soul', why: 'another-key' }
+      { k: 'unshared', peer: brakkle, name: 'Soul', key: KEY_X, why: 'another-key' }
     ]);
-    router.setShares(sharer, brakkle, [{ name: 'Soul', share: 'state', key: KEY_S }]);
+    router.setShares(sharer, brakkle, [share('Soul', [KEY_S])]);
     expect(sharer.heard).toEqual([]);
-    // The key the share was granted to is sent the sheet: the control.
+    // The key the share was pinned to is sent the sheet, beside the other: the control.
     const owner = new Line();
     router.claim(owner, soul, KEY_S);
     expect(owner.kinds()).toEqual(['shared']);
+    expect(receiver.heard).toEqual([]);
   });
 
   it('tells every receiver when the sharer leaves', () => {
@@ -127,7 +151,7 @@ describe('the router', () => {
     router.setShares(sharer, brakkle, toSoul);
     receiver.take();
     router.dropLine(sharer);
-    expect(receiver.take()).toEqual([{ k: 'gone', from: brakkle, why: 'left' }]);
+    expect(receiver.take()).toEqual([{ k: 'gone', from: brakkle, key: KEY_B, why: 'left' }]);
   });
 
   it('tells a receiver the sharer stopped sharing with it', () => {
@@ -136,7 +160,27 @@ describe('the router', () => {
     router.setShares(sharer, brakkle, toSoul);
     receiver.take();
     router.setShares(sharer, brakkle, []);
-    expect(receiver.take()).toEqual([{ k: 'gone', from: brakkle, why: 'unshared' }]);
+    expect(receiver.take()).toEqual([{ k: 'gone', from: brakkle, key: KEY_B, why: 'unshared' }]);
+  });
+
+  it('keeps two claims of one sharer under two keys apart', () => {
+    const { router, sharer, receiver } = setUp();
+    const laptop = new Line();
+    router.claim(laptop, brakkle, KEY_X);
+    router.claim(receiver, soul, KEY_S);
+    router.setShares(sharer, brakkle, toSoul);
+    router.setShares(laptop, brakkle, toSoul);
+    router.sheet(sharer, brakkle, { v: 1, from: 'desktop' });
+    router.sheet(laptop, brakkle, { v: 1, from: 'laptop' });
+    const sheets = receiver.heard.filter((frame) => frame.k === 'sheet');
+    expect(sheets).toEqual([
+      { k: 'sheet', from: brakkle, key: KEY_B, sheet: { v: 1, from: 'desktop' } },
+      { k: 'sheet', from: brakkle, key: KEY_X, sheet: { v: 1, from: 'laptop' } }
+    ]);
+    // One leaving leaves the other streaming.
+    router.dropLine(laptop);
+    expect(receiver.heard.at(-1)).toEqual({ k: 'gone', from: brakkle, key: KEY_X, why: 'left' });
+    expect(router.patch(sharer, brakkle, { set: { level: 2 }, deep: {}, drop: [] })).toBeNull();
   });
 
   it('refuses a patch before any sheet, and one that does not fit the sheet', () => {
@@ -156,15 +200,13 @@ describe('the router', () => {
     router.claim(receiver, soul, KEY_S);
     router.setShares(sharer, brakkle, toSoul);
     router.sheet(sharer, brakkle, { v: 1 });
-    expect(
-      router.patch(sharer, brakkle, { set: { a: 'x'.repeat(5_000) }, deep: {}, drop: [] })
-    ).toBeNull();
-    expect(
-      router.patch(sharer, brakkle, { set: { b: 'x'.repeat(5_000) }, deep: {}, drop: [] })
-    ).toBe('malformed');
+    const grow = (field: string): ReturnType<PeerRouter['patch']> =>
+      router.patch(sharer, brakkle, { set: { [field]: 'x'.repeat(5_000) }, deep: {}, drop: [] });
+    expect(grow('a')).toBeNull();
+    expect(grow('b')).toBe('malformed');
   });
 
-  it('counts what each socket holds, and lets a later claim of the same name take it', () => {
+  it('counts what each socket holds, and lets a later claim of the same name and key take it', () => {
     const { router, sharer } = setUp();
     expect(router.heldBy(sharer)).toBe(1);
     const again = new Line();
