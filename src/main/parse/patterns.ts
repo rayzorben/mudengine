@@ -2122,6 +2122,19 @@ export const RULES: Rule[] = [
       `^You give (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) to (?<target>[^.]+)\\.$`
     )
   },
+  /*
+   * Coins dropped (`DropCommand.cs:115`, `:117`): your own with the count and
+   * no full stop, another's as `some <coins>`, with one on MajorMUD
+   * (captures/060:40). Before the item rules, which want the stop.
+   */
+  {
+    type: 'player-drops',
+    pattern: new RegExp(`^You dropped (?<count>\\d+) (?<coin>${COIN_NOUN})\\.?$`)
+  },
+  {
+    type: 'player-drops',
+    pattern: new RegExp(`^(?<player>\\w+) dropped some (?<coin>${COIN_NOUN})\\.?$`)
+  },
   { type: 'player-drops', pattern: /^(?<player>\w+) drops (?<item>.+)\./ },
   { type: 'player-drops', pattern: /^You dropped (?:(?<count>\d+) )?(?<item>.+)\./ },
   { type: 'user-equipped', pattern: new RegExp(`^You are now wearing (?<item>${ITEM_NAME}+)\\.$`) },

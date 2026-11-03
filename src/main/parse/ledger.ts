@@ -16,7 +16,7 @@ import {
   type Room
 } from '../../shared/character';
 import type { BelongingsSink } from '../../shared/belongings';
-import { coinsInCopper, quotedInCopper, takeCoins } from '../../shared/coins';
+import { addCoins, coinsInCopper, quotedInCopper, takeCoins } from '../../shared/coins';
 import type { CurrencyEntity } from '../../shared/entities';
 import type { Discovery } from '../../shared/memory';
 import { sameItem } from '../../shared/items';
@@ -207,6 +207,27 @@ export function coinsPickedUp(
    * same refusal the old code already made about an unknown `wealth`.
    */
   return { ...withCoinCount(s, denomination, picked), room };
+}
+
+/**
+ * Coins dropped (`DropCommand.cs:115`): `You dropped 10 gold crowns`, with no
+ * full stop, leaves the purse as a give does and lands in the floor's coins;
+ * the room's `<name> dropped some gold crowns` (`:117`, captures/060:40) adds
+ * a lot nobody counted, so that pile is unknown until the next listing. Null
+ * for a drop that names no coin.
+ */
+export function coinsLetGo(
+  s: CharacterState,
+  g: Readonly<Record<string, string | undefined>>
+): CharacterState | null {
+  const denomination = coinNamed(g['coin'] ?? '');
+  if (denomination === undefined) return null;
+  // Another's drop names no count.
+  const count = figure(g['count']);
+  if (count === null) return { ...s, room: { ...s.room, cash: null } };
+  const left = coinsHanded(s, count, g['coin'] ?? '', false);
+  const cash = s.room.cash === null ? null : addCoins(s.room.cash, denomination, count);
+  return { ...left, room: { ...left.room, cash } };
 }
 
 /**

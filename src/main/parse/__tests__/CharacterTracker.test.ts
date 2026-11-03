@@ -7345,6 +7345,45 @@ describe('coins off the floor', () => {
     expect(t.current.room.cash?.silver).toBe(0);
   });
 
+  /*
+   * A coin drop: `You dropped 10 gold crowns` (GreaterMUD `DropCommand.cs:115`,
+   * no full stop), and the room's `Shooting dropped some gold crowns.`
+   * (captures/060:40). Unread, the purse kept the dropped coins.
+   */
+  it('takes dropped coins out of the purse and onto the floor', () => {
+    const t = play([
+      '[HP=34]:',
+      'You are carrying 61 gold crowns',
+      'You have no keys.',
+      'Wealth: 6100 copper farthings',
+      'Encumbrance: 0/2400 - None [0%]',
+      '[HP=34]:',
+      'Temple Street, Eastern End',
+      'You notice 5 gold crowns here.',
+      'Obvious exits: north, south',
+      '[HP=34]:',
+      'You dropped 10 gold crowns'
+    ]);
+    expect(t.current.inventory.coins.gold).toBe(51);
+    expect(t.current.inventory.wealth).toBe(5100);
+    expect(t.current.room.cash?.gold).toBe(15);
+    expect(t.current.room.items).toEqual([]);
+  });
+
+  it('leaves the floor’s coins unknown when another player drops some', () => {
+    const t = play([
+      '[HP=86/MA=18]:',
+      'Temple Street, Eastern End',
+      'You notice 5 gold crowns here.',
+      'Also here: Shooting.',
+      'Obvious exits: north, south',
+      '[HP=86/MA=18]:',
+      'Shooting dropped some gold crowns.'
+    ]);
+    expect(t.current.room.cash).toBeNull();
+    expect(t.current.room.items).toEqual([]);
+  });
+
   it('leaves a denomination nothing has counted uncounted', () => {
     // No listing has been seen, so nobody has said how many silver there are.
     // Adding to that would claim the three picked up were the whole purse.

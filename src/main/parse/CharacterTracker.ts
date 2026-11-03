@@ -36,7 +36,7 @@ import {
   withRoomItem,
   itemList
 } from './inventory';
-import { coinsPickedUp, Ledger, takenByAnother, trained, wealthStated } from './ledger';
+import { coinsLetGo, coinsPickedUp, Ledger, takenByAnother, trained, wealthStated } from './ledger';
 import { resolveFromCoordinates } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world';
@@ -1757,7 +1757,7 @@ export class CharacterTracker {
 
       case 'player-drops': {
         const item = g['item'];
-        if (!item) return null;
+        if (g['coin'] !== undefined || !item) return coinsLetGo(s, g);
         if (g['player'] !== undefined)
           return withRoomItem(s, item, (name) => this.itemEntity(name), figure(g['count']) ?? 1);
         const dropped = figure(g['count']) ?? 1;
