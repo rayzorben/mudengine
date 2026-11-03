@@ -8,7 +8,9 @@
  * from two installs. The key is pinned by the share (the user's answer of
  * 2026-11-02): a share entry names the receiver keys the sharer granted, a
  * receiver is told the sharer's key, and a key the grant does not name is
- * sent nothing. See `mudengine-session` › *Peers*.
+ * sent nothing. A key nobody has pinned is unknown, so it is reported to the
+ * sharer to pin (`unpinned`) and sent nothing until it is. See
+ * `mudengine-session` › *Peers*.
  */
 import { asPeerKey, isPeerName, SHARE_LEVELS, type PeerKey, type ShareLevel } from './peers';
 import { asTopPatch, type RpcPatch } from './rpc';
@@ -100,8 +102,8 @@ export type ChecksSignature = (key: string, text: string, signature: string) => 
 
 /**
  * A name a sharer lists, the level it gives, and the receiver keys the grant
- * holds: one for each of that player's installs. Empty until the sharer has
- * seen a key to pin, when every claim of the name is sent the sheet.
+ * holds: one for each of that player's installs. Only a claim under one of
+ * them is sent the sheet; an entry with none sends nobody anything.
  */
 export interface ShareEntry {
   name: string;
@@ -175,7 +177,8 @@ export type PeerDown =
   | { k: 'claimed'; peer: PeerKey }
   | { k: 'unclaimed'; peer: PeerKey; why: UnclaimedWhy }
   | { k: 'audience'; peer: PeerKey; to: Listener[] }
-  | { k: 'unshared'; peer: PeerKey; name: string; key: string; why: 'another-key' }
+  /** A claim of a listed name under a key the grant does not hold, for the player to pin or not. */
+  | { k: 'unpinned'; peer: PeerKey; name: string; key: string }
   | { k: 'shared'; from: PeerKey; key: string; to: string[] }
   | { k: 'sheet'; from: PeerKey; key: string; sheet: Record<string, unknown> }
   | ({ k: 'patch'; from: PeerKey; key: string } & SheetPatch)
@@ -271,11 +274,10 @@ export function asPeerDown(value: unknown): PeerDown | null {
   }
   const key = value['key'];
   if (!isPublicKey(key)) return null;
-  if (k === 'unshared') {
+  if (k === 'unpinned') {
     const peer = asPeerKey(value['peer']);
     const name = value['name'];
-    if (peer === null || !isPeerName(name) || value['why'] !== 'another-key') return null;
-    return { k, peer, name, key, why: 'another-key' };
+    return peer === null || !isPeerName(name) ? null : { k, peer, name, key };
   }
   const from = asPeerKey(value['from']);
   if (from === null) return null;

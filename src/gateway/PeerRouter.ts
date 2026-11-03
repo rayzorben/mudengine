@@ -3,15 +3,25 @@
  * the same name may be claimed under several keys at once, since one player
  * plays a character from more than one install. Each sharing claim's list
  * names characters in its own realm, so nothing crosses to another, and the
- * receiver keys each grant holds: a claim under a key the grant does not name
- * is sent nothing, and the sharer is told. Each sharer's last whole sheet is
+ * receiver keys each grant holds. Only a claim under one of those keys is sent
+ * anything. A claim under any other key, a grant with none included, is
+ * unknown: the sharer is told it (`unpinned`, the first `MOST_SHARE_KEYS` of
+ * each name, so a flood of claims costs a bounded scan and bounded frames)
+ * and it is sent nothing. Each sharer's last whole sheet is
  * kept current with its patches, so an install that starts listening is sent
  * the whole first. A sharer is told who is listening (`audience`) and sends
  * only while somebody is. The sheet is never read, only patched.
  */
 import { applyPatch } from '../shared/patches';
 import { peerKeyText, type PeerKey } from '../shared/peers';
-import type { Listener, PeerDown, RefusedWhy, ShareEntry, SheetPatch } from '../shared/peerWire';
+import {
+  MOST_SHARE_KEYS,
+  type Listener,
+  type PeerDown,
+  type RefusedWhy,
+  type ShareEntry,
+  type SheetPatch
+} from '../shared/peerWire';
 import { playerKey } from '../shared/players';
 
 /** An install's socket, as the router sends to it. */
@@ -47,8 +57,8 @@ export class PeerRouter {
   private readonly delivered = new Map<string, Map<InstallLine, string>>();
   /** The audience each sharing claim was last told. */
   private readonly audiences = new Map<string, string>();
-  /** The claims each sharer was told its grant does not name, so each is said once. */
-  private readonly unnamed = new Map<string, ReadonlySet<string>>();
+  /** The claims each sharer was told its grant does not hold, so each is said once. */
+  private readonly unpinned = new Map<string, ReadonlySet<string>>();
 
   /** `mostSheetBytes`: a sheet patched past this is refused, as a frame that size would be. */
   constructor(private readonly mostSheetBytes: number) {}
@@ -169,7 +179,7 @@ export class PeerRouter {
     this.delivered.delete(id);
     this.sheets.delete(id);
     this.audiences.delete(id);
-    this.unnamed.delete(id);
+    this.unpinned.delete(id);
     for (const sharer of this.listedBy.get(claim.name) ?? []) this.refresh(sharer);
   }
 
@@ -179,21 +189,30 @@ export class PeerRouter {
     if (sharer === undefined) return;
     const byLine = new Map<InstallLine, string[]>();
     const listeners: Listener[] = [];
-    const unnamed: Claim[] = [];
+    const unpinned: Claim[] = [];
     for (const entry of this.shares.get(id) ?? []) {
       const name = peerKeyText({ realm: sharer.peer.realm, name: entry.name });
-      for (const receiverId of this.byName.get(name) ?? []) {
-        const receiver = this.claims.get(receiverId)!;
-        if (entry.keys.length > 0 && !entry.keys.includes(receiver.key)) {
-          unnamed.push(receiver);
-          continue;
-        }
-        listeners.push({ name: receiver.peer.name, key: receiver.key });
+      for (const key of entry.keys) {
+        const receiver = this.claims.get(claimId(name, key));
+        if (receiver === undefined) continue;
+        listeners.push({ name: receiver.peer.name, key });
         byLine.set(receiver.line, [...(byLine.get(receiver.line) ?? []), receiver.peer.name]);
       }
+      unpinned.push(...this.unpinnedOf(name, entry.keys));
     }
     this.tellReceivers(id, sharer, byLine);
-    this.tellSharer(id, sharer, listeners, unnamed);
+    this.tellSharer(id, sharer, listeners, unpinned);
+  }
+
+  /** The first `MOST_SHARE_KEYS` claims of `name` under keys `pinned` does not hold. */
+  private unpinnedOf(name: string, pinned: readonly string[]): Claim[] {
+    const found: Claim[] = [];
+    for (const receiverId of this.byName.get(name) ?? []) {
+      if (found.length >= MOST_SHARE_KEYS) break;
+      const receiver = this.claims.get(receiverId)!;
+      if (!pinned.includes(receiver.key)) found.push(receiver);
+    }
+    return found;
   }
 
   private tellReceivers(id: string, sharer: Claim, byLine: Map<InstallLine, string[]>): void {
@@ -224,28 +243,22 @@ export class PeerRouter {
     id: string,
     sharer: Claim,
     listeners: readonly Listener[],
-    unnamed: readonly Claim[]
+    unpinned: readonly Claim[]
   ): void {
     const audience = JSON.stringify(listeners);
     if (this.audiences.get(id) !== audience) {
       this.audiences.set(id, audience);
       sharer.line.send({ k: 'audience', peer: sharer.peer, to: [...listeners] });
     }
-    const said = this.unnamed.get(id) ?? new Set<string>();
+    const said = this.unpinned.get(id) ?? new Set<string>();
     const now = new Set<string>();
-    for (const receiver of unnamed) {
+    for (const receiver of unpinned) {
       const each = claimId(playerKey(receiver.peer.name), receiver.key);
       now.add(each);
       if (said.has(each)) continue;
       const { name } = receiver.peer;
-      sharer.line.send({
-        k: 'unshared',
-        peer: sharer.peer,
-        name,
-        key: receiver.key,
-        why: 'another-key'
-      });
+      sharer.line.send({ k: 'unpinned', peer: sharer.peer, name, key: receiver.key });
     }
-    this.unnamed.set(id, now);
+    this.unpinned.set(id, now);
   }
 }

@@ -33,7 +33,7 @@ const downs: PeerDown[] = [
   { k: 'claimed', peer },
   { k: 'unclaimed', peer, why: 'answer' },
   { k: 'audience', peer, to: [{ name: 'Soul', key }] },
-  { k: 'unshared', peer, name: 'Soul', key, why: 'another-key' },
+  { k: 'unpinned', peer, name: 'Soul', key },
   { k: 'shared', from: peer, key, to: ['Soul'] },
   { k: 'sheet', from: peer, key, sheet: { v: 1 } },
   {

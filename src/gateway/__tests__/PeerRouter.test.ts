@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PeerDown, ShareEntry } from '../../shared/peerWire';
+import { MOST_SHARE_KEYS, type PeerDown, type ShareEntry } from '../../shared/peerWire';
 import { PeerRouter, type InstallLine } from '../PeerRouter';
 
 const REALM = 'orohost:2427/GreaterMUD';
@@ -25,7 +25,7 @@ class Line implements InstallLine {
 }
 
 const share = (name: string, keys: string[] = []): ShareEntry => ({ name, share: 'state', keys });
-const toSoul = [share('Soul')];
+const toSoul = [share('Soul', [KEY_S])];
 
 function setUp(): { router: PeerRouter; sharer: Line; receiver: Line } {
   const router = new PeerRouter(10_000);
@@ -40,7 +40,7 @@ describe('the router', () => {
     const { router, sharer, receiver } = setUp();
     const other = new Line();
     router.claim(other, rayzor, KEY_X);
-    expect(router.setShares(sharer, brakkle, [...toSoul, share('Rayzor')])).toBeNull();
+    expect(router.setShares(sharer, brakkle, [...toSoul, share('Rayzor', [KEY_X])])).toBeNull();
     expect(router.sheet(sharer, brakkle, { v: 1, level: 12 })).toBeNull();
 
     router.claim(receiver, soul, KEY_S);
@@ -67,7 +67,7 @@ describe('the router', () => {
   it('sends nothing to a name the sharer does not list, until it lists it', () => {
     const { router, sharer, receiver } = setUp();
     router.claim(receiver, soul, KEY_S);
-    router.setShares(sharer, brakkle, [share('Rayzor')]);
+    router.setShares(sharer, brakkle, [share('Rayzor', [KEY_X])]);
     router.sheet(sharer, brakkle, { v: 1 });
     expect(receiver.heard).toEqual([]);
     router.setShares(sharer, brakkle, toSoul);
@@ -109,12 +109,27 @@ describe('the router', () => {
     expect(away.heard).toEqual([]);
   });
 
-  it('lets two installs claim one name under two keys, and an unpinned share reaches both', () => {
+  it('sends a share with no key pinned to nobody, and reports each claim of the name', () => {
     const { router, sharer, receiver } = setUp();
     const second = new Line();
     router.claim(receiver, soul, KEY_S);
     router.claim(second, soul, KEY_X);
-    router.setShares(sharer, brakkle, toSoul);
+    router.setShares(sharer, brakkle, [share('Soul')]);
+    expect(receiver.heard).toEqual([]);
+    expect(second.heard).toEqual([]);
+    expect(sharer.take()).toEqual([
+      { k: 'audience', peer: brakkle, to: [] },
+      { k: 'unpinned', peer: brakkle, name: 'Soul', key: KEY_S },
+      { k: 'unpinned', peer: brakkle, name: 'Soul', key: KEY_X }
+    ]);
+  });
+
+  it('lets two installs claim one name under two keys, and a share pinned to both reaches both', () => {
+    const { router, sharer, receiver } = setUp();
+    const second = new Line();
+    router.claim(receiver, soul, KEY_S);
+    router.claim(second, soul, KEY_X);
+    router.setShares(sharer, brakkle, [share('Soul', [KEY_S, KEY_X])]);
     expect(receiver.kinds()).toEqual(['shared']);
     expect(second.kinds()).toEqual(['shared']);
     expect(sharer.heard).toContainEqual({
@@ -134,7 +149,7 @@ describe('the router', () => {
     expect(receiver.heard).toEqual([]);
     expect(sharer.take()).toEqual([
       { k: 'audience', peer: brakkle, to: [] },
-      { k: 'unshared', peer: brakkle, name: 'Soul', key: KEY_X, why: 'another-key' }
+      { k: 'unpinned', peer: brakkle, name: 'Soul', key: KEY_X }
     ]);
     router.setShares(sharer, brakkle, [share('Soul', [KEY_S])]);
     expect(sharer.heard).toEqual([]);
@@ -143,6 +158,21 @@ describe('the router', () => {
     router.claim(owner, soul, KEY_S);
     expect(owner.kinds()).toEqual(['shared']);
     expect(receiver.heard).toEqual([]);
+  });
+
+  it('reports at most a bounded number of unpinned claims of one name', () => {
+    const { router, sharer } = setUp();
+    router.setShares(sharer, brakkle, toSoul);
+    sharer.take();
+    for (let i = 0; i < MOST_SHARE_KEYS * 3; i += 1) {
+      router.claim(new Line(), soul, String(i).padStart(43, 'k'));
+    }
+    const reported = sharer.heard.filter((frame) => frame.k === 'unpinned');
+    expect(reported).toHaveLength(MOST_SHARE_KEYS);
+    // The pinned key is still found past them all: the control.
+    const owner = new Line();
+    router.claim(owner, soul, KEY_S);
+    expect(owner.kinds()).toEqual(['shared']);
   });
 
   it('tells every receiver when the sharer leaves', () => {

@@ -222,11 +222,15 @@ describe('the socket', () => {
     const sharer = await installWith();
     const receiver = await installWith();
     const brakkleKeys = keys();
+    const soulKeys = keys();
     expect(await sharer.claim(brakkle, brakkleKeys)).toEqual({ k: 'claimed', peer: brakkle });
-    sharer.send({ k: 'shares', peer: brakkle, to: [{ name: 'Soul', share: 'state', keys: [] }] });
+    sharer.send({
+      k: 'shares',
+      peer: brakkle,
+      to: [{ name: 'Soul', share: 'state', keys: [soulKeys.public] }]
+    });
     expect(await sharer.next('audience')).toEqual({ k: 'audience', peer: brakkle, to: [] });
 
-    const soulKeys = keys();
     expect(await receiver.claim(soul, soulKeys)).toEqual({ k: 'claimed', peer: soul });
     const told = sharer.heard.length;
     const heard = await sharer.next('audience', told);
@@ -298,12 +302,11 @@ describe('the socket', () => {
       peer: brakkle,
       to: [{ name: 'Soul', share: 'state', keys: [soulKeys.public] }]
     });
-    expect(await sharer.next('unshared')).toEqual({
-      k: 'unshared',
+    expect(await sharer.next('unpinned')).toEqual({
+      k: 'unpinned',
       peer: brakkle,
       name: 'Soul',
-      key: otherKeys.public,
-      why: 'another-key'
+      key: otherKeys.public
     });
     // The key the share was pinned to is sent it: the control, after which the stranger still has nothing.
     await owner.claim(soul, soulKeys);
