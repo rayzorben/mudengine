@@ -1881,8 +1881,8 @@ export class CharacterTracker {
             keys: itemList(g['keys']).flatMap((entry) => parseKeyEntries(entry)),
             wealth: figure((g['wealth'] ?? '').replace(/,/g, '')),
             coins,
-            encumbrance: figure(g['encumbrance']),
-            encumbranceMax: figure(g['encumbranceMax']),
+            encumbrance: figure(g['carried']),
+            encumbranceMax: figure(g['max']),
             encumbranceWord: g['encumbranceWord']?.trim() || null,
             // The listing landed: from here the pack is a fact rather than a
             // silence, and an exit that wants something in it can be judged.

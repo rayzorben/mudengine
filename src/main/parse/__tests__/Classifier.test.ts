@@ -474,15 +474,19 @@ describe('two listings in a row', () => {
     expect(feed([...INVENTORY, '[HP=98/MA=50]:', ...WHO])).toEqual(['user-inventory', 'who-list']);
   });
 
+  // `i` ends at its own load line, which is printed last (`BatchRule.last`).
+  it('frames both when the first ends at its own last line', () => {
+    expect(feed([...INVENTORY, ...WHO])).toEqual(['user-inventory', 'who-list']);
+  });
+
   /*
-   * Recorded rather than fixed. It is not the classifier being wrong — the
-   * server does not send two listings back to back, and inventing a second
-   * terminator would mean guessing which lines belong to which. What is worth
-   * pinning is the *shape of the failure*: the first block wins and the second
-   * is not merely wrong but absent.
+   * Recorded rather than fixed. The server does not send two listings back to
+   * back, and inventing a second terminator would mean guessing which lines
+   * belong to which. What is worth pinning is the *shape of the failure*: the
+   * first block wins and the second is not merely wrong but absent.
    */
   it('loses the second when nothing closes the first', () => {
-    expect(feed([...INVENTORY, ...WHO])).toEqual(['user-inventory']);
+    expect(feed([...WHO.slice(0, -1), ...INVENTORY, '[HP=98/MA=50]:'])).toEqual(['who-list']);
   });
 
   /*
@@ -967,7 +971,7 @@ describe('batch blocks', () => {
       'padded helm (Head), padded vest (Torso), padded gloves (Hands), ' +
         'padded pants (Legs), padded boots (Feet), quarterstaff (Weapon Hand)'
     );
-    expect(batch?.groups).toMatchObject({ encumbrance: '500', encumbranceMax: '3360' });
+    expect(batch?.groups).toMatchObject({ carried: '500', max: '3360' });
   });
 
   it('keeps the terminator out of the last field it followed', () => {
@@ -983,7 +987,7 @@ describe('batch blocks', () => {
       const result = classifier.classify(line(text));
       if (result.batch) batch = result.batch;
     }
-    expect(batch?.groups['encumbranceMax']).toBe('2400');
+    expect(batch?.groups['max']).toBe('2400');
     expect(batch?.groups['items']).toBe('a rusty dagger');
   });
 

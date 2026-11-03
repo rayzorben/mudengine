@@ -277,8 +277,8 @@ export class Rewriter {
             keys: itemList(g['keys']).flatMap((entry) => parseKeyEntries(entry)),
             coins,
             wealth: int(g['wealth']),
-            encumbrance: int(g['encumbrance']),
-            encumbranceMax: int(g['encumbranceMax']),
+            encumbrance: int(g['carried']),
+            encumbranceMax: int(g['max']),
             encumbranceWord: g['encumbranceWord']?.trim() ?? null
           }
         };

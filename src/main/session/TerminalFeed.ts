@@ -528,11 +528,15 @@ export class TerminalFeed {
         });
         return;
       }
-      const drawn =
-        facts?.closed !== undefined && facts.closed.type === this.held.type
-          ? (this.source.rewrite?.(facts.closed) ?? null)
-          : null;
-      this.releaseHeld(drawn);
+      const closed = facts?.closed?.type === this.held.type ? facts.closed : undefined;
+      // A listing that ends on its own last line (`i`'s load line) keeps that
+      // line: it is drawn with the rest, not painted under the drawing.
+      const ownLast = closed !== undefined && type !== 'status-line';
+      if (ownLast) {
+        this.held.lines.push({ text, terminator, ...(id ? { id } : {}), volunteered: false });
+      }
+      this.releaseHeld(closed ? (this.source.rewrite?.(closed) ?? null) : null);
+      if (ownLast) return;
     }
 
     /*

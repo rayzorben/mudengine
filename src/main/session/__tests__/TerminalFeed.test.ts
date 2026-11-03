@@ -596,8 +596,8 @@ describe('a listing the client draws itself', () => {
 
   /**
    * The classifier's batch collector, as far as the feed sees it: a pack
-   * listing opens on its header and closes on the status line; an
-   * experience line is one block of its own.
+   * listing opens on its header and closes on its load line, or the status
+   * line where none came; an experience line is one block of its own.
    */
   function listing(
     rewrite: FeedSource['rewrite'],
@@ -613,7 +613,7 @@ describe('a listing the client draws itself', () => {
         lines = [plain];
       } else if (open !== null) {
         lines.push(plain);
-        if (STATUS_LINE.test(plain.trimStart())) {
+        if (STATUS_LINE.test(plain.trimStart()) || /^Encumbe?rance:/.test(plain)) {
           closed = {
             seq: 1,
             at: 0,
@@ -652,39 +652,43 @@ describe('a listing the client draws itself', () => {
       ? { text: DRAWN_PACK, marks: [{ offset: 0, mark: { label: 'x', inline: [] } }] }
       : null;
 
-  it('withholds the listing from its header and draws it whole at the prompt', () => {
+  it('withholds the listing from its header and draws it whole at its load line', () => {
     const h = listing(drawPack);
     expect(h.chunk('i\r\n')).toBe('i\r\n');
-    expect(h.chunk(HEADER + KEYS + LOAD)).toBe('');
-    expect(h.chunk(PROMPT)).toBe('');
+    expect(h.chunk(HEADER + KEYS)).toBe('');
+    // The load line ends the listing and is drawn with it, not under it.
+    expect(h.chunk(LOAD)).toBe(DRAWN_PACK);
+    expect(h.chunk(PROMPT) + h.flush()).toBe(PROMPT);
+    expect(h.released).toEqual([]);
+  });
+
+  it('draws a listing the prompt ends, where no load line came', () => {
+    const h = listing(drawPack);
+    expect(h.chunk(HEADER + KEYS + PROMPT)).toBe('');
     // The idle flush frames the prompt, which completes the listing.
     expect(h.flush()).toBe(DRAWN_PACK + PROMPT);
-    expect(h.released).toEqual([]);
   });
 
   it("gives the drawing's marked lines their ids where they land in the chunk", () => {
     const h = listing(drawPack);
-    h.chunk('i\r\n' + HEADER + KEYS + LOAD + PROMPT);
-    h.feed.take();
-    for (const framed of h.tokenizer.flush()) {
-      h.feed.line(
-        framed.text,
-        framed.terminator,
-        plainText(framed),
-        'status-line',
-        undefined,
-        h.facts(plainText(framed), 'status-line')
-      );
-    }
+    h.chunk('i\r\n' + HEADER + KEYS);
+    const load = LOAD.trimEnd();
+    h.feed.line(
+      LOAD,
+      'newline',
+      load,
+      'user-encumbrance',
+      undefined,
+      h.facts(load, 'user-encumbrance')
+    );
     const out = h.feed.take();
-    expect(out.text.startsWith(DRAWN_PACK)).toBe(true);
+    expect(out.text).toBe(DRAWN_PACK);
     expect(out.lines).toEqual([{ offset: 0, id: 'drawn.x' }]);
   });
 
   it("paints the realm's lines, in order, where the design declines", () => {
     const h = listing(() => null);
-    expect(h.chunk(HEADER + KEYS + LOAD + PROMPT)).toBe('');
-    expect(h.flush()).toBe(HEADER + KEYS + LOAD + PROMPT);
+    expect(h.chunk(HEADER + KEYS + LOAD + PROMPT) + h.flush()).toBe(HEADER + KEYS + LOAD + PROMPT);
   });
 
   it('paints what was withheld once the server stalls past the bound', () => {
@@ -700,8 +704,9 @@ describe('a listing the client draws itself', () => {
   it('keeps a line the server volunteered mid-listing, after the drawing', () => {
     const h = listing(drawPack);
     const bite = 'A rat bites you for 3 damage!\r\n';
-    expect(h.chunk(HEADER + bite + KEYS + LOAD + PROMPT)).toBe('');
-    expect(h.flush()).toBe(DRAWN_PACK + bite + PROMPT);
+    expect(h.chunk(HEADER + bite + KEYS + LOAD + PROMPT) + h.flush()).toBe(
+      DRAWN_PACK + bite + PROMPT
+    );
   });
 
   it('leaves a listing whose header was already painted as it was sent', () => {

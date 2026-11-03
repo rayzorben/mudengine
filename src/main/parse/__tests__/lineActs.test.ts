@@ -67,22 +67,17 @@ describe('feeding one framed line to the tracker', () => {
   it('applies the line, then the listing it closed, then each tail, all collecting', () => {
     const classifier = new Classifier();
     const { applied, tracker } = recorder();
-    const texts = [
-      'You are carrying padded helm (Head), quarterstaff (Weapon Hand)',
-      'You have no keys.',
-      'Wealth: 0 copper farthings',
-      'Encumbrance: 500/3360 - None [14%]',
-      '[HP=98/MA=50]:Location:            1,1377'
-    ];
+    // A `who` ends at the prompt; `i` ends at its own load line.
+    const texts = [...WHO.slice(0, -1), '[HP=33]:Location:            1,1377'];
     for (const line of linesOf(texts)) {
       for (const act of actsOf(readLine(classifier, line))) applyAct(tracker, act);
     }
-    // `You have no keys.` is a row of the pack's listing, and says so.
-    expect(applied[1]).toMatch(/ collecting$/);
+    // A row of the listing says it is one.
+    expect(applied[3]).toMatch(/ collecting$/);
     // The prompt that closed the listing, the listing, then the prompt's tail.
     expect(applied.slice(-3)).toEqual([
       'status-line collecting',
-      'user-inventory rows=1',
+      'who-list rows=2',
       'user-profile collecting'
     ]);
   });

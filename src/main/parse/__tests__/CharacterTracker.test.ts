@@ -8302,6 +8302,26 @@ describe('lives, and the word for the load', () => {
     const bare = play(['[HP=98/MA=50]:', 'Encumberance: 489/3504 - None']);
     expect(bare.current.inventory.encumbrance).toBe(489);
   });
+
+  // captures/004:285-292: a blow lands between the listing's last line and the prompt.
+  it('ends the listing at its last line, so a blow after it is not folded in', () => {
+    const t = play([
+      '[HP=68/MA=50]:',
+      'You are carrying 13 gold crowns, rigid leather pants (Legs), 2 rigid leather',
+      'pants, glowing warhammer, hard leather helm',
+      'You have the following keys: bone key.',
+      'Wealth: 1300 copper farthings',
+      'Encumberance: 1899/4032 - Medium',
+      'Frost serpent fires a frost jet at you for 16 damage!',
+      '[HP=58/MA=50]:'
+    ]);
+    expect(t.current.inventory).toMatchObject({
+      encumbrance: 1899,
+      encumbranceMax: 4032,
+      encumbranceWord: 'Medium'
+    });
+    expect(t.current.tally.taken).toMatchObject({ hits: 1, damage: 16 });
+  });
 });
 
 describe('the gang listing, through the whole tracker', () => {

@@ -1225,7 +1225,8 @@ export class Classifier {
         return undefined;
       }
     } else {
-      const done = lines.length >= cap || STATUS_LINE_START.test(text);
+      const done =
+        lines.length >= cap || STATUS_LINE_START.test(text) || (rule.last?.test(text) ?? false);
       if (!done) return undefined;
     }
 

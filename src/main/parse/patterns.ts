@@ -275,6 +275,14 @@ export const ROOM_EXITS = /^Obvious exits: (?<exits>[\w, ]+)/;
 const DESCRIBED_OPENING = `^(?<player>[A-Z][\\w'-]*) is an? [A-Za-z]+, (?<who>[A-Za-z][A-Za-z' -]*?) with(?:\\s|$)`;
 const DESCRIBED_LOOKS = `(?<hair>no|[A-Za-z-]+ [A-Za-z-]+) hair and (?<eyes>[A-Za-z-]+) eyes\\.\\s+(?<pronoun>He|She|They|It) moves? `;
 
+/**
+ * The load line, last in `i` and printed alone after a pick-up. GreaterMUD
+ * writes `Encumbrance:` and ends it `[%]`; MajorMUD writes `Encumberance:`
+ * with nothing after the word (captures/004, 009, 010, 012, 024, 065, 111).
+ */
+const ENCUMBRANCE =
+  /^Encumbe?rance:\s+(?<carried>\d+)\/(?<max>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/;
+
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
   { type: 'prompt-username', pattern: /^Please enter your username or "new":/ },
@@ -379,11 +387,10 @@ export const RULES: Rule[] = [
     pattern: /^Statusline:\s+(?<statline>\S.*?)\s*$/
   },
   {
-    // MajorMUD's own spelling of the word is `Encumberance:`; see the
-    // `user-inventory` batch, which reads the same line inside the listing.
+    // MajorMUD's own spelling of the word is `Encumberance:`; the
+    // `user-inventory` batch reads the same line inside the listing.
     type: 'user-encumbrance',
-    pattern:
-      /^Encumbe?rance:\s+(?<carried>\d+)\/(?<max>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
+    pattern: ENCUMBRANCE
   },
   /*
    * `train` at the guild, captured live (`npm run probe:play`, 2026-08-26):
@@ -2433,6 +2440,14 @@ export interface BatchRule {
    */
   tailsLookLikeRooms?: boolean;
   /**
+   * The line that ends the listing, where the server prints one: the batch
+   * closes on it instead of waiting for the prompt, so a line arriving between
+   * the two is not taken into the last field. `i` ends at its load line, and a
+   * blow landing before the prompt folded onto it and cost the Load
+   * (captures/004:285-292).
+   */
+  last?: RegExp;
+  /**
    * The header alone is the answer, so the listing is published with no rows.
    * `You are not in a party at the present time.` is followed by your own row
    * on GreaterMUD (captures/055:6-7) and by nothing on MajorMUD (captures/003,
@@ -2704,8 +2719,9 @@ export const BATCH_RULES: BatchRule[] = [
       /^You are carrying (?<items>.+?)\.?$/,
       /^You have (?:the following keys: (?<keys>.+?)\.|no keys\.)/,
       /^Wealth:\s+(?<wealth>[\d,]+) copper farthings/,
-      /^Encumbe?rance:\s+(?<encumbrance>\d+)\/(?<encumbranceMax>\d+)(?:\s+-\s+(?<encumbranceWord>[A-Za-z][A-Za-z ]*?))?(?:\s+\[|\s*$)/
-    ]
+      ENCUMBRANCE
+    ],
+    last: ENCUMBRANCE
   },
   {
     /*
