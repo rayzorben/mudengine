@@ -509,7 +509,7 @@ export class OddsBook implements SessionModule {
     let draw: number | undefined;
     if (job.kind === 'mob') {
       const entity = world.buildMobEntity(job.name, { at: null });
-      if (entity === undefined || entity.source === 'wire') return UNRUN;
+      if (entity.source === 'wire') return UNRUN;
       met = [{ name: job.name, subject: entity }];
     } else {
       /*

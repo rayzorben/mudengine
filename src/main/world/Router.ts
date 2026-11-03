@@ -48,6 +48,7 @@ import {
   type Direction,
   type Landing,
   type RemoteLever,
+  type CommandHit,
   type Requirement,
   type RoomId,
   type Route,
@@ -967,6 +968,27 @@ function hitAtMost(
 function hitKnownToKill(requirement: Requirement | null, traveller: Traveller): boolean {
   const most = hitAtMost(requirement, traveller);
   return typeof most === 'number' && hitWalls(most);
+}
+
+/**
+ * What is said to take a way: a `Text:` exit is not walked with a direction,
+ * so its first listed phrasing, the canonical one; a room's own spell is
+ * waited out with nothing said (`room-spell`); otherwise the direction.
+ */
+function wayCommand(exit: WorldExit | PortalExit): string {
+  return exit.requirement?.kind === 'room-spell'
+    ? ''
+    : (exit.requirement?.commands?.[0] ?? DIRECTION_COMMAND[exit.direction as Direction]);
+}
+
+/**
+ * The one-off hit a way walls because nobody has read the bar, for the wall
+ * the route names (`RouteBlock` `hit`); null for a way with no hit or a bar
+ * that has been read, where a hit that can kill is a deadly step instead.
+ */
+function hitUnread(requirement: Requirement | null, traveller: Traveller): CommandHit | null {
+  const hit = requirement?.hit;
+  return hit !== undefined && hitAtMost(requirement, traveller) === null ? hit : null;
 }
 
 /**
@@ -3438,6 +3460,19 @@ export class Router {
           const name = this.rooms.get(cursor)?.name ?? cursor;
           blocks.unshift({ kind: 'switchedOff', at: prev, to: cursor, name, barrier });
         }
+        // And a fall walled because the bar is unread: the route changes once it is.
+        const hit = hitUnread(exit.requirement ?? null, traveller);
+        if (hit !== null) {
+          blocks.unshift({
+            kind: 'hit',
+            at: prev,
+            to: cursor,
+            name: this.rooms.get(cursor)?.name ?? cursor,
+            command: wayCommand(exit),
+            spellName: hit.name,
+            most: hit.most
+          });
+        }
       }
       cursor = prev;
     }
@@ -3504,13 +3539,7 @@ export class Router {
         from: prev,
         to: cursor,
         direction: exit.direction,
-        // A `Text:` exit is not walked with a direction; it needs its own
-        // command, and the first listed phrasing is the canonical one. A room's
-        // own spell is waited out with nothing said (`room-spell`).
-        command:
-          exit.requirement?.kind === 'room-spell'
-            ? ''
-            : (exit.requirement?.commands?.[0] ?? DIRECTION_COMMAND[exit.direction as Direction]),
+        command: wayCommand(exit),
         name: destination?.name ?? '',
         requirement: exit.requirement,
         /*

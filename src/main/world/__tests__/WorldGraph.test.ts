@@ -4647,6 +4647,15 @@ describe('describeBlock', () => {
       name: 'Hall',
       barrier: 'search'
     },
+    hit: {
+      kind: 'hit',
+      at: '1/1',
+      to: '1/2',
+      name: 'Pit',
+      command: 'go hole',
+      spellName: 'fall',
+      most: 15
+    },
     unreachable: { kind: 'unreachable' }
   };
 
@@ -5498,6 +5507,36 @@ describe('a room command whose spell lands once', () => {
     expect(ledge(false).route(roomId(1, 1), roomId(1, 2), health(100)).steps[0]?.deadly).toBe(
       undefined
     );
+  });
+
+  it('names the fall and its most as a wall when the route crosses it for a bar unread', () => {
+    const unread = ledge(false).route(roomId(1, 1), roomId(1, 2), {});
+    expect(unread.blocked).toBe(false);
+    expect(unread.walls).toEqual([
+      {
+        kind: 'hit',
+        at: '1/1',
+        to: '1/2',
+        name: 'Pit',
+        command: 'go hole',
+        spellName: 'fall',
+        most: 15
+      }
+    ]);
+    expect(describeBlock(unread.walls![0]!)).toBe(
+      'Pit is reached by "go hole", which casts fall for up to 15 damage, and your health is not known yet'
+    );
+    // And a walk refused for it says so, naming the fall.
+    const walk = leg(planRealmOf(ledge(false)), WINS, '1/1', '1/2', {});
+    expect(walk.blocked).toBe(true);
+    expect(walk.reason).toContain('fall for up to 15 damage');
+  });
+
+  it('names no wall for a bar that has been read, deadly or not', () => {
+    // Positive control: the same way names the wall while the bar is unread.
+    expect(ledge(false).route(roomId(1, 1), roomId(1, 2), {}).walls).toHaveLength(1);
+    expect(ledge(false).route(roomId(1, 1), roomId(1, 2), health(15)).walls).toBeUndefined();
+    expect(ledge(false).route(roomId(1, 1), roomId(1, 2), health(100)).walls).toBeUndefined();
   });
 });
 
