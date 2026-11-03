@@ -16,9 +16,11 @@ import {
 import type { Cure } from '../../shared/config';
 import { newestSheets, type SharedSheet } from '../../shared/peers';
 import { playerKey } from '../../shared/players';
+import { CURE_CONDITION } from '../../shared/spellcraft';
 
-/** The cures cast at another character, and the condition each answers. */
+/** The cures cast at another character, in the order they are cast. */
 export type OtherCure = Extract<Cure, 'poison' | 'disease' | 'freedom'>;
+export const OTHER_CURES: readonly OtherCure[] = ['poison', 'disease', 'freedom'];
 
 /** A character to cure, and of what. */
 export interface CureNeed {
@@ -26,13 +28,9 @@ export interface CureNeed {
   cure: OtherCure;
 }
 
-/** The cures a shared sheet's conditions call for, in the order they are cast. */
-function curesFor(afflictions: Afflictions): OtherCure[] {
-  return [
-    ...(afflictions.held === 'yes' ? (['freedom'] as const) : []),
-    ...(afflictions.poisoned === 'yes' ? (['poison'] as const) : []),
-    ...(afflictions.diseased === 'yes' ? (['disease'] as const) : [])
-  ];
+/** The cures a shared sheet's conditions call for (`CURE_CONDITION`), in the order they are cast. */
+export function curesFor(afflictions: Afflictions): OtherCure[] {
+  return OTHER_CURES.filter((cure) => afflictions[CURE_CONDITION[cure]] === 'yes');
 }
 
 /** Sharers standing here who are not in this character's party, and what each wants cured. */

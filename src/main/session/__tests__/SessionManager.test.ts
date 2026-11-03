@@ -46,6 +46,8 @@ import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../../shared/
 import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
 import { NO_PEER_GRANT } from '../../../shared/peerGrant';
+import type { SharedSheet } from '../../../shared/peers';
+import { afflicted, sharedSheet } from '../../../shared/__tests__/sharedSheets';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -2820,6 +2822,43 @@ describe('asking the party for its numbers', () => {
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
     await until(() => wire().includes('/Yang @health\r\n'));
     expect(askedSoul()).toBe(1);
+  });
+});
+
+/*
+ * Todo 20261031-1156-01: a member's shared sheet reaches the cures the
+ * session runs, through the `peerSheets` port, on a realm that prints no `P`.
+ */
+describe('a shared sheet on the party', () => {
+  it('cures the member its own client says is poisoned, once the sheet says so', async () => {
+    let sheets: SharedSheet[] = [];
+    const { sink } = collect();
+    manager = build(sink, {
+      automation: {
+        ...DEFAULT_CONFIG.automation,
+        enabled: true,
+        spells: {
+          ...DEFAULT_CONFIG.automation.spells,
+          minMana: 0,
+          healParty: true,
+          cures: { ...DEFAULT_CONFIG.automation.spells.cures, poison: 'cure poison' }
+        }
+      },
+      peerSheets: () => sheets
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+    const wire = (): string => Buffer.concat(received).toString('latin1');
+
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    socket.write('Soul started to follow you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members.some((m) => m.name === 'Soul'));
+    sheets = [sharedSheet('Soul', { afflictions: afflicted('poisoned') })];
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => wire().includes('cure poison Soul\r\n'));
   });
 });
 

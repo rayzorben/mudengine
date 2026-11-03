@@ -15,12 +15,7 @@ import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import {
-  joinedMembers,
-  standingHere,
-  type CharacterState,
-  type PartyMember
-} from '../../shared/character';
+import { joinedMembers, standingHere, type CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import type { SharedSheet } from '../../shared/peers';
 import type { RealmFamily } from '../../shared/realm';
@@ -38,7 +33,7 @@ import {
 import type { WorldSpell } from '../../shared/world';
 import type { SessionModule } from './Module';
 import type { NoticeSink } from '../../shared/decisionSettings';
-import { peerCareNeeds, type CureNeed, type OtherCure } from './PeerCare';
+import { curesFor, OTHER_CURES, peerCareNeeds, type CureNeed, type OtherCure } from './PeerCare';
 
 export interface PartyCureParts {
   queue: CommandQueue;
@@ -50,15 +45,6 @@ export interface PartyCureParts {
   now?: () => number;
   /** The fresh sheets other players share with this character (`Peers.sheetsFor`). */
   sheets?: () => readonly SharedSheet[];
-}
-
-/**
- * Whether this member is poisoned: GreaterMUD's `P` (`letter`) or the
- * member's own shared sheet, either one, so stock MajorMUD gains the sheet's
- * word and GreaterMUD keeps its letter. `withPeerSheets` put the sheet's here.
- */
-function poisoned(member: PartyMember, letter: boolean): boolean {
-  return (letter && member.activity?.state === 'poisoned') || member.afflictions.poisoned === 'yes';
 }
 
 export class PartyCures implements SessionModule {
@@ -140,22 +126,23 @@ export class PartyCures implements SessionModule {
    */
   private needs(state: CharacterState): CureNeed[] {
     const letter = this.parts.family() === 'greatermud';
-    const listed = state.party.members.filter((member) => !member.invited);
-    const poison = listed
-      .filter((member) => poisoned(member, letter))
-      .map((member): CureNeed => ({ member: member.name, cure: 'poison' }));
-    const disease = listed
-      .filter((member) => member.afflictions.diseased === 'yes')
-      .map((member): CureNeed => ({ member: member.name, cure: 'disease' }));
     const here = standingHere(state);
-    const held = joinedMembers(state)
-      .filter(
-        (member) => this.held.has(member.name.toLowerCase()) || member.afflictions.held === 'yes'
-      )
-      .filter((member) => here.has(member.name.toLowerCase()))
-      .map((member): CureNeed => ({ member: member.name, cure: 'freedom' }));
-    const others = peerCareNeeds(state, this.parts.sheets?.() ?? []);
-    return [...poison, ...disease, ...held, ...others];
+    const joined = new Set(joinedMembers(state).map((member) => member.name.toLowerCase()));
+    const members = state.party.members
+      .filter((member) => !member.invited)
+      .flatMap((member) => {
+        const key = member.name.toLowerCase();
+        const sheet = curesFor(member.afflictions);
+        // The listing's P and a member's `@held` are said beside the sheet; either one counts.
+        const wants = (cure: OtherCure): boolean =>
+          sheet.includes(cure) ||
+          (cure === 'poison' && letter && member.activity?.state === 'poisoned') ||
+          (cure === 'freedom' && this.held.has(key));
+        return OTHER_CURES.filter(wants)
+          .filter((cure) => cure !== 'freedom' || (joined.has(key) && here.has(key)))
+          .map((cure): CureNeed => ({ member: member.name, cure }));
+      });
+    return [...members, ...peerCareNeeds(state, this.parts.sheets?.() ?? [])];
   }
 
   /** A `@held` older than `partyHeldMs` with no `@ok` is let go. */

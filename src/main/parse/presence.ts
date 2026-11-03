@@ -605,19 +605,31 @@ export function withRemoteVitals(
   const members = s.party.members.map((held, position) =>
     position === index
       ? {
-          ...held,
-          vitals,
-          health: reply.hpMax > 0 ? reply.hp / reply.hpMax : held.health,
-          mana:
-            reply.mana !== null && reply.manaMax !== null && reply.manaMax > 0
-              ? reply.mana / reply.manaMax
-              : held.mana,
+          ...withMemberVitals(held, vitals),
           // MegaMUD's `, Resting`; its absence says nothing, since this client never prints it.
           activity: reply.resting && held.activity === null ? RESTING : held.activity
         }
       : held
   );
   return { state: { ...s, party: { ...s.party, members } }, players };
+}
+
+/**
+ * A member's numbers, and the bar shares they imply: the one way a party row
+ * takes figures another client stated (`@health`, a shared sheet). A share
+ * with no maximum to divide by keeps what the listing said.
+ */
+function withMemberVitals(
+  held: PartyMember,
+  vitals: NonNullable<PartyMember['vitals']>
+): PartyMember {
+  const { hp, hpMax, mana, manaMax } = vitals;
+  return {
+    ...held,
+    vitals: { hp, hpMax, mana, manaMax },
+    health: hpMax > 0 ? hp / hpMax : held.health,
+    mana: mana !== null && manaMax !== null && manaMax > 0 ? mana / manaMax : held.mana
+  };
 }
 
 /**
@@ -639,23 +651,10 @@ export function withPeerSheets(s: CharacterState, sheets: readonly SharedSheet[]
     touched = true;
     const { afflictions, vitals } = shared.sheet;
     const known =
-      vitals !== null && vitals.hp !== null && vitals.hpMax !== null && vitals.hpMax > 0
-        ? { hp: vitals.hp, hpMax: vitals.hpMax, mana: vitals.mana, manaMax: vitals.manaMax }
-        : null;
-    return {
-      ...held,
-      afflictions: afflictions ?? NO_AFFLICTIONS,
-      ...(known === null
-        ? {}
-        : {
-            vitals: known,
-            health: known.hp / known.hpMax,
-            mana:
-              known.mana !== null && known.manaMax !== null && known.manaMax > 0
-                ? known.mana / known.manaMax
-                : held.mana
-          })
-    };
+      vitals === null || vitals.hp === null || vitals.hpMax === null
+        ? held
+        : withMemberVitals(held, { ...vitals, hp: vitals.hp, hpMax: vitals.hpMax });
+    return { ...known, afflictions: afflictions ?? NO_AFFLICTIONS };
   });
   return touched ? { ...s, party: { ...s.party, members } } : s;
 }
