@@ -1301,7 +1301,7 @@ export class SessionManager {
       () => this.errands.realmClass(),
       this.castRound
     );
-    this.potions = new Potions(automation.health, automation.enabled, this.queue);
+    this.potions = new Potions(automation.health, automation.enabled, this.queue, { notice });
     this.cures = new Cures(
       automation.spells,
       automation.enabled,

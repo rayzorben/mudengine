@@ -39,6 +39,7 @@ import type { HealthConfig, PotionRule, PotionVerb } from '../../shared/config';
 import { nameAnswersTo } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 /**
  * What a proposal is *for*, which is what the cooldown and the coalescing key
@@ -50,12 +51,15 @@ type Kind = string;
 
 export class Potions implements SessionModule {
   private lastAt = new Map<Kind, number>();
+  /** The rows that fired with none in the pack and have been said, until they stop firing. */
+  private saidMissing = new Set<Kind>();
 
   constructor(
     private config: HealthConfig,
     private enabled: boolean,
     private readonly queue: CommandQueue,
-    private readonly now: () => number = () => Date.now()
+    /** Where a row that fires with none in the pack is said. */
+    private readonly events: { notice?: NoticeSink } = {}
   ) {}
 
   configure(config: HealthConfig, enabled: boolean): void {
@@ -65,6 +69,7 @@ export class Potions implements SessionModule {
 
   reset(): void {
     this.lastAt.clear();
+    this.saidMissing.clear();
   }
 
   onCharacter(state: CharacterState): void {
@@ -85,8 +90,12 @@ export class Potions implements SessionModule {
      * the vital or the condition moving is the confirmation.
      */
     this.config.potions.forEach((rule, at) => {
-      if (!this.fires(rule, state)) return;
-      this.drink(`rule:${at}`, rule.name, state, t('automation.potion.reasonRule'), rule.verb);
+      const kind = `rule:${at}`;
+      if (!this.fires(rule, state)) {
+        this.saidMissing.delete(kind);
+        return;
+      }
+      this.drink(kind, rule.name, state, t('automation.potion.reasonRule'), rule.verb);
     });
   }
 
@@ -120,19 +129,31 @@ export class Potions implements SessionModule {
   ): void {
     const wanted = bareName(name);
     if (wanted.length === 0) return;
-    if (!state.inventory.items.some((item) => nameAnswersTo(bareName(item.name), wanted))) return;
+    if (!state.inventory.items.some((item) => nameAnswersTo(bareName(item.name), wanted))) {
+      // The row fired and nothing will be drunk: said once while it lasts, and
+      // only off a pack the realm has listed, since an unread one is unknown.
+      if (state.inventory.listedAt === null || this.saidMissing.has(kind)) return;
+      this.saidMissing.add(kind);
+      this.events.notice?.(
+        t('automation.potion.noneCarried', { name: name.trim(), verb }),
+        'potion'
+      );
+      return;
+    }
+    this.saidMissing.delete(kind);
 
-    const at = this.now();
+    const at = Date.now();
     const last = this.lastAt.get(kind);
     if (last !== undefined && at - last < tuning().potions.cooldownMs) return;
-    this.lastAt.set(kind, at);
     this.queue.enqueue({
       command: `${verb} ${name.trim()}`,
       priority: 'combat',
       coalesceKey: `potion:${kind}`,
       decision: 'potion',
       expiresAt: at + tuning().potions.expiresMs,
-      reason
+      reason,
+      // Spent when the drink goes out: one the queue refused or let expire drank nothing.
+      onSent: () => this.lastAt.set(kind, Date.now())
     });
   }
 }

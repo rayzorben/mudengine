@@ -38,6 +38,12 @@ function state(
   };
 }
 
+/** The same state with its pack listed by the realm. */
+const listed = (s: CharacterState): CharacterState => ({
+  ...s,
+  inventory: { ...s.inventory, listedAt: 1 }
+});
+
 let sent: string[];
 /** The setting each sent command's decision files under, in send order. */
 let kinds: (DecisionKind | undefined)[];
@@ -128,6 +134,53 @@ describe('drinking by a number', () => {
     vi.advanceTimersByTime(6_000);
     potions.onCharacter(state({ hp: 3 }));
     expect(sent).toEqual(['drink healing potion', 'drink healing potion']);
+  });
+
+  /*
+   * The cooldown is the drink's, so it starts when the drink goes out. One the
+   * queue refused (the stat screen open, the link down) drank nothing, and
+   * charging the cooldown for it left the next fall below the floor dry.
+   */
+  it('spends no cooldown on a drink the queue refused', () => {
+    const potions = drinker();
+    queue.hold('the stat screen');
+    potions.onCharacter(state({ hp: 5 }));
+    expect(sent).toEqual([]);
+    queue.release();
+    potions.onCharacter(state({ hp: 4 }));
+    expect(sent).toEqual(['drink healing potion']);
+  });
+
+  /*
+   * A row that fires with none in the pack is a refusal the player set up
+   * and cannot see, so it is said, once while it lasts.
+   */
+  it('says once that the pack has none, and again the next time the row fires', () => {
+    const notices: string[] = [];
+    const potions = new Potions(health({ potions: VITAL_RULES }), true, queue, {
+      notice: (message) => notices.push(message)
+    });
+    potions.onCharacter(listed(state({ hp: 5 }, [])));
+    potions.onCharacter(listed(state({ hp: 4 }, [])));
+    expect(sent).toEqual([]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain('healing potion');
+    potions.onCharacter(listed(state({ hp: 90 }, [])));
+    potions.onCharacter(listed(state({ hp: 5 }, [])));
+    expect(notices).toHaveLength(2);
+  });
+
+  /* A pack nobody has listed yet is unknown, not empty: nothing is said of it. */
+  it('says nothing of a pack the realm has not listed', () => {
+    const notices: string[] = [];
+    const potions = new Potions(health({ potions: VITAL_RULES }), true, queue, {
+      notice: (message) => notices.push(message)
+    });
+    potions.onCharacter(state({ hp: 5 }, []));
+    expect(notices).toEqual([]);
+    // The positive control: the same pack, listed, is said.
+    potions.onCharacter(listed(state({ hp: 5 }, [])));
+    expect(notices).toHaveLength(1);
   });
 
   it('is off with automation off, and out of the realm', () => {

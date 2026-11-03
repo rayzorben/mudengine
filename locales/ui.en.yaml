@@ -7855,6 +7855,8 @@ automation:
     # A rule from the player's own `health.potions` list (todo 19) -- the only
     # thing that reaches for a potion since todo 00.
     reasonRule: 'a potion rule fired'
+    # A row fired and the pack, as last listed, holds none of its item.
+    noneCarried: 'No {name} to {verb}: you are carrying none.'
   remotes:
     followerReady: '{from} is ready.'
     followerWait: '{from} asked the party to wait.'
