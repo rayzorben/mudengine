@@ -142,6 +142,7 @@ import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
 import { pageMapsOf, pieceOf, type LairLevel } from './world/localMap';
 import { MapPlacements } from './world/MapPlacements';
+import { WalkPaging } from './session/walkPaging';
 import { GameMaps } from './world/GameMaps';
 import { loadThemePack, type ThemePack } from './world/themePack';
 import { asGameMapAsk, EMPTY_GAME_MAP } from '../shared/gameMap';
@@ -216,13 +217,7 @@ import {
 } from '../shared/world';
 import { LapIndexCache } from './world/lapIndex';
 import { LoopDraftCache } from './world/loopDraft';
-import {
-  NO_WALK_PAGES,
-  pagesOf,
-  type RoutePage,
-  type RoutePages,
-  type WalkPages
-} from '../shared/routeLegs';
+import { pagesOf, type RoutePage, type RoutePages, type WalkPages } from '../shared/routeLegs';
 import { errorMessage, str } from '../shared/values';
 import { BUILD, versionWithCommit } from '../shared/build';
 import { fileSlug } from '../shared/files';
@@ -350,6 +345,8 @@ const windows = new WindowRegistry();
 let host: SessionHost | null = null;
 /* The Map card's placements per realm world, so a step inside one places nothing again. */
 const mapPlacements = new MapPlacements();
+/* The walk's pages the Map card has not been sent yet, per session. */
+const walkPaging = new WalkPaging();
 /** The extensions found in the home at startup (todo 84). */
 let extensions: readonly LoadedExtension[] = [];
 /** Installed and switched off in the options file, so never loaded (todo 118). */
@@ -1786,6 +1783,7 @@ function createHost(): SessionHost {
     removed: (id) => {
       art?.portraits.remove(id);
       art?.rooms.remove(id);
+      walkPaging.forget(id);
       lapIndexes.get(id)?.dispose();
       lapIndexes.delete(id);
     },
@@ -2184,15 +2182,14 @@ function registerIpc(): void {
    * step count it was paged at so the card can follow the walk along it.
    */
   handle(Invoke.walkPages, (_caller, session: SessionId): WalkPages => {
-    const walker = host?.get(session)?.manager.walker;
     const world = worldFor(session);
-    const steps = walker?.remaining ?? [];
-    const start = steps[0]?.from;
-    if (walker === undefined || !world || start === undefined) return NO_WALK_PAGES;
-    // The paging reads the steps alone; the cost was spent choosing them.
-    const route: Route = { steps, cost: 0, blocked: false };
-    return { done: walker.progress.done, legs: pagesFor(session, world, route, start) };
+    return walkPaging.first(session, host?.get(session)?.manager.walker, (route, start) =>
+      world ? pagesFor(session, world, route, start) : null
+    );
   });
+  handle(Invoke.walkPage, (_caller, session: SessionId, paging: unknown, index: unknown) =>
+    walkPaging.later(session, paging, index)
+  );
 
   /*
    * A loop being built by hand, planned. Parsed rather than trusted: every

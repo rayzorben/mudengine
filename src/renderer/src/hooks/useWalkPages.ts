@@ -8,7 +8,10 @@
  * is paged again from where the character stands, once until the pages match
  * again, since each paging is a pass on main's thread. The pager starts at the
  * page being walked and goes on to the destination; the page behind is
- * walked. See `mudengine-ui` › `parts/map.md` › *The route preview*.
+ * walked. Only the page being walked and the next arrive with the paging; a
+ * page further on is asked for when the pager turns to it, and drawn once it
+ * lands (todo 20261102-1008-02). See `mudengine-ui` › `parts/map.md` ›
+ * *The route preview*.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -18,7 +21,8 @@ import type { WalkProgress } from '@shared/walk';
 import { roomId } from '@shared/world';
 
 export interface WalkPager {
-  legs: readonly RoutePage[];
+  /** Every page of the walk; one not yet sent is undefined until it is turned to. */
+  legs: ReadonlyArray<RoutePage | undefined>;
   /** The page the character is on; null while nothing is walked. */
   walking: number | null;
   /** A page ahead the reader turned to; null while the pager follows the walk. */
@@ -28,9 +32,23 @@ export interface WalkPager {
   follow(): void;
 }
 
-export function useWalkPages(load: () => Promise<WalkPages>, walk: WalkProgress): WalkPager {
+/** No page turned to past the ones sent. */
+const NO_LATER = { paging: 0, pages: new Map<number, RoutePage>() } as const;
+
+/** A page past the ones the paging sent, by the paging's number (`IpcApi.walkPage`). */
+export type LoadWalkPage = (paging: number, index: number) => Promise<RoutePage | null>;
+
+export function useWalkPages(
+  load: () => Promise<WalkPages>,
+  loadPage: LoadWalkPage,
+  walk: WalkProgress
+): WalkPager {
   /* The pages, with the route they were asked for, so a new route never reads the last one's. */
   const [held, setHeld] = useState<{ route: string; pages: WalkPages } | null>(null);
+  /* The pages turned to past the ones sent, by the paging they belong to. */
+  const [later, setLater] = useState<{ paging: number; pages: ReadonlyMap<number, RoutePage> }>(
+    NO_LATER
+  );
   const [look, setLook] = useState<number | null>(null);
   const [asks, setAsks] = useState(0);
   /* Set by a stale re-ask, cleared once the pages match the walk again. */
@@ -88,7 +106,34 @@ export function useWalkPages(load: () => Promise<WalkPages>, walk: WalkProgress)
     setAsks((count) => count + 1);
   }, [stale, matches, asked]);
 
-  const last = paged.legs.length - 1;
+  const extra = later.paging === paged.paging ? later.pages : NO_LATER.pages;
+  const legs = useMemo(
+    () => Array.from({ length: paged.count }, (_, at) => paged.legs[at] ?? extra.get(at)),
+    [paged, extra]
+  );
+  /* A page turned to that was not sent is asked for once per paging. */
+  useEffect(() => {
+    if (look === null || legs[look] !== undefined) return;
+    const { paging } = paged;
+    let live = true;
+    void loadPage(paging, look)
+      .then((page) => {
+        if (!live || page === null) return;
+        setLater((current) => {
+          const pages = new Map(current.paging === paging ? current.pages : []);
+          pages.set(look, page);
+          return { paging, pages };
+        });
+      })
+      .catch((error) => {
+        console.error(`[map] the walk's page ${look + 1}: ${errorMessage(error)}`);
+      });
+    return () => {
+      live = false;
+    };
+  }, [look, legs, paged, loadPage]);
+
+  const last = paged.count - 1;
   const page = useCallback(
     (to: number): void => {
       if (walking === null) return;
@@ -99,10 +144,12 @@ export function useWalkPages(load: () => Promise<WalkPages>, walk: WalkProgress)
   );
   const follow = useCallback((): void => setLook(null), []);
 
-  // Once the walk reaches the page turned to, the pager follows it again.
-  const shown = walking !== null && look !== null && look > walking ? look : null;
+  // Once the walk reaches the page turned to, the pager follows it again. A
+  // page still on its way leaves the page being walked on screen.
+  const shown =
+    walking !== null && look !== null && look > walking && legs[look] !== undefined ? look : null;
   return useMemo(
-    () => ({ legs: paged.legs, walking, shown, page, follow }),
-    [paged.legs, walking, shown, page, follow]
+    () => ({ legs, walking, shown, page, follow }),
+    [legs, walking, shown, page, follow]
   );
 }

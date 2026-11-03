@@ -87,6 +87,8 @@ export interface CardContext {
   routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
   /** This character's walk under way, in the Map card's pages. */
   walkPages(): ReturnType<IpcApi['walkPages']>;
+  /** A page of that walk the first answer left out. */
+  walkPage(paging: number, index: number): ReturnType<IpcApi['walkPage']>;
   /** The room pictures main holds, read and followed per character by the Room card. */
   roomArt: RoomArtApi;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
@@ -226,6 +228,8 @@ export interface AddressedActions {
   routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
   /** This character's walk under way, in the Map card's pages. */
   walkPages(): ReturnType<IpcApi['walkPages']>;
+  /** A page of that walk the first answer left out. */
+  walkPage(paging: number, index: number): ReturnType<IpcApi['walkPage']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
@@ -270,6 +274,7 @@ export type CardApi = Pick<
   | 'searchRooms'
   | 'routeBetween'
   | 'walkPages'
+  | 'walkPage'
   | 'roomArt'
   | 'onRoomArt'
   | 'lookup'
@@ -460,6 +465,7 @@ export function useCardContext({
         searchRooms: (query) => api.searchRooms(sid, query),
         routeBetween: (from, to) => api.routeBetween(sid, from, to),
         walkPages: () => api.walkPages(sid),
+        walkPage: (paging, index) => api.walkPage(sid, paging, index),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
         loadErrand: (block) => api.questErrand(sid, block),
@@ -622,6 +628,7 @@ export function useCardContext({
         searchRooms: bound.searchRooms,
         routeBetween: bound.routeBetween,
         walkPages: bound.walkPages,
+        walkPage: bound.walkPage,
         // The bridge itself: the session is the card's, and the bridge never changes.
         roomArt: api,
         lookupName: shown ? lookupName : bound.lookupName,

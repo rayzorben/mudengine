@@ -8831,6 +8831,8 @@ function theTuningBlockGainedKeys(
     addKey('view', 'roundGapSaidPercent', DEFAULT_INTERNAL.tuning.view.roundGapSaidPercent);
     // The Map card keeps placements and cells, and is sent only what it lacks (todo 1008-02, 2026-11-02).
     addKey('world', 'mapPlacementsKept', DEFAULT_INTERNAL.tuning.world.mapPlacementsKept);
+    // The walk's pages are sent two at a time (todo 1008-02, 2026-11-02).
+    addKey('world', 'walkPagesSent', DEFAULT_INTERNAL.tuning.world.walkPagesSent);
     for (const key of ['mapHeldWindows', 'mapFramesKept'] as const)
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
 

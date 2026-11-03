@@ -8,7 +8,7 @@ import MapView from './MapView';
 import RouteSheetView from './RouteSheetView';
 import { useIdleReset } from '../hooks/useIdleReset';
 import { useRoutePreview } from '../hooks/useRoutePreview';
-import { useWalkPages } from '../hooks/useWalkPages';
+import { useWalkPages, type LoadWalkPage } from '../hooks/useWalkPages';
 import { t } from '../lib/i18n';
 import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
@@ -42,6 +42,8 @@ export interface MapCardProps extends CardChrome {
   routeBetween(from: RoomId, to: RoomId): Promise<RoutePages>;
   /** The route this character is walking, paged. See `useWalkPages`. */
   walkPages(): Promise<WalkPages>;
+  /** A page of that walk the first answer left out, as the pager turns to it. */
+  walkPage: LoadWalkPage;
   /**
    * Where this character is headed, so the map can draw it.
    *
@@ -116,6 +118,7 @@ function MapCard({
   search,
   walk,
   walkPages,
+  walkPage,
   ...chrome
 }: MapCardProps) {
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
@@ -206,7 +209,7 @@ function MapCard({
    * the live map.
    */
   const preview = useRoutePreview(routeBetween, here);
-  const walking = useWalkPages(walkPages, walk);
+  const walking = useWalkPages(walkPages, walkPage, walk);
   const ahead =
     preview.to === null && walking.shown !== null ? walking.legs[walking.shown] : undefined;
   const leg = preview.legs[preview.leg] ?? ahead ?? null;

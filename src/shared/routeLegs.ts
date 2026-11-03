@@ -124,14 +124,25 @@ export interface RoutePages {
  * The route being walked, paged from the room the character stood in when it
  * was asked for. `done` is the walk's `WalkProgress.done` at that moment, so
  * the page being walked is found by the steps taken since (`pageWalking`).
+ * `legs` holds only the first pages of the `count` (the page being walked and
+ * the next, todo 20261102-1008-02); a later one is asked for by `paging`
+ * when the pager turns to it (`IpcApi.walkPage`).
  */
 export interface WalkPages {
+  /** Which paging this is, so a later page is read from the same one. */
+  paging: number;
   done: number;
+  count: number;
   legs: RoutePage[];
 }
 
 /** No walk under way, so no pages. */
-export const NO_WALK_PAGES: Readonly<WalkPages> = Object.freeze({ done: 0, legs: [] });
+export const NO_WALK_PAGES: Readonly<WalkPages> = Object.freeze({
+  paging: 0,
+  done: 0,
+  count: 0,
+  legs: []
+});
 
 /** The steps a page walks: its own, and the jump off its end. */
 function stepsOn(page: RouteLeg): number {

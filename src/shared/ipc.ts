@@ -19,7 +19,7 @@ import type { Block } from './blocks';
 import type { MapAsk, MapPiece } from './mapPiece';
 import type { GameMapAsk, GameMapWindow } from './gameMap';
 import type { HudThreshold } from './gameViewConfig';
-import type { RoutePages, WalkPages } from './routeLegs';
+import type { RoutePage, RoutePages, WalkPages } from './routeLegs';
 import type { Discovery } from './memory';
 import type { Find } from './finds';
 import type { Shelf } from './shops';
@@ -766,6 +766,8 @@ export const Invoke = {
    * nothing is walked.
    */
   walkPages: 'walk:pages',
+  /** A page of the walk past the ones `walkPages` sent, when the pager turns to it. */
+  walkPage: 'walk:page',
   /** Walk a planned route. Returns why it could not start, or null. */
   walkRoute: 'walk:start',
   /**
@@ -1381,6 +1383,11 @@ export interface IpcApi {
   routeBetween(session: SessionId, from: RoomId, to: RoomId): Promise<RoutePages>;
   /** The walk under way, in the preview's pages. See `Invoke.walkPages`. */
   walkPages(session: SessionId): Promise<WalkPages>;
+  /**
+   * Page `index` of the paging `paging` names (`WalkPages`); null once main
+   * has paged the walk again or the page is not there.
+   */
+  walkPage(session: SessionId, paging: number, index: number): Promise<RoutePage | null>;
   /**
    * Walks the plan the panel is showing.
    *

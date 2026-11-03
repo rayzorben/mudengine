@@ -55,6 +55,7 @@ const api: WireApi = {
   routeTo: (session, map, room) => ipcRenderer.invoke(Invoke.routeTo, session, map, room),
   routeBetween: (session, from, to) => ipcRenderer.invoke(Invoke.routeBetween, session, from, to),
   walkPages: (session) => ipcRenderer.invoke(Invoke.walkPages, session),
+  walkPage: (session, paging, index) => ipcRenderer.invoke(Invoke.walkPage, session, paging, index),
   walkRoute: (session, route, run) => ipcRenderer.invoke(Invoke.walkRoute, session, route, run),
   startMoving: (session, loop, confirmed) =>
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),

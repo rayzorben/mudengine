@@ -2150,6 +2150,12 @@ const TUNING_DEFAULTS = {
     routePageStretches: 6,
     routePageSteps: 12,
     /**
+     * The pages of a walk under way sent with the Map card's answer: the page
+     * being walked and the next (todo 20261102-1008-02). The rest are asked
+     * for as the pager turns to them.
+     */
+    walkPagesSent: 2,
+    /**
      * What a barrier the character cannot force costs to route through.
      *
      * Priced as a wall that can still be walked through when there is no other

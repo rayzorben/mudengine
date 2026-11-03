@@ -13,7 +13,8 @@ import { t } from '../lib/i18n';
 import type { RoutePage } from '@shared/routeLegs';
 
 export interface LegPagerProps {
-  legs: readonly RoutePage[];
+  /** Every page; one not yet sent (a walk's, todo 20261102-1008-02) is undefined. */
+  legs: ReadonlyArray<RoutePage | undefined>;
   /** The page on screen. */
   at: number;
   /** The first page the pager goes back to: 0, or the page being walked. */
