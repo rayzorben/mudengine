@@ -15,12 +15,12 @@
  * answer, under *Recent*. A loop's legs, an errand's trips, a retreat and a
  * step back are walks nobody named a room for, and are not written (todo 28).
  *
- * **A realm-wide fact, keyed like the lore and the player book.** Where a
- * character goes is a fact about the *map*, not about the character: four
- * characters on one realm share a bank, a trainer and a hunting ground, and
- * the first one to walk there should spare the other three the search. A
- * character on a different realm must not inherit any of it — the room numbers
- * do not mean the same places.
+ * **One list per character** (the user, 2026-11-03). It was one list per realm
+ * until then, and four characters on a realm buried each one's own places
+ * under the others' walks. Each character started from that shared list as it
+ * stood (`Migration.ts` › `theWalksBecameEachCharacters`). Inside a character's
+ * list the rows are still filed by world, since a room id only means a place
+ * in the data that defines it.
  *
  * **Started, not arrived.** The walk is what states the intent, and it is the
  * intent this list is for: a route that failed half way is still the place the

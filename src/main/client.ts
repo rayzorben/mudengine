@@ -336,13 +336,10 @@ let shippedSentences: ShippedSentences | null = null;
  */
 let playerBook: PlayerBook | null = null;
 /**
- * Where characters on this machine have walked, per realm.
- *
- * One store, keyed on the realm *file* rather than on the address dialled — the
- * opposite of `playerBook` above, and deliberately: a destination is a room
- * **id**, and an id only means a place within the realm data that defines it.
- * Two servers sharing one map share these rooms; one server whose map was
- * swapped underneath it does not. See `DestinationBook`.
+ * Where each character on this machine has walked, one list per character,
+ * filed inside it by the realm *file* rather than the address dialled: a
+ * destination is a room **id**, and an id only means a place within the realm
+ * data that defines it. See `DestinationBook`.
  */
 let destinations: DestinationBook | null = null;
 /** Which window shows which characters. See `Workspace`. */
@@ -399,10 +396,10 @@ function createLore(): RealmLore {
   });
 }
 
-/** Beside the lore, for the same reasons `createLore` gives. */
+/** One file per character (`CHARACTER_RECORDS.destinations`), for the reasons `createLore` gives. */
 function createDestinations(): DestinationBook {
   return new DestinationBook({
-    file: home.state('destinations.json'),
+    fileFor: (character) => home.record('destinations', character),
     notify: (message) => announce('world', message)
   });
 }
@@ -549,17 +546,17 @@ function sentences(): ShippedSentences {
 }
 
 /**
- * Where this character's realm has been walked to.
+ * Where this character has walked on its realm.
  *
- * Keyed on the realm file, exactly as `loreFor` is, because a destination is a
- * room **id** and an id only means a place within the data that defines it.
+ * Its own list, filed by the realm file as `loreFor` is, because a destination
+ * is a room **id** and an id only means a place within the data that defines it.
  * Before the store exists there is nowhere to write and nothing to read, and a
  * pair of no-ops is the honest answer rather than a reason to throw.
  */
 function destinationsFor(id: SessionId): RealmDestinations {
   const world = worldFor(id);
   return (
-    destinations?.forRealm(world?.info.source ?? 'none') ?? {
+    destinations?.forCharacter(id, world?.info.source ?? 'none') ?? {
       remember: () => {},
       matching: () => []
     }

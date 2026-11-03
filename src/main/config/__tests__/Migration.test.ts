@@ -5709,7 +5709,10 @@ describe('the worlds are bundled', () => {
     expect(lore.slots.majormud['11']).toEqual({ words: ['torso'], at: 1 });
     expect(lore.spells.paradigm.bless).toBeDefined();
 
-    const destinations = JSON.parse(fs.readFileSync(state('destinations.json'), 'utf8'));
+    // No character to copy it into, so the re-filed list is only in the backup.
+    const destinations = JSON.parse(
+      fs.readFileSync(state('destinations.json.before-characters'), 'utf8')
+    );
     expect(destinations.realms.paradigm).toEqual([
       { id: '1/1', name: 'Town Square', at: 5 },
       { id: '1/2', name: 'Bank', at: 4 }

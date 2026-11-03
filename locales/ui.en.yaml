@@ -810,6 +810,16 @@ notices:
       character keeps its own realm; players, refills, kill exp, finds and shops kept before
       went to the menu's first realm, or to the one realm whose characters load that world.
       Changed: {files}. The old files are kept beside them as .before-realms."
+    walksBecameEachCharacters:
+      'Each character now keeps its own list of recently walked rooms. The list the characters
+      shared was copied to {characters}, and the shared file is kept as {backup}. A character made
+      from now on starts with an empty list.'
+    walksNoCharacter: no character, as each one already had its own list or plays none of the worlds in it
+    walksUnread: 'Could not read {file} ({message}), the recently walked rooms the characters
+      shared. It is left where it is, and each character starts with an empty list until it can be
+      read.'
+    walksNotCopied: 'Could not move the shared recently walked rooms in {file} to each character
+      ({message}). The shared file is left where it is, and the move is tried again next launch.'
     realmRecordsSetAside:
       'Refills, kill exp, finds or shops kept for a world that characters on more than one realm
       load could not be told apart, so they were set aside in the .before-realms copies and each of

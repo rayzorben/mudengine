@@ -40,7 +40,7 @@ import {
 } from 'yaml';
 
 import { fileSlug } from '../../shared/files';
-import { isRecord } from '../../shared/values';
+import { errorMessage, isRecord } from '../../shared/values';
 import { credentialsNamed } from '../../shared/login';
 import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
@@ -58,6 +58,7 @@ import { DEFAULT_INTERNAL } from '../../shared/internal';
 import { DENOMINATIONS } from '../../shared/character';
 import { SERVER_FILE, type Home } from '../app/home';
 import { directoryNames } from './dirs';
+import { readJsonRecord } from '../world/readJsonRecord';
 import { discoveryKey, type Discovery } from '../../shared/memory';
 import { playedKey, playedStamp, realmKey } from '../world/RealmLore';
 import { realmAddress } from '../../shared/types';
@@ -340,6 +341,8 @@ function migrateAll(options: MigrationOptions): void {
   heldAndComebackFollowWait(home, note);
   collectedRowsSayBuyOff(home, note);
   theCombatSwitchLeftTheFiles(home, note);
+  // After `theWorldsAreBundled`, which re-files the shared list's archive names first.
+  theWalksBecameEachCharacters(home, note, options.worlds);
 }
 
 /**
@@ -426,7 +429,7 @@ function theRealmIsTheMenusChoice(
 
   const worldsFile = home.state('worlds.json');
   const worlds = json(worldsFile);
-  const playing = playedBy(home, worlds?.['realms'], where);
+  const playing = playedBy(home, where);
 
   for (const { id, address, chosen } of playing) {
     const file = home.record('belongings', id);
@@ -528,7 +531,8 @@ function theRealmIsTheMenusChoice(
  * file's) and the world its server's `database` loads, which is the world the
  * address said (`worlds.json`, else the default) when it states none.
  */
-function playedBy(home: Home, said: unknown, where: MigrationOptions['worlds']): PlayedBy[] {
+function playedBy(home: Home, where: MigrationOptions['worlds']): PlayedBy[] {
+  const said = worldsSaid(home);
   const servers = directories(home.serversDir).flatMap((id) => {
     const document = documentOf(home.server(id).file);
     const name = document?.get('name');
@@ -873,6 +877,84 @@ function theUnplacedExitsLostTheirMark(home: Home, note: (message: string) => vo
       template.includes(UNPLACED_MARK) ? template.replaceAll(UNPLACED_MARK, '') : null,
     said: (file) => t('notices.migration.unplacedExitsUnmarked', { file })
   });
+}
+
+/** The suffix of the shared walk list once every character has its own copy. */
+const BEFORE_CHARACTERS = '.before-characters';
+
+/**
+ * The recent walks became one list per character (the user, 2026-11-03):
+ * `destinations.json`, one list per world, is copied into every character
+ * that has no `destinations/<id>.json` yet, each taking the lists of the
+ * worlds `playedBy` says it may load (every world when it cannot say, since
+ * an unplaced character must not start emptier than it was). Then the shared
+ * file is renamed to `destinations.json.before-characters` and kept, so a
+ * row no character's world claims is still on disk. A character made later
+ * starts with no walks of its own. Idempotent: a second run finds no shared
+ * file, and a character file already there is never written over. A failed
+ * write leaves the shared file where it is, to be tried again next launch.
+ */
+function theWalksBecameEachCharacters(
+  home: Home,
+  note: (message: string) => void,
+  where: MigrationOptions['worlds']
+): void {
+  const shared = home.state('destinations.json');
+  const read = readJsonRecord(shared);
+  if (read.kind === 'absent') return;
+  if (read.kind === 'unreadable') {
+    // Left alone: renaming it would hide the only copy, and copying it is impossible.
+    note(t('notices.migration.walksUnread', { file: shared, message: errorMessage(read.error) }));
+    return;
+  }
+  const realms = isRecord(read.value) ? read.value['realms'] : undefined;
+  const lists = new Map<string, unknown[]>();
+  if (isRecord(realms)) {
+    for (const [world, rows] of Object.entries(realms)) {
+      if (Array.isArray(rows) && rows.length > 0) lists.set(realmKey(world), rows);
+    }
+  }
+
+  const placed = new Map(
+    playedBy(home, where).map(({ id, worlds }) => [id, new Set(worlds.map(realmKey))] as const)
+  );
+  const seeded: string[] = [];
+  const backup = freeName(`${shared}${BEFORE_CHARACTERS}`);
+  try {
+    for (const id of directories(home.profilesDir)) {
+      if (!fs.existsSync(home.profile(id).file)) continue;
+      const file = home.record('destinations', id);
+      if (fs.existsSync(file)) continue;
+      const claims = placed.get(id);
+      const own = [...lists].filter(([world]) => claims?.has(world) ?? true);
+      if (own.length === 0) continue;
+      writeJsonAtomically(file, { v: 1, realms: Object.fromEntries(own) });
+      seeded.push(id);
+    }
+    fs.renameSync(shared, backup);
+  } catch (error) {
+    note(t('notices.migration.walksNotCopied', { file: shared, message: errorMessage(error) }));
+    return;
+  }
+  note(
+    t('notices.migration.walksBecameEachCharacters', {
+      characters: seeded.length === 0 ? t('notices.migration.walksNoCharacter') : seeded.join(', '),
+      backup
+    })
+  );
+}
+
+/** The `realms` table of `worlds.json`, which world each address said it runs; absent or unread is none. */
+function worldsSaid(home: Home): unknown {
+  const read = readJsonRecord(home.state('worlds.json'));
+  return read.kind === 'read' && isRecord(read.value) ? read.value['realms'] : undefined;
+}
+
+/** `name`, or `name.2`, `name.3`… whichever is not taken, so no earlier backup is written over. */
+function freeName(name: string): string {
+  let candidate = name;
+  for (let n = 2; fs.existsSync(candidate); n += 1) candidate = `${name}.${n}`;
+  return candidate;
 }
 
 /**

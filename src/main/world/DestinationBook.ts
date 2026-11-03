@@ -8,44 +8,40 @@ import { realmKey } from './RealmLore';
 import { readJsonRecord } from './readJsonRecord';
 
 /**
- * Where characters on this machine have walked, per realm.
+ * Where each character on this machine has walked, one list per character.
  *
- * The reason it exists is in `src/shared/destinations.ts`: the realm's own room
- * search is a capped substring match over 55,806 rooms in build order, so a
- * query like `forest` answers with places nobody has been while the one place
- * they *have* been sits below the cap and is never shown at all.
+ * The reason the list exists is in `src/shared/destinations.ts`: the realm's
+ * own room search is a capped substring match in build order, so the one place
+ * a character has been sits below the cap and is never shown.
  *
- * **Keyed by realm, not by character**, like `RealmLore` and `PlayerBook` and
- * for the same reason: a bank is in the same room whoever walks to it. It
- * shares `realmKey` with the lore rather than defining a second one — two keying
- * rules that drifted would file one realm's rooms under two names, and the
- * symptom would be a list that silently forgot everything on a rename.
- *
- * **Writes are lazy and never block a walk.** `remember` is called at the
- * moment a route starts, which is the one moment this process has something
- * better to do than touch a disk — the same rule `WorldMemory` keeps.
+ * One list per character (the user, 2026-11-03): four characters on one realm
+ * buried each one's own places under the others' walks.
+ * Inside a character's file the rows are still filed by world through
+ * `realmKey`, because a room id only means a place in the data that defines it.
+ * Writes are lazy and never block a walk. `mudengine-world` › `parts/lore.md`.
  */
 export interface DestinationBookOptions {
-  /** Where the file lives. Created on demand. */
-  file: string;
+  /** Where one character's file lives (`CHARACTER_RECORDS.destinations`). Created on demand. */
+  fileFor(character: string): string;
   /** How long to wait before writing after a change. */
   saveDelayMs?: number;
-  /** Reported when the file cannot be read or written. Never silent. */
+  /** Reported when a file cannot be read or written. Never silent. */
   notify?(message: string): void;
 }
 
+/** One character's file. The migration that seeded it writes the same shape. */
 interface DestinationFile {
   v: number;
-  /** Keyed by realm identity, so one file serves every realm played. */
+  /** Keyed by world (`realmKey`), since a room id only means a place in its own data. */
   realms: Record<string, VisitedDestination[]>;
 }
 
 /**
- * The view one realm sees.
+ * The view one character on one world sees.
  *
  * Narrow, for the reason `RealmLore.forRealm` is narrow: a session holds one of
- * these and must not be able to name a *realm*, which is the door through which
- * one realm's rooms would reach another's search.
+ * these and cannot name another character or another world, which is the door
+ * through which one list's rooms would reach another's search.
  */
 export interface RealmDestinations {
   /** Note that a walk has been started toward this room. */
@@ -55,6 +51,33 @@ export interface RealmDestinations {
 }
 
 export class DestinationBook {
+  private readonly lists = new Map<string, DestinationList>();
+
+  constructor(private readonly options: DestinationBookOptions) {}
+
+  /** This character's list on this world, read from its own file on first use. */
+  forCharacter(character: string, realm: string): RealmDestinations {
+    let list = this.lists.get(character);
+    if (list === undefined) {
+      list = new DestinationList(this.options.fileFor(character), this.options);
+      this.lists.set(character, list);
+    }
+    const key = realmKey(realm);
+    const held = list;
+    return {
+      remember: (room) => held.remember(key, room),
+      matching: (query, limit) => held.matching(key, query, limit)
+    };
+  }
+
+  /** Writes every list's outstanding rows and stops their timers. Called on quit. */
+  flush(): void {
+    for (const list of this.lists.values()) list.flush();
+  }
+}
+
+/** One character's file: its rows per world, read once, written lazily. */
+class DestinationList {
   private readonly visited = new Map<string, VisitedDestination[]>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
@@ -62,22 +85,17 @@ export class DestinationBook {
   /** True once the file was found unparseable; nothing is written over it. */
   private suspended = false;
 
-  constructor(private readonly options: DestinationBookOptions) {}
+  constructor(
+    private readonly file: string,
+    private readonly options: Pick<DestinationBookOptions, 'saveDelayMs' | 'notify'>
+  ) {}
 
-  forRealm(realm: string): RealmDestinations {
-    const key = realmKey(realm);
-    return {
-      remember: (room) => this.remember(key, room),
-      matching: (query, limit) => this.matching(key, query, limit)
-    };
-  }
-
-  private matching(realm: string, query: string, limit: number): VisitedDestination[] {
+  matching(realm: string, query: string, limit: number): VisitedDestination[] {
     this.load();
     return matchVisits(this.visited.get(realm) ?? [], query, limit);
   }
 
-  private remember(realm: string, room: { id: string; name: string }): void {
+  remember(realm: string, room: { id: string; name: string }): void {
     this.load();
     const before = this.visited.get(realm) ?? [];
     const after = rememberVisit(before, { id: room.id, name: room.name, at: Date.now() });
@@ -89,7 +107,7 @@ export class DestinationBook {
    * Reads the file, once.
    *
    * A file that cannot be read is not a file that can be overwritten: it is the
-   * only record of where these characters have been, and losing it to a
+   * only record of where this character has been, and losing it to a
    * transient read failure would be silent. So the disk is suspended and said
    * out loud, and the list carries on in memory for this run.
    */
@@ -97,14 +115,14 @@ export class DestinationBook {
     if (this.loaded) return;
     this.loaded = true;
 
-    const read = readJsonRecord(this.options.file);
-    // A file that is simply not there yet is the ordinary first run.
+    const read = readJsonRecord(this.file);
+    // A file that is simply not there yet is a character that has walked nowhere.
     if (read.kind === 'absent') return;
     if (read.kind === 'unreadable') {
       this.suspended = true;
       this.options.notify?.(
         t('notices.world.destinations.readError', {
-          file: this.options.file,
+          file: this.file,
           message: errorMessage(read.error)
         })
       );
@@ -148,7 +166,7 @@ export class DestinationBook {
    * mid-write must not leave a half-written file that then refuses to parse and
    * suspends the record for good.
    */
-  save(): void {
+  private save(): void {
     if (this.suspended || !this.dirty) return;
     this.dirty = false;
 
@@ -160,21 +178,21 @@ export class DestinationBook {
 
     try {
       writeWholeSync(
-        this.options.file,
+        this.file,
         `${JSON.stringify({ v: 1, realms } satisfies DestinationFile, null, 2)}\n`
       );
     } catch (error) {
       this.dirty = true;
       this.options.notify?.(
         t('notices.world.destinations.writeError', {
-          file: this.options.file,
+          file: this.file,
           message: errorMessage(error)
         })
       );
     }
   }
 
-  /** Writes anything outstanding and stops the timer. Called on quit. */
+  /** Writes anything outstanding and stops the timer. */
   flush(): void {
     if (this.timer !== null) {
       clearTimeout(this.timer);

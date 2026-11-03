@@ -81,7 +81,8 @@ export const CHARACTER_RECORDS = {
   talk: { dir: 'talk', suffix: '.jsonl', holds: 'file' },
   backscroll: { dir: 'backscroll', suffix: '', holds: 'directory' },
   recentLoops: { dir: 'recent-loops', suffix: '.json', holds: 'file' },
-  portrait: { dir: 'portrait', suffix: '.json', holds: 'file' }
+  portrait: { dir: 'portrait', suffix: '.json', holds: 'file' },
+  destinations: { dir: 'destinations', suffix: '.json', holds: 'file' }
 } as const;
 
 export type CharacterRecord = keyof typeof CHARACTER_RECORDS;

@@ -240,12 +240,10 @@ export interface SessionHostOptions {
    */
   playersFor(id: SessionId): RealmPlayers;
   /**
-   * Where this character's realm has been walked to.
-   *
-   * Per realm like the lore — and keyed on the realm *file* rather than on the
-   * address dialled, unlike `playersFor`: a destination is a room **id**, and
-   * an id only means a place within the data that defines it. See
-   * `DestinationBook`.
+   * Where this character has walked: its own list, filed by the realm *file*
+   * rather than the address dialled, unlike `playersFor`, since a destination
+   * is a room **id** and an id only means a place within the data that defines
+   * it. See `DestinationBook`.
    */
   destinationsFor(id: SessionId): RealmDestinations;
   /**
