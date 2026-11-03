@@ -55,7 +55,8 @@ export interface MarkRecordEvents {
 
 export class MarkRecord {
   private pending: string[] = [];
-  private writing = false;
+  /** The write in the air, so a caller can wait for the record to land. */
+  private writing: Promise<void> | null = null;
   private closed = false;
   /** Rows in the file, so it is written whole once it holds far more than the book. */
   private rows = 0;
@@ -136,9 +137,13 @@ export class MarkRecord {
     this.closed = true;
   }
 
+  /** Resolves once no write is in the air, including any queued behind the current one. */
+  async settled(): Promise<void> {
+    while (this.writing !== null) await this.writing;
+  }
+
   private pump(): void {
-    if (this.writing || this.closed || this.pending.length === 0) return;
-    this.writing = true;
+    if (this.writing !== null || this.closed || this.pending.length === 0) return;
     const whole = this.rows + this.pending.length > this.cap();
     const rows = whole
       ? this.snapshot().map((row) => `${JSON.stringify(kept(row))}\n`)
@@ -147,14 +152,14 @@ export class MarkRecord {
     const done = whole
       ? this.replace(rows.join(''))
       : fs.promises.appendFile(this.file, rows.join(''), 'utf8');
-    done.then(
+    this.writing = done.then(
       () => {
         this.rows = whole ? rows.length : this.rows + rows.length;
-        this.writing = false;
+        this.writing = null;
         this.pump();
       },
       (error: unknown) => {
-        this.writing = false;
+        this.writing = null;
         // Closed since: the whole record was written then, and nothing here is owed.
         if (this.closed) return;
         // Owed still, ahead of anything changed since; the next change tries again.

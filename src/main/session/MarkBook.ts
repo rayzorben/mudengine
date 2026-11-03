@@ -141,6 +141,11 @@ export class MarkBook {
     this.record?.close();
   }
 
+  /** Resolves once every append and rewrite in the air has landed. */
+  settled(): Promise<void> {
+    return this.record?.settled() ?? Promise.resolve();
+  }
+
   /** One line's mark set or taken off, and the change appended to the record. */
   private put(id: LineId, mark: TerminalMark | null): void {
     this.made += 1;

@@ -21,14 +21,18 @@ const GRATE: TerminalMark = {
 };
 
 let dir = '';
+/** Every book a test opened on `dir`, so the folder goes only once their writes have landed. */
+let opened: MarkBook[] = [];
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'markbook-'));
+  opened = [];
 });
-// A book appends off the thread (`MarkRecord.pump`) and no test waits for it,
-// so a row can land in the folder while it is removed (ENOTEMPTY under load,
-// seen in the gate 2026-10-31). Retrying is Node's own answer; a row landing
-// after the folder is gone fails into the book's problems, which no test reads.
-afterEach(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }));
+// A book appends off the thread (`MarkRecord.pump`); removing the folder with a
+// row or a rewrite still in the air failed with ENOTEMPTY (CI, 2026-11-03).
+afterEach(async () => {
+  await Promise.all(opened.map((marks) => marks.settled()));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 /** The record's rows as they stand on disk. */
 const rows = (): string[] =>
@@ -46,6 +50,7 @@ function book(lines = 10) {
     changed: (changes) => pushed.push(changes),
     onProblem: (message) => problems.push(message)
   });
+  opened.push(marks);
   return { marks, pushed, problems };
 }
 
