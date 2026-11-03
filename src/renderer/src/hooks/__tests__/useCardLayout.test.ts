@@ -288,10 +288,31 @@ describe('a card docked above or below the console', () => {
     expect(layout.away).not.toContain('toolbar');
   });
 
-  /* And a player who moved it somewhere else keeps it there. */
-  it('leaves the toolbar wherever it was put', () => {
-    expect(normalizeLayout({ rail: ['toolbar', 'vitals'] }).above).toEqual([]);
-    expect(normalizeLayout({ away: ['toolbar'] }).above).toEqual([]);
+  /*
+   * And a layout that put it anywhere else is read with it back above
+   * (user, 2026-11-02): the toolbar is not the layout's to move.
+   */
+  it('puts the toolbar back above the console from wherever a layout put it', () => {
+    const float = { id: 'toolbar', x: 0, y: 0, w: 0.5, h: 0.2, solidity: 1 } as const;
+    for (const stored of [
+      { rail: ['toolbar', 'vitals'] },
+      { below: ['toolbar'] },
+      { away: ['toolbar'] },
+      { floats: [float] }
+    ] as Array<Partial<CardLayout>>) {
+      const layout = normalizeLayout(stored);
+      expect(layout.above).toEqual(['toolbar']);
+      accountsForEveryCard(layout);
+    }
+    // Kept where it already stood among the strip's other cards.
+    expect(normalizeLayout({ above: ['conversation', 'toolbar'] }).above).toEqual([
+      'conversation',
+      'toolbar'
+    ]);
+  });
+
+  it('never reads the toolbar as rolled', () => {
+    expect(normalizeLayout({ rolled: ['toolbar', 'map'] }).rolled).toEqual(['map']);
   });
 });
 

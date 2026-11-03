@@ -14,7 +14,7 @@ import type { CardChromes } from './useCardChrome';
 import type { CardDrag } from './useCardDrag';
 import type { CardContexts } from './useCardContext';
 import { EMPTY_VIEW, type SessionView } from './useSessionViews';
-import { isDiagnosticCard, type CardId, type CardLayoutApi } from '../lib/cards';
+import { isDiagnosticCard, isFixedCard, type CardId, type CardLayoutApi } from '../lib/cards';
 import type { SessionId } from '@shared/ipc';
 
 export interface CardRendererInputs {
@@ -85,7 +85,9 @@ export function useCardRenderers({
       const floating = cards.floatOf(id);
       const diagnostic = isDiagnosticCard(id);
       if (diagnostic && !railOpen && !floating) return null;
-      if (!diagnostic && !hudOpen && !floating) return null;
+      // A fixed card is drawn with the cards hidden too: the toolbar stays
+      // above the console whatever else is shown (`FIXED_ABOVE`).
+      if (!diagnostic && !hudOpen && !floating && !isFixedCard(id)) return null;
 
       return cardElement(id, contextFor(session, view, chromeFor(id)));
     },

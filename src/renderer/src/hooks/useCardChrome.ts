@@ -12,7 +12,13 @@ import { useCallback, useRef } from 'react';
 import type { CardChrome } from '../components/BentoCard';
 import type { CardDrag } from './useCardDrag';
 import { DEFAULT_FLOAT } from './useCardLayout';
-import type { CardId, CardLayoutApi, CardSettings, FloatState } from '../lib/cards';
+import {
+  isFixedCard,
+  type CardId,
+  type CardLayoutApi,
+  type CardSettings,
+  type FloatState
+} from '../lib/cards';
 import type { Theme } from '@shared/themes';
 
 /** What a pinned float's chrome reads and writes of its own character's layout. */
@@ -124,10 +130,17 @@ export function useCardChrome(
         cached.settings === settings
       )
         return cached.chrome;
+      // A fixed card stays docked above the console (`FIXED_ABOVE`). The
+      // layout refuses a close, drag or roll for it, so none is drawn.
+      const movable = !isFixedCard(id);
       const chrome: CardChrome = {
         cardId: id,
-        onClose: () => cardsRef.current.hide(id),
-        onGrab: (event: React.PointerEvent<HTMLElement>) => dragRef.current.begin(id, event),
+        ...(movable
+          ? {
+              onClose: () => cardsRef.current.hide(id),
+              onGrab: (event: React.PointerEvent<HTMLElement>) => dragRef.current.begin(id, event)
+            }
+          : {}),
         dragging,
         // Every card's copy menu takes the caret and gives it back here.
         returnFocus,
@@ -137,7 +150,7 @@ export function useCardChrome(
          * here depends on which lane it is in or on whether it floats.
          */
         rolled,
-        onRoll: (next: boolean) => cardsRef.current.roll(id, next),
+        ...(movable ? { onRoll: (next: boolean) => cardsRef.current.roll(id, next) } : {}),
         settings: {
           id,
           value: settings,

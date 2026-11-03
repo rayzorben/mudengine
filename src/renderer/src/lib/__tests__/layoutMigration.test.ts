@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { withGridSizes, withRailColumns } from '../layoutMigration';
+import { keepsFixedCards, withGridSizes, withRailColumns } from '../layoutMigration';
 
 /*
  * A rail 900px tall, 16px cells and a 12px gap: a card that took a fifth of
@@ -76,5 +76,22 @@ describe('a layout stored before it kept the width of its rail', () => {
     expect(withRailColumns(after)).toBe(after);
     const fresh = { rail: ['room'] };
     expect(withRailColumns(fresh)).toBe(fresh);
+  });
+});
+
+/*
+ * A layout kept before the toolbar was fixed above the console (user,
+ * 2026-11-02) is written back with it there; one that already has it there
+ * is read as it is. The first case is the positive control: the check
+ * returns true for a layout that already has the toolbar there.
+ */
+describe('a layout kept before the toolbar was fixed above the console', () => {
+  it('is found when the toolbar stands anywhere but open in the strip above', () => {
+    expect(keepsFixedCards({ above: ['toolbar'], rail: ['map'] })).toBe(true);
+    expect(keepsFixedCards({ above: [], rail: ['toolbar'] })).toBe(false);
+    expect(keepsFixedCards({ below: ['toolbar'] })).toBe(false);
+    expect(keepsFixedCards({ away: ['toolbar'] })).toBe(false);
+    expect(keepsFixedCards({ floats: [{ id: 'toolbar' }] })).toBe(false);
+    expect(keepsFixedCards({ above: ['toolbar'], rolled: ['toolbar'] })).toBe(false);
   });
 });

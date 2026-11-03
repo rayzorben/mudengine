@@ -90,8 +90,8 @@ const PREFERRED: Record<CardId, GridBox> = {
   link: { x: 29, y: 241, w: 20, h: 14 },
   automation: { x: 0, y: 254, w: 29, h: 14 },
   stream: { x: 29, y: 255, w: 20, h: 15 },
-  // One band high, the height of the rail head and the put-away chips. It
-  // ships docked above the console (`DEFAULT_ABOVE`).
+  // Never drawn on the rail: it stands docked above the console
+  // (`FIXED_ABOVE`). Kept because the record names every card.
   toolbar: { x: 0, y: 270, w: 49, h: 4 }
 };
 

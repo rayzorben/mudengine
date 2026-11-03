@@ -7894,14 +7894,15 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
 
   /*
    * **And nothing is drawn that does not fit.** The docked toolbar is one band
-   * tall, so its column has room for exactly one glyph — close — and the kebab
-   * was drawn under it anyway, clipped in half by the card's own `overflow`
+   * tall, so its column has room for exactly one glyph, and the kebab was
+   * drawn under it anyway, clipped in half by the card's own `overflow`
    * (todo 00, 2026-09-12, with the screenshot). A control clipped in half is a
    * control that is not there.
    *
    * Measured, not counted: the last glyph's own box against the card's, so
-   * this cannot pass on a column that rendered nothing. The positive control
-   * is the close glyph being one of the ones measured.
+   * this cannot pass on a column that rendered nothing (`drawn` is the
+   * positive control). The toolbar stays above the console (user,
+   * 2026-11-02), so neither close, roll nor the grip is drawn on it.
    */
   const toolbarColumn = await evaluate(
     `JSON.stringify((() => {
@@ -7912,6 +7913,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return {
         drawn: glyphs.length,
         close: glyphs.some((b) => b.classList.contains('card-close')),
+        grip: card.querySelector('.card-grip') !== null,
+        roll: card.querySelector('.card-roll') !== null,
         more: glyphs.some((b) => b.getAttribute('data-action') === 'more'),
         over: glyphs.filter((b) => b.getBoundingClientRect().bottom > box.bottom + 0.5).length
       };
@@ -7919,8 +7922,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   );
   const toolbarSide = JSON.parse(String(toolbarColumn ?? 'null'));
   check(
-    toolbarSide !== null && toolbarSide.drawn >= 1 && toolbarSide.close && toolbarSide.over === 0,
-    'and the docked toolbar draws only the glyphs that fit inside it',
+    toolbarSide !== null &&
+      toolbarSide.drawn >= 1 &&
+      !toolbarSide.close &&
+      !toolbarSide.grip &&
+      !toolbarSide.roll &&
+      toolbarSide.over === 0,
+    'and the docked toolbar draws only the glyphs that fit inside it, with no close, grip or roll',
     JSON.stringify(toolbarSide)
   );
 

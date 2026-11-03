@@ -22,14 +22,13 @@ export interface ToolbarCardProps extends CardChrome {
 
 /**
  * One row of glyphs: what this character is doing on its own, and the dial.
- * Docked or small it is that row; from medium (on the rail or floating) each
- * key is a tile with its name, so a card given the room reads without hovering.
+ * Small it is that row; from medium (the strip dragged taller) each key is a
+ * tile with its name, so a toolbar given the room reads without hovering.
  *
- * A card like every other — it can sit on the rail, be dragged over the
- * console or be docked in a strip — but it ships **docked above the console**,
- * where a toolbar belongs and where it costs one row rather than a rail slot.
- * The strips overlay the console rather than taking rows from it, so a toolbar
- * appearing does not resize the terminal, which would go out over NAWS.
+ * It stands docked above the console for every character and has no
+ * close, grip or roll (`FIXED_ABOVE`, user 2026-11-02). The strips overlay
+ * the console rather than taking rows from it, so the toolbar does not resize
+ * the terminal, which would go out over NAWS.
  *
  * ## Every button is a toggle, and the profile store owns the state
  *

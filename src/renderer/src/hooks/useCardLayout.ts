@@ -9,6 +9,7 @@ import { isStatsGraph, STATS_WINDOW_HOURS } from '@shared/tally';
 import {
   CARDS,
   isCardId,
+  isFixedCard,
   LEAST_CARD,
   MIN_FLOAT,
   NO_CARD_SETTINGS,
@@ -20,7 +21,12 @@ import {
   type RailArrangement,
   type Strip
 } from '../lib/cards';
-import { withGridSizes, withRailColumns, type RailMeasure } from '../lib/layoutMigration';
+import {
+  keepsFixedCards,
+  withGridSizes,
+  withRailColumns,
+  type RailMeasure
+} from '../lib/layoutMigration';
 import {
   inPreferredOrder,
   inReadingOrder,
@@ -66,17 +72,6 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'reference',
   'extension'
 ];
-
-/**
- * Cards whose shipped home is a strip docked to the console rather than the
- * rail.
- *
- * One so far, and the strip is the point of it: a toolbar is a *row*, and the
- * rail is a column. The strips overlay the console rather than taking rows
- * from it, so this appearing does not resize the terminal — a resize goes out
- * over NAWS.
- */
-const DEFAULT_ABOVE: readonly CardId[] = ['toolbar'];
 
 /**
  * The two alphas a floating card is drawn with, from the one slider.
@@ -583,22 +578,25 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
     return true;
   };
 
-  for (const id of partial.rail ?? []) if (isCardId(id) && take(id)) rail.push(id);
+  // A fixed card's place is not the layout's to keep (`FIXED_ABOVE`): it is
+  // read out of every other list, and the fill below docks it above.
+  const movable = (id: unknown): id is CardId => isCardId(id) && !isFixedCard(id);
+  for (const id of partial.rail ?? []) if (movable(id) && take(id)) rail.push(id);
   for (const id of partial.above ?? []) if (isCardId(id) && take(id)) above.push(id);
-  for (const id of partial.below ?? []) if (isCardId(id) && take(id)) below.push(id);
+  for (const id of partial.below ?? []) if (movable(id) && take(id)) below.push(id);
   for (const entry of partial.floats ?? []) {
     const parsed = readFloat(entry);
-    if (parsed && take(parsed.id)) floats.push(parsed);
+    if (parsed && movable(parsed.id) && take(parsed.id)) floats.push(parsed);
   }
-  for (const id of partial.away ?? []) if (isCardId(id) && take(id)) away.push(id);
+  for (const id of partial.away ?? []) if (movable(id) && take(id)) away.push(id);
 
   // Anything this build knows about that the stored layout did not.
   for (const id of IDS) {
     if (placed.has(id)) continue;
     const float = DEFAULT_FLOATS.find((entry) => entry.id === id);
-    if (float) floats.push({ ...float });
+    if (isFixedCard(id)) above.push(id);
+    else if (float) floats.push({ ...float });
     else if (DEFAULT_AWAY.includes(id)) away.push(id);
-    else if (DEFAULT_ABOVE.includes(id)) above.push(id);
     else rail.push(id);
   }
 
@@ -628,7 +626,7 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
     settings: readSettings(partial.settings),
     sizes: readSizes(partial.sizes, columns),
     spots: readSpots(partial.spots, ordered, columns),
-    rolled: readRolled(partial.rolled),
+    rolled: readRolled(partial.rolled).filter((id) => !isFixedCard(id)),
     columns
   };
 }
@@ -639,7 +637,7 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
  */
 interface Parsed {
   layout: CardLayout;
-  migrated: 'before-grid' | 'before-columns' | null;
+  migrated: 'before-grid' | 'before-columns' | 'before-toolbar' | null;
 }
 
 /**
@@ -678,7 +676,14 @@ function parse(stored: string | null, measure: () => RailMeasure): Parsed | null
     const gridded = withGridSizes(value as Record<string, unknown>, measure);
     const raw = withRailColumns(gridded);
     const layout = layoutOf(raw);
-    const migrated = gridded !== value ? 'before-grid' : raw !== gridded ? 'before-columns' : null;
+    const migrated =
+      gridded !== value
+        ? 'before-grid'
+        : raw !== gridded
+          ? 'before-columns'
+          : keepsFixedCards(raw)
+            ? null
+            : 'before-toolbar';
     return { layout, migrated };
   } catch {
     return null;
@@ -788,6 +793,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
       isShown: (id) => !layout.away.includes(id),
       floatOf: (id) => layout.floats.find((entry) => entry.id === id),
       hide: (id) => {
+        if (isFixedCard(id)) return;
         const base = without(layout, id);
         store({ ...base, away: [...base.away, id] });
       },
@@ -797,11 +803,13 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         store({ ...base, rail: [...base.rail, id] });
       },
       dock: (id, strip, index) => {
+        if (isFixedCard(id)) return;
         const next = docked(layout, id, strip, index);
         // A drop back into its own gap moves nothing and writes nothing.
         if (next !== layout) store(next);
       },
       placeOnRail: (id, box, drawn, rail) => {
+        if (isFixedCard(id)) return;
         const next = placed(layout, id, box, drawn, rail);
         if (next !== layout) store(next);
       },
@@ -823,6 +831,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
               ? 'below'
               : undefined,
       lift: (id, at, size) => {
+        if (isFixedCard(id)) return;
         const existing = layout.floats.find((entry) => entry.id === id);
         const base = without(layout, id);
         store({ ...base, floats: [...base.floats, lifted(id, existing, at, size)] });
@@ -858,7 +867,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         // Asking for the state it is already in writes nothing: every write is
         // a `localStorage` round trip and a new layout object, which rebuilds
         // every card's chrome.
-        if (layout.rolled.includes(id) === rolled) return;
+        if (isFixedCard(id) || layout.rolled.includes(id) === rolled) return;
         store({
           ...layout,
           rolled: rolled ? [...layout.rolled, id] : layout.rolled.filter((entry) => entry !== id)

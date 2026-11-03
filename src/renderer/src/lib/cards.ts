@@ -27,15 +27,10 @@ import type { WorkspaceBox } from './workspaceBox';
  */
 export const CARDS = [
   /*
-   * The toolbar first, and it is the one card with a *placement* in its
-   * shipped arrangement rather than only a position: it docks above the
-   * console (`DEFAULT_ABOVE`), one icon high, which is where a toolbar
-   * belongs and is the one thing the rail cannot give it — a rail is a column,
-   * and a row of glyphs down a column is a list.
-   *
-   * It is still an ordinary card underneath: draggable onto the rail, over the
-   * console as a float, or into the strip below. Nothing about it is special
-   * except where it starts.
+   * The toolbar first. It stands docked above the console for every
+   * character and cannot be closed, rolled, dragged or floated
+   * (`FIXED_ABOVE`): the user asked for it to stay above the console
+   * (2026-11-02).
    */
   { id: 'toolbar', label: t('cards.toolbar.title') },
   /*
@@ -379,6 +374,18 @@ export const HIDES_WHEN_EMPTY: Partial<Record<CardId, boolean>> = {
   banks: false,
   shops: false
 };
+
+/**
+ * The cards docked above the console for good (user, 2026-11-02): no close,
+ * roll or drag is drawn on one, the layout refuses to move one, and every
+ * stored layout is read with it back in the strip (`normalizeLayout`).
+ */
+export const FIXED_ABOVE: readonly CardId[] = ['toolbar'];
+
+/** Whether this card stays docked above the console whatever the layout says. */
+export function isFixedCard(id: CardId): boolean {
+  return FIXED_ABOVE.includes(id);
+}
 
 /** Whether this card, as set for this character, leaves the rail when empty. */
 export function hidesWhenEmpty(settings: CardSettings, id: CardId): boolean {

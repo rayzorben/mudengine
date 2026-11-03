@@ -1,3 +1,6 @@
+import { isRecord } from '@shared/values';
+
+import { FIXED_ABOVE } from './cards';
 import { inReadingOrder, NARROWEST_RAIL } from './railCards';
 import type { GridSpot } from './railGrid';
 
@@ -116,6 +119,24 @@ export function withRailColumns(raw: Record<string, unknown>): Record<string, un
       )
     : raw['rail'];
   return { ...raw, rail: order, sizes: given, columns: Math.round(Math.max(...edges)) };
+}
+
+/**
+ * Whether a stored layout already has every card in `FIXED_ABOVE` docked
+ * above the console and open (user, 2026-11-02). One that does not is read
+ * with them back in the strip (`normalizeLayout`) and written back, the old
+ * value kept under `<key>.before-toolbar`.
+ */
+export function keepsFixedCards(raw: Record<string, unknown>): boolean {
+  const list = (key: string): unknown[] => (Array.isArray(raw[key]) ? raw[key] : []);
+  const elsewhere = [
+    ...list('rail'),
+    ...list('below'),
+    ...list('away'),
+    ...list('rolled'),
+    ...list('floats').map((entry) => (isRecord(entry) ? entry['id'] : undefined))
+  ];
+  return FIXED_ABOVE.every((id) => list('above').includes(id) && !elsewhere.includes(id));
 }
 
 /** A stored block of entries keyed by card, as far as each is an object. */
