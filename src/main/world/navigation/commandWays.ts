@@ -11,7 +11,6 @@ import {
   roomId,
   type CommandDraw,
   type CommandLanding,
-  type Corridor,
   type Landing,
   type Requirement,
   type RoomCommand,
@@ -24,10 +23,10 @@ export interface CommandWay {
   requirement: Requirement;
 }
 
-export function commandWays(
-  command: RoomCommand,
-  corridor: (to: RoomId) => Corridor | null
-): CommandWay[] {
+/** What saying a command casts on the way to a room: a passage, a one-off hit (`WorldGraph.castWay`). */
+export type CastWay = Pick<Requirement, 'corridor' | 'hit'>;
+
+export function commandWays(command: RoomCommand, cast: (to: RoomId) => CastWay): CommandWay[] {
   const phrase = command.say[0]?.trim();
   if (!phrase) return [];
   const way = (
@@ -36,7 +35,6 @@ export function commandWays(
     drawn?: Landing
   ): CommandWay => {
     const gates = [...(command.gates ?? []), ...(landing?.gates ?? [])];
-    const passage = corridor(to);
     const tries = landing === undefined ? 1 : 1 / (landing.draw ?? landing.chance);
     // A `Text:` exit in everything but the table it came from: a different command.
     const requirement: Requirement = {
@@ -44,7 +42,7 @@ export function commandWays(
       raw: phrase,
       commands: [...command.say],
       ...(gates.length === 0 ? {} : { gates }),
-      ...(passage === null ? {} : { corridor: passage }),
+      ...cast(to),
       ...(tries > 1 ? { tries } : {}),
       ...(landing?.waits === undefined ? {} : { waits: landing.waits }),
       ...(command.breaks === undefined ? {} : { breaks: command.breaks }),
@@ -102,12 +100,10 @@ export function spellWays(room: WorldRoom): CommandWay[] {
 /** Every way a room's commands and its own spell open (`WorldGraph.linkPortals`). */
 export function roomWays(
   room: WorldRoom,
-  corridor: (command: RoomCommand, to: RoomId) => Corridor | null
+  cast: (command: RoomCommand, to: RoomId) => CastWay
 ): CommandWay[] {
   return [
-    ...(room.commands ?? []).flatMap((command) =>
-      commandWays(command, (to) => corridor(command, to))
-    ),
+    ...(room.commands ?? []).flatMap((command) => commandWays(command, (to) => cast(command, to))),
     ...spellWays(room)
   ];
 }

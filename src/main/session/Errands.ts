@@ -38,6 +38,7 @@ import type { ItemSources } from '../automation/ItemErrand';
 import type { OddsPeeker } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
+import { hitWalls } from '../world/navigation/castChain';
 import type { MobEntity } from '../../shared/entities';
 import { spotJoiners } from './spotJoiners';
 import { nearestCounter } from './supplyCounter';
@@ -388,6 +389,8 @@ export class Errands implements SessionModule {
   private tolls: number[] | null = null;
   /** `gateItems`, read once per realm. */
   private gated: ReadonlySet<number> | null = null;
+  /** `hitMosts`, read once per realm. */
+  private hits: number[] | null = null;
   /**
    * The hunting survey's pricing pass, remembered until the character's
    * fitness moves (todo 00, 2026-09-13). Weighing 1,260 groups costs main
@@ -1082,7 +1085,13 @@ export class Errands implements SessionModule {
        * it because `LairCosts` remembers per room; this has nothing to
        * remember, so what it depends on is hoisted instead.
        */
-      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up)
+      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up),
+      // And a room command's one-off hit as a share of the health now; null
+      // while health is unread, which `hitCost` walls.
+      shareOfHealth: (points) => {
+        const health = this.healthNow(state, false);
+        return health === null ? null : points / health;
+      }
     };
   }
 
@@ -1091,8 +1100,10 @@ export class Errands implements SessionModule {
    * field of `travellerNow`, so a field added there is in it. The copper
    * carried is there only as how many of the realm's tolls it covers, since
    * a toll is the one exit it opens and the figure itself moves on every kill;
-   * the pack only as the items a way asks for (`gateItems`).
-   * Its readers (`danger`, `hazard`) are asked live and are not.
+   * the pack only as the items a way asks for (`gateItems`), and the health
+   * only as how many of the realm's one-off hits it walls (`hitMosts`), since
+   * those are the walls it moves. Its readers (`danger`, `hazard`) are asked
+   * live and are not.
    * `TrainErrand.trainersAhead` keeps its routes while this stays the same.
    */
   reachKey(state: CharacterState = this.tracker.current): string {
@@ -1101,16 +1112,21 @@ export class Errands implements SessionModule {
       wealth === null || wealth === undefined
         ? null
         : this.tollPrices().filter((toll) => toll <= wealth).length;
+    const health = this.healthNow(state, false);
+    const hitsWalled =
+      health === null ? null : this.hitMosts().filter((most) => hitWalls(most / health)).length;
     // Only what the pack holds that a way asks for: loot and purchases open no way (2026-10-02:
     // a staff bought every 12 s planned every trainer route again each time).
     const opens = this.gateItems();
     const carried = keys?.filter((id) => opens.has(id));
-    return JSON.stringify({ ...reach, keys: carried, tollsPaid }, (_key, value: unknown) =>
-      typeof value === 'function'
-        ? undefined
-        : value instanceof Set || value instanceof Map
-          ? [...value]
-          : value
+    return JSON.stringify(
+      { ...reach, keys: carried, tollsPaid, hitsWalled },
+      (_key, value: unknown) =>
+        typeof value === 'function'
+          ? undefined
+          : value instanceof Set || value instanceof Map
+            ? [...value]
+            : value
     );
   }
   /**
@@ -1149,6 +1165,30 @@ export class Errands implements SessionModule {
     return this.tolls;
   }
 
+  /** The most of each one-off hit a way in the realm lands (`Requirement.hit`), smallest first. */
+  private hitMosts(): number[] {
+    if (this.hits !== null) return this.hits;
+    const mosts = new Set<number>();
+    for (const room of this.world?.everyRoom() ?? []) {
+      for (const way of this.world?.portalsFrom(roomId(room.map, room.room)) ?? []) {
+        if (way.requirement.hit !== undefined) mosts.add(way.requirement.hit.most);
+      }
+    }
+    this.hits = [...mosts].sort((a, b) => a - b);
+    return this.hits;
+  }
+
+  /**
+   * The health the character has now, for a share of it, null while unread.
+   * The maximum stands in for an unread current where a share is a price
+   * (`roomHazard`, `lairDanger`); it does not for a one-off hit, whose wall
+   * is the whole bar and a fall that can kill is not priced on a guess.
+   */
+  private healthNow(state: CharacterState, maxStandsIn: boolean): number | null {
+    const health = maxStandsIn ? (state.vitals.hp ?? state.vitals.hpMax) : state.vitals.hp;
+    return health !== null && health > 0 ? health : null;
+  }
+
   /**
    * What a lap's leg costs to move: the distance, and whether each way can be
    * passed at all — never what is waiting on it.
@@ -1158,7 +1198,7 @@ export class Errands implements SessionModule {
    * counters), the purse for a toll, the edges the server refused, the
    * keep-out words the loop was drafted with, and a room whose spell moves the
    * character, which is not a way to arrive anywhere. Dropped: the lair, the
-   * room's damage, the preferred corridors, and the rooms run from (todo 19,
+   * room's damage and a fall's, the preferred corridors, and the rooms run from (todo 19,
    * never on `travellerNow`). See `mudengine-automation` › *A lap walks the
    * shortest way*.
    */
@@ -1173,7 +1213,13 @@ export class Errands implements SessionModule {
         ? (priced.hazard?.(room, carrying) ?? null)
         : null;
     };
-    return { ...priced, danger: undefined, runDeath: undefined, hazard: relocates };
+    return {
+      ...priced,
+      danger: undefined,
+      runDeath: undefined,
+      hazard: relocates,
+      shareOfHealth: () => 0
+    };
   }
 
   /**
@@ -1213,8 +1259,8 @@ export class Errands implements SessionModule {
      * share at the wall into the wall — one place decides that number.
      */
     if (hazard.relocates === true) return tuning().world.deadlyShare;
-    const health = state.vitals.hp ?? state.vitals.hpMax;
-    if (health === null || !(health > 0)) return null;
+    const health = this.healthNow(state, true);
+    if (health === null) return null;
     /*
      * A chain the reader could not follow prices as a *discouragement* rather
      * than as nothing: `graveyard summon` and `fire trigger` end in verbs this
@@ -1305,7 +1351,7 @@ export class Errands implements SessionModule {
      */
     return passShare(
       this.lairPassHere(room, state),
-      state.vitals.hp ?? state.vitals.hpMax,
+      this.healthNow(state, true),
       tuning().world.unsureShare
     );
   }

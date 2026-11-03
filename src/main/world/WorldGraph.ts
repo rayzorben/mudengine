@@ -106,7 +106,8 @@ import { readActions, readRows } from './roomColumns';
 import { headerOf, NO_HEADER, type RealmHeader } from './realmHeader';
 import { QuestPlanner } from './QuestPlanner';
 import type { PlannerRooms } from './PlannerRooms';
-import { roomWays } from './navigation/commandWays';
+import { roomWays, type CastWay } from './navigation/commandWays';
+import { castChain, commandHit } from './navigation/castChain';
 import { spellLanding } from './navigation/spellLanding';
 
 // Read only by `WorldGraph.test.ts`, which todo 710 kept unchanged; goes when a router-only test exists.
@@ -1548,7 +1549,7 @@ export class WorldGraph {
 
   private linkPortals(): void {
     for (const [id, room] of this.rooms) {
-      for (const way of roomWays(room, (command, to) => this.corridorFrom(command, to))) {
+      for (const way of roomWays(room, (command, to) => this.castWay(command, to))) {
         const destination = this.rooms.get(way.to);
         // A teleport out of the dataset is a hole in the data, not a route.
         if (!destination) continue;
@@ -1564,11 +1565,12 @@ export class WorldGraph {
   }
 
   /**
-   * The timed passage a room command opens, or null (todo 104).
+   * What a room command's own `cast` does on the way to `landing`: the
+   * one-off hit of a spell that lands once (`commandHit`), and the timed
+   * passage it opens (todo 104).
    *
-   * The command's own `cast` puts a spell on the character; where that spell
-   * lasts and it, or what it ends in (`EndCast`), carries harm, the passage
-   * is one to run through. A 0 damage column is the spell's own roll
+   * Where that spell lasts and it, or what it ends in (`EndCast`), carries
+   * harm, the passage is one to run through. A 0 damage column is the roll
    * (`spellWounds`): `drowning` is `DamageNoMR 0` at 5–20. A spell with no
    * duration lands once and is gone (`fall`, `fire portal`), so it is no
    * passage. From the landing `Router.sweepFrom` walks the exits up to the
@@ -1579,20 +1581,16 @@ export class WorldGraph {
    * well's eleven rooms on. No duration, or no way out within it, is
    * `ends: false`, which `corridorCost` walls.
    */
-  private corridorFrom(command: RoomCommand, landing: RoomId): Corridor | null {
-    if (command.casts === undefined) return null;
-    const first = this.spellById(command.casts);
-    if (first === null) return null;
-    const chain: WorldSpell[] = [];
-    const seen = new Set<number>();
-    for (let next: number | undefined = first.id; next !== undefined && next > 0;) {
-      if (seen.has(next) || chain.length > 4) break;
-      seen.add(next);
-      const spell = this.spellById(next);
-      if (spell === null) break;
-      chain.push(spell);
-      next = spell.abilities?.find(([ability]) => ability === HAZARD_ABILITY.endCast)?.[1];
-    }
+  private castWay(command: RoomCommand, landing: RoomId): CastWay {
+    const chain = castChain(command.casts ?? 0, (id) => this.spellById(id));
+    const hit = commandHit(chain);
+    const corridor = this.corridorFrom(chain, landing);
+    return { ...(hit === null ? {} : { hit }), ...(corridor === null ? {} : { corridor }) };
+  }
+
+  private corridorFrom(chain: readonly WorldSpell[], landing: RoomId): Corridor | null {
+    const first = chain[0];
+    if (first === undefined) return null;
     if (!chain.some((spell, at) => (at > 0 || (spell.duration ?? 0) > 0) && spellWounds(spell)))
       return null;
     const lifts = new Set(chain.map((spell) => spell.id));

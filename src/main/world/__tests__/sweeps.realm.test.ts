@@ -17,15 +17,18 @@ import { WorldGraph } from '../WorldGraph';
  * rooms, so a change in any one of them fails. Skips where an archive is
  * absent. The timed-passage sweep (`corridorFrom`) finds the two dives into
  * the Muddy Underwater Passage in both, once `drowning`'s `DamageNoMR 0` is
- * read as its 5–20 roll (2026-11-03).
+ * read as its 5–20 roll (2026-11-03). A traveller whose bar is unread finds a
+ * room command's one-off hit a wall (`Router.hitCost`), so 10 of the 1,704
+ * sampled sweeps reach fewer rooms: 196 between them, behind the pyramid pits,
+ * the flaming portals, a tentacle hole and the roof at 8/758 (2026-11-03).
  */
 const MEASURED = {
   gmud: {
-    within: '85cf48fd9e3a1c17',
+    within: '4df39121086b6a3a',
     rows: { asked: 1638, resolved: 388, digest: 'f00dfbd2f8e0ad8a' }
   },
   pmud: {
-    within: '8215be106a1bc22b',
+    within: '4efdaccdf6aea77c',
     rows: { asked: 1832, resolved: 451, digest: '44bd251f9ba47d49' }
   }
 } as const;

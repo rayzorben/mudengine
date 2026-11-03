@@ -5440,6 +5440,67 @@ describe('a way in that puts a timed spell on you', () => {
   });
 });
 
+/*
+ * A room command whose own spell lands once (gmud.zip's `fall`, 335: `Damage
+ * 0` at 5–15, no duration). `go hole` is one move and a portal's price
+ * against five round by the dry way. The fall is priced on the share of
+ * health it takes, and a character it can kill at its most, or whose health
+ * nobody has read, finds it a wall.
+ */
+describe('a room command whose spell lands once', () => {
+  const ledge = (dry = true): WorldGraph =>
+    makeWorld(
+      [
+        {
+          m: 1,
+          r: 1,
+          n: 'Ledge',
+          x: dry ? { e: { m: 1, r: 3 } } : {},
+          cmd: [{ say: ['go hole'], to: '1/2', casts: 335 }]
+        },
+        { m: 1, r: 2, n: 'Pit', x: {} },
+        { m: 1, r: 3, n: 'Path', x: { e: { m: 1, r: 4 } } },
+        { m: 1, r: 4, n: 'Path', x: { e: { m: 1, r: 5 } } },
+        { m: 1, r: 5, n: 'Path', x: { e: { m: 1, r: 6 } } },
+        { m: 1, r: 6, n: 'Slope', x: { d: { m: 1, r: 2 } } }
+      ],
+      { spells: [{ id: 335, n: 'fall', ab: [[1, 0]], pw: [5, 15] }] },
+      43
+    );
+  const health = (hp: number): Traveller => ({ shareOfHealth: (points) => points / hp });
+  const commands = (graph: WorldGraph, traveller: Traveller): string[] =>
+    graph.route(roomId(1, 1), roomId(1, 2), traveller).steps.map((step) => step.command);
+
+  it('reads the hit off the spell, its mean and its most', () => {
+    expect(ledge().portalsFrom(roomId(1, 1))[0]?.requirement.hit).toEqual({
+      name: 'fall',
+      mean: 10,
+      most: 15
+    });
+  });
+
+  it('takes the dry way at a like cost, and the fall where it costs little', () => {
+    expect(commands(ledge(), health(100))).toEqual(['e', 'e', 'e', 'e', 'd']);
+    expect(commands(ledge(), health(5000))).toEqual(['go hole']);
+  });
+
+  it('walls the fall for a character its most can kill, or whose health is unread', () => {
+    const portal = ledge().portalsFrom(roomId(1, 1))[0]!;
+    const wall = tuning().world.wallCost;
+    expect(edgePenalty(portal.requirement, health(15))).toBe(wall);
+    expect(edgePenalty(portal.requirement, {})).toBe(wall);
+    expect(edgePenalty(portal.requirement, { shareOfHealth: () => null })).toBe(wall);
+    expect(edgePenalty(portal.requirement, health(16))).toBeLessThan(wall);
+    // With no dry way it is still the way, said as one the character dies on.
+    const route = ledge(false).route(roomId(1, 1), roomId(1, 2), health(15));
+    expect(route.blocked).toBe(false);
+    expect(route.steps[0]).toMatchObject({ command: 'go hole', deadly: true });
+    expect(ledge(false).route(roomId(1, 1), roomId(1, 2), health(100)).steps[0]?.deadly).toBe(
+      undefined
+    );
+  });
+});
+
 describe('building entities', () => {
   /** A world with one item, one monster and a shop, for the joins. */
   const built = (): WorldGraph => {

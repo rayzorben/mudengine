@@ -187,9 +187,11 @@ export function describeObstacle(
         return t('map.obstacle.roomSpellWay');
       case 'text': {
         const command = requirement.commands?.[0];
-        return command === undefined
-          ? t('map.obstacle.needsPhrase')
-          : t('map.obstacle.sayCommand', { command });
+        if (command === undefined) return t('map.obstacle.needsPhrase');
+        const hit = requirement.hit;
+        return hit === undefined
+          ? t('map.obstacle.sayCommand', { command })
+          : t('map.obstacle.sayCommandHit', { command, spellName: hit.name, damage: hit.most });
       }
       case 'hidden':
         if (requirement.searchable) return t('map.obstacle.hiddenSearchable');

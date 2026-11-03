@@ -4504,6 +4504,7 @@ map:
     pickOnly: pick {difficulty}
     pickOrBash: pick/bash {difficulty}
     sayCommand: 'Say: {command}'
+    sayCommandHit: 'Say: {command} ({spellName}, up to {damage} damage)'
     roomSpellWay: Wait here for the room's spell to move you
     scatter: '{spellName}: puts you in one of {roomCount} rooms'
     scatterDetail: '{spellName}: the way through puts you in one of {roomCount} random rooms, and

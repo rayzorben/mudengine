@@ -248,6 +248,22 @@ describe('the conditions a scripted way states and nothing can check', () => {
     );
   });
 
+  /* A phrase whose spell lands once says the spell and its most, which is what decides the walk. */
+  it('names the fall a phrase lands, at its most', () => {
+    const chip = describeObstacle(
+      {
+        kind: 'text',
+        raw: 'go hole',
+        commands: ['go hole'],
+        hit: { name: 'fall', mean: 10, most: 15 }
+      },
+      graph
+    );
+    expect(chip.label).toBe(
+      t('map.obstacle.sayCommandHit', { command: 'go hole', spellName: 'fall', damage: 15 })
+    );
+  });
+
   /* An edge that states nothing extra says exactly what it always said. */
   it('adds nothing to an obstacle with none', () => {
     const plain = describeObstacle({ kind: 'door', raw: 'Door' }, graph);

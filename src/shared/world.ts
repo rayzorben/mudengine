@@ -497,14 +497,10 @@ export interface Requirement {
   gates?: readonly Gate[];
   /** An `Ability:` exit's comparison, as the server makes it (`exitGates`). */
   abilities?: readonly AbilityBounds[];
-  /**
-   * A timed passage this way in opens — resolved at load (`WorldGraph
-   * .linkPortals`, todo 104), never written to the file. The room command's
-   * own `cast` puts a spell on the character that ends in harm, and the
-   * rooms it lands in are under it until an exit whose cast kills it. See
-   * {@link Corridor}.
-   */
+  /** The timed passage this way in opens (todo 104), resolved at load. See {@link Corridor}. */
   corridor?: Corridor;
+  /** What saying it lands at once, resolved at load. See {@link CommandHit}. */
+  hit?: CommandHit;
   /**
    * Who may **use** the item this edge spends — an item-landing edge's own
    * gate (`WorldGraph.itemLandings`, `linkItemLandings`), read off the
@@ -2449,15 +2445,11 @@ export function firstAnswering<T extends { name: string }>(
 }
 
 /**
- * A passage walked under a timed spell — the dive into the Muddy Underwater
- * Passage: `dive pool` casts *holding breath* (25 ticks), which ends in
- * *drowning*, and the way up at the far end casts the spell that kills both.
- *
+ * A passage walked under a timed spell: `dive pool` casts *holding breath* (25
+ * ticks) into *drowning*, and the way up casts the spell that kills both.
  * `rooms` is the moves from the landing to the furthest exit within `ticks`
- * that lifts it (the nearest is often the way back); `ends` false is a
- * passage with no such exit within `ticks` moves of the landing, which the
- * router walls. Nothing carried stops one: the answer is to keep moving,
- * which `Walker`'s move-only rule and the session's gates do inside it.
+ * that lifts it; `ends` false is none within them, which the router walls.
+ * Nothing carried stops one; `Walker`'s move-only rule keeps moving inside.
  */
 export interface Corridor {
   /** The spell the way in casts, and its name. */
@@ -2469,6 +2461,16 @@ export interface Corridor {
   ticks?: number;
   /** What it ends in, named. */
   then?: string;
+}
+
+/**
+ * The hit of a room command's spell that lands once (`fall` 5–15), its mean
+ * and most in hit points; priced and walled by `Router.hitCost`.
+ */
+export interface CommandHit {
+  name: string;
+  mean: number;
+  most: number;
 }
 
 export interface WorldExit {
@@ -2666,13 +2668,9 @@ export interface RoomCommand {
   /** Where it leads, as `map/room`, when it moves you at all. */
   to?: RoomId;
   /**
-   * The spell saying it puts on the character — format 43.
-   *
-   * `dive pool` at the Bountiful Oasis is `teleport 121 12:cast 512`: the
-   * teleport is where you land and the cast is *holding breath*, 25 ticks
-   * that end in `drowning`, which ends in death. The landing was read since
-   * format 29 and the spell was narration, so eleven underwater rooms were a
-   * free corridor to the router and the plan. Read by `WorldGraph.corridorFrom`.
+   * The spell saying it puts on the character (format 43): `dive pool` is
+   * `teleport 121 12:cast 512`, *holding breath*. Read by `WorldGraph.castWay`
+   * for the passage (`Corridor`) and the one-off hit (`CommandHit`).
    */
   casts?: number;
   /** What it wants (`src/shared/gates.ts`). */

@@ -16,6 +16,7 @@ import { exitGates, gateRequirement } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
 import { sweep, type SweepRooms, type SweepRules } from './navigation/sweep';
 import { passagesOn } from './navigation/passages';
+import { hitWalls } from './navigation/castChain';
 import { closedPlaces } from './closedPlaces';
 import { RealmJoins } from './RealmJoins';
 import { TravellerKept } from './travellerKept';
@@ -302,6 +303,12 @@ export interface Traveller {
    * it for that pack in place of the traveller's own (`holding`).
    */
   hazard?: (room: WorldRoom, carrying?: readonly number[]) => number | null;
+  /**
+   * What this many hit points taken at once are as a share of the health the
+   * character has now, for a way whose spell lands once (`hitCost`). Null, or
+   * absent, is a bar nobody has read, and the hit is then a wall.
+   */
+  shareOfHealth?: (points: number) => number | null;
   /**
    * Rooms this search may not enter at all.
    *
@@ -941,7 +948,42 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
   if (priced === null) return null;
   const under = corridorCost(requirement);
   if (under === null) return null;
-  return priced + under;
+  return priced + under + hitCost(requirement, traveller);
+}
+
+/**
+ * The share of health now a way's one-off hit (`Requirement.hit`) takes at
+ * its most roll: undefined for a way with no hit, null for a bar unread.
+ */
+function hitAtMost(
+  requirement: Requirement | null,
+  traveller: Traveller
+): number | null | undefined {
+  const hit = requirement?.hit;
+  return hit === undefined ? undefined : (traveller.shareOfHealth?.(hit.most) ?? null);
+}
+
+/** Whether a way's one-off hit kills at its most on a bar that has been read: the step is deadly. */
+function hitKnownToKill(requirement: Requirement | null, traveller: Traveller): boolean {
+  const most = hitAtMost(requirement, traveller);
+  return typeof most === 'number' && hitWalls(most);
+}
+
+/**
+ * What a room command's spell that lands once costs (`fall` at 5–15): its
+ * mean as a share of health now, on the slope a room's own spell is priced
+ * on (`dangerPenalty`), and the wall where its most can kill or the bar is
+ * unread, the unsafe answer. A fall a dry way round avoids at a like price
+ * is walked round.
+ */
+function hitCost(requirement: Requirement | null, traveller: Traveller): number {
+  const hit = requirement?.hit;
+  const most = hitAtMost(requirement, traveller);
+  if (hit === undefined || most === undefined) return 0;
+  const { wallCost } = tuning().world;
+  if (hitWalls(most)) return wallCost;
+  const share = traveller.shareOfHealth?.(hit.mean) ?? null;
+  return dangerPenalty(share, wallCost, routePrices(traveller.prices).dangerCost);
 }
 
 /** Whether this traveller ran out of the room for its health a short while ago (todo 73). */
@@ -3518,7 +3560,7 @@ export class Router {
           danger,
           hazard,
           arriving !== undefined && runBesidePass(arriving)
-        )
+        ) || hitKnownToKill(exit.requirement ?? null, traveller)
           ? { deadly: true }
           : {}),
         /*

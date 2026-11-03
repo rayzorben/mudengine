@@ -92,7 +92,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the monster row and passage sweeps, onto the engine's `sweepFrom` (2026-11-03).
   // Lowered by a cast exit's hurt, one `abilityWound` for the heal of 0 (2026-11-03).
   // Lowered as `corridorsOn` went, the route and the plan reading the passage record (`passagesOn`).
-  'src/main/world/WorldGraph.ts': 2248,
+  // Lowered by a room command's spell chain, out to `navigation/castChain.ts` with its one-off hit.
+  'src/main/world/WorldGraph.ts': 2246,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).
