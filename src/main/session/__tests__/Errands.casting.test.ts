@@ -48,6 +48,7 @@ function errands(
       world,
       tracker: { current: STATE },
       fightRecord: {},
+      combatOn: () => true,
       lore: {
         hasNoEffect: (spell: string, monster: string) =>
           kept.get(monster)?.includes(spell) ?? false,

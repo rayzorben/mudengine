@@ -24,6 +24,11 @@ export function itemsAsked(requirement: Requirement): number[] {
   );
 }
 
+/** What a toll charges, in copper: one whose price the realm did not record still wants some money. */
+export function tollCharge(requirement: Requirement): number {
+  return requirement.tollCopper ?? 1;
+}
+
 /**
  * The gates an exit states: empty for an exit that states none, null for one
  * whose instruction names a gate it gives no figure for (`Class:` with no
@@ -68,8 +73,7 @@ function read(requirement: Requirement): readonly Gate[] | null {
       return abilities.length > 0 ? abilities.map((gate) => ({ kind: 'ability', ...gate })) : null;
     }
     case 'toll':
-      // A toll whose price the realm did not record still wants some money.
-      return [{ kind: 'copper', copper: requirement.tollCopper ?? 1 }];
+      return [{ kind: 'copper', copper: tollCharge(requirement) }];
     case 'item':
       return requirement.keyId === undefined ? [] : [{ kind: 'carry', item: requirement.keyId }];
     case 'hidden':

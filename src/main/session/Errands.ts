@@ -15,7 +15,7 @@ import {
   type PlannedFetch
 } from '../../shared/navigation';
 import { Navigation } from './navigation';
-import { exitGates, itemsAsked } from '../world/navigation/exitGates';
+import { exitGates, itemsAsked, tollCharge } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { minutesMs } from '../../shared/values';
@@ -171,7 +171,8 @@ import {
   wieldedWeapon,
   backstabsWith,
   prowessTargetOf,
-  type LairPass
+  type LairPass,
+  type Verdict
 } from '../../shared/verdict';
 import {
   asDirection,
@@ -330,6 +331,8 @@ export interface ErrandsParts {
    * on this realm (`RealmLore`).
    */
   readonly lore: SpawnLore & KillExpLore & NoEffectReader & RoundLore;
+  /** Whether auto-combat is on (the session's held switch): a walk then fights what it meets. */
+  readonly combatOn: () => boolean;
 }
 
 /** What the session that built this answers for it. */
@@ -358,6 +361,7 @@ export class Errands implements SessionModule {
   /** The attack and opener fought with, typed or chosen (todo 47). */
   readonly words: FightWords;
   private readonly tracker: ErrandsParts['tracker'];
+  private readonly combatOn: ErrandsParts['combatOn'];
   private readonly fightRecord: ErrandsParts['fightRecord'];
   private readonly kills: KillExpLore;
   private readonly noEffects: NoEffectReader;
@@ -448,6 +452,7 @@ export class Errands implements SessionModule {
   ) {
     this.world = parts.world;
     this.tracker = parts.tracker;
+    this.combatOn = parts.combatOn;
     this.fightRecord = parts.fightRecord;
     this.clocks = new RoomClocks(parts.lore);
     this.kills = parts.lore;
@@ -998,7 +1003,16 @@ export class Errands implements SessionModule {
     const pack = this.packContents(state);
     const up = this.spellsUp(state);
     const parts = this.runParts(state, 'lairKnown');
-    const run = parts === null ? null : lairRunner(parts);
+    // A route prices the wanderers auto-combat would fight as fights, and one
+    // the odds book has not run off the realm's numbers (the user, 2026-11-03).
+    const run =
+      parts === null
+        ? null
+        : lairRunner({
+            ...parts,
+            fights: this.combatOn(),
+            guess: this.fightGuesser(state)
+          });
     return {
       level: state.progress.level ?? null,
       strength: state.progress.strength ?? null,
@@ -1035,6 +1049,8 @@ export class Errands implements SessionModule {
       keepOut: { words: this.automationConfig.movement.keepOutOf, allowed: allowing },
       // Cash and banks, so a player's walk is offered; one the purse cannot pay is refused until the cash is drawn.
       wealth: wealthOf(state),
+      // And the cash carried, which pays a toll without a stop at the bank.
+      purse: state.inventory.wealth,
       /*
        * The join between the sheet's word and the realm's row id, made here
        * for the reason every other figure on this object is: one statement,
@@ -1107,11 +1123,10 @@ export class Errands implements SessionModule {
    * `TrainErrand.trainersAhead` keeps its routes while this stays the same.
    */
   reachKey(state: CharacterState = this.tracker.current): string {
-    const { wealth, keys, ...reach } = this.travellerNow(state);
-    const tollsPaid =
-      wealth === null || wealth === undefined
-        ? null
-        : this.tollPrices().filter((toll) => toll <= wealth).length;
+    const { wealth, purse, keys, ...reach } = this.travellerNow(state);
+    const tollsPaid = this.tollsWithin(wealth);
+    // A toll the purse pays costs nothing, so which ones it pays is part of the reach too.
+    const tollsCarried = this.tollsWithin(purse);
     const health = this.healthNow(state, false);
     const hitsWalled =
       health === null ? null : this.hitMosts().filter((most) => hitWalls(most / health)).length;
@@ -1120,7 +1135,7 @@ export class Errands implements SessionModule {
     const opens = this.gateItems();
     const carried = keys?.filter((id) => opens.has(id));
     return JSON.stringify(
-      { ...reach, keys: carried, tollsPaid, hitsWalled },
+      { ...reach, keys: carried, tollsPaid, tollsCarried, hitsWalled, fights: this.combatOn() },
       (_key, value: unknown) =>
         typeof value === 'function'
           ? undefined
@@ -1129,6 +1144,13 @@ export class Errands implements SessionModule {
             : value
     );
   }
+  /** How many of the realm's tolls `copper` pays; null while it is unread. */
+  private tollsWithin(copper: number | null | undefined): number | null {
+    return copper === null || copper === undefined
+      ? null
+      : this.tollPrices().filter((toll) => toll <= copper).length;
+  }
+
   /**
    * Every item a way asks the pack about: what an exit names (`namedExitItems`)
    * and each item an exit's or a portal's gates or script lines ask for
@@ -1151,14 +1173,13 @@ export class Errands implements SessionModule {
     return items;
   }
 
-  /** The tolls the realm's exits charge (`Requirement.tollCopper`), cheapest first. */
+  /** The tolls the realm's exits charge (`tollCharge`, an unpriced one included), cheapest first. */
   private tollPrices(): number[] {
     if (this.tolls !== null) return this.tolls;
     const prices = new Set<number>();
     for (const room of this.world?.everyRoom() ?? []) {
       for (const exit of room.exits) {
-        const toll = exit.requirement?.tollCopper;
-        if (toll !== undefined) prices.add(toll);
+        if (exit.requirement?.kind === 'toll') prices.add(tollCharge(exit.requirement));
       }
     }
     this.tolls = [...prices].sort((a, b) => a - b);
@@ -1446,7 +1467,6 @@ export class Errands implements SessionModule {
     const came = stated ? null : this.clocks.wanderers(id);
     if (!stated && came === null) return null;
     const state = this.tracker.current;
-    const { combat, magery, crits, rounds: measured, family, attack } = this.realmClass();
     /*
      * By the rows the lair names, never by name (todo 01, 2026-09-10): a name
      * folds every row sharing it and takes the worst, and the guard post on
@@ -1460,15 +1480,7 @@ export class Errands implements SessionModule {
         ? world.lairEntities(room)
         : came.map((name) => world.buildMobEntity(name, { at: id }));
     if (entities.length === 0) return null;
-    const verdicts = weighVerdicts(
-      entities,
-      this.menacePlayer(state),
-      tuning().menace,
-      prowessSheetOf(state, { combat, magery, crits, rounds: measured }),
-      wieldedWeapon(state.inventory.items),
-      family,
-      attack
-    );
+    const verdicts = this.verdictsFor(state)(entities);
     const standing = standingOf(state);
     const rounds = tuning().world.passRounds;
     const opens = (index: number): boolean | null =>
@@ -1476,6 +1488,36 @@ export class Errands implements SessionModule {
     return came === null
       ? lairPass(verdicts, lair?.max ?? null, rounds, opens)
       : roadPass(verdicts, tuning().world.wanderersAtOnce, rounds, opens);
+  }
+
+  /**
+   * The room appraisal's arithmetic on monsters, against the character as it
+   * stands: the sheet, the weapon and the class row read once, for every
+   * monster asked about after.
+   */
+  private verdictsFor(state: CharacterState): (entities: readonly MobEntity[]) => Verdict[] {
+    const { combat, magery, crits, rounds, family, attack } = this.realmClass();
+    const menace = this.menacePlayer(state);
+    const sheet = prowessSheetOf(state, { combat, magery, crits, rounds });
+    const weapon = wieldedWeapon(state.inventory.items);
+    return (entities) =>
+      weighVerdicts(entities, menace, tuning().menace, sheet, weapon, family, attack);
+  }
+
+  /**
+   * The chance of dying fighting one monster, off the realm's numbers, for a
+   * fight the odds book has not run: the health the fight is expected to cost
+   * (`Verdict.cost`, a bound, so it errs toward danger) over the health the
+   * character has now, at most one. Null where either is unread.
+   */
+  private fightGuesser(state: CharacterState): (mob: MobEntity) => number | null {
+    const health = state.vitals.hp;
+    if (health === null || !(health > 0)) return () => null;
+    const verdicts = this.verdictsFor(state);
+    return (mob) => {
+      const cost = verdicts([mob])[0]?.cost?.value ?? null;
+      return cost === null ? null : Math.min(1, Math.max(0, cost / health));
+    };
   }
 
   /**

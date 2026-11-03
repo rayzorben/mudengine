@@ -46,6 +46,7 @@ const book = new Errands(
     world,
     tracker: { current: EMPTY_CHARACTER, pendingMoves: 0 },
     fightRecord: {},
+    combatOn: () => true,
     lore: { measuredRounds: () => null }
   } as unknown as ErrandsParts,
   {

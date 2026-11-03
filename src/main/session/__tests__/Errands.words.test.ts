@@ -33,6 +33,7 @@ function errands(attack: string): Errands {
       world,
       tracker: { current: MYSTIC },
       fightRecord: {},
+      combatOn: () => true,
       lore: NO_LORE
     } as unknown as ErrandsParts,
     { config: () => config, family: () => 'greatermud' } as unknown as ErrandsSession

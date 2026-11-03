@@ -207,6 +207,48 @@ describe('the risk of running past a room’s wanderers', () => {
     expect(runRiskOf(ROUTE, pending).death).toBeNull();
   });
 
+  /*
+   * With auto-combat on the walk opens on what it meets, so a wanderer is the
+   * chance of losing that fight (`lostFight`), not of being run past. Soul,
+   * 2026-11-03, fought a bugbear berserker he could neither kill nor outrun.
+   */
+  it('prices a wanderer auto-combat would fight by losing the fight', () => {
+    const fought = runRiskOf(ROUTE, parts({ ...wandering(named('thug')), fights: true }));
+    expect(fought.lairs[1]!.death).toBeCloseTo(0.1 * 0.5);
+  });
+
+  it('prices a wanderer whose fight has not run off the realm’s numbers', () => {
+    const pending = (): Odds => ({ kind: 'pending' });
+    const guessed = { ...wandering(named('thug')), mobOdds: pending, guess: () => 0.8 };
+    expect(runRiskOf(ROUTE, parts(guessed)).lairs[1]!.death).toBeCloseTo(0.1 * 0.8);
+    expect(runRiskOf(ROUTE, parts({ ...guessed, fights: true })).lairs[1]!.death).toBeCloseTo(
+      0.1 * 0.8
+    );
+    // And where the realm's numbers cannot say either, it stays unknown.
+    const unsaid = parts({ ...guessed, guess: () => null, fights: true });
+    expect(runRiskOf(ROUTE, unsaid).death).toBeNull();
+  });
+
+  it('guesses each wandering row on its own when two rows share a name', () => {
+    const pending = (): Odds => ({ kind: 'pending' });
+    const asked: string[] = [];
+    const weak = named('thug', { ...hostile(0), ids: [1] } as MobEntity);
+    const strong = named('thug', { ...hostile(0), ids: [2] } as MobEntity);
+    runRiskOf(
+      ROUTE,
+      parts({
+        ...wandering(weak, strong),
+        mobOdds: pending,
+        guess: (mob) => {
+          asked.push(String(mob.ids?.[0]));
+          return mob.ids?.[0] === 1 ? 0.1 : 0.9;
+        }
+      })
+    );
+    expect(asked).toContain('1');
+    expect(asked).toContain('2');
+  });
+
   it('leaves a room whose rows the realm file lacks unpriced, never safe', () => {
     expect(runRiskOf(ROUTE, parts()).lairs).toHaveLength(1);
   });

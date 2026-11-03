@@ -12,7 +12,7 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
-import { exitGates, gateRequirement } from './navigation/exitGates';
+import { exitGates, gateRequirement, tollCharge } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
 import { sweep, type SweepRooms, type SweepRules } from './navigation/sweep';
 import { passagesOn } from './navigation/passages';
@@ -92,6 +92,11 @@ export interface Traveller {
   level?: number | null;
   /** Copper farthings the walk pays tolls and fares from: carried and banked for a player's walk, carried for a lap or errand. */
   wealth?: number | null;
+  /**
+   * Copper farthings carried. A toll it covers costs nothing past the step;
+   * one only the bank covers keeps its price, since the walk stops to draw it.
+   */
+  purse?: number | null;
   /** The most a fare may be, for a walk nobody is asked about (`GateFacts.fareCeiling`). */
   fareCeiling?: number | null;
   /**
@@ -457,13 +462,12 @@ interface SearchResult {
  *
  * The realm states the difficulty a barrier yields to, and in two shapes:
  * `Door [1000 picklocks/strength]` takes either skill, `Key: 2126 [or 157
- * picklocks]` takes only the lock-pick (`any` is 0 in both). Forcing one is a
- * numbers game — bash, rest, bash — and every attempt below the minimum can
- * cost the character, so the grading is deliberately lopsided: below the
- * minimum the door is priced as a wall that can still be walked through when
- * there is no other way at all (`tuning.world.wallCost`, never `null`); at the
- * minimum it is close to a plain door; and the further the skill stands above
- * it the cheaper it gets, down to `base`. A character whose sheet nobody has
+ * picklocks]` takes only the lock-pick (`any` is 0 in both). A door the
+ * character can pick or bash costs nothing beyond its step (the user,
+ * 2026-11-03, after Soul walked 80 steps through deep Darkwood to a death
+ * rather than cross two plain doors and a toll on the main road's 73). Below the minimum the door is priced as a wall that can
+ * still be walked through when there is no other way at all
+ * (`tuning.world.wallCost`, never `null`). A character whose sheet nobody has
  * read is priced as if it could not force anything, which is the safe reading.
  *
  * **The two channels are graded separately and the best one wins** (see
@@ -471,39 +475,37 @@ interface SearchResult {
  * credited a warrior's strength against a lock the realm says only picklocks
  * open.
  */
-function gradedCost(skill: number | null | undefined, difficulty: number, base: number): number {
-  if (difficulty <= 0) return base;
+function gradedCost(skill: number | null | undefined, difficulty: number): number {
+  if (difficulty <= 0) return 0;
   const ratio = (skill ?? 0) / difficulty;
-  const wall = tuning().world.wallCost;
+  if (ratio >= 1) return 0;
   /*
    * Below the minimum the door is a wall, and how far below is a tiebreak on
-   * the door's own scale — continuous with the price at the minimum, never a
-   * second wall's worth of plain steps. Graded as `wall × (1 − ratio)`, a
-   * strength-90 character was walked sixty thousand rooms' worth of corridor
-   * to avoid a 251 door in favour of a 100 one, neither of which it could
-   * force: the grade, not the wall, had become the objective.
+   * a door's scale, never a second wall's worth of plain steps. Graded as
+   * `wall × (1 − ratio)`, a strength-90 character was walked sixty thousand
+   * rooms' worth of corridor to avoid a 251 door in favour of a 100 one,
+   * neither of which it could force: the grade, not the wall, had become the
+   * objective.
    */
-  if (ratio < 1) return wall + base * 5 + Math.round(base * 5 * (1 - ratio));
-  // Neutral-ish at the minimum (a door's price several times over), easing to
-  // `base` once the skill is five times what the door asks.
-  const eased = Math.max(0, Math.min(1, (5 - ratio) / 4));
-  return base + Math.round(base * 4 * eased);
+  return tuning().world.wallCost + WALL_TIEBREAK + Math.round(WALL_TIEBREAK * (1 - ratio));
 }
 
-function forcedDoorCost(requirement: Requirement, traveller: Traveller, base: number): number {
+/** The scale a door the character cannot force is graded on, past the wall. */
+export const WALL_TIEBREAK = 60;
+
+function forcedDoorCost(requirement: Requirement, traveller: Traveller): number {
   const { pickDifficulty, bashDifficulty } = requirement;
-  // Neither stated: the realm asks for no skill, so the barrier is whatever a
-  // plain one costs. That is what `Door` with no bracket has always meant.
-  if (pickDifficulty === undefined && bashDifficulty === undefined) return base;
+  // Neither stated: the realm asks for no skill, so the door opens and costs nothing.
+  if (pickDifficulty === undefined && bashDifficulty === undefined) return 0;
   const costs: number[] = [];
   // A channel the walker is not allowed to use is graded as no skill at all:
   // the wall, still walkable when nothing else leads there, never a price the
   // plan pays on the strength of a command nobody will send.
   const { pick, bash } = traveller.forcing ?? FORCING_ALL;
   if (pickDifficulty !== undefined)
-    costs.push(gradedCost(pick ? traveller.pickSkill : null, pickDifficulty, base));
+    costs.push(gradedCost(pick ? traveller.pickSkill : null, pickDifficulty));
   if (bashDifficulty !== undefined)
-    costs.push(gradedCost(bash ? traveller.strength : null, bashDifficulty, base));
+    costs.push(gradedCost(bash ? traveller.strength : null, bashDifficulty));
   return Math.min(...costs);
 }
 
@@ -830,6 +832,18 @@ function gatedPrice(
   return null;
 }
 
+/**
+ * Whether a toll is open to this traveller and the cash carried pays it: then
+ * it costs nothing past the step (the user, 2026-11-03). Paid from the bank
+ * or from a purse nobody has read, the walk waits on cash and the toll keeps
+ * its price.
+ */
+function paidFromPurse(requirement: Requirement, traveller: Traveller): boolean {
+  const purse = traveller.purse;
+  if (purse === null || purse === undefined || purse < tollCharge(requirement)) return false;
+  return wayOf(requirement, traveller) === 'pass';
+}
+
 /** What walls a gated exit to this character, on the way `gatedPrice` reads: null when it is open or unread. */
 function gatedShut(
   requirement: Requirement,
@@ -1031,8 +1045,9 @@ function corridorCost(requirement: Requirement | null): number | null {
  * Cost added by an edge's requirement, or `null` to prune it entirely.
  *
  * The numbers are relative and only have to order routes sensibly: a plain
- * corridor is 1, so a door at 12 means "worth a dozen extra rooms to avoid".
- * The original used −500 for a door, which is a *negative* cost and makes A*
+ * corridor is 1, so a price of 12 means "worth a dozen extra rooms to avoid".
+ * A door the character opens and a toll the purse pays cost nothing past the
+ * step (the user, 2026-11-03). The original used −500 for a door, which is a *negative* cost and makes A*
  * prefer doors while breaking admissibility; that looks like a bug rather than
  * an intent, and it is not reproduced.
  */
@@ -1046,14 +1061,13 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
       return gatedPrice(requirement, requirement.kind, traveller);
 
     case 'door':
-      return forcedDoorCost(requirement, traveller, 12);
+      return forcedDoorCost(requirement, traveller);
 
     case 'key': {
       const has = requirement.keyId !== undefined && traveller.keys?.includes(requirement.keyId);
-      if (has) return 4;
-      // Otherwise the lock is picked or the door forced, at the graded cost.
-      if (requirement.pickDifficulty !== undefined)
-        return forcedDoorCost(requirement, traveller, 30);
+      // A key held opens it, as a lock picked does: neither costs past the step.
+      if (has) return 0;
+      if (requirement.pickDifficulty !== undefined) return forcedDoorCost(requirement, traveller);
       /*
        * No key, and no skill the realm accepts instead — a wall, but only once
        * somebody has looked in the pack.
@@ -1069,8 +1083,12 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
     }
 
     case 'level':
-    case 'toll':
       return gatedPrice(requirement, requirement.kind, traveller);
+
+    case 'toll':
+      return paidFromPurse(requirement, traveller)
+        ? 0
+        : gatedPrice(requirement, requirement.kind, traveller);
 
     case 'hidden': {
       /*

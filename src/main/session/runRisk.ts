@@ -45,9 +45,26 @@ export interface RunRiskParts {
   passOdds(room: WorldRoom): Odds;
   /** One monster fought alone, arrivals and all: a wanderer's fight. */
   mobOdds(name: string): Odds;
+  /**
+   * Whether the walk fights what it meets (auto-combat on): a wanderer is then
+   * priced by losing the fight, not by being run past (the user, 2026-11-03).
+   * Absent is a run.
+   */
+  fights?: boolean;
+  /**
+   * The chance of dying fighting one monster, from the realm's numbers, for a
+   * fight the odds book has not run; null where they cannot say. Absent leaves
+   * an unrun fight with no figure, as the panel's chances want.
+   */
+  guess?: (mob: MobEntity) => number | null;
   /** `tuning.hunting` at the realm's speed (`atSpeed`): the round, and the step where the family states no move delay. */
   roundSeconds: number;
   stepMs: number;
+}
+
+/** The chance of losing a fight the odds book has run; null where it has not. */
+export function lostFight(odds: Odds): number | null {
+  return odds.kind === 'run' ? 1 - odds.survival.survives : null;
 }
 
 /** The monsters a lair holds at its cap; none where the room has no lair. */
@@ -111,6 +128,10 @@ interface Exposure {
   rounds: number;
   seen: boolean;
   standing: (rounds: number) => number | null;
+  /** A wanderer the walk fights: its death when met, sneak aside; `rounds` stays the run's. */
+  fought?: number | null;
+  /** A wanderer run past whose fight has not run: the whole fight's death off the realm's numbers. */
+  guessed?: number | null;
 }
 
 /**
@@ -156,6 +177,17 @@ export function lairRunner(parts: RunRiskParts): LairRunner {
    * Null where nothing is in the room; empty where what is waits to be struck.
    */
   const kept = new WeakMap<WorldRoom, readonly Exposure[] | null>();
+  // One guess per monster row, never per name: two rows of one name differ in health and damage.
+  const guesses = new Map<string, number | null>();
+  const guessOf = (mob: MobEntity): number | null => {
+    if (parts.guess === undefined) return null;
+    const key = mob.ids?.join(',') ?? mob.name;
+    const known = guesses.get(key);
+    if (known !== undefined) return known;
+    const guessed = parts.guess(mob);
+    guesses.set(key, guessed);
+    return guessed;
+  };
   const own = (room: WorldRoom): readonly Exposure[] | null => {
     const known = kept.get(room);
     if (known !== undefined) return known;
@@ -172,18 +204,15 @@ export function lairRunner(parts: RunRiskParts): LairRunner {
       read =
         met.length === 0
           ? null
-          : met.flatMap(({ entity, chance }) =>
-              opensOn(entity, state)
-                ? [
-                    exposed(
-                      [entity],
-                      chance,
-                      parts.mobOdds(entity.name),
-                      followsOf([entity], state)
-                    )
-                  ]
-                : []
-            );
+          : met.flatMap(({ entity, chance }) => {
+              if (!opensOn(entity, state)) return [];
+              const odds = parts.mobOdds(entity.name);
+              const run = exposed([entity], chance, odds, followsOf([entity], state));
+              // An unrun fight takes the realm's numbers (`guess`).
+              if (parts.fights === true)
+                return [{ ...run, fought: lostFight(odds) ?? guessOf(entity) }];
+              return [odds.kind === 'run' ? run : { ...run, guessed: guessOf(entity) }];
+            });
     }
     kept.set(room, read);
     return read;
@@ -196,13 +225,22 @@ export function lairRunner(parts: RunRiskParts): LairRunner {
     let rounds = 0;
     let death: number | null = 0;
     for (const each of read) {
+      if (each.fought !== undefined) {
+        rounds += each.chance * each.rounds;
+        death = each.fought === null || death === null ? null : death + each.chance * each.fought;
+        continue;
+      }
       const hidden = sneaks && !each.seen ? sneakHolds(stealth, others) : 0;
       const got = each.rounds * (1 - hidden);
       rounds += each.chance * got;
       if (got <= 0) continue;
       const standing = each.standing(got);
+      // Unrun, a run past is charged the whole fight's guess, less a sneak that holds: a bound.
+      const guessed = each.guessed ?? null;
+      const lost =
+        standing !== null ? 1 - standing : guessed === null ? null : guessed * (1 - hidden);
       // Each is the one met on this pass, so the deaths add at their chances.
-      death = standing === null || death === null ? null : death + each.chance * (1 - standing);
+      death = lost === null || death === null ? null : death + each.chance * lost;
     }
     return {
       room: roomId(room.map, room.room),

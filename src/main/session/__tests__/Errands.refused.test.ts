@@ -16,6 +16,7 @@ function errands(notices: string[]): Errands {
       world: undefined,
       tracker: { current: EMPTY_CHARACTER, pendingMoves: 0 },
       fightRecord: {},
+      combatOn: () => true,
       lore: {}
     } as unknown as ErrandsParts,
     {

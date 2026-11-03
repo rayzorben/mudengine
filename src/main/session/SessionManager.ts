@@ -548,9 +548,10 @@ export class SessionManager {
     this.acting = () => withPeerSheets(this.tracker.current, peerSheets());
     this.records = new Records({ tracker: this.tracker, world, memory, finds, shops }, sink);
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
+    const combatOn = (): boolean => this.switches.on('combat');
     // Before `useRealm`, which tells it the family is unread again.
     this.errands = new Errands(
-      { world, tracker: this.tracker, fightRecord: fights, lore },
+      { world, tracker: this.tracker, fightRecord: fights, lore, combatOn },
       {
         config: () => this.automationConfig,
         rates: () => this.belongings.recallHuntRates(),
@@ -783,7 +784,6 @@ export class SessionManager {
       notice,
       changed: () => this.publisher.publishAutomation()
     });
-    const combatOn = (): boolean => this.switches.on('combat');
     const reports = {
       notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)

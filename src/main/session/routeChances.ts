@@ -5,22 +5,21 @@
  * fights them, and of each wanderer that does at its chance (todo 25). Laid on
  * each way the panel can show.
  */
-import type { Odds } from '../../shared/survival';
 import type { Route, RouteChances, WorldRoom } from '../../shared/world';
-import { noneOpens, opensOn, runRiskOf, type RunRiskParts } from './runRisk';
+import { lostFight, noneOpens, opensOn, runRiskOf, type RunRiskParts } from './runRisk';
 import { wanderersOf } from './wanderersIn';
 
 /** The chance of dying fighting what is met in one room; null where a fight has not run. */
 function fightDeath(room: WorldRoom, parts: RunRiskParts): number | null {
-  const lost = (odds: Odds): number | null =>
-    odds.kind === 'run' ? 1 - odds.survival.survives : null;
   if (room.lair !== undefined) {
-    return noneOpens(parts.world.lairEntities(room), parts.state) ? 0 : lost(parts.lairOdds(room));
+    return noneOpens(parts.world.lairEntities(room), parts.state)
+      ? 0
+      : lostFight(parts.lairOdds(room));
   }
   let death = 0;
   for (const { entity, chance } of wanderersOf(room, parts.world)) {
     if (!opensOn(entity, parts.state)) continue;
-    const each = lost(parts.mobOdds(entity.name));
+    const each = lostFight(parts.mobOdds(entity.name));
     if (each === null) return null;
     // One of them is met on a pass, so the deaths add at their chances.
     death += chance * each;

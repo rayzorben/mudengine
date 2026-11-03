@@ -13,6 +13,7 @@ function errands(world: Record<string, unknown>): Errands {
       world,
       tracker: { current: EMPTY_CHARACTER, pendingMoves: 0 },
       fightRecord: {},
+      combatOn: () => true,
       lore: {}
     } as unknown as ErrandsParts,
     {

@@ -14,7 +14,7 @@ import {
 } from '../WorldGraph';
 import type { RouteOptions, Traveller } from '../WorldGraph';
 import { leg } from '../navigation/plan';
-import { Router } from '../Router';
+import { Router, WALL_TIEBREAK } from '../Router';
 import { planRealmOf } from '../navigation/realm';
 import type {
   Direction,
@@ -155,8 +155,8 @@ describe('edgePenalty', () => {
     expect(edgePenalty({ kind: 'text', raw: 'Text: go path' }, {})).toBe(0);
   });
 
-  it('charges for a door', () => {
-    expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBeGreaterThan(0);
+  it('charges nothing for a door the walker opens', () => {
+    expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBe(0);
   });
 
   /*
@@ -297,23 +297,22 @@ describe('edgePenalty', () => {
 
   it('allows a keyed door when the key is carried', () => {
     const req = { kind: 'key' as const, raw: 'Key: 1124', keyId: 1124 };
-    expect(edgePenalty(req, { keys: [1124] })).toBe(4);
+    expect(edgePenalty(req, { keys: [1124] })).toBe(0);
   });
 
-  it('allows a keyed door the character can pick, at a price', () => {
+  it('allows a keyed door the character can pick, at no price', () => {
     const req = {
       kind: 'key' as const,
       raw: 'Key: 1124 [or 301 picklocks/strength]',
       keyId: 1124,
       pickDifficulty: 301
     };
-    // Above the minimum but not far: dearer than a plain forced door, nowhere
-    // near a wall. Far below it: a wall, and still a number — when there is
-    // no other way, it is the way.
-    const price = edgePenalty(req, { pickSkill: 400 })!;
-    expect(price).toBeGreaterThan(30);
-    expect(price).toBeLessThan(1000);
-    expect(edgePenalty(req, { pickSkill: 2000 })).toBe(30);
+    // At or above the minimum it opens, so it costs nothing past the step.
+    // Below it: a wall, and still a number, since when there is no other way
+    // it is the way.
+    expect(edgePenalty(req, { pickSkill: 400 })).toBe(0);
+    expect(edgePenalty(req, { pickSkill: 200 })!).toBeGreaterThan(100_000);
+    expect(edgePenalty(req, { pickSkill: 2000 })).toBe(0);
     expect(edgePenalty(req, { pickSkill: 10 })!).toBeGreaterThan(100_000);
   });
 
@@ -367,6 +366,22 @@ describe('edgePenalty', () => {
     expect(edgeBlock(req, {})).toBeNull();
     expect(edgeBlock(req, { wealth: null })).toBeNull();
     expect(edgePenalty(req, {})).toBeGreaterThan(0);
+  });
+
+  /*
+   * A toll the cash carried pays costs nothing past the step (the user,
+   * 2026-11-03); one only the bank pays, or a purse nobody has read, keeps
+   * its price, since the walk stops for the cash.
+   */
+  it('costs nothing for a toll the purse pays', () => {
+    const req = { kind: 'toll' as const, raw: 'Toll: 5', tollCopper: 500 };
+    expect(edgePenalty(req, { wealth: 16_700, purse: 16_700 })).toBe(0);
+    expect(edgePenalty(req, { wealth: 500, purse: 500 })).toBe(0);
+    expect(edgePenalty(req, { wealth: 40_000, purse: 499 })).toBeGreaterThan(0);
+    expect(edgePenalty(req, { wealth: 40_000 })).toBeGreaterThan(0);
+    expect(edgePenalty(req, { wealth: 400, purse: 400 })).toBeNull();
+    // Over the fare share a walk nobody is asked about does not pay it, purse or not.
+    expect(edgePenalty(req, { wealth: 1000, purse: 1000, fareCeiling: 100 })).toBeNull();
   });
 
   /* `Toll: 0` is a gate that charges nothing, which anybody can pass. */
@@ -481,8 +496,8 @@ describe('routing', () => {
     expect(graph.route('1/1', '1/2')).toMatchObject({ blocked: true });
   });
 
-  it('prefers a longer clear path over a shorter one through a door', () => {
-    // The point of instruction-aware costs: a door is worth a dozen rooms.
+  // A door the walker opens is no detour's worth (`gradedCost`).
+  it('takes a door the walker opens over a longer clear path', () => {
     const graph = makeWorld([
       { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Door' }, n: { m: 1, r: 10 } } },
       { m: 1, r: 2, n: 'Goal', x: {} },
@@ -491,8 +506,8 @@ describe('routing', () => {
       { m: 1, r: 12, n: 'Long C', x: { s: { m: 1, r: 2 } } }
     ]);
     const route = graph.route('1/1', '1/2');
-    expect(route.steps).toHaveLength(4);
-    expect(route.steps[0]?.direction).toBe('n');
+    expect(route.steps).toHaveLength(1);
+    expect(route.steps[0]?.direction).toBe('e');
   });
 
   it('takes the door when the detour is long enough', () => {
@@ -522,8 +537,8 @@ describe('routing', () => {
   });
 
   /**
-   * A locked door beside a long way round. The detour is six rooms, which is
-   * longer than a held key costs (4) but the only option without one.
+   * A locked door beside a long way round. The detour is six rooms, the only
+   * option without the key.
    */
   const lockedDoorWorld = [
     { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Key: 99' }, n: { m: 1, r: 10 } } },
@@ -547,14 +562,14 @@ describe('routing', () => {
     expect(route.steps[0]?.requirement?.kind).toBe('key');
   });
 
-  it('still prefers a short clear path over a door it could open', () => {
-    // Holding the key does not make the door free; two clear rooms beat it.
+  it('takes a door it holds the key to over a short clear path', () => {
+    // A held key opens it, so the door is one step like any other.
     const graph = makeWorld([
       { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Key: 99' }, n: { m: 1, r: 10 } } },
       { m: 1, r: 2, n: 'Goal', x: {} },
       { m: 1, r: 10, n: 'Detour', x: { e: { m: 1, r: 2 } } }
     ]);
-    expect(graph.route('1/1', '1/2', { keys: [99] }).steps).toHaveLength(2);
+    expect(graph.route('1/1', '1/2', { keys: [99] }).steps).toHaveLength(1);
   });
 
   it('ignores an exit pointing outside the dataset', () => {
@@ -1348,7 +1363,7 @@ describe('the real realm data', () => {
 
     const carried = graph!.itemIdsCarried([{ name: 'bone key' }, { name: 'bone key' }]);
     expect(carried).toEqual([177]);
-    expect(edgePenalty(north!.requirement, { keys: carried, packKnown: true })).toBe(4);
+    expect(edgePenalty(north!.requirement, { keys: carried, packKnown: true })).toBe(0);
 
     /*
      * And the shape that was reported: the count still on the front of the
@@ -4137,8 +4152,8 @@ describe('what a door costs to force', () => {
     pickDifficulty: difficulty
   });
 
-  it('is a plain door when the realm asks nothing of the character', () => {
-    expect(edgePenalty(door(0), {})).toBe(12);
+  it('costs nothing when the realm asks nothing of the character', () => {
+    expect(edgePenalty(door(0), {})).toBe(0);
   });
 
   it('is priced as a wall below the minimum, and worse the further below', () => {
@@ -4156,35 +4171,33 @@ describe('what a door costs to force', () => {
      * them: a strength-90 character went three maps round to prefer a 100
      * door over a 251 one.
      */
-    expect(weak - nearly).toBeLessThanOrEqual(12 * 5);
-    expect(weak).toBeLessThanOrEqual(100_000 + 12 * 10);
+    expect(weak - nearly).toBeLessThanOrEqual(WALL_TIEBREAK);
+    expect(weak).toBeLessThanOrEqual(100_000 + WALL_TIEBREAK * 2);
   });
 
-  it('is close to a plain door at the minimum and cheaper well above it', () => {
-    const atMinimum = edgePenalty(door(30), { strength: 30 })!;
-    const easy = edgePenalty(door(30), { strength: 150 })!;
-    expect(atMinimum).toBeLessThan(100);
-    expect(easy).toBeLessThan(atMinimum);
-    expect(easy).toBe(12);
+  // A door the character can bash or pick costs nothing past its step (`gradedCost`).
+  it('costs nothing from the minimum up', () => {
+    expect(edgePenalty(door(30), { strength: 30 })).toBe(0);
+    expect(edgePenalty(door(30), { strength: 150 })).toBe(0);
+    expect(edgePenalty(door(30), { strength: 29 })!).toBeGreaterThan(100_000);
   });
 
   it('takes whichever of picklocks and strength is the better, and knows nothing means neither', () => {
-    expect(edgePenalty(door(30), { pickSkill: 40, strength: 5 })).toBeLessThan(100);
+    expect(edgePenalty(door(30), { pickSkill: 40, strength: 5 })).toBe(0);
     expect(edgePenalty(door(30), {})!).toBeGreaterThan(100_000);
   });
 
   it('does not credit strength against a lock the realm says only picklocks open', () => {
     // The same character, the same number, and the only difference is whether
     // the instruction offered `/strength` at all.
-    expect(edgePenalty(door(30), { strength: 200 })).toBeLessThan(100);
+    expect(edgePenalty(door(30), { strength: 200 })).toBe(0);
     expect(edgePenalty(pickOnly(30), { strength: 200 })!).toBeGreaterThan(100_000);
-    expect(edgePenalty(pickOnly(30), { pickSkill: 200 })).toBeLessThan(100);
+    expect(edgePenalty(pickOnly(30), { pickSkill: 200 })).toBe(0);
   });
 
-  it('is a plain door when the realm records no number at all', () => {
-    // `Door`, 1,015 of them in the shipped realm. The router has always priced
-    // these as ordinary, and the walker forces them for the same reason.
-    expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBe(12);
+  it('costs nothing when the realm records no number at all', () => {
+    // `Door`, 1,015 of them in the shipped realm: the walker opens them.
+    expect(edgePenalty({ kind: 'door', raw: 'Door' }, {})).toBe(0);
   });
 
   /*
@@ -4198,9 +4211,9 @@ describe('what a door costs to force', () => {
     expect(edgePenalty(door(30), { strength: 150, forcing: pickOnlyForcing })!).toBeGreaterThan(
       100_000
     );
-    expect(edgePenalty(door(30), { strength: 150, forcing: bashOnly })).toBe(12);
+    expect(edgePenalty(door(30), { strength: 150, forcing: bashOnly })).toBe(0);
     expect(edgePenalty(door(30), { pickSkill: 150, forcing: bashOnly })!).toBeGreaterThan(100_000);
-    expect(edgePenalty(door(30), { pickSkill: 150, forcing: pickOnlyForcing })).toBe(12);
+    expect(edgePenalty(door(30), { pickSkill: 150, forcing: pickOnlyForcing })).toBe(0);
     // A lock a picklock may open, picking switched off: a wall, and the key
     // still opens it.
     const keyed: Requirement = {
@@ -4210,7 +4223,7 @@ describe('what a door costs to force', () => {
       pickDifficulty: 30
     };
     expect(edgePenalty(keyed, { pickSkill: 150, forcing: bashOnly })!).toBeGreaterThan(100_000);
-    expect(edgePenalty(keyed, { pickSkill: 150, keys: [7], forcing: bashOnly })).toBe(4);
+    expect(edgePenalty(keyed, { pickSkill: 150, keys: [7], forcing: bashOnly })).toBe(0);
   });
 
   // Search Hidden Exits and Pull Levers off (todo 118): the walk stops there, so a wall.
