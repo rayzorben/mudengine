@@ -244,6 +244,23 @@ describe('keeping what was learned', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe('{ this is not json');
   });
 
+  it('learns to disk again once a file it could not parse is removed', () => {
+    fs.writeFileSync(file, '{ this is not json');
+    const lore = store();
+    const realm = lore.forRealm('gmud.sqlite', world, PLAYED);
+    realm.observe('grue', { damage: 420, killed: true, at: 2 });
+    lore.flush();
+    expect(fs.readFileSync(file, 'utf8')).toBe('{ this is not json');
+
+    fs.rmSync(file);
+    realm.observe('ghost', { damage: 400, killed: true, at: 3 });
+    lore.flush();
+
+    const reread = store().forRealm('gmud.sqlite', world, PLAYED);
+    expect(reread.learnedFor('grue')?.kills).toBe(1);
+    expect(reread.learnedFor('ghost')?.kills).toBe(1);
+  });
+
   it('ignores an entry with nothing usable in it', () => {
     fs.writeFileSync(
       file,

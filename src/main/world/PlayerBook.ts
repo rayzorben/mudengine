@@ -226,9 +226,13 @@ export class PlayerBook {
     try {
       raw = fs.readFileSync(this.options.file, 'utf8');
     } catch (error) {
-      // Absent is the ordinary case and is not worth a word. Anything else is
+      // Absent is the ordinary case and is not worth a word. Once the player
+      // removes a file that would not parse, writing resumes. Anything else is
       // a file that must not be written over: it may be the only copy.
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        if (this.resume()) this.schedule();
+        return;
+      }
       this.suspend(
         t('notices.world.players.readError', {
           file: this.options.file,
@@ -253,12 +257,10 @@ export class PlayerBook {
       return;
     }
 
-    this.suspended = false;
-    this.retryAt = 0;
     // Learned while the disk was refused, and never written: now that the
     // file reads, what it says is folded in *under* what was learned since
     // and the lot is scheduled — nothing seen during the suspension is lost.
-    const learnedMeanwhile = [...this.realms.values()].some((table) => table.size > 0);
+    const learnedMeanwhile = this.resume();
 
     const file = parsed as Partial<PlayerFile>;
     const days = this.options.forgetAfterDays?.() ?? 0;
@@ -291,6 +293,13 @@ export class PlayerBook {
       this.options.notify?.(t('notices.world.players.forgotten', { count: forgotten, days }));
     }
     if (learnedMeanwhile || forgotten > 0) this.schedule();
+  }
+
+  /** Writes are allowed again; true when anything was learned while they were refused. */
+  private resume(): boolean {
+    this.suspended = false;
+    this.retryAt = 0;
+    return [...this.realms.values()].some((table) => table.size > 0);
   }
 
   /**

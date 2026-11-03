@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { realmAddress } from '../../../shared/types';
 import type { PlayerFacts } from '../../../shared/players';
 import { t } from '../../app/i18n';
 import { complaint } from './complaint';
+import { tuning } from '../../app/tuning';
 
 let dir: string;
 let file: string;
@@ -157,6 +158,31 @@ describe('what a realm knows about its players', () => {
     );
     expect(fs.readFileSync(file, 'utf8')).toBe('{ this is not json');
     expect(realm.recall()).toHaveLength(2);
+  });
+
+  it('writes again once a file it could not parse is removed, keeping what was learned meanwhile', () => {
+    fs.writeFileSync(file, '{ this is not json');
+    const book = store();
+    const realm = book.forRealm('test');
+    realm.remember(facts({ gang: 'Valor' }));
+    book.flush();
+    expect(fs.readFileSync(file, 'utf8')).toBe('{ this is not json');
+
+    fs.rmSync(file);
+    vi.useFakeTimers({ now: Date.now() + tuning().records.playersRetryMs + 1, toFake: ['Date'] });
+    try {
+      realm.remember(facts({ name: 'Yang' }));
+      book.flush();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const names = store()
+      .forRealm('test')
+      .recall()
+      .map((player) => player.name)
+      .sort();
+    expect(names).toEqual(['Soul', 'Yang']);
   });
 
   /*

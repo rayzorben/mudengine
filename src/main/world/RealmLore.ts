@@ -724,8 +724,15 @@ export class RealmLore {
     try {
       raw = fs.readFileSync(this.options.file, 'utf8');
     } catch (error) {
-      // Absent is the ordinary case and is not worth a word. Anything else is.
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      // Absent is the ordinary case and is not worth a word. Once the player
+      // removes a file that would not parse, writing resumes, starting with
+      // what was learned while it was refused. Anything else is.
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        if (this.suspended) {
+          this.suspended = false;
+          this.schedule();
+        }
+      } else {
         this.options.notify?.(
           t('notices.world.lore.readError', {
             file: this.options.file,
