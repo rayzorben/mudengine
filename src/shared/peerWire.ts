@@ -126,6 +126,10 @@ export interface Listener {
   key: string;
 }
 
+/** Whether two listeners are one claim: the same name under the same key. */
+export const sameListener = (a: Listener, b: Listener): boolean =>
+  a.name === b.name && a.key === b.key;
+
 /** The sheet's own patch, the fields `RpcPatch` carries. */
 export type SheetPatch = Pick<RpcPatch, 'set' | 'deep' | 'drop'>;
 

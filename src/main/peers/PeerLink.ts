@@ -20,6 +20,8 @@ import { peerKeyText, type PeerKey, type PeerSheet, type ShareLink } from '../..
 import {
   asPeerDown,
   claimText,
+  isUnknownKind,
+  PEER_DOWN_KINDS,
   helloText,
   PEER_PATHS,
   REFUSALS_THAT_CLOSE,
@@ -342,14 +344,19 @@ export class PeerLink {
   }
 
   private heard(text: string): void {
-    let frame: PeerDown | null;
+    let value: unknown = null;
     try {
-      frame = asPeerDown(JSON.parse(text));
+      value = JSON.parse(text);
     } catch {
-      frame = null;
+      // Not JSON: told below as a frame that does not read.
     }
+    const frame = asPeerDown(value);
     if (frame === null) {
-      this.tell('the sharing server sent something this build does not read, and it was ignored');
+      this.tell(
+        isUnknownKind(value, PEER_DOWN_KINDS)
+          ? 'the sharing server sent a kind of message from a newer build, and it was ignored'
+          : 'the sharing server sent something this build does not read, and it was ignored'
+      );
       return;
     }
     this.act(frame);

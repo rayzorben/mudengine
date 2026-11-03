@@ -8316,9 +8316,9 @@ peers:
   control:
     reason: '{from} by remote control'
     sent: '{from} sent {what} by remote control.'
-    started: '{from} is controlling this character by remote control. Stop on the banner ends it.'
+    started: '{from} is controlling this character by remote control. Stop ends it.'
     ended: "{from}'s remote control of this character ended."
-    stopped: 'Remote control by {names} stopped. They cannot take it again until you turn Allow Remote Control off and on.'
+    stopped: 'Remote control by {names} stopped. They cannot take it again until you turn Allow remote control off and on.'
     lost: 'The sharing server is out of reach, so nobody controls this character.'
     refused: '{from} sent an action by remote control, and it was refused: {why}'
     action: remote control
@@ -8349,7 +8349,7 @@ peers:
       unavailable: this realm has no such command
     what:
       line: '"{text}"'
-      move: 'a move {dir}'
+      move: 'the move {dir}'
       rest: rest
       stop: Stop
       play: 'Play on {loop}'

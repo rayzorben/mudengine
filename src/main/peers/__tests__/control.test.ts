@@ -7,6 +7,7 @@ import type { ControlAction, ControlAnswer } from '../../../shared/peerControl';
 import type { ShareLevel } from '../../../shared/peers';
 import { ControlDesk } from '../ControlDesk';
 import { Controlling } from '../Controlling';
+import { sharedSheet } from '../../../shared/__tests__/sharedSheets';
 import { peerSheetOf } from '../peerSheet';
 import { brakkle, install, soul, state, until, useGateway, type ControlHooks } from './peerHarness';
 
@@ -118,7 +119,7 @@ describe('remote control between two installs', () => {
     await until(() => set.controlling.backlog('s').includes('plaza'), set.controller.changed);
     expect(await set.controlling.act('s', { a: 'move', dir: 'n' })).toEqual({ r: 'done' });
     expect(set.ran).toEqual([{ action: { a: 'move', dir: 'n' }, by: 'Soul' }]);
-    expect(set.notices.some((line) => line.includes('Soul sent a move n'))).toBe(true);
+    expect(set.notices.some((line) => line.includes('Soul sent the move n'))).toBe(true);
   });
 
   it('refuses an action another build added, and ignores a field it does not know', async () => {
@@ -175,5 +176,26 @@ describe('remote control between two installs', () => {
     set.desk.regrant(['b']);
     await set.open();
     expect(set.desk.controlledBy('b')).toEqual(['Soul']);
+  });
+});
+
+describe('a control the sharer ended', () => {
+  it('is no longer watched, so a reconnect does not bring it back', () => {
+    const watches: unknown[] = [];
+    const controlling = new Controlling({
+      peerOf: () => soul,
+      sheetsFor: () => [{ ...sharedSheet('Brakkle', { key: 'K', control: true }), from: brakkle }],
+      link: { watch: (_peer, watched) => watches.push(watched), sendAction: () => true },
+      text: () => undefined,
+      notice: () => undefined,
+      changed: () => undefined,
+      backlogChars: () => 1000,
+      answerMs: () => 5000
+    });
+    expect(controlling.open('s', 'Brakkle')).toBeNull();
+    expect(watches).toEqual([{ from: brakkle, key: 'K' }]);
+    controlling.heard({ k: 'released', from: brakkle, key: 'K', why: 'unshared' });
+    expect(watches).toEqual([{ from: brakkle, key: 'K' }, null]);
+    expect(controlling.view('s')).toBeNull();
   });
 });

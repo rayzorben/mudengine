@@ -14,11 +14,12 @@ import type { SessionId } from '../../shared/ipc';
 import type { PeerGrant } from '../../shared/peerGrant';
 import { asControlAction, type ControlAction, type ControlAnswer } from '../../shared/peerControl';
 import { peerKeyText, type PeerKey } from '../../shared/peers';
-import { PEER_MOST_TEXT, type Listener } from '../../shared/peerWire';
+import { PEER_MOST_TEXT, sameListener, type Listener } from '../../shared/peerWire';
 import { playerKey } from '../../shared/players';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import type { ControlledFrame, PeerLink } from './PeerLink';
+import { TextTail } from './TextTail';
 
 /** A character this install claims, as control reads it. */
 export interface ControlledCharacter {
@@ -49,7 +50,7 @@ interface Desk {
   controllers: Listener[];
   /** Names stopped by the player, by `playerKey`, until the row leaves `control`. */
   stopped: Set<string>;
-  backlog: string;
+  backlog: TextTail;
 }
 
 /** The text in frames the gateway takes. */
@@ -109,8 +110,7 @@ export class ControlDesk {
   painted(id: SessionId, text: string): void {
     const desk = this.desks.get(id);
     if (desk === undefined || text.length === 0) return;
-    const most = this.deps.backlogChars();
-    desk.backlog = (desk.backlog + text).slice(-most);
+    desk.backlog.append(text);
     if (desk.controllers.length === 0) return;
     for (const piece of pieces(text)) this.deps.link.text(desk.peer, piece, null);
   }
@@ -173,7 +173,8 @@ export class ControlDesk {
   private deskOf(character: ControlledCharacter): Desk {
     const held = this.desks.get(character.id);
     if (held !== undefined && peerKeyText(held.peer) === peerKeyText(character.peer)) return held;
-    const desk: Desk = { peer: character.peer, controllers: [], stopped: new Set(), backlog: '' };
+    const backlog = new TextTail(this.deps.backlogChars);
+    const desk: Desk = { peer: character.peer, controllers: [], stopped: new Set(), backlog };
     this.desks.set(character.id, desk);
     return desk;
   }
@@ -199,18 +200,19 @@ export class ControlDesk {
       return;
     }
     const desk = this.deskOf(character);
-    const same = (a: Listener, b: Listener): boolean => a.name === b.name && a.key === b.key;
     const allowed = to.filter((each) => this.allows(character, desk, each));
     for (const refused of to.filter((each) => !allowed.includes(each))) {
       this.deps.link.release(peer, refused);
     }
     for (const arrived of allowed.filter(
-      (each) => !desk.controllers.some((was) => same(was, each))
+      (each) => !desk.controllers.some((was) => sameListener(was, each))
     )) {
       this.deps.notice(character.id, t('peers.control.started', { from: arrived.name }));
-      for (const piece of pieces(desk.backlog)) this.deps.link.text(peer, piece, arrived);
+      for (const piece of pieces(desk.backlog.text())) this.deps.link.text(peer, piece, arrived);
     }
-    for (const gone of desk.controllers.filter((was) => !allowed.some((each) => same(was, each)))) {
+    for (const gone of desk.controllers.filter(
+      (was) => !allowed.some((each) => sameListener(was, each))
+    )) {
       this.deps.notice(character.id, t('peers.control.ended', { from: gone.name }));
     }
     desk.controllers = allowed;
@@ -228,9 +230,7 @@ export class ControlDesk {
       this.deps.link.answer(peer, by, id, { ...reply });
     if (character === null) return answer({ r: 'refused', why: t('peers.control.notHere') });
     const desk = this.deskOf(character);
-    const controlling = desk.controllers.some(
-      (each) => each.name === by.name && each.key === by.key
-    );
+    const controlling = desk.controllers.some((each) => sameListener(each, by));
     if (!controlling || !this.allows(character, desk, by)) {
       return answer(this.refuse(character.id, by.name, t('peers.control.notGiven')));
     }

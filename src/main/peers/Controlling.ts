@@ -24,6 +24,7 @@ import {
 import { playerKey } from '../../shared/players';
 import { t } from '../app/i18n';
 import type { ControllingFrame, PeerLink, Watched } from './PeerLink';
+import { TextTail } from './TextTail';
 
 export interface ControllingDeps {
   /** `id`'s claim, while claimed. */
@@ -50,7 +51,7 @@ interface Pending {
 interface Control {
   readonly peer: PeerKey;
   readonly watched: Watched;
-  text: string;
+  readonly text: TextTail;
 }
 
 export class Controlling {
@@ -73,7 +74,7 @@ export class Controlling {
     const other = this.controllerOf(watched.from, watched.key);
     if (other !== null) return t('peers.control.otherControls', { name });
     if (held !== undefined) this.close(id);
-    this.controls.set(id, { peer, watched, text: '' });
+    this.controls.set(id, { peer, watched, text: new TextTail(this.deps.backlogChars) });
     this.deps.link.watch(peer, watched);
     this.deps.changed();
     return null;
@@ -98,7 +99,7 @@ export class Controlling {
 
   /** The terminal text `id` has been sent of the character it controls. */
   backlog(id: SessionId): string {
-    return this.controls.get(id)?.text ?? '';
+    return this.controls.get(id)?.text.text() ?? '';
   }
 
   /** One action to the character `id` controls, answered by its sharer or refused here. */
@@ -128,7 +129,7 @@ export class Controlling {
     switch (frame.k) {
       case 'text': {
         const control = this.controls.get(id)!;
-        control.text = (control.text + frame.text).slice(-this.deps.backlogChars());
+        control.text.append(frame.text);
         this.deps.text(id, frame.text);
         return;
       }
@@ -143,6 +144,8 @@ export class Controlling {
         return;
       }
       case 'released': {
+        // The link would watch again on its next claim, bringing back a control nobody opened.
+        this.deps.link.watch(this.controls.get(id)!.peer, null);
         this.controls.delete(id);
         const name = frame.from.name;
         const said =
