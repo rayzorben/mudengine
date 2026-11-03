@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { newEd25519Pair } from '../../../node/ed25519';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { PeerGrant } from '../../../shared/peerGrant';
-import type { ControlAction, ControlAnswer } from '../../../shared/peerControl';
+import type { ControlAction, ControlAnswer, ControlText } from '../../../shared/peerControl';
 import type { ShareLevel } from '../../../shared/peers';
 import { ControlDesk } from '../ControlDesk';
 import { Controlling } from '../Controlling';
@@ -116,7 +116,7 @@ describe('remote control between two installs', () => {
     const set = controlled('control');
     await set.open();
     set.desk.painted('b', 'You are in the plaza.\r\n');
-    await until(() => set.controlling.backlog('s').includes('plaza'), set.controller.changed);
+    await until(() => set.controlling.backlog('s').text.includes('plaza'), set.controller.changed);
     expect(await set.controlling.act('s', { a: 'move', dir: 'n' })).toEqual({ r: 'done' });
     expect(set.ran).toEqual([{ action: { a: 'move', dir: 'n' }, by: 'Soul' }]);
     expect(set.notices.some((line) => line.includes('Soul sent the move n'))).toBe(true);
@@ -197,5 +197,37 @@ describe('a control the sharer ended', () => {
     controlling.heard({ k: 'released', from: brakkle, key: 'K', why: 'unshared' });
     expect(watches).toEqual([{ from: brakkle, key: 'K' }, null]);
     expect(controlling.view('s')).toBeNull();
+  });
+});
+
+describe('the text a controller is sent', () => {
+  it('marks each piece and the backlog with where they end in all of it', () => {
+    const pieces: ControlText[] = [];
+    const controlling = new Controlling({
+      peerOf: () => soul,
+      sheetsFor: () => [{ ...sharedSheet('Brakkle', { key: 'K', control: true }), from: brakkle }],
+      link: { watch: () => undefined, sendAction: () => true },
+      text: (_id, piece) => pieces.push(piece),
+      notice: () => undefined,
+      changed: () => undefined,
+      backlogChars: () => 10,
+      answerMs: () => 5000
+    });
+    expect(controlling.open('s', 'Brakkle')).toBeNull();
+    for (const text of ['line one\n', 'line two\n']) {
+      controlling.heard({ k: 'text', from: brakkle, key: 'K', text });
+    }
+    expect(pieces).toEqual([
+      { text: 'line one\n', end: 9 },
+      { text: 'line two\n', end: 18 }
+    ]);
+    // The first line is let go, and the backlog still ends where the second piece does.
+    expect(controlling.backlog('s')).toEqual({ text: 'line two\n', end: 18 });
+    // Closed and opened again: the count carries on, so a console still open draws the new text.
+    controlling.close('s');
+    expect(controlling.open('s', 'Brakkle')).toBeNull();
+    controlling.heard({ k: 'text', from: brakkle, key: 'K', text: 'again\n' });
+    expect(pieces.at(-1)).toEqual({ text: 'again\n', end: 24 });
+    expect(controlling.backlog('s')).toEqual({ text: 'again\n', end: 24 });
   });
 });

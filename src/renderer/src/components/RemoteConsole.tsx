@@ -15,7 +15,13 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { TerminalConfig } from '@shared/config';
 import type { IpcApi, SessionId } from '@shared/ipc';
-import type { ControlAction, ControlAnswer } from '@shared/peerControl';
+import {
+  NO_CONTROL_TEXT,
+  undrawn,
+  type ControlAction,
+  type ControlAnswer,
+  type ControlText
+} from '@shared/peerControl';
 import type { TerminalPalette } from '@shared/themes';
 import { errorMessage } from '@shared/values';
 import { DIRECTIONS } from '@shared/world';
@@ -39,14 +45,20 @@ const NO_INPUT = (): void => {};
 const NO_RESULT = (): void => {};
 
 function RemoteConsole({ api, session, name, settings, fontStack, palette }: RemoteConsoleProps) {
+  // Null once the console is gone, so a backlog or an answer that comes later draws nothing.
   const handle = useRef<TerminalHandle | null>(null);
   const seq = useRef(0);
-  // Pieces that come before the backlog is written wait here, so none is drawn twice or above older text.
-  const held = useRef<string[] | null>([]);
+  // Pieces that come before the backlog is written wait here, so none is drawn above older text.
+  const held = useRef<ControlText[] | null>([]);
+  // Where in all main was sent of this control the console's text ends, so none is drawn twice.
+  const drawn = useRef(0);
   const [line, setLine] = useState('');
   const [confirm, setConfirm] = useState<Extract<ControlAnswer, { r: 'confirm' }> | null>(null);
 
-  const write = useCallback((text: string) => {
+  const draw = useCallback((piece: ControlText) => {
+    const text = undrawn(piece, drawn.current);
+    drawn.current = Math.max(drawn.current, piece.end);
+    if (text.length === 0) return;
     seq.current += 1;
     handle.current?.write({ seq: seq.current, at: Date.now(), text });
   }, []);
@@ -55,28 +67,33 @@ function RemoteConsole({ api, session, name, settings, fontStack, palette }: Rem
   const ready = useCallback(
     (terminal: TerminalHandle) => {
       handle.current = terminal;
-      const release = (backlog: string): void => {
+      const release = (backlog: ControlText): void => {
         const waiting = held.current ?? [];
         held.current = null;
-        // What came while main answered is already in the backlog it answered with, or after it.
-        const joined = waiting.join('');
-        write(joined.length > 0 && backlog.endsWith(joined) ? backlog : backlog + joined);
+        draw(backlog);
+        for (const piece of waiting) draw(piece);
       };
       api.controlBacklog(session).then(release, (error: unknown) => {
-        release('');
-        terminal.notice(t('remote.failed', { message: errorMessage(error) }));
+        release(NO_CONTROL_TEXT);
+        handle.current?.notice(t('remote.failed', { message: errorMessage(error) }));
       });
     },
-    [api, session, write]
+    [api, session, draw]
+  );
+  useEffect(
+    () => () => {
+      handle.current = null;
+    },
+    []
   );
   useEffect(
     () =>
       api.onControlText(({ session: from, payload }) => {
         if (from !== session) return;
         if (held.current !== null) held.current.push(payload);
-        else write(payload);
+        else draw(payload);
       }),
-    [api, session, write]
+    [api, session, draw]
   );
 
   const act = useCallback(
@@ -84,8 +101,9 @@ function RemoteConsole({ api, session, name, settings, fontStack, palette }: Rem
       setConfirm(null);
       api.controlAct(session, action).then(
         (answer) => {
+          if (handle.current === null) return;
           if (answer.r === 'refused')
-            handle.current?.notice(t('remote.refused', { why: answer.why }));
+            handle.current.notice(t('remote.refused', { why: answer.why }));
           if (answer.r === 'confirm') setConfirm(answer);
         },
         (error: unknown) =>

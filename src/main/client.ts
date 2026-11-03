@@ -1808,7 +1808,7 @@ function createPeers(): Peers {
         : runControl(session, action, by);
     },
     refused: (id, decision) => host?.get(id)?.manager.reports.decided(decision),
-    controlText: (id, text) => windows.toAll(Push.controlText, { session: id, payload: text })
+    controlText: (id, piece) => windows.toAll(Push.controlText, { session: id, payload: piece })
   });
 }
 

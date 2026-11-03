@@ -162,3 +162,23 @@ export function asControlAnswer(value: unknown): ControlAnswer | null {
     }
   }
 }
+
+/**
+ * A stretch of the controlled character's terminal text as main hands it to
+ * the window: a piece as it came, or the backlog kept. `end` counts every
+ * character main was sent of this control up to the stretch's last, so the
+ * window joins the backlog to the pieces held behind it and draws none twice.
+ */
+export interface ControlText {
+  readonly text: string;
+  readonly end: number;
+}
+
+export const NO_CONTROL_TEXT: ControlText = { text: '', end: 0 };
+
+/** The part of `piece` past the first `drawn` characters, which the window has drawn already. */
+export function undrawn(piece: ControlText, drawn: number): string {
+  const fresh = piece.end - drawn;
+  if (fresh <= 0) return '';
+  return fresh >= piece.text.length ? piece.text : piece.text.slice(-fresh);
+}

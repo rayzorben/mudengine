@@ -29,7 +29,7 @@ import type { DecisionKind } from './decisionSettings';
 import type { PlayerRegistry } from './players';
 import type { PortraitChange, PortraitView } from './portrait';
 import type { ShareView } from './peers';
-import type { ControlAction, ControlAnswer } from './peerControl';
+import type { ControlAction, ControlAnswer, ControlText } from './peerControl';
 import type { RoomArtView } from './roomArt';
 import type { DebugRecord } from './debug';
 import type { UnreadLine } from './unread';
@@ -1479,7 +1479,7 @@ export interface IpcApi {
   /** One action to the character this one controls, answered by its sharer. */
   controlAct(session: SessionId, action: ControlAction): Promise<ControlAnswer>;
   /** The text this character has been sent of the one it controls. */
-  controlBacklog(session: SessionId): Promise<string>;
+  controlBacklog(session: SessionId): Promise<ControlText>;
   /** Ends every player's remote control of this character. */
   controlStop(session: SessionId): Promise<void>;
   /** The character's portrait, saved where the player picks (a browser tab downloads it). */
@@ -1915,7 +1915,7 @@ export interface IpcApi {
   onPlayers(handler: (message: Addressed<PlayerRegistry>) => void): () => void;
   onPortrait(handler: (message: Addressed<PortraitChange>) => void): () => void;
   onShares(handler: (message: Addressed<ShareView>) => void): () => void;
-  onControlText(handler: (message: Addressed<string>) => void): () => void;
+  onControlText(handler: (message: Addressed<ControlText>) => void): () => void;
   onRoomArt(handler: (message: Addressed<RoomArtView>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;

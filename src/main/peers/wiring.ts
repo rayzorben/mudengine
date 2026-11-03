@@ -26,7 +26,7 @@ import { PinReports } from './PinReports';
 import { Sharing, type SharingSession } from './Sharing';
 import type { CharacterState } from '../../shared/character';
 import type { SafetyDecision } from '../../shared/automation';
-import type { ControlAction, ControlAnswer } from '../../shared/peerControl';
+import type { ControlAction, ControlAnswer, ControlText } from '../../shared/peerControl';
 import { ControlDesk } from './ControlDesk';
 import { Controlling } from './Controlling';
 
@@ -53,7 +53,7 @@ export interface PeersDeps {
   /** A remote control refusal, for `id`'s safety trace. */
   refused(id: SessionId, decision: SafetyDecision): void;
   /** Terminal text of the character `id` controls, for `id`'s window. */
-  controlText(id: SessionId, text: string): void;
+  controlText(id: SessionId, piece: ControlText): void;
 }
 
 export interface Peers {
@@ -70,7 +70,7 @@ export interface Peers {
   controlClose(id: SessionId): void;
   controlAct(id: SessionId, action: ControlAction): Promise<ControlAnswer>;
   /** The text `id` has been sent of the character it controls. */
-  controlBacklog(id: SessionId): string;
+  controlBacklog(id: SessionId): ControlText;
   /** `id`'s player presses Stop on whoever controls it. */
   controlStop(id: SessionId): void;
   dispose(): void;

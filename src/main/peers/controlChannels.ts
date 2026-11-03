@@ -6,7 +6,12 @@
  * window cannot send what the contract does not hold.
  */
 import { Invoke } from '../../shared/ipc';
-import { asControlAction, CONTROL_VERSION, type ControlAnswer } from '../../shared/peerControl';
+import {
+  asControlAction,
+  CONTROL_VERSION,
+  NO_CONTROL_TEXT,
+  type ControlAnswer
+} from '../../shared/peerControl';
 import { isPeerName } from '../../shared/peers';
 import { isRecord } from '../../shared/values';
 import { t } from '../app/i18n';
@@ -41,7 +46,9 @@ export function handleControlChannels({ host, peers }: ControlChannelsDeps): voi
     }
   );
   transport.handle(Invoke.controlBacklog, (_caller, session: unknown) =>
-    typeof session === 'string' ? (peers()?.controlBacklog(session) ?? '') : ''
+    typeof session === 'string'
+      ? (peers()?.controlBacklog(session) ?? NO_CONTROL_TEXT)
+      : NO_CONTROL_TEXT
   );
   transport.handle(Invoke.controlStop, (_caller, session: unknown) => {
     if (typeof session === 'string') peers()?.controlStop(session);

@@ -11,8 +11,10 @@ import type { SessionId } from '../../shared/ipc';
 import {
   actionFrame,
   asControlAnswer,
+  NO_CONTROL_TEXT,
   type ControlAction,
-  type ControlAnswer
+  type ControlAnswer,
+  type ControlText
 } from '../../shared/peerControl';
 import {
   newestSheets,
@@ -33,7 +35,7 @@ export interface ControllingDeps {
   sheetsFor(id: SessionId): readonly SharedSheet[];
   link: Pick<PeerLink, 'watch' | 'sendAction'>;
   /** Text the controlled character's terminal painted, for `id`'s window. */
-  text(id: SessionId, text: string): void;
+  text(id: SessionId, piece: ControlText): void;
   notice(id: SessionId, message: string): void;
   /** What `id` controls changed, for its window. */
   changed(): void;
@@ -58,6 +60,8 @@ export class Controlling {
   private readonly controls = new Map<SessionId, Control>();
   private readonly pending = new Map<number, Pending>();
   private nextId = 0;
+  // Past every end handed out, so a console still open across a close and reopen draws the new text.
+  private sent = 0;
 
   constructor(private readonly deps: ControllingDeps) {}
 
@@ -74,7 +78,7 @@ export class Controlling {
     const other = this.controllerOf(watched.from, watched.key);
     if (other !== null) return t('peers.control.otherControls', { name });
     if (held !== undefined) this.close(id);
-    this.controls.set(id, { peer, watched, text: new TextTail(this.deps.backlogChars) });
+    this.controls.set(id, { peer, watched, text: new TextTail(this.deps.backlogChars, this.sent) });
     this.deps.link.watch(peer, watched);
     this.deps.changed();
     return null;
@@ -98,8 +102,9 @@ export class Controlling {
   }
 
   /** The terminal text `id` has been sent of the character it controls. */
-  backlog(id: SessionId): string {
-    return this.controls.get(id)?.text.text() ?? '';
+  backlog(id: SessionId): ControlText {
+    const tail = this.controls.get(id)?.text;
+    return tail === undefined ? NO_CONTROL_TEXT : { text: tail.text(), end: tail.end() };
   }
 
   /** One action to the character `id` controls, answered by its sharer or refused here. */
@@ -130,7 +135,8 @@ export class Controlling {
       case 'text': {
         const control = this.controls.get(id)!;
         control.text.append(frame.text);
-        this.deps.text(id, frame.text);
+        this.sent = Math.max(this.sent, control.text.end());
+        this.deps.text(id, { text: frame.text, end: control.text.end() });
         return;
       }
       case 'acted': {

@@ -25,6 +25,14 @@ describe('the text kept for a remote controller', () => {
     expect(tail.text()).toBe('');
   });
 
+  it('counts every character appended, the ones let go included', () => {
+    const tail = new TextTail(() => 10);
+    tail.append('line one\n');
+    tail.append('line two\n');
+    expect(tail.text()).toBe('line two\n');
+    expect(tail.end()).toBe(18);
+  });
+
   it('lets old chunks go, and holds at most its size and one chunk', () => {
     const tail = new TextTail(() => 10);
     for (let i = 0; i < 100; i += 1) tail.append(`line ${i}\n`);
