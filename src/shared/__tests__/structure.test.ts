@@ -88,7 +88,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // And by `landingOf`, out to `navigation/spellLanding.ts` for both readers of a spell's landing.
   // Lowered by the portal list's push, one line each, as the room spell's ways came (format 77).
   // Lowered by the room survey's comment, condensed as the route budget came (2026-10-29 stalls).
-  'src/main/world/WorldGraph.ts': 2311,
+  // Lowered by the monster row sweep, onto the engine's `sweepFrom` (2026-11-03).
+  'src/main/world/WorldGraph.ts': 2308,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).
@@ -521,19 +522,20 @@ describe('dependencies point down', () => {
  * planned by `world/navigation/` over the router. Outside the world only the
  * engine's session half calls a search; inside it, the router itself, the
  * graph that composes it (its delegations, and the counters, banks and asks
- * it prices) and the quest planner's sweeps (an item order and a drop ring),
- * each at the count pinned here, as a ceiling is: a new call in one of them
- * fails until it goes through the engine. Read as text, so a probe in
- * `scripts/` is held too; a search written by hand is the reviewer's to find.
+ * it prices, a monster's nearest lair and a timed passage) and the quest
+ * planner's sweeps (an item order and a drop ring), each at the count pinned
+ * here, as a ceiling is: a new call in one of them fails until it goes
+ * through the engine. Read as text, so a probe in `scripts/` is held too; a
+ * search written by hand is the reviewer's to find.
  */
 describe('one navigation engine', () => {
-  const search = /\.(route|sweepTo|withinSteps|nearest)\(/;
+  const search = /\.(route|sweepTo|sweepFrom|withinSteps|nearest)\(/;
   const searchG = new RegExp(search.source, 'g');
   const calls = (file: string): number => read(file).match(searchG)?.length ?? 0;
   const callers: Readonly<Record<string, number>> = {
     'src/main/session/navigation.ts': 3,
-    'src/main/world/Router.ts': 2,
-    'src/main/world/WorldGraph.ts': 7,
+    'src/main/world/Router.ts': 3,
+    'src/main/world/WorldGraph.ts': 8,
     'src/main/world/QuestPlanner.ts': 2
   };
   const engine = 'src/main/world/navigation/';

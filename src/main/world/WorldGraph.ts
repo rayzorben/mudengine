@@ -711,35 +711,32 @@ export class WorldGraph {
      */
     const { mobRowMargin, mobRowRooms } = tuning().world;
     const found = new Map<number, number>();
-    const seen = new Set<RoomId>([from]);
-    let queue: RoomId[] = [from];
     let closest: number | null = null;
     let reached = 0;
-    for (let depth = 0; queue.length > 0 && seen.size <= mobRowRooms; depth += 1) {
-      if (closest !== null && depth > closest * mobRowMargin) break;
-      reached = depth;
-      const next: RoomId[] = [];
-      for (const id of queue) {
+    let tied = false;
+    // Every exit, as the exit table names it: a monster walks through doors,
+    // keys and level gates, and a scripted teleport is no way of its own.
+    this.router.sweepFrom(from, {
+      lands: 'table',
+      portals: false,
+      rooms: mobRowRooms,
+      visit: (id, depth) => {
+        if (closest !== null && depth > closest * mobRowMargin) return false;
+        reached = depth;
         const hit = targets.get(id);
         // A room two of the rows share says both are here and neither is
         // nearer, which is a tie at this distance rather than a resolution.
-        if (hit === TIED_ROW) return null;
-        if (hit !== undefined && !found.has(hit)) {
-          if (found.size > 0) return null;
+        if (hit === TIED_ROW) tied = true;
+        else if (hit !== undefined && !found.has(hit)) {
+          if (found.size > 0) tied = true;
           found.set(hit, depth);
           closest = depth;
         }
-        for (const exit of this.rooms.get(id)?.exits ?? []) {
-          const to = roomId(exit.map, exit.room);
-          if (seen.has(to)) continue;
-          seen.add(to);
-          next.push(to);
-        }
+        return !tied;
       }
-      queue = next;
-    }
+    });
     const [best] = [...found.entries()];
-    if (best === undefined) return null;
+    if (tied || best === undefined) return null;
     return { id: best[0], how: 'nearest', steps: best[1], beyond: reached };
   }
 

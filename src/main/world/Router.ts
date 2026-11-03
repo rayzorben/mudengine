@@ -14,6 +14,7 @@ import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
 import { exitGates, gateRequirement } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
+import { sweep, type SweepRooms, type SweepRules } from './navigation/sweep';
 import { closedPlaces } from './closedPlaces';
 import { RealmJoins } from './RealmJoins';
 import { TravellerKept } from './travellerKept';
@@ -1220,6 +1221,8 @@ export class Router {
   private readonly rooms: ReadonlyMap<RoomId, WorldRoom>;
   private readonly portals: ReadonlyMap<RoomId, readonly PortalExit[]>;
   private readonly spends: ReadonlyMap<PortalExit, Omit<RouteInvocation, 'at'>>;
+  /** What `sweep` reads: the rooms, their portals and where an exit lands. */
+  private readonly sweepRooms: SweepRooms;
   /**
    * The three the scatter solve works from, all built on first use and none of
    * them on load: a realm's rooms are read at startup and most sessions never
@@ -1299,6 +1302,11 @@ export class Router {
     this.rooms = index.roomsById;
     this.portals = index.portalsByRoom;
     this.spends = index.spendsByEdge;
+    this.sweepRooms = {
+      roomsById: this.rooms,
+      portalsFrom: (id) => this.portalsFrom(id),
+      beyond: (exit) => this.beyond(exit)
+    };
   }
 
   /**
@@ -1370,8 +1378,7 @@ export class Router {
    * realm: a sweep that reaches nothing new stops.
    */
   withinSteps(from: RoomId, steps: number, traveller?: Traveller): Map<RoomId, number> {
-    const seen = new Map<RoomId, number>();
-    if (!this.rooms.has(from)) return seen;
+    if (!this.rooms.has(from)) return new Map();
     // Kept out of, from wherever this is asked: see `Traveller.keepOut`.
     const who = traveller === undefined ? undefined : this.insideOf(traveller, [from]);
     const open = (exit: WorldExit | PortalExit): boolean => {
@@ -1386,58 +1393,43 @@ export class Router {
       const penalty = edgePenalty(requirement, traveller);
       return penalty !== null && penalty < wall;
     };
-    seen.set(from, 0);
-    let frontier: RoomId[] = [from];
-    for (let depth = 1; depth <= steps && frontier.length > 0; depth += 1) {
-      const next: RoomId[] = [];
-      for (const id of frontier) {
-        const room = this.rooms.get(id);
-        if (room === undefined) continue;
-        const ways = [
-          /*
-           * **A way this traveller cannot take is not a way** (todo 09,
-           * 2026-09-13). Without the traveller this sweep is the plain
-           * neighbourhood and a locked door is an exit — which is right for
-           * *what is near* and wrong for *where could this character go*: the
-           * hunting survey offered lairs behind gates it could not route
-           * through, and a loop started on one stood still. `edgePenalty`
-           * answers `null` for exactly the conditions that are impassable
-           * rather than merely expensive, which is the same test the router
-           * makes one step at a time. The sweep also skips an exit priced
-           * at `wallCost` (2026-10-02): a door this character cannot force,
-           * which the navigation engine refuses as a way, so no spot behind
-           * one is offered.
-           */
-          ...room.exits
-            .filter(
-              (exit) =>
-                /*
-                 * And a draw is not a way either, whoever is asking. A scatter
-                 * reaches no *particular* room, so counting the room its exit
-                 * table names as one step away is the reading that had the
-                 * hunting survey offering lairs across the Warped Asylum as
-                 * neighbours of the ward outside it.
-                 */
-                exit.requirement?.spellEffect !== 'scatters' &&
-                passable(exit.requirement ?? null) &&
-                open(exit)
-            )
-            .map((exit) => this.beyond(exit)),
-          // And the same of a portal, which carries a `level` requirement of
-          // its own where the realm gates one (`WorldGraph.linkPortals`).
-          ...this.portalsFrom(id)
-            .filter((portal) => passable(portal.requirement ?? null) && open(portal))
-            .map((portal) => roomId(portal.map, portal.room))
-        ];
-        for (const to of ways) {
-          if (seen.has(to) || !this.rooms.has(to)) continue;
-          seen.set(to, depth);
-          next.push(to);
-        }
-      }
-      frontier = next;
-    }
-    return seen;
+    /*
+     * A gate this traveller cannot pass is skipped (todo 09, 2026-09-13).
+     * Without a traveller the sweep is the plain neighbourhood and a locked
+     * door counts as an exit, which is right for what is near and wrong for
+     * where this character can go: the hunting survey offered lairs behind
+     * gates it could not route through, and a loop started on one stood
+     * still. `edgePenalty` answers `null` for the conditions that are
+     * impassable rather than dear, the test the router makes one step at a
+     * time, and an exit priced at `wallCost` (2026-10-02) is a door this
+     * character cannot force, so no spot behind one is offered.
+     *
+     * An exit that draws is skipped for everyone. A scatter reaches no
+     * particular room, and counting the room its exit table names as one
+     * step away had the hunting survey offering lairs across the Warped
+     * Asylum as neighbours of the ward outside it. A portal carries a `level`
+     * requirement of its own where the realm gates one
+     * (`WorldGraph.linkPortals`).
+     */
+    return this.sweepFrom(from, {
+      lands: 'beyond',
+      portals: true,
+      steps,
+      walks: (way) =>
+        (way.direction === 'portal' || way.requirement?.spellEffect !== 'scatters') &&
+        passable(way.requirement ?? null) &&
+        open(way)
+    });
+  }
+
+  /**
+   * Every room a breadth-first sweep by `rules` reaches, with the fewest moves
+   * to each (`navigation/sweep.ts`): the one walk over exits room by room, for
+   * a question no route answers, such as which lair is nearest or how long a
+   * passage is. Prices nothing.
+   */
+  sweepFrom(from: RoomId, rules: SweepRules): Map<RoomId, number> {
+    return sweep(this.sweepRooms, from, rules);
   }
 
   /**
