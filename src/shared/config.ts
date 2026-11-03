@@ -1512,7 +1512,9 @@ export interface MovementConfig extends MovementChoices {
   /** How many picks, before the route gives up on the barrier. */
   pickTries: number;
   /**
-   * Sneak before starting a planned route.
+   * Sneak before every move: the walk's steps (`walk/Sneak.ts`), the player's
+   * own (`session/moveSneaks.ts`), and standing seen between moves
+   * (`AutoStealth`), so a party leader's step walks a sneaking follower.
    *
    * What decides whether the things in the next room notice the character
    * arrive, which is the whole reason a route through somewhere dangerous is

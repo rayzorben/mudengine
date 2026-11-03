@@ -30,6 +30,7 @@ import { FloorAfterKill } from '../automation/FloorAfterKill';
 import { AutoLight } from '../automation/AutoLight';
 import { LightAhead } from '../automation/LightAhead';
 import { AutoStealth } from '../automation/AutoStealth';
+import { SneakRefusals } from '../automation/sneakRefusals';
 import type { GearRecovery } from '../automation/GearRecovery';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { StatScreen } from '../automation/StatScreen';
@@ -766,13 +767,14 @@ export class SessionManager {
 
     // What the light, errands and travel tell the session: a console line, a safety decision.
     const moveInFlight = (): boolean => this.tracker.pendingMoves > 0;
+    const sneakRefusals = new SneakRefusals(automation.movement, notice);
     const reports = {
       notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
     // A route offers the command queue one verified step at a time, like everything else.
     this.walker = new Walker(automation, this.queue, {
-      realmSpeed,
+      ...{ realmSpeed, sneakRefusals },
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
@@ -957,15 +959,14 @@ export class SessionManager {
       moveInFlight
     });
     /*
-     * The shadows, asked for between fights. Told whether a lap or a route
-     * has the character, because the answer is a different command: `sn` for
-     * the step ahead, `hide` for standing still.
+     * The shadows, asked for between fights and, with Auto-Sneak on Move, before
+     * any move. Told whether a lap or a route has the character, because the
+     * answer is a different command: `sn` for the step ahead, `hide` standing.
      */
-    this.stealth = new AutoStealth(automation.combat, automation.enabled, this.queue, {
-      notice,
+    this.stealth = new AutoStealth(automation, automation.enabled, this.queue, {
+      ...{ notice, moveInFlight, sneakRefusals },
       escaping: () => this.travel.isRetreating(),
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
-      moveInFlight,
       openerRefused: () => this.combat.openerRefused(),
       opener: () => this.errands.words.opener(),
       // Whether resting and hiding undo each other, off the realm's class row (Paradigm grants
@@ -1555,8 +1556,7 @@ export class SessionManager {
       automation: () => this.automationConfig,
       keys: () => sink.keys?.() ?? {},
       aliasFile: () => sink.aliasFile?.() ?? null,
-      movesPending: moveInFlight,
-      sneakBlocked: cannotSneakHere,
+      ...{ movesPending: moveInFlight, sneakBlocked: cannotSneakHere, sneakRefusals },
       roomNamed: (request) => roomNamed(request, this.errands),
       // The player's own route, as the palette's Go to walks it.
       walkTo: (at) => walkTo(at, this.errands, (way) => this.travel.walkForPlayer(way)),
@@ -1645,7 +1645,7 @@ export class SessionManager {
       { module: this.light, configure: (a) => this.light.configure(a.movement, a.enabled) },
       { module: this.wards, configure: (a) => this.wards.configure(a.health, a.enabled) },
       { module: this.gear, configure: (a) => this.gear.configure(a.gear, a.enabled) },
-      { module: this.stealth, configure: (a) => this.stealth.configure(a.combat, a.enabled) },
+      { module: this.stealth, configure: (a) => this.stealth.configure(a, a.enabled) },
       {
         module: this.recoverGear,
         configure: (a) => this.recoverGear.configure(a.movement, a.enabled)

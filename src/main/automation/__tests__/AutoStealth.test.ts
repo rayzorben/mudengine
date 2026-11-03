@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { notesOf } from '../../app/copyMatch';
 
 import { AutoStealth, type StealthEvents } from '../AutoStealth';
+import { SneakRefusals } from '../sneakRefusals';
 import { CommandQueue } from '../CommandQueue';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 import { DEFAULT_CONFIG, type AutomationConfig, type CombatConfig } from '../../../shared/config';
@@ -64,8 +65,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const make = (config = combat(), events: StealthEvents = {}, enabled = true): AutoStealth =>
-  new AutoStealth(config, enabled, queue, { notice: (m) => notices.push(m), ...events });
+const make = (
+  config = combat(),
+  events: StealthEvents = {},
+  enabled = true,
+  sneak = false
+): AutoStealth =>
+  new AutoStealth({ combat: config, movement: { sneak } }, enabled, queue, {
+    notice: (m) => notices.push(m),
+    ...events
+  });
 const drain = (): void => void vi.advanceTimersByTime(500);
 
 describe('standing still in an empty room', () => {
@@ -204,5 +213,85 @@ describe('the Stealth ceiling', () => {
       seen({ progress: { ...seen().progress, stealthSkill: 140 } })
     );
     expect(notices).toEqual([]);
+  });
+});
+
+// Auto-Sneak on Move asks whoever moves next, a leader included (the user, 2026-11-02).
+describe('Auto-Sneak on Move', () => {
+  const sneaker = (events: StealthEvents = {}, enabled = true): AutoStealth =>
+    make(combat({ opener: 'a', hideForOpener: false, enabled: false }), events, enabled, true);
+
+  it('sneaks a seen character standing in an empty room, opener or not', () => {
+    sneaker().onCharacter(seen());
+    drain();
+    expect(sent).toEqual(['sn']);
+  });
+
+  it('asks nothing of a character already sneaking or not known to be seen', () => {
+    const stealth = sneaker();
+    stealth.onCharacter(seen({ stealth: 'sneaking' }));
+    stealth.onCharacter(seen({ stealth: 'unknown' }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('asks nothing with a monster in the room', () => {
+    sneaker().onCharacter(seen({ room: { ...seen().room, occupants: [mob('orc')] } }));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('asks nothing of a meditating character', () => {
+    const base = seen();
+    sneaker().onCharacter({ ...base, vitals: { ...base.vitals, meditating: true } });
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('asks nothing with automation switched off', () => {
+    sneaker({}, false).onCharacter(seen());
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('says once that a character with no Stealth is not sneaked', () => {
+    const stealth = sneaker();
+    const base = seen();
+    const none = { ...base, progress: { ...base.progress, stealthSkill: 0 } };
+    stealth.onCharacter(none);
+    stealth.onCharacter(none);
+    drain();
+    expect(sent).toEqual([]);
+    expect(notesOf(notices, 'automation.stealth.noSkillMove')).toHaveLength(1);
+    expect(notices).toHaveLength(1);
+  });
+
+  it('stops asking once the refusals in a row give up, until a level', () => {
+    const refusals = new SneakRefusals({ sneak: true, sneakGiveUp: 1 });
+    refusals.refused();
+    const stealth = sneaker({ sneakRefusals: refusals });
+    stealth.onCharacter(seen());
+    drain();
+    expect(sent).toEqual([]);
+    const base = seen();
+    stealth.onCharacter({ ...base, progress: { ...base.progress, level: 9 } });
+    drain();
+    expect(sent).toEqual(['sn']);
+  });
+
+  it('hides a backstabber standing on its own, the better roll', () => {
+    make(combat(), {}, true, true).onCharacter(seen());
+    drain();
+    expect(sent).toEqual(['hide']);
+  });
+
+  it('sneaks a backstabber following a leader, whose step can come at any moment', () => {
+    const base = seen();
+    make(combat(), {}, true, true).onCharacter({
+      ...base,
+      party: { ...base.party, following: 'Brakkle' }
+    });
+    drain();
+    expect(sent).toEqual(['sn']);
   });
 });

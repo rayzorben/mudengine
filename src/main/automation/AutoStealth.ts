@@ -1,6 +1,7 @@
 /**
  * Getting back into the shadows between fights, so the next one opens from
- * them — the standing-still half of stealth `Walker.sneakFirst` never had.
+ * them, and, with Auto-Sneak on Move, before whatever move comes next: the
+ * standing-still half of stealth the walker's `sn` before a step never had.
  *
  * A backstab is worth about four ordinary swings (measured 2026-09-12; see
  * `mudengine-automation` § *The opener is re-armed between fights*), and the
@@ -19,11 +20,12 @@
 import type { CommandQueue } from './CommandQueue';
 import { cannotSneakHere } from './Walker';
 import { SNEAK_KEY } from './walk/Sneak';
+import type { SneakGiveUp } from './sneakRefusals';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import { commandOf } from '../../shared/commands';
-import type { CombatConfig } from '../../shared/config';
+import type { CombatConfig, MovementConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { SessionModule } from './Module';
 
@@ -57,6 +59,14 @@ export interface StealthEvents {
    * direction and a resting character may be asked for the shadows.
    */
   restsHidden?(): boolean;
+  /** Whether refused sneaks in a row have stopped Auto-Sneak on Move's asks (`sneakRefusals.ts`). */
+  sneakRefusals?: SneakGiveUp;
+}
+
+/** What decides whether to ask: the opener's settings and Auto-Sneak on Move. */
+export interface StealthSettings {
+  combat: CombatConfig;
+  movement: Pick<MovementConfig, 'sneak'>;
 }
 
 /** Past this the move roll gains nothing (`Exits.cs:149` clamps at 100). */
@@ -73,14 +83,14 @@ export class AutoStealth implements SessionModule {
   private saidCeiling = false;
 
   constructor(
-    private config: CombatConfig,
+    private config: StealthSettings,
     private enabled: boolean,
     private readonly queue: CommandQueue,
     private readonly events: StealthEvents = {},
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  configure(config: CombatConfig, enabled: boolean): void {
+  configure(config: StealthSettings, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
   }
@@ -93,19 +103,32 @@ export class AutoStealth implements SessionModule {
   /** Every state change: is the character standing seen in an empty room? */
   onCharacter(state: CharacterState): void {
     if (state.phase !== 'in-game') return;
-    const opener = (this.events.opener?.() ?? this.config.opener).trim();
+    const { combat, movement } = this.config;
+    const opener = (this.events.opener?.() ?? combat.opener).trim();
     // The command table's own reading: `bs` is `BackStab`, and nothing else is.
     const backstabber = commandOf(opener) === 'BackStab';
     if (backstabber) this.sayCeiling(state);
-    if (!this.enabled || !this.config.hideForOpener || !backstabber) return;
+    if (!this.enabled) return;
     const moving = this.events.moving?.() === true;
-    // The combat block's master switch governs everything under it; a lap
-    // engages whatever the switch says, as `AutoCombat.acting` reads it.
-    if (!this.config.enabled && !moving) return;
+    // The combat block's master switch governs the opener; a lap engages
+    // whatever the switch says, as `AutoCombat.acting` reads it.
+    const forOpener =
+      combat.hideForOpener &&
+      backstabber &&
+      (combat.enabled || moving) &&
+      this.events.openerRefused?.() !== true;
+    /*
+     * Auto-Sneak on Move asks for the next move, whoever makes it: the
+     * player's key, the walk, or the leader's, which walks a follower through
+     * the same exit roll as its own (`Exits.cs:225`), so a follower has to be
+     * sneaking before the leader steps (the user, 2026-11-02).
+     */
+    const forMove =
+      movement.sneak && this.events.sneakRefusals?.givenUp(state.progress.level) !== true;
+    if (!forOpener && !forMove) return;
     if (state.stealth !== 'seen') return;
     if (this.events.escaping?.() === true) return;
     if (this.events.moveInFlight?.() === true) return;
-    if (this.events.openerRefused?.() === true) return;
     /*
      * The sheet's `Stealth:` figure is the roll for both commands
      * (`SneakCommand.cs`, `HideCommand.cs`); zero never passes (todo 104).
@@ -114,7 +137,10 @@ export class AutoStealth implements SessionModule {
     if (state.progress.stealthSkill === 0) {
       if (!this.saidNoSkill) {
         this.saidNoSkill = true;
-        this.events.notice?.(t('automation.stealth.noSkill'), HIDE_SNEAK);
+        const said = forOpener
+          ? t('automation.stealth.noSkill')
+          : t('automation.stealth.noSkillMove');
+        this.events.notice?.(said, HIDE_SNEAK);
       }
       return;
     }
@@ -137,11 +163,19 @@ export class AutoStealth implements SessionModule {
      * from a class name, and false on any realm but GreaterMUD's engine.
      */
     if (state.vitals.resting && this.events.restsHidden?.() !== true) return;
+    // Both end a meditation whatever the class (`HideCommand.cs:24`, `SneakCommand.cs:32`).
+    if (state.vitals.meditating) return;
     const now = this.now();
     if (now - this.askedAt < tuning().stealth.askEveryMs) return;
     this.askedAt = now;
     const { expiresMs } = tuning().stealth;
-    if (moving) {
+    /*
+     * A backstabber standing on its own hides, the better roll (`sayCeiling`),
+     * and its own move asks for `sn` first (`moveSneaks.ts`). One following a
+     * leader sneaks, since the leader's step can come at any moment.
+     */
+    const following = state.party.following !== null;
+    if (moving || (forMove && (!forOpener || following))) {
       // The walker's own key and band, so its `sn` before the step and this
       // one are one command.
       this.queue.enqueue({
@@ -149,7 +183,9 @@ export class AutoStealth implements SessionModule {
         priority: 'movement',
         coalesceKey: SNEAK_KEY,
         expiresAt: now + expiresMs,
-        reason: t('automation.stealth.reasonSneak', { verb: opener }),
+        reason: forOpener
+          ? t('automation.stealth.reasonSneak', { verb: opener })
+          : t('automation.stealth.reasonSneakMove'),
         decision: HIDE_SNEAK
       });
       return;

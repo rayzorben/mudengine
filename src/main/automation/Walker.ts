@@ -78,7 +78,7 @@ import { WalkClock } from './walk/clock';
 import type { IntentFilter, WalkerEvents, WalkInFlight } from './walk/ports';
 import type { DecisionKind } from '../../shared/decisionSettings';
 import { Holds } from './walk/Holds';
-import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
+import { SneakBeforeStep } from './walk/Sneak';
 import { DisarmBeforeStep } from './walk/Disarm';
 import { PartyHands } from './walk/PartyHands';
 import { Levers } from './walk/Levers';
@@ -302,6 +302,7 @@ export class Walker implements SessionModule {
     this.config = config;
     this.holds.configure(config);
     this.barriers.configure(config);
+    this.sneak.configure(config.movement);
     this.publish(); // The pace follows the combat switch (todo 129).
   }
 
@@ -855,9 +856,7 @@ export class Walker implements SessionModule {
    */
   onBlock(block: Block): void {
     this.offRounds.onBlock(block);
-    if (this.status !== 'walking') return;
-    if (isSneakAnswer(block.type)) return this.sneak.answered(block.type);
-    if (block.type === 'user-sneaking') this.sneak.sneaked();
+    if (this.sneak.onBlock(block) || this.status !== 'walking') return;
     if (block.type === 'trap-disarmed') return this.disarm.answered(block.groups['direction']);
 
     /*

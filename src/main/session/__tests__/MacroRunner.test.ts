@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../../automation/CommandQueue';
 import { MacroRunner, type MacroRunnerParts } from '../MacroRunner';
+import { SneakRefusals } from '../../automation/sneakRefusals';
 import type { AliasFile } from '../aliasAnswers';
 import { aliasRefusalText } from '../../../shared/aliases';
 import { t } from '../../app/i18n';
@@ -36,6 +37,8 @@ describe('a macro', () => {
   let state: CharacterState;
   let mob: string | null;
   let maxGets = DEFAULT_CONFIG.automation.remotes.maxGets;
+  let enabled: boolean;
+  let autoSneak: boolean;
   let keys: KeyBindings;
   let aliases: Record<string, string>;
   let pending: boolean;
@@ -48,6 +51,7 @@ describe('a macro', () => {
   let file: AliasFile | null;
   let writes: Array<[string, string | null]>;
   let runner: MacroRunner;
+  let refusals: SneakRefusals;
 
   const parts = (): MacroRunnerParts => ({
     send: (data) => typed.push(data.trim()),
@@ -57,11 +61,17 @@ describe('a macro', () => {
     published: () => undefined,
     state: () => state,
     mob: () => mob,
-    automation: () => ({ aliases, remotes: { maxGets } }),
+    automation: () => ({
+      aliases,
+      remotes: { maxGets },
+      enabled,
+      movement: { sneak: autoSneak }
+    }),
     keys: () => keys,
     aliasFile: () => file,
     movesPending: () => pending,
     sneakBlocked: () => blocked,
+    sneakRefusals: refusals,
     roomNamed: () => match,
     walkTo: (at) => {
       walks.push(at);
@@ -87,6 +97,9 @@ describe('a macro', () => {
 
   beforeEach(() => {
     maxGets = DEFAULT_CONFIG.automation.remotes.maxGets;
+    enabled = true;
+    autoSneak = false;
+    refusals = new SneakRefusals({ sneak: true, sneakGiveUp: 2 }, (m) => notices.push(m));
     vi.useFakeTimers();
     sent = [];
     typed = [];
@@ -384,6 +397,117 @@ describe('a macro', () => {
       prompts(1);
       expect(sent).toEqual([]);
       expect(notices).toContain(t('session.macro.cannotSneak'));
+    });
+  });
+
+  // Auto-Sneak on Move covers the player's own moves too (the user, 2026-11-02).
+  describe('Auto-Sneak on Move ahead of a move', () => {
+    beforeEach(() => {
+      autoSneak = true;
+      state = { ...state, stealth: 'seen' };
+    });
+
+    it('sends sn ahead of a keypad move and steps at the attempt', () => {
+      runner.run('e');
+      expect(typed).toEqual([]);
+      expect(sent).toEqual(['sn']);
+      prompts(1);
+      expect(sent).toEqual(['sn']);
+      runner.onBlock(block('user-sneak-initiate'));
+      prompts(1);
+      expect(sent).toEqual(['sn', 'e']);
+    });
+
+    it('sends a move as it always has when already sneaking', () => {
+      state = { ...state, stealth: 'sneaking' };
+      runner.run('e');
+      expect(typed).toEqual(['e']);
+      expect(sent).toEqual([]);
+    });
+
+    it('sends a line that is no move as it always has', () => {
+      runner.run('grin');
+      expect(typed).toEqual(['grin']);
+      expect(sent).toEqual([]);
+    });
+
+    it('sneaks ahead of each move of a line', () => {
+      runner.run('e;grin;n');
+      expect(sent).toEqual(['sn']);
+      runner.onBlock(block('user-sneak-initiate'));
+      prompts(2);
+      expect(sent).toEqual(['sn', 'e', 'grin']);
+      state = { ...state, stealth: 'seen' };
+      prompts(1);
+      expect(sent).toEqual(['sn', 'e', 'grin', 'sn']);
+      runner.onBlock(block('user-sneak-initiate'));
+      prompts(1);
+      expect(sent).toEqual(['sn', 'e', 'grin', 'sn', 'n']);
+    });
+
+    /** A refusal as the session hears it: the walk counts it, then the macro reads it. */
+    const refused = (): void => {
+      refusals.refused();
+      runner.onBlock(block('user-sneak-failed'));
+    };
+
+    it('asks again after a refusal, and steps once the refusals in a row give up', () => {
+      runner.run('e');
+      expect(sent).toEqual(['sn']);
+      refused();
+      prompts(1);
+      expect(sent).toEqual(['sn', 'sn']);
+      refused();
+      prompts(1);
+      expect(sent).toEqual(['sn', 'sn', 'e']);
+      expect(notices).toEqual([t('automation.walk.sneakGaveUp', { count: 2 })]);
+      // Given up: the next key goes as it always has, until a level or a reconnect.
+      runner.run('n');
+      expect(typed).toEqual(['n']);
+    });
+
+    it('steps at once on You may not sneak right now, said', () => {
+      runner.run('e');
+      runner.onBlock(block('user-cant-sneak'));
+      prompts(1);
+      expect(sent).toEqual(['sn', 'e']);
+      expect(notices).toEqual([t('session.macro.movingRefused')]);
+    });
+
+    it('sends a move as it always has while another macro waits', () => {
+      runner.run('{goto 1/297};l');
+      runner.run('e');
+      expect(typed).toEqual(['e']);
+      expect(notices).toEqual([]);
+    });
+
+    it('sends a move as it always has where the server refuses sn', () => {
+      blocked = true;
+      runner.run('e');
+      expect(typed).toEqual(['e']);
+      expect(notices).toEqual([]);
+    });
+
+    it('sends a move as it always has for a character with no Stealth', () => {
+      state = { ...state, progress: { ...state.progress, stealthSkill: 0 } };
+      runner.run('e');
+      expect(typed).toEqual(['e']);
+    });
+
+    it('steps when nothing answers sn, said', () => {
+      runner.run('e');
+      expect(sent).toEqual(['sn']);
+      vi.advanceTimersByTime(60_000);
+      prompts(1);
+      expect(sent).toEqual(['sn', 'e']);
+      expect(notices).toContain(t('session.macro.moveSneakUnanswered'));
+    });
+
+    it('sends nothing ahead of a move with automation switched off', () => {
+      enabled = false;
+      runner.run('e');
+      expect(typed).toEqual(['e']);
+      expect(sent).toEqual([]);
     });
   });
 

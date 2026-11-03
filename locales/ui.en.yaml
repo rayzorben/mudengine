@@ -5559,7 +5559,8 @@ settings:
       unknown: The stat sheet has not been read yet.
     pickTries: Picks Per Door
     sneak: Auto-Sneak on Move
-    sneakHint: Decides whether the next room notices you arrive. Sneaking can fail.
+    sneakHint: 'Sneaks before every move: a route''s, your own, and a party leader''s. Decides
+      whether the next room notices you arrive. Sneaking can fail.'
     runBetweenRounds: Run Between Rounds
     runBetweenRoundsHint: On Run it, and on the walk back after running, a step into a lair waits
       for the round to go off unless there is time to step in and out again before it.
@@ -6334,6 +6335,10 @@ session:
     walkEnded: 'Dropped the rest of that macro: the walk to {room} stopped.'
     walkElsewhere: 'Dropped the rest of that macro: the walk to {room} ended somewhere else.'
     sneakUnanswered: 'Dropped the rest of that macro: nothing answered the sn.'
+    # Auto-Sneak on Move ahead of the player's own move (the user, 2026-11-02).
+    moveSneakUnanswered: Nothing answered the sn, so the move goes without knowing whether this
+      character is sneaking.
+    movingRefused: 'Moving without sneaking: the game says you may not sneak right now.'
     gotoNone: 'Dropped the rest of that macro: no room matches {request}.'
     gotoSeveral: 'Dropped the rest of that macro: {request} matches {addresses}; name one.'
     gotoRefused: 'Dropped the rest of that macro: no walk to {request} ({reason}).'
@@ -6901,8 +6906,11 @@ automation:
   stealth:
     reasonHide: 'hiding, so the next fight opens with {verb}'
     reasonSneak: 'sneaking, so the next fight opens with {verb}'
+    reasonSneakMove: sneaking before the next move (Auto-Sneak on Move)
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
     noSkill: 'Not hiding or sneaking for the opener: this character has no Stealth (the stats say
+      0), so the game refuses every attempt.'
+    noSkillMove: 'Not sneaking for Auto-Sneak on Move: this character has no Stealth (the stats say
       0), so the game refuses every attempt.'
     ceiling: 'Stealth {skill} is above {ceiling}: moving rolls at most {ceiling} and sneaking at
       most 95, while hiding uses the full value, so Stealth above {ceiling} only helps while
@@ -8110,8 +8118,8 @@ automation:
     reasonSneak: sneaking before the route
     reasonChancePack: checking the inventory, since the last try could have taken what the way needs
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
-    sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after
-      a level or a reconnect.'
+    sneakGaveUp: 'Not sneaking before moves: the last {count} tries failed. Trying again after a
+      level, a reconnect, or turning Auto-Sneak on Move off and on.'
     sneakUnanswered: No answer to sn, so the step goes without knowing whether this character is
       sneaking.
     sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the stats say 0), so

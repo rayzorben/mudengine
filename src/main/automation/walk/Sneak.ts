@@ -35,7 +35,7 @@
  * asks again; the bare `Attempting to sneak...` lets the step go.
  */
 import type { CommandQueue, Intent } from '../CommandQueue';
-import type { BlockType } from '../../../shared/blocks';
+import type { Block, BlockType } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
 import { PRIORITY } from '../../../shared/automation';
 import { breaksStealth } from '../../../shared/commands';
@@ -45,6 +45,7 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { WalkClock } from './clock';
 import type { WalkInFlight, WalkerEvents } from './ports';
+import { SneakRefusals } from '../sneakRefusals';
 
 /** `AutoStealth`'s key too, so its `sn` and the walk's are one command. */
 export const SNEAK_KEY = 'sneak';
@@ -58,16 +59,8 @@ export class SneakBeforeStep {
   private saidNoStealth = false;
   /** `movement.sneak` at the last ask, so a switch turned on is seen (`switchedOn`). */
   private wantedBefore = false;
-  /**
-   * Sneaks refused in a row (`You don't think you're sneaking.`), and the
-   * level they were counted at: at `movement.sneakGiveUp` the walk stops
-   * asking until a new connection or a new level, said once. A low figure is
-   * a refusal the sheet cannot show (`SneakCommand.cs` rolls against Stealth
-   * less what is in the room), so it is read off the answers.
-   */
-  private sneakRefusals = { count: 0, level: null as number | null };
-  /** `movement.sneakGiveUp` at the last ask, which the refusal it answers counts against. */
-  private giveUp = 0;
+  /** Refusals in a row, shared with every other asker (`sneakRefusals.ts`). */
+  private readonly refusals: SneakRefusals;
   /**
    * The step held behind an `sn`, and whether the server has answered it:
    * `heard` lets the next ask send the step. A step that is no longer the one
@@ -77,17 +70,36 @@ export class SneakBeforeStep {
 
   constructor(
     private readonly queue: Pick<CommandQueue, 'offer' | 'queued'>,
-    private readonly events: Pick<WalkerEvents, 'notice'>,
+    private readonly events: Pick<WalkerEvents, 'notice' | 'sneakRefusals'>,
     /** A room the server refuses `sn` in (`cannotSneakHere`). */
     private readonly blocked: (state: CharacterState) => boolean,
     private readonly inFlight: Pick<WalkInFlight, 'walking' | 'step' | 'stepWhenFree'>,
     private readonly clock: Pick<WalkClock, 'afterStep' | 'clear'>
-  ) {}
+  ) {
+    // Configured at the first ask; a walk with no session around it counts alone.
+    this.refusals =
+      events.sneakRefusals ?? new SneakRefusals({ sneak: false, sneakGiveUp: 0 }, events.notice);
+  }
 
   /** A new connection, possibly another server: everything counted starts again. */
   reset(): void {
-    this.sneakRefusals = { count: 0, level: null };
+    this.refusals.reset();
     this.answer = null;
+  }
+
+  configure(movement: Pick<MovementConfig, 'sneak' | 'sneakGiveUp'>): void {
+    this.refusals.configure(movement);
+  }
+
+  /**
+   * Every block, walking or not, since the count is every asker's. True for
+   * an answer to `sn`, which is all the walk does with it.
+   */
+  onBlock(block: Block): boolean {
+    if (block.type === 'user-sneaking') this.sneaked();
+    if (!isSneakAnswer(block.type)) return false;
+    this.answered(block.type);
+    return true;
   }
 
   /**
@@ -96,7 +108,7 @@ export class SneakBeforeStep {
    */
   ask(state: CharacterState, movement: Pick<MovementConfig, 'sneak' | 'sneakGiveUp'>): boolean {
     const wanted = movement.sneak;
-    this.giveUp = movement.sneakGiveUp;
+    this.refusals.configure(movement);
     // Heard: the step goes. An `sn` still unanswered when the step is sent
     // again (a hold let go, the clock and its deadline cleared) is asked again.
     const heard = this.held()?.heard === true;
@@ -127,10 +139,7 @@ export class SneakBeforeStep {
     }
     if (this.blocked(state)) return false;
     // Refused too often in a row at this level: stopped until it changes.
-    if (this.sneakRefusals.level !== state.progress.level) {
-      this.sneakRefusals = { count: 0, level: state.progress.level };
-    }
-    if (this.sneakRefusals.count >= this.giveUp) return false;
+    if (this.refusals.givenUp(state.progress.level)) return false;
     const step = this.inFlight.step();
     if (step === undefined) return false;
     // Ahead of the offer: an idle queue sends inside it, and `onSent` reads this.
@@ -156,12 +165,11 @@ export class SneakBeforeStep {
   /**
    * Auto-Sneak on Move turned on, by the toolbar, the settings or a granted
    * player's `@auto-sneak on` (todo 85): the player asked for sneaking, so
-   * the refusals counted so far start again and what still stops the sneak
-   * is said again at the next step.
+   * what still stops the sneak is said again at the next step (the count
+   * starts again in `SneakRefusals.configure`).
    */
   private switchedOn(): void {
     this.saidNoStealth = false;
-    this.sneakRefusals = { count: 0, level: null };
   }
 
   private stillQueued(): boolean {
@@ -201,7 +209,7 @@ export class SneakBeforeStep {
    * refusal that asks once more (up to `sneakGiveUp`), otherwise it steps.
    */
   answered(type: SneakAnswer): void {
-    if (type === 'user-sneak-failed') this.refused();
+    if (type === 'user-sneak-failed') this.refusals.refused();
     if (this.held() === null) return;
     this.goOn(type !== 'user-sneak-failed');
   }
@@ -212,7 +220,7 @@ export class SneakBeforeStep {
    * where a `You make a sound` or a search has already broken it (todo 120).
    */
   sneaked(): void {
-    if (this.sneakRefusals.count < this.giveUp) this.sneakRefusals.count = 0;
+    this.refusals.sneaked();
   }
 
   /** The step held on an `sn`, or null. */
@@ -232,16 +240,6 @@ export class SneakBeforeStep {
     this.answer = heard && this.answer !== null ? { ...this.answer, heard } : null;
     this.inFlight.stepWhenFree();
     if (this.answer?.heard === true) this.answer = null;
-  }
-
-  /** One more sneak refused; at the limit, said once. See `sneakRefusals`. */
-  private refused(): void {
-    this.sneakRefusals.count += 1;
-    if (this.sneakRefusals.count !== this.giveUp) return;
-    this.events.notice?.(
-      t('automation.walk.sneakGaveUp', { count: this.sneakRefusals.count }),
-      'walk-sneak'
-    );
   }
 }
 

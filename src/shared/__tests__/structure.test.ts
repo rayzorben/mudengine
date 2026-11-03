@@ -113,7 +113,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `scriptGated`, out to the room commands' unit (`walk/RoomCommands.ts`, todo 65).
   // Lowered by the comments before the step, condensed as the disarm came (`walk/Disarm.ts`, todo 53).
   // Lowered by the hold and trap getters' comments, and the journey's reads in `inFlight` once, as the monster wait came (2026-10-23).
-  'src/main/automation/Walker.ts': 1919,
+  'src/main/automation/Walker.ts': 1918,
   // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
   // Lowered by `sameJson`, read from `@shared/values` with the error helper (todo 143).
   'src/renderer/src/components/SettingsScreen.tsx': 1213,

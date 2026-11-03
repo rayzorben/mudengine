@@ -13,6 +13,7 @@ import { expandAlias } from '../../shared/aliases';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import { asTyped } from '../../shared/clientCommands';
+import type { MovementConfig } from '../../shared/config';
 import type { KeyBindings } from '../../shared/keys';
 import type { MacroPlaceholder } from '../../shared/macro';
 import { macroBook } from '../../shared/macroBook';
@@ -23,7 +24,9 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
 import { isSneakAnswer } from '../automation/walk/Sneak';
+import type { SneakGiveUp } from '../automation/sneakRefusals';
 import { answerAlias, type AliasFile } from './aliasAnswers';
+import { anyMove, sneakBeforeMoves, type MoveSneak, type RunStep } from './moveSneaks';
 import {
   cancelRun,
   macroFaultText,
@@ -34,6 +37,11 @@ import {
 } from './macros';
 
 export interface MacroRunnerParts extends MacroParts {
+  /** `MacroParts`' slice, and what Auto-Sneak on Move reads before a move (`moveSneaks.ts`). */
+  automation(): ReturnType<MacroParts['automation']> & {
+    enabled: boolean;
+    movement: Pick<MovementConfig, 'sneak'>;
+  };
   /** The keys this character binds, as its files state them now, for `{f2}`. */
   keys(): KeyBindings;
   /** The character's own file, where `alias` writes; null where nothing may be written. */
@@ -42,6 +50,8 @@ export interface MacroRunnerParts extends MacroParts {
   movesPending(): boolean;
   /** A room the server refuses `sn` in (`cannotSneakHere`). */
   sneakBlocked(state: CharacterState): boolean;
+  /** Whether refused sneaks in a row have stopped Auto-Sneak on Move's asks. */
+  sneakRefusals: SneakGiveUp;
   /** The room a request names (`roomNamed`). */
   roomNamed(request: string): RoomMatch;
   /** The player's own route to `at`, auto-combat on as a walk asked for has it: the refusal, or the walk. */
@@ -50,7 +60,7 @@ export interface MacroRunnerParts extends MacroParts {
   routeOwed(): boolean;
 }
 
-type Action = Extract<MacroStep, { kind: 'goto' | 'sneak' }>;
+type Action = Extract<MacroStep, { kind: 'goto' | 'sneak' }> | MoveSneak;
 
 /** What a run waits on before its next steps go. */
 type Waiting =
@@ -60,12 +70,12 @@ type Waiting =
   | { kind: 'moves'; step: Extract<Action, { kind: 'goto' }> }
   /** Walking to the room. */
   | { kind: 'walk'; to: RoomId; room: string }
-  /** `sn` sent, its answer not yet heard. */
-  | { kind: 'sneak' };
+  /** `sn` sent, its answer not yet heard; `move` for Auto-Sneak on Move's, which a refusal does not stop. */
+  | { kind: 'sneak'; move: MoveSneak | null };
 
 interface Run {
   readonly batch: MacroBatch;
-  rest: MacroStep[];
+  rest: RunStep[];
   waiting: Waiting | null;
 }
 
@@ -99,11 +109,50 @@ export class MacroRunner implements SessionModule {
     }
     const line = expandAlias(typed, parts.automation().aliases) ?? typed;
     const read = typedSteps(line);
-    if (read === null) return parts.send(`${asTyped(line) ?? line}\r`);
+    if (read === null) {
+      const plain = asTyped(line) ?? line;
+      const step: MacroStep = { kind: 'send', command: plain, times: 1, fills: [] };
+      // A line marked as typed goes as typed; a move goes behind its `sn`, but
+      // never into a held queue or over a macro still waiting, as it never has.
+      const queued = asTyped(line) === null && this.running === null && !parts.queue.holding;
+      if (!queued || !this.sneaksMoves([step])) return parts.send(`${plain}\r`);
+      return this.start(line, [step]);
+    }
     const book = macroBook(parts.keys(), parts.automation().aliases);
     const expanded =
       'fault' in read ? read : expandMacros(read.steps, book, tuning().session.macroCommands);
     if ('fault' in expanded) return parts.notice(macroFaultText(expanded.fault));
+    this.start(line, expanded.steps);
+  }
+
+  /**
+   * Auto-Sneak on Move, with the master switch on, for a line that moves a
+   * character not already sneaking, where the server would take `sn` (the
+   * walk's own refusals: `SneakBeforeStep.ask`). `sn` is a send the switch holds.
+   */
+  private sneaksMoves(steps: readonly MacroStep[]): boolean {
+    const { enabled, movement } = this.parts.automation();
+    const state = this.parts.state();
+    return (
+      enabled &&
+      movement.sneak &&
+      state.stealth !== 'sneaking' &&
+      !this.moveSneakRefused(state) &&
+      anyMove(steps)
+    );
+  }
+
+  /** Where Auto-Sneak on Move's `sn` would be refused or is no longer asked. */
+  private moveSneakRefused(state: CharacterState): boolean {
+    return (
+      this.parts.sneakBlocked(state) ||
+      state.progress.stealthSkill === 0 ||
+      this.parts.sneakRefusals.givenUp(state.progress.level)
+    );
+  }
+
+  private start(line: string, steps: readonly MacroStep[]): void {
+    const parts = this.parts;
     const holding = parts.queue.holding;
     if (holding !== null || !parts.connected()) {
       return parts.notice(
@@ -116,7 +165,8 @@ export class MacroRunner implements SessionModule {
       this.stop(before, t('session.macro.replaced', { line: before.batch.line }));
     }
     this.runs += 1;
-    const run: Run = { batch: this.batchFor(line), rest: expanded.steps, waiting: null };
+    const rest = this.sneaksMoves(steps) ? sneakBeforeMoves(steps) : [...steps];
+    const run: Run = { batch: this.batchFor(line), rest, waiting: null };
     this.running = run;
     this.advance(run);
   }
@@ -154,11 +204,27 @@ export class MacroRunner implements SessionModule {
     if (run === null || waiting === null || waiting === undefined) return;
     if (waiting.kind === 'moves' && !this.parts.movesPending()) return this.walk(run, waiting.step);
     if (waiting.kind !== 'sneak' || !isSneakAnswer(block.type)) return;
+    if (waiting.move !== null && block.type !== 'user-sneak-initiate') {
+      return this.moveRefused(run, waiting.move, block.type === 'user-sneak-failed');
+    }
     if (block.type !== 'user-sneak-initiate') {
       return this.stop(run, t('session.macro.notSneaking'));
     }
     this.clearDeadline();
     run.waiting = null;
+    this.advance(run);
+  }
+
+  /**
+   * Auto-Sneak on Move's `sn` refused: asked again until the refusals in a
+   * row reach `sneakGiveUp` (`SneakRefusals` counts and says it), then the
+   * move goes. `You may not sneak right now!` goes at once, said.
+   */
+  private moveRefused(run: Run, move: MoveSneak, again: boolean): void {
+    this.clearDeadline();
+    run.waiting = null;
+    if (again && !this.moveSneakRefused(this.parts.state())) return this.queueTurn(run, move);
+    if (!again) this.parts.notice(t('session.macro.movingRefused'));
     this.advance(run);
   }
 
@@ -183,6 +249,7 @@ export class MacroRunner implements SessionModule {
           continue;
         case 'goto':
         case 'sneak':
+        case 'move-sneak':
           return this.queueTurn(run, step);
         case 'call':
           // Flattened when the macro started (`expandMacros`).
@@ -203,7 +270,7 @@ export class MacroRunner implements SessionModule {
    */
   private queueTurn(run: Run, step: Action): void {
     run.waiting = { kind: 'turn' };
-    const command = step.kind === 'sneak' ? 'sn' : `{goto ${step.request}}`;
+    const command = step.kind === 'goto' ? `{goto ${step.request}}` : 'sn';
     const taken = this.parts.queue.enqueue({
       command,
       priority: 'user',
@@ -226,7 +293,13 @@ export class MacroRunner implements SessionModule {
       return [];
     }
     const state = this.parts.state();
-    if (state.stealth === 'sneaking') {
+    const move = step.kind === 'move-sneak' ? step : null;
+    /*
+     * Auto-Sneak on Move's `sn` gives way where the server refuses it (a
+     * monster here, a fight, no Stealth), as the walk's does; `AutoStealth`
+     * says the Stealth 0 case once. The move is what the player asked for.
+     */
+    if (state.stealth === 'sneaking' || (move !== null && this.moveSneakRefused(state))) {
       run.waiting = null;
       this.advance(run);
       return [];
@@ -235,13 +308,15 @@ export class MacroRunner implements SessionModule {
       this.stop(run, t('session.macro.cannotSneak'));
       return [];
     }
-    run.waiting = { kind: 'sneak' };
+    run.waiting = { kind: 'sneak', move };
     // An answer that never comes leaves the character not known to be sneaking: the unsafe case.
     this.sneakDeadline = setTimeout(() => {
       this.sneakDeadline = null;
-      if (this.running === run && run.waiting?.kind === 'sneak') {
-        this.stop(run, t('session.macro.sneakUnanswered'));
-      }
+      if (this.running !== run || run.waiting?.kind !== 'sneak') return;
+      if (move === null) return this.stop(run, t('session.macro.sneakUnanswered'));
+      this.parts.notice(t('session.macro.moveSneakUnanswered'));
+      run.waiting = null;
+      this.advance(run);
     }, tuning().walk.sneakAnswerMs);
     return ['sn'];
   }

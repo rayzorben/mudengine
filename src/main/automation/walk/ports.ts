@@ -6,6 +6,7 @@
  * Each unit is handed the `Pick` of either that it calls. The why is
  * `mudengine-automation` › `parts/walking.md`.
  */
+import type { SneakRefusals } from '../sneakRefusals';
 import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
 import type { MobWaited } from '../../../shared/mobRules';
@@ -35,6 +36,8 @@ export interface WalkerEvents {
   /** The session's figure for the realm's speed (`RealmSpeed`), which sets the rounds a run steps between. */
   realmSpeed?(): number;
   notice?: NoticeSink;
+  /** Sneak refusals in a row, one count for every asker (`sneakRefusals.ts`). */
+  sneakRefusals?: SneakRefusals;
   /** Progress changed, so the renderer can redraw. */
   progress?(progress: WalkProgress): void;
   /**

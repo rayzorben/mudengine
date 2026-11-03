@@ -927,7 +927,10 @@ automation:
     pullLevers: true
     leverTries: 2
 
-    # Sneak before starting a route.
+    # Sneak before every move: a route's or a loop's step, your own keypad or
+    # typed move, and a party leader's step that walks you along. Standing
+    # seen in an empty room out of a fight, the client sends sn so you are
+    # sneaking before whoever moves next.
     #
     # What decides whether the things in the next room notice you arrive, which
     # is the whole difference between a route through a lair and a route through
@@ -937,7 +940,8 @@ automation:
     sneak: false
 
     # Refused sneaks in a row (`You don't think you're sneaking.`) before the
-    # walk stops asking, until the next level or connection.
+    # walk stops asking, until the next level or connection. Your own move
+    # asks this many times, then goes without sneaking.
     sneakGiveUp: 4
 
     # Time a run to the combat rounds: Run it, and the walk back after running.
