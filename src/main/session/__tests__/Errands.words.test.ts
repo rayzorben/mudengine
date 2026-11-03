@@ -78,3 +78,16 @@ describe('the fitness key and the pack', () => {
     expect(book.fitness(holding(7, 185))).not.toBe(bare);
   });
 });
+
+/* 2026-11-02, the hosted client's profiles: five modules weighed one line's state, 14 s of 734. */
+describe('what a monster’s blow is measured against', () => {
+  it('is weighed once per state, and again for a new one', () => {
+    const errand = errands('a');
+    const first = errand.menacePlayer(MYSTIC);
+    expect(errand.menacePlayer(MYSTIC)).toBe(first);
+    const stronger = { ...MYSTIC, progress: { ...MYSTIC.progress, armourClass: 40 } };
+    const second = errand.menacePlayer(stronger);
+    expect(second).not.toBe(first);
+    expect(second.armourClass).toBe(40);
+  });
+});

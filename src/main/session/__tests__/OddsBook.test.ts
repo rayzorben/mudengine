@@ -86,7 +86,10 @@ const CHARACTER: FightCharacter = {
   horizons: [1, 3]
 };
 
-function book(character: OddsBookParts['setup']['character'] = () => CHARACTER): {
+function book(
+  character: OddsBookParts['setup']['character'] = () => CHARACTER,
+  settingsKey: OddsBookParts['setup']['settingsKey'] = () => 'settings'
+): {
   odds: OddsBook;
   tracker: { current: CharacterState };
   ran: () => void;
@@ -108,11 +111,12 @@ function book(character: OddsBookParts['setup']['character'] = () => CHARACTER):
     errands: { fitness: (state) => `level ${state.progress.level}`, realmSpeed: 1 },
     setup: {
       character,
+      readable: (state) => state.vitals.hpMax !== null && state.vitals.hpMax > 0,
       foes: (_state, _character, met) => ({
         foes: met.map(({ name, subject }) => ({ name, subject })),
         casting: met.map(() => null)
       }),
-      settingsKey: () => 'settings'
+      settingsKey
     },
     simulator: new SlicedSimulator()
   };
@@ -279,6 +283,7 @@ describe('the odds book', () => {
         errands: { fitness: () => 'fit', realmSpeed: 1 },
         setup: {
           character: () => CHARACTER,
+          readable: () => true,
           foes: (_state, _character, foes) => {
             met.push(...foes.map(({ name, waits }) => ({ name, waits })));
             return {
@@ -330,6 +335,7 @@ describe('the odds book', () => {
         errands: { fitness: () => 'fit', realmSpeed: 1 },
         setup: {
           character: () => CHARACTER,
+          readable: () => true,
           foes: (_state, _character, met) => ({
             foes: met.map(({ name, subject }) => ({ name, subject })),
             casting: met.map(() => null)
@@ -351,6 +357,53 @@ describe('the odds book', () => {
     expect(odds.passKnown(lairRoom)).not.toBe(odds.lairKnown(lairRoom));
     // Two hunts and one pass: the plain lair's pass was never run.
     expect(passing).toEqual([undefined, undefined, true]);
+    odds.dispose();
+  });
+
+  /* 2026-11-02, the hosted client's profiles: the rested character was rebuilt for every job, 18.8 s of 734. */
+  it('builds the rested character once per book, and once more for the next', async () => {
+    const built: number[] = [];
+    const { odds, tracker } = book((state, at) => {
+      if (at === 'rested') built.push(state.progress.level ?? -1);
+      return CHARACTER;
+    });
+    odds.refresh(tracker.current);
+    // Two jobs, the lair and the monster, both run: the count is for the whole book.
+    await vi.waitFor(() => expect(odds.mob('ogre').kind).toBe('run'));
+    await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    expect(built).toEqual([10]);
+    tracker.current = inGame(11);
+    odds.refresh(tracker.current);
+    await vi.waitFor(() => expect(odds.mob('ogre').kind).toBe('run'));
+    await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    expect(built).toEqual([10, 11]);
+    odds.dispose();
+  });
+
+  it('opens another book when the settings move and the character does not', async () => {
+    let heal = 'minor';
+    const { odds, tracker } = book(undefined, () => heal);
+    odds.refresh(tracker.current);
+    await vi.waitFor(() => expect(odds.mob('ogre').kind).toBe('run'));
+    heal = 'major';
+    odds.refresh(tracker.current);
+    // The same state, and the key read again only once the settings say so.
+    expect(odds.mob('ogre').kind).toBe('run');
+    odds.configure();
+    odds.refresh(tracker.current);
+    expect(odds.mob('ogre')).toEqual({ kind: 'pending' });
+    odds.dispose();
+  });
+
+  it('tests the health to open a book, and puts it down when the health goes unread', async () => {
+    const asked = vi.fn(() => CHARACTER);
+    const { odds, tracker } = book(asked);
+    odds.refresh(tracker.current);
+    expect(asked).not.toHaveBeenCalled();
+    expect(odds.mob('ogre')).toEqual({ kind: 'pending' });
+    const unread = inGame(10);
+    odds.refresh({ ...unread, vitals: { ...unread.vitals, hpMax: null } });
+    expect(odds.mob('ogre')).toEqual({ kind: 'unread' });
     odds.dispose();
   });
 

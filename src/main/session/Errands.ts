@@ -371,6 +371,12 @@ export class Errands implements SessionModule {
   private readonly openedWays = new OpenedWays(() => this.world ?? null);
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
+  /** The last `menacePlayer` answer, by state and family: five modules ask it of one line's state. */
+  private menaced: {
+    state: CharacterState;
+    family: RealmFamily | null;
+    player: MenacePlayer;
+  } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
   private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
   /** The one navigation engine for this character (`session/navigation.ts`). */
@@ -3102,7 +3108,16 @@ export class Errands implements SessionModule {
 
   /** What a monster's blow or cast is measured against (`menacePlayerOf`). */
   menacePlayer(state: CharacterState): MenacePlayer {
-    return menacePlayerOf(state, this.realmClass(), (name) => this.world?.spellNamed(name) ?? null);
+    const family = this.serverFamily;
+    const kept = this.menaced;
+    if (kept?.state === state && kept.family === family) return kept.player;
+    const player = menacePlayerOf(
+      state,
+      this.realmClass(),
+      (name) => this.world?.spellNamed(name) ?? null
+    );
+    this.menaced = { state, family, player };
+    return player;
   }
 
   /**

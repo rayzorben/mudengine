@@ -1662,7 +1662,7 @@ export class SessionManager {
       },
       { module: this.itemErrand },
       { module: this.questWatch },
-      { module: this.odds },
+      { module: this.odds, configure: () => this.odds.configure() },
       {
         module: this.questRunner,
         configure: (a) => this.questRunner.configure(a.quests, a.enabled)

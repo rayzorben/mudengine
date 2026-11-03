@@ -77,6 +77,11 @@ export interface FightFoe {
  */
 export type FoesMet = 'arriving' | 'seen';
 
+/** A health maximum a fight can be run at: read, and above 0. */
+function fightable(hpMax: number | null): hpMax is number {
+  return hpMax !== null && hpMax > 0;
+}
+
 /** A pack nobody has weighed, which `passCaught` prices full. */
 const FULL_PACK = { encumbrance: null, encumbranceMax: null } as const;
 
@@ -119,6 +124,11 @@ export class FightSetup {
     return this.build(bare, 'rested', set);
   }
 
+  /** Whether `character` can build anything: the health maximum is read and above 0. */
+  readable(state: CharacterState): boolean {
+    return fightable(state.vitals.hpMax);
+  }
+
   /** `set` undefined is the character as it stands; null or an effect is `blessed`'s. */
   private build(
     state: CharacterState,
@@ -127,12 +137,12 @@ export class FightSetup {
     verb?: string
   ): FightCharacter | null {
     const { hp, mana, manaMax } = state.vitals;
-    if (state.vitals.hpMax === null) return null;
+    const hpMax = state.vitals.hpMax === null ? null : state.vitals.hpMax + (set ? set.maxHp : 0);
+    if (!fightable(hpMax)) return null;
     const { combat, magery, crits, rounds, mageryType, family, attack } =
       this.errands.realmClass(verb);
     const read = prowessSheetOf(state, { combat, magery, crits, rounds });
     const own = this.errands.menacePlayer(state);
-    const hpMax = state.vitals.hpMax + (set ? set.maxHp : 0);
     // What is up, or blessed, comes on top of what the gear worn adds (`gearEffect`).
     const extra = set === undefined ? this.up(state) : set;
     const effects = sumEffects([
@@ -150,7 +160,6 @@ export class FightSetup {
       extra === null
         ? own
         : blessedPlayer(own, set === undefined ? { ...NO_EFFECT, dodge: extra.dodge } : extra);
-    if (hpMax <= 0) return null;
     const health = at === 'rested' ? hpMax : hp;
     if (health === null) return null;
     const regen = regeneration(sheet, mageryType, family);

@@ -19,6 +19,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import {
   FightSetup,
+  type FightCharacter,
   type FightFoe,
   type FightSetupParts,
   type FightSetupSession
@@ -42,7 +43,7 @@ export interface OddsBookParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
   readonly world: OddsWorld | undefined;
   readonly errands: Pick<Errands, 'fitness' | 'realmSpeed'>;
-  readonly setup: Pick<FightSetup, 'character' | 'foes' | 'settingsKey'>;
+  readonly setup: Pick<FightSetup, 'character' | 'readable' | 'foes' | 'settingsKey'>;
   readonly simulator: FightSimulator;
 }
 
@@ -81,6 +82,7 @@ export type SessionOdds = Pick<
   | 'passKnown'
   | 'lairsLeft'
   | 'reset'
+  | 'configure'
   | 'dispose'
 >;
 
@@ -112,6 +114,11 @@ type Job =
 interface Book {
   /** The fitness and settings it is run for. */
   readonly key: string;
+  /**
+   * The character rested, built for the book's first plain fight and kept:
+   * the key stands for this character, so every fight in it meets the same one.
+   */
+  rested?: FightCharacter | null;
   readonly mobs: Map<string, Odds>;
   readonly lairs: Map<string, Odds>;
   queue: Job[];
@@ -142,6 +149,8 @@ export class OddsBook implements SessionModule {
   private slice: NodeJS.Immediate | null = null;
   /** The fight with the simulator, and how to drop it. */
   private running: { book: Book; job: Job; drop: () => void } | null = null;
+  /** The last `keyOf` answer and the state it was for; a state is never edited in place. */
+  private keyed: { state: CharacterState; key: string } | null = null;
 
   constructor(
     parts: OddsBookParts,
@@ -161,7 +170,7 @@ export class OddsBook implements SessionModule {
   refresh(state: CharacterState): void {
     const world = this.world;
     if (world === undefined || state.phase !== 'in-game') return;
-    if (this.setup.character(state, 'rested') === null) {
+    if (!this.setup.readable(state)) {
       // Nothing is run for a character nobody has read, and nothing kept from one that was.
       if (this.book !== null) this.reset();
       return;
@@ -204,7 +213,11 @@ export class OddsBook implements SessionModule {
    * fights with, where not `combat.attack`'s.
    */
   mobAs(name: string, as: CharacterState, attack?: string): Odds {
-    const input = this.inputOf(as, { kind: 'mob', name }, attack);
+    const input = this.inputOf(
+      as,
+      { kind: 'mob', name },
+      this.setup.character(as, 'rested', attack)
+    );
     if ('kind' in input) return input;
     const survival = simulateFight(input);
     return survival === null ? UNRUN : { kind: 'run', survival };
@@ -326,7 +339,13 @@ export class OddsBook implements SessionModule {
   reset(): void {
     this.cancel();
     this.book = null;
+    this.keyed = null;
     this.kept.clear();
+  }
+
+  /** The settings moved: the key is built again, though the state did not move. */
+  configure(): void {
+    this.keyed = null;
   }
 
   dispose(): void {
@@ -334,7 +353,10 @@ export class OddsBook implements SessionModule {
   }
 
   private keyOf(state: CharacterState): string {
-    return `${this.errands.fitness(state)}#${this.setup.settingsKey(state)}`;
+    if (this.keyed?.state === state) return this.keyed.key;
+    const key = `${this.errands.fitness(state)}#${this.setup.settingsKey(state)}`;
+    this.keyed = { state, key };
+    return key;
   }
 
   /**
@@ -442,7 +464,8 @@ export class OddsBook implements SessionModule {
       }
       const job = book.queue.shift()!;
       if (done(book, job)) continue;
-      const input = this.inputOf(state, job);
+      book.rested ??= this.setup.character(state, 'rested');
+      const input = this.inputOf(state, job, book.rested);
       if ('kind' in input) {
         told = this.record(book, job, input) || told;
         continue;
@@ -471,10 +494,16 @@ export class OddsBook implements SessionModule {
     return book.told.delete(idOf(job));
   }
 
-  /** The job's fight as the simulator takes it, or what it comes to where none can be set up. */
-  private inputOf(state: CharacterState, job: Job, attack?: string): Odds | SurvivalInput {
+  /**
+   * The job's fight against `character` (`state` rested) as the simulator
+   * takes it, or what it comes to where none can be set up.
+   */
+  private inputOf(
+    state: CharacterState,
+    job: Job,
+    character: FightCharacter | null
+  ): Odds | SurvivalInput {
     const world = this.world;
-    const character = this.setup.character(state, 'rested', attack);
     if (world === undefined || character === null) return UNRUN;
     let met: FightFoe[];
     let draw: number | undefined;
