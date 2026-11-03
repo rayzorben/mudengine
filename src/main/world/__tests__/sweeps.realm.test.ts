@@ -15,8 +15,9 @@ import { WorldGraph } from '../WorldGraph';
  * searches written by hand in `withinSteps` and `WorldGraph.searchMobRow`
  * (2026-11-03). Each figure is a digest of every answer over a fixed sample of
  * rooms, so a change in any one of them fails. Skips where an archive is
- * absent. Neither database holds a passage `corridorFrom` reads as harmful, so
- * that sweep is held by `WorldGraph.test.ts` alone.
+ * absent. The timed-passage sweep (`corridorFrom`) finds the two dives into
+ * the Muddy Underwater Passage in both, once `drowning`'s `DamageNoMR 0` is
+ * read as its 5–20 roll (2026-11-03).
  */
 const MEASURED = {
   gmud: {
@@ -72,6 +73,31 @@ describe.each(archives)('the sweeps on %s', (name) => {
       }
     }
     expect(hash.digest('hex').slice(0, 16)).toBe(measured.within);
+  });
+
+  it('puts the oasis pool and well dives under holding breath, and nothing else', () => {
+    const world = worlds.get(name)!;
+    const passages = roomsOf(world).flatMap((at) =>
+      world.portalsFrom(at).flatMap((way) => {
+        const corridor = way.requirement.corridor;
+        return corridor === undefined ? [] : [{ at, to: `${way.map}/${way.room}`, ...corridor }];
+      })
+    );
+    const dive = { spell: 512, name: 'holding breath', rooms: 11, ends: true, ticks: 25 };
+    expect(passages).toEqual([
+      { at: '12/73', to: '12/121', ...dive, then: 'drowning' },
+      { at: '12/118', to: '12/131', ...dive, then: 'drowning' }
+    ]);
+    const under = roomsOf(world).filter((at) => world.spellOver(at) !== null);
+    expect(under.sort()).toEqual(
+      Array.from({ length: 11 }, (_, index) => `12/${121 + index}`).sort()
+    );
+    // The way through costs its eleven rooms on top of the steps.
+    const route = world.route('12/73', '12/118', {});
+    expect(route.blocked).toBe(false);
+    expect(route.hazards).toContainEqual(
+      expect.objectContaining({ spell: 'holding breath', corridor: expect.anything() })
+    );
   });
 
   it('resolves a shared monster name to the same row from the same rooms', () => {

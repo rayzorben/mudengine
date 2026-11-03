@@ -813,6 +813,32 @@ export function abilityHurts(ability: number, value: number): boolean {
 }
 
 /**
+ * The size of one ability column on a spell: its own value, or for 0 the mean
+ * of the spell's rolled power, `MinBase..MaxBase` (`abil.Sum == 0 ?
+ * modifiedValue : abil.Sum`, GreaterMUD `Spells/Spell.cs:1406`, the roll at
+ * `:612`). `drowning` states `DamageNoMR 0` and a power of 5–20, so its
+ * column is 12.5 a tick and 0 only for a spell with no power.
+ */
+export function abilityMagnitude(
+  value: number,
+  power: readonly [number, number] | undefined
+): number {
+  if (value !== 0) return Math.abs(value);
+  const [low, high] = power ?? [0, 0];
+  return Math.abs(low + high) / 2;
+}
+
+/** Whether a spell's own columns wound whoever it lands on, a 0 column taking its roll. */
+export function spellWounds(spell: {
+  abilities?: ReadonlyArray<readonly [number, number]>;
+  power?: readonly [number, number];
+}): boolean {
+  return (spell.abilities ?? []).some(
+    ([ability, value]) => abilityHurts(ability, value) && abilityMagnitude(value, spell.power) > 0
+  );
+}
+
+/**
  * A monster's own dodge, in points — its `Abil-n = 34` slot
  * (`Mobs/MobType.cs:169`). The one ability the *character's* side of the
  * arithmetic reads off a monster: `prowess.swing` turns a fraction of landed

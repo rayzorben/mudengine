@@ -5312,17 +5312,28 @@ describe('routing through room-script teleports', () => {
  */
 /*
  * A way in that puts a timed spell on the character (todo 104): `dive pool`
- * casts *holding breath*, which ends in *drowning*, and the way up at the far
+ * casts *holding breath*, which ends in *drowning*, and the way up at either
  * end casts the spell that kills both. The passage is priced by the rooms
- * under the spell against the ticks it lasts, the rooms are known, and a
- * passage with no way out inside the ticks is a wall.
+ * under the spell to its furthest way out against the ticks it lasts, the
+ * rooms are known, and a passage with no way out inside the ticks is a wall.
+ * The spell rows are the shape of gmud.zip's 512–514: `drowning` states
+ * `DamageNoMR 0` and takes its power's 5–20.
  */
 describe('a way in that puts a timed spell on you', () => {
-  const dive = (ticks: number): WorldGraph =>
+  // `back` is the way up out of the first room, as the oasis pool has.
+  const dive = (ticks: number, power?: [number, number], back = true): WorldGraph =>
     makeWorld(
       [
         { m: 1, r: 1, n: 'Pool', x: {}, cmd: [{ say: ['dive pool'], to: '1/2', casts: 512 }] },
-        { m: 1, r: 2, n: 'Passage', x: { e: { m: 1, r: 3 } } },
+        {
+          m: 1,
+          r: 2,
+          n: 'Passage',
+          x: {
+            e: { m: 1, r: 3 },
+            ...(back ? { u: { m: 1, r: 1, i: 'Cast: pre-681, post-0' } } : {})
+          }
+        },
         { m: 1, r: 3, n: 'Passage', x: { e: { m: 1, r: 4 }, w: { m: 1, r: 2 } } },
         {
           m: 1,
@@ -5340,11 +5351,12 @@ describe('a way in that puts a timed spell on you', () => {
             n: 'drowning',
             dur: 5,
             ab: [
-              [1, 10],
+              [1, 0],
               [151, 514]
-            ]
+            ],
+            ...(power === undefined ? {} : { pw: power })
           },
-          { id: 514, n: 'drowned to death', ab: [[1, 9999]] },
+          { id: 514, n: 'drowned to death', ab: [[1, 0]] },
           {
             id: 681,
             n: 'stop drowning',
@@ -5359,7 +5371,7 @@ describe('a way in that puts a timed spell on you', () => {
     );
 
   it('resolves the passage on the way in, and knows which rooms are under it', () => {
-    const graph = dive(25);
+    const graph = dive(25, [5, 20]);
     const portal = graph.portalsFrom(roomId(1, 1))[0];
     expect(portal?.requirement.corridor).toEqual({
       spell: 512,
@@ -5376,7 +5388,7 @@ describe('a way in that puts a timed spell on you', () => {
   });
 
   it('prices the rooms under the spell and names the passage on the route', () => {
-    const graph = dive(25);
+    const graph = dive(25, [5, 20]);
     const portal = graph.portalsFrom(roomId(1, 1))[0];
     const route = graph.route(roomId(1, 1), roomId(1, 5), {});
     expect(route.blocked).toBe(false);
@@ -5396,10 +5408,31 @@ describe('a way in that puts a timed spell on you', () => {
   });
 
   it('walls a passage whose way out is further than the spell lasts', () => {
-    const graph = dive(2);
+    const graph = dive(2, [5, 20], false);
     const portal = graph.portalsFrom(roomId(1, 1))[0];
     expect(portal?.requirement.corridor?.ends).toBe(false);
     expect(graph.route(roomId(1, 1), roomId(1, 5), {}).blocked).toBe(true);
+  });
+
+  it('is no passage where the damage column is 0 and the spell has no power', () => {
+    const graph = dive(25);
+    expect(graph.portalsFrom(roomId(1, 1))[0]?.requirement.corridor).toBeUndefined();
+    expect(graph.spellOver(roomId(1, 2))).toBeNull();
+  });
+
+  // gmud.zip's `fall` (335) and `fire portal` (834): damage and no duration.
+  it('is no passage where the spell lands once', () => {
+    const graph = makeWorld(
+      [
+        { m: 1, r: 1, n: 'Ledge', x: {}, cmd: [{ say: ['go hole'], to: '1/2', casts: 335 }] },
+        { m: 1, r: 2, n: 'Pit', x: { e: { m: 1, r: 3 } } },
+        { m: 1, r: 3, n: 'Cave', x: {} }
+      ],
+      { spells: [{ id: 335, n: 'fall', ab: [[1, 0]], pw: [5, 15] }] },
+      43
+    );
+    expect(graph.portalsFrom(roomId(1, 1))[0]?.requirement.corridor).toBeUndefined();
+    expect(graph.spellOver(roomId(1, 2))).toBeNull();
   });
 });
 
@@ -6544,7 +6577,9 @@ describe('the order a step fetches its items in', () => {
         [
           { m: 1, r: 1, n: 'Pool', x: {}, cmd: [{ say: ['dive pool'], to: '1/2', casts: 512 }] },
           { m: 1, r: 2, n: 'Passage', x: { d: { m: 1, r: 3 } } },
-          { m: 1, r: 3, n: 'Passage', x: {} }
+          // The way out is past the step, so the leg ends under the spell.
+          { m: 1, r: 3, n: 'Passage', x: { u: { m: 1, r: 4, i: 'Cast: pre-681, post-0' } } },
+          { m: 1, r: 4, n: 'Shore', x: {} }
         ],
         {
           spells: [
@@ -6558,7 +6593,8 @@ describe('the order a step fetches its items in', () => {
                 [151, 514]
               ],
               pw: [5, 20]
-            }
+            },
+            { id: 681, n: 'stop drowning', ab: [[153, 512]] }
           ],
           quests: [{ id: 134, name: 'DiveQuest', steps: [{ ...asker, room: '1/3', takes: [] }] }]
         },

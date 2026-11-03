@@ -950,7 +950,7 @@ function ranFrom(traveller: Traveller, room: WorldRoom): boolean {
 
 /**
  * What a way in that puts a timed spell on the character costs (todo 104):
- * the rooms under it to the exit that lifts it, against the ticks it lasts.
+ * the rooms under it to the furthest exit that lifts it, against the ticks it lasts.
  * A passage with no way out this side of the spell's end, or one whose
  * length the realm states no duration against, is a wall — unknown is never
  * the reassuring answer, and here the reassuring answer drowns somebody.

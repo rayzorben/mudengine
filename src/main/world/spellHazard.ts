@@ -13,7 +13,7 @@
  *
  * See `mudengine-world` › *The world knowledge base*, the room-spell bullets.
  */
-import { HAZARD_ABILITY, abilityHurts } from '../../shared/abilities';
+import { HAZARD_ABILITY, abilityHurts, abilityMagnitude } from '../../shared/abilities';
 import {
   outrightStoppers,
   type HazardEffect,
@@ -257,7 +257,6 @@ export function resolveHazard(
      * this reader is that the river was being walked through for free.
      */
     if (row === undefined) return settle(seenSpells, spellStops, key, name, entry, cannotRead());
-    const mean = Math.abs(row.power[0] + row.power[1]) / 2;
     let ways: HazardReachMap = {};
     // `TextBlock 0` is the spell's own roll (`columnRows`), and with no power it is no script.
     for (const script of scriptsOf(row).flat()) {
@@ -291,9 +290,7 @@ export function resolveHazard(
       if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap)
         continue;
       if (!abilityHurts(ability, value)) continue;
-      // `abil.Sum == 0 ? rolledPower : abil.Sum`, the server's own choice of
-      // which figure to use — the same one `resolveSpells` makes.
-      const magnitude = value !== 0 ? Math.abs(value) : mean;
+      const magnitude = abilityMagnitude(value, row.power);
       if (magnitude > damage) damage = magnitude;
       ways = joinReach(ways, here('damage'));
     }

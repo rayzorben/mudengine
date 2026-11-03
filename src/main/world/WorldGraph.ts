@@ -72,9 +72,10 @@ import {
 import { trainersFor, type TrainerRow } from '../../shared/training';
 import {
   HAZARD_ABILITY,
-  HURTS,
   abilityHurts,
+  abilityMagnitude,
   abilityShape,
+  spellWounds,
   type ReferredNames
 } from '../../shared/abilities';
 import { tuning } from '../app/tuning';
@@ -1567,17 +1568,18 @@ export class WorldGraph {
   /**
    * The timed passage a room command opens, or null (todo 104).
    *
-   * The command's own `cast` puts a spell on the character; where that spell,
-   * or what it ends in (`EndCast`), carries harm the passage is one to run
-   * through. From the landing `Router.sweepFrom` walks the exits up to the
-   * spell's duration in moves, to an exit whose cast kills the chain
-   * (`Catalogue.killsAny`): the way out. The rooms before it go into
-   * `underSpell`. No duration, or no way out within it, is `ends: false`,
-   * which `corridorCost` walls.
-   *
-   * Sixty-odd ways in on the shipped realm cast something; the dive is the
-   * one whose chain reaches harm. A bless off a portal casts and ends in
-   * nothing that hurts, and is not a passage at all.
+   * The command's own `cast` puts a spell on the character; where that spell
+   * lasts and it, or what it ends in (`EndCast`), carries harm, the passage
+   * is one to run through. A 0 damage column is the spell's own roll
+   * (`spellWounds`): `drowning` is `DamageNoMR 0` at 5–20. A spell with no
+   * duration lands once and is gone (`fall`, `fire portal`), so it is no
+   * passage. From the landing `Router.sweepFrom` walks the exits up to the
+   * spell's duration in moves, stopping at each exit whose cast kills the
+   * chain (`Catalogue.killsAny`): a way out. Every room reached is in
+   * `underSpell`, and the passage is as long as its furthest way out, since
+   * the nearest is often the way back: the oasis pool's is one room up, the
+   * well's eleven rooms on. No duration, or no way out within it, is
+   * `ends: false`, which `corridorCost` walls.
    */
   private corridorFrom(command: RoomCommand, landing: RoomId): Corridor | null {
     if (command.casts === undefined) return null;
@@ -1593,16 +1595,14 @@ export class WorldGraph {
       chain.push(spell);
       next = spell.abilities?.find(([ability]) => ability === HAZARD_ABILITY.endCast)?.[1];
     }
-    const harms = chain.some((spell) =>
-      (spell.abilities ?? []).some(([ability, value]) => HURTS.has(ability) && value !== 0)
-    );
-    if (!harms) return null;
+    if (!chain.some((spell, at) => (at > 0 || (spell.duration ?? 0) > 0) && spellWounds(spell)))
+      return null;
     const lifts = new Set(chain.map((spell) => spell.id));
     const ticks = first.duration;
     // Bounded by the ticks where the realm states them, and by a stride
     // beyond any passage the shipped realms hold where it does not.
     const reach = ticks ?? 64;
-    let endAt = Infinity;
+    let endAt = 0;
     // The exit table's rooms and no teleport: the portals are being linked as
     // this runs, and a passage is left by its exits.
     const depth = this.router.sweepFrom(landing, {
@@ -1613,12 +1613,11 @@ export class WorldGraph {
           (spell): spell is number => spell !== undefined && spell > 0
         );
         if (!casts.some((spell) => this.catalogue.killsAny(spell, lifts))) return here + 1 < reach;
-        endAt = Math.min(endAt, here + 1);
+        endAt = Math.max(endAt, here + 1);
         return false;
-      },
-      visit: (_room, here) => here < endAt
+      }
     });
-    const ends = endAt !== Infinity;
+    const ends = endAt > 0;
     const rooms = ends ? endAt : depth.size;
     const corridor: Corridor = {
       spell: first.id,
@@ -1628,8 +1627,8 @@ export class WorldGraph {
       ...(ticks === undefined ? {} : { ticks }),
       ...(chain[1] === undefined ? {} : { then: chain[1].name })
     };
-    for (const [id, at] of depth) {
-      if (at < rooms && !this.underSpell.has(id)) this.underSpell.set(id, corridor);
+    for (const id of depth.keys()) {
+      if (!this.underSpell.has(id)) this.underSpell.set(id, corridor);
     }
     return corridor;
   }
@@ -1998,8 +1997,6 @@ export class WorldGraph {
         if (effect === 'plain') effect = 'script';
         continue;
       }
-      const [low, high] = spell.power ?? [0, 0];
-      const mean = Math.abs(low + high) / 2;
       for (const [ability, value] of spell.abilities ?? []) {
         /*
          * The map half of a teleport says nothing on its own — `spellLanding`
@@ -2050,9 +2047,7 @@ export class WorldGraph {
           continue;
         }
         if (!abilityHurts(ability, value)) continue;
-        // `abil.Sum == 0 ? rolledPower : abil.Sum`, the server's own choice of
-        // which figure to use.
-        const magnitude = value !== 0 ? Math.abs(value) : mean;
+        const magnitude = abilityMagnitude(value, spell.power);
         if (magnitude > harm) harm = magnitude;
       }
     }

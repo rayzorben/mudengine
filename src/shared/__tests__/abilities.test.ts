@@ -6,6 +6,7 @@ import {
   ABILITY_REFERS,
   ABILITY_SHAPE,
   abilityIsNotable,
+  abilityMagnitude,
   abilityIsUnread,
   abilityName,
   abilityShape,
@@ -20,7 +21,8 @@ import {
   poisonRefusesRest,
   readEffects,
   restsInTheShadows,
-  SHADOW_HOME_ABILITY
+  SHADOW_HOME_ABILITY,
+  spellWounds
 } from '../abilities';
 
 /*
@@ -584,5 +586,24 @@ describe('holdsMeditate (todo 50)', () => {
     expect(holdsMeditate({ sums: { 31: 0 }, complete: true, at: 1 })).toBe(false);
     expect(holdsMeditate({ sums: { [MEDITATE_ABILITY]: 1 }, complete: false, at: 1 })).toBe(true);
     expect(holdsMeditate({ sums: { [MEDITATE_ABILITY]: 0 }, complete: true, at: 1 })).toBe(false);
+  });
+});
+
+/*
+ * A damage column of 0 is the spell's own roll (`abil.Sum == 0 ? modifiedValue
+ * : abil.Sum`, GreaterMUD `Spells/Spell.cs:1406`). `drowning` is `DamageNoMR 0`
+ * at a power of 5–20 in every shipped world, and was read as harmless.
+ */
+describe('a spell column of 0', () => {
+  it('takes the mean of the spell power, and its own value otherwise', () => {
+    expect(abilityMagnitude(0, [5, 20])).toBe(12.5);
+    expect(abilityMagnitude(-8, [5, 20])).toBe(8);
+    expect(abilityMagnitude(0, undefined)).toBe(0);
+  });
+
+  it('wounds by the roll, and not where the spell has no power', () => {
+    expect(spellWounds({ abilities: [[1, 0]], power: [5, 20] })).toBe(true);
+    expect(spellWounds({ abilities: [[1, 0]] })).toBe(false);
+    expect(spellWounds({ abilities: [[151, 513]], power: [5, 20] })).toBe(false);
   });
 });

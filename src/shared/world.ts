@@ -2453,11 +2453,11 @@ export function firstAnswering<T extends { name: string }>(
  * Passage: `dive pool` casts *holding breath* (25 ticks), which ends in
  * *drowning*, and the way up at the far end casts the spell that kills both.
  *
- * `rooms` is how many the way in puts under it before the nearest exit that
- * lifts it, counting the landing; `ends` false is a passage with no such
- * exit within `ticks` moves of the landing, which the router walls. Nothing
- * carried stops one: the answer is to keep moving, which is what
- * `Walker`'s move-only rule and the session's gates do inside it.
+ * `rooms` is the moves from the landing to the furthest exit within `ticks`
+ * that lifts it (the nearest is often the way back); `ends` false is a
+ * passage with no such exit within `ticks` moves of the landing, which the
+ * router walls. Nothing carried stops one: the answer is to keep moving,
+ * which `Walker`'s move-only rule and the session's gates do inside it.
  */
 export interface Corridor {
   /** The spell the way in casts, and its name. */
