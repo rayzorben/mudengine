@@ -2420,6 +2420,29 @@ describe('the fight this character is in', () => {
       expect(lore.kills).toEqual([['orc rogue', 25]]);
     });
 
+    // captures/075:175-176: the monster's own sentence, then the pay.
+    it('is kept when a known death sentence took the target out first', () => {
+      const lore = {
+        ...paid(),
+        deathOf: (text: string) =>
+          text === 'The orc rogue utters a low growl, and dies.' ? ['orc rogue'] : []
+      };
+      play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'The orc rogue utters a low growl, and dies.',
+          'You gain 25 experience.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(lore.kills).toEqual([['orc rogue', 25]]);
+    });
+
     it('is not kept while another player is in the room', () => {
       const lore = paid();
       play(
@@ -11757,6 +11780,31 @@ describe('the spellbook and the belongings record', () => {
       expect(tracker.current.tally.onlineSince).toBe(T0 + 2_000);
     });
 
+    // captures/008:94 and captures/075:107: a player's blow, and a named monster's.
+    it('counts a blow from a named attacker as damage taken', () => {
+      const tracker = new CharacterTracker();
+      feedThrough(tracker, [
+        ...ARRIVE,
+        'Frak impales you for 4 damage!',
+        'Champion Gudruk chops you for 18 damage!'
+      ]);
+      expect(tracker.current.tally.taken).toMatchObject({ hits: 2, damage: 22 });
+      expect(tracker.current.tally.dealt.melee).toMatchObject({ hits: 0 });
+    });
+
+    it('keeps the totals through the character menu, and writes them down settled', () => {
+      const { state, sink } = fakeBelongings();
+      const tracker = new CharacterTracker();
+      tracker.useBelongings(sink);
+      feedThrough(tracker, [...ARRIVE, 'You gain 66 experience.', 'Please select a character:']);
+      expect(tracker.current.phase).toBe('authenticating');
+      const { tally } = tracker.current;
+      expect(tally.experience).toBe(66);
+      expect(tally.onlineSince).toBeNull();
+      expect(tally.onlineMs).toBe(2_000);
+      expect(state.stats?.tally).toEqual(tally);
+    });
+
     /* A launch that ended without the socket closing left both clocks open;
        the write is the last moment the client is known to have been in the
        realm, and that is where they close. */
@@ -12462,6 +12510,15 @@ describe('the status line pro reports', () => {
     const tracker = play([REPORT, '[HP=10/10,MA=0/0,Exp=100,Need=-40,Wealth=0 ]:']);
     expect(tracker.current.progress.expNeeded).toBe(0);
     expect(tracker.current.statline.exact).toBe(true);
+  });
+
+  it('owes nothing on a negative Need before pro has described the prompt', () => {
+    const tracker = play([
+      '[HP=10/10,MA=0/0,Exp=60,Need=40,Wealth=0 ]:',
+      '[HP=10/10,MA=0/0,Exp=100,Need=-40,Wealth=0 ]:'
+    ]);
+    expect(tracker.current.progress.expNeeded).toBe(0);
+    expect(tracker.current.statline.exact).toBeNull();
   });
 
   it('states nothing from Need=0, which is the realm saying the next level is affordable', () => {

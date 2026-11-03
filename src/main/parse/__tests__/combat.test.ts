@@ -228,7 +228,7 @@ describe('a step out of a fight', () => {
     there = tracker.hit(there, 2_100, 'orc', 'Grimjaw', 10)!;
     // The kill names what this character was fighting; written down at the step out.
     const fighting = { ...there, combat: { ...there.combat, target: 'orc', attackers: ['orc'] } };
-    tracker.walked(tracker.died(fighting, 2_500), 'e');
+    tracker.walked(tracker.died(fighting, 2_500).state, 'e');
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ mob: 'orc', killed: true, killingBlow: 'grimjaw' });
     expect(records[0]?.strikes).toMatchObject({
@@ -259,7 +259,7 @@ describe('a step out of a fight', () => {
 
   it('writes down a monster killed before the step at once, as a kill in the room it died in', () => {
     const { tracker, records, s } = fightingIn();
-    const dead = tracker.died(s, 1_500);
+    const dead = tracker.died(s, 1_500).state;
     tracker.walked(dead, 'e');
     expect(records.map((one) => [one.mob, one.roomName, one.killed])).toEqual([
       ['orc', 'Main Road', true]
@@ -346,7 +346,9 @@ describe('a death and the end of a fight', () => {
     const { tracker, s } = fight([mob('giant rat'), mob('kobold thief')]);
     const hit = tracker.hit(s, 1_000, 'giant rat', 'You', 9)!;
     const struck = tracker.blowOnMe(hit, 1_100, 'giant rat');
-    const died = tracker.died(struck, 2_000);
+    const death = tracker.died(struck, 2_000);
+    expect(death.killed).toBe('giant rat');
+    const died = death.state;
     expect(died.combat.target).toBeNull();
     expect(died.combat.health).toBeNull();
     expect(died.combat.attackers).toEqual([]);
@@ -356,14 +358,14 @@ describe('a death and the end of a fight', () => {
   it('nothing this client watched take damage cannot have died', () => {
     const { tracker, s } = fight([mob('giant rat')]);
     const fighting = tracker.missed(s, 1_000, 'giant rat')!;
-    expect(tracker.died(fighting, 2_000)).toBe(fighting);
+    expect(tracker.died(fighting, 2_000)).toEqual({ state: fighting, killed: null });
   });
 
   it('*Combat Off* writes the fight down, as a kill only when the suspicion stood', () => {
     const { tracker, records, s } = fight([mob('giant rat'), mob('kobold thief')]);
     let next = tracker.hit(s, 1_000, 'giant rat', 'You', 9)!;
     next = tracker.hit(next, 1_500, 'kobold thief', 'Rand', 4) ?? next;
-    next = tracker.died(next, 2_000);
+    next = tracker.died(next, 2_000).state;
     const over = tracker.status(next, false, 3_000);
     expect(over.inCombat).toBe(false);
     expect(over.combat.attackers).toEqual([]);
@@ -536,7 +538,7 @@ describe('a Combat Off and Combat Engaged pair', () => {
     const { tracker, s } = fight([mob('giant rat'), mob('kobold thief')]);
     let next = tracker.hit(inRoom(s, 1, 100), 1_000, 'giant rat', 'You', 9)!;
     next = tracker.blowOnMe(next, 1_100, 'giant rat');
-    next = tracker.died(next, 2_000);
+    next = tracker.died(next, 2_000).state;
     const off = tracker.status(next, false, 2_100);
     tracker.noteAttack('kobold thief', 'aa kobold thief', 2_200);
     const engaged = tracker.status(off, true, 2_300);

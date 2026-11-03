@@ -1158,11 +1158,10 @@ export class CharacterTracker {
    * connection and would not fire it again. The two halves are one bug: the
    * client keeps stale facts *and* declines to ask for fresh ones.
    *
-   * What survives is what is not about this character standing in this realm:
-   * the realm's own name, the player registry (everyone marked offline, nobody
-   * forgotten — the same reasoning as `leaveRealm`), the banks and the loadout,
-   * which are the character's *record* rather than its state and are keyed on
-   * disk by character and realm anyway.
+   * What survives is the realm's name, the player registry (everyone offline,
+   * nobody forgotten, as in `leaveRealm`), and the character's *record*, keyed
+   * on disk by character and realm: the banks, the loadout and the Combat
+   * Stats totals. An emptied tally here was written over the kept one.
    */
   private forgetCharacter(realm: RealmWord | null): CharacterState {
     const s = this.state;
@@ -1184,6 +1183,7 @@ export class CharacterTracker {
       banks: s.banks.map((bank) => ({ ...bank })),
       loadout: s.loadout.map((worn) => ({ ...worn })),
       stash: s.stash,
+      tally: s.tally,
       // And where it died: a reconnect after a death is when the kit is fetched.
       lastDeath: s.lastDeath === null ? null : { ...s.lastDeath },
       // And where it stood, unless the menu has named another realm.
@@ -1379,12 +1379,12 @@ export class CharacterTracker {
         // the room and the attacker list — see `FightTracker.died`. The line
         // before this one, if it named the target, was its death sentence,
         // and the realm learns it (`DeathSentence.before`).
-        const after = this.fight.died(s, block.at, this.deathSentence.before(s, block.at));
+        const death = this.fight.died(s, block.at, this.deathSentence.before(s, block.at));
         // And a quest step can be owned by a monster's death, so the name goes
-        // where `SessionManager` can read it. `after !== s` is `FightTracker`
-        // saying the target is what died.
-        if (after !== s) this.kills.killed(s, Number(g['exp']), block.at);
-        return experienceGained(after, s, g['exp']);
+        // where `SessionManager` can read it; `killed` is `FightTracker`
+        // saying which target died, by this line or its sentence.
+        if (death.killed !== null) this.kills.killed(s, death.killed, Number(g['exp']), block.at);
+        return experienceGained(death.state, s, g['exp']);
       }
 
       case 'user-profile': {

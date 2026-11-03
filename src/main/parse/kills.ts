@@ -32,13 +32,11 @@ export class Kills {
   ) {}
 
   /**
-   * This character's kill of its target: noted, and what it paid kept for the realm where
+   * This character's kill of its target, `name`: noted, and what it paid kept for the realm where
    * nobody could have shared it (todo 70). The database's experience is not
    * what the wire pays, and a shared kill pays a share.
    */
-  killed(state: CharacterState, exp: number, at: number): void {
-    const name = state.combat.target;
-    if (name === null) return;
+  killed(state: CharacterState, name: string, exp: number, at: number): void {
     this.noted(name);
     if (killedAlone(state)) this.lore.observeKillExp?.(name, exp, at);
   }

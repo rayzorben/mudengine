@@ -63,7 +63,8 @@ function statusFields(fields: string | undefined): {
 } {
   if (!fields) return {};
   const out: { need?: number; exp?: number; wealth?: number } = {};
-  const need = /(?:Need=|: ?Need )(\d+)/i.exec(fields);
+  // Signed: once the next level is affordable the realm prints it below zero.
+  const need = /(?:Need=|: ?Need )(-?\d+)/i.exec(fields);
   const exp = /\bExp=(\d+)/i.exec(fields);
   const wealth = /\b(?:Wealth|CASH)=(\d+)/i.exec(fields);
   if (need?.[1]) out.need = Number(need[1]);

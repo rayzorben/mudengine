@@ -101,7 +101,12 @@ export function trackTally(
      * here would put another player's damage into this character's average.
      */
     case 'user-hits': {
-      if (/^you$/i.test(g['target'] ?? '')) break;
+      // `Frak impales you for 4 damage!`: a player's or a named monster's
+      // blow on this character, damage taken like any `mob-hits`.
+      if (/^you$/i.test(g['target'] ?? '')) {
+        count({ taken: withBlow(next.taken, int(g['damage'])) });
+        break;
+      }
       /*
        * A weapon's proc is this character's damage and **not** one of its
        * swings, so it gets its own kind rather than being folded into

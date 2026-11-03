@@ -280,9 +280,10 @@ export class FightTracker {
    * room holding two `saracen raider`s read as empty after the first died and
    * the walk stepped out of a fight still running (todo 00, 2026-09-23). The
    * experience line consumes it; any blow in between clears it, since the
-   * kill it paired with is then over.
+   * kill it paired with is then over. `target` is this character's target as
+   * it was spelled, when that is what fell: the kill the line then pays for.
    */
-  private fell: string | null = null;
+  private fell: { key: string; target: string | null } | null = null;
 
   /**
    * The last blow this character landed that the *sentence* attributed, and
@@ -702,14 +703,15 @@ export class FightTracker {
   /**
    * `You gain N experience.` — something died, and this is the best guess at
    * which thing: a suspicion against the current target, tested by whether it
-   * takes another blow (see `suspectDeath`). Returns the state unchanged when
-   * nothing this client watched can have died.
+   * takes another blow (see `suspectDeath`). `killed` is the target the line
+   * pays for, whether this took it out or its sentence just did; the state is
+   * unchanged, and `killed` null, when nothing this client watched can have died.
    */
   died(
     s: CharacterState,
     at: number,
     by: 'sentence' | 'experience' = 'experience'
-  ): CharacterState {
+  ): { state: CharacterState; killed: string | null } {
     /*
      * Something died. The nearest thing this server has to an announcement
      * — the death sentence itself is realm data, not a fixed phrase — so
@@ -721,7 +723,7 @@ export class FightTracker {
     // The sentence before this line already took this death's instance out.
     const fell = this.fell;
     this.fell = null;
-    if (fell !== null && fell === mobKey(s.combat.target ?? '')) return s;
+    if (fell?.target != null) return { state: s, killed: fell.target };
     const died = this.suspectDeath(s.combat.target, at, by);
     /*
      * And a thing that died is a thing that is no longer in the room.
@@ -742,8 +744,11 @@ export class FightTracker {
      * **One instance**, as a sentence takes one: the experience line is one
      * death, and a namesake still standing is still fighting.
      */
-    if (!died) return s;
-    return leavesRoom(s, mobKey(s.combat.target ?? ''), true);
+    if (!died) return { state: s, killed: null };
+    return {
+      state: leavesRoom(s, mobKey(s.combat.target ?? ''), true),
+      killed: s.combat.target
+    };
   }
 
   /**
@@ -766,7 +771,8 @@ export class FightTracker {
       ledger.killedAt = at;
       ledger.killedBy = 'sentence';
     }
-    this.fell = key;
+    const target = s.combat.target;
+    this.fell = { key, target: target !== null && mobKey(target) === key ? target : null };
     return leavesRoom(s, key, true);
   }
 
