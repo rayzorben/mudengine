@@ -84,8 +84,15 @@ export function useWalkPages(
     };
   }, [load, route, asks]);
 
-  const index = pageWalking(paged.legs, walk.done - paged.done);
-  const current = index === null ? undefined : paged.legs[index];
+  const extra = later.paging === paged.paging ? later.pages : NO_LATER.pages;
+  const legs = useMemo(
+    () => paged.lengths.map((_, at) => paged.legs[at] ?? extra.get(at)),
+    [paged, extra]
+  );
+  const index = pageWalking(paged.lengths, walk.done - paged.done);
+  const current = index === null ? undefined : legs[index];
+  /* The walk reached a page that was not sent: it is asked for, not paged again. */
+  const owed = index !== null && current === undefined;
   const matches = current !== undefined && here !== null && current.rooms.includes(here);
   const walking = on && matches ? index : null;
 
@@ -95,7 +102,7 @@ export function useWalkPages(
    * does not place) pages once, not on every step. A push behind the paging
    * is waited for, not asked about.
    */
-  const stale = on && paged.legs.length > 0 && walk.done >= paged.done && !matches;
+  const stale = on && paged.lengths.length > 0 && walk.done >= paged.done && !matches && !owed;
   useEffect(() => {
     if (!stale) {
       if (matches) setAsked(false);
@@ -106,34 +113,43 @@ export function useWalkPages(
     setAsks((count) => count + 1);
   }, [stale, matches, asked]);
 
-  const extra = later.paging === paged.paging ? later.pages : NO_LATER.pages;
-  const legs = useMemo(
-    () => Array.from({ length: paged.count }, (_, at) => paged.legs[at] ?? extra.get(at)),
-    [paged, extra]
-  );
-  /* A page turned to that was not sent is asked for once per paging. */
+  /*
+   * A page not sent is asked for when the walk or the pager reaches it. A
+   * paging main no longer keeps answers null: the walk is paged again once,
+   * and a page turned to in the old paging is let go, since the new one
+   * numbers its pages from where the character stands.
+   */
+  const wanted = on && owed ? index : look !== null && legs[look] === undefined ? look : null;
+  const [refused, setRefused] = useState(0);
   useEffect(() => {
-    if (look === null || legs[look] !== undefined) return;
+    if (wanted === null) return;
     const { paging } = paged;
     let live = true;
-    void loadPage(paging, look)
+    void loadPage(paging, wanted)
       .then((page) => {
-        if (!live || page === null) return;
-        setLater((current) => {
-          const pages = new Map(current.paging === paging ? current.pages : []);
-          pages.set(look, page);
-          return { paging, pages };
-        });
+        if (!live) return;
+        if (page !== null) {
+          setLater((kept) => {
+            const pages = new Map(kept.paging === paging ? kept.pages : []);
+            pages.set(wanted, page);
+            return { paging, pages };
+          });
+          return;
+        }
+        if (refused === paging) return;
+        setRefused(paging);
+        setLook(null);
+        setAsks((count) => count + 1);
       })
       .catch((error) => {
-        console.error(`[map] the walk's page ${look + 1}: ${errorMessage(error)}`);
+        console.error(`[map] the walk's page ${wanted + 1}: ${errorMessage(error)}`);
       });
     return () => {
       live = false;
     };
-  }, [look, legs, paged, loadPage]);
+  }, [wanted, paged, loadPage, refused]);
 
-  const last = paged.count - 1;
+  const last = paged.lengths.length - 1;
   const page = useCallback(
     (to: number): void => {
       if (walking === null) return;

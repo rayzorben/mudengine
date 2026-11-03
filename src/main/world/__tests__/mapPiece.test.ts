@@ -163,6 +163,23 @@ describe('a map asked for again after a step', () => {
     expect(tab.take(answer(placements, graph, id(2, 2), held), held)).toBeNull();
   });
 
+  it('refuses an answer to a held ask when the placement was dropped and begun again', () => {
+    const { graph, id } = gridOf(5);
+    const placements = new MapPlacements();
+    const tab = new MapCellStore(() => ({ frames: 1, windows: 8 }));
+    const window = square(1);
+    const ask = tab.ask(id(2, 2), window);
+    tab.take(answer(placements, graph, id(2, 2), ask), ask);
+    const held = tab.ask(id(2, 2), window);
+    const other = gridOf(3);
+    const otherAsk: MapAsk = { window, held: null };
+    tab.take(answer(placements, other.graph, other.id(1, 1), otherAsk), otherAsk);
+    // Another character's whole answer begins the same placement again, with fewer cells.
+    const narrow: MapAsk = { window: square(0), held: null };
+    expect(tab.take(answer(placements, graph, id(2, 2), narrow), narrow)?.cells).toHaveLength(1);
+    expect(tab.take(answer(placements, graph, id(2, 2), held), held)).toBeNull();
+  });
+
   it('reads an ask off the wire, dropping a held part it cannot use', () => {
     const window = square(1);
     expect(asMapAsk({ window, held: null }, 8)).toEqual({ window, held: null });

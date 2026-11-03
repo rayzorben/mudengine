@@ -11,7 +11,14 @@
  * origin, with this character's lair odds. The cells are in a fixed order
  * (row, then column), whichever answers brought them.
  */
-import { EMPTY_MAP, inWindow, type LocalMap, type MapCell, type MapWindow } from './map';
+import {
+  EMPTY_MAP,
+  inWindow,
+  windowContains,
+  type LocalMap,
+  type MapCell,
+  type MapWindow
+} from './map';
 import { NO_FRAME, shiftWindow, type MapAsk, type MapPiece } from './mapPiece';
 import type { RoomId } from './world';
 
@@ -28,14 +35,10 @@ interface Frame {
   windows: MapWindow[];
 }
 
-const contains = (outer: MapWindow, inner: MapWindow): boolean =>
-  inner.minX >= outer.minX &&
-  inner.maxX <= outer.maxX &&
-  inner.minY >= outer.minY &&
-  inner.maxY <= outer.maxY;
-
 export class MapCellStore {
   private readonly frames = new Map<number, Frame>();
+  /** The entry each ask named as held, so an answer to it is refused once that entry was dropped. */
+  private readonly named = new WeakMap<MapAsk, Frame>();
 
   /** The limits are read at each answer, so an edited figure applies to the next. */
   constructor(private readonly limits: () => MapCellLimits) {}
@@ -49,21 +52,25 @@ export class MapCellStore {
     const found = frames.find(([, frame]) => frame.cells.has(centre));
     if (found === undefined) return { window, held: null };
     const [number, frame] = found;
-    return { window, held: { frame: number, windows: frame.windows.map((w) => ({ ...w })) } };
+    const ask = { window, held: { frame: number, windows: frame.windows.map((w) => ({ ...w })) } };
+    this.named.set(ask, frame);
+    return ask;
   }
 
   /**
    * Keeps an answer's cells and hands back the window as a whole fetch draws
    * it. Null when the answer left out cells `asked` named as held and the
-   * store has since dropped that placement: the caller asks again whole.
+   * store has since dropped that placement, even if another answer has begun
+   * it again: the caller asks again whole.
    */
   take(piece: MapPiece, asked: MapAsk): LocalMap | null {
     if (piece.frame === NO_FRAME || piece.centre === null) return EMPTY_MAP;
-    if (asked.held?.frame === piece.frame && !this.frames.has(piece.frame)) return null;
+    const named = this.named.get(asked);
+    if (asked.held?.frame === piece.frame && this.frames.get(piece.frame) !== named) return null;
     const frame = this.touch(piece.frame);
     for (const cell of piece.cells) frame.cells.set(cell.id, cell);
     frame.windows = [
-      ...frame.windows.filter((held) => !contains(piece.window, held)),
+      ...frame.windows.filter((held) => !windowContains(piece.window, held)),
       piece.window
     ].slice(-Math.max(1, this.limits().windows));
 

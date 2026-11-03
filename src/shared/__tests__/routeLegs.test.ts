@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { legsOf, pageWalking, pagesOf, wayIn, type PageMaps } from '../routeLegs';
+import { legsOf, pageSteps, pageWalking, pagesOf, wayIn, type PageMaps } from '../routeLegs';
 import { inWindow, NO_EXTENT, type LocalMap, type MapCell } from '../map';
 import type { Route, RouteStep } from '../world';
 
@@ -268,7 +268,7 @@ describe('finding the page a walk is on', () => {
   const legs = legsOf(
     route([step('12/694', '12/695'), down, step('12/900', '12/901'), step('12/901', '12/902')]),
     '12/694'
-  );
+  ).map(pageSteps);
 
   it('counts the jump off a page as the last step on it', () => {
     expect([0, 1, 2, 3, 4].map((walked) => pageWalking(legs, walked))).toEqual([0, 0, 1, 1, 1]);

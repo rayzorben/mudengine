@@ -123,16 +123,18 @@ export interface RoutePages {
 /**
  * The route being walked, paged from the room the character stood in when it
  * was asked for. `done` is the walk's `WalkProgress.done` at that moment, so
- * the page being walked is found by the steps taken since (`pageWalking`).
- * `legs` holds only the first pages of the `count` (the page being walked and
- * the next, todo 20261102-1008-02); a later one is asked for by `paging`
- * when the pager turns to it (`IpcApi.walkPage`).
+ * the page being walked is found by the steps taken since (`pageWalking`
+ * over `lengths`, one entry per page). `legs` holds only the first pages (the
+ * page being walked and the next, todo 20261102-1008-02); a later one is
+ * asked for by `paging` when the walk or the pager reaches it
+ * (`IpcApi.walkPage`).
  */
 export interface WalkPages {
   /** Which paging this is, so a later page is read from the same one. */
   paging: number;
   done: number;
-  count: number;
+  /** The steps each page walks (`pageSteps`); its length is the page count. */
+  lengths: number[];
   legs: RoutePage[];
 }
 
@@ -140,26 +142,27 @@ export interface WalkPages {
 export const NO_WALK_PAGES: Readonly<WalkPages> = Object.freeze({
   paging: 0,
   done: 0,
-  count: 0,
+  lengths: [],
   legs: []
 });
 
 /** The steps a page walks: its own, and the jump off its end. */
-function stepsOn(page: RouteLeg): number {
+export function pageSteps(page: RouteLeg): number {
   return page.steps.length + (page.jump === null ? 0 : 1);
 }
 
 /**
- * The page holding the step `walked` steps into the paged route, or null
- * when the count falls outside the pages, which are then stale.
+ * The page holding the step `walked` steps into the paged route, given the
+ * steps each page walks, or null when the count falls outside the pages,
+ * which are then stale.
  */
-export function pageWalking(pages: readonly RouteLeg[], walked: number): number | null {
+export function pageWalking(lengths: readonly number[], walked: number): number | null {
   // Behind the pages: the push has not caught up with the paging yet.
   if (walked < 0) return null;
   let start = 0;
-  for (const [index, page] of pages.entries()) {
-    const end = start + stepsOn(page);
-    if (walked < end || (walked === end && index === pages.length - 1)) return index;
+  for (const [index, length] of lengths.entries()) {
+    const end = start + length;
+    if (walked < end || (walked === end && index === lengths.length - 1)) return index;
     start = end;
   }
   return null;

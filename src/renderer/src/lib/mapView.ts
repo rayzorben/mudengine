@@ -20,7 +20,7 @@
  * extent's corner, and a pan stated from there would jump every time a fetch
  * placed a room further west.
  */
-import { MAP_CELL, type MapWindow } from '@shared/map';
+import { MAP_CELL, windowContains, type MapWindow } from '@shared/map';
 
 export interface MapView {
   /** Pixels one room cell gets: the zoom. */
@@ -221,13 +221,8 @@ export function stillCovers(
   visible: MapWindow,
   region: MapWindow | null
 ): boolean {
-  const holds = (outer: MapWindow, inner: MapWindow): boolean =>
-    inner.minX >= outer.minX &&
-    inner.maxX <= outer.maxX &&
-    inner.minY >= outer.minY &&
-    inner.maxY <= outer.maxY;
-  if (region !== null && holds(fetched, region)) return true;
-  if (!holds(fetched, visible)) return false;
+  if (region !== null && windowContains(fetched, region)) return true;
+  if (!windowContains(fetched, visible)) return false;
   const quarterX = (fetched.maxX - fetched.minX) / 4;
   const quarterY = (fetched.maxY - fetched.minY) / 4;
   const x = (visible.minX + visible.maxX) / 2;

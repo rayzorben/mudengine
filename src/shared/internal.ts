@@ -2156,6 +2156,11 @@ const TUNING_DEFAULTS = {
      */
     walkPagesSent: 2,
     /**
+     * The pagings of a walk kept per character for those later pages, so a
+     * second view paging the walk again leaves the first one's pages there.
+     */
+    walkPagingsKept: 4,
+    /**
      * What a barrier the character cannot force costs to route through.
      *
      * Priced as a wall that can still be walked through when there is no other

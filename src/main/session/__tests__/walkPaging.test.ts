@@ -36,7 +36,7 @@ describe('the walk paged for the Map card', () => {
     const route = vi.fn(pageEach);
     const first = paging.first('a', walkOf(5, 3), route);
     expect(route).toHaveBeenCalledTimes(1);
-    expect(first).toMatchObject({ done: 3, count: 5 });
+    expect(first).toMatchObject({ done: 3, lengths: [1, 1, 1, 1, 1] });
     expect(first.legs.map((page) => page.rooms[0])).toEqual(['1/1', '1/2']);
 
     // Turning to the fourth page asks for it, from the same paging.
@@ -46,19 +46,22 @@ describe('the walk paged for the Map card', () => {
     expect(route).toHaveBeenCalledTimes(1);
   });
 
-  it('answers nothing for a paging the walk was paged past', () => {
+  it('keeps the last few pagings, so a second view paging again strands nobody', () => {
     const paging = new WalkPaging();
-    const old = paging.first('a', walkOf(5), pageEach);
-    const next = paging.first('a', walkOf(4, 1), pageEach);
-    expect(paging.later('a', next.paging, 3)?.rooms[0]).toBe('1/4');
-    expect(paging.later('a', old.paging, 3)).toBeNull();
+    const one = paging.first('a', walkOf(5), pageEach);
+    const two = paging.first('a', walkOf(4, 1), pageEach);
+    expect(paging.later('a', one.paging, 3)?.rooms[0]).toBe('1/4');
+    expect(paging.later('a', two.paging, 3)?.rooms[0]).toBe('1/4');
+    // Past the limit (4), the oldest goes.
+    for (let n = 0; n < 4; n += 1) paging.first('a', walkOf(5), pageEach);
+    expect(paging.later('a', one.paging, 3)).toBeNull();
     paging.forget('a');
-    expect(paging.later('a', next.paging, 3)).toBeNull();
+    expect(paging.later('a', two.paging, 3)).toBeNull();
   });
 
   it('pages nothing with no walk or no realm data', () => {
     const paging = new WalkPaging();
-    expect(paging.first('a', undefined, pageEach).count).toBe(0);
-    expect(paging.first('a', walkOf(3), () => null).count).toBe(0);
+    expect(paging.first('a', undefined, pageEach).lengths).toEqual([]);
+    expect(paging.first('a', walkOf(3), () => null).lengths).toEqual([]);
   });
 });

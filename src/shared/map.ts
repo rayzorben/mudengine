@@ -156,6 +156,16 @@ export function asMapWindow(value: unknown): MapWindow | null {
 /** How a surface asks for the map round a room, decorated inside `area` (`keptCellsLoader`). */
 export type MapLoader = (map: number, room: number, area: MapWindow) => Promise<LocalMap>;
 
+/** Whether `inner` lies wholly inside `outer`, edges included. */
+export function windowContains(outer: MapWindow, inner: MapWindow): boolean {
+  return (
+    inner.minX >= outer.minX &&
+    inner.maxX <= outer.maxX &&
+    inner.minY >= outer.minY &&
+    inner.maxY <= outer.maxY
+  );
+}
+
 /** Whether a cell lies inside a window, edges included. */
 export function inWindow(window: MapWindow, gx: number, gy: number): boolean {
   return gx >= window.minX && gx <= window.maxX && gy >= window.minY && gy <= window.maxY;

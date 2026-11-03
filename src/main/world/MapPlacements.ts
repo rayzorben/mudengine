@@ -30,7 +30,11 @@ interface Kept {
 
 export class MapPlacements {
   private readonly kept = new WeakMap<PlaneGraph, Kept[]>();
-  private next = 1;
+  /*
+   * Numbered from the clock at start, so a tab that outlives a restart never
+   * names a frame of the old process that the new one has also numbered.
+   */
+  private next = Date.now();
 
   constructor(private readonly place: typeof placeFlat = placeFlat) {}
 

@@ -8829,10 +8829,11 @@ function theTuningBlockGainedKeys(
     addKey('view', 'mapFinderIdleMs', DEFAULT_INTERNAL.tuning.view.mapFinderIdleMs);
     // When the Room card's round against a monster disagrees with stat all's (todo 2322-01).
     addKey('view', 'roundGapSaidPercent', DEFAULT_INTERNAL.tuning.view.roundGapSaidPercent);
-    // The Map card keeps placements and cells, and is sent only what it lacks (todo 1008-02, 2026-11-02).
+    // The Map card keeps placements and cells, and is sent only what it lacks (todo 20261102-1008-02).
     addKey('world', 'mapPlacementsKept', DEFAULT_INTERNAL.tuning.world.mapPlacementsKept);
-    // The walk's pages are sent two at a time (todo 1008-02, 2026-11-02).
-    addKey('world', 'walkPagesSent', DEFAULT_INTERNAL.tuning.world.walkPagesSent);
+    // The walk's pages are sent two at a time (todo 20261102-1008-02).
+    for (const key of ['walkPagesSent', 'walkPagingsKept'] as const)
+      addKey('world', key, DEFAULT_INTERNAL.tuning.world[key]);
     for (const key of ['mapHeldWindows', 'mapFramesKept'] as const)
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
 
