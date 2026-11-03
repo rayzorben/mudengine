@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { importsOf, resolveImport, type Import } from './imports';
+import { exitWalks } from './exitWalks';
 import { filesUnder, repoPath, sourceFiles } from './sources';
 
 /**
@@ -526,7 +527,7 @@ describe('dependencies point down', () => {
  * planner's sweeps (an item order and a drop ring), each at the count pinned
  * here, as a ceiling is: a new call in one of them fails until it goes
  * through the engine. Read as text, so a probe in `scripts/` is held too; a
- * search written by hand is the reviewer's to find.
+ * search written by hand is found by the exits it walks (`exitWalks`).
  */
 describe('one navigation engine', () => {
   const search = /\.(route|sweepTo|sweepFrom|withinSteps|nearest)\(/;
@@ -551,6 +552,46 @@ describe('one navigation engine', () => {
     // The rule finds what it rules on: the engine's own halves call the router.
     expect(search.test(read('src/main/session/navigation.ts'))).toBe(true);
     expect(search.test(read(`${engine}realm.ts`))).toBe(true);
+  });
+
+  /*
+   * A search written by hand calls none of the above: it walks exits from a
+   * queue (`exitWalks`). The router and the engine's sweep walk them, each
+   * walk counted as a ceiling is; the map's drawing floods an island to lay
+   * it out and label it, which is a picture of the realm and no way through
+   * it (exempt 2026-11-03).
+   */
+  const walkers: Readonly<Record<string, number>> = {
+    'src/main/world/Router.ts': 4,
+    'src/main/world/navigation/sweep.ts': 1,
+    'src/main/world/GameMaps.ts': 1,
+    'src/main/world/flatPlacement.ts': 1
+  };
+
+  it('lets nothing but the engine walk exits from a queue', () => {
+    const walks = (file: string): number => exitWalks(file, read(file)).length;
+    const out = [...sources('src'), ...scripts]
+      .filter((file) => !(file in walkers) && walks(file) > 0)
+      .map((file) => `${file}: lines ${exitWalks(file, read(file)).join(', ')}`);
+    expect(out, out.join('\n')).toEqual([]);
+    const counted = Object.fromEntries(Object.keys(walkers).map((file) => [file, walks(file)]));
+    expect(counted).toEqual(walkers);
+  });
+
+  it('finds a flood written by hand, and not a scan over every room', () => {
+    // The shape `WorldGraph.searchMobRow` had before it went onto the sweep.
+    const flood = [
+      'let queue = [from];',
+      'while (queue.length > 0) {',
+      '  const next = [];',
+      '  for (const id of queue)',
+      '    for (const exit of rooms.get(id).exits) next.push(roomId(exit.map, exit.room));',
+      '  queue = next;',
+      '}'
+    ].join('\n');
+    expect(exitWalks('flood.ts', flood)).toEqual([5]);
+    const scan = 'for (const room of rooms) for (const exit of room.exits) tolls.add(exit.toll);';
+    expect(exitWalks('scan.ts', scan)).toEqual([]);
   });
 
   it('lets nothing outside the world import the router, import type included', () => {
