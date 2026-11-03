@@ -2222,8 +2222,8 @@ const TUNING_DEFAULTS = {
     /**
      * How many sweeps of the rooms within reach the navigation engine keeps
      * for one character as it stands (`Navigation.withinNow`): the hunting
-     * survey's whole realm and each spot's ring rooms (`hunting.maxSpots`
-     * spots of up to `hunting.maxLoopRooms` rooms).
+     * survey's last whole-realm sweep, kept alone, and each spot's ring rooms
+     * (`hunting.maxSpots` spots of up to `hunting.maxLoopRooms` rooms).
      */
     keptSweeps: 512,
     /**

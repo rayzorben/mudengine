@@ -1728,8 +1728,9 @@ tuning:
     openedWayMs: 300000
 
     # How many sweeps of the rooms within reach are kept for one character as
-    # it stands: the hunting survey's whole realm and each spot's ring rooms
-    # (hunting.maxSpots spots of up to hunting.maxLoopRooms rooms).
+    # it stands: the hunting survey's last whole-realm sweep, kept alone, and
+    # each spot's ring rooms (hunting.maxSpots spots of up to
+    # hunting.maxLoopRooms rooms).
     keptSweeps: 512
 
     # How many items seen lying in rooms the realm's floor record keeps: one

@@ -56,6 +56,8 @@ interface KeptReach {
   readonly tuning: object;
   readonly key: string;
   readonly sweeps: Map<string, ReadonlyMap<RoomId, number>>;
+  /** The one whole-realm sweep kept (`withinNow`), by its key in `sweeps`. */
+  whole: string | null;
 }
 
 export class Navigation {
@@ -116,7 +118,11 @@ export class Navigation {
    * the realm, the tuning and what decides a way (`Errands.reachKey`) are the
    * same: the hunting survey sweeps the whole realm and each spot's rooms
    * again on every ask, about 90ms a whole-realm sweep on GreaterMUD
-   * (2026-10-06). At most `world.keptSweeps` are kept.
+   * (2026-10-06). At most `world.keptSweeps` are kept, and of those one
+   * whole-realm sweep, the last room asked from: each holds every room the
+   * character can reach (48,004 from 1/1 on the shipped realm, 3.0MB,
+   * measured 2026-11-03), and the Hunting card asks one from every room
+   * walked into, so 512 held 1.5GB a character.
    */
   withinNow(
     from: RoomId,
@@ -129,14 +135,21 @@ export class Navigation {
     const now = tuning();
     let kept = this.kept;
     if (kept === null || kept.world !== world || kept.tuning !== now || kept.key !== key) {
-      kept = { world, tuning: now, key, sweeps: new Map() };
+      kept = { world, tuning: now, key, sweeps: new Map(), whole: null };
       this.kept = kept;
     }
     const at = `${from}#${steps}`;
     const known = kept.sweeps.get(at);
     if (known !== undefined) return known;
-    if (kept.sweeps.size >= tuning().world.keptSweeps) kept.sweeps.clear();
+    if (kept.sweeps.size >= tuning().world.keptSweeps) {
+      kept.sweeps.clear();
+      kept.whole = null;
+    }
     const swept = this.within(from, steps, this.parts.errands.travellerNow(state));
+    if (steps === Number.POSITIVE_INFINITY) {
+      if (kept.whole !== null) kept.sweeps.delete(kept.whole);
+      kept.whole = at;
+    }
     kept.sweeps.set(at, swept);
     return swept;
   }
