@@ -25,6 +25,7 @@ import type { IpcApi, SessionId } from '@shared/ipc';
 import type { RemoteName } from '@shared/remotes';
 import type { RoomId } from '@shared/world';
 import { askLine } from '@shared/asking';
+import { useShares } from '../hooks/useShares';
 
 export interface SlideOutsProps {
   /** The slot, less the plan's opener: drawing, dismissing, and a way out's room peeked. */
@@ -42,7 +43,7 @@ export interface SlideOutsProps {
   chooseOnMap(map: number, room: number): void;
   /** One character's resolved `automation.remotes`. */
   remotesFor(session: SessionId): RemotesConfig;
-  api: Pick<IpcApi, 'askRemote' | 'setRemoteGrant' | 'slotGear'>;
+  api: Pick<IpcApi, 'askRemote' | 'setRemoteGrant' | 'slotGear' | 'shares' | 'onShares'>;
   /** A sentence into one character's console. */
   say(session: SessionId, message: string): void;
   returnFocus(): void;
@@ -65,6 +66,7 @@ export default function SlideOuts({
   const { asked, flyout, gangFlyout, peek, slotAsked, dismissAsked } = slot;
   const goToRoom = useCallback((room: string) => openRoomAt(room, chooseOnMap), [chooseOnMap]);
   const { peekRoom } = slot;
+  const shares = useShares(api, flyout?.session ?? null);
   const peekExit = useCallback((room: RoomId, at: Element) => peekRoom(room, at, true), [peekRoom]);
 
   /**
@@ -163,6 +165,7 @@ export default function SlideOuts({
           onSelectGang={(gang, anchor) => slot.selectGang(flyout.session, gang, anchor)}
           remotes={remotesFor(flyout.session)}
           returnFocus={returnFocus}
+          shares={shares}
         />
       )}
 

@@ -215,6 +215,15 @@ export function asPeerSheet(value: unknown): PeerSheet | null {
   };
 }
 
+/**
+ * A key as two players read it to each other to compare: its first twelve
+ * characters in threes. Seventy-two bits, which nobody makes a second key to
+ * match by chance or by trying.
+ */
+export function keyFingerprint(key: string): string {
+  return (key.slice(0, 12).match(/.{1,3}/g) ?? []).join('-');
+}
+
 /** A key offered for this player to pin: a claim of a name, or a share from it. */
 export interface KeyOffer {
   readonly name: string;
@@ -234,6 +243,8 @@ export type ShareLink = 'off' | 'connecting' | 'connected';
 
 /** What one character's window is shown of sharing (`Push.shares`). */
 export interface ShareView {
+  /** `peers.enabled`: off, no row reaches the gateway. */
+  readonly enabled: boolean;
   readonly link: ShareLink;
   /** This character's own key on its realm, for the other player to compare; null until a share needs one. */
   readonly ownKey: string | null;
@@ -245,6 +256,7 @@ export interface ShareView {
 }
 
 export const NO_SHARES: ShareView = {
+  enabled: false,
   link: 'off',
   ownKey: null,
   unpinned: [],

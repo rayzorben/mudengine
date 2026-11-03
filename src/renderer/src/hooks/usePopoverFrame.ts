@@ -217,6 +217,8 @@ export function usePopoverFrame({
        * clicked twice for one dismissal.
        */
       if (target.closest('.popup-menu') !== null) return;
+      // So is a prompt the panel opened (`data-panel-child`, the share prompt).
+      if (target.closest('[data-panel-child]') !== null) return;
       /*
        * A press on anything that *opens* a panel is left to its own click,
        * which replaces this one rather than toggling it. Without this the

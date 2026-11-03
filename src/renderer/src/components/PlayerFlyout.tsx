@@ -29,6 +29,8 @@ import {
 } from '@shared/remotes';
 import { recordOf, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import { titleReading } from '@shared/titles';
+import PlayerSharing from './PlayerSharing';
+import type { ShareView } from '@shared/peers';
 
 /**
  * A name somebody clicked on a listing, whose character's listing it was, and
@@ -60,6 +62,8 @@ export interface PlayerFlyoutProps {
    * is the gang list.
    */
   remotes: RemotesConfig;
+  /** What that character shares and is shared, for the Access face's sharing rows. */
+  shares: ShareView;
   /**
    * Write this person's whole grant — what they may ask for and what they may
    * never — or clear it.
@@ -174,6 +178,7 @@ export default function PlayerFlyout({
   character,
   players,
   remotes,
+  shares,
   onGrant,
   onSelectGang,
   onAsk,
@@ -184,6 +189,8 @@ export default function PlayerFlyout({
   goToRoom
 }: PlayerFlyoutProps) {
   const [face, setFace] = useState<Face>('player');
+  // The share prompt, open over the panel, owns Escape while it is.
+  const [asking, setAsking] = useState(false);
   const copy = useCopyMenu();
 
   const record = recordOf(players, asked.name);
@@ -227,7 +234,7 @@ export default function PlayerFlyout({
   const frame = usePopoverFrame({
     anchor: asked.anchor,
     measure: [face, record],
-    menuOpen: copy.menu !== null,
+    menuOpen: copy.menu !== null || asking,
     onDismiss
   });
 
@@ -325,13 +332,16 @@ export default function PlayerFlyout({
           />
         ) : (
           <PlayerAccess
+            character={character.name ?? ''}
             gang={ownGang(character) ?? null}
             inGang={inGang}
             inParty={joinedTheParty(character, asked.name)}
             onGrant={onGrant}
             record={record}
             remotes={remotes}
+            onAsking={setAsking}
             returnFocus={returnFocus}
+            shares={shares}
           />
         )}
       </div>
@@ -746,6 +756,9 @@ function effective(
  * that changes it.
  */
 function PlayerAccess({
+  character,
+  shares,
+  onAsking,
   record,
   remotes,
   gang,
@@ -754,6 +767,10 @@ function PlayerAccess({
   onGrant,
   returnFocus
 }: {
+  /** This character's name, for the share prompt. */
+  character: string;
+  shares: ShareView;
+  onAsking(open: boolean): void;
   record: PlayerRecord;
   remotes: RemotesConfig;
   /** This character's own gang, for the row that names it. Null while unsaid. */
@@ -903,6 +920,16 @@ function PlayerAccess({
         name="player-auto-invite"
         onChange={(on) => set({ ...grant, autoInvite: on })}
         setting="automation.remotes.players"
+      />
+
+      {/* Sharing is this character's own act too, and not an @ command. */}
+      <PlayerSharing
+        character={character}
+        grant={grant}
+        player={record.name}
+        onAsking={onAsking}
+        set={set}
+        shares={shares}
       />
 
       {/*

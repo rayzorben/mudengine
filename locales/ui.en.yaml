@@ -3319,6 +3319,23 @@ cards:
     resizeHint: Drag to resize; double-click to fit the name again
     unpinHint: 'Unpin: close on the next click elsewhere'
   player:
+    # Sharing this character with the player, and seeing what they share
+    # (sharing in the options file; the Access tab).
+    share:
+      share: Share This Character
+      shareHint: Sends this character's health, mana, conditions, spells, level, experience and
+        room to this player while you are both logged in to this realm, through the sharing server.
+      receive: Show Their Share
+      receiveHint: Shows what this player shares with this character, once you confirm their key
+        below.
+      offWarning: Sharing is off for every character. Turn on Share Characters on the Global page.
+      ownKey: 'Your key for this character: {key}. Read it to them so they can confirm it.'
+      claimed: '{name} claims key {key}. Confirm it only if it is the key they read to you.'
+      confirm: Confirm
+      pinned: 'Confirmed key {key}'
+      forget: Remove
+      noKey: Nothing is sent until {name} turns on Show Their Share and you confirm their key.
+      hearing: '{name} is sharing: {hp}/{hpMax} HP'
     access:
       allowedValue: '{granted} of {total}'
       answering: Answering
@@ -8218,6 +8235,17 @@ art:
   roomNot: 'Room picture: {message}'
   roomIndexUnread: "The shipped room pictures could not be indexed, so the art server is asked for
     every room's picture: {message}"
+
+# Turning on a share asks first (the Access tab on a player's card).
+share:
+  title: 'Share {character} with {player}?'
+  everything: '{player} will see everything about {character} while you are both logged in to
+    this realm: health, mana, conditions, spells, level, experience, and the room {character} is
+    in.'
+  how: Nothing is sent to {player} until you confirm the key they read to you. Turning the share
+    off stops it at once.
+  cancel: Cancel
+  confirm: 'Share with {player}'
 
 # Sharing characters with other players through the gateway (peers in the
 # options file).

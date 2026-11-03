@@ -135,9 +135,10 @@ export class Sharing {
 
   private viewOf(session: SharingSession): ShareView {
     const claim = this.claimed.get(session.id);
-    if (claim === undefined) return NO_SHARES;
+    if (claim === undefined) return { ...NO_SHARES, enabled: this.deps.enabled() };
     const accepts = acceptsOf(session.grants);
     return {
+      enabled: true,
       link: this.deps.link.link,
       ownKey: claim.pair.publicKey,
       unpinned: this.deps.reports.reportsFor(claim.peer, (name) => accepts(name).keys),
