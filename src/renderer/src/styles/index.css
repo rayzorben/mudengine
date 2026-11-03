@@ -699,6 +699,78 @@ button.quest-banner-stop {
   gap: 4px;
 }
 
+/*
+ * Remote control (todo 20261031-1156-01). The sharer's banner sits at the
+ * foot of the console so it never covers a quest run's; the remote console
+ * covers the whole pane, its screen the plain opaque terminal and only its
+ * head and controls the glass chrome.
+ */
+.peer-banner {
+  bottom: 10px;
+  top: auto;
+}
+
+.remote-console {
+  background: var(--glass-fill-near);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--ink-line));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  inset: 0;
+  padding: 6px;
+  position: absolute;
+  z-index: 3;
+}
+
+.remote-console-head {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+}
+
+.remote-console-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-console-screen {
+  background: var(--ink-slate);
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+}
+
+.remote-console-line {
+  display: flex;
+  gap: 6px;
+}
+
+.remote-console-line > input {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  min-width: 0;
+}
+
+.remote-console-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.remote-console-actions > button {
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+}
+
+.shared-control {
+  flex: 0 0 auto;
+}
+
 button.quest-banner-dismiss {
   flex: 0 0 auto;
   height: 22px;

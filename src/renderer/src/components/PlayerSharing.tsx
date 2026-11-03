@@ -62,8 +62,21 @@ export default function PlayerSharing({
             label={t('cards.player.share.share')}
             name="player-share"
             onChange={(on) => {
-              if (on && character !== null) setAsked({ character, player });
+              if (on && character !== null) setAsked({ character, player, control: false });
               else set({ ...grant, share: 'off' });
+            }}
+          />
+        )}
+        {/* Raising a share asks again; lowering it ends control at once. */}
+        {grant.share !== 'off' && (
+          <CheckField
+            checked={grant.share === 'control'}
+            hint={t('cards.player.share.controlHint')}
+            label={t('cards.player.share.control')}
+            name="player-control"
+            onChange={(on) => {
+              if (on && character !== null) setAsked({ character, player, control: true });
+              else set({ ...grant, share: 'state' });
             }}
           />
         )}
@@ -132,9 +145,9 @@ export default function PlayerSharing({
       <SharePrompt
         asked={asked}
         onCancel={() => setAsked(null)}
-        onShare={() => {
+        onShare={(control) => {
           setAsked(null);
-          set({ ...grant, share: 'state' });
+          set({ ...grant, share: control ? 'control' : 'state' });
         }}
       />
     </div>

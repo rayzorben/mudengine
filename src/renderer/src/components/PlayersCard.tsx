@@ -1,9 +1,9 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { t } from '../lib/i18n';
 import { ago, AGO_GRAIN_SECONDS, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
-import { useShares, type SharesApi } from '../hooks/useShares';
+import { useShares, type SharedControlApi } from '../hooks/useShares';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
@@ -34,7 +34,7 @@ export interface PlayersCardProps extends CardChrome {
   /** Opens the route panel at a person's last room. Null on a pinned float, which cannot. */
   goToRoom?: ((room: string) => void) | null;
   /** The characters other players share with this one, read and followed here (`SharedCharacters`). */
-  shares: SharesApi;
+  shares: SharedControlApi;
 }
 
 /**
@@ -131,6 +131,16 @@ function PlayersCard({
 }: PlayersCardProps) {
   const players = useMemo(() => knownPlayers(registry), [registry]);
   const { sheets } = useShares(shares, session);
+  // Opening a shared character's terminal; main's refusal stays under the list until the next press.
+  const [controlRefused, setControlRefused] = useState<string | null>(null);
+  const control = useCallback(
+    (name: string) => {
+      shares
+        .controlOpen(session, name)
+        .then(setControlRefused, (error: unknown) => setControlRefused(String(error)));
+    },
+    [shares, session]
+  );
   /*
    * The ages are this card's own clock, since nothing it is handed moves on a
    * status line (`mudengine-ui` › *a number that ticks is not state*): read
@@ -264,7 +274,12 @@ function PlayersCard({
       paned
       title={t('cards.players.title')}
     >
-      <SharedCharacters onSelect={onSelect} sheets={sheets} />
+      <SharedCharacters
+        onControl={control}
+        onSelect={onSelect}
+        refused={controlRefused}
+        sheets={sheets}
+      />
       {/*
         Large, how the levels a gang list stated spread, in bands of five:
         whether the people about are above this character or below it.

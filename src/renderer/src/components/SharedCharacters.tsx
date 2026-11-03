@@ -5,11 +5,14 @@
  * sheets its player accepted under a confirmed key, so a sharer gone quiet
  * past `tuning.peers.staleMs`, or whose link dropped, is not drawn at all. A
  * figure the sharer's client did not send reads as unknown, never as 0. The
- * name opens the Player flyout, where the share itself is kept.
+ * name opens the Player flyout, where the share itself is kept; a sharer
+ * that gives remote control has the terminal icon, which opens its console.
  */
 import { memo, useMemo } from 'react';
 
+import Icon from './Icon';
 import { afflictedWords } from '../lib/afflictions';
+import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { ago, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
@@ -19,6 +22,10 @@ import type { PeerSheet, SharedSheet } from '@shared/peers';
 export interface SharedCharactersProps {
   sheets: readonly SharedSheet[];
   onSelect(name: string, anchor: PopoverAnchor): void;
+  /** Opens the terminal of a sharer that gives this character remote control. */
+  onControl(name: string): void;
+  /** Why the last open was refused, or null. */
+  refused: string | null;
 }
 
 const figure = (value: number | null | undefined): string =>
@@ -57,7 +64,7 @@ function roomOf(sheet: PeerSheet): string {
   });
 }
 
-function SharedCharacters({ sheets, onSelect }: SharedCharactersProps) {
+function SharedCharacters({ sheets, onSelect, onControl, refused }: SharedCharactersProps) {
   // The ages step when main pushes the view again, at least once a sharer's beat.
   const now = useMemo(() => Date.now(), [sheets]);
   if (sheets.length === 0) return null;
@@ -65,7 +72,7 @@ function SharedCharacters({ sheets, onSelect }: SharedCharactersProps) {
     <section aria-label={t('cards.players.shared.heading')} className="shared-characters">
       <h4>{t('cards.players.shared.heading')}</h4>
       <ul>
-        {sheets.map(({ from, key, sheet, heardAt }) => {
+        {sheets.map(({ from, key, sheet, heardAt, control }) => {
           const pool = poolOf(sheet);
           const conditions = conditionsOf(sheet);
           return (
@@ -93,10 +100,24 @@ function SharedCharacters({ sheets, onSelect }: SharedCharactersProps) {
               )}
               <span className="shared-room">{roomOf(sheet)}</span>
               <span className="quiet-note shared-heard">{ago(heardAt, now)}</span>
+              {control && (
+                <button
+                  aria-label={t('cards.players.shared.control', { name: from.name })}
+                  className="quiet shared-control"
+                  data-remote-control={from.name}
+                  onClick={() => onControl(from.name)}
+                  onMouseDown={keepFocus}
+                  title={t('cards.players.shared.control', { name: from.name })}
+                  type="button"
+                >
+                  <Icon name="terminal" size={14} />
+                </button>
+              )}
             </li>
           );
         })}
       </ul>
+      {refused !== null && <p className="settings-warn">{refused}</p>}
     </section>
   );
 }

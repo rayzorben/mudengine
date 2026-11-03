@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { CheckField } from './FormField';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 
@@ -9,12 +10,15 @@ export type ShareAsked = {
   character: string;
   /** The player it is shared with. */
   player: string;
+  /** Whether Allow remote control starts ticked: it does when that is what was pressed. */
+  control: boolean;
 };
 
 export interface SharePromptProps {
   /** Who is asked about. Null while nothing is. */
   asked: ShareAsked | null;
-  onShare(): void;
+  /** Shared, with remote control or without. */
+  onShare(control: boolean): void;
   onCancel(): void;
 }
 
@@ -23,9 +27,10 @@ export interface SharePromptProps {
  * `ResetPrompt`: it says, in the character's own words, that the other
  * player will see everything about the character while both are logged in
  * to this realm, its room included. Cancel is the safe answer, the default
- * focus and what Escape means. Turning a share off asks nothing. Remote
- * control is not offered: how it would work across two builds is still the
- * user's question (open question 2).
+ * focus and what Escape means. Turning a share off asks nothing. Allow
+ * remote control lets the other player watch this character's terminal and
+ * send it the actions both builds understand (`peerControl.ts`), the user's
+ * answer of 2026-11-03.
  */
 export default function SharePrompt({
   asked,
@@ -33,6 +38,8 @@ export default function SharePrompt({
   onCancel
 }: SharePromptProps): React.JSX.Element | null {
   const cancel = useRef<HTMLButtonElement>(null);
+  const [control, setControl] = useState(false);
+  useEffect(() => setControl(asked?.control ?? false), [asked]);
 
   useEffect(() => {
     if (asked === null) return;
@@ -41,6 +48,7 @@ export default function SharePrompt({
   }, [asked]);
 
   if (asked === null) return null;
+  const names = { character: asked.character, player: asked.player };
   // Over the whole window, and a child of the panel that opened it, which a press here must not close.
   return createPortal(
     <div className="palette-scrim" data-panel-child role="presentation">
@@ -56,9 +64,17 @@ export default function SharePrompt({
         }}
         role="dialog"
       >
-        <h2 id="share-prompt-title">{t('share.title', asked)}</h2>
-        <p className="settings-warn">{t('share.everything', asked)}</p>
-        <p className="settings-note">{t('share.how', asked)}</p>
+        <h2 id="share-prompt-title">{t('share.title', names)}</h2>
+        <p className="settings-warn">{t('share.everything', names)}</p>
+        <p className="settings-note">{t('share.how', names)}</p>
+        <CheckField
+          checked={control}
+          hint={t('share.controlHint', names)}
+          label={t('share.control')}
+          name="share-control"
+          onChange={setControl}
+        />
+        {control && <p className="settings-warn">{t('share.controlWarning', names)}</p>}
         <div className="reset-actions">
           <button
             className="quiet"
@@ -69,8 +85,13 @@ export default function SharePrompt({
           >
             {t('share.cancel')}
           </button>
-          <button className="danger" onClick={onShare} onMouseDown={keepFocus} type="button">
-            {t('share.confirm', asked)}
+          <button
+            className="danger"
+            onClick={() => onShare(control)}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {t('share.confirm', names)}
           </button>
         </div>
       </div>

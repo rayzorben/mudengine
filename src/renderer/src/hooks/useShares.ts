@@ -11,6 +11,9 @@ import { NO_SHARES, type ShareView } from '@shared/peers';
 /** The bridge calls sharing is read through. */
 export type SharesApi = Pick<IpcApi, 'shares' | 'onShares'>;
 
+/** And the call that opens a shared character's terminal for remote control. */
+export type SharedControlApi = SharesApi & Pick<IpcApi, 'controlOpen'>;
+
 export function useShares(api: SharesApi, session: SessionId | null): ShareView {
   const [view, setView] = useState<ShareView>(NO_SHARES);
   useEffect(() => {

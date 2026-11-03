@@ -38,7 +38,7 @@ import type { Find } from '@shared/finds';
 import type { GearPick } from '@shared/gearTrip';
 import type { HuntingRoom } from '@shared/hunting';
 import type { RoomArtApi } from './useRoomArt';
-import type { SharesApi } from './useShares';
+import type { SharedControlApi } from './useShares';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
 import type { MapLoader } from '@shared/map';
@@ -103,7 +103,7 @@ export interface CardContext {
   /** The room pictures main holds, read and followed per character by the Room card. */
   roomArt: RoomArtApi;
   /** What other players share with this character, read and followed by the Players card. */
-  shares: SharesApi;
+  shares: SharedControlApi;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
@@ -294,6 +294,7 @@ export type CardApi = Pick<
   | 'onRoomArt'
   | 'shares'
   | 'onShares'
+  | 'controlOpen'
   | 'lookup'
   | 'questBook'
   | 'questErrand'

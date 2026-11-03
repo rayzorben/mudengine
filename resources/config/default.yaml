@@ -1454,7 +1454,7 @@ automation:
   # `share: state` sends them this character's sheet through the sharing
   # server; `share: control` sends the sheet and lets them watch this
   # character's terminal and send it a line, a move, rest, stop, play or the
-  # automation and auto-combat switches (Allow remote control). Nothing they
+  # automation and auto-combat switches (Allow Remote Control). Nothing they
   # send reaches the settings, the loops, the account or the shares.
   # `receive: true` shows what they share with this character
   # (the Access tab on the Player flyout; `peers.enabled` turns sharing on at

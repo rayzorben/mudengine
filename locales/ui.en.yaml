@@ -3338,6 +3338,10 @@ cards:
       share: Share This Character
       shareHint: Sends this character's health, mana, conditions, spells, level, experience and
         room to this player while you are both logged in to this realm, through the sharing server.
+      control: Allow Remote Control
+      controlHint: Lets this player watch this character's terminal and send it a line, a move,
+        rest, stop, play, and the automation and auto-combat switches. Turning it off ends it at
+        once.
       receive: Show Their Share
       receiveHint: Shows what this player shares with this character, once you confirm their key
         below.
@@ -3439,6 +3443,7 @@ cards:
       conditionsUnknown: conditions unknown
       roomUnknown: room unknown
       roomOneOf: 'one of {rooms}'
+      control: 'Remote control {name}'
     title: Players
   realm:
     badge:
@@ -8304,6 +8309,37 @@ share:
     off stops it at once.
   cancel: Cancel
   confirm: 'Share with {player}'
+  control: Allow Remote Control
+  controlHint: '{player} can watch the terminal of {character} and send it a line, a move, rest,
+    stop, play, and the automation and auto-combat switches. Your settings, loops, account and
+    shares stay out of reach.'
+  controlWarning: 'A line {player} sends is sent as though you typed it, any command the realm
+    takes included. You can stop them at any time from the banner over the console.'
+
+# Remote control of a character another player shares with this one, over
+# this character's console, and the banner its sharer sees.
+remote:
+  aria: 'Remote control of {name}'
+  title: 'Remote control: {name}'
+  close: Close remote control
+  line: Line to send
+  linePlaceholder: 'A line for {name}'
+  send: Send
+  rest: Rest
+  stop: Stop
+  play: Play
+  combatOn: Auto-Combat On
+  combatOff: Auto-Combat Off
+  automationOn: Automation On
+  automationOff: Automation Off
+  walkOn: Walk It
+  confirm: '{name} is {steps} steps further than when it stopped.'
+  refused: 'Refused: {why}'
+  failed: 'Remote control: {message}'
+  controlledAria: Remote control of this character
+  controlledBy: '{names} is controlling this character by remote control.'
+  stopControl: Stop
+  stopControlTitle: End their remote control now
 
 # Sharing characters with other players through the gateway (peers in the
 # options file).
@@ -8318,7 +8354,7 @@ peers:
     sent: '{from} sent {what} by remote control.'
     started: '{from} is controlling this character by remote control. Stop ends it.'
     ended: "{from}'s remote control of this character ended."
-    stopped: 'Remote control by {names} stopped. They cannot take it again until you turn Allow remote control off and on.'
+    stopped: 'Remote control by {names} stopped. They cannot take it again until you turn Allow Remote Control off and on.'
     lost: 'The sharing server is out of reach, so nobody controls this character.'
     refused: '{from} sent an action by remote control, and it was refused: {why}'
     action: remote control

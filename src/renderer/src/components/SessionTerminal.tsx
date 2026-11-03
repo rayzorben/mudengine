@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import QuestRunBanner from './QuestRunBanner';
 import ReadBackConsole from './ReadBackConsole';
 import TerminalView, { type TerminalHandle } from './TerminalView';
+import PeerControl from './PeerControl';
 import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import { restores } from '../lib/restore';
@@ -379,6 +380,14 @@ function SessionTerminal({
     >
       {/* Over this pane rather than docked: `mudengine-ui` › quests, *the run is a banner*. */}
       <QuestRunBanner onSettled={focusConsole} onStop={stopRun} run={run} walk={walk} />
+      {/* Another player controlling this character, or this one controlling theirs (todo 20261031-1156-01). */}
+      <PeerControl
+        api={api}
+        fontStack={fontStack}
+        palette={palette}
+        session={session}
+        settings={settings}
+      />
       <TerminalView
         fontStack={fontStack}
         index={index}
