@@ -470,7 +470,7 @@ export default function App() {
     close: closeSearch,
     toggle: toggleSearch,
     run: runSearch
-  } = useSearchBar(activeTerminal, returnFocus);
+  } = useSearchBar(session, terminals, returnFocus);
   const {
     open: loopsOpen,
     toggle: toggleLoops,

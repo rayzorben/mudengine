@@ -5,10 +5,11 @@
  * Out of `App` (todo 732) with the state it owns. See `mudengine-ui` ›
  * *Focus lives in the terminal*.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { SearchResult } from '../components/SearchBar';
 import type { TerminalHandle } from '../components/TerminalView';
+import type { SessionId } from '@shared/ipc';
 
 export interface SearchBarState {
   open: boolean;
@@ -23,16 +24,31 @@ export interface SearchBarState {
   run(query: string, direction: 'next' | 'previous'): void;
 }
 
+type Searched = Pick<TerminalHandle, 'search'>;
+
 /**
- * @param terminal The console on screen, read when the bar acts.
+ * @param session The character on screen, whose console the bar searches.
+ * @param consoles Each character's console, while its tab is open.
  * @param returnFocus The window's one hand-back.
  */
 export function useSearchBar(
-  terminal: () => Pick<TerminalHandle, 'search'> | null,
+  session: SessionId,
+  consoles: { readonly current: ReadonlyMap<SessionId, Searched> },
   returnFocus: () => void
 ): SearchBarState {
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<SearchResult | undefined>(undefined);
+  /** Whose console holds the marks, and what it was asked, until the bar clears it. */
+  const searched = useRef<{ session: SessionId; query: string } | null>(null);
+
+  /** Clears the marks a find left on another character's console. */
+  const clearOther = useCallback(
+    (shown: SessionId) => {
+      const held = searched.current;
+      if (held !== null && held.session !== shown) consoles.current.get(held.session)?.search('', 'next');
+    },
+    [consoles]
+  );
 
   const openSearch = useCallback(() => setOpen(true), []);
 
@@ -43,9 +59,11 @@ export function useSearchBar(
   const close = useCallback(() => {
     setOpen(false);
     setResult(undefined);
-    terminal()?.search('', 'next');
+    clearOther(session);
+    searched.current = null;
+    consoles.current.get(session)?.search('', 'next');
     returnFocus();
-  }, [terminal, returnFocus]);
+  }, [session, consoles, clearOther, returnFocus]);
 
   const toggle = useCallback(() => {
     if (open) close();
@@ -54,10 +72,25 @@ export function useSearchBar(
 
   const run = useCallback(
     (query: string, direction: 'next' | 'previous') => {
-      terminal()?.search(query, direction);
+      clearOther(session);
+      searched.current = { session, query };
+      consoles.current.get(session)?.search(query, direction);
     },
-    [terminal]
+    [session, consoles, clearOther]
   );
+
+  /*
+   * Each console keeps its own marks and reports its own count, and only the
+   * shown one's count reaches the bar (`SessionTerminal`). A switch with the
+   * bar open clears the marks left on the other character's console and asks
+   * the shown one the same question, so the count is always this console's.
+   */
+  useEffect(() => {
+    const held = searched.current;
+    if (held === null || held.session === session) return;
+    setResult(undefined);
+    run(held.query, 'next');
+  }, [session, run]);
 
   return { open, result, setResult, openSearch, close, toggle, run };
 }
