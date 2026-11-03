@@ -551,9 +551,6 @@ export class CharacterTracker {
   }
 
   reset(): void {
-    this.deathSentence.forget();
-    this.stealth.forget();
-    this.barrierAim = null;
     this.company.reset();
     this.state = {
       ...structuredClone(EMPTY_CHARACTER),
@@ -567,21 +564,32 @@ export class CharacterTracker {
       tally: this.recalledTally(),
       room: lastRoom.recalledRoom(this.belongings.recallRoom(), this.world)
     };
-    this.room.discard();
-    this.expect.forget();
     // A new connection is a new journey. Nothing on the old trail is known to
     // be one room from where the character is standing now.
     this.backtrail.forget();
-    // Discarded rather than settled: a reset is a new session, and a fight that
-    // was in progress has an unknown outcome. Learning from it would record a
-    // survival that never happened.
+    // An untaken kill stays through the menu, as `kills.test.ts` pins; whether it should is open.
+    this.kills.forget();
+    this.forgetStanding();
+  }
+
+  /** What a new session and the character menu both start without: nothing outstanding carries. */
+  private forgetStanding(): void {
+    this.deathSentence.forget();
+    this.stealth.forget();
+    this.barrierAim = null;
+    this.room.discard();
+    // Nothing outstanding can be answered, and a room arriving next must not
+    // be resolved against a move typed before it.
+    this.expect.forget();
+    // Discarded rather than settled: a fight cut short has an unknown outcome,
+    // and learning from it would record a survival that never happened.
     this.fight.forget();
     this.packChanges = [];
     // And it is standing in no bank until one answers.
     this.ledger.forget();
     this.effects.forget();
     this.sheetOpen = false;
-    this.kills.forget();
+    // What `pro` said described the last character's prompt.
     this.statusLine.forget();
   }
 
@@ -1165,17 +1173,8 @@ export class CharacterTracker {
    */
   private forgetCharacter(realm: RealmWord | null): CharacterState {
     const s = this.state;
-    this.room.discard();
-    // Nothing outstanding can be answered from the menu, and a room arriving
-    // after the next login must not be resolved against a move typed before it.
-    this.expect.forget();
-    // A fight interrupted by walking out has an unknown outcome; learning from
-    // it would record a survival that never happened.
-    this.fight.forget();
-    this.stealth.forget();
-    this.packChanges = [];
     this.company.forget();
-    this.ledger.forget();
+    this.forgetStanding();
     return {
       ...structuredClone(EMPTY_CHARACTER),
       realm,

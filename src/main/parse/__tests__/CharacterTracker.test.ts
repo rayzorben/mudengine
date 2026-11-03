@@ -12464,6 +12464,17 @@ describe('the status line pro reports', () => {
     expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
+  it('forgets what pro said at the character menu, as the card does', () => {
+    const tracker = play([
+      '[HP=156/156,MA=11/28,Exp=1386670,Need=14402,Wealth=0 ]:',
+      REPORT,
+      '[HP=150/156,MA=11/28,Exp=1386670,Need=14402,Wealth=25 ]:',
+      'Please select a character:',
+      '[HP=40/40,MA=7/8,Exp=0,Need=2500,Wealth=0 ]:'
+    ]);
+    expect(tracker.current.statline).toEqual({ reported: null, exact: null });
+  });
+
   it('reads the same figures by the tolerant pattern before pro has said', () => {
     const tracker = play(['[HP=40/40,MA=7/8,Exp=0,Need=2500,Wealth=0]:']);
     expect(tracker.current.statline).toEqual({ reported: null, exact: null });
