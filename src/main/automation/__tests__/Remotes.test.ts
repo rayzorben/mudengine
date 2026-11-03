@@ -2717,6 +2717,20 @@ describe('party pacing', () => {
     remotes.onCharacter(follower(85));
     drain();
     expect(sent).toEqual(["/Soul @wait (HP's too low)", '/Soul @ok']);
+    // A wait already asked stands through the leader's rest: no @ok until this
+    // character is past its target and the leader is up (Rayzor, 2026-11-02).
+    sent.length = 0;
+    remotes.onCharacter(follower(30));
+    remotes.onCharacter(follower(30, true));
+    remotes.onCharacter(follower(30));
+    drain();
+    expect(sent).toEqual(["/Soul @wait (HP's too low)"]);
+    remotes.onCharacter(follower(85, true));
+    drain();
+    expect(sent).toEqual(["/Soul @wait (HP's too low)"]);
+    remotes.onCharacter(follower(85));
+    drain();
+    expect(sent).toEqual(["/Soul @wait (HP's too low)", '/Soul @ok']);
   });
 
   /*

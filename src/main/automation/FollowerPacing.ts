@@ -63,8 +63,10 @@ export class FollowerPacing {
         margin
       );
     }
-    // Not while the leader rests: that rest is its own, and `restWithLeader` keeps the party with it.
-    const reason = leaderResting(state) ? null : this.reasonFor(state);
+    // Nothing said while the leader rests: that rest is its own, and a wait already
+    // asked stands until the leader is up (an `@ok` here went out at 2 mana, Rayzor, 2026-11-02).
+    if (leaderResting(state)) return;
+    const reason = this.reasonFor(state);
     const was = this.reason;
     this.reason = reason;
     if (reason !== 'held') this.askedBack = false;
@@ -83,6 +85,8 @@ export class FollowerPacing {
   onBlock(block: Block, state: CharacterState): void {
     const leader = block.type === 'party-left' ? block.groups['leader'] : undefined;
     if (leader === undefined || this.reason !== 'held' || this.askedBack) return;
+    // The reason stands still through the leader's rest, so the hold is asked of the state too.
+    if (afflictionHolding(state.afflictions, this.config.movement) !== 'held') return;
     if (!this.sending()) return;
     this.askedBack = true;
     this.events.tell(leader, 'comeback', state);
