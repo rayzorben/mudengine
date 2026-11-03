@@ -1051,6 +1051,16 @@ describe('a walk held for the inventory', () => {
     });
   });
 
+  /*
+   * A hunt the party's wait holds outlives the lap's stop, so the player's
+   * Stop ends it; left running, the party's `@ok` would walk the owed way.
+   */
+  it('ends a collecting errand when the player presses Stop', () => {
+    const { travel: moving, parts } = holding();
+    moving.stopMoving();
+    expect(parts.itemErrand.abandon).toHaveBeenCalledWith(personStop(null));
+  });
+
   it('walks nowhere once the player has pressed Stop, and says so', () => {
     const { travel: moving, parts, notices, listed } = holding();
     moving.walkRoute(DOOR);

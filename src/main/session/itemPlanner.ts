@@ -33,7 +33,10 @@ export interface ItemPlannerModules {
   errands: Pick<Errands, 'itemSources' | 'plannedSources'>;
   supplies: Pick<Supplies, 'fetch' | 'current' | 'abandon'>;
   loops: Pick<LoopRunner, 'progress'>;
-  travel: Pick<Travel, 'startLoop' | 'walkAfterCollecting' | 'walkLegTo' | 'walkIsAsked'>;
+  travel: Pick<
+    Travel,
+    'startLoop' | 'walkAfterCollecting' | 'walkLegTo' | 'walkIsAsked' | 'partyHolds'
+  >;
   loot: Pick<AutoLoot, 'alsoTake' | 'stopTaking'>;
   walker: Pick<Walker, 'walking' | 'stop'>;
   queue: Pick<CommandQueue, 'enqueue' | 'queued' | 'cancel'>;
@@ -77,6 +80,7 @@ export function itemPlanner(parts: ItemPlannerParts): ItemPlanner {
       return 'refused' in answer ? answer.refused : null;
     },
     looping: () => m().loops.progress.status === 'running',
+    partyHolds: () => m().travel.partyHolds(),
     stopLoop: parts.stopLap,
     combatOn: () => m().combat.switchedOn,
     fightFor: (mob) => m().combat.alsoFight(mob),

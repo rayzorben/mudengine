@@ -6707,6 +6707,7 @@ automation:
     gotAndKept: '{item} is in your inventory and on the keep list, so it stays.'
     gotForTheDoor: '{item} is in your inventory: picked up for this door, not kept.'
     gotForTheDark: '{item} is in your inventory, to light the dark rooms ahead.'
+    waitingForParty: '{item} is in your inventory; the way is walked once the party is ready.'
     hunting: 'Looking for {item}: {mob} drops it, starting at {room}, {steps} steps away.'
     huntingHere: 'Looking for {item}: {mob} drops it, starting here in {room}.'
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'

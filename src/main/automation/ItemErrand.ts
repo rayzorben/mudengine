@@ -80,6 +80,11 @@ export interface ItemPlanner {
   /** Run a loop filed nowhere, as the hunt does. */
   runLoop(loop: Loop): string | null;
   looping(): boolean;
+  /**
+   * The lap is stopped for the party (a member's `@wait`, a member resting, a
+   * walk back), which walks it on by itself once the party is ready.
+   */
+  partyHolds(): boolean;
   stopLoop(reason: string): void;
   /** Whether auto-combat is on: a lair or a summons is a fight, fought only with it on. */
   combatOn(): boolean;
@@ -194,9 +199,9 @@ type Phase =
    * and a loop steps on without waiting for the server to confirm what it
    * picked up, so at the moment the pack holds the thing there is a move of
    * this client's own still on the wire and `Walker.start` refuses to plan
-   * across it. `why` is the last refusal, said only if the window runs out.
+   * across it. The last refusal is said only if the window runs out.
    */
-  | { kind: 'delivering'; item: Wanted; owes: Route; run: boolean; until: number; why: string };
+  | { kind: 'delivering'; item: Wanted; owes: Route; run: boolean; until: number };
 
 const ACTION = 'collect';
 
@@ -477,6 +482,11 @@ export class ItemErrand implements SessionModule {
      * still unanswered) clears the moment the room for it arrives.
      */
     if (this.phase.kind === 'delivering') {
+      // The party's wait spends none of the window: the way goes once it is over.
+      if (this.planner.partyHolds()) {
+        this.phase = { ...this.phase, until: this.now() + tuning().walk.errandHandoverMs };
+        return;
+      }
       const refused = this.planner.walk(this.phase.owes, run);
       if (refused === null) {
         this.phase = { kind: 'idle' };
@@ -487,7 +497,6 @@ export class ItemErrand implements SessionModule {
         this.events.notice?.(t('automation.collect.refusalRouteRefused', { why: refused }));
         return;
       }
-      this.phase = { ...this.phase, why: refused };
       return;
     }
     if (!short(state, item)) {
@@ -509,8 +518,13 @@ export class ItemErrand implements SessionModule {
       this.refuse(item, t('automation.collect.refusalNotBought', { item: item.name }));
       return;
     }
-    // And the lap stopping means the fights are over one way or another.
-    if (this.phase.kind === 'hunting' && !this.planner.looping()) {
+    /*
+     * And the lap stopping means the fights are over one way or another,
+     * unless the party stopped it: that stop walks the lap on by itself, and
+     * reading it as the end left Rayzor's glass key hunt a lap with nothing
+     * owed after it (2026-11-02, a `@wait` from Brakkle).
+     */
+    if (this.phase.kind === 'hunting' && !this.planner.looping() && !this.planner.partyHolds()) {
       this.give();
       this.phase = { kind: 'idle' };
       this.refuse(item, t('automation.collect.refusalLapStopped', { item: item.name }));
@@ -579,15 +593,19 @@ export class ItemErrand implements SessionModule {
      * tried again on every state until it takes, or until the window is up and
      * the refusal is a real one worth saying.
      */
-    const refused = this.planner.walk(owes, run);
-    if (refused === null) return;
+    /*
+     * Got while the party waits (the pick-up and a member's rest stop came in
+     * one line): walking now would walk on without them, so the way waits.
+     */
+    const held = this.planner.partyHolds();
+    if (held) this.events.notice?.(t('automation.collect.waitingForParty', { item: item.name }));
+    else if (this.planner.walk(owes, run) === null) return;
     this.phase = {
       kind: 'delivering',
       item,
       owes,
       run,
-      until: this.now() + tuning().walk.errandHandoverMs,
-      why: refused
+      until: this.now() + tuning().walk.errandHandoverMs
     };
   }
 

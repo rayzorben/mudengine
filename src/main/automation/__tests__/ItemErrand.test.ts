@@ -51,6 +51,7 @@ let taking: string[];
 let buying: boolean;
 let stoppedBuying: string[];
 let looping: boolean;
+let partyHolds: boolean;
 let keptNames: string[];
 let walkedTo: string[];
 let walkingNow: boolean;
@@ -81,6 +82,7 @@ function errand(over: Partial<ItemPlanner> = {}, now?: () => number): ItemErrand
       return null;
     },
     looping: () => looping,
+    partyHolds: () => partyHolds,
     stopLoop: () => {
       looping = false;
     },
@@ -137,6 +139,7 @@ beforeEach(() => {
   taking = [];
   buying = false;
   looping = false;
+  partyHolds = false;
   keptNames = [];
   walkedTo = [];
   walkingNow = false;
@@ -507,6 +510,71 @@ describe('collecting what a route needs', () => {
       errand().collect([KEY], OWED, ready());
       expect(notices).toContain(said);
     }
+  });
+
+  /*
+   * Rayzor, 2026-11-02 (`2026-11-02_18-34-49_rayzor.mudcap.jsonl`): Brakkle's
+   * `@wait` stopped the glass key hunt's lap at 03:21:34, the errand read the
+   * stop as the end, and when the yeti dropped the key at 03:25 nothing was
+   * owed after it. The party's stop walks the lap on by itself.
+   */
+  it('keeps hunting through a stop the party made, and gives up on any other', () => {
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
+    const auto = errand();
+    auto.collect([KEY], OWED, ready());
+
+    looping = false;
+    partyHolds = true;
+    auto.onCharacter(ready());
+    expect(auto.running).toBe(true);
+    expect(notesOf(notices, 'automation.collect.refusalLapStopped')).toEqual([]);
+
+    // The party walks the lap on, and the key drops: the way is walked.
+    partyHolds = false;
+    looping = true;
+    auto.onCharacter(carrying());
+    expect(walked).toEqual([OWED]);
+
+    // A stop the party did not make still ends a hunt.
+    const other = errand();
+    other.collect([KEY], OWED, ready());
+    looping = false;
+    other.onCharacter(ready());
+    expect(other.running).toBe(false);
+    expect(notesOf(notices, 'automation.collect.refusalLapStopped')).toHaveLength(1);
+  });
+
+  /*
+   * And the same night's other half: the `get glass key` and the stop to wait
+   * for Brakkle's rest came in one line. Walking then walks on without him.
+   */
+  it('walks the way once the party is ready when the item comes during its wait', () => {
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
+    let clock = 0;
+    const auto = errand({}, () => clock);
+    auto.collect([KEY], OWED, ready());
+
+    partyHolds = true;
+    auto.onCharacter(carrying());
+    expect(walked).toHaveLength(0);
+    expect(notices).toContain(t('automation.collect.waitingForParty', { item: 'black star key' }));
+
+    // A wait longer than the handover window spends none of it.
+    clock += tuning().walk.errandHandoverMs * 4;
+    auto.onCharacter(carrying());
+    expect(walked).toHaveLength(0);
+    expect(notesOf(notices, 'automation.collect.refusalRouteRefused')).toEqual([]);
+
+    partyHolds = false;
+    auto.onCharacter(carrying());
+    expect(walked).toEqual([OWED]);
+    expect(auto.running).toBe(false);
   });
 
   /* The shopping errand gave up: the route is not walked, and it says so. */

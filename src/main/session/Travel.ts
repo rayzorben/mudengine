@@ -1498,6 +1498,14 @@ export class Travel implements SessionModule {
   }
 
   /**
+   * What is stopped is the party's stop (`PartyWait`) or a walk back
+   * (`ComeBack`), and walks on by itself once the party is ready.
+   */
+  partyHolds(): boolean {
+    return this.partyWait.holding || this.comeBack.active;
+  }
+
+  /**
    * An errand or a quest run has the character, in any phase: one waiting on
    * a listing or a level stands still and walks nowhere, and is still under
    * way. The one list, read here and by `holdsTrips`.
@@ -2671,6 +2679,8 @@ export class Travel implements SessionModule {
     if (held !== null) {
       this.session.notice(t('session.walk.notResumed', { destination: held, reason }));
     }
+    // A hunt the party's wait holds outlives the lap's stop, so the stop ends it here.
+    this.itemErrand.abandon(reason);
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
     this.comeBack.cancel(reason);
     // Before the walk, so the leg's end is not read as a room to pass over.
