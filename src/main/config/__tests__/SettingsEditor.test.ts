@@ -340,6 +340,50 @@ ui:
     expect(fs.readFileSync(file, 'utf8')).toContain('# my main');
   });
 
+  /*
+   * The character page's Retreat below mana (MegaMUD's ManaRun%) was drawn and
+   * sent but never written: the retreat block was rebuilt from a list of
+   * fields without it, and replaced whole, which also dropped a hand-set
+   * `cooldownMs` the form does not show.
+   */
+  it('writes the retreat below mana, and keeps a cooldown set by hand', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      [
+        'server: GreaterMUD (local)',
+        'automation:',
+        '  safety:',
+        '    retreat:',
+        '      enabled: true',
+        '      cooldownMs: 5000',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    const retreat = { ...draft().retreat, enabled: true, belowMana: 0.25 };
+    expect(editor.saveProfile('vaelor', draft({ retreat }))).toEqual({ ok: true });
+    const written = (read('vaelor')['automation'] as { safety: { retreat: unknown } }).safety
+      .retreat;
+    expect(written).toMatchObject({ enabled: true, belowMana: 0.25, cooldownMs: 5000 });
+    const found = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
+    expect(found?.retreat.belowMana).toBe(0.25);
+  });
+
+  it('writes the retreat over a block left empty', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      'server: GreaterMUD (local)\nautomation:\n  safety:\n    retreat:\n',
+      'utf8'
+    );
+    const retreat = { ...draft().retreat, enabled: true };
+    expect(editor.saveProfile('vaelor', draft({ retreat }))).toEqual({ ok: true });
+    expect(read('vaelor')['automation']).toMatchObject({ safety: { retreat: { enabled: true } } });
+  });
+
   it('keeps the comments inside a block it writes', () => {
     const file = home.profile('vaelor').file;
     fs.mkdirSync(path.dirname(file), { recursive: true });

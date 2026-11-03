@@ -381,13 +381,7 @@ export class SettingsEditor {
           draft.retreat.enabled ||
           document.hasIn(['automation', 'safety', 'retreat'])
         ) {
-          setKeeping(document, ['automation', 'safety', 'retreat'], {
-            enabled: draft.retreat.enabled,
-            belowHealth: draft.retreat.belowHealth,
-            whenOutnumbered: draft.retreat.whenOutnumbered,
-            strategy: draft.retreat.strategy,
-            safeHavenRoom: draft.retreat.safeHavenRoom
-          });
+          writeRetreat(document, draft.retreat);
         }
 
         // The teleport on the retreat's rule; an empty command writes no key,
@@ -1333,11 +1327,7 @@ export class SettingsEditor {
         set(['automation', 'pacing'], { ...draft.automation.pacing });
         set(['automation', 'walk'], { ...draft.automation.walk });
         set(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
-        // Field by field: `cooldownMs` is not on the form, and a figure set
-        // by hand stays (`retreatOf`).
-        for (const [key, value] of Object.entries(draft.automation.retreat)) {
-          set(['automation', 'safety', 'retreat', key], value);
-        }
+        writeRetreat(document, draft.automation.retreat);
         set(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
         set(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
         set(['automation', 'combat'], { ...draft.automation.combat });
@@ -1702,6 +1692,20 @@ function retreatOf(retreat: RetreatConfig): ProfileEditable['retreat'] {
     strategy: retreat.strategy,
     safeHavenRoom: retreat.safeHavenRoom
   };
+}
+
+/**
+ * Writes each retreat field on the form, so a `cooldownMs` set by hand stays
+ * (`retreatOf`). A `retreat:` left empty or written as a word is replaced by a
+ * map first, since a key cannot be set inside a scalar.
+ */
+function writeRetreat(document: Document, retreat: ProfileEditable['retreat']): void {
+  const at = ['automation', 'safety', 'retreat'];
+  if (document.hasIn(at) && !isMap(document.getIn(at, true)))
+    document.setIn(at, document.createNode({}));
+  for (const [key, value] of Object.entries(retreat)) {
+    document.setIn([...at, key], value);
+  }
 }
 
 /** `ui.theme` as the file states it, or '' when it follows the options file. */
