@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { CardChrome } from '../../components/BentoCard';
 import type { NameIndex } from '../../lib/names';
+import { cardElement } from '../../components/CardSwitch';
 import { useCardContext, type CardContext, type CardContextInputs } from '../useCardContext';
 import { useCardRenderers, type CardRendererInputs } from '../useCardRenderers';
 import { EMPTY_VIEW, type SessionView } from '../useSessionViews';
@@ -92,7 +93,6 @@ const stable: Omit<CardContextInputs, 'nameIndexes'> = {
   stopMoving: noop,
   startLoop: noop,
   reverseLoop: noop,
-  send: noop,
   openLoops: noop,
   openAreaSearch: noop,
   dial: noop,
@@ -131,6 +131,37 @@ describe('useCardContext', () => {
       createElement(Probe, { inputs: { ...stable, nameIndexes: { [PINNED]: index } }, out })
     );
     expect(out.current?.contextFor(PINNED, EMPTY_VIEW, chrome).nameIndex).toBe(index);
+  });
+
+  it('sends a Talk line as the character whose card it was typed on', () => {
+    const sent: [SessionId, string][] = [];
+    const api = new Proxy(
+      {},
+      {
+        get: (_target, name) =>
+          name === 'input' ? (sid: SessionId, data: string) => void sent.push([sid, data]) : pending
+      }
+    ) as CardContextInputs['api'];
+    const out: MutableRefObject<Contexts | null> = { current: null };
+    probe.render(createElement(Probe, { inputs: { ...stable, api, nameIndexes: {} }, out }));
+    out.current?.contextFor(PINNED, EMPTY_VIEW, chrome).onSend?.('gos hi');
+    out.current?.contextFor(SHOWN, EMPTY_VIEW, chrome).onSend?.('br yo');
+    expect(sent).toEqual([
+      [PINNED, 'gos hi\r'],
+      [SHOWN, 'br yo\r']
+    ]);
+  });
+
+  it('keys every card by its character, so a tab switch draws a new one', () => {
+    const out: MutableRefObject<Contexts | null> = { current: null };
+    probe.render(createElement(Probe, { inputs: { ...stable, nameIndexes: {} }, out }));
+    const keyOf = (sid: SessionId): unknown => {
+      const ctx = out.current?.contextFor(sid, EMPTY_VIEW, chrome);
+      const element = ctx && cardElement('conversation', ctx);
+      return (element as { key?: unknown } | null)?.key;
+    };
+    expect(keyOf(SHOWN)).toBe(SHOWN);
+    expect(keyOf(PINNED)).toBe(PINNED);
   });
 
   it('closes the Loops modal it opened, and asks the quest book again after a realm edit', () => {

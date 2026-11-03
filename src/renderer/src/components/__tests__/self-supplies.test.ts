@@ -106,7 +106,12 @@ describe("the Self card's supplies", () => {
       supplies: list,
       toolbar: { switches: { supplies: true } }
     } as unknown as CardContext;
-    const element = cardElement('self', ctx) as { props: { supplies: SupplyList } };
-    expect(element.props.supplies).toBe(list);
+    // Inside the per-character key `cardElement` wraps every card in.
+    const keyed = cardElement('self', ctx) as {
+      key: unknown;
+      props: { children: { props: { supplies: SupplyList } } };
+    };
+    expect(keyed.key).toBe(SESSION);
+    expect(keyed.props.children.props.supplies).toBe(list);
   });
 });

@@ -1892,8 +1892,9 @@ function registerIpc(): void {
     reportSoftwareCompositing(caller);
   });
 
-  on(Send.input, (_caller, session: SessionId, data: string) => {
-    host?.get(session)?.manager.send(data);
+  // Typed input from the renderer; anything but a string is dropped, as `Send.macro` does.
+  on(Send.input, (_caller, session: SessionId, data: unknown) => {
+    if (typeof data === 'string') host?.get(session)?.manager.send(data);
   });
 
   // Parsed again in main; a payload that is not a string is not a line.

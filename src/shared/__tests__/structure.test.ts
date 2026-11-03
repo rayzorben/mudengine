@@ -108,7 +108,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the console's buttons, run by the console that draws them (todo 28).
   // Lowered by the tab placement, passed to the palette whole (2026-10-26).
   // Lowered by the client lists' and roster ask's comments, one line each, as the game view's openers came (todo 20261102-1523-01).
-  'src/renderer/src/App.tsx': 1477,
+  'src/renderer/src/App.tsx': 1465,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   // Lowered by the fight hold's comment, condensed as `FoughtPath` came (2026-10-10).

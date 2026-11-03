@@ -797,20 +797,6 @@ export default function App() {
 
   const handleInput = useCallback((id: SessionId, data: string) => api.input(id, data), [api]);
 
-  /**
-   * A line typed into the Talk card, sent exactly as typing it would send it.
-   *
-   * `api.input` and not a new channel: main assembles typed characters into
-   * commands there, so this one call is what makes the tracker see the command,
-   * a walk in progress stand down, the capture record it and a password get
-   * redacted. A second route to the socket would be a second copy of all of
-   * that, and copies drift.
-   */
-  const sayOnChannel = useCallback(
-    (line: string) => api.input(activeRef.current, `${line}\r`),
-    [api]
-  );
-
   const handleResize = useCallback(
     (id: SessionId, next: TerminalSize) => {
       // The status rail describes the slate in front of you, so it follows the
@@ -1037,7 +1023,6 @@ export default function App() {
     stopMoving,
     startLoop,
     reverseLoop,
-    send: sayOnChannel,
     openLoops: toggleLoops,
     openAreaSearch: trips.opens.areaSearch,
     dial,
@@ -1336,6 +1321,9 @@ export default function App() {
 
       {game.on && (
         <GameView
+          // One character's view: its picked target, half-entered chord and
+          // unread mark are not the next tab's (todo 20261102-2220-01).
+          key={session}
           api={api}
           game={game}
           config={config}

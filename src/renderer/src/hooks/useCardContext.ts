@@ -359,8 +359,6 @@ export interface CardContextInputs
   switchesFor(id: SessionId): ConfigSwitches;
   suppliesFor(id: SessionId): SupplyItem[];
   profileNameFor(id: SessionId): string;
-  /** A Talk-card line from the shown character. */
-  send(line: string): void;
   /** The Loops modal, which is the shown character's. */
   openLoops(): void;
   /** The Search the area dialog, which is the shown character's too. */
@@ -418,7 +416,6 @@ export function useCardContext({
   stopMoving,
   startLoop,
   reverseLoop,
-  send,
   openLoops,
   openAreaSearch,
   dial,
@@ -509,6 +506,9 @@ export function useCardContext({
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
         setSupplies: (items) =>
           void api.setSupplies(sid, items).then((refused) => sayRefusalRef.current(sid)(refused)),
+        // `api.input`, as typing it would: main assembles it into a command there,
+        // so the tracker sees it, a walk stops, the capture records it and a
+        // password is redacted. Addressed at `sid`, the card's own character.
         send: (line) => void api.input(sid, `${line}\r`),
         macro: (line) => api.macro(sid, line),
         dropMacro: () => api.dropMacro(sid)
@@ -732,7 +732,7 @@ export function useCardContext({
         toolbarPinned: toolbarPins.pinned,
         pinToolbarButton: toolbarPins.toggle,
         nameIndex: nameIndexes[sid] ?? null,
-        onSend: shown ? send : bound.send,
+        onSend: bound.send,
         onMacro: bound.macro,
         dropMacro: bound.dropMacro
       };
@@ -762,7 +762,6 @@ export function useCardContext({
       dial,
       hangUp,
       sayRefusal,
-      send,
       selectPlayer,
       session,
       size,

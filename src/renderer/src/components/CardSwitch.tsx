@@ -7,7 +7,7 @@
  * when it is drawn is `useCardRenderers`'. See `mudengine-ui` ›
  * `parts/cards.md`.
  */
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 import AutomationCard from './AutomationCard';
 import BanksCard from './BanksCard';
@@ -58,8 +58,23 @@ function emptyCardHidden(chrome: CardChrome, id: CardId, hasSomethingToSay: bool
   return hidesWhenEmpty(chrome.settings?.value ?? NO_CARD_SETTINGS, id);
 }
 
-/** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
+/**
+ * The card for an id, drawn from a context, keyed by the character it is for.
+ *
+ * Every host keys a card by its id alone (rail cell, strip, float), so without
+ * the session in the key a tab switch handed the same instance the next
+ * character's props and kept the last one's state: a half-typed Talk line, a
+ * gear trip, a half-built loop (todo 20261102-2220-01). Keyed here, the one
+ * place every host draws a card through, so a card is drawn for one character
+ * and dropped when the tab changes.
+ */
 export function cardElement(id: CardId, ctx: CardContext): ReactNode {
+  const body = cardBody(id, ctx);
+  return body === null ? null : <Fragment key={ctx.session}>{body}</Fragment>;
+}
+
+/** The card for an id, drawn from a context. Exhaustive over the vocabulary. */
+function cardBody(id: CardId, ctx: CardContext): ReactNode {
   const { chrome, character, view } = ctx;
   switch (id) {
     case 'self':
