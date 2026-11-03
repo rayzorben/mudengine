@@ -15,6 +15,8 @@ import type {
   RpcBeat,
   RpcInbound,
   RpcOutbound,
+  RpcPush,
+  RpcReply,
   RpcReport,
   RpcRequest,
   RpcWelcome
@@ -143,13 +145,28 @@ export class TabSessions {
     };
   }
 
-  /** Numbers, holds and sends one message; held while the tab is away. */
-  push(tab: Tab, message: RpcOutbound): void {
+  /** Sends a push on its channel; held while the tab is away. */
+  push(tab: Tab, message: RpcPush): void {
+    this.deliver(tab, message, message.c);
+  }
+
+  /**
+   * Sends the answer to a request made on `channel`, counted as
+   * `reply:<channel>` so the traffic log says what each reply answered.
+   */
+  reply(tab: Tab, channel: string, message: RpcReply): void {
+    this.deliver(tab, message, `reply:${channel}`);
+  }
+
+  /** Numbers, holds and sends one message, counted under `counted`. */
+  private deliver(tab: Tab, message: RpcOutbound, counted: string): void {
     if (this.tabs.get(tab.id) !== tab) return;
-    const { text, error } = serialise(message, `a web message on ${message.k}`);
+    const { text, error } = serialise(message, `a web message on ${counted}`);
     if (text === null) {
       // A reply the tab is waiting on is answered with the failure.
-      if (message.k === 'reply') this.push(tab, { k: 'reply', id: message.id, e: error });
+      if (message.k === 'reply') {
+        this.deliver(tab, { k: 'reply', id: message.id, e: error }, counted);
+      }
       return;
     }
     if (!tab.outbox.admits(message, text)) return;
@@ -157,7 +174,7 @@ export class TabSessions {
     // text is a JSON object, so the number goes in as its first field.
     const body = (message.k === 'push' ? tab.patcher.patch(message) : null) ?? text.slice(1);
     const framed = tab.link.hold((n) => `{"n":${n},${body}`);
-    tab.traffic.count(message.k === 'push' ? message.c : 'reply', framed.length);
+    tab.traffic.count(counted, framed.length);
     if (tab.link.overflowing(tuning().web.resumeBytes)) {
       this.end(tab, 'fell too far behind to be brought up to date');
       return;

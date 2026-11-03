@@ -31,7 +31,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import type { RpcRequest } from '../../shared/rpc';
+import type { RpcReply, RpcRequest } from '../../shared/rpc';
 import { errorMessage } from '../../shared/values';
 import { platformUserData } from '../app/home';
 import { t } from '../app/i18n';
@@ -222,18 +222,19 @@ export function createWebHost(layout: Layout): Host {
 
     const handler = handlers.get(request.c);
     if (!handler) {
-      tabs.push(tab, {
+      tabs.reply(tab, request.c, {
         k: 'reply',
         id: request.id,
         e: t('web.rpc.noHandler', { channel: request.c })
       });
       return;
     }
+    const reply = (message: RpcReply): void => tabs.reply(tab, request.c, message);
     Promise.resolve()
       .then(() => handler(caller, ...request.a))
       .then(
-        (result) => tabs.push(tab, { k: 'reply', id: request.id, r: result }),
-        (error: unknown) => tabs.push(tab, { k: 'reply', id: request.id, e: errorMessage(error) })
+        (result) => reply({ k: 'reply', id: request.id, r: result }),
+        (error: unknown) => reply({ k: 'reply', id: request.id, e: errorMessage(error) })
       );
   };
 

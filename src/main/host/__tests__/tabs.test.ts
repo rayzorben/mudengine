@@ -124,6 +124,16 @@ describe('a browser tab kept across its sockets', () => {
     expect(ended).toEqual([]);
   });
 
+  it('counts a reply under the channel it answered, and a push under its own', () => {
+    const { tabs, tabOf } = open();
+    const { socket, welcome } = join(tabs, FIRST);
+    const tab = tabOf(welcome.tab);
+    tabs.reply(tab, 'world:map', { k: 'reply', id: 7, r: { cells: [] } });
+    tabs.push(tab, { k: 'push', c: 'session:data', p: 'one' });
+    expect(socket.sent.at(-2)).toEqual({ n: 1, k: 'reply', id: 7, r: { cells: [] } });
+    expect(Object.keys(tab.traffic.take()).sort()).toEqual(['reply:world:map', 'session:data']);
+  });
+
   it('sends nothing again that the tab acknowledged', () => {
     const { tabs, tabOf } = open();
     const { socket, welcome } = join(tabs, FIRST);
