@@ -126,13 +126,13 @@ describe('when a portrait is asked for', () => {
   let enabled: boolean;
   let answer: PortraitResult;
 
-  /**
-   * Each keeper writes into its own test's lists. A keeper still finishing a draw after its test
-   * ended (its folder already removed) would otherwise say its ENOENT into the next test's list.
-   */
+  /** Every keeper a test made, so its folder goes only once their writes have landed. */
+  let made: PortraitKeeper[];
+
+  /** Each keeper writes into its own test's lists. */
   const keeper = () => {
     const [ownAsked, ownPublished, ownSaid] = [asked, published, said];
-    return new PortraitKeeper({
+    const one = new PortraitKeeper({
       source: {
         portraitOf: async (facts) => {
           ownAsked.push(facts);
@@ -145,6 +145,8 @@ describe('when a portrait is asked for', () => {
       publish: (view) => ownPublished.push(view),
       say: (message) => ownSaid.push(message)
     });
+    made.push(one);
+    return one;
   };
   /**
    * Polls `done` and fails the test after four seconds, inside vitest's default five. One second
@@ -166,8 +168,14 @@ describe('when a portrait is asked for', () => {
     said = [];
     enabled = true;
     answer = { kind: 'picture', bytes: PICTURE, type: 'image/webp' };
+    made = [];
   });
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // A draw writes the last portrait after it shows; removing the folder before that
+  // write landed failed with ENOTEMPTY (CI, 2026-11-03).
+  afterEach(async () => {
+    await Promise.all(made.map((one) => one.settled()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 
   it('asks once when the facts first complete, and not for the HP', async () => {
     const one = keeper();

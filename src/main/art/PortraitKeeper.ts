@@ -42,9 +42,11 @@ export class PortraitKeeper {
   /** The parts of the state the facts are made of, as last seen, so a line that moved none of them costs nothing. */
   private seen: readonly unknown[] = [];
   private disposed = false;
+  /** The read at start and the draw in flight, so a caller can wait for the disk to go quiet. */
+  private readonly working = new Set<Promise<void>>();
 
   constructor(private readonly deps: PortraitKeeperDeps) {
-    void this.showLast();
+    this.track(this.showLast());
   }
 
   current(): PortraitView {
@@ -80,6 +82,16 @@ export class PortraitKeeper {
     this.disposed = true;
   }
 
+  /** Resolves once no read, draw or write is in flight, including one a finished draw started. */
+  async settled(): Promise<void> {
+    while (this.working.size > 0) await Promise.allSettled(this.working);
+  }
+
+  private track(work: Promise<void>): void {
+    this.working.add(work);
+    void work.finally(() => this.working.delete(work));
+  }
+
   private consider(): void {
     const state = this.latest;
     if (state === null || this.inFlight || this.disposed) return;
@@ -98,10 +110,12 @@ export class PortraitKeeper {
     if (this.ledger.has(hash)) return;
     this.ledger.begin(hash);
     this.inFlight = true;
-    void this.draw(hash, () => this.pictureFor(facts, hash)).finally(() => {
-      this.inFlight = false;
-      this.consider();
-    });
+    this.track(
+      this.draw(hash, () => this.pictureFor(facts, hash)).finally(() => {
+        this.inFlight = false;
+        this.consider();
+      })
+    );
   }
 
   /** The kept picture for these facts, else the server's. */
