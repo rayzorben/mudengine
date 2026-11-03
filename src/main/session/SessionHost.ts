@@ -46,6 +46,7 @@ import type { RealmLoreView } from '../../shared/lore';
 import type { SpellLore } from '../../shared/spell-messages';
 import type { ShippedSentences } from '../../shared/sentences';
 import type { FightSimulator } from '../../shared/simulator';
+import type { SharedSheet } from '../../shared/peers';
 import { alsoTold, type FightRecord, type FightSink } from '../../shared/fights';
 import { partyRecap } from '../../shared/partyRecap';
 import { recapLines } from './partyRecap';
@@ -183,6 +184,8 @@ export interface SessionHostOptions {
   sentences?(): ShippedSentences;
   /** Where every session's fight trials run: the app's one worker pool (`SimulatorPool`). */
   simulator?: FightSimulator;
+  /** The fresh sheets other players share with a character (`Peers.sheetsFor`). */
+  peerSheets?(id: SessionId): readonly SharedSheet[];
   /**
    * Where what *this character* learns about the realm is kept.
    *
@@ -686,6 +689,7 @@ export class SessionHost {
         marks,
         sentences: this.options.sentences?.(),
         simulator: this.options.simulator,
+        peerSheets: () => this.options.peerSheets?.(id) ?? [],
         words: () => this.options.wordsFor(id),
         extensions: this.extensionsFor(id)
       }

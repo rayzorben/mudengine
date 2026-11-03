@@ -4,7 +4,7 @@ import { Blessings } from '../Blessings';
 import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import type { BlessingConfig } from '../../../shared/blessings';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 
@@ -43,18 +43,7 @@ function state(over: Partial<CharacterState> = {}, vitals: Partial<CharacterStat
   };
 }
 
-const member = (name: string, invited = false) => ({
-  name,
-  activity: null,
-  className: null,
-  health: 1,
-  invited,
-  vitals: null,
-  pool: null,
-  sheet: null,
-  mana: null,
-  rank: null
-});
+const member = (name: string, invited = false) => partyMember(name, { health: 1, invited });
 
 const party = (...names: string[]) => ({
   following: null,

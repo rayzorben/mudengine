@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PartyWait } from '../PartyWait';
 import { t } from '../../app/i18n';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { Block, BlockType } from '../../../shared/blocks';
 
@@ -140,18 +140,7 @@ describe('a leader waiting for its party', () => {
   });
 
   describe('for a member under Wait For Party Members', () => {
-    const member = (name: string, health: number | null) => ({
-      name,
-      className: null,
-      health,
-      mana: null,
-      rank: null,
-      activity: null,
-      invited: false,
-      vitals: null,
-      pool: null,
-      sheet: null
-    });
+    const member = (name: string, health: number | null) => partyMember(name, { health });
     const leading = (soul: number | null, here = ['Vaelor', 'Soul']): CharacterState => {
       const base = structuredClone(EMPTY_CHARACTER);
       return {

@@ -6,7 +6,7 @@ import type { Intent } from '../../automation/CommandQueue';
 import { FleeGoto } from '../FleeGoto';
 import { blockOf } from '../../../shared/__tests__/blocks';
 import type { BlockType } from '../../../shared/blocks';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
@@ -146,18 +146,7 @@ describe('FleeGoto', () => {
 
   /* Todo 61: MegaMUD's `@panic!`, the leader's word to the party it is leaving. */
   describe('leading a party', () => {
-    const member = {
-      name: 'Brakkle',
-      activity: null,
-      className: null,
-      health: 0.8,
-      invited: false,
-      vitals: null,
-      mana: null,
-      rank: null,
-      pool: null,
-      sheet: null
-    };
+    const member = partyMember('Brakkle', { health: 0.8 });
     const leading = (): CharacterState =>
       fighting(15, {
         name: 'Rayzor',

@@ -112,9 +112,11 @@ export class Sharing {
 
   /** The sheets `id`'s player accepted, fresh, from its own realm. */
   sheetsFor(id: SessionId): SharedSheet[] {
+    // Asked on every line a session acts on, so an unclaimed one reads no settings.
     const claim = this.claimed.get(id);
+    if (claim === undefined) return [];
     const session = this.deps.sessions().find((each) => each.id === id);
-    if (claim === undefined || session === undefined) return [];
+    if (session === undefined) return [];
     return this.deps.book.sheetsFor(claim.peer, acceptsOf(session.grants));
   }
 

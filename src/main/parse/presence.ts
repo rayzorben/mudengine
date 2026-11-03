@@ -10,9 +10,11 @@
  * of one is no party: `mudengine-wire` › `parts/character.md`.
  */
 import {
+  NO_AFFLICTIONS,
   NO_PARTY,
   ownGang,
   partyActivity,
+  partyMember,
   poolNamed,
   type Adventurer,
   type Alignment,
@@ -23,8 +25,10 @@ import {
 } from '../../shared/character';
 import { asAlignment } from '../../shared/alignment';
 import { parseRemoteReply } from '../../shared/remotes';
+import { newestSheets, type SharedSheet } from '../../shared/peers';
 import {
   observe,
+  playerKey,
   type PlayerRegistry,
   type PlayerVitals,
   type WornItem
@@ -60,29 +64,6 @@ export function alignmentOf(value: string | undefined): Alignment | null {
 export function percent(value: string | undefined): number | null {
   const parsed = figure(value);
   return parsed === null ? null : Math.min(1, Math.max(0, parsed / 100));
-}
-
-/**
- * A member the announcements added: a name, and nothing a listing would have
- * said. They keep the roster *approximately* true between listings, the way
- * arrival broadcasts keep the realm roster true, but carry no health — so a
- * member added this way has none until the next `party`. Null is the honest
- * answer and the card says so.
- */
-export function member(name: string, over: Partial<PartyMember> = {}): PartyMember {
-  return {
-    name,
-    className: null,
-    health: null,
-    mana: null,
-    pool: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: null,
-    sheet: null,
-    ...over
-  };
 }
 
 /** `Frontrank`, `Midrank`, `Backrank` — MajorMUD has the middle one. */
@@ -575,7 +556,8 @@ export function withPartyListing(
         activity: partyActivity(row['flag']),
         invited: row['invited'] !== undefined,
         vitals: listedVitals(held, health, mana, recall(name)),
-        sheet: kept?.sheet ?? null
+        sheet: kept?.sheet ?? null,
+        afflictions: kept?.afflictions ?? NO_AFFLICTIONS
       };
     })
     .filter((entry): entry is PartyMember => entry !== null);
@@ -638,6 +620,46 @@ export function withRemoteVitals(
   return { state: { ...s, party: { ...s.party, members } }, players };
 }
 
+/**
+ * The party rows filled from the sheets other players' clients share with
+ * this character (todo 20261031-1156-01): a member's conditions, and its
+ * numbers as `withRemoteVitals` puts them. Handed only fresh sheets from this
+ * character's realm (`Peers.sheetsFor`) and folded where the state is read,
+ * never kept, so a sheet that goes stale takes its conditions with it. A
+ * member with no sheet keeps what the listing said; the same state comes
+ * back when no sheet names a member.
+ */
+export function withPeerSheets(s: CharacterState, sheets: readonly SharedSheet[]): CharacterState {
+  if (sheets.length === 0 || s.party.members.length === 0) return s;
+  const newest = newestSheets(sheets);
+  let touched = false;
+  const members = s.party.members.map((held) => {
+    const shared = newest.get(playerKey(held.name));
+    if (shared === undefined) return held;
+    touched = true;
+    const { afflictions, vitals } = shared.sheet;
+    const known =
+      vitals !== null && vitals.hp !== null && vitals.hpMax !== null && vitals.hpMax > 0
+        ? { hp: vitals.hp, hpMax: vitals.hpMax, mana: vitals.mana, manaMax: vitals.manaMax }
+        : null;
+    return {
+      ...held,
+      afflictions: afflictions ?? NO_AFFLICTIONS,
+      ...(known === null
+        ? {}
+        : {
+            vitals: known,
+            health: known.hp / known.hpMax,
+            mana:
+              known.mana !== null && known.manaMax !== null && known.manaMax > 0
+                ? known.mana / known.manaMax
+                : held.mana
+          })
+    };
+  });
+  return touched ? { ...s, party: { ...s.party, members } } : s;
+}
+
 /** `You are following <leader>.` */
 export function withFollowing(
   s: CharacterState,
@@ -664,7 +686,7 @@ export function withInvited(s: CharacterState, player: string | undefined): Char
   if (!player || s.party.members.some((entry) => entry.name === player)) return null;
   return {
     ...s,
-    party: { ...s.party, members: [...s.party.members, member(player, { invited: true })] }
+    party: { ...s.party, members: [...s.party.members, partyMember(player, { invited: true })] }
   };
 }
 
@@ -689,7 +711,7 @@ export function withJoined(
       }
     };
   }
-  return { ...s, party: { ...s.party, members: [...s.party.members, member(player)] } };
+  return { ...s, party: { ...s.party, members: [...s.party.members, partyMember(player)] } };
 }
 
 /** The party ended (its leader left, or the server disbanded it), or one member left. */

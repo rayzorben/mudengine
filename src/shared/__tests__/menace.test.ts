@@ -16,7 +16,7 @@ import {
   type MenaceWeights
 } from '../menace';
 import type { MobAttack, MobCast, WorldSpell } from '../world';
-import { EMPTY_CHARACTER, type PartyMember } from '../character';
+import { EMPTY_CHARACTER, partyMember, type PartyMember } from '../character';
 
 /*
  * The prices `internal.yaml` ships with, written out so a test reads as the
@@ -109,18 +109,7 @@ describe('whether a blow lands', () => {
   });
 });
 
-const partyRow = (name: string): PartyMember => ({
-  name,
-  className: null,
-  health: null,
-  mana: null,
-  rank: 'front',
-  activity: null,
-  invited: false,
-  vitals: null,
-  pool: null,
-  sheet: null
-});
+const partyRow = (name: string): PartyMember => partyMember(name, { rank: 'front' });
 
 /*
  * What `Mob.DoCombat` adds that the sheet does not print (todo 00,

@@ -11,7 +11,7 @@ import {
   walkersThrough,
   type Candidate
 } from '../barrierHands';
-import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState, type PartyMember } from '../character';
 import type { Requirement } from '../world';
 
 /** The five a member's sheet carries that no choice here reads. */
@@ -86,18 +86,12 @@ describe('who goes', () => {
   });
 
   it('reads a member’s sheet and absolute hit points off the party record', () => {
-    const member: PartyMember = {
-      name: 'Rand',
+    const member: PartyMember = partyMember('Rand', {
       className: 'Thief',
       health: 1,
-      mana: null,
-      rank: null,
-      activity: null,
-      invited: false,
       vitals: { hp: 220, hpMax: 220, mana: null, manaMax: null },
-      pool: null,
       sheet: { ...SIX, strength: 60, level: 12, traps: 55, picklocks: 70 }
-    };
+    });
     const state: CharacterState = {
       ...structuredClone(EMPTY_CHARACTER),
       name: 'Vaelor',
@@ -113,18 +107,11 @@ describe('who goes', () => {
 });
 
 describe('the party a leader sends from', () => {
-  const rand: PartyMember = {
-    name: 'Rand',
+  const rand: PartyMember = partyMember('Rand', {
     className: 'Thief',
     health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: null,
-    pool: null,
     sheet: { ...SIX, strength: 60, level: 12, traps: 70, picklocks: 70 }
-  };
+  });
   const soul: PartyMember = { ...rand, name: 'Soul', sheet: null };
   const leading = (following: string | null = null): CharacterState => {
     const state = structuredClone(EMPTY_CHARACTER);

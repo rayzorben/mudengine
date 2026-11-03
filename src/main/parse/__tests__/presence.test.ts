@@ -11,6 +11,7 @@ import {
   withLeft,
   withGangListing,
   withPartyListing,
+  withPeerSheets,
   withRemoteVitals,
   withoutPlayer,
   raceAndClass,
@@ -26,6 +27,7 @@ import {
   type RoomOccupant
 } from '../../../shared/character';
 import { NO_PLAYERS } from '../../../shared/players';
+import { afflicted, sharedSheet } from '../../../shared/__tests__/sharedSheets';
 import { Classifier } from '../Classifier';
 
 /*
@@ -215,6 +217,69 @@ describe('the party', () => {
     const chat = withRemoteVitals(two, NO_PLAYERS, 'Soul', 'hello there', 6);
     expect(chat.state).toBeNull();
     expect(chat.players).toBe(NO_PLAYERS);
+  });
+});
+
+/*
+ * Todo 20261031-1156-01: a sharer's own client states its conditions and
+ * numbers, and they reach its party row where the state is read, never kept.
+ */
+describe('a shared sheet on a party row', () => {
+  const party = withPartyListing(
+    state({ name: 'Vaelor' }),
+    [
+      { name: 'Vaelor', health: '100' },
+      { name: 'Brakkle', health: '90' },
+      { name: 'Soul', health: '40' }
+    ],
+    false
+  )!;
+  const vitals = {
+    hp: 50,
+    hpMax: 200,
+    mana: 5,
+    manaMax: 20,
+    manaType: 'MA' as const,
+    resting: false,
+    meditating: false
+  };
+  const row = (s: CharacterState, name: string) => s.party.members.find((m) => m.name === name)!;
+
+  it("puts the sheet's conditions and numbers on its member, and on nobody else", () => {
+    const folded = withPeerSheets(party, [
+      sharedSheet('brakkle', { afflictions: afflicted('poisoned'), vitals })
+    ]);
+    const brakkle = row(folded, 'Brakkle');
+    expect(brakkle.afflictions.poisoned).toBe('yes');
+    expect(brakkle.afflictions.diseased).toBe('no');
+    expect(brakkle.vitals).toEqual({ hp: 50, hpMax: 200, mana: 5, manaMax: 20 });
+    expect(brakkle.health).toBe(0.25);
+    expect(brakkle.mana).toBe(0.25);
+    expect(row(folded, 'Soul')).toEqual(row(party, 'Soul'));
+    expect(row(party, 'Brakkle').afflictions.poisoned).toBe('unknown');
+  });
+
+  it('keeps the listing where the sheet knows nothing, and leaves conditions unknown', () => {
+    const folded = withPeerSheets(party, [sharedSheet('Brakkle')]);
+    const brakkle = row(folded, 'Brakkle');
+    expect(brakkle.health).toBe(0.9);
+    expect(brakkle.vitals).toBeNull();
+    expect(Object.values(brakkle.afflictions).every((each) => each === 'unknown')).toBe(true);
+  });
+
+  it('takes the newest of two sheets for one character', () => {
+    const folded = withPeerSheets(party, [
+      sharedSheet('Brakkle', { afflictions: afflicted('poisoned'), heardAt: 5, key: 'a' }),
+      sharedSheet('Brakkle', { afflictions: afflicted(), heardAt: 9, key: 'b' })
+    ]);
+    expect(row(folded, 'Brakkle').afflictions.poisoned).toBe('no');
+  });
+
+  it('hands the same state back when no sheet names a member', () => {
+    expect(withPeerSheets(party, [])).toBe(party);
+    expect(
+      withPeerSheets(party, [sharedSheet('Rand', { afflictions: afflicted('poisoned') })])
+    ).toBe(party);
   });
 });
 

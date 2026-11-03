@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   EMPTY_CHARACTER,
   NO_PARTY,
+  partyMember,
   type CharacterState,
   type PartyFight,
   type RoomOccupant
 } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { keepPartyCurrent } from '../partyUpkeep';
-import { member } from '../presence';
 
 /*
  * Todo 06: the Party card still said Durnan was resting and fighting a fierce
@@ -47,7 +47,7 @@ const fighting = (occupants: RoomOccupant[]): CharacterState => ({
   party: {
     ...NO_PARTY,
     following: 'Durnan',
-    members: [member('Durnan', { activity: { state: 'resting' } }), member('Festus')],
+    members: [partyMember('Durnan', { activity: { state: 'resting' } }), partyMember('Festus')],
     engaged: { Durnan: guard },
     threatened: { Durnan: { target: 'fierce decayed guard', at: 5 } }
   }

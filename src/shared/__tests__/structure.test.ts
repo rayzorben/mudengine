@@ -74,7 +74,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the timed passage, out whole (`TimedPassage`), as a look that lets go of a gone target came (2026-10-30).
   // Held as the session's combat switch came, by the connect comment condensed
   // (todo 20261102-1830-01).
-  'src/main/session/SessionManager.ts': 3285,
+  // Lowered by the grounded comment, condensed as the shared sheets' fold came (todo 20261031-1156-01).
+  'src/main/session/SessionManager.ts': 3284,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

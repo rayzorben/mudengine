@@ -6,7 +6,12 @@ import { HangUpWatch, MOB_ENGAGED_MS } from '../HangUp';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type FightSigns } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type FightSigns
+} from '../../../shared/character';
 import type { MobRule } from '../../../shared/mobRules';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { MEDITATE_ABILITY } from '../../../shared/abilities';
@@ -850,21 +855,8 @@ describe('with a threat in the room', () => {
 
 /* Sitting down because the leader has: out of combat, and `med` only with mana. */
 describe('resting with the leader', () => {
-  const member = (
-    name: string,
-    activity: { state: 'resting' } | { state: 'meditating' } | null
-  ) => ({
-    name,
-    activity,
-    className: null,
-    health: 1,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null,
-    mana: null,
-    rank: null
-  });
+  const member = (name: string, activity: { state: 'resting' } | { state: 'meditating' } | null) =>
+    partyMember(name, { activity, health: 1 });
   const together = (activity: { state: 'resting' } | { state: 'meditating' } | null) => ({
     following: 'Soul',
     members: [member('Vaelor', null), member('Soul', activity)],
@@ -1217,18 +1209,9 @@ describe('resting for a member under Manage Party Health', () => {
     party: {
       ...EMPTY_CHARACTER.party,
       following: null,
-      members: ['Vaelor', 'Soul'].map((name) => ({
-        name,
-        activity: null,
-        className: null,
-        health: name === 'Soul' ? soul : 1,
-        invited: false,
-        vitals: null,
-        pool: null,
-        sheet: null,
-        mana: null,
-        rank: null
-      }))
+      members: ['Vaelor', 'Soul'].map((name) =>
+        partyMember(name, { health: name === 'Soul' ? soul : 1 })
+      )
     },
     room: {
       ...EMPTY_CHARACTER.room,

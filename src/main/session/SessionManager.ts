@@ -93,6 +93,8 @@ import {
   type WorldSpell
 } from '../../shared/world';
 import { CharacterTracker } from '../parse/CharacterTracker';
+import { withPeerSheets } from '../parse/presence';
+import type { SharedSheet } from '../../shared/peers';
 import { Classifier } from '../parse/Classifier';
 import { actsOf, applyAct, readLine, type LineAct, type LineRead } from '../parse/lineActs';
 import { LineTokenizer, plainText } from '../net/LineTokenizer';
@@ -279,6 +281,8 @@ export interface SessionDeps {
   readonly extensions?: ExtensionDeps;
   /** Where fights' trials run: the app's workers; slices on this thread where absent. */
   readonly simulator?: FightSimulator;
+  /** Fresh sheets other players share with this character (`Peers.sheetsFor`); none where absent. */
+  readonly peerSheets?: () => readonly SharedSheet[];
 }
 
 /** A module on the session's list, and the slice of a reload it reads, where it reads one. */
@@ -505,6 +509,8 @@ export class SessionManager {
   private readonly carryOver: CarryOver;
   /** The timed passage the character stands in, said going in and coming out. */
   private readonly passage: TimedPassage;
+  /** What the modules act on: the tracker's state, shared sheets on its party (`withPeerSheets`). */
+  private readonly acting: () => CharacterState;
 
   constructor(
     private readonly sink: SessionSink,
@@ -524,6 +530,7 @@ export class SessionManager {
       shops = NO_SHOPS,
       sentences = NO_SHIPPED_SENTENCES,
       words = UNSTATED_WORDS,
+      peerSheets = () => [],
       marks = new MarkBook({ lines: DEFAULT_CONFIG.terminal.scrollback })
     } = deps;
     const notice: SessionSink['notice'] = (message, decision) => sink.notice(message, decision);
@@ -538,6 +545,7 @@ export class SessionManager {
       harm,
       (target) => notice(t('session.safety.targetGone', { target }))
     );
+    this.acting = () => withPeerSheets(this.tracker.current, peerSheets());
     this.records = new Records({ tracker: this.tracker, world, memory, finds, shops }, sink);
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
     // Before `useRealm`, which tells it the family is unread again.
@@ -1273,7 +1281,7 @@ export class SessionManager {
       stats: this.statsBaseline,
       // A member's heal, decided now (a status line may be far off), under the heal's own guard.
       healRequested: (from) => {
-        const state = this.tracker.current;
+        const state = this.acting();
         this.heal.request(from, state);
         if (!this.grounded.standsDown(state) && !this.travel.isRetreating())
           this.heal.onCharacter(state);
@@ -1307,7 +1315,8 @@ export class SessionManager {
         realmSpell,
         gate: this.castRound,
         notice,
-        family: () => this.vocabulary.family
+        family: () => this.vocabulary.family,
+        sheets: peerSheets
       })
     );
     this.restSpell = new RestSpell(automation, this.queue, {
@@ -2821,7 +2830,7 @@ export class SessionManager {
     // architecture exists to prevent. The registry is its own (todo 730).
     this.publisher.players();
     if (changed) {
-      const state = this.tracker.current;
+      const state = this.acting();
       this.publishCharacter();
       // Walking out to the menu is a character leaving: said before the modules
       // below read the state, or half of them act once on a character gone.
@@ -2838,22 +2847,12 @@ export class SessionManager {
       this.travel.pickUpAfterLoss(state);
       this.extensions.onCharacter(state);
       /*
-       * **And nothing at all while the character is on the ground** (todo 20).
-       *
-       * `You drop to the ground!` is the server saying every command from here
-       * is refused (`Player.MortallyWounded` guards the top of `RestCommand`,
-       * `HideCommand`, `BashCommand`, the cast path and the rest), and the
-       * client went on proposing: *Retreating ne, the way we came: health at
-       * -8%*, sent, refused, twice in one run. Every threshold below is a
-       * share of maximum and they all keep saying *act, urgently* the further
-       * past zero the figure goes.
-       *
-       * An early return rather than a queue hold, because the queue's hold is
-       * one slot and the stat screen owns it — two holds in one slot would
-       * release each other. This is also the smaller claim: the player's own
-       * keystrokes still go out, exactly as they do under the stat screen's
-       * hold, and the only thing standing down is the automation that would
-       * spend the budget on refusals. Why quiet helps: `Grounded`.
+       * Nothing while the character is on the ground (todo 20): `You drop to
+       * the ground!` means the server refuses every command (`Player.
+       * MortallyWounded` guards rest, hide, bash and casting), and each threshold
+       * below says act harder the further past zero health goes. An early
+       * return rather than a queue hold, since the stat screen owns the queue's
+       * one hold slot; the player's own keystrokes still go out. See `Grounded`.
        */
       if (this.grounded.standsDown(state)) return;
       this.errands.onCharacter(state, block);
@@ -3072,7 +3071,7 @@ export class SessionManager {
    * a tick with nothing else being decided.
    */
   private reconsider(): void {
-    const state = this.tracker.current;
+    const state = this.acting();
     if (state.phase !== 'in-game') return;
     // Before the retreat's early return: a running escape is a step owed, and
     // its probe is the one that most needs to go out on time.

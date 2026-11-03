@@ -5,7 +5,12 @@ import { PartyRejoin } from '../PartyRejoin';
 import { Remotes } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type RoomOccupant
+} from '../../../shared/character';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { asUnderway, type CarriedParty } from '../../../shared/underway';
 import type { Block } from '../../../shared/blocks';
@@ -52,18 +57,7 @@ const occupant = (name: string): RoomOccupant => ({
   free: false
 });
 
-const row = (name: string) => ({
-  name,
-  className: null,
-  health: 1,
-  mana: null,
-  rank: null,
-  activity: null,
-  invited: false,
-  vitals: null,
-  pool: null,
-  sheet: null
-});
+const row = (name: string) => partyMember(name, { health: 1 });
 
 /** Rayzor in room `room` with `here`; `members` joined, or following `following`. */
 function state(

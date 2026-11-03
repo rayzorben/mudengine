@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState, type PartyMember } from '../character';
 import { healTargets, planHeal, relief, type HealPlanInput, type HealTarget } from '../healplan';
 import type { ProwessSheet } from '../prowess';
 import type { WorldSpell } from '../world';
@@ -170,19 +170,8 @@ describe('one heal or a party heal', () => {
 });
 
 describe('who a heal could reach', () => {
-  const member = (name: string, health: number | null, over: Partial<PartyMember> = {}) => ({
-    name,
-    className: null,
-    health,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null,
-    ...over
-  });
+  const member = (name: string, health: number | null, over: Partial<PartyMember> = {}) =>
+    partyMember(name, { health, ...over });
   const state = (members: PartyMember[]): CharacterState => ({
     ...structuredClone(EMPTY_CHARACTER),
     name: 'Vaelor',

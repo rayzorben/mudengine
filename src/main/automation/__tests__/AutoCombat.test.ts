@@ -21,6 +21,7 @@ import {
 } from '../../../shared/config';
 import {
   EMPTY_CHARACTER,
+  partyMember,
   type Adventurer,
   type CharacterState,
   type RoomOccupant
@@ -3598,18 +3599,7 @@ describe('a typed break', () => {
  * stands, and the target has to be a monster still standing in the room.
  */
 describe('fighting what the leader fights', () => {
-  const member = (name: string) => ({
-    name,
-    activity: null,
-    className: null,
-    health: 1,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null,
-    mana: null,
-    rank: null
-  });
+  const member = (name: string) => partyMember(name, { health: 1 });
   const party = {
     ...DEFAULT_CONFIG.automation.party,
     assistLeader: true,
@@ -3722,18 +3712,7 @@ describe('fighting what the leader fights', () => {
 });
 
 describe('defending the party', () => {
-  const member = (name: string) => ({
-    name,
-    activity: null,
-    className: null,
-    health: 1,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null,
-    mana: null,
-    rank: null
-  });
+  const member = (name: string) => partyMember(name, { health: 1 });
   const party = {
     ...DEFAULT_CONFIG.automation.party,
     assistLeader: false,
@@ -5358,18 +5337,7 @@ describe('a weapon that cannot hurt the monster', () => {
  * the fight's own attack at their monster, and nothing else is sent for it.
  */
 describe('attacking last', () => {
-  const member = (name: string) => ({
-    name,
-    activity: null,
-    className: null,
-    health: 1,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null,
-    mana: null,
-    rank: null
-  });
+  const member = (name: string) => partyMember(name, { health: 1 });
   const fighting = (target: string | null = 'giant rat'): CharacterState =>
     state({
       inCombat: target !== null,

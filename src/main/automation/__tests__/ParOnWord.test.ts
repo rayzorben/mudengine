@@ -5,9 +5,8 @@ import type { Intent, Offered } from '../CommandQueue';
 import { ParOnWord } from '../ParOnWord';
 import { CONFIG } from '../walk/__tests__/walking';
 import { DEFAULT_CONFIG } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
-import { member } from '../../parse/presence';
 
 const PAR = DEFAULT_CONFIG.automation.onPartyChange;
 const AGAIN = DEFAULT_INTERNAL.tuning.remotes.parOnWordMs;
@@ -20,7 +19,7 @@ const leading = (health: number | null): CharacterState => {
     name: 'Festus',
     party: {
       ...base.party,
-      members: [member('Festus', { health: 1 }), member('Brackle', { health })]
+      members: [partyMember('Festus', { health: 1 }), partyMember('Brackle', { health })]
     }
   };
 };

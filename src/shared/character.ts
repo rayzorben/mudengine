@@ -1195,6 +1195,33 @@ export interface PartyMember {
    * Kept across listings, as `vitals` is.
    */
   sheet: MemberSheet | null;
+  /**
+   * The member's conditions as their own client shares them through the peer
+   * gateway (todo 20261031-1156-01), from a fresh sheet only. Every condition
+   * is `unknown` otherwise: the listing's `P` is `activity`, a separate fact.
+   */
+  afflictions: Afflictions;
+}
+
+/**
+ * A party row that says nothing but the name: a member the announcements
+ * added, or a test's. Every fact is unknown until a listing or a sheet says it.
+ */
+export function partyMember(name: string, over: Partial<PartyMember> = {}): PartyMember {
+  return {
+    name,
+    className: null,
+    health: null,
+    mana: null,
+    pool: null,
+    rank: null,
+    activity: null,
+    invited: false,
+    vitals: null,
+    sheet: null,
+    afflictions: NO_AFFLICTIONS,
+    ...over
+  };
 }
 
 /**

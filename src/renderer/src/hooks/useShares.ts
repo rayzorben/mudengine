@@ -8,10 +8,10 @@ import { useEffect, useState } from 'react';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import { NO_SHARES, type ShareView } from '@shared/peers';
 
-export function useShares(
-  api: Pick<IpcApi, 'shares' | 'onShares'>,
-  session: SessionId | null
-): ShareView {
+/** The bridge calls sharing is read through. */
+export type SharesApi = Pick<IpcApi, 'shares' | 'onShares'>;
+
+export function useShares(api: SharesApi, session: SessionId | null): ShareView {
   const [view, setView] = useState<ShareView>(NO_SHARES);
   useEffect(() => {
     setView(NO_SHARES);

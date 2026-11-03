@@ -3,10 +3,12 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import { t } from '../lib/i18n';
 import { ago, AGO_GRAIN_SECONDS, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
+import { useShares, type SharesApi } from '../hooks/useShares';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import { RoomName } from './EntityName';
+import SharedCharacters from './SharedCharacters';
 import type { Facet } from './ListTools';
 import Dot from './viz/Dot';
 import Histogram from './viz/Histogram';
@@ -31,6 +33,8 @@ export interface PlayersCardProps extends CardChrome {
   onSelect(name: string, anchor: PopoverAnchor): void;
   /** Opens the route panel at a person's last room. Null on a pinned float, which cannot. */
   goToRoom?: ((room: string) => void) | null;
+  /** The characters other players share with this one, read and followed here (`SharedCharacters`). */
+  shares: SharesApi;
 }
 
 /**
@@ -122,9 +126,11 @@ function PlayersCard({
   subject,
   onSelect,
   goToRoom,
+  shares,
   ...chrome
 }: PlayersCardProps) {
   const players = useMemo(() => knownPlayers(registry), [registry]);
+  const { sheets } = useShares(shares, session);
   /*
    * The ages are this card's own clock, since nothing it is handed moves on a
    * status line (`mudengine-ui` › *a number that ticks is not state*): read
@@ -258,6 +264,7 @@ function PlayersCard({
       paned
       title={t('cards.players.title')}
     >
+      <SharedCharacters onSelect={onSelect} sheets={sheets} />
       {/*
         Large, how the levels a gang list stated spread, in bands of five:
         whether the people about are above this character or below it.

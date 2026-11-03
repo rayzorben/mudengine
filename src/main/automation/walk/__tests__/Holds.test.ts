@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Holds, type HoldsWalk } from '../Holds';
 import { WalkClock } from '../clock';
 import { t } from '../../../app/i18n';
-import { NO_AFFLICTIONS, type RoomOccupant } from '../../../../shared/character';
+import { NO_AFFLICTIONS, partyMember, type RoomOccupant } from '../../../../shared/character';
 import { classifyOccupant } from '../../../../shared/mobs';
 import { AFFLICTION_HOLDS } from '../../../../shared/walk';
 import { DEFAULT_INTERNAL } from '../../../../shared/internal';
@@ -374,18 +374,7 @@ describe('the floor read waking the walk', () => {
  * stepped on, since nothing put Festus in a fight.
  */
 describe('a leader standing while the party fights', () => {
-  const killa = {
-    name: 'Killa',
-    className: null,
-    health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null
-  };
+  const killa = partyMember('Killa', { health: 1 });
   const skeleton = classifyOccupant('angry blood skeleton', {
     players: new Set<string>(),
     mob: () => ({ disposition: 'hostile', uncertain: false, costly: 'never' })

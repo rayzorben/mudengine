@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMPTY_CHARACTER,
-  membersBelow,
   joinedTheParty,
+  membersBelow,
+  partyMember,
   ratio,
   vitalLevel,
   type CharacterState,
@@ -71,18 +72,8 @@ describe('vitalLevel', () => {
 });
 
 describe('joinedTheParty', () => {
-  const member = (name: string, invited = false): PartyMember => ({
-    name,
-    className: null,
-    health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited,
-    vitals: null,
-    pool: null,
-    sheet: null
-  });
+  const member = (name: string, invited = false): PartyMember =>
+    partyMember(name, { health: 1, invited });
 
   const withParty = (...members: PartyMember[]): CharacterState => ({
     ...EMPTY_CHARACTER,
@@ -116,18 +107,8 @@ describe('joinedTheParty', () => {
 
 /* Todo 831: whom a leader waits for. */
 describe('membersBelow', () => {
-  const member = (name: string, health: number | null, invited = false) => ({
-    name,
-    className: null,
-    health,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited,
-    vitals: null,
-    pool: null,
-    sheet: null
-  });
+  const member = (name: string, health: number | null, invited = false) =>
+    partyMember(name, { health, invited });
   const party = (members: ReturnType<typeof member>[], here: string[]): CharacterState => {
     const state = structuredClone(EMPTY_CHARACTER);
     return {

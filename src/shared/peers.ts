@@ -238,6 +238,20 @@ export interface SharedSheet {
   readonly heardAt: number;
 }
 
+/**
+ * Each sharer's newest sheet, by `playerKey`: two installs may share one
+ * character under two keys, and the one heard last speaks for it.
+ */
+export function newestSheets(sheets: readonly SharedSheet[]): Map<string, SharedSheet> {
+  const newest = new Map<string, SharedSheet>();
+  for (const shared of sheets) {
+    const key = playerKey(shared.from.name);
+    const held = newest.get(key);
+    if (held === undefined || held.heardAt < shared.heardAt) newest.set(key, shared);
+  }
+  return newest;
+}
+
 /** Whether the gateway's socket is open, being dialled, or not wanted. */
 export type ShareLink = 'off' | 'connecting' | 'connected';
 

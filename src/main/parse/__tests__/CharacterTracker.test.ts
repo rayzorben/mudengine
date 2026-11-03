@@ -14,7 +14,7 @@ import { parseExit } from '../room';
 import { Classifier } from '../Classifier';
 import { actsOf, applyAct, readLine } from '../lineActs';
 import type { StreamLine } from '../../../shared/types';
-import type { AbilitySums, PartyMember } from '../../../shared/character';
+import { partyMember, type AbilitySums, type PartyMember } from '../../../shared/character';
 import {
   learn,
   learnSlot,
@@ -3403,18 +3403,7 @@ describe('the party this character travels with', () => {
     feed('Thorn started to follow you.');
     const thorn = tracker.current.party.members.find((member) => member.name === 'Thorn');
     // The announcement carries no health, and null is the honest answer.
-    expect(thorn).toEqual({
-      name: 'Thorn',
-      className: null,
-      health: null,
-      mana: null,
-      pool: null,
-      rank: null,
-      activity: null,
-      invited: false,
-      vitals: null,
-      sheet: null
-    });
+    expect(thorn).toEqual(partyMember('Thorn'));
   });
 
   /*
@@ -3430,20 +3419,7 @@ describe('the party this character travels with', () => {
     feed('[HP=101/KAI=5]:');
     feed('You have invited Soul to follow you.');
     // Before any listing: the offer is the whole roster, and it is still a card.
-    expect(tracker.current.party.members).toEqual([
-      {
-        name: 'Soul',
-        className: null,
-        health: null,
-        mana: null,
-        pool: null,
-        rank: null,
-        activity: null,
-        invited: true,
-        vitals: null,
-        sheet: null
-      }
-    ]);
+    expect(tracker.current.party.members).toEqual([partyMember('Soul', { invited: true })]);
 
     feed('The following people are in your travel party:');
     feed('  Vaelor                        (Mystic)     [M:100%] [H:100%]  - Frontrank');
@@ -3452,15 +3428,7 @@ describe('the party this character travels with', () => {
     const [vaelor, soul] = tracker.current.party.members;
     expect(vaelor).toMatchObject({ name: 'Vaelor', rank: 'front', invited: false });
     // The row carries a class and nothing else it has not been told.
-    expect(soul).toMatchObject({
-      name: 'Soul',
-      className: 'Warrior',
-      health: null,
-      rank: null,
-      invited: true,
-      vitals: null,
-      sheet: null
-    });
+    expect(soul).toMatchObject(partyMember('Soul', { className: 'Warrior', invited: true }));
   });
 
   /*
@@ -6846,30 +6814,20 @@ describe('loot and listings from other realms', () => {
       '[HP=100]:'
     ]);
     expect(t.current.party.members).toEqual([
-      {
-        name: 'Slayer',
+      partyMember('Slayer', {
         className: 'Gypsy',
         health: 0.76,
         mana: 0.81,
         pool: 'MA',
-        rank: 'mid',
-        activity: null,
-        invited: false,
-        vitals: null,
-        sheet: null
-      },
-      {
-        name: 'Dungeon',
+        rank: 'mid'
+      }),
+      partyMember('Dungeon', {
         className: 'Paladin',
         health: 0.84,
         mana: 0.68,
         pool: 'MA',
-        rank: 'front',
-        activity: null,
-        invited: false,
-        vitals: null,
-        sheet: null
-      }
+        rank: 'front'
+      })
     ]);
   });
 

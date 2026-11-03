@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PartyMember } from '../character';
+import { partyMember, type PartyMember } from '../character';
 import type { SpotMob } from '../hunting';
 import {
   partyFighters,
@@ -14,18 +14,10 @@ import {
 /* Todo 152: the hunting grounds priced with every member of the party fighting. */
 
 function member(name: string, hpMax: number | null): PartyMember {
-  return {
-    name,
-    className: null,
+  return partyMember(name, {
     health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: hpMax === null ? null : { hp: hpMax, hpMax, mana: null, manaMax: null },
-    pool: null,
-    sheet: null
-  };
+    vitals: hpMax === null ? null : { hp: hpMax, hpMax, mana: null, manaMax: null }
+  });
 }
 
 const ORC: SpotMob = {

@@ -1818,6 +1818,7 @@ function createHost(): SessionHost {
       lapIndexes.delete(id);
       peers?.forget(id);
     },
+    peerSheets: (id) => peers?.sheetsFor(id) ?? [],
     characterSeen: (id, state) => {
       art?.portraits.observe(id, state);
       art?.rooms.observe(id, state);

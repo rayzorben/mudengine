@@ -37,6 +37,7 @@ import type { Find } from '@shared/finds';
 import type { GearPick } from '@shared/gearTrip';
 import type { HuntingRoom } from '@shared/hunting';
 import type { RoomArtApi } from './useRoomArt';
+import type { SharesApi } from './useShares';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
 import type { MapLoader } from '@shared/map';
@@ -96,6 +97,8 @@ export interface CardContext {
   walkPage(paging: number, index: number): ReturnType<IpcApi['walkPage']>;
   /** The room pictures main holds, read and followed per character by the Room card. */
   roomArt: RoomArtApi;
+  /** What other players share with this character, read and followed by the Players card. */
+  shares: SharesApi;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
@@ -282,6 +285,8 @@ export type CardApi = Pick<
   | 'walkPage'
   | 'roomArt'
   | 'onRoomArt'
+  | 'shares'
+  | 'onShares'
   | 'lookup'
   | 'questBook'
   | 'questErrand'
@@ -636,6 +641,7 @@ export function useCardContext({
         walkPage: bound.walkPage,
         // The bridge itself: the session is the card's, and the bridge never changes.
         roomArt: api,
+        shares: api,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
         peekRoom: shown ? peekRoom : null,

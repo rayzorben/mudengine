@@ -7,10 +7,14 @@ import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../
 import {
   EMPTY_CHARACTER,
   partyActivity,
+  partyMember,
+  type Afflictions,
   type CharacterState,
   type PartyMember
 } from '../../../shared/character';
+import type { SharedSheet } from '../../../shared/peers';
 import type { RealmFamily } from '../../../shared/realm';
+import { afflicted, sharedSheet } from '../../../shared/__tests__/sharedSheets';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
@@ -24,18 +28,12 @@ const spells: SpellsConfig = {
   cures: { ...DEFAULT_CONFIG.automation.spells.cures, poison: 'cure poison' }
 };
 
-const member = (name: string, flag: string | null): PartyMember => ({
-  name,
-  className: null,
-  health: 1,
-  mana: null,
-  rank: 'front',
-  activity: flag === null ? null : partyActivity(flag),
-  invited: false,
-  vitals: null,
-  pool: null,
-  sheet: null
-});
+const member = (name: string, flag: string | null): PartyMember =>
+  partyMember(name, {
+    health: 1,
+    rank: 'front',
+    activity: flag === null ? null : partyActivity(flag)
+  });
 
 function state(...members: PartyMember[]): CharacterState {
   const base = structuredClone(EMPTY_CHARACTER);
@@ -184,5 +182,83 @@ describe('freeing a held party member', () => {
     cures.configure({ ...freeing, healParty: true }, true);
     cures.onCharacter(standing([member('Killa', null)], ['Killa']));
     expect(sent).toEqual(['freedom Killa']);
+  });
+});
+
+/*
+ * Todo 20261031-1156-01: a member's shared sheet joins the listing's `P`, and
+ * a sharer outside the party is cured while the room's own list shows them.
+ */
+describe('curing from a shared sheet', () => {
+  const curing: SpellsConfig = {
+    ...spells,
+    cures: { ...spells.cures, disease: 'cure disease' }
+  };
+  let sheets: SharedSheet[];
+  beforeEach(() => {
+    sheets = [];
+  });
+  const carer = (config: SpellsConfig = curing): PartyCures =>
+    new PartyCures(config, true, {
+      queue,
+      realmSpell: () => null,
+      family: () => family,
+      sheets: () => sheets
+    });
+  const sick = (name: string, ...names: (keyof Afflictions)[]): PartyMember =>
+    partyMember(name, { health: 1, afflictions: afflicted(...names) });
+  const inRoom = (s: CharacterState, ...here: string[]): CharacterState => ({
+    ...s,
+    room: { ...s.room, occupants: here.map((name) => ({ name, kind: 'player' }) as never) }
+  });
+
+  it('cures a member its sheet says is poisoned on stock MajorMUD, which prints no P', () => {
+    family = 'majormud';
+    const cures = carer();
+    // Positive control for the absence: the sheet saying nothing, the member is left alone.
+    cures.onCharacter(state(member('Soul', null)));
+    expect(sent).toEqual([]);
+    cures.onCharacter(state(sick('Soul', 'poisoned')));
+    expect(sent).toEqual(['cure poison Soul']);
+  });
+
+  it("keeps GreaterMUD's P where the sheet says the member is not poisoned", () => {
+    carer().onCharacter(
+      state(partyMember('Soul', { activity: partyActivity('P'), afflictions: afflicted() }))
+    );
+    expect(sent).toEqual(['cure poison Soul']);
+  });
+
+  it('cures disease where the sheet says it', () => {
+    carer().onCharacter(state(sick('Soul', 'diseased')));
+    expect(sent).toEqual(['cure disease Soul']);
+  });
+
+  it('cures a sharer outside the party only while the room lists them here', () => {
+    const cures = carer();
+    // The sheet's own room is this one; the room's list does not show Brakkle.
+    sheets = [
+      sharedSheet('Brakkle', {
+        afflictions: afflicted('poisoned'),
+        room: { map: 1, number: 1, name: 'Town Square', candidates: [] }
+      })
+    ];
+    cures.onCharacter(inRoom(state(), 'Yang'));
+    expect(sent).toEqual([]);
+    // Positive control: the room lists Brakkle, and the same sheet is cured.
+    cures.onCharacter(inRoom(state(), 'Yang', 'Brakkle'));
+    expect(sent).toEqual(['cure poison Brakkle']);
+    expect(kinds).toEqual(['cure-party']);
+  });
+
+  it('cures nobody outside the party with Heal Party off', () => {
+    sheets = [sharedSheet('Brakkle', { afflictions: afflicted('poisoned') })];
+    const cures = carer({ ...curing, healParty: false });
+    cures.onCharacter(inRoom(state(), 'Brakkle'));
+    expect(sent).toEqual([]);
+    // Positive control: switched on, the same sharer is cured.
+    cures.configure(curing, true);
+    cures.onCharacter(inRoom(state(), 'Brakkle'));
+    expect(sent).toEqual(['cure poison Brakkle']);
   });
 });

@@ -13749,6 +13749,39 @@ tr:hover .row-action.worn,
   height: 32px;
 }
 
+/* The characters shared with this one, over the listing: a pane of its own
+   that scrolls inside itself, so the card keeps its size as sharers come. */
+.shared-characters {
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.shared-characters h4 {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: normal;
+  margin: 0 0 3px;
+}
+
+.shared-characters ul {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shared-characters li {
+  align-items: baseline;
+  column-gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+}
+
 /*
  * A name is the last thing to shorten: on a narrow table (under 290px of
  * content, the Realm card's measure) the level and class give up their

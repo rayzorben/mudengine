@@ -5,7 +5,12 @@ import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type PartyMember
+} from '../../../shared/character';
 import type { WorldSpell } from '../../../shared/world';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 
@@ -21,18 +26,7 @@ const spells = (over: Partial<SpellsConfig> = {}): SpellsConfig => ({
   healMinMana: 0,
   ...over
 });
-const member = (name: string, health: number | null): PartyMember => ({
-  name,
-  activity: null,
-  className: null,
-  health,
-  invited: false,
-  vitals: null,
-  pool: null,
-  sheet: null,
-  mana: null,
-  rank: null
-});
+const member = (name: string, health: number | null): PartyMember => partyMember(name, { health });
 function state(
   vitals: Partial<CharacterState['vitals']>,
   members: PartyMember[] = []

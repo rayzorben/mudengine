@@ -9,6 +9,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import {
   EMPTY_CHARACTER,
   partyActivity,
+  partyMember,
   type CharacterState,
   type PartyMember,
   type RoomOccupant
@@ -1065,18 +1066,7 @@ describe('letting @kill, @hangup, @relog and @panic! through', () => {
 
 /* Todo 118: a changed @stats sheet goes out under the gate its first answer did. */
 describe('sending a changed @stats sheet on', () => {
-  const member = {
-    name: 'Rand',
-    className: null,
-    health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null
-  };
+  const member = partyMember('Rand', { health: 1 });
   const atLevel = (level: number): CharacterState =>
     who({
       progress: {
@@ -1666,18 +1656,7 @@ describe('the gate: who may ask, and for what', () => {
     remotes: { ...grant({}).remotes, party: names as never }
   });
 
-  const member = (name: string, invited = false) => ({
-    name,
-    className: null,
-    health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited,
-    vitals: null,
-    pool: null,
-    sheet: null
-  });
+  const member = (name: string, invited = false) => partyMember(name, { health: 1, invited });
 
   const withParty = (...members: ReturnType<typeof member>[]): Partial<CharacterState> => ({
     party: { ...EMPTY_CHARACTER.party, members }
@@ -2237,18 +2216,7 @@ describe('talking to another one of these clients', () => {
  * room say most of the corpus shows (`Kindred says "@heal"`, captures/167).
  */
 describe('@heal', () => {
-  const partyMember = (name: string, invited = false) => ({
-    name,
-    className: null,
-    health: 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited,
-    vitals: null,
-    pool: null,
-    sheet: null
-  });
+  const row = (name: string, invited = false) => partyMember(name, { health: 1, invited });
   // Known to be seen, so the ask is the room say; `hidden` below covers the rest.
   const inParty = (hp: number | null, ...others: string[]): CharacterState =>
     who({
@@ -2256,7 +2224,7 @@ describe('@heal', () => {
       vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100 },
       party: {
         ...EMPTY_CHARACTER.party,
-        members: [partyMember('Vaelor'), ...others.map((name) => partyMember(name))]
+        members: [row('Vaelor'), ...others.map((name) => row(name))]
       }
     });
   const asking = (below: number, over: Partial<AutomationConfig> = {}): AutomationConfig => ({
@@ -2394,7 +2362,7 @@ describe('@heal', () => {
     peers.onCharacter(
       who({
         vitals: { ...EMPTY_CHARACTER.vitals, hp: 10, hpMax: 100 },
-        party: { ...EMPTY_CHARACTER.party, members: [partyMember('Rend', true)] }
+        party: { ...EMPTY_CHARACTER.party, members: [row('Rend', true)] }
       })
     );
     peers.configure(asking(0));
@@ -2742,18 +2710,8 @@ describe('party pacing', () => {
       }
     );
   };
-  const member = (name: string, health: number | null): PartyMember => ({
-    name,
-    className: null,
-    health,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null
-  });
+  const member = (name: string, health: number | null): PartyMember =>
+    partyMember(name, { health });
   it('walks on through @wait under Ignore @wait If Leading, and says so', () => {
     make({ ignoreWait: true }).onBlock(said('conversation-telepath', 'Soul', '@wait'), who());
     expect(paced).toEqual([]);
@@ -3073,18 +3031,7 @@ describe('a held member: @held and @comeback', () => {
     ignoring.onBlock(said('conversation-telepath', 'Soul', '@held'), who());
     expect(paced).toEqual([]);
     const managing = make({ party: { ...config.party, manageParty: true } });
-    const soul = {
-      name: 'Soul',
-      className: null,
-      health: 0.9,
-      mana: null,
-      rank: null,
-      activity: null,
-      invited: false,
-      vitals: null,
-      pool: null,
-      sheet: null
-    };
+    const soul = partyMember('Soul', { health: 0.9 });
     const leading = who({
       party: { engaged: {}, threatened: {}, following: null, members: [soul] }
     });

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_CHARACTER, NO_PARTY, type CharacterState } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  NO_PARTY,
+  partyMember,
+  type CharacterState
+} from '../../../shared/character';
 import { claimedBy, engagedBy, threatenedBy, vouchedFor } from '../engagements';
-import { member } from '../presence';
 
 /*
  * Out of the tracker with todo 723, where each guard was reached only through
@@ -14,7 +18,7 @@ import { member } from '../presence';
 const party = (): CharacterState => ({
   ...structuredClone(EMPTY_CHARACTER),
   name: 'Vaelor',
-  party: { ...NO_PARTY, members: [member('Soul'), member('Rand', { invited: true })] }
+  party: { ...NO_PARTY, members: [partyMember('Soul'), partyMember('Rand', { invited: true })] }
 });
 
 describe('who a blow is from', () => {

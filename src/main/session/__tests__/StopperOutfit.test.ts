@@ -5,7 +5,12 @@ import { t } from '../../app/i18n';
 import type { StopperAnswer } from '../../automation/PartyStoppers';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { Block } from '../../../shared/blocks';
-import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type PartyMember
+} from '../../../shared/character';
 import { chargedInCopper } from '../../../shared/coins';
 import { wireItem } from '../../../shared/entities';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
@@ -25,18 +30,7 @@ const LAUNCH = {
 };
 const RAFT_COPPER = 300;
 
-const member = (name: string): PartyMember => ({
-  name,
-  className: null,
-  health: 1,
-  mana: null,
-  rank: null,
-  activity: null,
-  invited: false,
-  vitals: null,
-  pool: null,
-  sheet: null
-});
+const member = (name: string): PartyMember => partyMember(name, { health: 1 });
 
 /** Rayzor leading Brakkle, at the pier with some copper, the pack listed. */
 function leading(

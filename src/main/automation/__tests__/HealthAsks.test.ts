@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { HealthAsks } from '../HealthAsks';
 import { CONFIG } from '../walk/__tests__/walking';
 import type { AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
-import { member } from '../../parse/presence';
 
 /* Todo 142: a member is asked `@health` on a join, and once on first showing in a listing. */
 const party = (names: string[], following: string | null = null): CharacterState => {
@@ -17,8 +16,8 @@ const party = (names: string[], following: string | null = null): CharacterState
       ...base.party,
       following,
       members: [
-        member('Festus', { health: 1 }),
-        ...names.map((name) => member(name, { health: 1 }))
+        partyMember('Festus', { health: 1 }),
+        ...names.map((name) => partyMember(name, { health: 1 }))
       ]
     }
   };

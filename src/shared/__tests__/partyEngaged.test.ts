@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { freshSighting, partyFightHere } from '../partyEngaged';
-import { EMPTY_CHARACTER, type CharacterState, type Party, type RoomOccupant } from '../character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type Party,
+  type RoomOccupant
+} from '../character';
 import { classifyOccupant } from '../mobs';
 
 const mobNamed = (name: string): RoomOccupant =>
@@ -12,18 +18,7 @@ const mobNamed = (name: string): RoomOccupant =>
 
 const FRESH = 60_000;
 const NOW = 1_000_000;
-const killa = {
-  name: 'Killa',
-  className: null,
-  health: 1,
-  mana: null,
-  rank: null,
-  activity: null,
-  invited: false,
-  vitals: null,
-  pool: null,
-  sheet: null
-};
+const killa = partyMember('Killa', { health: 1 });
 
 function standing(party: Partial<Party>, occupants = ['small blood skeleton']): CharacterState {
   const state = structuredClone(EMPTY_CHARACTER);

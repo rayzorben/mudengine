@@ -13,6 +13,7 @@ import {
 import { experienceOf, workedOut, type ExperienceLevel } from '@shared/experience';
 import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
+import { afflictedWords } from '../lib/afflictions';
 import { t } from '../lib/i18n';
 import { levelWord, meterValue } from '../lib/vitals';
 import EntityName, { type Inspect } from './EntityName';
@@ -172,21 +173,9 @@ function VitalsCard({
    * `unknown` shows nothing at all: nobody having tried to sneak is not a
    * condition, and a badge saying so would be chrome.
    */
-  /*
-   * Five literal `t()` calls rather than a lookup keyed on the field name:
-   * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic
-   * key would be an unexempted dynamic call and a key nothing is seen to read.
-   */
   const reading = useMemo(() => levelReading(progress, progress.expThisSession), [progress]);
 
-  const afflicted = [
-    afflictions.blind === 'yes' ? t('cards.vitals.afflicted.blind') : null,
-    afflictions.poisoned === 'yes' ? t('cards.vitals.afflicted.poisoned') : null,
-    afflictions.diseased === 'yes' ? t('cards.vitals.afflicted.diseased') : null,
-    afflictions.held === 'yes' ? t('cards.vitals.afflicted.held') : null,
-    afflictions.confused === 'yes' ? t('cards.vitals.afflicted.confused') : null,
-    afflictions.afraid === 'yes' ? t('cards.vitals.afflicted.afraid') : null
-  ].filter((word): word is string => word !== null);
+  const afflicted = afflictedWords(afflictions);
 
   const hpLevel = vitalLevel(vitals.hp, vitals.hpMax, thresholds.hp);
   const manaLevel = vitalLevel(vitals.mana, vitals.manaMax, thresholds.mana);

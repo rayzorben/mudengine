@@ -1,8 +1,11 @@
 /**
  * A party member cured under `healParty`, beside `Cures`, which cures this
  * character: poison where GreaterMUD's listing prints `P` in the member's row
- * (todo 80), and a hold where a joined member standing here said `@held`
- * (todo 20261024-1900-01), until their `@ok` or `tuning.spells.partyHeldMs`.
+ * (todo 80) or the member's shared sheet says so, disease where the sheet
+ * does, and a hold where a joined member standing here said `@held` (todo
+ * 20261024-1900-01), until their `@ok` or `tuning.spells.partyHeldMs`, or
+ * the sheet says held. A sharer outside the party is cured the same way while
+ * the room shows them here (`PeerCare`, todo 20261031-1156-01).
  * `<word> <member>` with the cure box's spell where it reaches another
  * character, else the book's cheapest that does; a cure that changes nothing
  * waits 15 s, doubling to 120 s, per member and cure. `mudengine-automation` ›
@@ -18,7 +21,8 @@ import {
   type CharacterState,
   type PartyMember
 } from '../../shared/character';
-import type { Cure, SpellsConfig } from '../../shared/config';
+import type { SpellsConfig } from '../../shared/config';
+import type { SharedSheet } from '../../shared/peers';
 import type { RealmFamily } from '../../shared/realm';
 import {
   castsBare,
@@ -34,6 +38,7 @@ import {
 import type { WorldSpell } from '../../shared/world';
 import type { SessionModule } from './Module';
 import type { NoticeSink } from '../../shared/decisionSettings';
+import { peerCareNeeds, type CureNeed, type OtherCure } from './PeerCare';
 
 export interface PartyCureParts {
   queue: CommandQueue;
@@ -43,17 +48,17 @@ export interface PartyCureParts {
   gate?: CastGate;
   notice?: NoticeSink;
   now?: () => number;
+  /** The fresh sheets other players share with this character (`Peers.sheetsFor`). */
+  sheets?: () => readonly SharedSheet[];
 }
 
-/** Whether the listing marks this member poisoned. */
-function poisoned(member: PartyMember): boolean {
-  return !member.invited && member.activity?.state === 'poisoned';
-}
-
-/** A member to cure, and of what. */
-interface Need {
-  member: string;
-  cure: Extract<Cure, 'poison' | 'freedom'>;
+/**
+ * Whether this member is poisoned: GreaterMUD's `P` (`letter`) or the
+ * member's own shared sheet, either one, so stock MajorMUD gains the sheet's
+ * word and GreaterMUD keeps its letter. `withPeerSheets` put the sheet's here.
+ */
+function poisoned(member: PartyMember, letter: boolean): boolean {
+  return (letter && member.activity?.state === 'poisoned') || member.afflictions.poisoned === 'yes';
 }
 
 export class PartyCures implements SessionModule {
@@ -62,7 +67,7 @@ export class PartyCures implements SessionModule {
   /** Members who said `@held`, lower-cased, and when they last said it. */
   private readonly held = new Map<string, number>();
   /** The cures no spell in reach answers, each said once a session. */
-  private readonly saidNone = new Set<Cure>();
+  private readonly saidNone = new Set<OtherCure>();
   private readonly now: () => number;
   private readonly gate: CastGate;
 
@@ -129,22 +134,28 @@ export class PartyCures implements SessionModule {
   }
 
   /**
-   * Who wants curing of what: a member GreaterMUD's listing marks poisoned,
-   * and a joined member standing here who said `@held` lately.
+   * Who wants curing of what: a member poisoned or diseased, a joined member
+   * standing here who said `@held` lately or whose sheet says held, and a
+   * sharer outside the party standing here (`PeerCare`).
    */
-  private needs(state: CharacterState): Need[] {
-    const poison =
-      this.parts.family() === 'greatermud'
-        ? state.party.members
-            .filter(poisoned)
-            .map((member): Need => ({ member: member.name, cure: 'poison' }))
-        : [];
+  private needs(state: CharacterState): CureNeed[] {
+    const letter = this.parts.family() === 'greatermud';
+    const listed = state.party.members.filter((member) => !member.invited);
+    const poison = listed
+      .filter((member) => poisoned(member, letter))
+      .map((member): CureNeed => ({ member: member.name, cure: 'poison' }));
+    const disease = listed
+      .filter((member) => member.afflictions.diseased === 'yes')
+      .map((member): CureNeed => ({ member: member.name, cure: 'disease' }));
     const here = standingHere(state);
     const held = joinedMembers(state)
-      .filter((member) => this.held.has(member.name.toLowerCase()))
+      .filter(
+        (member) => this.held.has(member.name.toLowerCase()) || member.afflictions.held === 'yes'
+      )
       .filter((member) => here.has(member.name.toLowerCase()))
-      .map((member): Need => ({ member: member.name, cure: 'freedom' }));
-    return [...poison, ...held];
+      .map((member): CureNeed => ({ member: member.name, cure: 'freedom' }));
+    const others = peerCareNeeds(state, this.parts.sheets?.() ?? []);
+    return [...poison, ...disease, ...held, ...others];
   }
 
   /** A `@held` older than `partyHeldMs` with no `@ok` is let go. */
@@ -156,7 +167,7 @@ export class PartyCures implements SessionModule {
   }
 
   /** The cure box's spell where it reaches another character, else the book's cheapest that does. */
-  private spellFor(state: CharacterState, cure: Need['cure']): string | null {
+  private spellFor(state: CharacterState, cure: CureNeed['cure']): string | null {
     const boxed = this.config.cures[cure].trim();
     const reaches = (name: string): boolean => {
       const realm = this.parts.realmSpell(name);
@@ -173,13 +184,15 @@ export class PartyCures implements SessionModule {
   }
 }
 
-const keyOf = (need: Need): string => `${need.cure}:${need.member.toLowerCase()}`;
+const keyOf = (need: CureNeed): string => `${need.cure}:${need.member.toLowerCase()}`;
 
 /** Why a cure is cast. */
-function reasonFor(need: Need): string {
+function reasonFor(need: CureNeed): string {
   switch (need.cure) {
     case 'poison':
       return t('automation.cure.partyReason', { member: need.member });
+    case 'disease':
+      return t('automation.cure.partyDiseaseReason', { member: need.member });
     case 'freedom':
       return t('automation.cure.partyFreeReason', { member: need.member });
     default: {
@@ -190,10 +203,12 @@ function reasonFor(need: Need): string {
 }
 
 /** What is said once where no spell in reach casts a cure. */
-function noneFor(cure: Need['cure']): string {
+function noneFor(cure: CureNeed['cure']): string {
   switch (cure) {
     case 'poison':
       return t('automation.cure.partyNone');
+    case 'disease':
+      return t('automation.cure.partyDiseaseNone');
     case 'freedom':
       return t('automation.cure.partyFreeNone');
     default: {

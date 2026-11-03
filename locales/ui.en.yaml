@@ -3416,6 +3416,17 @@ cards:
     levelsHeading: Levels
     levelsRange: '{low} to {high}, {known} known'
     online: online
+    # The characters other players share with this one, as their own clients
+    # state them (todo 20261031-1156-01). A figure not sent is unknown.
+    shared:
+      heading: Sharing with you
+      level: 'Level {level}'
+      hp: '{hp}/{hpMax} HP'
+      pool: '{mana}/{manaMax} {pool}'
+      unknown: '?'
+      conditionsUnknown: conditions unknown
+      roomUnknown: room unknown
+      roomOneOf: 'one of {rooms}'
     title: Players
   realm:
     badge:
@@ -7161,14 +7172,19 @@ automation:
   cure:
     reason: 'cure: {cure}'
     derived: Casting {spell} as the {cure} cure, the cheapest spell in your book that cures it.
-    # Todo 80: a member the party list marks P (poisoned, on GreaterMUD).
+    # Todo 80: a member the party list marks P (poisoned, on GreaterMUD), or
+    # whose shared sheet says poisoned; a sharer in the room outside the party too.
     partyReason: 'cure: poison on {member}'
-    partyNone: A party member is poisoned, and no spell in your book that cures poison can be cast
-      on another character.
-    # A member who said @held (todo 20261024-1900-01).
+    partyNone: A party member or a player sharing with you is poisoned, and no spell in your book
+      that cures poison can be cast on another character.
+    # A member or a sharer in the room whose shared sheet says diseased.
+    partyDiseaseReason: 'cure: disease on {member}'
+    partyDiseaseNone: A party member or a player sharing with you is diseased, and no spell in your
+      book that cures disease can be cast on another character.
+    # A member who said @held (todo 20261024-1900-01), or whose shared sheet says held.
     partyFreeReason: 'cure: freedom on {member}'
-    partyFreeNone: A party member is held, and no spell in your book that frees a held character can
-      be cast on another character.
+    partyFreeNone: A party member or a player sharing with you is held, and no spell in your book
+      that frees a held character can be cast on another character.
   spells:
     choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): even its lowest roll kills what is left
       of the target.'

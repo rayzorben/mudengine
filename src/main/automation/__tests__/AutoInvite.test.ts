@@ -6,7 +6,12 @@ import { CONFIG } from '../walk/__tests__/walking';
 import { t } from '../../app/i18n';
 import { NO_GRANT } from '../../../shared/remotes';
 import { type AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type RoomOccupant
+} from '../../../shared/character';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 const AGAIN = DEFAULT_INTERNAL.tuning.remotes.inviteSeenAgainMs;
@@ -23,18 +28,8 @@ const occupant = (name: string, kind: RoomOccupant['kind'] = 'player'): RoomOccu
   free: false
 });
 
-const row = (name: string, invited = false) => ({
-  name,
-  className: null,
-  health: invited ? null : 1,
-  mana: null,
-  rank: null,
-  activity: null,
-  invited,
-  vitals: null,
-  pool: null,
-  sheet: null
-});
+const row = (name: string, invited = false) =>
+  partyMember(name, { health: invited ? null : 1, invited });
 
 /** Standing in `room` with `here`; `members` joined, `invited` printed `[Invited]`. */
 function state(

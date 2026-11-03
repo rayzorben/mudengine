@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { withMemberSheet } from '../memberSheet';
-import { member, withPartyListing } from '../presence';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { withPartyListing } from '../presence';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 
 const party = (): CharacterState => ({
   ...structuredClone(EMPTY_CHARACTER),
   name: 'Vaelor',
-  party: { ...EMPTY_CHARACTER.party, members: [member('Vaelor'), member('Rand')] }
+  party: { ...EMPTY_CHARACTER.party, members: [partyMember('Vaelor'), partyMember('Rand')] }
 });
 
 /* Todo 86: a member's `@stats` answer lands on their party row. */

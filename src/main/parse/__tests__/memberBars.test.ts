@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_CHARACTER, NO_PARTY, type CharacterState } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  NO_PARTY,
+  partyMember,
+  type CharacterState
+} from '../../../shared/character';
 import { MessageBook, parseMessagesCsv } from '../../../shared/messages';
 import type { StreamLine } from '../../../shared/types';
 import { Classifier } from '../Classifier';
 import { listedVitals, withMemberBars } from '../memberBars';
-import { member } from '../presence';
 
 /*
  * The user, 2026-10-10: Rayzor leading Brakkle, and Brakkle's bar on the Party
@@ -33,8 +37,8 @@ const leading = (vitals: { hp: number; hpMax: number } | null): CharacterState =
   party: {
     ...NO_PARTY,
     members: [
-      member('Rayzor', { health: 1 }),
-      member('Brakkle', {
+      partyMember('Rayzor', { health: 1 }),
+      partyMember('Brakkle', {
         health: vitals === null ? 1 : vitals.hp / vitals.hpMax,
         vitals: vitals === null ? null : { ...vitals, mana: null, manaMax: null }
       })

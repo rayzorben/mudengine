@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandQueue } from '../CommandQueue';
 import { PartyListing, roundsUntilPar } from '../PartyListing';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 
 /* The party-change ask's own word, so the two coalesce as one listing. */
 const PAR = DEFAULT_CONFIG.automation.onPartyChange;
@@ -28,18 +28,7 @@ describe('the party listing on a clock', () => {
       combat: { ...base.combat, target: fighting ? 'orc' : null },
       party: {
         ...base.party,
-        members: members.map((name) => ({
-          name,
-          className: null,
-          health: 1,
-          mana: null,
-          rank: null,
-          activity: null,
-          invited: false,
-          vitals: null,
-          pool: null,
-          sheet: null
-        }))
+        members: members.map((name) => partyMember(name, { health: 1 }))
       }
     };
   };

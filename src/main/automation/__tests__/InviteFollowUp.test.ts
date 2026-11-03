@@ -4,7 +4,7 @@ import { CommandQueue } from '../CommandQueue';
 import { InviteFollowUp } from '../InviteFollowUp';
 import { CONFIG } from '../walk/__tests__/walking';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import type { Block } from '../../../shared/blocks';
 
@@ -18,18 +18,8 @@ function state(
   following: string | null = null
 ): CharacterState {
   const base = structuredClone(EMPTY_CHARACTER);
-  const row = (name: string, isInvited: boolean) => ({
-    name,
-    className: null,
-    health: isInvited ? null : 1,
-    mana: null,
-    rank: null,
-    activity: null,
-    invited: isInvited,
-    vitals: null,
-    pool: null,
-    sheet: null
-  });
+  const row = (name: string, isInvited: boolean) =>
+    partyMember(name, { health: isInvited ? null : 1, invited: isInvited });
   return {
     ...base,
     phase: 'in-game',

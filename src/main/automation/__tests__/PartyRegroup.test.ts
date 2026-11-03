@@ -5,7 +5,12 @@ import { PartyRegroup } from '../PartyRegroup';
 import { Walker } from '../Walker';
 import { CONFIG, routeOf, stepOf } from '../walk/__tests__/walking';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type RoomOccupant
+} from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { t } from '../../app/i18n';
@@ -42,18 +47,7 @@ function state(
     party: {
       ...base.party,
       following,
-      members: ['Vaelor', ...members].map((name) => ({
-        name,
-        className: null,
-        health: 1,
-        mana: null,
-        rank: null,
-        activity: null,
-        invited: false,
-        vitals: null,
-        pool: null,
-        sheet: null
-      }))
+      members: ['Vaelor', ...members].map((name) => partyMember(name, { health: 1 }))
     }
   };
 }

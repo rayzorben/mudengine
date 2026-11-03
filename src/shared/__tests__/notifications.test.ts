@@ -24,7 +24,7 @@ import {
 import { IDLE_WALK } from '../walk';
 import type { ConnectionState } from '../types';
 import { asUiDict, makeT } from '../i18n';
-import { EMPTY_CHARACTER, type CharacterState } from '../character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../character';
 import type { Block, BlockType } from '../blocks';
 import { domainOf } from '../blocks';
 import { classifyOccupant, type MobDisposition } from '../mobs';
@@ -544,18 +544,8 @@ describe('somebody in the party in trouble', () => {
   const member = (
     name: string,
     health: number | null
-  ): CharacterState['party']['members'][number] => ({
-    name,
-    activity: null,
-    className: 'Paladin',
-    health,
-    invited: false,
-    vitals: null,
-    pool: null,
-    sheet: null,
-    mana: null,
-    rank: 'front'
-  });
+  ): CharacterState['party']['members'][number] =>
+    partyMember(name, { className: 'Paladin', health, rank: 'front' });
   const party = (
     members: CharacterState['party']['members'],
     name: string | null = 'Vaelor'

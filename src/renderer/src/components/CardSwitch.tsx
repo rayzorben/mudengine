@@ -245,6 +245,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           onSelect={ctx.selectPlayer}
           players={view.players}
           session={ctx.session}
+          shares={ctx.shares}
           subject={ctx.subject}
         />
       );

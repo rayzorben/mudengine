@@ -10,7 +10,12 @@ import {
   testGuard
 } from '../RuleEngine';
 import { DEFAULT_CONFIG, normalizeRules, parseGuard } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  partyMember,
+  type CharacterState,
+  type RoomOccupant
+} from '../../../shared/character';
 import { classifyOccupant, type MobDisposition } from '../../../shared/mobs';
 import type { Block } from '../../../shared/blocks';
 import type { Rule } from '../../../shared/rules';
@@ -563,18 +568,7 @@ describe('guards over the party', () => {
       engaged: {},
       threatened: {},
       following: null,
-      members: Array.from({ length: count }, (_, i) => ({
-        name: `Member${i}`,
-        activity: null,
-        className: null,
-        health: null,
-        invited: false,
-        vitals: null,
-        pool: null,
-        sheet: null,
-        mana: null,
-        rank: null
-      }))
+      members: Array.from({ length: count }, (_, i) => partyMember(`Member${i}`))
     }
   });
 

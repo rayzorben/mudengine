@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import { formatStats } from '../../../shared/remotes';
 import { SheetReports } from '../SheetReports';
 
@@ -23,22 +23,7 @@ const leading = (level: number, inParty = true): CharacterState => {
   state.party = {
     ...state.party,
     following: null,
-    members: inParty
-      ? [
-          {
-            name: 'Rand',
-            className: null,
-            health: 1,
-            mana: null,
-            rank: null,
-            activity: null,
-            invited: false,
-            vitals: null,
-            pool: null,
-            sheet: null
-          }
-        ]
-      : []
+    members: inParty ? [partyMember('Rand', { health: 1 })] : []
   };
   return state;
 };
