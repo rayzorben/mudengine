@@ -124,7 +124,8 @@ function travel(
       cancel: vi.fn(() => 0)
     },
     walker: {
-      start: vi.fn(),
+      // As `Walker.start`: null once the walk has started, otherwise the refusal.
+      start: vi.fn<TravelParts['walker']['start']>(() => null),
       stop: vi.fn(),
       walking: walk !== 'none',
       holding: walk === 'held' ? 'fight' : null,
@@ -1177,7 +1178,7 @@ describe('a party wait during a route', () => {
 
   // A leg back is nobody's asked route, so the lap it stopped is still what play picks up.
   it('walks a member’s @comeback as legs nobody asked for', () => {
-    const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'none', false);
+    const { travel: moving, parts, notices } = travel(EMPTY_CHARACTER, 'none', false);
     const back: Route = {
       steps: [{ to: '1/1', name: 'Gate' }],
       blocked: false
@@ -1186,6 +1187,8 @@ describe('a party wait during a route', () => {
     vi.mocked(parts.errands.planFromHere).mockReturnValue(back);
     moving.walkBackFor('Killa');
     expect(parts.walker.start).toHaveBeenCalledWith(back, EMPTY_CHARACTER, { asked: false });
+    // The walker started the leg, so the only notice is the start line.
+    expect(notices).toEqual([t('session.comeBack.started', { who: 'Killa', rooms: 1 })]);
   });
 });
 
