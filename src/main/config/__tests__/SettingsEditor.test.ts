@@ -371,6 +371,15 @@ ui:
     expect(found?.retreat.belowMana).toBe(0.25);
   });
 
+  // The character page's Auto-Look at Players was drawn and sent, and never written.
+  it('writes Auto-Look at Players, and reads it back', () => {
+    const talk = { lookAtPlayers: true };
+    expect(editor.saveProfile('vaelor', draft({ talk }))).toEqual({ ok: true });
+    expect(read('vaelor')['automation']).toMatchObject({ talk: { lookAtPlayers: true } });
+    const found = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
+    expect(found?.talk.lookAtPlayers).toBe(true);
+  });
+
   it('writes the retreat over a block left empty', () => {
     const file = home.profile('vaelor').file;
     fs.mkdirSync(path.dirname(file), { recursive: true });

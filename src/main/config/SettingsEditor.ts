@@ -467,6 +467,7 @@ export class SettingsEditor {
           [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
           [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
+          [['automation', 'talk'], draft.talk, DEFAULT_CONFIG.automation.talk],
           [['automation', 'statline'], draft.statline, DEFAULT_CONFIG.automation.statline],
           [['automation', 'asks'], draft.asks, DEFAULT_CONFIG.automation.asks],
           // Not under `automation:`, because it is not something the client
