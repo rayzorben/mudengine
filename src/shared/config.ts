@@ -101,7 +101,7 @@ import {
   type Severity
 } from './notifications';
 import { isRemoteName, NO_GRANT, type RemoteGrant, type RemoteName } from './remotes';
-import type { ConnectionTarget, StreamEncoding } from './types';
+import { ENCODINGS, type ConnectionTarget, type StreamEncoding } from './types';
 import { normalizeMobRules, type MobRule } from './mobRules';
 import { normalizeAliases, type Aliases } from './aliases';
 import { MEGAMUD_KEYS, normalizeKeys, type KeyBindings } from './keys';
@@ -2953,7 +2953,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       port: int(connection['port'], DEFAULT_CONFIG.connection.port, 1, 65535),
       encoding: oneOf<StreamEncoding>(
         connection['encoding'],
-        ['cp437', 'utf8', 'latin1'],
+        ENCODINGS,
         DEFAULT_CONFIG.connection.encoding
       ),
       login: normalizeLogin(connection['login'])
@@ -3245,7 +3245,7 @@ function normalizeServer(value: unknown): Server | null {
     port: int(value['port'], DEFAULT_CONFIG.connection.port, 1, 65535),
     encoding: oneOf<StreamEncoding>(
       value['encoding'],
-      ['cp437', 'utf8', 'latin1'],
+      ENCODINGS,
       DEFAULT_CONFIG.connection.encoding
     ),
     // Empty is a real answer: a server with no menus at all, which is every

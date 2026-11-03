@@ -17,7 +17,10 @@ export interface ConnectionTarget {
   encoding: StreamEncoding;
 }
 
-export type StreamEncoding = 'cp437' | 'utf8' | 'latin1';
+/** Every encoding a stream can be read in; the union is derived from it, so the two cannot drift. */
+export const ENCODINGS = ['cp437', 'utf8', 'latin1'] as const;
+
+export type StreamEncoding = (typeof ENCODINGS)[number];
 
 /**
  * Whether two targets are the same realm: the same host and port.
@@ -80,9 +83,6 @@ export function realmNamedAt(
   const chosen = name.slice(address.length + 1);
   return chosen.length > 0 ? realmOf(target, chosen) : null;
 }
-
-/** Every `StreamEncoding`, the union's runtime half. */
-export const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 
 /**
  * Narrows a payload that crossed the bridge into a `ConnectionTarget`, or

@@ -37,8 +37,8 @@ import { asLowLives } from './lives';
 import { keyBlock } from './keys';
 import { withMacroNames } from './macroBook';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
-import type { ConnectionTarget } from './types';
-import { int, isRecord, str } from './values';
+import { ENCODINGS, type ConnectionTarget } from './types';
+import { int, isRecord, oneOf, str } from './values';
 
 /**
  * Identity colours a character may claim.
@@ -242,10 +242,7 @@ function resolveServer(
       target: {
         host,
         port,
-        encoding:
-          encoding === 'utf8' || encoding === 'latin1' || encoding === 'cp437'
-            ? encoding
-            : DEFAULT_CONFIG.connection.encoding
+        encoding: oneOf(encoding, ENCODINGS, DEFAULT_CONFIG.connection.encoding)
       },
       name: host
     };

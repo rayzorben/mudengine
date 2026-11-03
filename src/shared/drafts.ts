@@ -117,14 +117,12 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
-import type { StreamEncoding } from './types';
+import { ENCODINGS, type StreamEncoding } from './types';
 import { fraction, int, isRecord, oneOf } from './values';
 import { asStatedPairs, type StatedPair } from './pairs';
 import { normalizeAsks, type AsksConfig } from './asks';
 import { normalizeExtensionSwitches, type ExtensionSwitches } from './extensionSwitches';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
-
-const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 
 /** See `ProfileDraft.loops`: a ceiling on a payload, not a limit on a loop. */
 export const LOOP_LIMITS = { loops: 200, stops: 500 } as const;

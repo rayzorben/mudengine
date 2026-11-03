@@ -79,7 +79,7 @@ import {
   themesOfAppearance,
   type TerminalPalette
 } from '@shared/themes';
-import type { StreamEncoding } from '@shared/types';
+import { ENCODINGS, type StreamEncoding } from '@shared/types';
 
 /**
  * The two halves of `global/default.yaml`, drawn one at a time.
@@ -304,8 +304,6 @@ import {
   splitNames,
   wholeOf as whole
 } from '../lib/form';
-
-const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 
 /**
  * Keys whose value is a block a spread-merge is sound for. Arrays are shut
