@@ -8,8 +8,8 @@ import { cardElement } from '../../components/CardSwitch';
 import { useCardContext, type CardContext, type CardContextInputs } from '../useCardContext';
 import { useCardRenderers, type CardRendererInputs } from '../useCardRenderers';
 import { EMPTY_VIEW, type SessionView } from '../useSessionViews';
-import { ZERO_METER } from '../useStreamPressure';
 import { useToolbarPins } from '../useToolbarPins';
+import { cardInputs, noop, pending } from './cardInputs';
 import { mount } from './mount';
 import { t } from '../../lib/i18n';
 import { type SupplyItem } from '@shared/packConfig';
@@ -53,57 +53,8 @@ describe('useToolbarPins', () => {
   });
 });
 
-const noop = (): void => undefined;
-/** A bridge call that never settles: none of these cases makes or waits on one. */
-const pending = (): Promise<never> => new Promise<never>(noop);
-
 /** Every input `App` hands the context, each one object for the whole test. */
-const stable: Omit<CardContextInputs, 'nameIndexes'> = {
-  api: new Proxy({}, { get: () => pending }) as CardContextInputs['api'],
-  session: SHOWN,
-  sessions: [{ id: SHOWN }, { id: PINNED }],
-  thresholds: {} as CardContextInputs['thresholds'],
-  navigationVisible: false,
-  size: { cols: 80, rows: 24 },
-  meter: ZERO_METER,
-  pressure: 'calm',
-  realmAt: 1,
-  flyout: null,
-  loops: [],
-  toolbarPins: { pinned: new Set(), toggle: noop },
-  remotesFor: () => ({}) as ReturnType<CardContextInputs['remotesFor']>,
-  switchesFor: () => ({}) as ReturnType<CardContextInputs['switchesFor']>,
-  suppliesFor: () => [],
-  profileNameFor: () => '',
-  ask: noop,
-  forget: noop,
-  inspect: noop,
-  loadWearer: pending,
-  loadMap: pending,
-  lookupName: pending,
-  chooseOnMap: noop,
-  peekRoom: noop,
-  endPeek: noop,
-  goToRoom: noop,
-  runHunt: noop,
-  createHunt: noop,
-  builder: {} as CardContextInputs['builder'],
-  openBuilder: noop,
-  startMoving: noop,
-  stopMoving: noop,
-  startLoop: noop,
-  reverseLoop: noop,
-  openLoops: noop,
-  openAreaSearch: noop,
-  dial: noop,
-  hangUp: noop,
-  sayRefusal: () => noop,
-  startMovingIn: noop,
-  stepBackIn: noop,
-  selectPlayer: noop,
-  selectGang: noop,
-  resetStats: noop
-};
+const stable = cardInputs(SHOWN, [SHOWN, PINNED]);
 
 const chrome = {} as CardChrome;
 
@@ -150,6 +101,18 @@ describe('useCardContext', () => {
       [PINNED, 'gos hi\r'],
       [SHOWN, 'br yo\r']
     ]);
+  });
+
+  it("offers a pinned float no lookup and no route panel: both are the shown character's", () => {
+    const out: MutableRefObject<Contexts | null> = { current: null };
+    probe.render(createElement(Probe, { inputs: { ...stable, nameIndexes: {} }, out }));
+    const pinned = out.current?.contextFor(PINNED, EMPTY_VIEW, chrome);
+    expect(pinned?.inspect).toBeUndefined();
+    expect(pinned?.goToRoom).toBeNull();
+    // The positive control: the shown character's card has both.
+    const shown = out.current?.contextFor(SHOWN, EMPTY_VIEW, chrome);
+    expect(shown?.inspect).toBe(stable.inspect);
+    expect(shown?.goToRoom).toBe(stable.goToRoom);
   });
 
   it('keys every card by its character, so a tab switch draws a new one', () => {

@@ -61,7 +61,9 @@ import {
 } from '../../lib/gameCommands';
 import { PLACE_PATHS, LAIR_PATH, PLAYER_PATH, placeTone } from '../../lib/gameIcons';
 import { placeLabel } from '../../lib/gameArena';
-import { feedOf, unreadFor } from '../../lib/gameTalk';
+import { feedOf, readTo, unreadFor, type FeedStart } from '../../lib/gameTalk';
+import { useKeptState } from '../../hooks/useKeptState';
+import type { Kept } from '../../lib/sessionMemory';
 import { t } from '../../lib/i18n';
 import { tuning } from '../../lib/tuning';
 import { walkTo } from '../../lib/walkTo';
@@ -117,6 +119,8 @@ export interface GameViewProps {
   openers: Pick<SlideOutSlot, 'inspect' | 'selectPlayer'>;
   /** The console's names for this character, so the talk feed's names open as the console's do. */
   nameIndex: NameIndex | null;
+  /** Where this character's talk was last read to, kept while its tab is away. */
+  feedStart: Kept<FeedStart>;
 }
 
 /** The panel open over the map, one at a time: `c`'s or `i`'s. */
@@ -138,7 +142,8 @@ function GameView({
   say,
   renderTalk,
   openers,
-  nameIndex
+  nameIndex,
+  feedStart
 }: GameViewProps) {
   const { character } = view;
   const { inspect, selectPlayer: openPlayer } = openers;
@@ -167,11 +172,13 @@ function GameView({
   const pending = useRef<{ first: Direction; timer: number } | null>(null);
   const [talking, setTalking] = useState(false);
   const newest = view.talk[view.talk.length - 1]?.seq ?? 0;
-  // The newest line seen with the panel open: the feed shows what came after.
-  const [seen, setSeen] = useState(newest);
+  /*
+   * The newest line seen with the panel open, and when the view first came up:
+   * the feed shows what came after. Kept per character, so a line that arrived
+   * unread is still unread when the tab comes back (todo 20261102-2220-02).
+   */
+  const [start, setStart] = useKeptState(feedStart, { seen: newest, since: Date.now() });
   const self = character.name ?? profile?.name ?? null;
-  const [since] = useState(() => Date.now());
-  const start = useMemo(() => ({ seen, since }), [seen, since]);
   const unread = useMemo(() => unreadFor(view.talk, start, self), [view.talk, start, self]);
   // The file's switches and the session's held ones, as the toolbar draws them.
   const fileSwitches = profile?.switches;
@@ -187,7 +194,7 @@ function GameView({
   const setTalk = useCallback(
     (open: boolean) => {
       setTalking(open);
-      setSeen(newest);
+      setStart((was) => readTo(was, newest));
       if (open)
         window.requestAnimationFrame(() =>
           document
@@ -196,13 +203,13 @@ function GameView({
         );
       else game.home.current?.focus();
     },
-    [newest, game.home]
+    [newest, game.home, setStart]
   );
   const closeTalk = useCallback(() => setTalk(false), [setTalk]);
   // Read while open: nothing said meanwhile is left unread.
   useEffect(() => {
-    if (talking) setSeen(newest);
-  }, [talking, newest]);
+    if (talking) setStart((was) => readTo(was, newest));
+  }, [talking, newest, setStart]);
 
   const hereCell = here === null ? undefined : map.byId.get(here);
   const commands = useMemo(

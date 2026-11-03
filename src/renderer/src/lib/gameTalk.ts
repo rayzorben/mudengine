@@ -35,6 +35,11 @@ export interface FeedStart {
   since: number;
 }
 
+/** The start once everything up to `seq` has been read; the same object when it already was. */
+export function readTo(start: FeedStart, seq: number): FeedStart {
+  return start.seen === seq ? start : { ...start, seen: seq };
+}
+
 const fresh = (block: Block, start: FeedStart): boolean =>
   block.seq > start.seen && block.at >= start.since;
 

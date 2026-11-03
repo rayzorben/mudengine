@@ -1226,6 +1226,40 @@ function pushNotice(payload: Notice): void {
   }
 }
 
+/**
+ * The character a typed line is for, when the window that sent it has that
+ * character's tab (`Workspace.viewsWithTab`, as `pushNotice` asks), else null.
+ * Any other window has no console or card for it, so its line is a renderer
+ * mistake, refused and said rather than sent as the wrong character (todo
+ * 20261102-2220-02). A session the host does not have is dropped without a
+ * notice, as before.
+ */
+function typedFromItsTab(caller: Caller, session: SessionId): SessionSlot | null {
+  const slot = host?.get(session);
+  if (!slot) return null;
+  if (workspace?.viewsWithTab(session, [caller.windowId], railOf).length === 1) return slot;
+  refuseTyped(caller, t('app.input.notThisWindow', { name: nameOfCharacter(session) }));
+  return null;
+}
+
+/** A typed payload as the line it must be, or null, refused out loud. */
+function typedText(caller: Caller, session: SessionId, data: unknown): string | null {
+  if (typeof data === 'string') return data;
+  refuseTyped(caller, t('app.input.notText', { name: nameOfCharacter(session) }));
+  return null;
+}
+
+/** The tab's name for a character, or its id once its file has gone. */
+function nameOfCharacter(session: SessionId): string {
+  return profileFor(session)?.name ?? session;
+}
+
+function refuseTyped(caller: Caller, message: string): void {
+  const payload: Notice = { session: null, message };
+  caller.send(Push.notice, payload);
+  console.warn(`input: ${message}`);
+}
+
 /** An engine message. A null session means it is about the client, not a character. */
 function notice(message: string, session: SessionId | null = null): void {
   const payload: Notice = { session, message };
@@ -1922,18 +1956,22 @@ function registerIpc(): void {
     reportSoftwareCompositing(caller);
   });
 
-  // Typed input from the renderer; anything but a string is dropped, as `Send.macro` does.
-  on(Send.input, (_caller, session: SessionId, data: unknown) => {
-    if (typeof data === 'string') host?.get(session)?.manager.send(data);
+  // Typed input, from a window with the character's tab, and text or refused out loud.
+  on(Send.input, (caller, session: SessionId, data: unknown) => {
+    const slot = typedFromItsTab(caller, session);
+    const line = slot === null ? null : typedText(caller, session, data);
+    if (slot !== null && line !== null) slot.manager.send(line);
   });
 
-  // Parsed again in main; a payload that is not a string is not a line.
-  on(Send.macro, (_caller, session: SessionId, line: unknown) => {
-    if (typeof line === 'string') host?.get(session)?.manager.sendMacro(line);
+  // Parsed again in main, with the same two checks as a typed line.
+  on(Send.macro, (caller, session: SessionId, data: unknown) => {
+    const slot = typedFromItsTab(caller, session);
+    const line = slot === null ? null : typedText(caller, session, data);
+    if (slot !== null && line !== null) slot.manager.sendMacro(line);
   });
 
-  on(Send.dropMacro, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.dropTyped();
+  on(Send.dropMacro, (caller, session: SessionId) => {
+    typedFromItsTab(caller, session)?.manager.dropTyped();
   });
 
   // Parsed: a size that is not one would throw in the NAWS timer, or report 0x0.
@@ -2716,7 +2754,7 @@ function registerIpc(): void {
     if (!slot) return null;
 
     if (!force && !DORMANT_PHASES.has(slot.manager.state.phase)) {
-      return t('app.profiles.stillConnected', { name: profileFor(id)?.name ?? id });
+      return t('app.profiles.stillConnected', { name: nameOfCharacter(id) });
     }
 
     unloaded.add(id);

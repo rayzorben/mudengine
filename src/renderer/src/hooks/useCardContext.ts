@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { CardChrome } from '../components/BentoCard';
 import type { PlayerAsked } from '../components/PlayerFlyout';
 import type { SupplyList } from '../components/SupplyControls';
+import { useKeptWork, type KeptWork } from './useKeptWork';
 import type { BuilderApi } from './useLoopBuilder';
 import type { SessionView } from './useSessionViews';
 import type { MobTreatment } from '@shared/mobRules';
@@ -84,7 +85,11 @@ export interface CardContext {
   forget(discovery: Discovery): void;
   /** Strikes a find out of the realm's log. See `RoomCard`'s Finds face. */
   forgetFind(find: Pick<Find, 'room' | 'name'>): void;
-  inspect(name: string, anchor: HTMLElement): void;
+  /**
+   * A name clicked: the reference panel on it. Absent for a character not
+   * shown, for `chooseOnMap`'s reason: the panel looks up the shown realm.
+   */
+  inspect?(name: string, anchor: HTMLElement): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap: MapLoader;
   /** Rooms by name or `map/room`, on this character's realm. */
@@ -109,8 +114,8 @@ export interface CardContext {
    */
   peekRoom: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
   endPeek: (() => void) | null;
-  /** The same panel from a `map/room` string, which is how the realm writes it. */
-  goToRoom(room: string): void;
+  /** The same panel from a `map/room` string, which is how the realm writes it. Null with `chooseOnMap`. */
+  goToRoom: ((room: string) => void) | null;
   /**
    * The realm's quest book, **addressed** and asked for by the card itself.
    *
@@ -213,6 +218,8 @@ export interface CardContext {
   /** A talk-box line of several commands, and dropping what is left of one; addressed. */
   onMacro(line: string): void;
   dropMacro(): void;
+  /** This character's unsent typing, kept while its tab is away. */
+  kept: KeptWork;
 }
 
 /**
@@ -330,17 +337,17 @@ export interface CardContextInputs
       | 'realmAt'
       | 'ask'
       | 'forget'
-      | 'inspect'
       | 'loadWearer'
       | 'loadMap'
       | 'lookupName'
-      | 'goToRoom'
       | 'startMoving'
       | 'stopMoving'
       | 'startLoop'
       | 'reverseLoop'
     >,
     Shown<
+      | 'inspect'
+      | 'goToRoom'
       | 'chooseOnMap'
       | 'peekRoom'
       | 'endPeek'
@@ -383,6 +390,8 @@ export interface CardContexts {
   contextFor(sid: SessionId, v: SessionView, chrome: CardChrome): CardContext;
   /** One character's supplies list and its write, one object for as long as the list is. */
   suppliesBundle(sid: SessionId): SupplyList;
+  /** One character's kept typing, for the game view's talk panel. */
+  keptFor(sid: SessionId): KeptWork;
 }
 
 export function useCardContext({
@@ -447,6 +456,8 @@ export function useCardContext({
 
   const resetStatsRef = useRef(resetStats);
   resetStatsRef.current = resetStats;
+
+  const keptFor = useKeptWork(sessions);
 
   /**
    * The addressed callbacks for one character, built once and kept.
@@ -631,7 +642,7 @@ export function useCardContext({
         locate: bound.locate,
         forget: shown ? forget : bound.forget,
         forgetFind: bound.forgetFind,
-        inspect,
+        inspect: shown ? inspect : undefined,
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
         loadMap: shown ? loadMap : bound.loadMap,
@@ -646,7 +657,7 @@ export function useCardContext({
         chooseOnMap: shown ? chooseOnMap : null,
         peekRoom: shown ? peekRoom : null,
         endPeek: shown ? endPeek : null,
-        goToRoom,
+        goToRoom: shown ? goToRoom : null,
         loadQuests: bound.loadQuests,
         loadErrand: bound.loadErrand,
         loadPlan: bound.loadPlan,
@@ -740,13 +751,15 @@ export function useCardContext({
         nameIndex: nameIndexes[sid] ?? null,
         onSend: bound.send,
         onMacro: bound.macro,
-        dropMacro: bound.dropMacro
+        dropMacro: bound.dropMacro,
+        kept: keptFor(sid)
       };
     },
     [
       api,
       ask,
       boundFor,
+      keptFor,
       builder,
       meter,
       chooseOnMap,
@@ -792,5 +805,5 @@ export function useCardContext({
     ]
   );
 
-  return { contextFor, suppliesBundle };
+  return { contextFor, suppliesBundle, keptFor };
 }

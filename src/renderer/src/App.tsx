@@ -987,7 +987,7 @@ export default function App() {
   ]);
 
   /** Everything a card reads, addressed to one character. */
-  const { contextFor, suppliesBundle } = useCardContext({
+  const { contextFor, suppliesBundle, keptFor } = useCardContext({
     api,
     session,
     sessions,
@@ -1321,9 +1321,9 @@ export default function App() {
 
       {game.on && (
         <GameView
-          // One character's view: its picked target, half-entered chord and
-          // unread mark are not the next tab's (todo 20261102-2220-01).
+          // One character's view (todo 20261102-2220-01); its unread mark is kept.
           key={session}
+          feedStart={keptFor(session).feed}
           api={api}
           game={game}
           config={config}

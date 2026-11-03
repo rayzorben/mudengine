@@ -85,7 +85,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           // The pack stays readable after a hang-up; wearing from it does not,
           // for the reason the composer below gives.
           gear={ctx.inGame ? ctx.gear : undefined}
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          goToRoom={ctx.goToRoom}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
           profileName={ctx.profileName}
@@ -124,7 +124,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           finds={view.finds}
           // Null on a character not shown: the route panel belongs to the one
           // on screen, which is the rule `chooseOnMap` beside it already states.
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          goToRoom={ctx.goToRoom}
           forgetFind={ctx.forgetFind}
           verdict={view.verdict}
           asks={view.asks}
@@ -158,7 +158,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           onPeek={ctx.peekRoom}
           onPeekEnd={ctx.endPeek}
           // The route panel is the shown character's, as `chooseOnMap` says.
-          onRouteTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          onRouteTo={ctx.goToRoom}
           walk={view.walk}
         />
       );
@@ -189,6 +189,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           save={ctx.builder.save}
           search={ctx.builder.search}
           seed={ctx.builder.seed}
+          kept={ctx.kept.builder}
         />
       );
     case 'navigation':
@@ -240,7 +241,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
       return (
         <PlayersCard
           {...chrome}
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          goToRoom={ctx.goToRoom}
           inGame={ctx.inGame}
           onSelect={ctx.selectPlayer}
           players={view.players}
@@ -328,7 +329,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           character={character}
           gear={ctx.inGame ? ctx.gear : undefined}
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          goToRoom={ctx.goToRoom}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
           session={ctx.session}
@@ -352,7 +353,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
       return (
         <ShopsCard
           {...chrome}
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          goToRoom={ctx.goToRoom}
           inspect={ctx.inspect}
           purse={character.inventory.wealth}
           self={character.name}
@@ -417,7 +418,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
             realm's own count. See `stepSaid`.
           */
           said={view.questSaid}
-          onGoTo={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          onGoTo={ctx.goToRoom}
           /*
             Addressed like the Reference card's: the panel it opens is the
             *shown* character's, and a step's item and NPC are realm data. On a
@@ -442,7 +443,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           runPlan={ctx.runPlan}
           stopRun={ctx.stopRun}
           loadQuests={ctx.loadQuests}
-          onName={ctx.chooseOnMap === null ? null : ctx.inspect}
+          onName={ctx.inspect ?? null}
           realmAt={ctx.realmAt}
           session={ctx.session}
         />
@@ -481,7 +482,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           banks={character.banks}
           goGear={ctx.goGear}
-          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          goToRoom={ctx.goToRoom}
           inspect={ctx.inspect}
           kitKey={`${character.progress.level ?? ''}|${character.inventory.items
             .filter((item) => item.equipped)
@@ -524,7 +525,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
             be resolved against the wrong realm — so it stays text there, which
             is what a control bound to nowhere should be.
           */
-          onName={ctx.chooseOnMap === null ? null : ctx.inspect}
+          onName={ctx.inspect ?? null}
           onRoom={ctx.chooseOnMap}
           realm={character.realm}
           supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
@@ -536,6 +537,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           messages={view.talk}
           session={ctx.session}
+          typing={ctx.kept.talk}
           // Only while there is somewhere for it to go. A composer on an
           // offline character is a box that silently does nothing, and the
           // backlog is still worth reading without one.

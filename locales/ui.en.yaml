@@ -49,6 +49,9 @@ app:
   connect:
     invalidTarget: Invalid connection target.
     noCharacterFile: 'Connection failed: Character "{id}" has no realm configured.'
+  input:
+    notThisWindow: 'Not sent to {name}: this window has no tab for that character.'
+    notText: 'Not sent to {name}: the window sent something that is not a line of text.'
   crash:
     guardNotice: 'Client error encountered. Background sessions remain connected: {message}'
   dialog:

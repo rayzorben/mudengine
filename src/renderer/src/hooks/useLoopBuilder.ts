@@ -85,19 +85,21 @@ export function useLoopBuilder({
    * A loop the Hunting card drew, handed to the builder as picks closed on
    * the first room, with its name offered (todo 00, 2026-09-13). The seed is
    * a request and not a state of the builder: the card takes it once, and
-   * from there the picks are its own to edit, undo and file.
+   * from there the picks are its own to edit, undo and file. Held with the
+   * character it was drawn for, so another tab's builder never takes it.
    */
-  const [builderSeed, setBuilderSeed] = useState<BuilderSeed | null>(null);
+  const [seeded, setSeeded] = useState<{ for: SessionId; seed: BuilderSeed } | null>(null);
   const createHunt = useCallback(
     (rooms: HuntingRoom[], name: string) => {
       const ids = rooms.map((room) => room.id);
       const first = ids[0];
       if (first === undefined || ids.length < 2) return;
-      setBuilderSeed({ picks: [...ids, first], name, stamp: Date.now() });
+      setSeeded({ for: session, seed: { picks: [...ids, first], name, stamp: Date.now() } });
       openBuilder();
     },
-    [openBuilder]
+    [openBuilder, session]
   );
+  const builderSeed = seeded !== null && seeded.for === session ? seeded.seed : null;
 
   /**
    * The picks of a loop being built, planned on this character's realm.

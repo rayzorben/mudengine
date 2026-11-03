@@ -55,10 +55,12 @@ import { type BuilderMarks, type TeleportPress } from './MapPlan';
 import MapView from './MapView';
 import RoomMatches from './RoomMatches';
 import { CountInput } from './SupplyControls';
+import { useKeptState } from '../hooks/useKeptState';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
 import { loopFor, notableSteps, pickRoom, shapeOf, stopParts, suggestedName } from '../lib/builder';
 import { keepFocus } from '../lib/focus';
+import type { Kept } from '../lib/sessionMemory';
 import {
   begin,
   canRedo,
@@ -112,6 +114,41 @@ export interface BuilderSeed {
   stamp: number;
 }
 
+/**
+ * The half-built loop, kept per character while its tab is away (todo
+ * 20261102-2220-02): the picks with their undo, the name, the chips and the
+ * waits. `seedStamp` is the seed last taken, so a card drawn again for the
+ * same character does not take the same seed a second time.
+ */
+export interface BuilderWork {
+  history: History<RoomId[]>;
+  typedName: string | null;
+  destination: BuilderDestination;
+  /*
+   * Whether routes this character plans afterwards *follow* what is saved:
+   * every step along it priced at a fraction of an ordinary one, so the
+   * planner takes this way wherever it can instead of the shortest. On by
+   * default, because that is what saving a way somebody drew is for, and a
+   * toggle rather than a rule, because a standing change to how a character
+   * navigates is the player's to make and to see: the chip says it beside
+   * the save, in those words — *prefer its corridors* was the first wording,
+   * and the person it was written for could not say what it did.
+   */
+  prefer: boolean;
+  /** Seconds to wait at each waypoint, by room; a stop's `linger`. */
+  lingers: Readonly<Record<RoomId, number>>;
+  seedStamp: number | null;
+}
+
+const NOTHING_BUILT: BuilderWork = {
+  history: begin([]),
+  typedName: null,
+  destination: 'profile',
+  prefer: true,
+  lingers: {},
+  seedStamp: null
+};
+
 export interface LoopBuilderCardProps extends CardChrome {
   character: CharacterState;
   /** The character's own name, for the destination chip. */
@@ -142,6 +179,8 @@ export interface LoopBuilderCardProps extends CardChrome {
   save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
   /** A loop to open on, drawn; null opens empty. */
   seed?: BuilderSeed | null;
+  /** This character's half-built loop. */
+  kept: Kept<BuilderWork>;
 }
 
 function LoopBuilderCard({
@@ -157,34 +196,27 @@ function LoopBuilderCard({
   draft,
   save,
   seed = null,
+  kept,
   ...chrome
 }: LoopBuilderCardProps) {
   /* The rooms alone, memoised on the log, exactly as the Map card takes it. */
   const foundRooms = useMemo(() => [...roomsWithFinds(finds)], [finds]);
-  const [history, setHistory] = useState<History<RoomId[]>>(() => begin([]));
+  const [work, setWork] = useKeptState(kept, NOTHING_BUILT);
+  const { history, typedName, destination, prefer, lingers } = work;
+  const edit = useCallback(
+    <K extends keyof BuilderWork>(key: K, change: (was: BuilderWork[K]) => BuilderWork[K]) =>
+      setWork((was) => ({ ...was, [key]: change(was[key]) })),
+    [setWork]
+  );
   const picks = history.present;
-  const [centre, setCentre] = useState<RoomId | null>(null);
+  // On the last pick of a loop kept from before the tab was away, else on the character.
+  const [centre, setCentre] = useState<RoomId | null>(() => history.present.at(-1) ?? null);
   /* The densest end of the Map card's slider, which is where the builder opens. */
   const [zoom, setZoom] = useState(() => tuning().mapRoomPixelsDense);
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
   const [plan, setPlan] = useState<LoopDraft>(EMPTY_LOOP_DRAFT);
   const [planFailed, setPlanFailed] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [typedName, setTypedName] = useState<string | null>(null);
-  const [destination, setDestination] = useState<BuilderDestination>('profile');
-  /*
-   * Whether routes this character plans afterwards *follow* what is saved —
-   * every step along it priced at a fraction of an ordinary one, so the
-   * planner takes this way wherever it can instead of the shortest. On by
-   * default, because that is what saving a way somebody drew is for, and a
-   * toggle rather than a rule, because a standing change to how a character
-   * navigates is the player's to make and to see: the chip says it beside
-   * the save, in those words — *prefer its corridors* was the first wording,
-   * and the person it was written for could not say what it did.
-   */
-  const [prefer, setPrefer] = useState(true);
-  /** Seconds to wait at each waypoint, by room; a stop's `linger`. */
-  const [lingers, setLingers] = useState<Readonly<Record<RoomId, number>>>({});
   const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
   const finder = useRef<HTMLInputElement>(null);
 
@@ -204,16 +236,22 @@ function LoopBuilderCard({
   /*
    * A seed replaces the picks and the name outright and moves the picture to
    * its first room — as one history step, so a second thought can take the
-   * whole loop back the way it takes any other edit back.
+   * whole loop back the way it takes any other edit back. Taken once: the
+   * same seed reaching a card drawn again leaves the picks made since.
    */
+  const seedTaken = work.seedStamp;
   useEffect(() => {
-    if (seed === null) return;
-    setHistory(begin([...seed.picks]));
-    setTypedName(seed.name);
+    if (seed === null || seed.stamp === seedTaken) return;
+    setWork((was) => ({
+      ...was,
+      history: begin([...seed.picks]),
+      typedName: seed.name,
+      seedStamp: seed.stamp
+    }));
     const first = seed.picks[0];
     if (first !== undefined) setCentre(first);
     setStatus(null);
-  }, [seed]);
+  }, [seed, seedTaken, setWork]);
 
   /*
    * The plan follows the picks, and a late answer is dropped: two clicks in
@@ -260,12 +298,15 @@ function LoopBuilderCard({
   });
 
   /** Commits a new list of picks, moving the picture to the last of them. */
-  const commit = useCallback((next: RoomId[]): void => {
-    setHistory((current) => record(current, next, samePicks));
-    const last = next[next.length - 1];
-    if (last !== undefined) setCentre(last);
-    setStatus(null);
-  }, []);
+  const commit = useCallback(
+    (next: RoomId[]): void => {
+      edit('history', (current) => record(current, next, samePicks));
+      const last = next[next.length - 1];
+      if (last !== undefined) setCentre(last);
+      setStatus(null);
+    },
+    [edit]
+  );
 
   /*
    * The ceiling a loop payload has, refused here where the click is, with the
@@ -336,23 +377,23 @@ function LoopBuilderCard({
   }, [commit, picks]);
 
   const stepBack = useCallback((): void => {
-    setHistory((current) => {
+    edit('history', (current) => {
       const next = undo(current);
       const last = next.present[next.present.length - 1];
       if (last !== undefined) setCentre(last);
       return next;
     });
     setStatus(null);
-  }, []);
+  }, [edit]);
   const stepForward = useCallback((): void => {
-    setHistory((current) => {
+    edit('history', (current) => {
       const next = redo(current);
       const last = next.present[next.present.length - 1];
       if (last !== undefined) setCentre(last);
       return next;
     });
     setStatus(null);
-  }, []);
+  }, [edit]);
 
   /*
    * The chords, while the card is on screen. In capture like `useHotkeys`,
@@ -596,7 +637,7 @@ function LoopBuilderCard({
                         className="number"
                         label={t('cards.builder.lingerAria', { room: stop.name })}
                         onCommit={(seconds) =>
-                          setLingers((held) => ({
+                          edit('lingers', (held) => ({
                             ...held,
                             [stop.id]: Math.min(LINGER_MAX_SECONDS, seconds)
                           }))
@@ -629,7 +670,10 @@ function LoopBuilderCard({
       <div className="builder-foot">
         <input
           aria-label={t('cards.builder.nameAria')}
-          onChange={(event) => setTypedName(event.target.value)}
+          onChange={(event) => {
+            const typed = event.target.value;
+            edit('typedName', () => typed);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.stopPropagation();
@@ -650,7 +694,7 @@ function LoopBuilderCard({
             className="chip toggle"
             data-level="ok"
             data-on={destination === 'profile' ? 'true' : 'false'}
-            onClick={() => setDestination('profile')}
+            onClick={() => edit('destination', () => 'profile')}
             onMouseDown={keepFocus}
             type="button"
           >
@@ -662,7 +706,7 @@ function LoopBuilderCard({
               className="chip toggle"
               data-level="ok"
               data-on={destination === 'server' ? 'true' : 'false'}
-              onClick={() => setDestination('server')}
+              onClick={() => edit('destination', () => 'server')}
               onMouseDown={keepFocus}
               type="button"
             >
@@ -674,7 +718,7 @@ function LoopBuilderCard({
             className="chip toggle"
             data-level="ok"
             data-on={destination === 'global' ? 'true' : 'false'}
-            onClick={() => setDestination('global')}
+            onClick={() => edit('destination', () => 'global')}
             onMouseDown={keepFocus}
             type="button"
           >
@@ -686,7 +730,7 @@ function LoopBuilderCard({
           className="chip toggle"
           data-level="ok"
           data-on={prefer ? 'true' : 'false'}
-          onClick={() => setPrefer((current) => !current)}
+          onClick={() => edit('prefer', (current) => !current)}
           onMouseDown={keepFocus}
           title={t('cards.builder.preferTitle')}
           type="button"

@@ -22,7 +22,9 @@ import type { PopoverAnchor } from '../lib/popover';
 import { matches } from '../lib/table';
 import { tuning } from '../lib/tuning';
 import { linkify } from '../lib/linkify';
+import { useKeptState } from '../hooks/useKeptState';
 import { useRemembered, useRememberedChoice } from '../hooks/useRemembered';
+import type { Kept } from '../lib/sessionMemory';
 import {
   compose,
   DEFAULT_TALK_LAYOUT,
@@ -48,6 +50,8 @@ export interface ConversationCardProps extends CardChrome {
   messages: Block[];
   /** Which character's card this is, so its filters are remembered per character. */
   session: SessionId;
+  /** That character's half-typed line and history, kept while its tab is away. */
+  typing: Kept<TalkTyping>;
   /**
    * Sends a line, exactly as typing it into the console would.
    *
@@ -477,6 +481,18 @@ interface ComposerPicker {
   point(next: TalkChannel): void;
 }
 
+/**
+ * What the box holds: the line being typed, what has been said from it newest
+ * first, and where the arrows are in that (`-1` is the line being typed).
+ */
+export interface TalkTyping {
+  draft: string;
+  history: readonly string[];
+  at: number;
+}
+
+const NOTHING_TYPED: TalkTyping = { draft: '', history: [], at: -1 };
+
 interface ComposerProps {
   /**
    * The picker, or `null` where the box sends what was typed and nothing else.
@@ -494,6 +510,7 @@ interface ComposerProps {
   /** Commands still waiting from this box, and the press that drops them. */
   queued: number;
   drop?(): void;
+  kept: Kept<TalkTyping>;
 }
 
 /**
@@ -507,25 +524,21 @@ interface ComposerProps {
  * the box. A key pressed here now redraws a form of two controls; the figures
  * are in `mudengine-ui` under *the window redraws what changed*.
  */
-function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
-  const [draft, setDraft] = useState('');
+function Composer({ picker, send, macro, queued, drop, kept }: ComposerProps) {
   /*
-   * What has been said from this box, newest first, and where the arrows are
-   * in it — `-1` being the live draft rather than an entry.
+   * The line, the history and where the arrows are, kept per character so a
+   * tab switched away and back opens on them (todo 20261102-2220-02).
    *
-   * Kept beside the draft and for the draft's reason: the composer owns what is
-   * being typed, and a character that drops keeps both. Lines are stored **as
-   * typed**, before `compose` puts a channel word in front of them, because
-   * what Up is for is saying the same thing again — and the same thing again on
-   * whichever channel is pointed at now, which is what the player would get by
-   * retyping it.
+   * History lines are stored **as typed**, before `compose` puts a channel
+   * word in front of them, because what Up is for is saying the same thing
+   * again — and the same thing again on whichever channel is pointed at now,
+   * which is what the player would get by retyping it.
    */
-  const [history, setHistory] = useState<string[]>([]);
-  const [at, setAt] = useState(-1);
+  const [typing, setTyping] = useKeptState(kept, NOTHING_TYPED);
+  const { draft, history, at } = typing;
   const inputRef = useRef<HTMLInputElement>(null);
   // Below the hooks and before the form, so a character that drops keeps the
-  // half-typed line for when it is back — which is what the card did while the
-  // draft was its own state, and what a mounted-then-unmounted box would lose.
+  // half-typed line for when it is back.
   if (!send) return null;
 
   const say = (): void => {
@@ -574,11 +587,14 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
      * line said twice running is one entry, as it is in a shell: arrowing back
      * through five identical `y`s is the history being in the way of itself.
      */
-    setHistory((was) =>
-      was[0] === draft ? was : [draft, ...was].slice(0, tuning().talkHistoryLimit)
-    );
-    setAt(-1);
-    setDraft('');
+    setTyping((was) => ({
+      draft: '',
+      at: -1,
+      history:
+        was.history[0] === draft
+          ? was.history
+          : [draft, ...was.history].slice(0, tuning().talkHistoryLimit)
+    }));
   };
 
   /**
@@ -597,8 +613,7 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
   const recall = (step: 1 | -1): void => {
     const next = Math.min(Math.max(at + step, -1), history.length - 1);
     if (next === at) return;
-    setAt(next);
-    setDraft(next < 0 ? '' : (history[next] ?? ''));
+    setTyping((was) => ({ ...was, at: next, draft: next < 0 ? '' : (history[next] ?? '') }));
     requestAnimationFrame(() => {
       const box = inputRef.current;
       if (box) box.setSelectionRange(box.value.length, box.value.length);
@@ -677,10 +692,10 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
       <input
         aria-label={t('cards.talk.messageInputAria')}
         onChange={(event) => {
-          setDraft(event.target.value);
           // Typing leaves the history: what is in the box is the player's own
           // line again, and Down should empty it rather than walk back to it.
-          setAt(-1);
+          const typed = event.target.value;
+          setTyping((was) => ({ ...was, draft: typed, at: -1 }));
         }}
         onKeyDown={(event) => {
           /*
@@ -717,8 +732,7 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
            */
           if (event.key !== 'Escape') return;
           event.preventDefault();
-          setDraft('');
-          setAt(-1);
+          setTyping((was) => ({ ...was, draft: '', at: -1 }));
           inputRef.current?.blur();
         }}
         /*
@@ -796,6 +810,7 @@ function ConversationCard({
   names,
   inspect,
   session,
+  typing,
   ...chrome
 }: ConversationCardProps) {
   /*
@@ -1277,6 +1292,7 @@ function ConversationCard({
       {feed}
       <Composer
         drop={onDropMacro}
+        kept={typing}
         macro={onMacro}
         picker={channels ? { channel, options, point } : null}
         queued={macroQueued}
