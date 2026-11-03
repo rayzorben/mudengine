@@ -1,58 +1,129 @@
 /**
- * The answers to this character's own `@path`, `@loop` and `@goto` (todo 32),
- * read and said on this screen rather than left as chat. A question is
- * remembered from the palette's ask or a typed `/<name> @path`, one per
- * player, and an answer is read only from somebody asked; silence lapses
- * after `tuning.remotes.replyMs` and says nothing, since an ungranted remote
- * is ignored without a reply. Kept apart from `Remotes`' own ledger, whose
- * lapse is evidence about the extended vocabulary. See `mudengine-automation`
- * › `parts/remotes.md`.
+ * The answers to this character's own `@path`, `@loop`, `@goto` (todo 32) and
+ * switch remotes (`@auto-sneak on`, todo 20261102-2217-01), read and said on
+ * this screen rather than left as chat. A question is remembered from the
+ * typed `/<name> @path` or a `send` from here, one per player, and an answer is
+ * read from the player the name stands for: the realm completes `/brak` to
+ * Brakkle. `{command invalid or not allowed}` is said as not allowed, and
+ * silence past `tuning.remotes.replyMs` is said too: a player who is not on,
+ * or an older client that answers an ungranted remote with nothing. Kept apart
+ * from `Remotes`' own ledger, whose lapse is evidence about the extended
+ * vocabulary. See `mudengine-automation` › `parts/remotes.md`.
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { playerKey } from '../../shared/players';
 import {
   formatPath,
+  parseOnOff,
   parseRemoteCall,
+  SWITCH_REMOTE_NAMES,
   type RemoteName,
   type RemoteReply
 } from '../../shared/remotes';
 
-/** The questions whose answers this reads. */
+/** The moves whose answers this reads, beside the switch remotes. */
 const MOVES: readonly RemoteName[] = ['path', 'loop', 'goto'];
 
+function isSwitch(name: RemoteName): boolean {
+  return (SWITCH_REMOTE_NAMES as readonly RemoteName[]).includes(name);
+}
+
 interface Asked {
+  /** The name as it was typed or asked, which may be the start of the player's. */
+  who: string;
   name: RemoteName;
+  /** The whole call as sent, `attack-last on`, for the lapse. */
+  raw: string;
   at: number;
+  /**
+   * False once another question went to the same player: a refusal does not
+   * say which question it refuses, so it could be either and is read as
+   * neither. The question still takes its own answer and still lapses.
+   */
+  refusable: boolean;
 }
 
 export class RemoteAnswers {
   private readonly asked = new Map<string, Asked>();
 
-  /** A question went to `who`; only the three read here are kept. */
-  noteAsked(who: string, name: RemoteName, now: number): void {
-    if (MOVES.includes(name)) this.asked.set(playerKey(who), { name, at: now });
+  /**
+   * A question went to `who`; only the moves and the switches are kept. Any
+   * other question leaves a kept one to that player unable to take a refusal.
+   */
+  noteAsked(who: string, name: RemoteName, now: number, raw: string = name): void {
+    if (MOVES.includes(name) || isSwitch(name)) {
+      this.asked.set(playerKey(who), { who, name, raw, at: now, refusable: true });
+      return;
+    }
+    const to = playerKey(who);
+    for (const [key, asked] of this.asked) {
+      if (to.startsWith(key) || key.startsWith(to)) {
+        this.asked.set(key, { ...asked, refusable: false });
+      }
+    }
   }
 
-  /** A line the player typed: `/<name> @path` is a question like the palette's. */
-  noteTyped(command: string, now: number): void {
+  /**
+   * A line the player typed: `/<name> @path` is a question like the palette's.
+   * Returns what to say at once: a switch remote with no `on` or `off`, which a
+   * MudEngine client changes nothing on.
+   */
+  noteTyped(command: string, now: number): string | null {
     const telepath = /^\/(?<who>\S+)\s+(?<message>.+)$/.exec(command.trim());
     const call = telepath?.groups ? parseRemoteCall(telepath.groups['message']!) : null;
-    if (call !== null && telepath?.groups) this.noteAsked(telepath.groups['who']!, call.name, now);
+    if (call === null || !telepath?.groups) return null;
+    const who = telepath.groups['who']!;
+    if (isSwitch(call.name) && parseOnOff(call.argument) === null) {
+      return t('automation.remotes.askedSwitchBare', { who, raw: call.raw });
+    }
+    this.noteAsked(who, call.name, now, [call.raw, call.argument].filter(Boolean).join(' '));
+    return null;
   }
 
   /** What to say about `reply` from `from`, or null when it answers nothing asked here. */
   heard(from: string, reply: RemoteReply, now: number): string | null {
-    const key = playerKey(from);
-    const asked = this.asked.get(key);
-    if (asked === undefined || now - asked.at > tuning().remotes.replyMs) return null;
-    const said = this.words(from, asked.name, reply);
+    const key = this.keyFor(from);
+    const asked = key === null ? undefined : this.asked.get(key);
+    if (key === null || asked === undefined || now - asked.at > tuning().remotes.replyMs) {
+      return null;
+    }
+    if (reply.kind === 'refused' && !asked.refusable) return null;
+    const said =
+      reply.kind === 'refused'
+        ? t('automation.remotes.heardRefused', { who: from, raw: asked.raw })
+        : this.words(from, asked.name, reply);
     if (said !== null) this.asked.delete(key);
     return said;
   }
 
+  /**
+   * The questions nobody answered in `tuning.remotes.replyMs`, each said once.
+   * Swept from `Remotes.onCharacter`, as its own ledger is.
+   */
+  sweep(now: number): string[] {
+    const deadline = now - tuning().remotes.replyMs;
+    const lapsed = [...this.asked].filter(([, asked]) => asked.at <= deadline);
+    for (const [key] of lapsed) this.asked.delete(key);
+    return lapsed.map(([, asked]) =>
+      t('automation.remotes.heardNothing', { who: asked.who, raw: asked.raw })
+    );
+  }
+
   reset(): void {
     this.asked.clear();
+  }
+
+  /**
+   * The question `from` answers: asked of `from` by name or by the start of it,
+   * as the realm completes a telepath. Two typed names that both start
+   * `from`'s are two candidates, and neither is read.
+   */
+  private keyFor(from: string): string | null {
+    const full = playerKey(from);
+    if (this.asked.has(full)) return full;
+    const starts = [...this.asked.keys()].filter((key) => full.startsWith(key));
+    return starts.length === 1 ? starts[0]! : null;
   }
 
   private words(from: string, name: RemoteName, reply: RemoteReply): string | null {
@@ -89,11 +160,11 @@ export class RemoteAnswers {
                 more
               });
       }
+      case 'refused':
       case 'vitals':
       case 'stats':
       case 'version':
       case 'room':
-      case 'refused':
       case 'no':
       case 'yes':
       case 'wealth':

@@ -100,13 +100,16 @@ import {
   reachableBy,
   readWaitReason,
   walksOnThroughWait,
+  REFUSED_REPLY,
+  SWITCH_REMOTES,
   type MoveAnswer,
   type PathReport,
   type RemoteCall,
   type RemoteName,
   type RemoteRefusal,
   type RemoteReply,
-  type RemoteVerdict
+  type RemoteVerdict,
+  type SwitchRemote
 } from '../../shared/remotes';
 import { t } from '../app/i18n';
 import { CLIENT_NAME, CLIENT_VERSION } from '../app/version';
@@ -338,9 +341,10 @@ export interface RemoteEvents extends StandingRemoteEvents {
    * Another player's client answered `@version`, or stopped answering the
    * extended question this client had asked it.
    *
-   * `client` is what they said, verbatim, and is absent when nothing was said —
-   * a refusal and a silence settle only whether the extended wording reaches
-   * them, and say nothing about what they are running instead.
+   * `client` is what they said, verbatim, and is absent when nothing was said:
+   * a silence settles only whether the extended wording reaches them, and says
+   * nothing about what they are running instead. A refusal settles nothing
+   * (`extendedRefused`).
    */
   clientNamed?(from: string, client: string | undefined, extended: 'yes' | 'no'): void;
   /**
@@ -388,19 +392,6 @@ export interface RemoteEvents extends StandingRemoteEvents {
   /** The realm's quests, for the step behind an `@abil` counter; null where no world is loaded. */
   quests?(): readonly Quest[] | null;
 }
-
-/**
- * MegaMUD's `[on / off]` remotes that are an automation switch here, and the
- * switch each writes. One row per remote; the remote's row in `REMOTES` says
- * `acted`, which `Remotes.test.ts` holds for every key here.
- */
-export const SWITCH_REMOTES = {
-  'auto-combat': 'combat',
-  'auto-sneak': 'sneak',
-  'attack-last': 'attackLast'
-} as const satisfies Partial<Record<RemoteName, AutomationSwitch>>;
-
-export type SwitchRemote = keyof typeof SWITCH_REMOTES;
 
 /** The decisions an `@` command's line is about (`DECISION_SETTINGS`). */
 const GRANT: DecisionKind = 'remote-grant';
@@ -462,7 +453,7 @@ interface Outstanding {
 export class Remotes implements SessionModule {
   /** Questions sent and not yet answered, by player. See {@link Outstanding}. */
   private readonly asked = new Map<string, Outstanding>();
-  /** The player's own `@path`, `@loop` and `@goto`, whose answers are said here. */
+  /** The player's own `@path`, `@loop`, `@goto` and switch remotes, whose answers are said here. */
   private readonly answers = new RemoteAnswers();
 
   /** When this character last asked for a heal. See `askForHeal`. */
@@ -765,7 +756,7 @@ export class Remotes implements SessionModule {
 
     const verdict = judgeRemote(from, command.name, this.config.remotes, evidence);
     if (!verdict.allowed) {
-      this.refuse(from, command, verdict);
+      this.refuse(from, command, verdict, reachable ? prefix : null);
       return;
     }
 
@@ -804,7 +795,8 @@ export class Remotes implements SessionModule {
    */
   /** A line the player typed, so the answer to a typed `/<name> @path` is read too. */
   noteTyped(command: string): void {
-    this.answers.noteTyped(command, Date.now());
+    const said = this.answers.noteTyped(command, Date.now());
+    if (said !== null) this.events.notice?.(said);
   }
 
   ask(
@@ -945,6 +937,7 @@ export class Remotes implements SessionModule {
     // sheet and the health asks go out under the gate their first answer did (todo 118).
     if (this.config.remotes.enabled) this.sweep(Date.now());
     this.stoppers.sweep(Date.now());
+    for (const said of this.answers.sweep(Date.now())) this.events.notice?.(said);
     if (this.config.enabled && this.config.remotes.enabled) {
       this.sheets.onCharacter(state);
       this.healthAsks.onCharacter(state);
@@ -990,8 +983,11 @@ export class Remotes implements SessionModule {
     const reason = t('automation.remotes.reasonAskingHeal', {
       percent: Math.round(fraction * 100)
     });
-    const onSent = (): void => {
+    // A heal ask is another question to each member it reaches, so a refusal
+    // from them is not read as the answer to a typed one (`RemoteAnswers`).
+    const sentTo = (members: readonly string[]) => (): void => {
       this.askedForHealAt = Date.now();
+      for (const member of members) this.answers.noteAsked(member, 'heal', Date.now());
     };
     if (this.seen) {
       this.queue.enqueue({
@@ -999,7 +995,7 @@ export class Remotes implements SessionModule {
         priority: 'combat',
         coalesceKey: 'remote:ask-heal',
         stillWanted: () => this.wantsHeal && this.seen,
-        onSent,
+        onSent: sentTo(partyMembers(state)),
         reason,
         decision: ASK_HEAL
       });
@@ -1011,7 +1007,7 @@ export class Remotes implements SessionModule {
         priority: 'combat',
         coalesceKey: `remote:ask-heal:${playerKey(member)}`,
         stillWanted: () => this.wantsHeal,
-        onSent,
+        onSent: sentTo([member]),
         reason,
         decision: ASK_HEAL
       });
@@ -1065,14 +1061,20 @@ export class Remotes implements SessionModule {
    */
   private readReply(from: string, reply: RemoteReply, state: CharacterState): boolean {
     const hand = this.handsAsked.get(playerKey(from));
-    if (hand !== undefined && (reply.kind === 'ok' || reply.kind === 'failed')) {
+    if (
+      hand !== undefined &&
+      (reply.kind === 'ok' || reply.kind === 'failed' || reply.kind === 'refused')
+    ) {
       this.handsAsked.delete(playerKey(from));
-      const answer = reply.kind === 'failed' ? 'failed' : hand.viaDo ? 'tried' : 'held';
+      // A member who has not granted the hand refuses it (`refuse`): the next hand is asked.
+      const answer = reply.kind === 'ok' ? (hand.viaDo ? 'tried' : 'held') : 'failed';
       this.events.handAnswered?.(from, answer);
       return true;
     }
     // The leader's own question about the way, before the player's answers.
     if (this.stoppers.heard(from, reply)) return true;
+    // A refusal is this module's when it has an extended question out to them.
+    if (reply.kind === 'refused' && this.extendedRefused(from)) return true;
     const heard = this.answers.heard(from, reply, Date.now());
     if (heard !== null) {
       this.events.notice?.(heard);
@@ -1110,30 +1112,35 @@ export class Remotes implements SessionModule {
       return true;
     }
 
-    /*
-     * The one reply that is about the *question*: MegaMUD 2.1's answer to a
-     * word it has no entry for. It arrives only for an extended remote, since
-     * nothing else this client sends is outside MegaMUD's own vocabulary — so
-     * it settles that the peer is not running this client, and the plain
-     * wording goes instead. Automatically, and out loud, because a question
-     * that quietly became a different question is one nobody can debug.
-     */
-    if (reply.kind === 'refused' && isExtended(outstanding.name)) {
-      this.asked.delete(key);
-      this.events.clientNamed?.(from, undefined, 'no');
-      const plain = plainRemote(outstanding.name);
-      if (plain === null) return true;
-      // Read and recorded with the master switch off; the plain wording is a send, held and said.
-      if (!this.config.enabled) {
-        this.events.notice?.(t('automation.remotes.followUpHeld', { who: from, name: plain }));
-        return true;
-      }
-      this.events.notice?.(t('automation.remotes.extendedRefused', { who: from, name: plain }));
-      this.send(from, plain);
+    return false;
+  }
+
+  /**
+   * `{command invalid or not allowed}` to an extended question. It is one of
+   * two things, and neither is picked: a MudEngine peer that has not granted it
+   * (`refuse`, the user, 2026-11-02), or a peer whose `@version` once named this
+   * client and who now runs MegaMUD, which answers an unknown word so. The
+   * plain wording goes once, which a MudEngine peer refuses too (`where` and
+   * `where-room` are granted together) and MegaMUD answers, and the peer's
+   * record is left as it was. Returns whether there was such a question.
+   */
+  private extendedRefused(from: string): boolean {
+    const key = playerKey(from);
+    const outstanding = this.asked.get(key);
+    if (outstanding === undefined || !isExtended(outstanding.name)) return false;
+    this.asked.delete(key);
+    const plain = plainRemote(outstanding.name);
+    if (plain === null) return true;
+    // The plain wording is a send; with the master switch off it is held, and said.
+    if (!this.config.enabled) {
+      this.events.notice?.(t('automation.remotes.followUpHeld', { who: from, name: plain }));
       return true;
     }
-
-    return false;
+    this.events.notice?.(
+      t('automation.remotes.extendedRefused', { who: from, raw: outstanding.name, name: plain })
+    );
+    this.send(from, plain);
+    return true;
   }
 
   /** Forgotten with the connection: a fresh session has said nothing to anybody. */
@@ -1170,28 +1177,31 @@ export class Remotes implements SessionModule {
   /**
    * Somebody asked for something they have not been granted.
    *
-   * **Said out loud here, and nothing at all is sent back.** That breaks the
-   * module's own "a refusal is said to the sender" rule on purpose, and the
-   * distinction is who is owed an answer. `@kill` is refused to somebody who is
-   * *allowed to ask* and got a considered no — they are owed the reason, or
-   * they would reasonably conclude it had worked. Somebody asking for something
-   * that is not theirs to ask is not in that conversation, and replying to them
-   * would:
+   * **Said here in full, and `{command invalid or not allowed}` goes back to
+   * somebody this character talks to** (the user, 2026-11-02, after Rayzor's
+   * `@attack-last on` to Brakkle went unanswered and looked as if it had
+   * worked). `prefix` is null for anybody else: a player with no grant, no
+   * party list and no gang list behind them, or a channel this client never
+   * answers on. That player hears nothing, because a reply would:
    *
    * - **confirm a client is listening.** Silence and "no such character" look
-   *   identical from the other end; a `{no: …}` says a real, automated,
-   *   remotely-drivable client is on this name, to anybody who probes for one.
-   * - **spend the command queue on a stranger's schedule.** A reply is a queued
-   *   command at `user` priority, ahead of a fight. Anybody able to telepath
-   *   could make this character talk instead of swing, once per message, which
-   *   is the thing pacing exists to prevent handed to somebody else.
+   *   identical from the other end.
+   * - **spend the command queue on their schedule.** A reply is a queued
+   *   command at `user` priority, ahead of a fight.
    *
-   * The person running *this* client still hears it in full — that is what the
-   * notice is — because a safety feature that silently declines is worse than
-   * one never offered. The asker hears nothing.
+   * Somebody already granted a remote, or on a party or gang list, knows a
+   * client is here, and their asks are as many as their grants already let
+   * them make. The reply is MegaMUD's own, so either client reads it. With the
+   * master switch off nothing is sent, as for every answer (`act`).
    */
-  private refuse(from: string, command: RemoteCall, verdict: RemoteVerdict): void {
+  private refuse(
+    from: string,
+    command: RemoteCall,
+    verdict: RemoteVerdict,
+    prefix: string | null
+  ): void {
     if (verdict.allowed) return;
+    if (prefix !== null && this.config.enabled) this.reply(from, REFUSED_REPLY, prefix, GRANT);
     if (verdict.because === 'denied') {
       this.events.notice?.(
         t('automation.remotes.refusedDenied', { from, raw: command.raw }),

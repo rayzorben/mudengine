@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
-import { Remotes, SWITCH_REMOTES } from '../Remotes';
+import { Remotes } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, HELD_DEFAULTS, type HeldSwitches } from '../../../shared/config';
+import { SWITCH_REMOTES } from '../../../shared/remotes';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import {
   EMPTY_CHARACTER,
@@ -639,6 +640,40 @@ describe('answering the imperative ones', () => {
         })
       );
     });
+
+    // Rayzor's `/brak @attack-last on` to Brakkle, allowed `@do` only (2026-11-02 03:33).
+    it('tells somebody granted something else that it is not allowed', () => {
+      const refusing = remotes(true);
+      const onlyDo = { allow: ['do' as const], deny: [], allowAll: false, autoInvite: false };
+      refusing.configure({
+        ...at(true),
+        remotes: { ...config.remotes, players: { rand: onlyDo } }
+      });
+      refusing.onBlock(said('conversation-telepath', 'Rand', `@${remote} on`), who());
+      drain();
+      expect(switched).toEqual([]);
+      expect(sent).toEqual(['/Rand {command invalid or not allowed}']);
+    });
+
+    it('sends no refusal with automation off, and still says it here', () => {
+      const refusing = remotes(true);
+      const onlyDo = { allow: ['do' as const], deny: [], allowAll: false, autoInvite: false };
+      refusing.configure({
+        ...at(true),
+        enabled: false,
+        remotes: { ...config.remotes, players: { rand: onlyDo } }
+      });
+      refusing.onBlock(said('conversation-telepath', 'Rand', `@${remote} on`), who());
+      drain();
+      expect(sent).toEqual([]);
+      expect(notices).toContain(
+        t('automation.remotes.refusedNotGranted', {
+          from: 'Rand',
+          raw: remote,
+          unresolvedClause: ''
+        })
+      );
+    });
   });
 
   /* Each switch remote is one row, and each row is a remote `REMOTES` says is acted. */
@@ -978,7 +1013,7 @@ describe('letting @kill, @hangup, @relog and @panic! through', () => {
   it('refuses a sender not granted it, with the switch on', () => {
     standing(true).onBlock(said('conversation-telepath', 'Rend', '@hangup'), who());
     drain();
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Rend {command invalid or not allowed}']);
     expect(hangUps).toEqual([]);
     expect(notices).toContain(
       t('automation.remotes.refusedNotGranted', {
@@ -1401,6 +1436,17 @@ describe('the gate: who may ask, and for what', () => {
     expect(sent).toEqual(['/Yang {HP=101/101,MA=5/5}']);
   });
 
+  // The positive control is the telepath case below, on the same grant.
+  it('sends no refusal on a channel it never answers on, to somebody it talks to', () => {
+    peers.configure(grant({ yang: { allow: ['health'] } }));
+    peers.onBlock(said('conversation-gossip', 'Yang', '@do who'), live());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', { from: 'Yang', raw: 'do', unresolvedClause: '' })
+    );
+  });
+
   /*
    * The whole reason the grounds went. Under the old model, allowing somebody
    * by name allowed them `@do` along with `@health` and there was no way to say
@@ -1410,21 +1456,21 @@ describe('the gate: who may ask, and for what', () => {
     peers.configure(grant({ yang: { allow: ['health'] } }));
     peers.onBlock(said('conversation-telepath', 'Yang', '@do who'), live());
     drain();
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Yang {command invalid or not allowed}']);
     expect(notices).toContain(
       t('automation.remotes.refusedNotGranted', { from: 'Yang', raw: 'do', unresolvedClause: '' })
     );
   });
 
   /* The positive control is `hands @pick to the door path`: granted, the same line picks. */
-  it('stays silent to @disarm from a member not granted it (todo 86)', () => {
+  it('refuses @disarm from a member not granted it, and disarms nothing (todo 86)', () => {
     peers.configure(grant({ yang: { allow: ['health'] } }));
     peers.onBlock(
       said('conversation-telepath', 'Yang', '@disarm ne'),
       live({ progress: { ...EMPTY_CHARACTER.progress, traps: 90 } })
     );
     drain();
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Yang {command invalid or not allowed}']);
   });
 
   it('ignores somebody granted nothing at all', () => {
@@ -1460,7 +1506,7 @@ describe('the gate: who may ask, and for what', () => {
       live({ online: [listed('Vaelor', 'Old Guard'), listed('Spike', 'Old Guard')] })
     );
     drain();
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Spike {command invalid or not allowed}']);
     expect(notices).toContain(
       t('automation.remotes.refusedDenied', { from: 'Spike', raw: 'health' })
     );
@@ -1663,7 +1709,7 @@ describe('the gate: who may ask, and for what', () => {
       live(withParty(member('Vaelor'), member('Rend')))
     );
     drain();
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Rend {command invalid or not allowed}']);
     expect(notices).toContain(
       t('automation.remotes.refusedDenied', { from: 'Rend', raw: 'health' })
     );
@@ -1676,7 +1722,7 @@ describe('the gate: who may ask, and for what', () => {
       live(withParty(member('Vaelor'), member('Soul')))
     );
     drain();
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Soul {command invalid or not allowed}']);
   });
 
   /*
@@ -1899,6 +1945,15 @@ describe('talking to another one of these clients', () => {
     expect(handed).toEqual(['Rand:tried']);
   });
 
+  // A member on this client who has not granted the hand refuses it (`refuse`): the next is asked.
+  it('hands a member’s refusal back to the walk as failed', () => {
+    knowing('Soul', 'yes');
+    peers.askHand('Soul', 'pick', 'ne');
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{command invalid or not allowed}'), who());
+    expect(handed).toEqual(['Soul:failed']);
+  });
+
   it('hands a member’s {ok} or {failed} back to the walk, once', () => {
     knowing('Soul', 'yes');
     peers.askHand('Soul', 'bash', 'n');
@@ -1993,12 +2048,12 @@ describe('talking to another one of these clients', () => {
   });
 
   /*
-   * The fallback, and the fact behind it: `{command invalid or not allowed}`
-   * is what MegaMUD 2.1 answers a word it has no entry for (captured
-   * 2026-08-29). Nothing else this client sends is outside MegaMUD's own
-   * vocabulary, so it can only ever be about an extended question.
+   * `{command invalid or not allowed}` to an extended question is a MudEngine
+   * peer that has not granted it (the user, 2026-11-02), or a peer that has
+   * moved to MegaMUD, which answers an unknown word so. Neither is picked: the
+   * plain wording goes once and the record stays. Silence falls back, below.
    */
-  it('falls back to the plain wording when the extended one is refused', () => {
+  it('asks once in the plain wording after a refusal, and keeps the record', () => {
     knowing('Rand', 'yes');
     peers.ask('Rand', 'where', who());
     drain();
@@ -2007,7 +2062,45 @@ describe('talking to another one of these clients', () => {
     peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
     drain();
     expect(sent).toEqual(['/Rand @where-room', '/Rand @where']);
-    expect(clients).toEqual(['Rand:-:no']);
+    expect(clients).toEqual([]);
+    expect(notices).toContain(
+      t('automation.remotes.extendedRefused', { who: 'Rand', raw: 'where-room', name: 'where' })
+    );
+  });
+
+  /*
+   * A refusal of `@where-room`, and then of the plain `@where` behind it, is
+   * not read as the answer to a typed `@path` (2026-11-02): a refusal does not
+   * say which question it refuses. The path itself is still read after both.
+   */
+  it('reads neither refusal of an extended question as the answer to a typed one', () => {
+    knowing('Rand', 'yes');
+    peers.noteTyped('/r @path');
+    peers.ask('Rand', 'where', who());
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
+    drain();
+    expect(sent).toContain('/Rand @where');
+    peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
+    drain();
+    expect(notices).not.toContain(
+      t('automation.remotes.heardRefused', { who: 'Rand', raw: 'path' })
+    );
+    peers.onBlock(said('conversation-telepath', 'Rand', '{none}'), who());
+    expect(notices).toContain(t('automation.remotes.heardNoPath', { who: 'Rand' }));
+  });
+
+  it('reads the refusal with automation off, and sends the plain wording to nobody', () => {
+    knowing('Rand', 'yes');
+    peers.ask('Rand', 'where', who());
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+    peers.configure({ ...config, enabled: false });
+    peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
+    drain();
+    expect(sent).toEqual(['/Rand @where-room']);
+    expect(clients).toEqual([]);
+    expect(notices).toContain(t('automation.remotes.followUpHeld', { who: 'Rand', name: 'where' }));
   });
 
   it('falls back when nothing comes back at all, and says so', () => {
@@ -2047,19 +2140,6 @@ describe('talking to another one of these clients', () => {
     peers.configure({ ...config, enabled: false });
     vi.advanceTimersByTime(30_000);
     peers.onCharacter(who());
-    drain();
-    expect(sent).toEqual(['/Rand @where-room']);
-    expect(clients).toEqual(['Rand:-:no']);
-    expect(notices).toContain(t('automation.remotes.followUpHeld', { who: 'Rand', name: 'where' }));
-  });
-
-  it('reads MegaMUD’s refusal with automation off, and sends the plain wording to nobody', () => {
-    knowing('Rand', 'yes');
-    peers.ask('Rand', 'where', who());
-    drain();
-    expect(sent).toEqual(['/Rand @where-room']);
-    peers.configure({ ...config, enabled: false });
-    peers.onBlock(said('conversation-telepath', 'Rand', '{command invalid or not allowed}'), who());
     drain();
     expect(sent).toEqual(['/Rand @where-room']);
     expect(clients).toEqual(['Rand:-:no']);
@@ -2241,6 +2321,31 @@ describe('@heal', () => {
       peers.onCharacter({ ...inParty(40, 'Soul', 'Yang'), stealth });
       drain();
       expect(sent).toEqual(['/Soul @heal', '/Yang @heal']);
+    }
+  });
+
+  /*
+   * A heal ask is another question to the member, so their refusal is not read
+   * as the answer to a remote the player typed to them (2026-11-02). The `{ok}`
+   * after it is, which is the positive control.
+   */
+  it('reads no refusal of a heal ask as the answer to a typed remote', () => {
+    peers.configure(asking(0.5));
+    for (const stealth of ['seen', 'sneaking'] as const) {
+      notices.length = 0;
+      peers.reset();
+      peers.noteTyped('/soul @auto-combat on');
+      peers.onCharacter({ ...inParty(40, 'Soul'), stealth });
+      drain();
+      const refused = said('conversation-telepath', 'Soul', '{command invalid or not allowed}');
+      peers.onBlock(refused, inParty(40, 'Soul'));
+      expect(notices).not.toContain(
+        t('automation.remotes.heardRefused', { who: 'Soul', raw: 'auto-combat on' })
+      );
+      peers.onBlock(said('conversation-telepath', 'Soul', '{ok}'), inParty(40, 'Soul'));
+      expect(notices).toContain(
+        t('automation.remotes.heardOk', { who: 'Soul', raw: 'auto-combat' })
+      );
     }
   });
 
@@ -2854,7 +2959,8 @@ describe('the decision behind each line and command (todo 119)', () => {
     drain();
     expect(decided).toEqual([
       ['/Sackhunter {HP=600/600}', 'remote-answer'],
-      ['go rift', 'remote-party-cmd']
+      ['go rift', 'remote-party-cmd'],
+      ['/Yang {command invalid or not allowed}', 'remote-grant']
     ]);
     expect(lines).toContainEqual([
       t('automation.remotes.refusedNotGranted', { from: 'Yang', raw: 'do', unresolvedClause: '' }),

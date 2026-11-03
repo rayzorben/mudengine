@@ -7878,8 +7878,8 @@ automation:
       own format: a room's map number instead of its name."
     peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's
       format."
-    extendedRefused: "{who} refused @{name} in this client's format, so they are not running it
-      after all. Asking again in MegaMUD's format."
+    extendedRefused: "{who} answered @{raw}: command invalid or not allowed. Their client does not
+      allow it, or they no longer run MudEngine. Asking @{name} in MegaMUD's format."
     extendedLapsed: Nothing came back from {who}, so they are marked as not running this client.
       Asking @{name} in MegaMUD's format instead.
     comebackUnplaced: This character's location is not known, so there is no address to ask {who} to
@@ -7892,6 +7892,12 @@ automation:
     heardPath: '{who} answered @path: {path}'
     heardOk: '{who} answered @{raw}: ok.'
     heardFailed: '{who} answered @{raw}: it matched, and could not start.'
+    heardNothing: '{who} did not answer @{raw}. They may not be on, or their client sends
+      nothing back for a remote it does not allow.'
+    heardRefused: '{who} answered @{raw}: command invalid or not allowed. Their client does not
+      know that remote, or does not allow it to you.'
+    askedSwitchBare: 'Sent @{raw} to {who} without on or off. MudEngine changes nothing unless it
+      is sent on or off.'
     heardUnknown: '{who} answered @{raw}: nothing is called "{request}".'
     heardSeveral: '{who} answered @{raw}: several match "{request}": {names}.'
     heardSeveralMore: '{who} answered @{raw}: several match "{request}": {names}, and {more} more.'

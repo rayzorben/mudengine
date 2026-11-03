@@ -50,6 +50,7 @@
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
 import type { MemberSheet, PartyMember, Stealth } from './character';
 import type { RecentDeath } from './recentDeaths';
+import type { AutomationSwitch } from './automationSwitches';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 import { twoDigits } from './values';
 
@@ -376,9 +377,10 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   /*
    * `@auto-combat on` and `off`: the auto-combat switch, written to this
    * character's file as the player's own toggle writes it (todo 02,
-   * 2026-10-04; `SWITCH_REMOTES` in `Remotes.ts`). `{ok}` once the file says
-   * so, as the user gave the reply. A sender not granted it hears nothing
-   * (`refuse`). Granted by nothing shipped.
+   * 2026-10-04; `SWITCH_REMOTES`). `{ok}` once the file says so, as the user
+   * gave the reply. A sender not granted it is answered
+   * `{command invalid or not allowed}` when this character talks to them, and
+   * hears nothing otherwise (`refuse`). Granted by nothing shipped.
    */
   'auto-combat': { name: 'auto-combat', support: 'acted' },
   'auto-nuke': {
@@ -413,7 +415,7 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   },
   /*
    * `@auto-sneak on` and `off`: Auto-Sneak on Move, written as `@auto-combat`
-   * writes its switch (todo 85, 2026-10-10; `SWITCH_REMOTES` in `Remotes.ts`).
+   * writes its switch (todo 85, 2026-10-10; `SWITCH_REMOTES`).
    * `{ok}` by `@auto-combat`'s reply; no capture shows MegaMUD's own. Granted
    * by nothing shipped.
    */
@@ -707,11 +709,12 @@ export type RemoteReply =
    */
   | { kind: 'room'; map: number; number: number; name: string | null }
   /**
-   * `{command invalid or not allowed}` — what MegaMUD 2.1 answers a word it has
-   * no entry for (captured 2026-08-29, `captures/215`, answering `@seen`). It
-   * is the one reply in the vocabulary that is a statement about the *question*
-   * rather than the character, and it is what tells this client that an
-   * extended remote reached a client that is not this one.
+   * `{command invalid or not allowed}`: what MegaMUD 2.1 answers a word it has
+   * no entry for (captured 2026-08-29, `captures/215`, answering `@seen`), and
+   * `REFUSED_REPLY`, what this client answers a remote it does not allow
+   * (2026-11-02). It is a statement about the *question* rather than the
+   * character, and it settles nothing about the client that sent it
+   * (`Remotes.extendedRefused`).
    */
   | { kind: 'refused' }
   /** `{none}`: no path loaded (`@path`). */
@@ -765,6 +768,13 @@ const ROOM_ADDRESS = /^\{\s*(?<map>\d+)\s*\/\s*(?<number>\d+)\s*(?<name>[^}]*?)\
 const VERSION = /^\{\s*(?<client>[A-Za-z][\w.+-]*)\s+(?<version>\d[\w.+-]*)\s*\}$/;
 /** MegaMUD 2.1's answer to a word it has no entry for. Captured, verbatim. */
 const REFUSED = /^\{\s*command invalid or not allowed\s*\}$/i;
+
+/**
+ * The same answer, sent by this client to somebody it talks to who asked for a
+ * remote they are not granted (the user, 2026-11-02). Spelled as captures/074
+ * has it, which `REFUSED` reads back.
+ */
+export const REFUSED_REPLY = '{command invalid or not allowed}';
 
 export function parseRemoteReply(message: string): RemoteReply | null {
   const text = message.trim();
@@ -1799,3 +1809,20 @@ export const GRANTABLE_REMOTES: readonly RemoteName[] = REMOTE_NAMES.filter(isGr
 export function judgedByGrant(name: RemoteName, letThrough: boolean): boolean {
   return isActionable(name) || (letThrough && REMOTES[name].support === 'refused');
 }
+
+/**
+ * MegaMUD's `[on / off]` remotes that are an automation switch here, and the
+ * switch each writes (`Remotes.switchByRemote`). One row per remote; the
+ * remote's row in `REMOTES` says `acted`, which `Remotes.test.ts` holds for
+ * every key here.
+ */
+export const SWITCH_REMOTES = {
+  'auto-combat': 'combat',
+  'auto-sneak': 'sneak',
+  'attack-last': 'attackLast'
+} as const satisfies Partial<Record<RemoteName, AutomationSwitch>>;
+
+export type SwitchRemote = keyof typeof SWITCH_REMOTES;
+
+/** `SWITCH_REMOTES`' names, for the sender's side (`RemoteAnswers`). */
+export const SWITCH_REMOTE_NAMES = Object.keys(SWITCH_REMOTES) as readonly SwitchRemote[];
