@@ -15,6 +15,7 @@ import { describeObstacle, leverOpening } from './obstacle';
 import { exitGates, gateRequirement } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
 import { sweep, type SweepRooms, type SweepRules } from './navigation/sweep';
+import { passagesOn } from './navigation/passages';
 import { closedPlaces } from './closedPlaces';
 import { RealmJoins } from './RealmJoins';
 import { TravellerKept } from './travellerKept';
@@ -3652,10 +3653,10 @@ export class Router {
      * as the plan says them: nothing carried stops one, so `needs` is empty
      * and `share` null, and the chip reads *run through* off `corridor`.
      */
-    for (const passage of this.index.corridorsOn(steps)) {
+    for (const passage of passagesOn(steps, (room) => this.index.spellOver(room))) {
       hazards.push({
-        id: passage.id,
-        spell: passage.spell,
+        id: passage.spell,
+        spell: passage.name,
         rooms: passage.rooms,
         share: null,
         unread: false,

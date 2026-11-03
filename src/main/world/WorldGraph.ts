@@ -29,7 +29,6 @@ import {
   type Requirement,
   type ItemUseGate,
   type Route,
-  type RouteStep,
   type RoomId,
   type WorldExit,
   type WorldItem,
@@ -100,7 +99,7 @@ import {
   type ShippedWorld
 } from '../../shared/worlds';
 import { dearerStepsOf, Router, type RouteOptions, type Traveller } from './Router';
-import type { Passage, PortalExit, RoomIndex } from './RoomIndex';
+import type { PortalExit, RoomIndex } from './RoomIndex';
 import { Catalogue, mobAsRow } from './Catalogue';
 import { Joiners } from './joiners';
 import { readActions, readRows } from './roomColumns';
@@ -315,7 +314,7 @@ export class WorldGraph {
       itemLandings: () => this.itemLandings(),
       leversFor: (room, direction) => this.leversFor(room, direction),
       hazardOf: (room, level) => catalogue.hazardOf(room, level),
-      corridorsOn: (steps) => this.corridorsOn(steps),
+      spellOver: (room) => this.spellOver(room),
       item: (id) => catalogue.item(id),
       spellById: (id) => catalogue.spellById(id),
       byId: (id) => this.byId(id),
@@ -333,7 +332,7 @@ export class WorldGraph {
   private plannerRooms(): PlannerRooms {
     return {
       roomsById: this.rooms,
-      corridorsOn: (steps) => this.corridorsOn(steps),
+      spellOver: (room) => this.spellOver(room),
       mobPlaces: (mob) => this.mobPlaces(mob),
       spawnRoomsOf: (mob) => this.spawnRoomsOf(mob),
       itemSources: (item) => this.sources.of(item),
@@ -1759,50 +1758,6 @@ export class WorldGraph {
     lap?: Traveller
   ): PlanStep {
     return this.planner.planStep(quest, step, from, carrying, traveller, odds, supplies, lap);
-  }
-
-  /**
-   * The passages a route walks into, with the spell's id, for the plan's
-   * snag and the route's hazard alike — one reading, so the two cannot count
-   * the rooms differently: the router asks it through `RoomIndex`, the
-   * planner through `PlannerRooms`.
-   */
-  private corridorsOn(steps: readonly RouteStep[]): Passage[] {
-    const found: Passage[] = [];
-    for (const [index, step] of steps.entries()) {
-      if (step.requirement?.kind !== 'text') continue;
-      // The phrase the walker will send, not any phrase to that room: two
-      // words into one pool may cast two different things or nothing.
-      const command = this.rooms
-        .get(step.from)
-        ?.commands?.find((each) => each.casts !== undefined && each.say.includes(step.command));
-      const held = command?.casts === undefined ? null : this.spellById(command.casts);
-      if (held === null || held === undefined) continue;
-      const next = held.abilities?.find(([ability]) => ability === HAZARD_ABILITY.endCast)?.[1];
-      if (next === undefined || next <= 0) continue;
-      const then = this.spellById(next);
-      const lifts = new Set([held.id, next]);
-      let rooms = steps.length - index;
-      let ends = false;
-      for (let ahead = index + 1; ahead < steps.length; ahead += 1) {
-        const exit = steps[ahead]?.requirement;
-        if (exit?.kind !== 'cast' || exit.castPre === undefined) continue;
-        if (this.catalogue.killsAny(exit.castPre, lifts)) {
-          rooms = ahead - index;
-          ends = true;
-          break;
-        }
-      }
-      found.push({
-        id: held.id,
-        spell: held.name,
-        rooms,
-        ends,
-        ...(held.duration === undefined ? {} : { ticks: held.duration }),
-        ...(then === null ? {} : { then: then.name })
-      });
-    }
-    return found;
   }
 
   /**

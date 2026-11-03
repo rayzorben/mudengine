@@ -5418,6 +5418,10 @@ describe('a way in that puts a timed spell on you', () => {
     const graph = dive(25);
     expect(graph.portalsFrom(roomId(1, 1))[0]?.requirement.corridor).toBeUndefined();
     expect(graph.spellOver(roomId(1, 2))).toBeNull();
+    // And the route names none: it reads the passage record, not the chain.
+    const route = graph.route(roomId(1, 1), roomId(1, 5), {});
+    expect(route.blocked).toBe(false);
+    expect(route.hazards ?? []).toEqual([]);
   });
 
   // gmud.zip's `fall` (335) and `fire portal` (834): damage and no duration.

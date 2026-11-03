@@ -1428,9 +1428,9 @@ export type PlanSnag =
   | {
       kind: 'corridor';
       spell: string;
-      /** Rooms under it: to the exit that lifts it, or to the leg's end where none does. */
+      /** Rooms under it, to its furthest way out (`Corridor.rooms`). */
       rooms: number;
-      /** Whether this leg reaches the exit that lifts it; false is a leg that ends inside. */
+      /** Whether the leg comes out of it; false is a leg that ends inside. */
       ends: boolean;
       ticks?: number;
       then?: string;

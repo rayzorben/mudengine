@@ -47,6 +47,7 @@ import { handoverSource } from './navigation/sources';
 import type { PlannerRooms } from './PlannerRooms';
 import { plan, leg, type PlanRealm } from './navigation/plan';
 import { tour } from './navigation/tour';
+import { passagesOn } from './navigation/passages';
 import type { Router, Traveller } from './Router';
 import {
   fetchAct,
@@ -770,19 +771,19 @@ export class QuestPlanner {
   }
 
   /**
-   * The timed passages a route walks into: a text exit whose room command
-   * puts a spell on the character (`RoomCommand.casts`, format 43) that ends
-   * in another (`EndCast`) — *holding breath* into *drowning* — counted from
-   * the room it lands in to the exit whose own cast kills it (`killSpell`,
-   * on the spell or on what it ends in), else to the route's end with `ends`
-   * false, since a leg that stops underwater is a fact the next leg does not
-   * carry. Nothing carried stops one; the plan says how many rooms and how
-   * many ticks.
+   * The timed passages a route walks into (`passagesOn`), *holding breath*
+   * into *drowning*, said as the passage record says them: the rooms to the
+   * furthest way out and the ticks, and `ends` false for a leg that stops
+   * inside. Nothing carried stops one.
    */
   private corridorsAlong(steps: readonly RouteStep[]): PlanSnag[] {
-    return this.index
-      .corridorsOn(steps)
-      .map(({ id: _id, ...snag }) => ({ kind: 'corridor', ...snag }));
+    return passagesOn(steps, (room) => this.index.spellOver(room)).map(
+      ({ spell: _spell, name, ...snag }) => ({
+        kind: 'corridor',
+        spell: name,
+        ...snag
+      })
+    );
   }
 
   /**

@@ -771,8 +771,8 @@ export const HAZARD_ABILITY = {
    *
    * The end of a timed corridor: `exit muddy water`, cast by the way up out
    * of the Muddy Underwater Passage, ends in `stop mud drown`, which kills
-   * `holding breath` and `drowning`. `WorldGraph.corridorsOn` reads it to
-   * find where a spell the way in put on the character comes off again.
+   * `holding breath` and `drowning`. `WorldGraph.corridorFrom` reads it
+   * (`Catalogue.killsAny`) to find where a passage's spell comes off again.
    */
   killSpell: 153,
   /**

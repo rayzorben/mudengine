@@ -20,7 +20,7 @@ import type {
 import type { RoomIndex } from './RoomIndex';
 import type { Traveller } from './Router';
 
-export interface PlannerRooms extends Pick<RoomIndex, 'roomsById' | 'corridorsOn'> {
+export interface PlannerRooms extends Pick<RoomIndex, 'roomsById' | 'spellOver'> {
   /** Where the realm spawns a monster, grouped by room name and capped. */
   mobPlaces(mob: WorldMob): MobPlaces | undefined;
   /** Every placement of a monster, uncapped: one entry per room and slot. */

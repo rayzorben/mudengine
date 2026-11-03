@@ -2672,7 +2672,7 @@ export interface RoomCommand {
    * teleport is where you land and the cast is *holding breath*, 25 ticks
    * that end in `drowning`, which ends in death. The landing was read since
    * format 29 and the spell was narration, so eleven underwater rooms were a
-   * free corridor to the router and the plan. Read by `WorldGraph.corridorsOn`.
+   * free corridor to the router and the plan. Read by `WorldGraph.corridorFrom`.
    */
   casts?: number;
   /** What it wants (`src/shared/gates.ts`). */
@@ -3398,8 +3398,8 @@ export interface RouteHazard {
   needsSpell: string[];
   /**
    * Set where this is not a room's own spell but a passage the way *in* puts
-   * on the character (todo 104): `rooms` is then the rooms under it on this
-   * route, `share` null, and the chip says *run through*. See {@link Corridor}.
+   * on the character (todo 104): `rooms` to its furthest way out, `ends` false
+   * where the route stops inside, `share` null. See {@link Corridor}.
    */
   corridor?: { ends: boolean; ticks?: number; then?: string };
 }

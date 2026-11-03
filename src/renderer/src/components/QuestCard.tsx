@@ -1838,8 +1838,8 @@ function snagWords(snag: PlanSnag): { text: string; title: string | undefined; t
               then: snag.then
             })
           : t('cards.quests.plan.snag.corridorTitleShort', at);
-      // A leg that ends inside it is not a passage crossed: the count is to
-      // the leg's end, and the chip says so in the warning tone.
+      // A leg that ends inside it is not a passage crossed, and the chip says
+      // so in the warning tone.
       return snag.ends
         ? { text: t('cards.quests.plan.snag.corridor', at), title: lasts, tone: 'info' }
         : {

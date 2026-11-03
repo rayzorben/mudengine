@@ -7,12 +7,12 @@
  * neither. See `mudengine-world` › `parts/routing.md`.
  */
 import type {
+  Corridor,
   Landing,
   RemoteLever,
   Requirement,
   RoomId,
   RouteInvocation,
-  RouteStep,
   SpellHazard,
   WorldItem,
   WorldRoom,
@@ -37,19 +37,6 @@ export interface PortalExit {
   requirement: Requirement;
 }
 
-/**
- * A timed passage a route walks into (`RoomCommand.casts`), with the spell's
- * id: the plan's snag drops it and the route's hazard keeps it.
- */
-export interface Passage {
-  id: number;
-  spell: string;
-  rooms: number;
-  ends: boolean;
-  ticks?: number;
-  then?: string;
-}
-
 export interface RoomIndex {
   /** Every room, by `map/room`. The router holds the table: it reads it on every edge. */
   readonly roomsById: ReadonlyMap<RoomId, WorldRoom>;
@@ -63,8 +50,8 @@ export interface RoomIndex {
   leversFor(room: RoomId, direction: string): readonly RemoteLever[];
   /** What a room's own spell does to whoever stands in it, for this level. */
   hazardOf(room: WorldRoom, level?: number | null): SpellHazard | null;
-  /** The timed passages a route walks into. */
-  corridorsOn(steps: readonly RouteStep[]): Passage[];
+  /** The passage a room is under (`WorldGraph.spellOver`), for a walk that stops inside one. */
+  spellOver(room: RoomId): Corridor | null;
   item(id: number): WorldItem | undefined;
   spellById(id: number): WorldSpell | null;
   byId(id: RoomId): WorldRoom | undefined;
