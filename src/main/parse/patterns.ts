@@ -2433,6 +2433,13 @@ export interface BatchRule {
    */
   tailsLookLikeRooms?: boolean;
   /**
+   * The header alone is the answer, so the listing is published with no rows.
+   * `You are not in a party at the present time.` is followed by your own row
+   * on GreaterMUD (captures/055:6-7) and by nothing on MajorMUD (captures/003,
+   * 075, 100); dropped for want of rows, the old party stayed on the card.
+   */
+  headerAnswers?: true;
+  /**
    * Maximum lines to keep collecting before giving up, or `'roster'` for a
    * listing whose length is the **realm's population** rather than a property
    * of the pattern.
@@ -2938,13 +2945,14 @@ export const BATCH_RULES: BatchRule[] = [
   },
   {
     /*
-     * The same listing when nobody else is in it. The server still prints your
-     * own row, so the rows are read the same way — flag, folded rank and all —
-     * and what differs is only that there is one.
+     * The same listing when nobody else is in it. GreaterMUD still prints your
+     * own row, so the rows are read the same way, flag, folded rank and all,
+     * and what differs is only that there is one. MajorMUD prints none.
      */
     type: 'party-alone',
     header: /^You are not in a party at the present time\.$/,
     shape: 'array',
+    headerAnswers: true,
     wraps: 'assemble',
     maxLines: 6,
     qualifiers: PARTY_ROWS

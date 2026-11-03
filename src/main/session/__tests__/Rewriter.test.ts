@@ -271,3 +271,52 @@ describe('the floor', () => {
     expect(floor('room-hidden-items', 'small glass flask')).toBe('S |✗small glass flask;');
   });
 });
+
+/*
+ * MajorMUD answers `par` alone with the sentence and no row (captures/003,
+ * 075, 100), and that listing is published with no rows: the server's
+ * sentence is shown as printed rather than an empty table.
+ */
+describe('a party listing with nobody in it', () => {
+  const alone = (rows: Array<Record<string, string>>): BatchBlock => ({
+    seq: 1,
+    at: 0,
+    type: 'party-alone',
+    domain: 'status',
+    groups: {},
+    text: 'You are not in a party at the present time.',
+    terminator: 'newline',
+    confidence: 1,
+    rows
+  });
+  const draw = (block: BatchBlock): string | null => {
+    const rewriter = new Rewriter();
+    rewriter.configure({
+      ...DEFAULT_CONFIG.ui.rewrites,
+      designs: [
+        {
+          name: '',
+          entity: 'party',
+          enabled: true,
+          template: 'Party\n{for member in members}{member.name}\n{/for}'
+        }
+      ]
+    });
+    const chunk = rewriter.render(block, {
+      state: EMPTY_CHARACTER,
+      world: WORLD,
+      wearer: UNKNOWN_WEARER
+    });
+    return chunk === null ? null : stripAnsi(chunk.text);
+  };
+
+  it('draws a row the server printed', () => {
+    expect(draw(alone([{ name: 'Vaelor', class: 'Warrior', rank: 'Frontrank' }]))).toContain(
+      'Vaelor'
+    );
+  });
+
+  it('leaves the sentence as printed when no row came', () => {
+    expect(draw(alone([]))).toBeNull();
+  });
+});

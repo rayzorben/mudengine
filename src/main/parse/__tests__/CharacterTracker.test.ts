@@ -3414,6 +3414,20 @@ describe('the party this character travels with', () => {
     expect(tracker.current.party.following).toBe('Vaelor');
   });
 
+  // captures/075:94-97 and 100:90-92: MajorMUD prints the sentence and no row.
+  it('reports no party on the sentence alone, after a member was lost', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=33]:');
+    feed('The following people are in your travel party:');
+    feed('  Vaelor                        (Warrior)             [H:100%]  - Frontrank');
+    feed('  Romulus                       (Priest)              [H:100%]  - Backrank');
+    feed('[HP=33]:');
+    expect(tracker.current.party.members).toHaveLength(2);
+    feed('You are not in a party at the present time.');
+    feed('[HP=33]:');
+    expect(tracker.current.party.members).toEqual([]);
+  });
+
   /* A party of one is not a party. The server still prints your own row. */
   it('reports no party when there is nobody else in it', () => {
     const { tracker, feed } = feeder();

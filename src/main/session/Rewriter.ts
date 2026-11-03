@@ -326,6 +326,8 @@ export class Rewriter {
           flag: row['flag'] ?? null,
           invited: row['invited'] !== undefined
         }));
+        // MajorMUD's `par` alone prints its sentence and no row: shown as printed.
+        if (party.length === 0) return null;
         return { entity, figures, rows: party };
       }
       case 'experience': {

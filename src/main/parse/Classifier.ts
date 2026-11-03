@@ -1255,7 +1255,8 @@ export class Classifier {
     this.batch = null;
 
     if (rule.shape === 'object' && Object.keys(merged).length === 0) return undefined;
-    if (rule.shape === 'array' && rows.length === 0) return undefined;
+    if (rule.shape === 'array' && rows.length === 0 && rule.headerAnswers !== true)
+      return undefined;
 
     return {
       seq,
