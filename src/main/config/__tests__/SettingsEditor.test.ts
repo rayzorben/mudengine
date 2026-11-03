@@ -591,6 +591,29 @@ describe('servers, one directory each', () => {
     expect(fs.readFileSync(home.server('bearfather').file, 'utf8')).not.toContain('hangPenalties');
   });
 
+  /*
+   * Rows were patched by position, so a row added above another took over its
+   * comment: the note on the town guard would have sat above the orc.
+   */
+  it('keeps the comment on each monster row when one is added above it', () => {
+    const file = home.server('bearfather').file;
+    const guard = { mob: 'town guard', treat: 'never' as const };
+    const troll = { mob: 'troll', treat: 'first' as const };
+    editor.saveServer(null, server({ mobRules: [troll, guard] }));
+    const text = fs.readFileSync(file, 'utf8');
+    // On the second row: `yaml` files a note above the first on the list itself.
+    fs.writeFileSync(
+      file,
+      text.replace('  - mob: town guard', '  # never the guards\n  - mob: town guard')
+    );
+    const rows = [troll, { mob: 'orc', treat: 'first' as const }, guard];
+    expect(editor.saveServer('Bearfather', server({ mobRules: rows }))).toEqual({ ok: true });
+    const after = fs.readFileSync(file, 'utf8');
+    // Positive control: the row was added, and the comment was there to keep.
+    expect(parse(after)['mobRules']).toEqual(rows);
+    expect(after).toMatch(/# never the guards\n\s*- mob: town guard/);
+  });
+
   /* A row says how its monster is fought (todo 816), and the realm's file keeps all of it. */
   it('writes a monster row whole, and nothing a row does not say', () => {
     const file = home.server('bearfather').file;

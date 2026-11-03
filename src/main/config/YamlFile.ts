@@ -1,6 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isMap, isNode, isScalar, isSeq, parseDocument, YAMLError, type Document } from 'yaml';
+import {
+  isMap,
+  isNode,
+  isScalar,
+  isSeq,
+  parseDocument,
+  YAMLError,
+  type Document,
+  type YAMLSeq
+} from 'yaml';
 import { t } from '../app/i18n';
 
 /**
@@ -195,11 +204,9 @@ export const ON_DISK: YamlFiles = {
  * every comment inside it: a save of the Global page took most of the options
  * template's notes. Here a map that is already there is patched key by key (a
  * key the value lacks or leaves `undefined` is removed, as `setIn` would) and a
- * list item by item, down to the scalars, which `setIn` updates in place with
- * their comments and quoting. The value read back is the same as `setIn`'s. A
- * list that gets shorter is replaced whole: patched by position, the comment
- * above a removed row would sit above the next row's values. A `Node` is set
- * as given, being already styled by its writer.
+ * list row by row (`keepRows`), down to the scalars, which `setIn` updates in
+ * place with their comments and quoting. The value read back is the same as
+ * `setIn`'s. A `Node` is set as given, being already styled by its writer.
  */
 export function setKeeping(document: Document, at: readonly unknown[], value: unknown): void {
   const node = document.getIn(at, true);
@@ -213,15 +220,53 @@ export function setKeeping(document: Document, at: readonly unknown[], value: un
     }
     return;
   }
-  if (isSeq(node) && Array.isArray(value) && value.length >= node.items.length) {
-    const kept = node.items.length;
-    value.forEach((entry: unknown, index) => {
-      if (index < kept) setKeeping(document, [...at, index], entry);
-      else node.add(document.createNode(entry));
-    });
+  if (isSeq(node) && Array.isArray(value)) {
+    keepRows(document, at, node, value);
     return;
   }
   document.setIn([...at], value);
+}
+
+/**
+ * A list written row by row, each row the file had kept with its comment
+ * where it goes. A row the list still says exactly is the same node, wherever
+ * it moved; a changed row is patched in place when its position held a row
+ * nothing else claimed; anything else is a new row. A row inserted, removed or
+ * moved above another leaves that row's comment on it.
+ */
+function keepRows(
+  document: Document,
+  at: readonly unknown[],
+  node: YAMLSeq,
+  value: readonly unknown[]
+): void {
+  const old = node.items;
+  // Each row's text to the positions saying it, earliest first, so a match is one lookup.
+  const said = new Map<string, number[]>();
+  old.forEach((item, index) => {
+    const text = JSON.stringify(isNode(item) ? item.toJSON() : item);
+    const at = said.get(text);
+    if (at === undefined) said.set(text, [index]);
+    else at.push(index);
+  });
+  const claimed = new Set<number>();
+  const same = value.map((entry) => {
+    const found = said.get(JSON.stringify(entry))?.shift() ?? -1;
+    if (found >= 0) claimed.add(found);
+    return found;
+  });
+  const patched: number[] = [];
+  node.items = value.map((entry, index) => {
+    const found = same[index] ?? -1;
+    if (found >= 0) return old[found];
+    if (index < old.length && !claimed.has(index)) {
+      claimed.add(index);
+      patched.push(index);
+      return old[index];
+    }
+    return document.createNode(entry);
+  });
+  for (const index of patched) setKeeping(document, [...at, index], value[index]);
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
