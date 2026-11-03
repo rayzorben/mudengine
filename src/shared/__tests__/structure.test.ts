@@ -117,7 +117,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the hold and trap getters' comments, and the journey's reads in `inFlight` once, as the monster wait came (2026-10-23).
   // Lowered by the fight hold's skeleton comment, condensed as the session's
   // combat switch came (todo 20261102-1830-01).
-  'src/main/automation/Walker.ts': 1917,
+  // Lowered by the landing's one `rm`, out whole (`walk/Landings.ts`, todo 20261103-0045-01).
+  'src/main/automation/Walker.ts': 1869,
   // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
   // Lowered by `sameJson`, read from `@shared/values` with the error helper (todo 143).
   'src/renderer/src/components/SettingsScreen.tsx': 1213,

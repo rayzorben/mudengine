@@ -8040,6 +8040,10 @@ automation:
     scattered: '{spellName} dropped you in {roomName}; planning again from here.'
     scatteredUnplaced: '{spellName} dropped you somewhere that cannot be identified from the room
       name and exits; asking the game where it is.'
+    landingUnplaced: '"{command}" put you somewhere that cannot be identified from the room name
+      and exits; asking the game where it is.'
+    landedElsewhere: '"{command}" put you in {roomName}, not {stepName} where the world database
+      says it leads; planning again from here.'
     trapHolding: The way into {stepName} has a trap of up to {damage} damage; resting here to
       {needed} HP (now {hp}) before going through.
     trapResumed: Enough health for the trap into {stepName}; walking on.

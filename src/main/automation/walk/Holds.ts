@@ -109,7 +109,7 @@ export class Holds {
   /**
    * When the walk began waiting for a light, or null while it is not.
    *
-   * **A moment, not a flag**, for `Walker.askedWhereAt`'s reason: the pack answers
+   * **A moment, not a flag**, for `Landings.askedAt`'s reason: the pack answers
    * *there is a light to ready* before the torch is lit and *there is not* the
    * instant after, and a hold re-derived from that would let go one line
    * before the look it is waiting for comes back. Cleared by the room becoming

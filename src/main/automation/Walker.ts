@@ -53,7 +53,6 @@
  * the question and two answers to one question disagree the moment one is
  * edited.
  */
-import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
 import type { MobWaited } from '../../shared/mobRules';
 import { paceOf, pathOf, portalLeftUnseen, type UnfinishedRoute } from '../../shared/walk';
@@ -83,7 +82,8 @@ import { DisarmBeforeStep } from './walk/Disarm';
 import { PartyHands } from './walk/PartyHands';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
-import { RoomCommands, scriptGated } from './walk/RoomCommands';
+import { RoomCommands } from './walk/RoomCommands';
+import { Landings, landsUnpromised } from './walk/Landings';
 import type { ChanceWaysWalk } from './walk/ChanceWays';
 import type { StepTimes } from './walk/StepTimes';
 import type { ArrivalClock } from './walk/ArrivalClock';
@@ -157,19 +157,6 @@ export class Walker implements SessionModule {
    */
   private stepSent = false;
   /**
-   * When this step spent its one *where am I* on the realm, or null.
-   *
-   * A moment rather than a flag, because asking is only half of it: the
-   * client has to **wait** for the answer. Measured on the wire 2026-09-14 —
-   * the walk asked, said so, and the very next status line fell through to
-   * *I can no longer tell which room you are in* and stopped the journey,
-   * before `rm` had been answered. The lap's own locate has always waited
-   * (`LoopRunner.retryAfterLocate`); this had nothing.
-   *
-   * Cleared with every send, because it is a property of the step.
-   */
-  private askedWhereAt: number | null = null;
-  /**
    * Step lengths and the rounds' beat per connection (`walk/WalkTimes.ts`), `times` read-only for
    * the ring. Paradigm answers a move in a median 1,239 ms: a flat-second nudge reprinted rooms.
    */
@@ -235,6 +222,8 @@ export class Walker implements SessionModule {
   private readonly barriers: Barriers;
   /** A room command's own check refusing the step (todo 65). */
   private readonly roomCommands: RoomCommands;
+  /** The one `rm` for a landing the client cannot place (`walk/Landings.ts`). */
+  private readonly landings: Landings;
 
   constructor(
     private config: AutomationConfig,
@@ -296,6 +285,7 @@ export class Walker implements SessionModule {
     const chanceTries: ChanceWaysWalk['chanceTries'] = () => this.config.movement.chanceTries;
     const commands = { ...inFlight, onward, chanceTries };
     this.roomCommands = new RoomCommands(queue, events, commands, this.clock);
+    this.landings = new Landings(events, inFlight);
   }
 
   configure(config: AutomationConfig): void {
@@ -986,7 +976,7 @@ export class Walker implements SessionModule {
        * `Holds.leavingAFight` in `start`.
        */
       /*
-       * **A draw the client could not place asks before the fight holds.**
+       * **A landing the client could not place asks before the fight holds.**
        *
        * One `rm` is what turns an unplaceable landing into a journey that
        * carries on, and the fight branch returns before the arrival check
@@ -1002,7 +992,7 @@ export class Walker implements SessionModule {
        * nothing about the fight: the character stands still either way, and
        * the answer is what the walk needs the moment the fight is over.
        */
-      this.askWhereAfterDraw(state);
+      this.landings.ask(state);
       // Under a timed spell a fight is walked out of: the spell is the deadline.
       if (!this.holds.leaving && this.events.moveOnly?.(state) !== true && this.answerFight())
         return;
@@ -1045,13 +1035,13 @@ export class Walker implements SessionModule {
     // simply not landed. The timeout is what stops this waiting forever.
     if (here === null) {
       /*
-       * Unless the step was a draw, in which case *the client cannot know* and
-       * one command settles it. Asked once per step: `rm` states coordinates
-       * outright, so a second ask would answer nothing a first did not, and
+       * Unless a script or spell moved the character (`Landings.ask`): the
+       * client cannot know, and one command settles it. Once a step: `rm`
+       * states coordinates outright, so a second ask answers nothing new, and
        * the step's own deadline is still armed underneath — a realm with no
        * locate word sends nothing and the walk stops as it did before.
        */
-      if (this.askWhereAfterDraw(state)) return;
+      if (this.landings.ask(state)) return;
       if (state.room.ambiguous > 1) {
         this.stop(t('automation.walk.reasonAmbiguous'));
         return;
@@ -1115,8 +1105,12 @@ export class Walker implements SessionModule {
      * desynchronising: it is the one outcome the plan already admitted it
      * could not predict. Live, that was the Caves of Chaos, two maps from
      * `9/1424`, reported as *That is not where the route says you should be*.
+     *
+     * **And a chance lands where the server says, not where the world
+     * database says** (2026-11-03): orohost's `dig grave` put Vaelor in
+     * 1/9478, where gmud.zip's spell 5078 names 1/9462.
      */
-    if ((step.scatter !== undefined || scriptGated(step)) && here !== step.to) {
+    if (landsUnpromised(step) && here !== step.to) {
       this.stepAnswered();
       if (!this.roomCommands.waitsOut(step, here)) this.scattered(state, step, here);
       return;
@@ -1381,38 +1375,7 @@ export class Walker implements SessionModule {
   }
 
   /**
-   * One `rm` for a draw whose landing the client cannot place, once per step.
-   *
-   * Returns whether it asked, so the arrival check can stand down and wait for
-   * the answer. `rm` states coordinates outright, so a second ask would answer
-   * nothing a first did not, and the step's own deadline is still armed
-   * underneath — a realm with no locate word sends nothing and the walk stops
-   * exactly as it did before.
-   */
-  private askWhereAfterDraw(state: CharacterState): boolean {
-    if (this.route === null || this.events.locate === undefined) return false;
-    const step = this.route.steps[this.index];
-    if (step?.scatter === undefined) return false;
-    // Only while the landing is genuinely unplaced: a draw that resolved is a
-    // question already answered.
-    if (roomAddress(state.room) !== null) return false;
-    // Already asked and still waiting, which is the whole point — the answer
-    // is one command away and stopping the walk for want of it is the failure
-    // this exists to fix. Bounded by the step's own deadline, which is still
-    // armed underneath and stops the walk if nothing ever answers.
-    if (this.askedWhereAt !== null) return true;
-    this.askedWhereAt = Date.now();
-    this.events.locate();
-    if (!this.quiet) {
-      this.events.notice?.(
-        t('automation.walk.scatteredUnplaced', { spellName: step.scatter.landing.name })
-      );
-    }
-    return true;
-  }
-
-  /**
-   * The draw landed somewhere, and the journey carries on from there.
+   * A draw, a condition or a chance landed somewhere else, and the journey carries on from there.
    *
    * `Holds.resumeFromFight`'s replan without the waiting: there is nothing to
    * wait for, because the room that resolved the character *is* the answer to
@@ -1422,18 +1385,7 @@ export class Walker implements SessionModule {
    * walk, and it is said out loud once rather than reported as a stop.
    */
   private scattered(state: CharacterState, step: RouteStep, here: RoomId): void {
-    if (!this.quiet) {
-      const roomName = state.room.name ?? here;
-      this.events.notice?.(
-        step.scatter !== undefined
-          ? t('automation.walk.scattered', { spellName: step.scatter.landing.name, roomName })
-          : // What the script asked, because that is all the client knows of why.
-            t('automation.walk.gateMissed', {
-              condition: gatesWords(step.requirement?.gates ?? [], t),
-              roomName
-            })
-      );
-    }
+    if (!this.quiet) this.events.notice?.(this.landings.elsewhere(step, state.room.name ?? here));
     this.onward(state, here);
   }
 
@@ -1589,7 +1541,7 @@ export class Walker implements SessionModule {
       step.requirement?.spellEffect === 'scatters' || step.requirement?.spellEffect === 'teleports';
     if (now !== undefined && this.roomCommands.inPlaceOfSending(step, now)) return;
     this.events.stepping?.(step.command, step.direction, step.to, moves ? cast : undefined);
-    this.askedWhereAt = null;
+    this.landings.sent();
     this.dispatch(step, step.command, t('automation.walk.reasonStepping', { stepName: step.name }));
   }
 

@@ -60,7 +60,10 @@ export interface WalkerEvents {
    */
   stepping?(command: string, direction: Direction | 'portal', to: RoomId, landing?: Landing): void;
   /**
-   * Nobody knows where the character is, and the step that lost it was a draw.
+   * Nobody knows where the character is, and the step that lost it was a
+   * draw, a portal or a chance (`Landings`). The landing can be other than
+   * the world database says: orohost's `dig grave` lands in one of 44 rooms
+   * named Musty Grottos, not the one spell 5078 names.
    *
    * `LoopEvents.locate`'s twin and for the same reason — the realm answers
    * `rm` with exact coordinates — but it is armed by a much narrower fact.
