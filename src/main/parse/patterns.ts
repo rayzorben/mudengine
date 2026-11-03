@@ -1226,11 +1226,16 @@ export const RULES: Rule[] = [
    * such lines in one session, all unread and offered to the effect lore as
    * onsets, so the trailing space is allowed. GreaterMUD's `Mob.cs:1754`
    * writes none.
+   *
+   * The target is `CurrentTarget.Name` (`Mob.cs:1754`): a name, never led by
+   * `the` and never carrying a clause. `clutches at the sky!` and `points at
+   * SandTiger and clenches his fist!` (captures/054:88, 064:48) are gestures,
+   * and read as misses they put `the sky` in the room as a monster.
    */
   {
     type: 'player-misses',
     pattern:
-      /^\s*(?<line>(?!You\b)(?:(?<first>[A-Z][\w'-]*)|[a-z][\w'-]*)(?: [\w'-]+)+?) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!\s*$/,
+      /^\s*(?<line>(?!You\b)(?:(?<first>[A-Z][\w'-]*)|[a-z][\w'-]*)(?: [\w'-]+)+?) at (?<target>(?!you\b|[Tt]he )(?:(?! and )[\w' -])+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!\s*$/,
     resolve: 'attacker',
     nameFallback: true
   },
@@ -1378,18 +1383,22 @@ export const RULES: Rule[] = [
    * the room from below.` (captures/113:5) (todo 826). A player entering the
    * realm where they stood comes `from nowhere` (`Brakkle walks into the room
    * from nowhere.`, the user's log, 2026-10-29); read by the monster rule it
-   * added him to the room a second time.
+   * added him to the room a second time. A sneaking player the character
+   * noticed is the same arrival and departure behind `You notice`, worded
+   * `sneaking in from` (`Player.cs:723`) or MajorMUD's `sneak in from`
+   * (captures/063:3, 119:2) and `sneaking out` (`Player.cs:625`, 076:67);
+   * unread, the monster rule took `You notice Caemin` for a name.
    */
   {
     type: 'player-arrives-room',
     pattern: new RegExp(
-      `^(?<player>[A-Z]\\w*) +walks into the room from (?:the (?<direction>${COMPASS})|(?<vertical>above|below)|nowhere)\\.$`
+      `^(?:You notice )?(?<player>[A-Z]\\w*) +(?:walks into the room|sneak(?:ing)? in) from (?:the (?<direction>${COMPASS})|(?<vertical>above|below)|nowhere)\\.$`
     )
   },
   {
     type: 'player-leaves-room',
     pattern: new RegExp(
-      `^(?<player>[A-Z]\\w*) +just left (?:to the (?<direction>${COMPASS})|(?<vertical>up|down)wards)\\.$`
+      `^(?:You notice )?(?<player>[A-Z]\\w*) +(?:just left|sneaking out) (?:to the (?<direction>${COMPASS})|(?<vertical>up|down)wards)\\.$`
     )
   },
   /*
@@ -1675,7 +1684,8 @@ export const RULES: Rule[] = [
   },
   { type: 'player-enters', pattern: /^(?<player>\w+) just entered the Realm\./ },
   { type: 'player-exits', pattern: /^(?<player>\w+) just left the Realm\./ },
-  { type: 'player-disconnects', pattern: /^(?<player>\w+) just disconnected!!!/ },
+  // `hung up` is MajorMUD's other word for a dropped line (captures/091:59, 36 in all).
+  { type: 'player-disconnects', pattern: /^(?<player>\w+) just (?:disconnected|hung up)!!!/ },
 
   /* --------------------------------------------------------- movement */
   /*

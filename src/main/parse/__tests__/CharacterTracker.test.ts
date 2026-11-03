@@ -1901,6 +1901,19 @@ describe('keeping the roster true without asking', () => {
     expect(tracker.current.online).toEqual([]);
   });
 
+  // captures/091:59: MajorMUD's other word for a dropped line, 36 times in captures/.
+  it('removes somebody who hung up, from the realm and the room', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=85]:');
+    feed('Slimy Sewer Tunnel');
+    feed('Also here: Gambit, Eminence.');
+    feed('Obvious exits: south, east');
+    feed('Gambit just entered the Realm.');
+    feed('Gambit just hung up!!!');
+    expect(tracker.current.online).toEqual([]);
+    expect(tracker.current.room.occupants.map((who) => who.name)).toEqual(['Eminence']);
+  });
+
   it('does not list the same person twice', () => {
     const { tracker, feed } = feeder();
     feed('[HP=33]:');
@@ -3581,6 +3594,15 @@ describe('who is in the room, between looks', () => {
     feed('Soul walks into the room from the north.');
     feed('Soul just left to the north.');
     expect(names(tracker.current.room.occupants)).toEqual(['Nathaniel']);
+  });
+
+  // captures/063:3 and 076:67: a sneaking player the character spotted.
+  it('adds somebody seen sneaking in, and removes somebody seen sneaking out', () => {
+    const { tracker, feed } = inRoom();
+    feed('You notice Caemin sneak in from below.');
+    expect(names(tracker.current.room.occupants)).toEqual(['Nathaniel', 'Caemin']);
+    feed('You notice Nathaniel sneaking out to the north.');
+    expect(names(tracker.current.room.occupants)).toEqual(['Caemin']);
   });
 
   it('does not list the same person twice', () => {
@@ -6667,7 +6689,7 @@ describe('what a fight is written down as', () => {
       '[HP=30/MA=12]:',
       'You punch giant rat for 3 damage!',
       'Grimjaw critically slashes the giant rat for 20 damage!',
-      'Grimjaw swings at the giant rat!',
+      'Grimjaw swings at giant rat!',
       'You critically punch giant rat for 9 damage!',
       'You gain 9 experience.'
     );

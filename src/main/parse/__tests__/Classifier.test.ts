@@ -1804,6 +1804,18 @@ describe('combat, anchored on the frame', () => {
     ).toBe('ancient sand dragon');
   });
 
+  // captures/054:88, 064:48, 064:103: gestures shaped like a miss. A miss
+  // names its target by name alone (`Mob.cs:1754`), never `the` or a clause.
+  it('reads no target from a gesture shaped like a miss', () => {
+    for (const text of [
+      'The Champion of Blood clutches at the sky!',
+      'The high druid points at SandTiger and clenches his fist!',
+      'The high druid points at SandTiger and utters a harsh word!'
+    ]) {
+      expect(classify(text).groups['target'], text).toBeUndefined();
+    }
+  });
+
   it('keeps a monster’s swing at this character as mob-misses', () => {
     expect(expectType('The silver cobra lunges at you!', 'mob-misses')).toBeTruthy();
   });
