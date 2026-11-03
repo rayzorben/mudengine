@@ -1055,7 +1055,7 @@ notices:
         it can be read. Characters still share what they see while the client runs.
       writeError: 'could not write {file}: {message}'
     memory:
-      invalidFile: '{fileName} is not a memory file — starting fresh.'
+      invalidFile: '{fileName} is not a memory file, so memory starts empty.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
       # Todo 151: a once-only repair of what an earlier version wrote (`memoryRepairs.ts`).
@@ -1067,7 +1067,7 @@ notices:
           them from the wrong room, so all were removed. A real one is noted again the next time it
           is walked.'
     finds:
-      invalidFile: '{fileName} is not a find log — starting fresh.'
+      invalidFile: '{fileName} is not a find log, so the log starts empty.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
       upgraded: "{fileName} now counts searches, so each find's chance starts counting from the next
@@ -1075,20 +1075,22 @@ notices:
       coinsUpgraded: '{fileName} now keeps the coins each search turned up. Coins found before this
         show blank until their room is searched again. The old file is kept as {fileName}.bak.'
     shops:
-      invalidFile: '{fileName} is not a shop record, so shops start empty. The first such file is
-        kept as {fileName}.bak.'
+      invalidFile: '{fileName} is not a shop record, so shops start empty.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
     descriptions:
-      invalidFile: '{fileName} is not a room description record, so it starts empty. The first such
-        file is kept as {fileName}.bak.'
+      invalidFile: '{fileName} is not a room description record, so it starts empty.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
     floor:
-      invalidFile: '{fileName} is not a record of items seen on the floor, so it starts empty. The
-        first such file is kept as {fileName}.bak.'
+      invalidFile: '{fileName} is not a record of items seen on the floor, so it starts empty.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
+    # A damaged record file copied aside before the next save replaces it (`recordFile.ts`).
+    records:
+      keptAside: 'The damaged {fileName} is kept as {backup}.'
+      notKeptAside: 'The damaged {fileName} could not be kept aside ({message}), so the next save
+        replaces it.'
     belongings:
       invalidFile: '{fileName} is not a record file. {notSaved}'
       invalidField: '{fileName} has a {field} this version cannot read. {notSaved}'

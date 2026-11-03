@@ -20,6 +20,13 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+/** What a load says once it has copied a damaged file aside. */
+const kept = (): string =>
+  t('notices.world.records.keptAside', {
+    fileName: path.basename(file),
+    backup: `${path.basename(file)}.bak`
+  });
+
 const discovery = (over: Partial<Discovery> = {}): Discovery => ({
   reason: 'unknown-exit',
   from: '1/10',
@@ -96,10 +103,74 @@ describe('what a character remembers about its realm', () => {
     const problems: string[] = [];
     const memory = new WorldMemory(file, 'test-realm', (message) => problems.push(message));
     expect(memory.all).toEqual([]);
-    expect(problems).toHaveLength(1);
+    expect(problems).toEqual([expect.any(String), kept()]);
     // Untouched: it is the only copy of what this character learned, and a
     // parse failure is not permission to throw it away.
     expect(fs.readFileSync(file, 'utf8')).toBe('this is not json');
+  });
+
+  it('keeps a second damaged record beside the first copy, never over it', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(`${file}.bak`, 'the first', 'utf8');
+    fs.writeFileSync(file, 'the second', 'utf8');
+    const memory = new WorldMemory(file, 'test-realm', () => undefined);
+    memory.learn(discovery());
+    memory.close();
+    expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe('the first');
+    expect(fs.readFileSync(`${file}.2.bak`, 'utf8')).toBe('the second');
+  });
+
+  it('copies the same damaged record aside once, however often it is loaded', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'this is not json', 'utf8');
+    const problems: string[] = [];
+    new WorldMemory(file, 'test-realm', (m) => problems.push(m)).close();
+    new WorldMemory(file, 'test-realm', (m) => problems.push(m)).close();
+    expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe('this is not json');
+    expect(fs.existsSync(`${file}.2.bak`)).toBe(false);
+    expect(problems.filter((m) => m === kept())).toHaveLength(2);
+  });
+
+  // Root ignores the folder's permissions, so the copy cannot be made to fail that way.
+  it.skipIf(process.getuid?.() === 0)(
+    'says so, and still loads, when a damaged record cannot be copied aside',
+    () => {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, 'this is not json', 'utf8');
+      // A directory where the copy would go: the copy fails with something other than "exists".
+      fs.mkdirSync(`${file}.bak`);
+      fs.chmodSync(path.dirname(file), 0o500);
+      const problems: string[] = [];
+      try {
+        expect(new WorldMemory(file, 'test-realm', (m) => problems.push(m)).all).toEqual([]);
+      } finally {
+        fs.chmodSync(path.dirname(file), 0o700);
+      }
+      expect(problems).toHaveLength(2);
+      expect(problems[1]).toMatch(
+        t('notices.world.records.notKeptAside', {
+          fileName: path.basename(file),
+          message: 'MESSAGE'
+        }).split('MESSAGE')[0]!
+      );
+    }
+  );
+
+  it('keeps a damaged record aside before the next discovery replaces it', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const malformed = JSON.stringify({
+      version: 1,
+      realm: 'test-realm',
+      discoveries: [{ from: '1/10' }]
+    });
+    for (const damaged of ['this is not json', malformed]) {
+      fs.rmSync(`${file}.bak`, { force: true });
+      fs.writeFileSync(file, damaged, 'utf8');
+      const memory = new WorldMemory(file, 'test-realm', () => undefined);
+      memory.learn(discovery());
+      memory.close();
+      expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe(damaged);
+    }
   });
 
   it('refuses a file that parses but is not a memory file', () => {
@@ -108,7 +179,7 @@ describe('what a character remembers about its realm', () => {
 
     const problems: string[] = [];
     expect(new WorldMemory(file, 'test-realm', (m) => problems.push(m)).all).toEqual([]);
-    expect(problems).toHaveLength(1);
+    expect(problems).toEqual([expect.any(String), kept()]);
   });
 
   it('drops a malformed entry rather than trusting the file whole', () => {
@@ -127,7 +198,7 @@ describe('what a character remembers about its realm', () => {
     // One bad row makes the file untrustworthy, and half a record read as a
     // whole one is the failure this refuses: `exits` missing is not "no exits".
     expect(new WorldMemory(file, 'test-realm', (m) => problems.push(m)).all).toEqual([]);
-    expect(problems).toHaveLength(1);
+    expect(problems).toEqual([expect.any(String), kept()]);
   });
 
   it('answers what has been found about leaving one room', () => {

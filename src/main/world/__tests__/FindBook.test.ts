@@ -282,6 +282,18 @@ describe('the file', () => {
     expect(fs.existsSync(file)).toBe(true);
   });
 
+  it('keeps a damaged log aside before the next search replaces it', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    for (const damaged of ['{ this is not json', JSON.stringify({ version: 99 })]) {
+      fs.rmSync(`${file}.bak`, { force: true });
+      fs.writeFileSync(file, damaged, 'utf8');
+      const store = book();
+      store.search(ROOM, [found()]);
+      close(store);
+      expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe(damaged);
+    }
+  });
+
   it('is not written at all until there is something to write', () => {
     close(book());
     expect(fs.existsSync(file)).toBe(false);

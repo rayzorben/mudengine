@@ -8,6 +8,7 @@ import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { DeferredFile } from './DeferredFile';
+import { keepDamaged, keepUnparsed } from './recordFile';
 
 interface FindsFile {
   version: typeof FINDS_VERSION;
@@ -183,6 +184,7 @@ export class FindBook {
         this.onError?.(
           t('notices.world.finds.invalidFile', { fileName: path.basename(this.file) })
         );
+        keepDamaged(this.file, this.onError);
         return;
       }
       if (parsed.realm !== this.realm) return;
@@ -202,6 +204,7 @@ export class FindBook {
           this.onError?.(
             t('notices.world.finds.invalidFile', { fileName: path.basename(this.file) })
           );
+          keepDamaged(this.file, this.onError);
           return;
         }
         rows.push(find);
@@ -231,6 +234,7 @@ export class FindBook {
           message: errorMessage(error)
         })
       );
+      keepUnparsed(this.file, error, this.onError);
     }
   }
 

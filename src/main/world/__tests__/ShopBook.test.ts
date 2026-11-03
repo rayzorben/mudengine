@@ -73,6 +73,15 @@ describe('keeping a shop list', () => {
     expect(said).toEqual([]);
   });
 
+  it('keeps a file that is not JSON aside before the next list replaces it', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{ this is not json');
+    const store = book();
+    store.stock(shelf());
+    store.close();
+    expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe('{ this is not json');
+  });
+
   it('says so, and keeps the file aside, when a row cannot be read', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
@@ -80,7 +89,13 @@ describe('keeping a shop list', () => {
       JSON.stringify({ version: 1, realm: 'greatermud', shelves: [{ room: 3 }] })
     );
     expect(book().all).toEqual([]);
-    expect(said).toEqual([t('notices.world.shops.invalidFile', { fileName: path.basename(file) })]);
+    expect(said).toEqual([
+      t('notices.world.shops.invalidFile', { fileName: path.basename(file) }),
+      t('notices.world.records.keptAside', {
+        fileName: path.basename(file),
+        backup: `${path.basename(file)}.bak`
+      })
+    ]);
     expect(fs.existsSync(`${file}.bak`)).toBe(true);
   });
 });

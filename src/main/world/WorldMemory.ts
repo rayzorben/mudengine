@@ -7,6 +7,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { runRepairs, type RepairDocument } from './fileRepairs';
 import { MEMORY_REPAIRS } from './memoryRepairs';
+import { keepDamaged, keepUnparsed } from './recordFile';
 
 interface MemoryFile {
   version: 1;
@@ -144,6 +145,7 @@ export class WorldMemory {
         this.onError?.(
           t('notices.world.memory.invalidFile', { fileName: path.basename(this.file) })
         );
+        keepDamaged(this.file, this.onError);
         return;
       }
       if (parsed.realm !== this.realm) return;
@@ -182,6 +184,7 @@ export class WorldMemory {
           this.onError?.(
             t('notices.world.memory.invalidFile', { fileName: path.basename(this.file) })
           );
+          keepDamaged(this.file, this.onError);
           return;
         }
         rows.push(discovery);
@@ -202,6 +205,7 @@ export class WorldMemory {
           message: errorMessage(error)
         })
       );
+      keepUnparsed(this.file, error, this.onError);
     }
   }
 
