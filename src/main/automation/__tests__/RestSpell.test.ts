@@ -95,6 +95,17 @@ describe('the regeneration spell before a rest', () => {
     expect(kinds).toEqual(['rest-spell', 'rest-health']);
   });
 
+  /* Refused at the door (a screen up), the cast is not spent: it goes out ahead of the next rest. */
+  it('goes out ahead of the next rest after the queue refused it', () => {
+    const recovery = build('rhel');
+    queue.hold('the stat screen');
+    recovery.onCharacter(hurt());
+    expect(sent).toEqual([]);
+    queue.release();
+    recovery.onCharacter(hurt());
+    expect(sent).toEqual(['rhel', 'rest']);
+  });
+
   it('is not cast again while it is up', () => {
     const buffs = [{ spell: 'rapid healing', by: null, appliedAt: 0 }];
     build('rhel').onCharacter(hurt({ buffs }));

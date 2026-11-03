@@ -8,7 +8,7 @@
  * said once a stretch. See `mudengine-automation` › *A regeneration spell
  * goes out before the rest*.
  */
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { canPayFor } from './mana';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -86,7 +86,7 @@ export class RestSpell implements SessionModule {
       return;
     }
     this.said = '';
-    this.queue.enqueue({
+    const offered = this.queue.offer({
       command: found.word,
       priority: 'probe',
       coalesceKey: 'rest-spell',
@@ -97,7 +97,8 @@ export class RestSpell implements SessionModule {
         this.askedAt = this.now();
       })
     });
-    this.askedAt = at;
+    // A refused cast is not spent: the next rest asks again.
+    if (taken(offered)) this.askedAt = at;
   }
 
   private worth(
