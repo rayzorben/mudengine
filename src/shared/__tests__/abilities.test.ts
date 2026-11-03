@@ -5,8 +5,10 @@ import {
   ABILITY_INTERNAL,
   ABILITY_REFERS,
   ABILITY_SHAPE,
+  abilityHurts,
   abilityIsNotable,
   abilityMagnitude,
+  abilityWound,
   abilityIsUnread,
   abilityName,
   abilityShape,
@@ -605,5 +607,31 @@ describe('a spell column of 0', () => {
     expect(spellWounds({ abilities: [[1, 0]], power: [5, 20] })).toBe(true);
     expect(spellWounds({ abilities: [[1, 0]] })).toBe(false);
     expect(spellWounds({ abilities: [[151, 513]], power: [5, 20] })).toBe(false);
+  });
+
+  it('gives a wound its mean and its most, the most a 0 column can roll', () => {
+    expect(abilityWound(1, 0, [5, 15])).toEqual({ mean: 10, most: 15 });
+    expect(abilityWound(17, -30, [5, 15])).toEqual({ mean: 30, most: 30 });
+    expect(abilityWound(1, 0, undefined)).toEqual({ mean: 0, most: 0 });
+    expect(abilityWound(151, 0, [5, 15])).toBeNull();
+  });
+
+  /*
+   * A heal column of 0 takes the roll too, and what of the roll falls below 0
+   * wounds: `sabre` is `Heal 0` at -10 to -1 and `dead heal` at -999 in gmud,
+   * pmud and the shipped Paradigm, and read as harmless (2026-11-03).
+   */
+  it('wounds by a heal of 0 on a roll that can go below 0', () => {
+    expect(abilityWound(18, 0, [-10, -1])).toEqual({ mean: 5.5, most: 10 });
+    expect(abilityWound(18, 0, [-20, -50])).toEqual({ mean: 35, most: 50 });
+    // 25 of the 51 rolls wound, 1 to 25: 25 at most, 325 / 51 on average.
+    expect(abilityWound(18, 0, [-25, 25])).toEqual({ mean: 325 / 51, most: 25 });
+    expect(abilityWound(18, 0, [5, 20])).toBeNull();
+    expect(abilityWound(18, -8, [5, 20])).toEqual({ mean: 8, most: 8 });
+    expect(abilityWound(18, 8, [-10, -1])).toBeNull();
+    expect(abilityHurts(18, 0, [-10, -1])).toBe(true);
+    expect(abilityHurts(18, 0, [5, 20])).toBe(false);
+    expect(spellWounds({ abilities: [[18, 0]], power: [-10, -1] })).toBe(true);
+    expect(spellWounds({ abilities: [[18, 0]], power: [8, 20] })).toBe(false);
   });
 });

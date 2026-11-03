@@ -804,12 +804,41 @@ export const HURTS: ReadonlySet<number> = new Set([
 ]);
 
 /**
- * Whether one `[ability, value]` pair wounds whoever the spell lands on. A
- * negative heal is a wound by another name: `menace.hazardOf` reads it the
- * same way, and `damnation` is the spell that taught it.
+ * Whether one `[ability, value]` pair wounds whoever the spell lands on
+ * (`abilityWound`), a 0 column taking the spell's roll.
  */
-export function abilityHurts(ability: number, value: number): boolean {
-  return HURTS.has(ability) || (ability === HAZARD_ABILITY.heal && value < 0);
+export function abilityHurts(
+  ability: number,
+  value: number,
+  power: readonly [number, number] | undefined
+): boolean {
+  return abilityWound(ability, value, power) !== null;
+}
+
+/**
+ * The hit points one ability column takes off whoever the spell lands on, as
+ * the mean and the most of one landing, or null for a column that wounds
+ * nobody. A 0 column takes the spell's roll (`abilityMagnitude`). A negative
+ * heal is a wound by another name (`damnation`), so a heal of 0 wounds by what
+ * of its roll falls below 0: `sabre` is `Heal 0` at -10 to -1.
+ */
+export function abilityWound(
+  ability: number,
+  value: number,
+  power: readonly [number, number] | undefined
+): { mean: number; most: number } | null {
+  const [low, high] = power ?? [0, 0];
+  if (HURTS.has(ability)) {
+    const most = value !== 0 ? Math.abs(value) : Math.max(Math.abs(low), Math.abs(high));
+    return { mean: abilityMagnitude(value, power), most };
+  }
+  if (ability !== HAZARD_ABILITY.heal) return null;
+  if (value !== 0) return value < 0 ? { mean: -value, most: -value } : null;
+  const [least, top] = low <= high ? [low, high] : [high, low];
+  if (least >= 0) return null;
+  // Each whole roll from `least` to `top` alike, the ones below 0 by their depth.
+  const mean = top <= 0 ? -(least + top) / 2 : (least * least - least) / (2 * (top - least + 1));
+  return { mean, most: -least };
 }
 
 /**
@@ -834,7 +863,7 @@ export function spellWounds(spell: {
   power?: readonly [number, number];
 }): boolean {
   return (spell.abilities ?? []).some(
-    ([ability, value]) => abilityHurts(ability, value) && abilityMagnitude(value, spell.power) > 0
+    ([ability, value]) => (abilityWound(ability, value, spell.power)?.most ?? 0) > 0
   );
 }
 

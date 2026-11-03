@@ -72,9 +72,8 @@ import {
 import { trainersFor, type TrainerRow } from '../../shared/training';
 import {
   HAZARD_ABILITY,
-  abilityHurts,
-  abilityMagnitude,
   abilityShape,
+  abilityWound,
   spellWounds,
   type ReferredNames
 } from '../../shared/abilities';
@@ -2046,9 +2045,8 @@ export class WorldGraph {
           if (effect === 'plain') effect = 'script';
           continue;
         }
-        if (!abilityHurts(ability, value)) continue;
-        const magnitude = abilityMagnitude(value, spell.power);
-        if (magnitude > harm) harm = magnitude;
+        const wound = abilityWound(ability, value, spell.power);
+        if (wound !== null && wound.mean > harm) harm = wound.mean;
       }
     }
     /*

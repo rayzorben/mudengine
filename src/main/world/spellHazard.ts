@@ -13,7 +13,7 @@
  *
  * See `mudengine-world` › *The world knowledge base*, the room-spell bullets.
  */
-import { HAZARD_ABILITY, abilityHurts, abilityMagnitude } from '../../shared/abilities';
+import { HAZARD_ABILITY, abilityWound } from '../../shared/abilities';
 import {
   outrightStoppers,
   type HazardEffect,
@@ -289,9 +289,9 @@ export function resolveHazard(
       }
       if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap)
         continue;
-      if (!abilityHurts(ability, value)) continue;
-      const magnitude = abilityMagnitude(value, row.power);
-      if (magnitude > damage) damage = magnitude;
+      const wound = abilityWound(ability, value, row.power);
+      if (wound === null) continue;
+      if (wound.mean > damage) damage = wound.mean;
       ways = joinReach(ways, here('damage'));
     }
     return settle(seenSpells, spellStops, key, name, entry, ways);

@@ -160,11 +160,12 @@ export class Wards implements SessionModule {
     // A line naming a caster is another's spell.
     if (block.groups['fills'] !== undefined) return;
     const landed = (block.groups['spells'] ?? '').split('|').map(Number);
-    const hurts = landed.some((id) =>
-      (this.sources.spellById(id)?.abilities ?? []).some(([ability, value]) =>
-        abilityHurts(ability, value)
-      )
-    );
+    const hurts = landed.some((id) => {
+      const spell = this.sources.spellById(id);
+      return (spell?.abilities ?? []).some(([ability, value]) =>
+        abilityHurts(ability, value, spell?.power)
+      );
+    });
     if (!hurts) return;
     const found = this.sources.hazardAt(here);
     if (found === null) return;
