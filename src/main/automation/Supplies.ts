@@ -435,6 +435,10 @@ export class Supplies implements SessionModule {
       case 'buying':
       case 'withdrawing':
         return;
+      default: {
+        const unreachable: never = errand.stage;
+        return unreachable;
+      }
     }
   }
 

@@ -710,6 +710,10 @@ export class QuestRunner implements SessionModule {
         this.publish();
         return;
       }
+      default: {
+        const unreachable: never = source;
+        return unreachable;
+      }
     }
   }
 

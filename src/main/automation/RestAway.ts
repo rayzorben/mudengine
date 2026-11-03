@@ -144,6 +144,10 @@ export class RestAway implements SessionModule {
         return this.resting(state, wantsRest, here);
       case 'idle':
         break;
+      default: {
+        const unreachable: never = this.phase;
+        return unreachable;
+      }
     }
 
     if (!wantsRest || here === null) return 'not-mine';

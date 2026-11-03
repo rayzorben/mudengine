@@ -227,6 +227,10 @@ export function testGuard(guard: Guard, state: CharacterState, extra?: GuardFact
         return actual === guard.value;
       case '!=':
         return actual !== guard.value;
+      default: {
+        const unreachable: never = guard.op;
+        return unreachable;
+      }
     }
   }
 

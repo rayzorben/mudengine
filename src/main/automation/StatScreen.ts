@@ -479,6 +479,10 @@ export class StatScreen implements SessionModule {
           this.step();
         }
         return;
+      default: {
+        const unreachable: never = this.phase;
+        return unreachable;
+      }
     }
   }
 
