@@ -1569,11 +1569,11 @@ export class WorldGraph {
    *
    * The command's own `cast` puts a spell on the character; where that spell,
    * or what it ends in (`EndCast`), carries harm the passage is one to run
-   * through. From the landing the rooms are swept breadth-first over their
-   * exits, up to the spell's duration in moves, until an exit whose own cast
-   * kills the chain (`Catalogue.killsAny`) — that is the way out, and the rooms before
-   * it are written into `underSpell`. No duration, or no way out within it,
-   * is `ends: false`, which `corridorCost` walls.
+   * through. From the landing `Router.sweepFrom` walks the exits up to the
+   * spell's duration in moves, to an exit whose cast kills the chain
+   * (`Catalogue.killsAny`): the way out. The rooms before it go into
+   * `underSpell`. No duration, or no way out within it, is `ends: false`,
+   * which `corridorCost` walls.
    *
    * Sixty-odd ways in on the shipped realm cast something; the dive is the
    * one whose chain reaches harm. A bless off a portal casts and ends in
@@ -1602,30 +1602,22 @@ export class WorldGraph {
     // Bounded by the ticks where the realm states them, and by a stride
     // beyond any passage the shipped realms hold where it does not.
     const reach = ticks ?? 64;
-    const depth = new Map<RoomId, number>([[landing, 0]]);
-    const queue: RoomId[] = [landing];
     let endAt = Infinity;
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      const here = depth.get(id) ?? 0;
-      if (here >= endAt) break;
-      const room = this.rooms.get(id);
-      if (room === undefined) continue;
-      for (const exit of room.exits) {
-        const requirement = exit.requirement;
-        const casts = [requirement?.castPre, requirement?.castPost].filter(
+    // The exit table's rooms and no teleport: the portals are being linked as
+    // this runs, and a passage is left by its exits.
+    const depth = this.router.sweepFrom(landing, {
+      lands: 'table',
+      portals: false,
+      walks: (exit, here) => {
+        const casts = [exit.requirement?.castPre, exit.requirement?.castPost].filter(
           (spell): spell is number => spell !== undefined && spell > 0
         );
-        if (casts.some((spell) => this.catalogue.killsAny(spell, lifts))) {
-          endAt = Math.min(endAt, here + 1);
-          continue;
-        }
-        const to = roomId(exit.map, exit.room);
-        if (depth.has(to) || here + 1 >= reach) continue;
-        depth.set(to, here + 1);
-        queue.push(to);
-      }
-    }
+        if (!casts.some((spell) => this.catalogue.killsAny(spell, lifts))) return here + 1 < reach;
+        endAt = Math.min(endAt, here + 1);
+        return false;
+      },
+      visit: (_room, here) => here < endAt
+    });
     const ends = endAt !== Infinity;
     const rooms = ends ? endAt : depth.size;
     const corridor: Corridor = {

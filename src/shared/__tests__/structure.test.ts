@@ -88,8 +88,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // And by `landingOf`, out to `navigation/spellLanding.ts` for both readers of a spell's landing.
   // Lowered by the portal list's push, one line each, as the room spell's ways came (format 77).
   // Lowered by the room survey's comment, condensed as the route budget came (2026-10-29 stalls).
-  // Lowered by the monster row sweep, onto the engine's `sweepFrom` (2026-11-03).
-  'src/main/world/WorldGraph.ts': 2308,
+  // Lowered by the monster row and passage sweeps, onto the engine's `sweepFrom` (2026-11-03).
+  'src/main/world/WorldGraph.ts': 2300,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).
@@ -535,7 +535,7 @@ describe('one navigation engine', () => {
   const callers: Readonly<Record<string, number>> = {
     'src/main/session/navigation.ts': 3,
     'src/main/world/Router.ts': 3,
-    'src/main/world/WorldGraph.ts': 8,
+    'src/main/world/WorldGraph.ts': 9,
     'src/main/world/QuestPlanner.ts': 2
   };
   const engine = 'src/main/world/navigation/';
