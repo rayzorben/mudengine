@@ -6,13 +6,17 @@ import {
   asPeerRegistration,
   asPeerToken,
   asPeerUp,
+  isUnknownKind,
   MOST_SHARE_KEYS,
   MOST_SHARE_NAMES,
+  PEER_DOWN_KINDS,
+  PEER_UP_KINDS,
   type PeerDown,
   type PeerUp
 } from '../peerWire';
 
 const peer = { realm: 'orohost:2427/GreaterMUD', name: 'Brakkle' };
+const soul = { realm: 'orohost:2427/GreaterMUD', name: 'Soul' };
 const key = 'A'.repeat(43);
 const hex = (length: number): string => 'a'.repeat(length);
 
@@ -23,7 +27,13 @@ const ups: PeerUp[] = [
   { k: 'shares', peer, to: [{ name: 'Soul', share: 'state', keys: [] }] },
   { k: 'sheet', peer, sheet: { v: 1 } },
   { k: 'patch', peer, set: { level: 13 }, deep: {}, drop: [] },
-  { k: 'leave', peer }
+  { k: 'leave', peer },
+  { k: 'watch', peer, from: soul, key, on: true },
+  { k: 'act', peer, from: soul, key, id: 7, action: { v: 1, a: 'move', dir: 'n' } },
+  { k: 'text', peer, text: 'You are in the plaza.\r\n', to: null },
+  { k: 'text', peer, text: 'backlog', to: { name: 'Soul', key } },
+  { k: 'acted', peer, to: { name: 'Soul', key }, id: 7, answer: { r: 'done' } },
+  { k: 'release', peer, to: { name: 'Soul', key } }
 ];
 
 const downs: PeerDown[] = [
@@ -34,7 +44,7 @@ const downs: PeerDown[] = [
   { k: 'unclaimed', peer, why: 'answer' },
   { k: 'audience', peer, to: [{ name: 'Soul', key }] },
   { k: 'unpinned', peer, name: 'Soul', key },
-  { k: 'shared', from: peer, key, to: ['Soul'] },
+  { k: 'shared', from: peer, key, to: ['Soul'], control: ['Soul'] },
   { k: 'sheet', from: peer, key, sheet: { v: 1 } },
   {
     k: 'patch',
@@ -44,7 +54,12 @@ const downs: PeerDown[] = [
     deep: { vitals: { k: 'fields', set: { hp: 3 }, deep: {}, drop: [] } },
     drop: []
   },
-  { k: 'gone', from: peer, key, why: 'left' }
+  { k: 'gone', from: peer, key, why: 'left' },
+  { k: 'controllers', peer, to: [{ name: 'Soul', key }] },
+  { k: 'act', peer, by: { name: 'Soul', key }, id: 7, action: { v: 1, a: 'rest' } },
+  { k: 'text', from: peer, key, text: 'You are in the plaza.' },
+  { k: 'acted', from: peer, key, id: 7, answer: { r: 'refused', why: 'not now' } },
+  { k: 'released', from: peer, key, why: 'stopped' }
 ];
 
 const wire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
@@ -61,10 +76,21 @@ describe('the peer wire', () => {
     expect(asPeerDown({ k: 'gone', from: peer, why: 'bored' })).toBeNull();
   });
 
-  it('refuses a share at off, a padded name, and a list past its bound', () => {
+  it('shares nothing at off, at a level another build added, or to a padded name', () => {
     const shares = (to: unknown): unknown => ({ k: 'shares', peer, to });
-    expect(asPeerUp(shares([{ name: 'Soul', share: 'off', keys: [] }]))).toBeNull();
-    expect(asPeerUp(shares([{ name: 'Soul ', share: 'state', keys: [] }]))).toBeNull();
+    const soulAt = { name: 'Soul', share: 'state', keys: [] };
+    const none = { k: 'shares', peer, to: [] };
+    expect(asPeerUp(shares([{ name: 'Soul', share: 'off', keys: [] }]))).toEqual(none);
+    expect(asPeerUp(shares([{ name: 'Soul ', share: 'state', keys: [] }]))).toEqual(none);
+    // The entry that does not read is not shared; the one beside it still is.
+    expect(asPeerUp(shares([{ name: 'Rand', share: 'drive', keys: [] }, soulAt]))).toEqual({
+      ...none,
+      to: [soulAt]
+    });
+  });
+
+  it('refuses a share list past its bound, and shares nothing past a bound on keys', () => {
+    const shares = (to: unknown): unknown => ({ k: 'shares', peer, to });
     const many = Array.from({ length: MOST_SHARE_NAMES + 1 }, (_, i) => ({
       name: `P${i}`,
       share: 'state',
@@ -75,8 +101,42 @@ describe('the peer wire', () => {
     const pinned = (count: number): unknown =>
       shares([{ name: 'Soul', share: 'state', keys: Array.from({ length: count }, () => key) }]);
     expect(asPeerUp(pinned(MOST_SHARE_KEYS))).not.toBeNull();
-    expect(asPeerUp(pinned(MOST_SHARE_KEYS + 1))).toBeNull();
-    expect(asPeerUp(shares([{ name: 'Soul', share: 'state', keys: ['short'] }]))).toBeNull();
+    expect(asPeerUp(pinned(MOST_SHARE_KEYS + 1))).toEqual({ k: 'shares', peer, to: [] });
+    const short = shares([{ name: 'Soul', share: 'state', keys: ['short'] }]);
+    expect(asPeerUp(short)).toEqual({ k: 'shares', peer, to: [] });
+  });
+
+  it('reads a frame from a gateway or build that lacks a field, and ignores one it does not know', () => {
+    // A gateway from before remote control says no `control`: nobody is given it.
+    expect(asPeerDown({ k: 'shared', from: peer, key, to: ['Soul'] })).toEqual({
+      k: 'shared',
+      from: peer,
+      key,
+      to: ['Soul'],
+      control: []
+    });
+    expect(asPeerDown({ k: 'released', from: peer, key, why: 'stopped', extra: 1 })).toEqual({
+      k: 'released',
+      from: peer,
+      key,
+      why: 'stopped'
+    });
+    // An action or answer is relayed unread, so a field another build adds crosses whole.
+    const act = { k: 'act', peer, from: soul, key, id: 1, action: { v: 2, a: 'dance' } };
+    expect(asPeerUp(act)).toEqual(act);
+    expect(asPeerUp({ ...act, id: -1 })).toBeNull();
+    expect(asPeerUp({ ...act, action: { text: 'x'.repeat(5000) } })).toBeNull();
+    expect(asPeerUp({ k: 'text', peer, text: '', to: null })).toBeNull();
+  });
+
+  it('tells a kind another build added from a frame that does not read', () => {
+    expect(isUnknownKind({ k: 'dance', peer }, PEER_UP_KINDS)).toBe(true);
+    expect(isUnknownKind({ k: 'claim', peer }, PEER_UP_KINDS)).toBe(false);
+    expect(isUnknownKind({ peer }, PEER_UP_KINDS)).toBe(false);
+    expect(isUnknownKind({ k: 'dance' }, PEER_DOWN_KINDS)).toBe(true);
+    // Every kind each way is listed: a frame of each reads.
+    expect(new Set(ups.map((frame) => frame.k))).toEqual(new Set(PEER_UP_KINDS));
+    expect(new Set(downs.map((frame) => frame.k))).toEqual(new Set(PEER_DOWN_KINDS));
   });
 
   it('refuses a key or a signature of the wrong length', () => {

@@ -445,6 +445,7 @@ export class SessionManager {
   private readonly attendance: Attendance;
   /** Auto-combat, which the toolbar, the remotes and Run it flip (`SessionSwitches`). */
   readonly switches: SessionSwitches;
+  readonly reports: { notice: SessionSink['notice']; decided(decision: SafetyDecision): void };
   private readonly afk: Afk;
   private readonly heal: AutoHeal;
   private readonly castRound: CastRound;
@@ -461,9 +462,8 @@ export class SessionManager {
   readonly blessingChoice: BlessingChoiceReport;
   readonly loops: LoopRunner;
   /**
-   * The character's own persisted record, as `useRealm` handed it over — the
-   * same instance the tracker writes through. Held here so the blessing
-   * watchdog can read the measured durations at the point of use.
+   * The character's own record, as `useRealm` handed it over, the instance the tracker
+   * writes through, held so the blessing watchdog reads the measured durations where used.
    */
   private belongings: CharacterRecord = NO_RECORD;
 
@@ -777,17 +777,17 @@ export class SessionManager {
       }
     });
 
-    // What the light, errands and travel tell the session: a console line, a safety decision.
+    // What the light, errands, travel and remote control tell it: a console line, a safety decision.
     const moveInFlight = (): boolean => this.tracker.pendingMoves > 0;
     const sneakRefusals = new SneakRefusals(automation.movement, notice);
     this.switches = new SessionSwitches({
       notice,
       changed: () => this.publisher.publishAutomation()
     });
-    const reports = {
+    const reports = (this.reports = {
       notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
-    };
+    });
     // A route offers the command queue one verified step at a time, like everything else.
     this.walker = new Walker(automation, this.queue, {
       ...{ realmSpeed, sneakRefusals, combatOn },

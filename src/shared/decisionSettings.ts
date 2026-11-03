@@ -581,6 +581,7 @@ export const DECISION_SETTINGS = {
     'automation.remotes.party'
   ],
   'remote-party-cmd': ['automation.party.ignoreParty'],
+  'remote-control': ['automation.remotes.players'],
   'remote-item-commands': [
     'automation.remotes.players',
     'automation.remotes.gang',

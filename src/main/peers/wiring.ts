@@ -1,9 +1,9 @@
 /**
  * The sharing gateway's half of the client, composed once (todo
  * 20261031-1156-01): the link over the kept token, the book of sheets heard,
- * the gateway's pin reports, each character's keys and the sharing that
- * claims them. `client.ts` hands in what it owns and routes the pushes;
- * nothing here reads the configuration directly.
+ * the gateway's pin reports, each character's keys, the sharing that
+ * claims them, and remote control's two halves. `client.ts` hands in what it
+ * owns and routes the pushes; nothing here reads the configuration directly.
  */
 import { randomBytes } from 'node:crypto';
 
@@ -25,6 +25,10 @@ import { registerWithGateway } from './peerRegistration';
 import { PinReports } from './PinReports';
 import { Sharing, type SharingSession } from './Sharing';
 import type { CharacterState } from '../../shared/character';
+import type { SafetyDecision } from '../../shared/automation';
+import type { ControlAction, ControlAnswer } from '../../shared/peerControl';
+import { ControlDesk } from './ControlDesk';
+import { Controlling } from './Controlling';
 
 /** Where the gateway's token is kept, beside the art server's. */
 export const PEER_TOKEN_FILE = '.peer-token';
@@ -44,6 +48,12 @@ export interface PeersDeps {
   say(id: SessionId, message: string): void;
   /** The client's own log, for what is nobody's character. */
   announce(message: string): void;
+  /** One remote control action on this install's character `id`, from `by`. */
+  runControl(id: SessionId, action: ControlAction, by: string): Promise<ControlAnswer>;
+  /** A remote control refusal, for `id`'s safety trace. */
+  refused(id: SessionId, decision: SafetyDecision): void;
+  /** Terminal text of the character `id` controls, for `id`'s window. */
+  controlText(id: SessionId, text: string): void;
 }
 
 export interface Peers {
@@ -53,6 +63,16 @@ export interface Peers {
   forget(id: SessionId): void;
   sheetsFor(id: SessionId): SharedSheet[];
   view(id: SessionId): ShareView;
+  /** What `id`'s terminal painted, for whoever controls it. */
+  painted(id: SessionId, text: string): void;
+  /** `id` opens the terminal of `name`, a character shared with it; the refusal, or null. */
+  controlOpen(id: SessionId, name: string): string | null;
+  controlClose(id: SessionId): void;
+  controlAct(id: SessionId, action: ControlAction): Promise<ControlAnswer>;
+  /** The text `id` has been sent of the character it controls. */
+  controlBacklog(id: SessionId): string;
+  /** `id`'s player presses Stop on whoever controls it. */
+  controlStop(id: SessionId): void;
   dispose(): void;
 }
 
@@ -113,15 +133,40 @@ export function wirePeers(deps: PeersDeps): Peers {
     lost: () => {
       book.clear();
       reports.clear();
+      desk.lost();
+      controlling.lost();
       changed();
     },
     unpinned: (peer, name, key) => {
       reports.report(peer, name, key);
       changed();
     },
+    controlled: (frame) => desk.heard(frame),
+    controlling: (frame) => controlling.heard(frame),
     say: (message) => deps.announce(t('peers.trouble', { message }))
   });
-  const sharing = new Sharing({
+  const desk: ControlDesk = new ControlDesk({
+    characterOf: (peer) => sharing.characterOf(peer),
+    characterAt: (id) => sharing.characterAt(id),
+    run: deps.runControl,
+    link,
+    notice: deps.say,
+    refused: deps.refused,
+    changed: () => changed(),
+    backlogChars: () => tuning().peers.controlBacklogChars,
+    now: Date.now
+  });
+  const controlling: Controlling = new Controlling({
+    peerOf: (id) => sharing.peerOf(id),
+    sheetsFor: (id) => sharing.sheetsFor(id),
+    link,
+    text: deps.controlText,
+    notice: deps.say,
+    changed: () => changed(),
+    backlogChars: () => tuning().peers.controlBacklogChars,
+    answerMs: () => tuning().peers.controlAnswerMs
+  });
+  const sharing: Sharing = new Sharing({
     enabled: () => deps.settings().enabled,
     sessions: deps.sessions,
     pairFor: (id, realm) => keysFor(id).pairFor(realm),
@@ -130,7 +175,15 @@ export function wirePeers(deps: PeersDeps): Peers {
     reports,
     publish: deps.publish,
     fault: (id, message) => deps.say(id, t('peers.keyNot', { message })),
-    announce: (message) => deps.announce(t('peers.trouble', { message }))
+    announce: (message) => deps.announce(t('peers.trouble', { message })),
+    control: {
+      controlling: (id) => controlling.view(id),
+      controlledBy: (id) => desk.controlledBy(id),
+      reclaimed: (ids) => {
+        desk.regrant(ids);
+        controlling.reclaimed();
+      }
+    }
   });
   changed = () => sharing.publish();
   // A sheet ages out with no frame to say so: the views are read again on the sharer's beat.
@@ -141,10 +194,17 @@ export function wirePeers(deps: PeersDeps): Peers {
     refresh: () => sharing.refresh(),
     forget: (id) => {
       keys.delete(id);
+      controlling.forget(id);
       sharing.forget(id);
     },
     sheetsFor: (id) => sharing.sheetsFor(id),
     view: (id) => sharing.view(id),
+    painted: (id, text) => desk.painted(id, text),
+    controlOpen: (id, name) => controlling.open(id, name),
+    controlClose: (id) => controlling.close(id),
+    controlAct: (id, action) => controlling.act(id, action),
+    controlBacklog: (id) => controlling.backlog(id),
+    controlStop: (id) => desk.stop(id),
     dispose: () => {
       clearInterval(aging);
       link.dispose();

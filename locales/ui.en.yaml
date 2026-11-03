@@ -8311,6 +8311,51 @@ peers:
   noBuildSecret: this build was made without the registration secret, so it cannot share
   trouble: 'Sharing: {message}'
   keyNot: "Sharing: this character's key could not be kept, so it is not shared: {message}"
+  # Remote control: another player watching a shared character's terminal
+  # and sending it a line, a move, rest, stop, play or a switch.
+  control:
+    reason: '{from} by remote control'
+    sent: '{from} sent {what} by remote control.'
+    started: '{from} is controlling this character by remote control. Stop on the banner ends it.'
+    ended: "{from}'s remote control of this character ended."
+    stopped: 'Remote control by {names} stopped. They cannot take it again until you turn Allow Remote Control off and on.'
+    lost: 'The sharing server is out of reach, so nobody controls this character.'
+    refused: '{from} sent an action by remote control, and it was refused: {why}'
+    action: remote control
+    because: 'an action from {from}'
+    notGiven: 'this character gives them no remote control'
+    notHere: 'that character is not shared from here now'
+    unknownAction: 'their client sent "{name}", an action this client does not have'
+    newerAction: 'their client is newer and sent an action this one does not read'
+    malformed: 'the action could not be read'
+    badLine: 'a line is one line of at most {max} printable characters'
+    badName: That is not a character name.
+    notSharing: Sharing is off for this character, or the realm has not named it yet.
+    notOffered: '{name} does not give this character remote control.'
+    otherControls: 'Another of your characters is controlling {name}.'
+    notControlling: This character is not controlling anybody.
+    noLink: The sharing server is out of reach.
+    noAnswer: No answer came from the other client.
+    unreadAnswer: The other client answered in a way this one does not read.
+    closed: Remote control was closed.
+    releasedStopped: '{name} stopped your remote control.'
+    releasedUnshared: '{name} no longer gives this character remote control.'
+    releasedLeft: '{name} logged off, so remote control ended.'
+    queue:
+      held: the stat screen is open, so nothing is sent
+      offline: the character is not connected
+      switchedOff: automation is off
+      expired: it waited too long to be sent
+      unavailable: this realm has no such command
+    what:
+      line: '"{text}"'
+      move: 'a move {dir}'
+      rest: rest
+      stop: Stop
+      play: 'Play on {loop}'
+      playStopped: Play
+      switchOn: '{name} on'
+      switchOff: '{name} off'
 
 # A character is down to its last few lives with automation on, and the client
 # asks before logging it in.

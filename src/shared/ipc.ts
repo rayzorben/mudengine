@@ -29,6 +29,7 @@ import type { DecisionKind } from './decisionSettings';
 import type { PlayerRegistry } from './players';
 import type { PortraitChange, PortraitView } from './portrait';
 import type { ShareView } from './peers';
+import type { ControlAction, ControlAnswer } from './peerControl';
 import type { RoomArtView } from './roomArt';
 import type { DebugRecord } from './debug';
 import type { UnreadLine } from './unread';
@@ -815,6 +816,13 @@ export const Invoke = {
   portrait: 'art:portrait',
   /** What the character shares and is shared, for a window that opens (todo 20261031-1156-01). */
   shares: 'peers:shares',
+  /** Remote control of a character shared with this one: open its terminal, close it, act, its text. */
+  controlOpen: 'peers:control-open',
+  controlClose: 'peers:control-close',
+  controlAct: 'peers:control-act',
+  controlBacklog: 'peers:control-backlog',
+  /** The sharer's Stop on whoever controls this character. */
+  controlStop: 'peers:control-stop',
   /** The character's portrait written to a file the player picks. */
   savePortrait: 'art:save-portrait',
   /** The picture of the room the character is in, for a game view that opens (todo 20261020-2015-01). */
@@ -1243,6 +1251,8 @@ export const Push = {
   portrait: 'art:portrait-changed',
   /** What the character shares and is shared, when it changed (todo 20261031-1156-01). */
   shares: 'peers:shares-changed',
+  /** Terminal text of the character this one is remote controlling. */
+  controlText: 'peers:control-text',
   /** The picture of the room the character is in, when it changed (todo 20261020-2015-01). */
   roomArt: 'art:room-changed',
   /** Route-walk progress, on change. */
@@ -1463,6 +1473,15 @@ export interface IpcApi {
   portrait(session: SessionId): Promise<PortraitView>;
   /** What the character shares and is shared, as main holds it. */
   shares(session: SessionId): Promise<ShareView>;
+  /** Opens the terminal of `name`, a character shared with this one at `control`; the refusal, or null. */
+  controlOpen(session: SessionId, name: string): Promise<string | null>;
+  controlClose(session: SessionId): Promise<void>;
+  /** One action to the character this one controls, answered by its sharer. */
+  controlAct(session: SessionId, action: ControlAction): Promise<ControlAnswer>;
+  /** The text this character has been sent of the one it controls. */
+  controlBacklog(session: SessionId): Promise<string>;
+  /** Ends every player's remote control of this character. */
+  controlStop(session: SessionId): Promise<void>;
   /** The character's portrait, saved where the player picks (a browser tab downloads it). */
   savePortrait(session: SessionId): Promise<SavedFile>;
   /** The picture of the room the character is in, as main holds it; asks the art server nothing. */
@@ -1896,6 +1915,7 @@ export interface IpcApi {
   onPlayers(handler: (message: Addressed<PlayerRegistry>) => void): () => void;
   onPortrait(handler: (message: Addressed<PortraitChange>) => void): () => void;
   onShares(handler: (message: Addressed<ShareView>) => void): () => void;
+  onControlText(handler: (message: Addressed<string>) => void): () => void;
   onRoomArt(handler: (message: Addressed<RoomArtView>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
@@ -1939,6 +1959,7 @@ export const PUSH_METHODS = [
   'onPlayers',
   'onPortrait',
   'onShares',
+  'onControlText',
   'onRoomArt',
   'onWalk',
   'onLoop',

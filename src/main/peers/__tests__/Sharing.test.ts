@@ -36,7 +36,8 @@ function sharing(enabled: boolean, grants: Record<string, PeerGrant>) {
     reports: { reportsFor: () => [] },
     publish: () => undefined,
     fault: () => undefined,
-    announce: () => undefined
+    announce: () => undefined,
+    control: { controlling: () => null, controlledBy: () => [], reclaimed: () => undefined }
   });
   const claimed = async (): Promise<Claimant[]> => {
     await new Promise<void>((wake) => waiting.push(wake));

@@ -9,6 +9,8 @@
  * empty change every `freshEveryMs` so a receiver can tell a quiet sharer
  * from a lost one. What the gateway relays from other sharers goes to
  * `heard`; a loss of the socket is `lost`, so nothing stays at its last value.
+ * Remote control's frames go out through `watch`, `sendAction`, `text`, `answer` and
+ * `release`, and come in to `controlled` (as the sharer) and `controlling`.
  */
 import { createHmac } from 'node:crypto';
 
@@ -24,6 +26,7 @@ import {
   type PeerDown,
   type PeerToken,
   type PeerUp,
+  type Listener,
   type RefusedWhy,
   type ShareEntry
 } from '../../shared/peerWire';
@@ -36,6 +39,17 @@ export interface Claimant {
   readonly peer: PeerKey;
   readonly pair: Ed25519Pair;
   readonly shares: readonly ShareEntry[];
+}
+
+/** The control frames a sharer is sent. */
+export type ControlledFrame = Extract<PeerDown, { k: 'controllers' | 'act' }>;
+/** The control frames a controller is sent. */
+export type ControllingFrame = Extract<PeerDown, { k: 'text' | 'acted' | 'released' }>;
+
+/** A character another install shares, by its claim and key. */
+export interface Watched {
+  readonly from: PeerKey;
+  readonly key: string;
 }
 
 /** The socket as the link drives it. */
@@ -77,6 +91,10 @@ export interface PeerLinkDeps {
   lost(): void;
   /** A claim of a name `peer` shares with, under a key its grant does not hold. */
   unpinned(peer: PeerKey, name: string, key: string): void;
+  /** Who is controlling one of this install's characters, or an action one of them sent it. */
+  controlled(frame: ControlledFrame): void;
+  /** The terminal text, an answer or the end of a character this install is controlling. */
+  controlling(frame: ControllingFrame): void;
   /** What went wrong, said once until something else does. */
   say(message: string): void;
 }
@@ -89,6 +107,8 @@ interface Held {
   /** What the gateway holds of the sheet, or null when it holds none. */
   sent: SentSheet | null;
   sentAt: number;
+  /** The character this one is controlling, watched again on each claim. */
+  watching: Watched | null;
 }
 
 const EMPTY_CHANGE = { set: {}, deep: {}, drop: [] };
@@ -101,7 +121,10 @@ const REFUSED: Record<RefusedWhy, string> = {
   'over-limit': 'this client sent more than the sharing server takes',
   malformed: 'the sharing server could not read what this client sent',
   'not-claimed': 'the sharing server was sent a character it had not been told of',
-  'no-sheet': 'the sharing server was sent a change before the sheet'
+  'no-sheet': 'the sharing server was sent a change before the sheet',
+  'not-shared':
+    'the sharing server was sent an action for a character that gives no remote control',
+  'unknown-frame': 'the sharing server does not read something this client sent, and ignored it'
 };
 
 export class PeerLink {
@@ -138,7 +161,8 @@ export class PeerLink {
           listening: false,
           latest: null,
           sent: null,
-          sentAt: 0
+          sentAt: 0,
+          watching: null
         });
         if (this.welcomed) this.claim(claimant);
         continue;
@@ -162,6 +186,45 @@ export class PeerLink {
     if (held === undefined) return;
     held.latest = sheet;
     this.push(held);
+  }
+
+  /** Watch `watched`'s terminal as `peer`, or stop (null); kept across reconnects. */
+  watch(peer: PeerKey, watched: Watched | null): void {
+    const held = this.held.get(peerKeyText(peer));
+    if (held === undefined) return;
+    const was = held.watching;
+    held.watching = watched;
+    if (!held.claimed) return;
+    if (was !== null && (watched === null || !sameJson(was, watched))) {
+      this.send({ k: 'watch', peer, ...was, on: false });
+    }
+    if (watched !== null) this.send({ k: 'watch', peer, ...watched, on: true });
+  }
+
+  /** An action `peer` sends the character it watches; false when no link carries it now. */
+  sendAction(peer: PeerKey, id: number, action: Record<string, unknown>): boolean {
+    const held = this.held.get(peerKeyText(peer));
+    if (held?.claimed !== true || held.watching === null) return false;
+    this.send({ k: 'act', peer, ...held.watching, id, action });
+    return true;
+  }
+
+  /** `peer`'s terminal text, to every controller or to `to` alone. */
+  text(peer: PeerKey, text: string, to: Listener | null): void {
+    if (this.held.get(peerKeyText(peer))?.claimed === true)
+      this.send({ k: 'text', peer, text, to });
+  }
+
+  /** `peer`'s answer to one controller's action. */
+  answer(peer: PeerKey, to: Listener, id: number, answer: Record<string, unknown>): void {
+    if (this.held.get(peerKeyText(peer))?.claimed === true) {
+      this.send({ k: 'acted', peer, to, id, answer });
+    }
+  }
+
+  /** `peer`'s player ends `to`'s control. */
+  release(peer: PeerKey, to: Listener): void {
+    if (this.held.get(peerKeyText(peer))?.claimed === true) this.send({ k: 'release', peer, to });
   }
 
   dispose(): void {
@@ -328,6 +391,8 @@ export class PeerLink {
         if (held === undefined) return;
         held.claimed = true;
         this.sendShares(held);
+        if (held.watching !== null)
+          this.send({ k: 'watch', peer: held.claimant.peer, ...held.watching, on: true });
         return;
       }
       case 'unclaimed':
@@ -355,6 +420,15 @@ export class PeerLink {
       case 'patch':
       case 'gone':
         this.deps.heard(frame);
+        return;
+      case 'controllers':
+      case 'act':
+        this.deps.controlled(frame);
+        return;
+      case 'text':
+      case 'acted':
+      case 'released':
+        this.deps.controlling(frame);
         return;
       default: {
         const never: never = frame;

@@ -36,12 +36,12 @@ export function peerKeyText(key: PeerKey): string {
 }
 
 /**
- * What a player gives another, on that player's row. Remote control is a
- * third level once the user settles how it works across two builds (open
- * question 2 of the todo); until then a share is the sheet or nothing.
+ * What a player gives another, on that player's row: nothing, the sheet, or
+ * the sheet and remote control (`peerControl.ts`), which cannot be had
+ * without the sheet.
  */
-export type ShareLevel = 'off' | 'state';
-export const SHARE_LEVELS: readonly ShareLevel[] = ['off', 'state'];
+export type ShareLevel = 'off' | 'state' | 'control';
+export const SHARE_LEVELS: readonly ShareLevel[] = ['off', 'state', 'control'];
 
 /** The sheet's own version, raised when a field changes meaning. A new field does not raise it. */
 export const PEER_SHEET_VERSION = 1;
@@ -236,6 +236,8 @@ export interface SharedSheet {
   readonly key: string;
   readonly sheet: PeerSheet;
   readonly heardAt: number;
+  /** Whether it gives this character remote control (`peerControl.ts`). */
+  readonly control: boolean;
 }
 
 /**
@@ -267,6 +269,10 @@ export interface ShareView {
   /** Shares this character takes from a name, under keys its player has not pinned. */
   readonly offered: readonly KeyOffer[];
   readonly sheets: readonly SharedSheet[];
+  /** The character this one is controlling, by its name and the key it shares under; null for none. */
+  readonly controlling: KeyOffer | null;
+  /** The players controlling this character now, each of whom its player may stop. */
+  readonly controlledBy: readonly string[];
 }
 
 export const NO_SHARES: ShareView = {
@@ -275,5 +281,7 @@ export const NO_SHARES: ShareView = {
   ownKey: null,
   unpinned: [],
   offered: [],
-  sheets: []
+  sheets: [],
+  controlling: null,
+  controlledBy: []
 };

@@ -129,7 +129,25 @@ export interface Listener {
 /** The sheet's own patch, the fields `RpcPatch` carries. */
 export type SheetPatch = Pick<RpcPatch, 'set' | 'deep' | 'drop'>;
 
-/** Install to gateway. */
+/**
+ * The longest run of terminal text one frame carries. The game sends 338 B/s
+ * on average and 8.8 KB in its busiest second (the todo's
+ * `terminal-bytes.mjs`); a backlog goes in frames of this size.
+ */
+export const PEER_MOST_TEXT = 16_384;
+
+/** The largest action or answer one frame carries: a line typed and a name or two. */
+const MOST_CONTROL_BYTES = 4096;
+
+/** Which action a controller sent, so the sharer's answer finds it. */
+const MOST_ACTION_ID = 2 ** 31;
+
+/**
+ * Install to gateway. The control frames (`peerControl.ts`): a controller's
+ * `watch` and `act` name the sharer by its claim and key; a sharer's `text`,
+ * `acted` and `release` name the controller as a `Listener`. The gateway
+ * relays `action` and `answer` without reading them.
+ */
 export type PeerUp =
   | { k: 'hello'; token: string; time: number; nonce: string; sig: string }
   | { k: 'claim'; peer: PeerKey; key: string }
@@ -137,11 +155,52 @@ export type PeerUp =
   | { k: 'shares'; peer: PeerKey; to: ShareEntry[] }
   | { k: 'sheet'; peer: PeerKey; sheet: Record<string, unknown> }
   | ({ k: 'patch'; peer: PeerKey } & SheetPatch)
-  | { k: 'leave'; peer: PeerKey };
+  | { k: 'leave'; peer: PeerKey }
+  | { k: 'watch'; peer: PeerKey; from: PeerKey; key: string; on: boolean }
+  | {
+      k: 'act';
+      peer: PeerKey;
+      from: PeerKey;
+      key: string;
+      id: number;
+      action: Record<string, unknown>;
+    }
+  /** Terminal text to every controller, or to `to` alone (the backlog a new one is sent). */
+  | { k: 'text'; peer: PeerKey; text: string; to: Listener | null }
+  | { k: 'acted'; peer: PeerKey; to: Listener; id: number; answer: Record<string, unknown> }
+  | { k: 'release'; peer: PeerKey; to: Listener };
+
+/** Every kind of install frame, so a kind another build added is told from a frame that does not read. */
+export const PEER_UP_KINDS: readonly PeerUp['k'][] = [
+  'hello',
+  'claim',
+  'answer',
+  'shares',
+  'sheet',
+  'patch',
+  'leave',
+  'watch',
+  'act',
+  'text',
+  'acted',
+  'release'
+];
+
+/** Whether `value` is a frame of a kind this build does not know, as a newer build would send. */
+export function isUnknownKind(value: unknown, known: readonly string[]): boolean {
+  return isRecord(value) && typeof value['k'] === 'string' && !known.includes(value['k']);
+}
 
 /** Why a claim was refused: the answer did not verify, or the install claims too many. */
 export type UnclaimedWhy = 'answer' | 'too-many';
 export const UNCLAIMED_WHYS: readonly UnclaimedWhy[] = ['answer', 'too-many'];
+
+/**
+ * Why remote control ended: the sharer pressed Stop, no longer gives this
+ * character control, or logged off.
+ */
+export type ReleasedWhy = 'stopped' | 'unshared' | 'left';
+export const RELEASED_WHYS: readonly ReleasedWhy[] = ['stopped', 'unshared', 'left'];
 
 /** Why a sharer's sheet stopped: the sharer logged off, or no longer shares with this install. */
 export type GoneWhy = 'left' | 'unshared';
@@ -155,7 +214,9 @@ export type RefusedWhy =
   | 'over-limit'
   | 'malformed'
   | 'not-claimed'
-  | 'no-sheet';
+  | 'no-sheet'
+  | 'not-shared'
+  | 'unknown-frame';
 export const REFUSED_WHYS: readonly RefusedWhy[] = [
   'unknown-token',
   'signature',
@@ -163,7 +224,9 @@ export const REFUSED_WHYS: readonly RefusedWhy[] = [
   'over-limit',
   'malformed',
   'not-claimed',
-  'no-sheet'
+  'no-sheet',
+  'not-shared',
+  'unknown-frame'
 ];
 
 /** The refusals that close the socket: the install is not who it says, or is not keeping to the wire. */
@@ -185,10 +248,37 @@ export type PeerDown =
   | { k: 'audience'; peer: PeerKey; to: Listener[] }
   /** A claim of a listed name under a key the grant does not hold, for the player to pin or not. */
   | { k: 'unpinned'; peer: PeerKey; name: string; key: string }
-  | { k: 'shared'; from: PeerKey; key: string; to: string[] }
+  /** The names `from` shares with on this install, and those of them it gives remote control. */
+  | { k: 'shared'; from: PeerKey; key: string; to: string[]; control: string[] }
   | { k: 'sheet'; from: PeerKey; key: string; sheet: Record<string, unknown> }
   | ({ k: 'patch'; from: PeerKey; key: string } & SheetPatch)
-  | { k: 'gone'; from: PeerKey; key: string; why: GoneWhy };
+  | { k: 'gone'; from: PeerKey; key: string; why: GoneWhy }
+  /** Who is watching `peer`'s terminal and may send it actions. */
+  | { k: 'controllers'; peer: PeerKey; to: Listener[] }
+  | { k: 'act'; peer: PeerKey; by: Listener; id: number; action: Record<string, unknown> }
+  | { k: 'text'; from: PeerKey; key: string; text: string }
+  | { k: 'acted'; from: PeerKey; key: string; id: number; answer: Record<string, unknown> }
+  | { k: 'released'; from: PeerKey; key: string; why: ReleasedWhy };
+
+/** Every kind of gateway frame (`isUnknownKind`). */
+export const PEER_DOWN_KINDS: readonly PeerDown['k'][] = [
+  'welcome',
+  'refused',
+  'challenge',
+  'claimed',
+  'unclaimed',
+  'audience',
+  'unpinned',
+  'shared',
+  'sheet',
+  'patch',
+  'gone',
+  'controllers',
+  'act',
+  'text',
+  'acted',
+  'released'
+];
 
 /** The most names one share list may carry. */
 export const MOST_SHARE_NAMES = 32;
@@ -212,6 +302,68 @@ function asListener(value: unknown): Listener | null {
 
 const listOf = <T>(value: unknown, item: (each: unknown) => T | null): T[] | null =>
   everyOf(value, item, MOST_SHARE_NAMES);
+
+/**
+ * A share list read entry by entry: one that does not read (a level another
+ * build added) is not shared, and the rest still are. Null only for no list.
+ */
+function shareEntries(value: unknown): ShareEntry[] | null {
+  if (!Array.isArray(value) || value.length > MOST_SHARE_NAMES) return null;
+  return value.map(asShareEntry).filter((each): each is ShareEntry => each !== null);
+}
+
+const isActionId = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < MOST_ACTION_ID;
+
+/** An action or an answer, relayed unread: a record, bounded. */
+function controlBody(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  return JSON.stringify(value).length <= MOST_CONTROL_BYTES ? value : null;
+}
+
+const isText = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= PEER_MOST_TEXT;
+
+/** The control frames an install sends, each read whole or not at all. */
+function asControlUp(
+  k: unknown,
+  peer: PeerKey,
+  value: Readonly<Record<string, unknown>>
+): PeerUp | null {
+  switch (k) {
+    case 'watch':
+    case 'act': {
+      const from = asPeerKey(value['from']);
+      const key = value['key'];
+      if (from === null || !isPublicKey(key)) return null;
+      if (k === 'watch') {
+        const on = value['on'];
+        return typeof on === 'boolean' ? { k, peer, from, key, on } : null;
+      }
+      const action = controlBody(value['action']);
+      const id = value['id'];
+      return action !== null && isActionId(id) ? { k, peer, from, key, id, action } : null;
+    }
+    case 'text': {
+      const text = value['text'];
+      const named = value['to'] ?? null;
+      const to = named === null ? null : asListener(named);
+      if (!isText(text) || (named !== null && to === null)) return null;
+      return { k, peer, text, to };
+    }
+    case 'acted':
+    case 'release': {
+      const to = asListener(value['to']);
+      if (to === null) return null;
+      if (k === 'release') return { k, peer, to };
+      const answer = controlBody(value['answer']);
+      const id = value['id'];
+      return answer !== null && isActionId(id) ? { k, peer, to, id, answer } : null;
+    }
+    default:
+      return null;
+  }
+}
 
 export function isPublicKey(value: unknown): value is string {
   return typeof value === 'string' && PUBLIC_KEY.test(value);
@@ -238,7 +390,7 @@ export function asPeerUp(value: unknown): PeerUp | null {
       return typeof sig === 'string' && SIGNATURE.test(sig) ? { k, peer, sig } : null;
     }
     case 'shares': {
-      const to = listOf(value['to'], asShareEntry);
+      const to = shareEntries(value['to']);
       return to === null ? null : { k, peer, to };
     }
     case 'sheet':
@@ -250,7 +402,7 @@ export function asPeerUp(value: unknown): PeerUp | null {
     case 'leave':
       return { k, peer };
     default:
-      return null;
+      return asControlUp(k, peer, value);
   }
 }
 
@@ -262,6 +414,18 @@ export function asPeerDown(value: unknown): PeerDown | null {
   if (k === 'refused') {
     const why = memberOf(value['why'], REFUSED_WHYS);
     return why === null ? null : { k, why };
+  }
+  if (k === 'controllers' || k === 'act') {
+    const peer = asPeerKey(value['peer']);
+    if (peer === null) return null;
+    if (k === 'controllers') {
+      const to = everyOf(value['to'], asListener, MOST_LISTENERS);
+      return to === null ? null : { k, peer, to };
+    }
+    const by = asListener(value['by']);
+    const action = controlBody(value['action']);
+    const id = value['id'];
+    return by !== null && action !== null && isActionId(id) ? { k, peer, by, id, action } : null;
   }
   if (k === 'challenge' || k === 'claimed' || k === 'unclaimed' || k === 'audience') {
     const peer = asPeerKey(value['peer']);
@@ -289,8 +453,11 @@ export function asPeerDown(value: unknown): PeerDown | null {
   if (from === null) return null;
   switch (k) {
     case 'shared': {
-      const to = listOf(value['to'], (each) => (isPeerName(each) ? each : null));
-      return to === null ? null : { k, from, key, to };
+      const name = (each: unknown): string | null => (isPeerName(each) ? each : null);
+      const to = listOf(value['to'], name);
+      // A gateway from before remote control sends no `control`: none is given.
+      const control = value['control'] === undefined ? [] : listOf(value['control'], name);
+      return to === null || control === null ? null : { k, from, key, to, control };
     }
     case 'sheet':
       return isRecord(value['sheet']) ? { k, from, key, sheet: value['sheet'] } : null;
@@ -300,6 +467,19 @@ export function asPeerDown(value: unknown): PeerDown | null {
     }
     case 'gone': {
       const why = memberOf(value['why'], GONE_WHYS);
+      return why === null ? null : { k, from, key, why };
+    }
+    case 'text': {
+      const text = value['text'];
+      return isText(text) ? { k, from, key, text } : null;
+    }
+    case 'acted': {
+      const answer = controlBody(value['answer']);
+      const id = value['id'];
+      return answer !== null && isActionId(id) ? { k, from, key, id, answer } : null;
+    }
+    case 'released': {
+      const why = memberOf(value['why'], RELEASED_WHYS);
       return why === null ? null : { k, from, key, why };
     }
     default:

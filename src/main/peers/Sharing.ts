@@ -16,6 +16,7 @@ import {
   isPeerName,
   NO_SHARES,
   peerKeyText,
+  type KeyOffer,
   type PeerKey,
   type SharedSheet,
   type ShareView
@@ -23,6 +24,7 @@ import {
 import { MOST_SHARE_NAMES, type ShareEntry } from '../../shared/peerWire';
 import { playerKey } from '../../shared/players';
 import { errorMessage, sameJson } from '../../shared/values';
+import type { ControlledCharacter } from './ControlDesk';
 import type { Accepts, PeerBook } from './PeerBook';
 import type { Claimant, PeerLink } from './PeerLink';
 import { peerSheetOf } from './peerSheet';
@@ -48,6 +50,13 @@ export interface SharingDeps {
   fault(id: SessionId, message: string): void;
   /** Claiming failed for a reason that is nobody's character. */
   announce(message: string): void;
+  /** Remote control's halves, for each window's view. */
+  control: {
+    controlling(id: SessionId): KeyOffer | null;
+    controlledBy(id: SessionId): readonly string[];
+    /** The claims changed: control is checked against them and the rows again. */
+    reclaimed(ids: readonly SessionId[]): void;
+  };
 }
 
 const shared = (
@@ -120,6 +129,28 @@ export class Sharing {
     return this.deps.book.sheetsFor(claim.peer, acceptsOf(session.grants));
   }
 
+  /** `id`'s claim, while claimed. */
+  peerOf(id: SessionId): PeerKey | null {
+    return this.claimed.get(id)?.peer ?? null;
+  }
+
+  /** The session claiming `peer` and its rows, for remote control. */
+  characterOf(peer: PeerKey): ControlledCharacter | null {
+    const text = peerKeyText(peer);
+    for (const [id, claim] of this.claimed) {
+      if (peerKeyText(claim.peer) === text) return this.characterAt(id);
+    }
+    return null;
+  }
+
+  /** Session `id` while claimed, read with its rows as they are now. */
+  characterAt(id: SessionId): ControlledCharacter | null {
+    const claim = this.claimed.get(id);
+    const session = this.deps.sessions().find((each) => each.id === id);
+    if (claim === undefined || session === undefined) return null;
+    return { id, peer: claim.peer, grantFor: (name) => session.grants[playerKey(name)] ?? null };
+  }
+
   /** What `id`'s window was last shown. */
   view(id: SessionId): ShareView {
     return this.shown.get(id) ?? NO_SHARES;
@@ -139,13 +170,16 @@ export class Sharing {
     const claim = this.claimed.get(session.id);
     if (claim === undefined) return { ...NO_SHARES, enabled: this.deps.enabled() };
     const accepts = acceptsOf(session.grants);
+    const { control } = this.deps;
     return {
       enabled: true,
       link: this.deps.link.link,
       ownKey: claim.pair.publicKey,
       unpinned: this.deps.reports.reportsFor(claim.peer, (name) => accepts(name).keys),
       offered: this.deps.book.offersFor(claim.peer, accepts),
-      sheets: this.deps.book.sheetsFor(claim.peer, accepts)
+      sheets: this.deps.book.sheetsFor(claim.peer, accepts),
+      controlling: control.controlling(session.id),
+      controlledBy: [...control.controlledBy(session.id)]
     };
   }
 
@@ -165,6 +199,7 @@ export class Sharing {
     this.claimed.clear();
     for (const [id, claim] of claimed) this.claimed.set(id, claim);
     this.deps.link.want([...unique.values()]);
+    this.deps.control.reclaimed([...this.claimed.keys()]);
     this.publish();
   }
 

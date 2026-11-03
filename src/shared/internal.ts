@@ -712,7 +712,17 @@ const TUNING_DEFAULTS = {
     /** Frames shorter than this go uncompressed; a change to a sheet is about 140 B. */
     deflateMinBytes: 512,
     /** Other players' characters heard of at once; past it the one heard of longest ago goes. */
-    mostSharers: 256
+    mostSharers: 256,
+    /**
+     * Remote control's terminal text kept on each side, for a controller who
+     * opens it: the console's 300 lines at 80 columns (`view.consoleLiveLines`).
+     */
+    controlBacklogChars: 24_000,
+    /**
+     * How long an action waits for the sharer's answer: the 20 s a half-typed
+     * line may hold the sharer's queue, and the way there and back.
+     */
+    controlAnswerMs: 30_000
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {

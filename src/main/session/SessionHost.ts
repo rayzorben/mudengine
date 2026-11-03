@@ -330,6 +330,8 @@ export interface SessionHostOptions {
   removed?(id: SessionId): void;
   /** Each state the character publishes, for what main keeps beside the window (the portrait). */
   characterSeen?(id: SessionId, state: CharacterState): void;
+  /** What each console painted, for whoever controls the character from elsewhere (remote control). */
+  consoleSeen?(id: SessionId, text: string): void;
   /**
    * Republishes the character roster.
    *
@@ -542,6 +544,7 @@ export class SessionHost {
           const painted = { ...stampChunk(chunk), ...(lines.length > 0 ? { marks: lines } : {}) };
           slot.backscroll.write(painted.text);
           this.options.toAttached(Push.data, { session: id, payload: painted });
+          this.options.consoleSeen?.(id, painted.text);
         },
         line: (line) => {
           // The capture is a record and gets every line; the push is a paint

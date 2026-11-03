@@ -126,6 +126,8 @@ import { pngOfDataUrl } from './art/pngOfDataUrl';
 import { handlePortraitFiles } from './art/portraitFiles';
 import { wireArt, type Art } from './art/wiring';
 import { wirePeers, type Peers } from './peers/wiring';
+import { runControl, type ControlledSession } from './peers/controlActions';
+import { handleControlChannels } from './peers/controlChannels';
 import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
 import { NO_PORTRAIT } from '../shared/portrait';
 import { NO_SHARES } from '../shared/peers';
@@ -192,7 +194,8 @@ import {
   configSwitches,
   DEFAULT_CONFIG,
   isHeldSwitch,
-  type AppConfig
+  type AppConfig,
+  type AutomationSwitch
 } from '../shared/config';
 import { settledSupply, type SupplyItem } from '../shared/packConfig';
 import { withSupply } from '../shared/supplies';
@@ -1756,6 +1759,31 @@ function createArt(): Art {
   });
 }
 
+/** One toolbar switch, a remote control's included; the refusal, or null. */
+function setSwitch(session: SessionId, name: AutomationSwitch, on: boolean): string | null {
+  // A held switch is the session's for now (`SessionSwitches`); the file never states it.
+  if (isHeldSwitch(name)) {
+    const manager = host?.get(session)?.manager;
+    manager?.switches.set(name, on);
+    return manager === undefined ? t('app.automation.noSession') : null;
+  }
+  const result = settingsEditor().setAutomationSwitch(session, name, on);
+  return result.ok ? null : result.error;
+}
+
+/** The character a remote control action runs on, as `runControl` reaches it. */
+function controlledAt(id: SessionId): ControlledSession | null {
+  const manager = host?.get(id)?.manager;
+  if (manager === undefined) return null;
+  return {
+    ...{ queue: manager.queue, reports: manager.reports },
+    lineMax: tuning().queue.cardCommandMaxChars,
+    stopMoving: (by) => manager.stopMoving(by),
+    play: (loop, confirmed) => playPlaced(() => host?.get(id)?.manager, loop, confirmed),
+    setSwitch: (name, on) => setSwitch(id, name, on)
+  };
+}
+
 /** The sharing gateway's client: off until `peers.enabled` and a share (todo 20261031-1156-01). */
 function createPeers(): Peers {
   return wirePeers({
@@ -1772,7 +1800,15 @@ function createPeers(): Peers {
       })),
     publish: (id, view) => windows.toAll(Push.shares, { session: id, payload: view }),
     say: (id, message) => pushNotice({ session: id, message }),
-    announce: (message) => announce('peers', message, 'log')
+    announce: (message) => announce('peers', message, 'log'),
+    runControl: (id, action, by) => {
+      const session = controlledAt(id);
+      return session === null
+        ? Promise.resolve({ r: 'refused', why: t('app.session.notConnected') })
+        : runControl(session, action, by);
+    },
+    refused: (id, decision) => host?.get(id)?.manager.reports.decided(decision),
+    controlText: (id, text) => windows.toAll(Push.controlText, { session: id, payload: text })
   });
 }
 
@@ -1857,6 +1893,7 @@ function createHost(): SessionHost {
       art?.rooms.observe(id, state);
       peers?.observe(id, state);
     },
+    consoleSeen: (id, text) => peers?.painted(id, text),
     // Before the index is read it is taken to have the room, so no look is spent on one it has.
     roomArtShipped: (realm, map, room) =>
       art !== null && (!art.shipped.ready || art.shipped.drawingOf(realm, map, room) !== null),
@@ -3580,6 +3617,7 @@ function registerIpc(): void {
     picture: (id) => art?.portraits.picture(id) ?? null,
     nameOf: (id) => labelOf(id).name
   });
+  handleControlChannels({ host: platform, peers: () => peers });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
     const read = readProfileId(rawId);
@@ -3676,14 +3714,7 @@ function registerIpc(): void {
     // nothing reads.
     const parsed = asAutomationSwitch(name);
     if (parsed === null) return t('app.automation.unknownSwitch');
-    // A held switch is the session's for now (`SessionSwitches`); the file never states it.
-    if (isHeldSwitch(parsed)) {
-      const manager = host?.get(session)?.manager;
-      manager?.switches.set(parsed, on === true);
-      return manager === undefined ? t('app.automation.noSession') : null;
-    }
-    const result = editor().setAutomationSwitch(session, parsed, on === true);
-    return result.ok ? null : result.error;
+    return setSwitch(session, parsed, on === true);
   });
   // A HUD threshold, from the game view's Run and Rest steppers, the same way.
   handle(Invoke.setThreshold, (_caller, session: unknown, which: unknown, value: unknown) => {

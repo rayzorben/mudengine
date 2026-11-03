@@ -10,6 +10,8 @@ import { peerKeyText, type PeerKey } from '../shared/peers';
 import {
   asPeerUp,
   claimText,
+  isUnknownKind,
+  PEER_UP_KINDS,
   REFUSALS_THAT_CLOSE,
   type ChecksSignature,
   type PeerDown,
@@ -122,12 +124,16 @@ export class InstallLink implements InstallLine {
     ) {
       return this.refuse('over-limit');
     }
-    let frame: PeerUp | null;
+    let value: unknown = null;
     try {
-      frame = asPeerUp(JSON.parse(text));
+      value = JSON.parse(text);
     } catch {
       // Not JSON: an install off the wire, refused below like any frame that does not read.
-      frame = null;
+    }
+    const frame: PeerUp | null = asPeerUp(value);
+    // A kind a newer build sends is said and ignored, never the end of the socket.
+    if (frame === null && this.token !== null && isUnknownKind(value, PEER_UP_KINDS)) {
+      return this.refuse('unknown-frame');
     }
     if (frame === null) return this.refuse('malformed');
     if (this.token === null) {
@@ -167,6 +173,16 @@ export class InstallLink implements InstallLine {
       case 'leave':
         this.pending.delete(peerKeyText(frame.peer));
         return router.leave(this, frame.peer);
+      case 'watch':
+        return router.watch(this, frame.peer, frame.from, frame.key, frame.on);
+      case 'act':
+        return router.act(this, frame.peer, frame.from, frame.key, frame.id, frame.action);
+      case 'text':
+        return router.text(this, frame.peer, frame.text, frame.to);
+      case 'acted':
+        return router.acted(this, frame.peer, frame.to, frame.id, frame.answer);
+      case 'release':
+        return router.release(this, frame.peer, frame.to);
       default: {
         const never: never = frame;
         return never;

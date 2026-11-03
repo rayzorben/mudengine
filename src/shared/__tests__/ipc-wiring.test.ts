@@ -25,7 +25,8 @@ const main = [
   'src/main/client.ts',
   'src/main/app/transfer.ts',
   'src/main/app/layoutFiles.ts',
-  'src/main/art/portraitFiles.ts'
+  'src/main/art/portraitFiles.ts',
+  'src/main/peers/controlChannels.ts'
 ]
   .map(read)
   .join('\n');

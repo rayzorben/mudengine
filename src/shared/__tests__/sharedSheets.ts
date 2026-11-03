@@ -9,13 +9,14 @@ const REALM = 'orohost:2427';
 
 export function sharedSheet(
   name: string,
-  over: Partial<PeerSheet> & { heardAt?: number; key?: string } = {}
+  over: Partial<PeerSheet> & { heardAt?: number; key?: string; control?: boolean } = {}
 ): SharedSheet {
-  const { heardAt = 1, key = `key-${name}`, ...sheet } = over;
+  const { heardAt = 1, key = `key-${name}`, control = false, ...sheet } = over;
   return {
     from: { realm: REALM, name },
     key,
     heardAt,
+    control,
     sheet: {
       v: PEER_SHEET_VERSION,
       className: null,

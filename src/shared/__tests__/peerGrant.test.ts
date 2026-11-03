@@ -14,7 +14,8 @@ describe("a player's sharing row", () => {
       receive: true,
       keys: [KEY]
     });
-    expect(asPeerGrant({ share: 'control' })).toBeNull();
+    expect(asPeerGrant({ share: 'control' })).toEqual({ ...NO_PEER_GRANT, share: 'control' });
+    expect(asPeerGrant({ share: 'drive' })).toBeNull();
     expect(asPeerGrant({ receive: 'yes' })).toBeNull();
     expect(asPeerGrant({ keys: ['not a key'] })).toBeNull();
   });

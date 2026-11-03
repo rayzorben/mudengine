@@ -626,6 +626,11 @@ tuning:
     # longest ago goes.
     mostSharers: 256
 
+    # Remote control: the terminal text kept for a controller who opens it,
+    # in characters, and how long an action waits for the sharer's answer.
+    controlBacklogChars: 24000
+    controlAnswerMs: 30000
+
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
     # How long a heal proposal stays worth sending.

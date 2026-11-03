@@ -30,6 +30,8 @@ interface Held {
   readonly key: string;
   /** This install's characters it shares with, by `playerKey`. */
   to: ReadonlySet<string>;
+  /** Those of them it gives remote control. */
+  control: ReadonlySet<string>;
   /** As sent, before it is read, so the next patch applies to what the sender patched. */
   raw: Record<string, unknown> | null;
   sheet: PeerSheet | null;
@@ -63,6 +65,7 @@ export class PeerBook {
     switch (frame.k) {
       case 'shared':
         entry.to = new Set(frame.to.map(playerKey));
+        entry.control = new Set(frame.control.map(playerKey));
         return;
       case 'sheet':
         this.read(entry, frame.sheet);
@@ -100,7 +103,8 @@ export class PeerBook {
     for (const entry of this.sharing(receiver)) {
       const accepted = accepts(entry.from.name);
       if (!accepted.receive || !accepted.keys.includes(entry.key) || entry.sheet === null) continue;
-      out.push({ from: entry.from, key: entry.key, sheet: entry.sheet, heardAt: entry.heardAt });
+      const { from, key, sheet, heardAt } = entry;
+      out.push({ from, key, sheet, heardAt, control: entry.control.has(playerKey(receiver.name)) });
     }
     return out;
   }
@@ -139,7 +143,10 @@ export class PeerBook {
   }
 
   private add(id: string, from: PeerKey, key: string): Held {
-    const entry: Held = { from, key, to: new Set(), raw: null, sheet: null, heardAt: this.now() };
+    const entry: Held = {
+      ...{ from, key, to: new Set(), control: new Set(), raw: null, sheet: null },
+      heardAt: this.now()
+    };
     this.held.set(id, entry);
     if (this.held.size > this.mostSharers()) {
       const oldest = [...this.held].reduce((a, b) => (b[1].heardAt < a[1].heardAt ? b : a));

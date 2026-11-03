@@ -10,35 +10,29 @@
  * and it is sent nothing. Each sharer's last whole sheet is
  * kept current with its patches, so an install that starts listening is sent
  * the whole first. A sharer is told who is listening (`audience`) and sends
- * only while somebody is. The sheet is never read, only patched.
+ * only while somebody is. The sheet is never read, only patched. Remote
+ * control rides on the same lists (`ControlRoutes`), asked again on every refresh.
  */
 import { applyPatch } from '../shared/patches';
 import { peerKeyText, type PeerKey } from '../shared/peers';
 import {
   MOST_SHARE_KEYS,
   type Listener,
-  type PeerDown,
   type RefusedWhy,
   type ShareEntry,
   type SheetPatch
 } from '../shared/peerWire';
 import { playerKey } from '../shared/players';
+import { claimId, type Claim, type InstallLine } from './claims';
+import { ControlRoutes } from './ControlRoutes';
 
-/** An install's socket, as the router sends to it. */
-export interface InstallLine {
-  send(frame: PeerDown): void;
+export type { InstallLine } from './claims';
+
+/** What one install is told a sharer shares with it: the names, and those given control. */
+interface Told {
+  readonly to: string[];
+  readonly control: string[];
 }
-
-interface Claim {
-  readonly peer: PeerKey;
-  readonly key: string;
-  readonly line: InstallLine;
-  /** The name's `peerKeyText`. */
-  readonly name: string;
-}
-
-/** One claim's id: the name and the key that proved it. */
-const claimId = (name: string, key: string): string => `${name}\u0000${key}`;
 
 export class PeerRouter {
   /** Each claim, by `claimId`. */
@@ -59,6 +53,12 @@ export class PeerRouter {
   private readonly audiences = new Map<string, string>();
   /** The claims each sharer was told its grant does not hold, so each is said once. */
   private readonly unpinned = new Map<string, ReadonlySet<string>>();
+
+  /** Who is controlling whom, asked again on every refresh. */
+  private readonly controls = new ControlRoutes({
+    claimOf: (id) => this.claims.get(id),
+    gives: (sharer, controller) => this.gives(sharer, controller)
+  });
 
   /** `mostSheetBytes`: a sheet patched past this is refused, as a frame that size would be. */
   constructor(private readonly mostSheetBytes: number) {}
@@ -140,9 +140,71 @@ export class PeerRouter {
     return null;
   }
 
+  /** `line`'s claim of `peer` starts or stops watching the claim of `from` under `key`. */
+  watch(
+    line: InstallLine,
+    peer: PeerKey,
+    from: PeerKey,
+    key: string,
+    on: boolean
+  ): RefusedWhy | null {
+    const claim = this.ownedClaim(line, peer);
+    return claim === null ? 'not-claimed' : this.controls.watch(claim, from, key, on);
+  }
+
+  act(
+    line: InstallLine,
+    peer: PeerKey,
+    from: PeerKey,
+    key: string,
+    id: number,
+    action: Record<string, unknown>
+  ): RefusedWhy | null {
+    const claim = this.ownedClaim(line, peer);
+    return claim === null ? 'not-claimed' : this.controls.act(claim, from, key, id, action);
+  }
+
+  text(line: InstallLine, peer: PeerKey, text: string, to: Listener | null): RefusedWhy | null {
+    const claim = this.ownedClaim(line, peer);
+    return claim === null ? 'not-claimed' : this.controls.text(claim, text, to);
+  }
+
+  acted(
+    line: InstallLine,
+    peer: PeerKey,
+    to: Listener,
+    id: number,
+    answer: Record<string, unknown>
+  ): RefusedWhy | null {
+    const claim = this.ownedClaim(line, peer);
+    return claim === null ? 'not-claimed' : this.controls.acted(claim, to, id, answer);
+  }
+
+  release(line: InstallLine, peer: PeerKey, to: Listener): RefusedWhy | null {
+    const claim = this.ownedClaim(line, peer);
+    return claim === null ? 'not-claimed' : this.controls.release(claim, to);
+  }
+
   /** The claim `line` holds of `peer`'s name, or null. */
   private owned(line: InstallLine, peer: PeerKey): string | null {
     return this.lines.get(line)?.get(peerKeyText(peer)) ?? null;
+  }
+
+  private ownedClaim(line: InstallLine, peer: PeerKey): Claim | null {
+    const id = this.owned(line, peer);
+    return id === null ? null : (this.claims.get(id) ?? null);
+  }
+
+  /** Whether sharing claim `id`'s list gives `controller`'s name control under its key. */
+  private gives(id: string, controller: Claim): boolean {
+    const sharer = this.claims.get(id);
+    if (sharer === undefined) return false;
+    return (this.shares.get(id) ?? []).some(
+      (entry) =>
+        entry.share === 'control' &&
+        entry.keys.includes(controller.key) &&
+        peerKeyText({ realm: sharer.peer.realm, name: entry.name }) === controller.name
+    );
   }
 
   /** A sharer's list replaced, and the index of who lists whom with it. */
@@ -166,6 +228,7 @@ export class PeerRouter {
     const claim = this.claims.get(id);
     if (claim === undefined) return;
     this.claims.delete(id);
+    this.controls.dropClaim(claim);
     const named = this.byName.get(claim.name);
     named?.delete(id);
     if (named?.size === 0) this.byName.delete(claim.name);
@@ -187,7 +250,7 @@ export class PeerRouter {
   private refresh(id: string): void {
     const sharer = this.claims.get(id);
     if (sharer === undefined) return;
-    const byLine = new Map<InstallLine, string[]>();
+    const byLine = new Map<InstallLine, Told>();
     const listeners: Listener[] = [];
     const unpinned: Claim[] = [];
     for (const entry of this.shares.get(id) ?? []) {
@@ -196,12 +259,16 @@ export class PeerRouter {
         const receiver = this.claims.get(claimId(name, key));
         if (receiver === undefined) continue;
         listeners.push({ name: receiver.peer.name, key });
-        byLine.set(receiver.line, [...(byLine.get(receiver.line) ?? []), receiver.peer.name]);
+        const told = byLine.get(receiver.line) ?? { to: [], control: [] };
+        told.to.push(receiver.peer.name);
+        if (entry.share === 'control') told.control.push(receiver.peer.name);
+        byLine.set(receiver.line, told);
       }
       unpinned.push(...this.unpinnedOf(name, entry.keys));
     }
     this.tellReceivers(id, sharer, byLine);
     this.tellSharer(id, sharer, listeners, unpinned);
+    this.controls.prune(id);
   }
 
   /** The first `MOST_SHARE_KEYS` claims of `name` under keys `pinned` does not hold. */
@@ -215,7 +282,7 @@ export class PeerRouter {
     return found;
   }
 
-  private tellReceivers(id: string, sharer: Claim, byLine: Map<InstallLine, string[]>): void {
+  private tellReceivers(id: string, sharer: Claim, byLine: Map<InstallLine, Told>): void {
     const { peer: from, key } = sharer;
     const told = this.delivered.get(id) ?? new Map<InstallLine, string>();
     for (const line of told.keys()) {
@@ -227,7 +294,7 @@ export class PeerRouter {
       const text = JSON.stringify(names);
       next.set(line, text);
       if (told.get(line) === text) continue;
-      line.send({ k: 'shared', from, key, to: names });
+      line.send({ k: 'shared', from, key, to: names.to, control: names.control });
       if (!told.has(line) && sheet !== undefined) line.send({ k: 'sheet', from, key, sheet });
     }
     if (next.size > 0) {

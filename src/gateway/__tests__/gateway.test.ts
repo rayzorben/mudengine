@@ -288,6 +288,15 @@ describe('the socket', () => {
     expect(await install.next('refused')).toEqual({ k: 'refused', why: 'malformed' });
   });
 
+  it('says a frame of a kind another build added is not read, and keeps the socket', async () => {
+    const install = await installWith();
+    install.send({ k: 'dance', peer: brakkle });
+    expect(await install.next('refused')).toEqual({ k: 'refused', why: 'unknown-frame' });
+    // The socket stays: a claim on it is still answered.
+    expect(await install.claim(brakkle, keys())).toEqual({ k: 'claimed', peer: brakkle });
+    expect(install.closed).toBeNull();
+  });
+
   it('streams a sheet from the sharer to the install it shares with, whole then patches', async () => {
     const sharer = await installWith();
     const receiver = await installWith();
@@ -309,7 +318,8 @@ describe('the socket', () => {
       k: 'shared',
       from: brakkle,
       key: brakkleKeys.public,
-      to: ['Soul']
+      to: ['Soul'],
+      control: []
     });
 
     sharer.send({ k: 'sheet', peer: brakkle, sheet: { v: 1, level: 12 } });
