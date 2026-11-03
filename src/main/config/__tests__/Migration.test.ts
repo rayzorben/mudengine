@@ -16,6 +16,7 @@ import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { Loop } from '../../../shared/loops';
 import { t } from '../../app/i18n';
+import { templateParts } from '../../../shared/i18n';
 import { composes, notesOf } from '../../app/copyMatch';
 import { playedKey, playedStamp, realmKey } from '../../world/RealmLore';
 
@@ -1534,6 +1535,27 @@ describe('owning the status line', () => {
     said = [];
     migrate(true);
     expect(notesOf(said, 'notices.migration.rewritesGathered')).toEqual([]);
+  });
+
+  /*
+   * The notice once had `{action}` in its copy, which `t` reads as a
+   * placeholder nobody gave a value for and reports as a copy defect. Checked
+   * on the copy itself, since `t` reports each problem only once per run.
+   */
+  it('names the moved tag in its notice, with every placeholder given', () => {
+    fs.writeFileSync(
+      home.options,
+      "ui:\n  rewrites:\n    designs:\n      - name: Mine\n        entity: inventory\n        enabled: true\n        template: '{for items}{action} {item}{/for}'\n",
+      'utf8'
+    );
+    migrate();
+    const [notice] = notesOf(said, 'notices.migration.actionsFamilied');
+    expect(notice).toContain('"{action}"');
+    expect(notice).toContain('"{action.toggleEquip}"');
+    const placeholders = templateParts(t('notices.migration.actionsFamilied')).filter(
+      (_, index) => index % 2 === 1
+    );
+    expect(new Set(placeholders)).toEqual(new Set(['file', 'old', 'new']));
   });
 
   it('folds a block keyed by kind into the list of designs, one template each', () => {

@@ -6272,12 +6272,11 @@ function statedTheStepNudge(home: Home, note: (message: string) => void): void {
  * rewritten.
  */
 function theActionsBecameAFamily(home: Home, note: (message: string) => void): void {
+  // Handed to the notice as values: written into the copy, `{action}` reads as a placeholder.
+  const [before, after] = ['{action}', '{action.toggleEquip}'];
   rewriteDesignTemplates(home, note, {
-    rewrite: (template) =>
-      template.includes('{action}')
-        ? template.replaceAll('{action}', '{action.toggleEquip}')
-        : null,
-    said: (file) => t('notices.migration.actionsFamilied', { file })
+    rewrite: (template) => (template.includes(before) ? template.replaceAll(before, after) : null),
+    said: (file) => t('notices.migration.actionsFamilied', { file, old: before, new: after })
   });
 }
 

@@ -785,8 +785,8 @@ notices:
       seconds, so the old setting made every normal step look late and showed every room twice.
       "tuning.walk.nudgeSamples" was added to your tuning file next to it.
     actionsFamilied: Actions on a carried item are now a set of separate controls. {file} had a
-      rewrite using "{action}", which no longer draws anything, so it now uses
-      "{action.toggleEquip}". "{action.drop}" adds a drop control next to it.
+      rewrite using "{old}", which no longer draws anything, so it now uses
+      "{new}". "{action.drop}" adds a drop control next to it.
     attackChosen:
       'The attack command was the old default "a", so it is now blank and the client uses
       the attack that hits hardest for this class. Type "attack" to keep the plain one. {file}'
