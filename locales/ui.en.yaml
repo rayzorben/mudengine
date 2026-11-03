@@ -1523,7 +1523,8 @@ palette:
     findMobLabel: Find a monster…
     findMobRow: 'Find {name}'
     findMobHint: '{count} lairs'
-  noMatches: No matching command, and nothing in the realm by that name.
+  noMatches: No matching command, and nothing in the world database by that name.
+  findFailed: 'The world database could not be searched: {reason}'
   pin:
     pinTitle: Pin to the top ({chord})
     unpinTitle: Unpin ({chord})

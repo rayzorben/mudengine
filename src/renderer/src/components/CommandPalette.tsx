@@ -8,6 +8,7 @@ import { chord } from '../lib/platform';
 import { measuredAnchor, type PopoverAnchor } from '../lib/popover';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { tuning } from '../lib/tuning';
+import { errorMessage } from '@shared/values';
 
 /**
  * Which cluster a command belongs to, in the order the clusters are shown.
@@ -183,6 +184,8 @@ export default function CommandPalette({
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<CommandGroup>>(new Set());
   const [searched, setSearched] = useState<Found[]>([]);
+  /** Why the world database could not be searched for this query, or null. */
+  const [findFailed, setFindFailed] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -190,6 +193,7 @@ export default function CommandPalette({
     if (!open) return;
     setQuery('');
     setSearched([]);
+    setFindFailed(null);
     // Collapsed again each time: the palette opens to be glanced at, and what
     // is worth keeping between visits is the shelf, not the last expansion.
     setExpanded(new Set());
@@ -216,6 +220,7 @@ export default function CommandPalette({
   useEffect(() => {
     if (find === undefined) return;
     const needle = query.trim();
+    setFindFailed(null);
     if (needle.length < tuning().roomSearchMinChars) {
       setSearched([]);
       return;
@@ -226,8 +231,11 @@ export default function CommandPalette({
         .then((blocks) => {
           if (live) setSearched(blocks.filter((block) => block.items.length > 0));
         })
-        .catch(() => {
-          if (live) setSearched([]);
+        // Shown as failed, so it does not read as no rooms, monsters or items by that name.
+        .catch((error: unknown) => {
+          if (!live) return;
+          setSearched([]);
+          setFindFailed(errorMessage(error));
         });
     }, tuning().roomSearchDebounceMs);
     return () => {
@@ -385,8 +393,13 @@ export default function CommandPalette({
             value={query}
           />
         </ClearField>
+        {findFailed !== null && (
+          <div className="empty" role="status">
+            {t('palette.findFailed', { reason: findFailed })}
+          </div>
+        )}
         {matches.length === 0 && !browsing ? (
-          <div className="empty">{t('palette.noMatches')}</div>
+          findFailed === null && <div className="empty">{t('palette.noMatches')}</div>
         ) : (
           <ul ref={list.listRef} role="listbox">
             {blocks.map((block) => (
