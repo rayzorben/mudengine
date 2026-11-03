@@ -94,7 +94,7 @@
  * together: the escape is `emergency` and this is `probe`, so a character below
  * both thresholds runs first and rests wherever it lands.
  */
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { countThreats } from './RuleEngine';
 import { t } from '../app/i18n';
 import {
@@ -785,7 +785,7 @@ export class Recovery implements SessionModule {
   }
 
   private propose(command: string, reason: string, decision: DecisionKind): void {
-    this.queue.enqueue({
+    const offered = this.queue.offer({
       command,
       decision,
       priority: 'probe',
@@ -802,6 +802,9 @@ export class Recovery implements SessionModule {
       expiresAt: Date.now() + tuning().rest.expiresMs,
       reason
     });
+    // Refused (a screen up, the link down, a word the realm lacks): nothing is
+    // on its way, so nothing waits on it and the next line asks again.
+    if (!taken(offered)) return;
     // Asked. Nothing else is proposed until the status line says it worked, or
     // until the deadline says it never will — see `askedUntil`.
     this.askedUntil = Date.now() + tuning().rest.askedMs;

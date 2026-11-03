@@ -569,6 +569,23 @@ describe('having asked, before the flag has arrived', () => {
     expect(recovery.restInFlight).toBe(true);
   });
 
+  /*
+   * A rest the queue refused (the stat screen open, the link down, a word the
+   * realm does not have) is not on its way, so nothing holds a walk for it,
+   * and the next line asks again.
+   */
+  it('stays closed for a rest the queue refused, and asks again', () => {
+    const recovery = make(health({ restBelow: 0.5 }));
+    queue.hold('the stat screen');
+    recovery.onCharacter(state({ hp: 30, hpMax: 80 }));
+    expect(recovery.restInFlight).toBe(false);
+    queue.release();
+    recovery.onCharacter(state({ hp: 30, hpMax: 80 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+    expect(recovery.restInFlight).toBe(true);
+  });
+
   it('and closes on its own deadline, so nothing waiting on it can deadlock', () => {
     const recovery = make(health({ restBelow: 0.5 }));
     recovery.onCharacter(state({ hp: 30, hpMax: 80 }));

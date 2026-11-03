@@ -49,6 +49,11 @@ export type QueueRefusal = 'held' | 'offline' | 'switched-off' | 'expired' | 'un
 /** What became of an intent offered: queued, folded into the same intent already waiting, or refused. */
 export type Offered = 'queued' | 'joined' | QueueRefusal;
 
+/** Whether an offer is on its way: queued, or folded into the same intent already waiting. */
+export function taken(offered: Offered): offered is 'queued' | 'joined' {
+  return offered === 'queued' || offered === 'joined';
+}
+
 /**
  * Commands offered in order, each by its own intent; the ones the queue
  * refused, for the caller to say. The wear after a gear trip and after loot.
@@ -59,8 +64,7 @@ export function offerEach(
   intentOf: (command: string) => Intent
 ): string[] {
   return commands.filter((command) => {
-    const offered = queue.offer(intentOf(command));
-    return offered !== 'queued' && offered !== 'joined';
+    return !taken(queue.offer(intentOf(command)));
   });
 }
 
