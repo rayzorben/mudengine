@@ -118,6 +118,7 @@ import { playerKey, type PlayerRecord } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { RemoteAnswers } from './RemoteAnswers';
+import { answerUnknown, namesAPlayer, type UnknownRemoteDeps } from './UnknownRemote';
 import { tuning } from '../app/tuning';
 import { experienceOf } from '../../shared/experience';
 import {
@@ -481,8 +482,10 @@ export class Remotes implements SessionModule {
   private readonly sheets: SheetReports;
   /** `@kill`, `@hangup`, `@relog` and `@panic!`, let through. See `StandingRemotes`. */
   private readonly standing: StandingRemotes;
-  /** Members sent at a trap or a lock by `askHand`, by key, until their answer: whether through `@do`. */
-  private readonly handsAsked = new Map<string, { viaDo: boolean }>();
+  /** Members sent at a trap or a lock by `askHand`, by key, until their answer: whether through `@do`, and when. */
+  private readonly handsAsked = new Map<string, { viaDo: boolean; at: number }>();
+  /** An `@` word with no entry, from somebody this character talks to. See `UnknownRemote`. */
+  private readonly unknown: UnknownRemoteDeps;
   private readonly pacing: FollowerPacing;
   /** When a member is asked `@health`. See `HealthAsks`. */
   private readonly healthAsks: HealthAsks;
@@ -555,6 +558,13 @@ export class Remotes implements SessionModule {
       reply: (to, body, prefix) => this.reply(to, body, prefix),
       quests: () => events.quests?.() ?? null
     });
+    this.unknown = {
+      config: () => this.config,
+      reply: (to, body, prefix, decision) => this.reply(to, body, prefix, decision),
+      notice,
+      commanded: (from, raw, at) => events.commanded?.(from, raw, at),
+      peer: (who) => events.peer?.(who) ?? null
+    };
   }
 
   configure(config: AutomationConfig): void {
@@ -677,7 +687,15 @@ export class Remotes implements SessionModule {
     if (reply !== null && this.readReply(from, reply, state)) return;
 
     const command = parseRemoteCall(message);
-    if (command === null) return;
+    if (command === null) {
+      const prefix = channel(from, this.config.remotes);
+      answerUnknown(
+        { from, message, channelType: block.type, prefix, at: block.at },
+        state,
+        this.unknown
+      );
+      return;
+    }
 
     /*
      * Who is allowed to ask, and for **this** command — the gate
@@ -796,7 +814,9 @@ export class Remotes implements SessionModule {
    */
   /** A line the player typed, so the answer to a typed `/<name> @path` is read too. */
   noteTyped(command: string): void {
-    const said = this.answers.noteTyped(command, Date.now());
+    const said = this.answers.noteTyped(command, Date.now(), (word) =>
+      namesAPlayer(word, null, this.unknown.peer)
+    );
     if (said !== null) this.events.notice?.(said);
   }
 
@@ -855,7 +875,7 @@ export class Remotes implements SessionModule {
       : this.send(who, 'do', jobCommand(job, direction));
     if (!taken) return false;
     const key = playerKey(who);
-    const ask = { viaDo: !ours };
+    const ask = { viaDo: !ours, at: Date.now() };
     this.handsAsked.set(key, ask);
     return {
       withdraw: () => {
@@ -1062,6 +1082,10 @@ export class Remotes implements SessionModule {
    */
   private readReply(from: string, reply: RemoteReply, state: CharacterState): boolean {
     const hand = this.handsAsked.get(playerKey(from));
+    // Answers come back in the order asked: a typed `@do` older than the hand takes the first.
+    if (hand !== undefined && this.answers.askedBefore(from, hand.at) && this.heard(from, reply)) {
+      return true;
+    }
     if (
       hand !== undefined &&
       (reply.kind === 'ok' || reply.kind === 'failed' || reply.kind === 'refused')
@@ -1076,11 +1100,7 @@ export class Remotes implements SessionModule {
     if (this.stoppers.heard(from, reply)) return true;
     // A refusal is this module's when it has an extended question out to them.
     if (reply.kind === 'refused' && this.extendedRefused(from)) return true;
-    const heard = this.answers.heard(from, reply, Date.now());
-    if (heard !== null) {
-      this.events.notice?.(heard);
-      return true;
-    }
+    if (this.heard(from, reply)) return true;
     const key = playerKey(from);
     const outstanding = this.asked.get(key);
     if (outstanding === undefined) return false;
@@ -1114,6 +1134,13 @@ export class Remotes implements SessionModule {
     }
 
     return false;
+  }
+
+  /** An answer to one of the player's own questions (`RemoteAnswers`), said. */
+  private heard(from: string, reply: RemoteReply): boolean {
+    const said = this.answers.heard(from, reply, Date.now());
+    if (said !== null) this.events.notice?.(said);
+    return said !== null;
   }
 
   /**

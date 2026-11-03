@@ -556,14 +556,45 @@ export interface RemoteCall {
 export function parseRemoteCall(message: string): RemoteCall | null {
   const call = remoteWord(message);
   if (call === null) return null;
-  const match = /^(?:\s+(?<argument>.*\S))?\s*$/.exec(call.rest);
-  if (match === null) return null;
+  const argument = callArgument(call.rest);
+  return argument === undefined ? null : { name: call.name, argument, raw: call.name };
+}
+
+/** An `@` word with no entry in `REMOTE_NAMES`, read the way a call is (`parseUnknownCall`). */
+export interface UnknownCall {
+  /** The word as sent, lowercased: `auto-attack`. */
+  word: string;
+  argument: string | null;
+}
+
+/**
+ * Reads a chat message as an `@` word this client has no entry for
+ * (`@auto-attack on`), or `null`, which a known word is too. MegaMUD 2.1
+ * answers one `{command invalid or not allowed}` (`captures/215`, `@seen`).
+ *
+ * The same shape as a call: anchored at the start, a word that begins with a
+ * letter, and then nothing or a space. So `ill bet you get @health`,
+ * `@gmail.com` and `@ the gate` are talk. `Deacon gossips: @quirk you hung`
+ * (Rayzor's session log, 2026-10-29 01:34) reads as one, and the channel and
+ * the sender decide it is talk (`UnknownRemote.answerUnknown`).
+ */
+export function parseUnknownCall(message: string): UnknownCall | null {
+  const call = atWord(message);
+  if (call === null || isRemoteName(call.word) || !/^[a-z]/.test(call.word)) return null;
+  const argument = callArgument(call.rest);
+  return argument === undefined ? null : { word: call.word, argument };
+}
+
+/**
+ * What follows a call's word, as its argument (null when nothing does), or
+ * `undefined` when the word runs on into something that is not a space
+ * (`@health{L7}`, `@gmail.com`).
+ */
+function callArgument(rest: string): string | null | undefined {
+  const match = /^(?:\s+(?<argument>.*\S))?\s*$/.exec(rest);
+  if (match === null) return undefined;
   const argument = match.groups?.['argument']?.trim() ?? null;
-  return {
-    name: call.name,
-    argument: argument === null || argument.length === 0 ? null : argument,
-    raw: call.name
-  };
+  return argument === null || argument.length === 0 ? null : argument;
 }
 
 /**
@@ -594,10 +625,15 @@ export function passesOnARemote(command: string): boolean {
  * `isRemoteTalk` both.
  */
 function remoteWord(message: string): { name: RemoteName; rest: string } | null {
+  const call = atWord(message);
+  return call !== null && isRemoteName(call.word) ? { name: call.word, rest: call.rest } : null;
+}
+
+/** The `@` word a message opens with, lowercased, known or not, and what follows it. */
+function atWord(message: string): { word: string; rest: string } | null {
   const match = /^\s*@(?<word>[a-z-]+!?)(?<rest>.*)$/is.exec(message);
   if (!match?.groups) return null;
-  const name = match.groups['word']!.toLowerCase();
-  return isRemoteName(name) ? { name, rest: match.groups['rest']! } : null;
+  return { word: match.groups['word']!.toLowerCase(), rest: match.groups['rest']! };
 }
 
 /**

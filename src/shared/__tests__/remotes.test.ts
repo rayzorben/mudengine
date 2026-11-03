@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import {
   passesOnARemote,
@@ -23,6 +25,7 @@ import {
   REMOTE_NAMES,
   formatVitals,
   parseRemoteCall,
+  parseUnknownCall,
   isRemoteTalk,
   parseRemoteReply,
   formatStoppers,
@@ -101,6 +104,62 @@ describe('reading a command out of a chat message', () => {
     expect(parseRemoteCall('wow a mud player, ill bet you get @health')).toBeNull();
     expect(parseRemoteCall('@nonsense')).toBeNull();
     expect(parseRemoteCall('health')).toBeNull();
+  });
+});
+
+describe('reading an @ word this client has no entry for', () => {
+  // The word Rayzor's player first remembered (todo 20261102-2217-01).
+  it('reads the word and its argument', () => {
+    expect(parseUnknownCall('@auto-attack on')).toEqual({ word: 'auto-attack', argument: 'on' });
+    expect(parseUnknownCall('@Auto-Attack')).toEqual({ word: 'auto-attack', argument: null });
+  });
+
+  it('reads no word the vocabulary has, so a known call is read as before', () => {
+    for (const name of REMOTE_NAMES) {
+      expect(parseUnknownCall(`@${name}`)).toBeNull();
+      expect(parseRemoteCall(`@${name}`)?.name).toBe(name);
+    }
+    // MegaMUD's tagged call (captures/081) is neither.
+    expect(parseUnknownCall('@health{L7}')).toBeNull();
+    expect(parseRemoteCall('@health{L7}')).toBeNull();
+  });
+
+  // The positive control is the first test: the same anchor reads `@auto-attack on`.
+  it.each([
+    'wow a mud player, ill bet you get @auto-attack',
+    'mail me at rayzor@gmail.com',
+    '@gmail.com',
+    '@ the gates',
+    '@123',
+    '@-attack',
+    '@auto_attack',
+    '{ok}'
+  ])('reads %s as talk', (message) => {
+    expect(parseUnknownCall(message)).toBeNull();
+  });
+
+  /*
+   * Every `@` that opens a captured message is a word the vocabulary has
+   * (`@kill Gambit`, `@held`, `@blind`, `@wait (can't move)`), so nothing
+   * captured is read as unknown, and nothing is read both ways.
+   */
+  const dir = path.resolve('captures');
+  it.runIf(fs.existsSync(dir))('reads nothing captured as an unknown word', () => {
+    const said =
+      /(?:telepaths|gossips|gangpaths|broadcasts|auctions): (.*)$|says(?: \([^)]*\))? "(.*)"$/;
+    let calls = 0;
+    const unknown: string[] = [];
+    for (const file of fs.readdirSync(dir).filter((name) => name.endsWith('.txt'))) {
+      for (const line of fs.readFileSync(path.join(dir, file), 'utf8').split('\n')) {
+        const match = said.exec(line.replace(/\r$/, ''));
+        const message = match?.[1] ?? match?.[2];
+        if (message === undefined) continue;
+        if (parseRemoteCall(message) !== null) calls += 1;
+        if (parseUnknownCall(message) !== null) unknown.push(`${file}: ${message}`);
+      }
+    }
+    expect(calls).toBeGreaterThan(50);
+    expect(unknown).toEqual([]);
   });
 });
 

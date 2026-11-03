@@ -8022,6 +8022,7 @@ automation:
     refusedRealmWide: '{from} sent @{raw} on a realm-wide channel; ignored, because a message to
       everyone online is not a message to this character. Ask by telepath.'
     refusedSwitchedOff: '{from} sent @{raw}; nothing was done, because automation is off.'
+    refusedUnknown: '{from} sent @{raw}; ignored, because MudEngine has no remote called @{raw}.'
     followUpHeld: '{who} did not answer the question the MudEngine way. Not asking @{name} instead,
       because automation is off.'
     refusedUnsupported: '{from} sent @{raw}; refused: {reason}. Allow @kill and @hangup on the

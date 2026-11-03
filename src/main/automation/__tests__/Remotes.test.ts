@@ -3136,3 +3136,193 @@ describe('a held member: @held and @comeback', () => {
     expect(walkedBack).toEqual(['Killa']);
   });
 });
+
+/*
+ * Todo 20261102-2217-02: an `@` word with no entry, answered as MegaMUD 2.1
+ * answers `@seen` (captures/215), and a typed `@do` read and said.
+ */
+describe('an @ word this client has no entry for', () => {
+  /** Quirk, a player the client has a record of. */
+  const quirkKnown = (): PlayerRegistry => ({
+    quirk: {
+      ...{ name: 'Quirk', alignment: null, title: null, flags: null, gang: null, level: null },
+      ...{ race: null, className: null, gangRank: null, client: null, extendedRemotes: 'unknown' },
+      ...{ equipment: null, equipmentAt: null, lastRoom: null, lastRoomName: null },
+      ...{ lastRoomAt: null, lastSeen: 0, online: true, vitals: null, vitalsAt: null },
+      ...{ inParty: false, commandsSent: 0, lastCommand: null, lastCommandAt: null }
+    }
+  });
+  const refused = (to: string, prefix = '/'): string => `${prefix}${to} ${REFUSED_REPLY}`;
+  const unknownSaid = (from: string, raw: string): string =>
+    t('automation.remotes.refusedUnknown', { from, raw });
+  const toUs = (player: string, message: string): Block =>
+    ({
+      ...said('conversation-directed', player, message),
+      groups: { player, message, target: 'you' }
+    }) as Block;
+
+  it('answers it on a telepath, says it, and counts it', () => {
+    peers.onBlock(said('conversation-telepath', 'Soul', '@auto-attack on'), who());
+    drain();
+    expect(sent).toEqual([refused('Soul')]);
+    expect(notices).toEqual([unknownSaid('Soul', 'auto-attack')]);
+    expect(commanded).toEqual(['Soul:auto-attack']);
+  });
+
+  it('answers it on a say to this character, the way MegaMUD answers a say', () => {
+    peers.onBlock(toUs('Soul', '@auto-attack'), who());
+    drain();
+    expect(sent).toEqual([refused('Soul', '>')]);
+  });
+
+  // Each case below ends with the same sender's telepath, answered once: its positive control.
+  const control = (): void => {
+    peers.onBlock(said('conversation-telepath', 'Soul', '@auto-attack on'), who());
+    drain();
+    expect(sent).toEqual([refused('Soul')]);
+  };
+
+  it('answers nobody it does not talk to, and says nothing', () => {
+    peers.onBlock(said('conversation-telepath', 'Deacon', '@auto-attack on'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
+    expect(commanded).toEqual([]);
+    control();
+  });
+
+  // Rayzor's session log, 2026-10-29 01:34: `Deacon gossips: @quirk you hung`.
+  it.each([
+    'conversation-gossip',
+    'conversation-local',
+    'conversation-gangpath',
+    'conversation-broadcast'
+  ])('reads it as talk on %s', (channel) => {
+    peers.onBlock(said(channel, 'Soul', '@quirk you hung'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
+    control();
+  });
+
+  it.each([
+    'hi @auto-attack on',
+    'mail me at soul@gmail.com',
+    '@gmail.com',
+    '@ the gates',
+    '@health{L7} @auto-attack'
+  ])('reads %s on a telepath as talk', (message) => {
+    peers.onBlock(said('conversation-telepath', 'Soul', message), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
+    control();
+  });
+
+  it('reads a word that names a player it knows, or itself, as talk', () => {
+    registry = quirkKnown();
+    peers.onBlock(said('conversation-telepath', 'Soul', '@quirk you hung'), who());
+    peers.onBlock(said('conversation-telepath', 'Soul', '@vaelor hi'), who());
+    drain();
+    expect(sent).toEqual([]);
+    control();
+  });
+
+  // The positive control is the typed `@auto-attack on` beside it, which lapses.
+  it('keeps no typed word that names a player it knows', () => {
+    registry = quirkKnown();
+    peers.noteTyped('/brak @quirk you hung');
+    peers.noteTyped('/soul @auto-attack on');
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.remotes.replyMs);
+    peers.onCharacter(who());
+    expect(notices).toEqual([
+      t('automation.remotes.heardNothing', { who: 'soul', raw: 'auto-attack on' })
+    ]);
+  });
+
+  it('sends nothing with automation off, and still says it', () => {
+    peers.configure({ ...config, enabled: false });
+    peers.onBlock(said('conversation-telepath', 'Soul', '@auto-attack on'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([unknownSaid('Soul', 'auto-attack')]);
+    peers.configure(config);
+    control();
+  });
+
+  it('reads nothing with remotes off', () => {
+    peers.configure({ ...config, remotes: { ...config.remotes, enabled: false } });
+    peers.onBlock(said('conversation-telepath', 'Soul', '@auto-attack on'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
+    peers.configure(config);
+    control();
+  });
+});
+
+describe('a typed @do, beside a door hand’s', () => {
+  const ok = (from: string): Block => said('conversation-telepath', from, '{ok}');
+  const heardOk = (name: string): string =>
+    t('automation.remotes.heardOk', { who: name, raw: 'do' });
+  const lapsed = (name: string): string =>
+    t('automation.remotes.heardNothing', { who: name, raw: 'do bas s' });
+
+  it('says the {ok} to a typed @do', () => {
+    peers.noteTyped('/ran @do bas s');
+    peers.onBlock(ok('Rand'), who());
+    expect(notices).toEqual([heardOk('Rand')]);
+  });
+
+  it('says a typed @do nobody answered, once', () => {
+    peers.noteTyped('/ran @do bas s');
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.remotes.replyMs - 1);
+    peers.onCharacter(who());
+    expect(notices).toEqual([]);
+    vi.advanceTimersByTime(1);
+    peers.onCharacter(who());
+    peers.onCharacter(who());
+    expect(notices).toEqual([lapsed('ran')]);
+  });
+
+  // The positive control is the typed `@do` to Soul, which lapses beside it.
+  it('keeps no @do the client sends itself', () => {
+    peers.ask('Rand', 'do', who(), 'buy torch');
+    peers.noteTyped('/soul @do bas s');
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.remotes.replyMs);
+    peers.onCharacter(who());
+    expect(notices).toEqual([lapsed('soul')]);
+  });
+
+  it('gives the first {ok} to the hand asked first, and the next to the typed @do', () => {
+    peers.askHand('Rand', 'pick', 'e');
+    vi.advanceTimersByTime(1);
+    peers.noteTyped('/rand @do bas s');
+    peers.onBlock(ok('Rand'), who());
+    expect(handed).toEqual(['Rand:tried']);
+    expect(notices).toEqual([]);
+    peers.onBlock(ok('Rand'), who());
+    expect(notices).toEqual([heardOk('Rand')]);
+  });
+
+  it('gives the first {ok} to the typed @do asked first, and the next to the hand', () => {
+    peers.noteTyped('/rand @do bas s');
+    vi.advanceTimersByTime(1);
+    peers.askHand('Rand', 'pick', 'e');
+    peers.onBlock(ok('Rand'), who());
+    expect(notices).toEqual([heardOk('Rand')]);
+    expect(handed).toEqual([]);
+    peers.onBlock(ok('Rand'), who());
+    expect(handed).toEqual(['Rand:tried']);
+  });
+
+  // A refusal does not say which it refuses, and the typed one is no longer the only question.
+  it('hands a refusal to the hand when the typed @do came first', () => {
+    peers.noteTyped('/rand @do bas s');
+    vi.advanceTimersByTime(1);
+    peers.askHand('Rand', 'pick', 'e');
+    peers.onBlock(said('conversation-telepath', 'Rand', REFUSED_REPLY), who());
+    expect(handed).toEqual(['Rand:failed']);
+    expect(notices).toEqual([]);
+  });
+});

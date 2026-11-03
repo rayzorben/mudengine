@@ -66,6 +66,48 @@ describe('RemoteAnswers', () => {
     );
   });
 
+  // The word the player first remembered (todo 20261102-2217-01), sent to a client that knows no such remote.
+  it('says the refusal of a typed word no client here knows, and its silence', () => {
+    const answers = new RemoteAnswers();
+    answers.noteTyped('/brak @auto-attack on', 0);
+    const refused = parseRemoteReply('{command invalid or not allowed}') as RemoteReply;
+    expect(answers.heard('Brakkle', refused, 1000)).toBe(
+      t('automation.remotes.heardRefused', { who: 'Brakkle', raw: 'auto-attack on' })
+    );
+    answers.noteTyped('/brak @auto-attack on', 0);
+    expect(answers.sweep(tuning().remotes.replyMs)).toEqual([
+      t('automation.remotes.heardNothing', { who: 'brak', raw: 'auto-attack on' })
+    ]);
+  });
+
+  it('says a typed @do answered and one that was not', () => {
+    const answers = new RemoteAnswers();
+    answers.noteTyped('/brak @do bas s', 0);
+    expect(answers.heard('Brakkle', ok, 1000)).toBe(
+      t('automation.remotes.heardOk', { who: 'Brakkle', raw: 'do' })
+    );
+    answers.noteTyped('/brak @do bas s', 0);
+    expect(answers.sweep(tuning().remotes.replyMs)).toEqual([
+      t('automation.remotes.heardNothing', { who: 'brak', raw: 'do bas s' })
+    ]);
+  });
+
+  // The positive control is the typed `@do` above, kept and swept.
+  it('keeps no @do the client sends itself', () => {
+    const answers = new RemoteAnswers();
+    answers.noteAsked('Brakkle', 'do', 0);
+    expect(answers.heard('Brakkle', ok, 1000)).toBeNull();
+    expect(answers.sweep(tuning().remotes.replyMs)).toEqual([]);
+  });
+
+  it('says when the question a player answers was asked', () => {
+    const answers = new RemoteAnswers();
+    expect(answers.askedBefore('Brakkle', 10)).toBe(false);
+    answers.noteTyped('/brak @do bas s', 5);
+    expect(answers.askedBefore('Brakkle', 10)).toBe(true);
+    expect(answers.askedBefore('Brakkle', 5)).toBe(false);
+  });
+
   it('keeps nothing it does not read', () => {
     const answers = new RemoteAnswers();
     answers.noteTyped('/brak @health', 0);
