@@ -1978,6 +1978,38 @@ describe('one player’s @ command permissions', () => {
   });
 });
 
+describe('a character named by the window', () => {
+  /*
+   * The id crosses IPC from a window or a browser tab. One that climbs out of
+   * `profiles/` must not reach a `profile.yaml` somewhere else on the disk.
+   */
+  it('is refused when it climbs out of the characters directory, and nothing is written', () => {
+    const outside = path.join(dir, 'outside');
+    fs.mkdirSync(outside, { recursive: true });
+    const decoy = path.join(outside, 'profile.yaml');
+    fs.writeFileSync(decoy, 'name: Decoy\n', 'utf8');
+    const climbing = path.relative(profilesDir, outside);
+    expect(climbing.startsWith('..')).toBe(true);
+    const grant = {
+      allow: ['health' as const],
+      deny: [],
+      allowAll: false,
+      autoInvite: false,
+      ...NO_PEER_GRANT
+    };
+    expect(editor.setRemoteGrant(climbing, 'Soul', grant).ok).toBe(false);
+    expect(editor.setGangRemotes(climbing, []).ok).toBe(false);
+    expect(editor.setRemoteGangpath(climbing, true).ok).toBe(false);
+    const loop: Loop = {
+      name: 'Climb',
+      stops: [{ room: 'Sewer Tunnel 1/606' }, { room: 'Sewer Tunnel 1/604' }]
+    };
+    expect(editor.addLoop('profile', climbing, loop).ok).toBe(false);
+    expect(fs.readFileSync(decoy, 'utf8')).toBe('name: Decoy\n');
+    expect(fs.existsSync(path.join(outside, 'loops'))).toBe(false);
+  });
+});
+
 describe('the gang list and the gangpath switch', () => {
   const remotesOf = (id: string): Record<string, unknown> => {
     const automation = read(id)['automation'] as Record<string, unknown>;

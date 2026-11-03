@@ -190,9 +190,19 @@ export class SettingsEditor {
     }
   }
 
-  /** The refusal for a character with no file, or null. */
+  /**
+   * Whether `id` is one directory directly under `profiles/`, as `ProfileStore`
+   * lists them. The id crossed IPC, and one that climbs out (`../x`) would
+   * reach another `profile.yaml` on the disk.
+   */
+  private isOneCharacter(id: string): boolean {
+    const { dir } = this.home.profile(id);
+    return path.basename(dir) === id && path.dirname(dir) === path.normalize(this.home.profilesDir);
+  }
+
+  /** The refusal for a character with no file, or one the id cannot name, or null. */
   private missing(id: string): EditResult | null {
-    return this.exists(this.profilePath(id))
+    return this.isOneCharacter(id) && this.exists(this.profilePath(id))
       ? null
       : { ok: false, error: t('errors.settings.characterNotFound', { id }) };
   }
@@ -834,7 +844,7 @@ export class SettingsEditor {
     if (scope === 'global') return this.home.globalLoops;
     if (owner === null || owner.length === 0) return null;
     if (scope === 'profile') {
-      return this.exists(this.profilePath(owner)) ? this.home.profile(owner).loops : null;
+      return this.missing(owner) === null ? this.home.profile(owner).loops : null;
     }
     const id = this.stores.servers().idFor(owner);
     return id === undefined ? null : this.home.server(id).loops;
