@@ -893,6 +893,32 @@ export function commandOf(input: string): CommandName | null {
 }
 
 /**
+ * The commands that log a character off or delete it, which remote control
+ * does not send (the user, 2026-11-03). From `Commands.cs` and
+ * the server's handlers: `Exit` (`x`, `exit`, `;o`, `;x`) meditates and then
+ * disconnects (`ExitCommand.cs`), `Suicide` deletes the character
+ * (`SuicideCommand.cs`, behind a password only when one is set), and `Reroll`
+ * starts it anew (`RerollCommand.cs`, behind a y/n or that password). Each
+ * takes any argument. The table is GreaterMUD's, matched exactly; whether
+ * MajorMUD takes shorter spellings (`sui`, `exi`) is not captured yet.
+ */
+const LEAVING_COMMANDS: ReadonlySet<CommandName> = new Set(['Exit', 'Suicide', 'Reroll']);
+
+/**
+ * `quit`, named by the user (2026-11-03) for MajorMUD. GreaterMUD's table has
+ * no such word; no capture shows which spellings MajorMUD takes, so every
+ * shorter one is refused too, as no table gives any of them another command.
+ * Narrow this when a MajorMUD capture shows the spellings it answers.
+ */
+const QUIT_WORDS: ReadonlySet<string> = new Set(['q', 'qu', 'qui', 'quit']);
+
+/** Whether this line logs the character off or deletes it. */
+export function logsOffOrDeletes(input: string): boolean {
+  const command = commandOf(input);
+  return command === null ? QUIT_WORDS.has(firstWord(input)) : LEAVING_COMMANDS.has(command);
+}
+
+/**
  * Whether this command hands the terminal over to the stat-assignment screen.
  *
  * `train stats` at a trainer is the one command in the table whose answer is

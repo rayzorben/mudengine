@@ -8314,7 +8314,9 @@ share:
     stop, play, and the automation and auto-combat switches. Your settings, loops, account and
     shares stay out of reach.'
   controlWarning: 'A line {player} sends is sent as though you typed it, any command the realm
-    takes included. You can stop them at any time from the banner over the console.'
+    takes included, except a command that logs the character off or deletes it (x, exit, quit,
+    suicide, reroll and their short forms), which is refused. You can stop them at any time from
+    the banner over the console.'
 
 # Remote control of a character another player shares with this one, over
 # this character's console, and the banner its sharer sees.
@@ -8369,6 +8371,7 @@ peers:
     newerAction: 'their client is newer and sent an action this one does not read'
     malformed: 'the action could not be read'
     badLine: 'a line is one line of at most {max} printable characters'
+    leaves: '"{text}" logs the character off or deletes it, so it is not sent by remote control'
     badName: That is not a character name.
     notSharing: Sharing is off for this character, or the realm has not named it yet.
     notOffered: '{name} does not give this character remote control.'

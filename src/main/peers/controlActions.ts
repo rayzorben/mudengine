@@ -5,9 +5,11 @@
  * queue paces them and the master switch's `user` exemption is the player's
  * own. Stop, play and the two switches are the toolbar's own presses. A line
  * that would send an `@` command on to another character is refused, as a
- * `@do`'s is (`ChainedRemote`). Every answer is in the sharer's words.
+ * `@do`'s is (`ChainedRemote`), and so is one that logs the character off or
+ * deletes it (`logsOffOrDeletes`). Every answer is in the sharer's words.
  */
 import { asCardCommand } from '../../shared/asking';
+import { logsOffOrDeletes } from '../../shared/commands';
 import type { MovementStart } from '../../shared/movement';
 import type { ControlAction, ControlAnswer, ControlSwitch } from '../../shared/peerControl';
 import { DIRECTION_COMMAND } from '../../shared/world';
@@ -79,6 +81,7 @@ export async function runControl(
     case 'line': {
       const line = asCardCommand(action.text, session.lineMax);
       if (line === null) return refused(t('peers.control.badLine', { max: session.lineMax }));
+      if (logsOffOrDeletes(line)) return refused(t('peers.control.leaves', { text: line }));
       if (refusedChain(by, line, session.reports, 'remote-control')) {
         return refused(t('automation.remotes.chainedReason'));
       }

@@ -6,6 +6,7 @@ import type { PeerGrant } from '../../../shared/peerGrant';
 import type { ControlAction, ControlAnswer, ControlText } from '../../../shared/peerControl';
 import type { ShareLevel } from '../../../shared/peers';
 import { ControlDesk } from '../ControlDesk';
+import { runControl, type ControlledSession } from '../controlActions';
 import { Controlling } from '../Controlling';
 import { sharedSheet } from '../../../shared/__tests__/sharedSheets';
 import { peerSheetOf } from '../peerSheet';
@@ -18,7 +19,10 @@ useGateway();
  * sends actions. Brakkle's row for Soul (`grant`) is what his desk checks on
  * every frame, apart from what his link last told the gateway.
  */
-function controlled(level: Exclude<ShareLevel, 'off'>) {
+function controlled(
+  level: Exclude<ShareLevel, 'off'>,
+  runs: (action: ControlAction) => Promise<ControlAnswer> = () => Promise.resolve({ r: 'done' })
+) {
   const brakklePair = newEd25519Pair();
   const soulPair = newEd25519Pair();
   const grant: PeerGrant = { share: level, receive: false, keys: [soulPair.publicKey] };
@@ -39,7 +43,7 @@ function controlled(level: Exclude<ShareLevel, 'off'>) {
     characterAt: () => character,
     run: (_id, action, by): Promise<ControlAnswer> => {
       ran.push({ action, by });
-      return Promise.resolve({ r: 'done' });
+      return runs(action);
     },
     link: sharer.link,
     notice: (_id, message) => notices.push(message),
@@ -134,6 +138,33 @@ describe('remote control between two installs', () => {
     const rest = { a: 'rest', quietly: true } as unknown as ControlAction;
     expect(await set.controlling.act('s', rest)).toEqual({ r: 'done' });
     expect(set.ran.map((each) => each.action)).toEqual([{ a: 'rest' }]);
+  });
+
+  it('refuses a line that logs the character out, on both sides, and sends the next one', async () => {
+    const sent: string[] = [];
+    const character: ControlledSession = {
+      queue: {
+        offer: (intent) => {
+          sent.push(intent.command);
+          return 'queued';
+        }
+      },
+      reports: {},
+      lineMax: 80,
+      stopMoving: () => undefined,
+      play: () => Promise.resolve(null),
+      setSwitch: () => null
+    };
+    const set = controlled('control', (action) => runControl(character, action, 'Soul'));
+    await set.open();
+    const refused = await set.controlling.act('s', { a: 'line', text: 'x' });
+    expect(refused).toEqual({ r: 'refused', why: expect.stringContaining('"x"') as string });
+    expect(set.refusals).toEqual([
+      expect.objectContaining({ acted: false, refused: refused.r === 'refused' && refused.why })
+    ]);
+    expect(set.notices.some((line) => line.includes('it was refused: "x"'))).toBe(true);
+    expect(await set.controlling.act('s', { a: 'line', text: 'exp' })).toEqual({ r: 'done' });
+    expect(sent).toEqual(['exp']);
   });
 
   it('checks the row on every action, whatever the gateway last heard', async () => {

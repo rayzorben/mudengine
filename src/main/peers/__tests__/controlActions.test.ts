@@ -57,6 +57,19 @@ describe('a remote control action on the character', () => {
     expect(intents).toEqual([]);
   });
 
+  it('refuses a line that would log the character out or delete it, and sends the rest', async () => {
+    const { subject, intents } = session();
+    expect(await runControl(subject, { a: 'line', text: 'exp' }, 'Soul')).toEqual({ r: 'done' });
+    expect(intents.map((each) => each.command)).toEqual(['exp']);
+    for (const text of ['x', 'quit', 'qui', 'suicide', 'reroll', 'Exit now']) {
+      expect(await runControl(subject, { a: 'line', text }, 'Soul'), text).toEqual({
+        r: 'refused',
+        why: `"${text}" logs the character off or deletes it, so it is not sent by remote control`
+      });
+    }
+    expect(intents.map((each) => each.command)).toEqual(['exp']);
+  });
+
   it("says what the queue did with it in the sharer's words", async () => {
     const { subject } = session('offline');
     expect(await runControl(subject, { a: 'rest' }, 'Soul')).toEqual({

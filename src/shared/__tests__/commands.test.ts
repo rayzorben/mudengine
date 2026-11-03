@@ -19,6 +19,7 @@ import {
   NOT_COMMANDS,
   breaksStealth,
   commandOf,
+  logsOffOrDeletes,
   movementEffect,
   opensStatScreen
 } from '../commands';
@@ -236,5 +237,23 @@ describe('what costs a character its stealth', () => {
   it('says nothing about an empty line, which is not a command', () => {
     expect(breaksStealth('')).toBe(false);
     expect(breaksStealth('   ')).toBe(false);
+  });
+});
+
+describe('the commands that log a character off or delete it', () => {
+  it('names every spelling the table gives exit, suicide and reroll, any case and argument', () => {
+    for (const line of ['x', 'exit', ';o', ';x', 'X', '  exit now ', 'suicide', 'reroll'])
+      expect(logsOffOrDeletes(line), line).toBe(true);
+  });
+
+  it('names quit and its shorter spellings, which no table gives another command', () => {
+    for (const line of ['quit', 'qui', 'qu', 'q', 'QUIT'])
+      expect(logsOffOrDeletes(line), line).toBe(true);
+    for (const word of ['q', 'qu', 'qui', 'quit']) expect(COMMAND_WORDS[word]).toBeUndefined();
+  });
+
+  it('lets everything else through, the words that only start like them included', () => {
+    for (const line of ['exp', 'ex', 'xp', 'quest', 'quits', 'sui', 'rest', 'l', '', 'say x'])
+      expect(logsOffOrDeletes(line), line).toBe(false);
   });
 });
