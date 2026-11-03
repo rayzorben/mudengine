@@ -175,7 +175,7 @@ export function entryFigure(entry: ReferenceEntry): string | null {
 }
 
 /** A monster's armour and damage resist, `—` for the one the realm leaves out; null where it states neither. */
-export function mobDefence(mob: WorldMob): string | null {
+export function mobDefence(mob: Pick<WorldMob, 'armour' | 'damageResist'>): string | null {
   if (mob.armour === undefined && mob.damageResist === undefined) return null;
   return t('cards.reference.mob.defenceFigure', {
     ac: mob.armour ?? '—',

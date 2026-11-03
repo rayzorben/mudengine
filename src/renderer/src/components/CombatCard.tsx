@@ -23,6 +23,7 @@ import { t } from '../lib/i18n';
 import { percent, survivalVital } from '../lib/outlook';
 import { isKnownPlayer } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
+import { mobDefence } from '../lib/reference';
 import { levelWord, woundLevel } from '../lib/vitals';
 
 export interface CombatCardProps extends CardChrome {
@@ -294,6 +295,7 @@ function CombatCard({
   // Only where the room holds something the realm could weigh.
   const weighed = verdict.monsters.length > 0;
   const who: Who = { character, players, verdict, inspect, onSelect, onTreat };
+  const defence = combat.targetEntity === null ? null : mobDefence(combat.targetEntity);
 
   /*
    * The badge reports the number that decides something. "Three on you" is a
@@ -418,16 +420,10 @@ function CombatCard({
                 */}
                     {combat.targetEntity !== null && (
                       <>
-                        {(combat.targetEntity.armour !== undefined ||
-                          combat.targetEntity.damageResist !== undefined) && (
+                        {defence !== null && (
                           <>
                             <dt>{t('cards.reference.mob.defenceLabel')}</dt>
-                            <dd>
-                              {t('cards.reference.mob.defenceFigure', {
-                                ac: combat.targetEntity.armour ?? 0,
-                                dr: combat.targetEntity.damageResist ?? 0
-                              })}
-                            </dd>
+                            <dd>{defence}</dd>
                           </>
                         )}
                         {combat.targetEntity.follows !== undefined && (
