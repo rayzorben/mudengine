@@ -45,7 +45,7 @@
  * Only what automation sends is ever quiet. The player's own `l` is a thing
  * they asked to see.
  */
-import { stripAnsi } from '../net/LineTokenizer';
+import { ANSI_SEQUENCE, stripAnsi } from '../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../net/stream-quirks';
 import { tuning } from '../app/tuning';
 import type { Block, BlockType } from '../../shared/blocks';
@@ -253,7 +253,7 @@ export function promptOpened(plain: string): boolean {
 const PROMPT_UNCLOSED = /\]\s*$/;
 
 /** The sequences `stripAnsi` removes, matched in place. */
-const ESCAPE = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/y;
+const ESCAPE = new RegExp(ANSI_SEQUENCE.source, 'y');
 
 /**
  * Where the `count`th plain character of `text` begins, stepping over the

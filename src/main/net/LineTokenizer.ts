@@ -127,14 +127,15 @@ export class LineTokenizer {
 }
 
 /**
- * Strips ANSI escape sequences.
+ * The escape sequences `stripAnsi` removes, and `TerminalFeed` steps over.
  *
  * CSI first, so a well-formed `ESC [ params final` is consumed whole; the
  * second alternative then catches the two-character escapes (`ESC c`, `ESC 7`)
  * and any malformed introducer, so a stray ESC can never leak into text a
  * parser rule is matched against.
  */
-const ANSI = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/g;
+export const ANSI_SEQUENCE = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/;
+const ANSI = new RegExp(ANSI_SEQUENCE.source, 'g');
 // Compiled once, like `ANSI`: `plainText` runs on every line the server prints.
 const LINE_END = /\r?\n$/;
 const TRAILING_CR = /\r$/;

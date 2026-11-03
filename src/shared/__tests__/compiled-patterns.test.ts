@@ -36,11 +36,18 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       '`RULES` and `BATCH_RULES`'
   },
   'src/main/session/TerminalFeed.ts': {
-    count: 1,
+    count: 2,
     because:
       '`ONLY_STYLING` repeats `STYLING`, the one colour sequence a drawn prompt outlives, ' +
       'anchored, so the tail held as a prompt beginning and the styling skipped after one ' +
-      'cannot drift (2026-11-01); module-level'
+      'cannot drift (2026-11-01); `ESCAPE` is `ANSI_SEQUENCE` sticky, so what it steps over ' +
+      'is what `stripAnsi` removes (2026-11-03); module-level'
+  },
+  'src/main/net/LineTokenizer.ts': {
+    count: 1,
+    because:
+      '`stripAnsi` runs `ANSI_SEQUENCE` global, the grammar `TerminalFeed` also steps over ' +
+      'sticky, so the two cannot drift (2026-11-03); module-level'
   },
   'src/shared/stamps.ts': {
     count: 3,
