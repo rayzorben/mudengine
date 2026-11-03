@@ -367,6 +367,8 @@ export class WebSocketConnection {
       return;
     }
     if (opcode === OPCODE.ping) {
+      // Each ping is owed a pong, which counts against the cap like a send.
+      if (!this.roomToWrite()) return;
       this.socket.write(this.frameOf(OPCODE.pong, payload));
       return;
     }

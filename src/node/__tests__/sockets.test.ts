@@ -258,6 +258,37 @@ describe('a peer that stops reading', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(ended).toEqual({ code: 1008, reason: 'not reading' });
   });
+  it('is closed once the pongs owed to its pings reach the cap', async () => {
+    /*
+     * Every ping is owed a pong carrying its payload. A peer that pings and
+     * never reads would otherwise grow the queue a pong at a time, with no
+     * text frame ever sent to meet the cap.
+     */
+    const { Duplex } = await import('node:stream');
+    const stalled = new Duplex({
+      read() {},
+      write(_chunk, _encoding, _callback) {
+        // Never called back: the peer is not taking anything.
+      }
+    });
+    const connection = new WebSocketConnection(stalled, {
+      maxMessageBytes: 1024,
+      maxBufferedBytes: 2048,
+      deflateMinBytes: 256
+    });
+    let ended: { code: number; reason: string } | null = null;
+    connection.onClose = (code, reason) => {
+      ended = { code, reason };
+    };
+    const ping = masked(OPCODE.ping, Buffer.alloc(125, 0x61));
+    for (let i = 0; i < 100; i += 1) stalled.push(ping);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(stalled.writableLength).toBeLessThan(2048 + 2 * 256);
+    expect(connection.open).toBe(false);
+    stalled.destroy();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(ended).toEqual({ code: 1008, reason: 'not reading' });
+  });
 });
 
 describe('a peer that is not a browser', () => {
