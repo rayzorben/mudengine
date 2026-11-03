@@ -351,9 +351,7 @@ describe('remote control through the router', () => {
       key: KEY_B,
       why: 'unshared'
     });
-    expect(lowered.router.act(lowered.receiver, soul, brakkle, KEY_B, 1, MOVE)).toBe(
-      'not-shared'
-    );
+    expect(lowered.router.act(lowered.receiver, soul, brakkle, KEY_B, 1, MOVE)).toBe('not-shared');
 
     const left = sharing('control');
     left.router.watch(left.receiver, soul, brakkle, KEY_B, true);

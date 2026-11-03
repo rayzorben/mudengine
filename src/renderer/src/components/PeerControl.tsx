@@ -35,6 +35,8 @@ function PeerControl({ api, session, settings, fontStack, palette }: PeerControl
         <RemoteConsole
           api={api}
           fontStack={fontStack}
+          // Its own mount per character watched, so the backlog is asked for each time.
+          key={`${session}:${controlling.name}:${controlling.key}`}
           name={controlling.name}
           palette={palette}
           session={session}
