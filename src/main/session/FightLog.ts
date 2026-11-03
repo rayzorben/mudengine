@@ -36,6 +36,7 @@ import {
   type MobResolver
 } from '../../shared/fights';
 import { t } from '../app/i18n';
+import { InFlight } from '../app/inFlight';
 import {
   appendFights,
   closedFold,
@@ -88,7 +89,10 @@ export class FightLog implements FightSink {
   private before: Promise<FoldedRecord> | null = null;
   /** The same, once it has arrived: `measured` is asked synchronously. */
   private past: FoldedRecord | null = null;
-  private readonly settled: Promise<void>;
+  /** Settles once the record may be touched: after the startup migration, if one runs. */
+  private readonly migrated: Promise<void>;
+  /** Each closed segment's fold being saved, and the read of the record before, so a caller can wait for the disk to go quiet. */
+  private readonly working = new InFlight();
 
   /**
    * @param dir The character's record, created on first write.
@@ -108,9 +112,9 @@ export class FightLog implements FightSink {
     });
     if (after === undefined) {
       this.take();
-      this.settled = Promise.resolve();
+      this.migrated = Promise.resolve();
     } else {
-      this.settled = after.then(() => this.take());
+      this.migrated = after.then(() => this.take());
     }
   }
 
@@ -158,8 +162,10 @@ export class FightLog implements FightSink {
   /** Starts the next segment and saves the fold of the one just closed, off the thread. */
   private close(segment: number): void {
     this.open = { segment: segment + 1, fights: 0 };
-    void closedFold(this.dir, segment, (error) => this.unsaved(segment, error)).catch(
-      (error: unknown) => this.cannotRead(segmentFile(this.dir, segment), error)
+    void this.working.track(
+      closedFold(this.dir, segment, (error) => this.unsaved(segment, error)).catch(
+        (error: unknown) => this.cannotRead(segmentFile(this.dir, segment), error)
+      )
     );
   }
 
@@ -194,6 +200,11 @@ export class FightLog implements FightSink {
 
   dispose(): void {
     this.flush();
+  }
+
+  /** Resolves once no fold is being read or saved, the record before included. */
+  settled(): Promise<void> {
+    return this.working.settled();
   }
 
   /**
@@ -263,7 +274,9 @@ export class FightLog implements FightSink {
    * once and counts as empty, so the rest of the record still answers.
    */
   private pastRecord(): Promise<FoldedRecord> {
-    this.before ??= this.settled.then(() => this.foldPast()).then((folded) => (this.past = folded));
+    this.before ??= this.working.track(
+      this.migrated.then(() => this.foldPast()).then((folded) => (this.past = folded))
+    );
     return this.before;
   }
 

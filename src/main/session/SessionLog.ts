@@ -24,6 +24,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { LOG_SUFFIX, slug, stamp } from './filename';
+import { streamEnded } from './streamEnded';
+import { InFlight } from '../app/inFlight';
 import { stripAnsi } from '../net/LineTokenizer';
 import type { ConnectionTarget } from '../../shared/types';
 import { clockOf, dayOf, errorMessage } from '../../shared/values';
@@ -39,6 +41,8 @@ export interface SessionLogOptions {
 
 export class SessionLog {
   private stream: fs.WriteStream | null = null;
+  /** Each stream ended and not yet flushed, a failed one's included, for `close()` to wait on. */
+  private readonly ending = new InFlight();
   /** Written ahead of the first payload, so an unused log leaves no file. */
   private header = '';
   private written = 0;
@@ -175,10 +179,8 @@ export class SessionLog {
     const stream = this.stream;
     this.stream = null;
     this.file = '';
-    if (!stream) return Promise.resolve();
-    return new Promise((resolve) => {
-      stream.end(() => resolve());
-    });
+    if (stream) void this.ending.track(streamEnded(stream));
+    return this.ending.settled();
   }
 
   private append(text: string): void {
@@ -201,7 +203,8 @@ export class SessionLog {
   private fail(message: string): void {
     if (this.stopped) return;
     this.stopped = true;
-    this.stream?.end();
+    // Still flushing what came before the failure: `close()` waits for it too.
+    if (this.stream) void this.ending.track(streamEnded(this.stream));
     this.stream = null;
     this.options.onProblem?.(message);
   }

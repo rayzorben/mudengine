@@ -141,8 +141,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // Each character's marks are appended in its backscroll folder off the thread;
+  // removing it before they landed is the ENOTEMPTY CI failed with (2026-11-03).
+  const books = (host?.ids ?? []).flatMap((id) => host?.get(id)?.marks ?? []);
   host?.disposeAll();
   host = null;
+  await Promise.all(books.map((book) => book.settled()));
   fs.rmSync(backscrollDir, { recursive: true, force: true });
   for (const socket of accepted) socket.destroy();
   accepted = [];

@@ -29,6 +29,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { CAPTURE_SUFFIX, slug, stamp } from './filename';
+import { streamEnded } from './streamEnded';
+import { InFlight } from '../app/inFlight';
 import { errorMessage } from '../../shared/values';
 import type { ConnectionTarget, LostEnter, StreamLine } from '../../shared/types';
 import type { DecisionKind } from '../../shared/decisionSettings';
@@ -46,6 +48,8 @@ export interface SessionCaptureOptions {
 
 export class SessionCapture {
   private stream: fs.WriteStream | null = null;
+  /** Each stream ended and not yet flushed, a failed one's included, for `close()` to wait on. */
+  private readonly ending = new InFlight();
   private written = 0;
   private stopped = false;
   private startedAt = 0;
@@ -177,10 +181,8 @@ export class SessionCapture {
     const stream = this.stream;
     this.stream = null;
     this.file = '';
-    if (!stream) return Promise.resolve();
-    return new Promise((resolve) => {
-      stream.end(() => resolve());
-    });
+    if (stream) void this.ending.track(streamEnded(stream));
+    return this.ending.settled();
   }
 
   private record(entry: Record<string, unknown>): void {
@@ -200,7 +202,8 @@ export class SessionCapture {
   private fail(message: string): void {
     if (this.stopped) return;
     this.stopped = true;
-    this.stream?.end();
+    // Still flushing what came before the failure: `close()` waits for it too.
+    if (this.stream) void this.ending.track(streamEnded(this.stream));
     this.stream = null;
     this.options.onProblem?.(message);
   }

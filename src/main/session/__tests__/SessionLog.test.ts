@@ -8,12 +8,15 @@ import type { ConnectionTarget } from '../../../shared/types';
 
 let dir = '';
 let problems: string[] = [];
+/** Every log a test opened, so its folder goes only once their streams have flushed. */
+let made: SessionLog[] = [];
 
 const target: ConnectionTarget = { host: 'gmud-tgs', port: 2427, encoding: 'cp437' };
 
 const open = (maxBytes = 1024): SessionLog => {
   const log = new SessionLog({ directory: dir, maxBytes, onProblem: (m) => problems.push(m) });
   log.open(target, new Date('2026-08-25T12:00:00Z'), 'vaelor');
+  made.push(log);
   return log;
 };
 
@@ -34,9 +37,12 @@ const contents = async (log: SessionLog): Promise<string> => {
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-log-'));
   problems = [];
+  made = [];
 });
 
-afterEach(() => {
+// A stream still flushing as the folder is removed failed CI with ENOTEMPTY (2026-11-03).
+afterEach(async () => {
+  await Promise.all(made.map((log) => log.close()));
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -94,7 +100,6 @@ describe('what a session log keeps', () => {
   it('names the character it recorded', () => {
     const log = open();
     expect(path.basename(log.path)).toContain('vaelor');
-    void log.close();
   });
 });
 
@@ -117,7 +122,6 @@ describe('the size cap', () => {
     const log = open(64);
     log.write('x'.repeat(100));
     expect(problems.join(' ')).toMatch(/limit|no longer recording/i);
-    void log.close();
   });
 
   /* A message per write would be a warning nobody reads. */
@@ -125,7 +129,6 @@ describe('the size cap', () => {
     const log = open(64);
     for (let i = 0; i < 10; i += 1) log.write('x'.repeat(100));
     expect(problems).toHaveLength(1);
-    void log.close();
   });
 
   it('stays stopped for the rest of the session', async () => {

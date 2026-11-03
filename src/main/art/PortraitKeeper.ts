@@ -15,6 +15,7 @@ import {
   type PortraitView
 } from '../../shared/portrait';
 import { errorMessage } from '../../shared/values';
+import { InFlight } from '../app/inFlight';
 import { AskLedger } from './AskLedger';
 import { dataUrlOf, type LastPortrait, type Picture, type PictureCache } from './pictureCache';
 import { factsHash, portraitFactsOf } from './portraitFacts';
@@ -43,10 +44,10 @@ export class PortraitKeeper {
   private seen: readonly unknown[] = [];
   private disposed = false;
   /** The read at start and the draw in flight, so a caller can wait for the disk to go quiet. */
-  private readonly working = new Set<Promise<void>>();
+  private readonly working = new InFlight();
 
   constructor(private readonly deps: PortraitKeeperDeps) {
-    this.track(this.showLast());
+    void this.working.track(this.showLast());
   }
 
   current(): PortraitView {
@@ -83,13 +84,8 @@ export class PortraitKeeper {
   }
 
   /** Resolves once no read, draw or write is in flight, including one a finished draw started. */
-  async settled(): Promise<void> {
-    while (this.working.size > 0) await Promise.allSettled(this.working);
-  }
-
-  private track(work: Promise<void>): void {
-    this.working.add(work);
-    void work.finally(() => this.working.delete(work));
+  settled(): Promise<void> {
+    return this.working.settled();
   }
 
   private consider(): void {
@@ -110,7 +106,7 @@ export class PortraitKeeper {
     if (this.ledger.has(hash)) return;
     this.ledger.begin(hash);
     this.inFlight = true;
-    this.track(
+    void this.working.track(
       this.draw(hash, () => this.pictureFor(facts, hash)).finally(() => {
         this.inFlight = false;
         this.consider();

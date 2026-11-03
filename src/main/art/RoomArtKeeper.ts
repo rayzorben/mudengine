@@ -21,6 +21,7 @@ import {
   type RoomPicture
 } from '../../shared/roomArt';
 import { errorMessage } from '../../shared/values';
+import { InFlight } from '../app/inFlight';
 import { AskLedger } from './AskLedger';
 import { dataUrlOf, type Picture, type PictureCache } from './pictureCache';
 import { drawnRoomKey, roomKey } from './roomKey';
@@ -51,6 +52,8 @@ export class RoomArtKeeper {
   /** Counts each decision, so an answer for a room left meanwhile is dropped. */
   private turn = 0;
   private disposed = false;
+  /** Each decision under way, its look in the store and its draw, so a caller can wait for the disk to go quiet. */
+  private readonly working = new InFlight();
 
   constructor(private readonly deps: RoomArtKeeperDeps) {}
 
@@ -80,11 +83,16 @@ export class RoomArtKeeper {
     }
     this.seen = parts;
     this.latest = { room, realm };
-    void this.consider(room, realm);
+    void this.working.track(this.consider(room, realm));
   }
 
   dispose(): void {
     this.disposed = true;
+  }
+
+  /** Resolves once no decision, read, draw or write is in flight, including one a finished draw started. */
+  settled(): Promise<void> {
+    return this.working.settled();
   }
 
   private async consider(room: Room, realm: RealmFamily | null): Promise<void> {
@@ -139,7 +147,7 @@ export class RoomArtKeeper {
       this.inFlight = false;
       // A room entered while the ask was under way was held off: decided now.
       if (this.turn !== turn && this.latest !== null && !this.disposed) {
-        void this.consider(this.latest.room, this.latest.realm);
+        void this.working.track(this.consider(this.latest.room, this.latest.realm));
       }
     }
   }

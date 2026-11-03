@@ -57,9 +57,12 @@ describe('the picture of the room the character is in', () => {
     room: one
   });
 
+  /** Every keeper a test made, so its folder goes only once their writes have landed. */
+  let made: RoomArtKeeper[];
+
   const keeper = () => {
     const [ownAsked, ownPublished, ownSaid] = [asked, published, said];
-    return new RoomArtKeeper({
+    const one = new RoomArtKeeper({
       shipped,
       source: {
         roomArtOf: async (request) => {
@@ -72,6 +75,8 @@ describe('the picture of the room the character is in', () => {
       publish: (view) => ownPublished.push(view),
       say: (message) => ownSaid.push(message)
     });
+    made.push(one);
+    return one;
   };
   const until = async (done: () => boolean): Promise<void> => {
     const deadline = Date.now() + 4000;
@@ -80,7 +85,6 @@ describe('the picture of the room the character is in', () => {
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
   };
-  const settled = () => new Promise((resolve) => setTimeout(resolve, 20));
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'room-art-'));
@@ -100,8 +104,14 @@ describe('the picture of the room the character is in', () => {
     said = [];
     enabled = true;
     answer = { kind: 'picture', bytes: PICTURE, type: 'image/webp' };
+    made = [];
   });
-  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // A drawing is written to the store after it shows; removing the folder before
+  // that write landed failed with ENOTEMPTY (CI, 2026-11-03).
+  afterEach(async () => {
+    await Promise.all(made.map((one) => one.settled()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 
   it('shows the drawing made for the room, turned, when it reads as drawn, asking nothing', async () => {
     const one = keeper();
@@ -133,7 +143,7 @@ describe('the picture of the room the character is in', () => {
     await until(() => one.current().picture === null);
     // Another realm's numbering is another realm's room: nothing is guessed from this table.
     one.observe(inRoom(room(1, 78, null), 'majormud'));
-    await settled();
+    await one.settled();
     expect(one.current().picture).toBeNull();
     expect(asked).toEqual([]);
     one.dispose();
@@ -165,7 +175,7 @@ describe('the picture of the room the character is in', () => {
   it('asks nothing for a room on an unknown realm: the server has no world to read its exits from', async () => {
     const one = keeper();
     one.observe(inRoom(room(1, 1710, CRYPT), null));
-    await settled();
+    await one.settled();
     expect(asked).toEqual([]);
     expect(one.current().picture).toBeNull();
     one.dispose();
@@ -175,16 +185,16 @@ describe('the picture of the room the character is in', () => {
     const one = keeper();
     enabled = false;
     one.observe(inRoom(room(1, 1710, CRYPT)));
-    await settled();
+    await one.settled();
     one.observe(inRoom(room(1, 1710, CRYPT, { light: 'dimly lit' })));
-    await settled();
+    await one.settled();
     one.observe(inRoom(room(1, 1710, CRYPT, { ambiguous: 2 })));
-    await settled();
+    await one.settled();
     enabled = true;
     one.observe(inRoom(room(1, 1710, CRYPT, { ambiguous: 2 })));
-    await settled();
+    await one.settled();
     one.observe(inRoom(room(1, 1710, null)));
-    await settled();
+    await one.settled();
     expect(asked).toEqual([]);
     expect(one.current().picture).toBeNull();
     one.dispose();
@@ -197,7 +207,7 @@ describe('the picture of the room the character is in', () => {
     await until(() => said.length === 1);
     one.observe(inRoom(room(1, 78, MARBLE)));
     one.observe(inRoom(room(1, 1710, CRYPT)));
-    await settled();
+    await one.settled();
     expect(asked).toHaveLength(1);
     answer = { kind: 'unreachable', reason: 'down' };
     one.observe(inRoom(room(1, 1712, 'Somewhere else.')));
@@ -208,7 +218,7 @@ describe('the picture of the room the character is in', () => {
     // The switch turned off and on again forgives a refusal too.
     enabled = false;
     one.observe(inRoom(room(1, 1710, CRYPT)));
-    await settled();
+    await one.settled();
     enabled = true;
     answer = { kind: 'picture', bytes: PICTURE, type: 'image/webp' };
     one.observe(inRoom(room(1, 1710, CRYPT, { light: 'dimly lit' })));
@@ -219,6 +229,15 @@ describe('the picture of the room the character is in', () => {
   it('holds a second room off while one is being drawn, then decides it', async () => {
     let finish: (() => void) | null = null;
     const slow = keeper();
+    const cache = new PictureCache(path.join(dir, 'rooms'), () => 10);
+    // Each key looked for in the store: the look comes just before the decision to ask.
+    const looked: string[] = [];
+    const look = cache.get.bind(cache);
+    cache.get = async (key) => {
+      const kept = await look(key);
+      looked.push(key);
+      return kept;
+    };
     const one = new RoomArtKeeper({
       shipped,
       source: {
@@ -228,22 +247,24 @@ describe('the picture of the room the character is in', () => {
             finish = () => resolve(answer);
           })
       },
-      cache: new PictureCache(path.join(dir, 'rooms'), () => 10),
+      cache,
       enabled: () => enabled,
       publish: (view) => published.push(view),
       say: (message) => said.push(message)
     });
+    made.push(one);
     slow.dispose();
     one.observe(inRoom(room(1, 1710, CRYPT)));
     await until(() => asked.length === 1);
     one.observe(inRoom(room(1, 1712, 'Somewhere else.')));
-    await settled();
+    await until(() => looked.includes(drawnKey(1712, 'Somewhere else.')));
     expect(asked).toHaveLength(1);
     finish!();
     await until(() => asked.length === 2);
     expect(asked[1]).toMatchObject({ room: 1712 });
     // The drawing of the room left shows nowhere; the room stood in is still being drawn.
     expect(published.every((view) => view.picture?.key !== drawnKey(1710, CRYPT))).toBe(true);
+    finish!();
     one.dispose();
   });
 });

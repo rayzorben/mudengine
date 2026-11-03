@@ -8,6 +8,8 @@ import type { ConnectionTarget, StreamLine } from '../../../shared/types';
 
 let dir = '';
 let problems: string[] = [];
+/** Every capture a test opened, so its folder goes only once their streams have flushed. */
+let made: SessionCapture[] = [];
 
 const target: ConnectionTarget = { host: 'gmud-tgs', port: 2427, encoding: 'cp437' };
 
@@ -18,6 +20,7 @@ const open = (maxBytes = 64 * 1024): SessionCapture => {
     onProblem: (message) => problems.push(message)
   });
   capture.open(target, new Date('2026-08-25T12:00:00Z'), 'vaelor');
+  made.push(capture);
   return capture;
 };
 
@@ -51,9 +54,12 @@ const entries = async (capture: SessionCapture): Promise<Record<string, unknown>
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-capture-'));
   problems = [];
+  made = [];
 });
 
-afterEach(() => {
+// A stream still flushing as the folder is removed failed CI with ENOTEMPTY (2026-11-03).
+afterEach(async () => {
+  await Promise.all(made.map((capture) => capture.close()));
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -149,14 +155,12 @@ describe('the size cap', () => {
     const capture = open(200);
     for (let i = 0; i < 50; i += 1) capture.text('x'.repeat(50));
     expect(problems.join(' ')).toMatch(/size limit|no longer recording/i);
-    void capture.close();
   });
 
   it('says it once, however much more arrives', () => {
     const capture = open(200);
     for (let i = 0; i < 200; i += 1) capture.text('x'.repeat(50));
     expect(problems).toHaveLength(1);
-    void capture.close();
   });
 
   it('stays stopped for the rest of the session', async () => {
