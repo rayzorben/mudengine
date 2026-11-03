@@ -29,7 +29,6 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse } from 'yaml';
 
 import { isLoopFileName } from '../../shared/files';
 import { asLoops, type Loop } from '../../shared/loops';
@@ -37,7 +36,7 @@ import { LOOPS_DIR, type Home } from '../app/home';
 import { directoryNames } from './dirs';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
-import { yamlFault } from './YamlFile';
+import { parseOwned, yamlFault } from './YamlFile';
 import type { Watched } from './revision';
 
 /** The loops as a reader needs them: the settings editor's view of the live store. */
@@ -182,7 +181,7 @@ export class LoopStore extends EventEmitter {
   /** The loops one held file describes; one that describes none, or does not parse, is said. */
   private loopsIn(file: string): Loop[] {
     try {
-      const parsed = parse(this.held.read(file) ?? '');
+      const parsed = parseOwned(this.held.read(file) ?? '');
       const found = readLoops(parsed, path.basename(file).replace(/\.ya?ml$/i, ''));
       // Reported rather than skipped in silence: a file in a loops directory
       // was put there on purpose, and one that produces nothing is a loop

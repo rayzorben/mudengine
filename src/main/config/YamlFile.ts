@@ -61,7 +61,8 @@ export type Edited = { ok: true; text: string } | { ok: false; error: string };
  */
 export function applyEdit(file: string, source: string | null, options: EditOptions): Edited {
   const document = parseDocument(source ?? '');
-  if (document.errors.length > 0) {
+  const fault = document.errors[0] ?? document.warnings[0];
+  if (fault !== undefined) {
     /*
      * Refuse rather than overwrite. A file that does not parse is a file
      * somebody is halfway through editing, or one an earlier bug damaged;
@@ -71,9 +72,7 @@ export function applyEdit(file: string, source: string | null, options: EditOpti
      */
     return {
       ok: false,
-      error:
-        `${path.basename(file)} does not parse, so it will not be edited: ` +
-        yamlFault(document.errors[0])
+      error: `${path.basename(file)} does not parse, so it will not be edited: ` + yamlFault(fault)
     };
   }
 
@@ -227,6 +226,21 @@ export function setKeeping(document: Document, at: readonly unknown[], value: un
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !isNode(value);
+}
+
+/**
+ * The value of a file the user owns, or a throw `yamlFault` can say.
+ *
+ * `parse` prints a warning to stderr with the line it is about, and reads on
+ * past it: `password: !hunter2` is a tag nobody defined, printed whole, and
+ * read as an empty password. A warning is refused here like an error, so the
+ * file is reported by place and no value it changed is used.
+ */
+export function parseOwned(text: string): unknown {
+  const document = parseDocument(text);
+  const fault = document.errors[0] ?? document.warnings[0];
+  if (fault !== undefined) throw fault;
+  return document.toJS();
 }
 
 /**

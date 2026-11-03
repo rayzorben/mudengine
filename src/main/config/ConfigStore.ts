@@ -12,7 +12,6 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse } from 'yaml';
 
 import {
   DEFAULT_CONFIG,
@@ -23,7 +22,7 @@ import {
 } from '../../shared/config';
 import { mergeLoops, sameLoops, type Loop } from '../../shared/loops';
 import { errorMessage } from '../../shared/values';
-import { yamlFault } from './YamlFile';
+import { parseOwned, yamlFault } from './YamlFile';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 
@@ -207,7 +206,7 @@ export class ConfigStore extends EventEmitter {
   private absorb(text: string): void {
     let parsed: unknown;
     try {
-      parsed = parse(text);
+      parsed = parseOwned(text);
     } catch (cause) {
       this.error = `${path.basename(this.file)}: ${yamlFault(cause)}`;
       return;

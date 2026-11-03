@@ -14,11 +14,10 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse } from 'yaml';
 
 import { DEFAULT_INTERNAL, normalizeInternal, type InternalConfig } from '../../shared/internal';
 import { errorMessage } from '../../shared/values';
-import { yamlFault } from './YamlFile';
+import { parseOwned, yamlFault } from './YamlFile';
 import { Poller } from './Poller';
 
 export interface InternalStoreOptions {
@@ -103,7 +102,7 @@ export class InternalStore extends EventEmitter {
       return;
     }
     try {
-      this.current = normalizeInternal(parse(text));
+      this.current = normalizeInternal(parseOwned(text));
     } catch (cause) {
       // The last good values stay; the edit that broke the file is reported
       // where somebody can fix it.

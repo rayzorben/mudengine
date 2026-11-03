@@ -9,7 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse, parseDocument } from 'yaml';
+import { parseDocument } from 'yaml';
 
 import { asServer } from '../../shared/config';
 import { asProfileId } from '../../shared/drafts';
@@ -27,6 +27,7 @@ import {
 import { t } from '../app/i18n';
 import { ServerStore } from './ServerStore';
 import { packTarball, unpackTarball, type TarEntry } from './tarball';
+import { parseOwned } from './YamlFile';
 
 const MANIFEST = 'mudengine-character.json';
 const FORMAT = 'mudengine-character';
@@ -108,7 +109,7 @@ export async function importCharacter(
   const id = taken.has(manifest.character)
     ? fileSlug(manifest.character, taken)
     : manifest.character;
-  const profileFile = parse(profile.toString('utf8')) as unknown;
+  const profileFile = parseOwned(profile.toString('utf8')) as unknown;
   const name = (isRecord(profileFile) ? stringAt(profileFile['name']) : null) ?? id;
   if (id !== manifest.character) notes.push(t('app.transfer.renamed', { name, id }));
   if (isRecord(profileFile) && wantsPassword(profileFile)) {
@@ -169,7 +170,7 @@ function placeRealm(
   const bundled =
     manifest.realm === null ? undefined : files.get(`servers/${manifest.realm}/server.yaml`);
   if (manifest.realm === null || bundled === undefined) return null;
-  const server = asServer(parse(bundled.toString('utf8')), manifest.realm);
+  const server = asServer(parseOwned(bundled.toString('utf8')), manifest.realm);
   if (server === null) return null;
   const store = new ServerStore(home);
   if (store.idFor(server.name) !== undefined) {

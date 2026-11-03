@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -134,6 +134,28 @@ describe('ProfileStore', () => {
     expect(said).toContain('broken');
     expect(said).toContain('line 4');
     expect(said).not.toContain('hunter2');
+  });
+
+  /*
+   * `!hunter2` is read as a YAML tag nobody defined: `parse` warns, printing
+   * the line to stderr, and reads the password as empty. Refused like an
+   * error, it is said by place and the character is not loaded with a blank
+   * password.
+   */
+  it('refuses a file YAML only warns about, without printing the line', () => {
+    const warned = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+    try {
+      write('broken.yaml', 'server: local\naccount:\n  username: me\n  password: !hunter2\n');
+      const store = open();
+      const said = store.snapshot.errors.join(' ');
+      // Positive control: the complaint is made, and says where.
+      expect(said).toContain('line 4');
+      expect(store.profiles).toEqual([]);
+      expect(said).not.toContain('hunter2');
+      expect(JSON.stringify(warned.mock.calls)).not.toContain('hunter2');
+    } finally {
+      warned.mockRestore();
+    }
   });
 
   it('skips a character that cannot name a server, and says why', () => {

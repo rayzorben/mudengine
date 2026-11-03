@@ -2,7 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 
-import { ON_DISK, setKeeping, yamlFault, type EditResult, type YamlFiles } from './YamlFile';
+import {
+  ON_DISK,
+  parseOwned,
+  setKeeping,
+  yamlFault,
+  type EditResult,
+  type YamlFiles
+} from './YamlFile';
 import { grantIsEmpty, type RemoteGrant, type RemoteName } from '../../shared/remotes';
 import { writtenPeerGrant } from '../../shared/peerGrant';
 import { unknownWrites, type LayerWrite } from '../../shared/extensions';
@@ -234,7 +241,7 @@ export class SettingsEditor {
   /** The options file alone, for an edit that has to leave the rest of it be. */
   private readOptions(): unknown {
     try {
-      return parse(this.files.read(this.home.options) ?? '') ?? {};
+      return parseOwned(this.files.read(this.home.options) ?? '') ?? {};
     } catch {
       // A missing or unreadable options file is not a reason to refuse a
       // character: `resolveProfile` treats an empty base as "no saved servers",
@@ -734,7 +741,7 @@ export class SettingsEditor {
     try {
       const text = this.files.read(file);
       if (text === null) throw new Error(t('errors.settings.characterNotFound', { id }));
-      const raw: unknown = parse(text);
+      const raw: unknown = parseOwned(text);
       const automation = isRecord(raw) && isRecord(raw['automation']) ? raw['automation'] : {};
       return statedPairs(automation['aliases']);
     } catch (error) {
@@ -1407,7 +1414,7 @@ export class SettingsEditor {
       try {
         const text = this.files.read(file);
         if (text === null) continue;
-        raw = parse(text);
+        raw = parseOwned(text);
       } catch (error) {
         // One unreadable file never costs you the others, and the screen is
         // where somebody can actually do something about it.
@@ -1596,8 +1603,8 @@ export class SettingsEditor {
     const found: string[] = [];
     for (const id of this.characterIds()) {
       try {
-        const raw = parse(this.files.read(this.home.profile(id).file) ?? '');
-        const server = raw?.['server'];
+        const raw = parseOwned(this.files.read(this.home.profile(id).file) ?? '');
+        const server = isRecord(raw) ? raw['server'] : undefined;
         if (typeof server === 'string' && server.trim().toLowerCase() === wanted) found.push(id);
       } catch {
         // A file that does not parse is already reported by ProfileStore, and
@@ -1898,7 +1905,7 @@ function readLoopFiles(
     const file = path.join(dir, name);
     const slug = name.replace(/\.ya?ml$/i, '');
     try {
-      const loops = readLoops(parse(files.read(file) ?? ''), slug);
+      const loops = readLoops(parseOwned(files.read(file) ?? ''), slug);
       // Exactly one, or this file is not one this screen manages.
       if (loops.length === 1 && loops[0]) {
         found.push({ file, slug, name: loops[0].name, loop: loops[0] });

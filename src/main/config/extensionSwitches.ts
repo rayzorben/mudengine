@@ -7,7 +7,6 @@
  * switch is how a player turns off one they do not trust.
  */
 import fs from 'node:fs';
-import { parse } from 'yaml';
 
 import {
   DEFAULT_EXTENSION_SWITCHES,
@@ -15,14 +14,14 @@ import {
   type ExtensionSwitches
 } from '../../shared/extensionSwitches';
 import { isRecord } from '../../shared/values';
-import { yamlFault } from './YamlFile';
+import { parseOwned, yamlFault } from './YamlFile';
 
 /** The switches as stated, or why the file could not say. */
 export type SwitchesRead = { switches: ExtensionSwitches } | { unread: string };
 
 export function readExtensionSwitches(file: string): SwitchesRead {
   try {
-    const document: unknown = parse(fs.readFileSync(file, 'utf8'));
+    const document: unknown = parseOwned(fs.readFileSync(file, 'utf8'));
     // An empty file states nothing; any other top level than a map is no options file.
     if (document === null || document === undefined)
       return { switches: DEFAULT_EXTENSION_SWITCHES };

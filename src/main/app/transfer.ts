@@ -12,6 +12,7 @@ import { asProfileId } from '../../shared/drafts';
 import { fileSlug } from '../../shared/files';
 import { Invoke, type CharacterImport, type SavedFile } from '../../shared/ipc';
 import { exportCharacter, importCharacter } from '../config/CharacterTransfer';
+import { yamlFault } from '../config/YamlFile';
 import type { Host } from '../host/Host';
 import type { Home } from './home';
 import { t } from './i18n';
@@ -73,7 +74,7 @@ export function handleCharacterTransfer({ home, host, loaded, imported }: Transf
         taken: loaded
       });
     } catch (error) {
-      return { kind: 'refused', error: unreadable(String(rawFile), error) };
+      return { kind: 'refused', error: unreadable(String(rawFile), yamlFault(error)) };
     }
     if (result.kind === 'imported') imported();
     return result;

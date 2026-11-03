@@ -28,7 +28,6 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse } from 'yaml';
 
 import { asServer, type Server } from '../../shared/config';
 import { SERVER_FILE, type Home } from '../app/home';
@@ -36,7 +35,7 @@ import { t } from '../app/i18n';
 import { directoryNames } from './dirs';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
-import { yamlFault } from './YamlFile';
+import { parseOwned, yamlFault } from './YamlFile';
 
 /** One server and the directory it was read from. */
 export interface StoredServer {
@@ -169,7 +168,7 @@ export class ServerStore extends EventEmitter {
 
     for (const { file, id } of this.held.byDirectory()) {
       try {
-        const server = asServer(parse(this.held.read(file) ?? ''), id);
+        const server = asServer(parseOwned(this.held.read(file) ?? ''), id);
         if (!server) {
           // A server with no host is not a server. Reported rather than
           // defaulted, because a defaulted one is a character quietly dialling

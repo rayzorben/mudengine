@@ -844,6 +844,17 @@ describe('credentials in the messages', () => {
     }
   });
 
+  // `!hunter2` is a tag YAML only warns about; the stores refuse the file, so a save does too.
+  it('refuses to edit a file YAML only warns about', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const text = 'server: GreaterMUD (local)\naccount:\n  username: me\n  password: !hunter2\n';
+    fs.writeFileSync(file, text, 'utf8');
+    const saved = editor.saveProfile('vaelor', draft({ changePassword: false }));
+    expect(saved.ok ? null : saved.error).toContain('line 4');
+    expect(fs.readFileSync(file, 'utf8')).toBe(text);
+  });
+
   it('writes the password to the character file and nowhere else', () => {
     editor.saveProfile('vaelor', draft());
     expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });
