@@ -340,6 +340,38 @@ ui:
     expect(fs.readFileSync(file, 'utf8')).toContain('# my main');
   });
 
+  it('keeps the comments inside a block it writes', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      [
+        'server: GreaterMUD (local)',
+        'automation:',
+        '  safety:',
+        '    retreat:',
+        '      # run early, this one is fragile',
+        '      enabled: true',
+        '      belowHealth: 0.5',
+        '  combat:',
+        '    # kick, never bash',
+        "    attack: 'kic'",
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    const combat = { ...DEFAULT_CONFIG.automation.combat, attack: 'kic' };
+    const retreat = { ...draft().retreat, enabled: true, belowHealth: 0.4 };
+    expect(editor.saveProfile('vaelor', draft({ combat, retreat }))).toEqual({ ok: true });
+    const text = fs.readFileSync(file, 'utf8');
+    // Positive control: the change was written.
+    expect(read('vaelor')['automation']).toMatchObject({
+      safety: { retreat: { belowHealth: 0.4 } }
+    });
+    expect(text).toContain('# run early, this one is fragile');
+    expect(text).toContain('# kick, never bash');
+  });
+
   it('does not leave the old server behind when switching to an inline one', () => {
     editor.saveProfile('vaelor', draft());
     editor.saveProfile('vaelor', {
@@ -1492,6 +1524,32 @@ connection:
     expect(written['terminal']['font']['size']).toBe(18);
     expect(written['ui']['density']).toBe('compact');
     expect(fs.readFileSync(configPath, 'utf8')).toContain("# The user's own notes");
+  });
+
+  /*
+   * The options file starts as the annotated template, and its comments are
+   * the only documentation of each setting. Every block was written with
+   * `setIn` and a plain object, which replaces the node and every comment
+   * inside it: one change on the Global page took 68 KB of the 158 KB
+   * template's notes with it, and a hand-set `retreat.cooldownMs` too.
+   */
+  it('keeps every comment and hand-set key of the template through a save', () => {
+    fs.copyFileSync(path.resolve('resources/config/default.yaml'), configPath);
+    const before = fs.readFileSync(configPath, 'utf8');
+    const draft = global();
+    draft.terminal.fontSize = 18;
+    expect(editor.saveGlobal(draft)).toEqual({ ok: true });
+
+    const after = fs.readFileSync(configPath, 'utf8');
+    // Positive control: the change was written.
+    expect(parse(after)['terminal']['font']['size']).toBe(18);
+    const comments = (text: string): string[] =>
+      text
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('#'));
+    expect(comments(after)).toEqual(comments(before));
+    expect(parse(after)['automation']['safety']['retreat']['cooldownMs']).toBe(3000);
   });
 
   // The outgrown block was read and never written back from this page before todo 118.

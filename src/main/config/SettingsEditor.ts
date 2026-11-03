@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 
-import { ON_DISK, type EditResult, type YamlFiles } from './YamlFile';
+import { ON_DISK, setKeeping, type EditResult, type YamlFiles } from './YamlFile';
 import { grantIsEmpty, type RemoteGrant, type RemoteName } from '../../shared/remotes';
 import { writtenPeerGrant } from '../../shared/peerGrant';
 import { unknownWrites, type LayerWrite } from '../../shared/extensions';
@@ -298,10 +298,10 @@ export class SettingsEditor {
           // character that plays there.
           document.setIn(['server'], draft.server.name);
         } else {
-          // Replaced wholesale rather than patched key by key: switching from a
-          // saved server to an inline one must not leave the old name behind
-          // as a sibling of the new host.
-          document.setIn(['server'], {
+          // Keys the inline server lacks are removed, so switching from a
+          // saved server to an inline one does not leave the old name beside
+          // the new host.
+          setKeeping(document, ['server'], {
             host: draft.server.host,
             port: draft.server.port,
             encoding: draft.server.encoding
@@ -324,7 +324,7 @@ export class SettingsEditor {
            * credentials every time somebody changed its colour.
            */
           const existing = document.getIn(['account', 'password']);
-          document.setIn(['account'], {
+          setKeeping(document, ['account'], {
             username: draft.username,
             password: draft.changePassword
               ? draft.password
@@ -349,7 +349,7 @@ export class SettingsEditor {
          * be noise in a file people read besides.
          */
         if (draft.login.length > 0) {
-          document.setIn(['login', 'steps'], draft.login.map(loginRow));
+          setKeeping(document, ['login', 'steps'], draft.login.map(loginRow));
         } else if (document.hasIn(['login', 'steps'])) {
           document.deleteIn(['login', 'steps']);
         }
@@ -381,7 +381,7 @@ export class SettingsEditor {
           draft.retreat.enabled ||
           document.hasIn(['automation', 'safety', 'retreat'])
         ) {
-          document.setIn(['automation', 'safety', 'retreat'], {
+          setKeeping(document, ['automation', 'safety', 'retreat'], {
             enabled: draft.retreat.enabled,
             belowHealth: draft.retreat.belowHealth,
             whenOutnumbered: draft.retreat.whenOutnumbered,
@@ -397,7 +397,7 @@ export class SettingsEditor {
           draft.fleeGoto.enabled ||
           document.hasIn(['automation', 'safety', 'fleeGoto'])
         ) {
-          document.setIn(['automation', 'safety', 'fleeGoto'], {
+          setKeeping(document, ['automation', 'safety', 'fleeGoto'], {
             enabled: draft.fleeGoto.enabled,
             belowHealth: draft.fleeGoto.belowHealth,
             ...(draft.fleeGoto.command.length > 0 ? { command: draft.fleeGoto.command } : {})
@@ -409,7 +409,7 @@ export class SettingsEditor {
           draft.hangUp.enabled ||
           document.hasIn(['automation', 'safety', 'hangUp'])
         ) {
-          document.setIn(['automation', 'safety', 'hangUp'], {
+          setKeeping(document, ['automation', 'safety', 'hangUp'], {
             enabled: draft.hangUp.enabled,
             belowHealth: draft.hangUp.belowHealth,
             // Absent leaves it to the realm and then the options file, so null
@@ -428,7 +428,7 @@ export class SettingsEditor {
           draft.pvp.action !== 'none' ||
           document.hasIn(['automation', 'safety', 'pvp'])
         ) {
-          document.setIn(['automation', 'safety', 'pvp'], {
+          setKeeping(document, ['automation', 'safety', 'pvp'], {
             notifyGang: draft.pvp.notifyGang,
             action: draft.pvp.action
           });
@@ -485,7 +485,7 @@ export class SettingsEditor {
             document.hasIn(at) ||
             statesSomething(block, defaults as unknown as Record<string, unknown>)
           ) {
-            document.setIn(at, { ...block });
+            setKeeping(document, at, { ...block });
           }
         }
         // Judged as the blocks above are, and its rows written as the Self card writes them.
@@ -499,11 +499,11 @@ export class SettingsEditor {
         // Its own aliases and keys, added to Global's by the overlay, so never a copy of them.
         const aliases = pairsRecord(draft.aliases);
         if (document.hasIn(['automation', 'aliases']) || Object.keys(aliases).length > 0) {
-          document.setIn(['automation', 'aliases'], aliases);
+          setKeeping(document, ['automation', 'aliases'], aliases);
         }
         const keys = pairsRecord(draft.keys);
         if (document.hasIn(['keys']) || Object.keys(keys).length > 0)
-          document.setIn(['keys'], keys);
+          setKeeping(document, ['keys'], keys);
 
         /*
          * The designs are a list, and a list is replaced by an overlay, never
@@ -517,7 +517,7 @@ export class SettingsEditor {
         const inherited = normalizeConfig(base).ui.rewrites.designs;
         const designs = ['ui', 'rewrites', 'designs'];
         if (creating || differs(draft.rewrites.designs, inherited)) {
-          document.setIn(designs, structuredClone(draft.rewrites.designs));
+          setKeeping(document, designs, structuredClone(draft.rewrites.designs));
         } else if (document.hasIn(designs)) {
           document.deleteIn(designs);
         }
@@ -891,7 +891,8 @@ export class SettingsEditor {
                 held === undefined ? treated({ mob: key, treat }, treat) : treated(held, treat)
               ];
         if (next.length > 0)
-          document.setIn(
+          setKeeping(
+            document,
             ['mobRules'],
             next.map((row) => ({ ...row }))
           );
@@ -944,7 +945,7 @@ export class SettingsEditor {
          * reads as a script somebody meant to fill in.
          */
         if (draft.login.length > 0) {
-          document.setIn(['login'], draft.login.map(loginRow));
+          setKeeping(document, ['login'], draft.login.map(loginRow));
         } else if (document.hasIn(['login'])) {
           document.deleteIn(['login']);
         }
@@ -965,7 +966,8 @@ export class SettingsEditor {
          * which states only what each row says (`normalizeMobRules`).
          */
         if (draft.mobRules.length > 0) {
-          document.setIn(
+          setKeeping(
+            document,
             ['mobRules'],
             draft.mobRules.map((row) => ({ ...row }))
           );
@@ -975,7 +977,8 @@ export class SettingsEditor {
 
         // And whether a hang-up here is charged: absent leaves it to the
         // options file, so null removes the key rather than writing one.
-        if (draft.hangPenalties !== null) document.setIn(['hangPenalties'], draft.hangPenalties);
+        if (draft.hangPenalties !== null)
+          setKeeping(document, ['hangPenalties'], draft.hangPenalties);
         else if (document.hasIn(['hangPenalties'])) document.deleteIn(['hangPenalties']);
 
         // And how it is asked where you stand: `rm` is what no key gives, so
@@ -984,7 +987,7 @@ export class SettingsEditor {
         else if (asLocateWord(document.get('locate')) !== null) document.deleteIn(['locate']);
 
         // And its renamed coins: none stated is the stock names, so no key.
-        if (Object.keys(draft.coins).length > 0) document.setIn(['coins'], draft.coins);
+        if (Object.keys(draft.coins).length > 0) setKeeping(document, ['coins'], draft.coins);
         else if (document.hasIn(['coins'])) document.deleteIn(['coins']);
 
         // And its teleport, literally: empty states none, so no key.
@@ -1251,7 +1254,7 @@ export class SettingsEditor {
     const written = this.files.edit(this.home.options, {
       mutate: (document) => {
         const set = (path: readonly string[], value: unknown): void => {
-          document.setIn([...path], value);
+          setKeeping(document, path, value);
         };
 
         set(['connection', 'host'], draft.connection.host);
@@ -1330,7 +1333,11 @@ export class SettingsEditor {
         set(['automation', 'pacing'], { ...draft.automation.pacing });
         set(['automation', 'walk'], { ...draft.automation.walk });
         set(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
-        set(['automation', 'safety', 'retreat'], { ...draft.automation.retreat });
+        // Field by field: `cooldownMs` is not on the form, and a figure set
+        // by hand stays (`retreatOf`).
+        for (const [key, value] of Object.entries(draft.automation.retreat)) {
+          set(['automation', 'safety', 'retreat', key], value);
+        }
         set(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
         set(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
         set(['automation', 'combat'], { ...draft.automation.combat });

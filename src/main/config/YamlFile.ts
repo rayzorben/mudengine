@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { parseDocument, type Document } from 'yaml';
+import { isMap, isNode, isScalar, isSeq, parseDocument, type Document } from 'yaml';
 
 /**
  * Editing a YAML file the user owns.
@@ -186,6 +186,47 @@ export const ON_DISK: YamlFiles = {
   edit: editYaml,
   remove: removeYaml
 };
+
+/**
+ * `document.setIn(at, value)` for a plain value, keeping every node that
+ * survives it.
+ *
+ * `setIn` with an object or a list builds a new node and drops the old one with
+ * every comment inside it: a save of the Global page took most of the options
+ * template's notes. Here a map that is already there is patched key by key (a
+ * key the value lacks or leaves `undefined` is removed, as `setIn` would) and a
+ * list item by item, down to the scalars, which `setIn` updates in place with
+ * their comments and quoting. The value read back is the same as `setIn`'s. A
+ * list that gets shorter is replaced whole: patched by position, the comment
+ * above a removed row would sit above the next row's values. A `Node` is set
+ * as given, being already styled by its writer.
+ */
+export function setKeeping(document: Document, at: readonly unknown[], value: unknown): void {
+  const node = document.getIn(at, true);
+  if (isMap(node) && isPlainRecord(value)) {
+    for (const pair of [...node.items]) {
+      const key = isScalar(pair.key) ? pair.key.value : pair.key;
+      if (typeof key !== 'string' || value[key] === undefined) node.delete(pair.key);
+    }
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry !== undefined) setKeeping(document, [...at, key], entry);
+    }
+    return;
+  }
+  if (isSeq(node) && Array.isArray(value) && value.length >= node.items.length) {
+    const kept = node.items.length;
+    value.forEach((entry: unknown, index) => {
+      if (index < kept) setKeeping(document, [...at, index], entry);
+      else node.add(document.createNode(entry));
+    });
+    return;
+  }
+  document.setIn([...at], value);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && !isNode(value);
+}
 
 /**
  * The message from a thrown value, without assuming it is an `Error`.
