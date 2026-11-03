@@ -1415,6 +1415,9 @@ tuning:
     # to before it is written whole again. Each change is appended, so a long
     # session would otherwise grow the record without bound.
     marksWholeAt: 4
+    # The most room name lines printed while lost that a resync reads back
+    # over, to give each the room it was printed for.
+    lostLinesKept: 100
 
     # Negotiation records the diagnostics pane can look back over.
     telnetLogLimit: 500

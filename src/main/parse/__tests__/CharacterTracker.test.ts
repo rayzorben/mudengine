@@ -1759,14 +1759,14 @@ describe('leaving the realm', () => {
    */
   it('says whether the next room block answers a peek or a step', () => {
     const tracker = new CharacterTracker();
-    expect(tracker.nextRoomIsPeek).toBe(false);
+    expect(tracker.nextRoom?.kind === 'peek').toBe(false);
 
     tracker.observeCommand('l n');
-    expect(tracker.nextRoomIsPeek).toBe(true);
+    expect(tracker.nextRoom?.kind === 'peek').toBe(true);
 
     // Read at the head and never shifted: the room block that consumes this
     // expectation has not been applied yet.
-    expect(tracker.nextRoomIsPeek).toBe(true);
+    expect(tracker.nextRoom?.kind === 'peek').toBe(true);
     expect(tracker.pendingCount).toBe(1);
   });
 
@@ -1776,7 +1776,8 @@ describe('leaving the realm', () => {
     tracker.observeCommand('l n');
     // The move is at the head, so the next room is somewhere the character is
     // going — the peek behind it does not make it one.
-    expect(tracker.nextRoomIsPeek).toBe(false);
+    expect(tracker.nextRoom?.kind === 'peek').toBe(false);
+    expect(tracker.nextRoom).toMatchObject({ kind: 'move', direction: 'n' });
   });
 });
 

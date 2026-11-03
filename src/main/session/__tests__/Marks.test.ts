@@ -29,8 +29,8 @@ function harness() {
   /** Rooms the next name line can be: both grates by name alone. */
   const tracker = {
     current: EMPTY_CHARACTER as CharacterState,
-    get nextRoomIsPeek() {
-      return peek;
+    get nextRoom() {
+      return peek ? { kind: 'peek' as const, command: 'l n' } : null;
     },
     roomsNameCanBe: (name: string) => ROOMS.filter((r) => r.name === name).map(room)
   };
@@ -42,6 +42,7 @@ function harness() {
         ? (rooms[0] as unknown as StubRoom).commands
         : undefined;
     },
+    findByName: (name: string) => ROOMS.filter((r) => r.name === name).map(room),
     get: (map: number, number: number) => {
       const found = ROOMS.find((r) => r.map === map && r.number === number);
       return found ? room(found) : undefined;

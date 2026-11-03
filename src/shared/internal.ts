@@ -1856,6 +1856,12 @@ const TUNING_DEFAULTS = {
      * session would otherwise grow the record without bound.
      */
     marksWholeAt: 4,
+    /**
+     * The most room name lines printed while lost that a resync reads back
+     * over to give each the room it was printed for. A character lost for an
+     * hour of idle reprints would otherwise keep every line.
+     */
+    lostLinesKept: 100,
     /** Negotiation records the diagnostics pane can look back over. */
     telnetLogLimit: 500,
     /** Framed lines retained; the terminal keeps the real backscroll. */

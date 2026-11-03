@@ -9,6 +9,7 @@ import iconv from 'iconv-lite';
 import { editorInput } from '../editorInput';
 import { IDLE_FLUSH_MS, SessionManager, type SessionDeps } from '../SessionManager';
 import { MarkBook } from '../MarkBook';
+import { Marks } from '../Marks';
 import type { TimedChunk } from '../../../shared/stamps';
 import type { SessionSink } from '../SessionSink';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
@@ -2560,6 +2561,56 @@ describe('a listing the player has the client draw', () => {
     );
     const actions = marks.flatMap((entry) => entry.mark?.inline ?? []).filter((g) => g.commands);
     expect(actions.map((g) => g.commands?.[0])).toEqual(['wear rope and grapple', 'wear torch']);
+  });
+});
+
+/*
+ * `Marks` reads a name line's arrivals off the first state it is handed once
+ * the line's `Obvious exits:` is marked, so that state must already be the
+ * room block applied: the exits line is marked and then acted on in the same
+ * pass, with no other line's state between (todo 20261029-1347-01).
+ */
+describe('the console marks around a step', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('see the step applied in the first state after the exits line is marked', async () => {
+    const order: string[] = [];
+    const markFor = Marks.prototype.markFor;
+    vi.spyOn(Marks.prototype, 'markFor').mockImplementation(function (this: Marks, block) {
+      order.push(`mark ${block.type}`);
+      return markFor.call(this, block);
+    });
+    const onCharacter = Marks.prototype.onCharacter;
+    vi.spyOn(Marks.prototype, 'onCharacter').mockImplementation(function (this: Marks, state) {
+      order.push(`state ${state.room.name} ${state.room.arrival}`);
+      onCharacter.call(this, state);
+    });
+    const { sink } = collect();
+    manager = build(sink, { marks: new MarkBook({ lines: 100 }) });
+    manager.configure(
+      { ...DEFAULT_CONFIG.automation, enabled: false },
+      DEFAULT_CONFIG.connection.login,
+      DEFAULT_CONFIG.ui.rewrites
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+    socket.write('Sewer Tunnel\r\nObvious exits: north\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    manager.send('n\r');
+    await until(() => Buffer.concat(received).toString('latin1').includes('n\r\n'));
+    order.length = 0;
+    socket.write('Sewer Tunnel\r\nObvious exits: south\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    // The positive control: the step reached the character.
+    await until(() => manager!.character.room.arrival === 1);
+    const exits = order.indexOf('mark room-exits');
+    expect(exits).toBeGreaterThan(-1);
+    expect(order.slice(exits + 1).find((entry) => entry.startsWith('state'))).toBe(
+      'state Sewer Tunnel 1'
+    );
   });
 });
 

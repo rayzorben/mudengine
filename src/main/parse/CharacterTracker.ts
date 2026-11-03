@@ -478,13 +478,13 @@ export class CharacterTracker {
   }
 
   /**
-   * Whether the next room block answers a **peek** (`l n`), which prints the
-   * neighbour in full. `Marks.markFor` asks on the name line, before `act()`:
-   * a button beside a peeked room sends its command into the room stood in.
-   * Read at the head and never shifted, or room resolution loses its claim.
+   * The claim the next room block answers: a **peek** (`l n`) prints the
+   * neighbour in full, a move says which way it was stepped into. `Marks`
+   * asks on the name line, before `act()`. Read at the head and never
+   * shifted, or room resolution loses its claim.
    */
-  get nextRoomIsPeek(): boolean {
-    return this.expect.head()?.kind === 'peek';
+  get nextRoom(): Readonly<ReturnType<Expectations['head']>> {
+    return this.expect.head();
   }
 
   /** The rooms a room's name line can be, asked before its block is applied. */

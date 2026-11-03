@@ -8865,6 +8865,8 @@ function theTuningBlockGainedKeys(
       addKey('world', key, DEFAULT_INTERNAL.tuning.world[key]);
     for (const key of ['mapHeldWindows', 'mapFramesKept'] as const)
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
+    // The name lines printed while lost that a resync reads back over (todo 20261029-1347-01).
+    addKey('session', 'lostLinesKept', DEFAULT_INTERNAL.tuning.session.lostLinesKept);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

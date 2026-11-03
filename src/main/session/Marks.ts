@@ -10,17 +10,20 @@
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
 import { actionsFor } from './actions';
+import { enteredBy, LostLines, type Entered } from './LostLines';
 import type { LineMarks } from './MarkBook';
 import { pressless } from './markFile';
+import { withRoom } from './markRoom';
 import type { Block } from '../../shared/blocks';
 import { bankKey, type CharacterState } from '../../shared/character';
 import type { LineId, TerminalMark } from '../../shared/types';
 import type { RoomReference, WorldRoom } from '../../shared/world';
 
-/** The purse, the vaults, the rooms the name line can be and whether it is a peek; the realm's places and room commands. */
+/** The purse, the vaults, the rooms the name line can be and the claim its block answers; the realm's places, room commands and rooms by name. */
 export interface MarksParts {
-  readonly tracker: Pick<CharacterTracker, 'current' | 'nextRoomIsPeek' | 'roomsNameCanBe'>;
-  readonly world: Pick<WorldGraph, 'placeAmong' | 'roomCommandsAmong' | 'get'> | undefined;
+  readonly tracker: Pick<CharacterTracker, 'current' | 'nextRoom' | 'roomsNameCanBe'>;
+  readonly world:
+    Pick<WorldGraph, 'placeAmong' | 'roomCommandsAmong' | 'get' | 'findByName'> | undefined;
   /** Where each line's mark is recorded, and changed once it is on screen. */
   readonly book: LineMarks;
 }
@@ -42,6 +45,10 @@ interface Live {
   before: string | null;
   /** Whether this line's own `Obvious exits:` has been read; before it, a placement is the room before. */
   exitsRead: boolean;
+  /** The claim its block answers, read on the name line: the way stepped into it, for a resync. */
+  entered: Entered;
+  /** The arrivals counted once its block was read (`Room.arrival`); null before. */
+  arrival: number | null;
 }
 
 const roomKey = (map: number | null, number: number | null): string | null =>
@@ -54,6 +61,8 @@ export class Marks {
   private live: Live | null = null;
   /** A peeked room's name was the last printed: the exits that follow are its, not the live line's. */
   private peeked = false;
+  /** The name lines printed while lost, given their rooms once a resync places the character. */
+  private readonly lost: LostLines;
 
   constructor(
     parts: MarksParts,
@@ -62,6 +71,7 @@ export class Marks {
     this.tracker = parts.tracker;
     this.world = parts.world;
     this.book = parts.book;
+    this.lost = new LostLines({ world: parts.world, book: parts.book });
   }
 
   /**
@@ -90,7 +100,8 @@ export class Marks {
     }
     if (block.type !== 'room-name') return undefined;
     const name = block.text.trim();
-    const peek = this.tracker.nextRoomIsPeek;
+    const claim = this.tracker.nextRoom;
+    const peek = claim?.kind === 'peek';
     const mark = this.decide(name, this.tracker.roomsNameCanBe(name), peek);
     const id = this.book.issue(mark ?? undefined);
     this.peeked = peek;
@@ -98,18 +109,42 @@ export class Marks {
     // A room printed again, here or elsewhere: the last line printed is the one stood in.
     this.retire();
     const { map, number } = this.tracker.current.room;
-    this.live = { id, name, mark, placed: null, before: roomKey(map, number), exitsRead: false };
+    this.live = {
+      id,
+      name,
+      mark,
+      placed: null,
+      before: roomKey(map, number),
+      exitsRead: false,
+      entered: enteredBy(claim),
+      arrival: null
+    };
     return id;
   }
 
   /**
-   * The live line, against the character as it now stands: once the room of
-   * that name is placed its line is decided again from that room alone, and
-   * once the character is placed somewhere else its buttons come off.
+   * The live line, against the character as it now stands, then the lines
+   * printed while lost behind it: a resync placing the live line reads them
+   * back from the room it took.
    */
   onCharacter(state: CharacterState): void {
+    this.place(state);
+    const live = this.live;
+    const printed = live !== null && live.exitsRead && state.room.name === live.name;
+    this.lost.onCharacter(state, printed ? live : null);
+  }
+
+  /**
+   * Once the room of the live line's name is placed its line is decided again
+   * from that room alone, and once the character is placed somewhere else its
+   * buttons come off.
+   */
+  private place(state: CharacterState): void {
     const live = this.live;
     if (live === null) return;
+    if (live.exitsRead) live.arrival ??= state.room.arrival;
+    // Moved on without a name line (a dark room may be guessed to share the name): no longer this line's room.
+    if (live.arrival !== null && state.room.arrival !== live.arrival) return this.retire();
     const { name, map, number } = state.room;
     if (name !== live.name || map === null || number === null) {
       // Still the room before (its exits not yet read), or one left without a name line.
@@ -182,9 +217,3 @@ export class Marks {
     };
   }
 }
-
-/** A line's mark with the room it was printed for; a plain room is a mark with nothing to draw. */
-const withRoom = (mark: TerminalMark | null, label: string, room: RoomReference): TerminalMark => ({
-  ...(mark ?? { label }),
-  room
-});

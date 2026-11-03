@@ -1997,6 +1997,36 @@ export function placedByServer(room: Pick<Room, 'map' | 'number' | 'resolvedBy'>
 }
 
 /**
+ * What a room's placement rests on: evidence of its own (an address, a name or
+ * exits only one room has, a draw's landing), the room before it (a step from
+ * there), a guess (a dark room placed by the step alone), or nothing the
+ * server printed since login.
+ */
+export type PlacedOn = 'own' | 'before' | 'guess' | 'none';
+
+export function placedOn(resolvedBy: Room['resolvedBy']): PlacedOn {
+  switch (resolvedBy) {
+    case 'coordinates':
+    case 'unique-name':
+    case 'exit-signature':
+    case 'scattered':
+      return 'own';
+    case 'movement':
+    case 'neighbour':
+      return 'before';
+    case 'dead-reckoning':
+      return 'guess';
+    case 'remembered':
+    case null:
+      return 'none';
+    default: {
+      const unhandled: never = resolvedBy;
+      return unhandled;
+    }
+  }
+}
+
+/**
  * Whether a fight is running around this character right now: the server's
  * own flag, or anything this client has recorded as swinging.
  *
