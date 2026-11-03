@@ -136,14 +136,19 @@ export function useWalkPages(
           });
           return;
         }
-        if (refused === paging) return;
-        setRefused(paging);
-        setLook(null);
-        setAsks((count) => count + 1);
+        pageAgain();
       })
       .catch((error) => {
         console.error(`[map] the walk's page ${wanted + 1}: ${errorMessage(error)}`);
+        // A dropped link loses the page as a forgotten paging does: page the walk again, once.
+        if (live) pageAgain();
       });
+    function pageAgain(): void {
+      if (refused === paging) return;
+      setRefused(paging);
+      setLook(null);
+      setAsks((count) => count + 1);
+    }
     return () => {
       live = false;
     };

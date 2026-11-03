@@ -10,7 +10,7 @@
  * them. A lair's odds are the character's, not the realm's, so they ride
  * apart from the cells and are sent for the whole asked window every time.
  */
-import { asMapWindow, type MapCell, type MapWindow } from './map';
+import { asMapWindow, NO_EXTENT, type MapCell, type MapWindow } from './map';
 import type { SurvivalLevel } from './survival';
 import type { RoomId } from './world';
 
@@ -61,12 +61,12 @@ export const NO_PIECE: MapPiece = Object.freeze({
   frame: NO_FRAME,
   centre: null,
   at: ORIGIN,
-  window: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+  window: NO_EXTENT,
   cells: [],
   odds: {},
   dropped: 0,
   placed: 0,
-  extent: { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+  extent: NO_EXTENT
 });
 
 /** A window moved by `at`: from the centre's cells into the placement's, or back with `-1`. */

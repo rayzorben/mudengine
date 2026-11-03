@@ -29,7 +29,8 @@ interface Kept {
 
 export class WalkPaging {
   private readonly kept = new Map<SessionId, readonly Kept[]>();
-  private next = 1;
+  // From the clock, so a web tab that outlives a restart cannot name a reused paging.
+  private next = Date.now();
 
   /** The walk paged from where the character stands, with its first pages. */
   first(session: SessionId, walk: PagedWalk | undefined, pageRoute: PageRoute): WalkPages {
