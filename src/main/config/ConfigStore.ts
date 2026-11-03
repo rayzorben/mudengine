@@ -22,7 +22,7 @@ import {
 } from '../../shared/config';
 import { mergeLoops, sameLoops, type Loop } from '../../shared/loops';
 import { errorMessage } from '../../shared/values';
-import { parseOwned, yamlFault } from './YamlFile';
+import { createYaml, parseOwned, yamlFault } from './YamlFile';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 
@@ -268,16 +268,10 @@ export class ConfigStore extends EventEmitter {
      * different one is the failure, and it is silent.
      */
     if (override !== undefined && override.length > 0) {
-      if (!fs.existsSync(override)) {
-        try {
-          fs.mkdirSync(path.dirname(override), { recursive: true });
-          fs.writeFileSync(override, readTemplate(template), 'utf8');
-        } catch {
-          // Unwritable. Still the answer: the caller asked for this path, and
-          // falling back to somebody's real configuration is worse than
-          // starting with documented defaults.
-        }
-      }
+      // Unwritable is still the answer: the caller asked for this path, and
+      // falling back to somebody's real configuration is worse than starting
+      // with documented defaults.
+      createYaml(override, readTemplate(template));
       return override;
     }
 
@@ -287,14 +281,9 @@ export class ConfigStore extends EventEmitter {
 
     const contents = readTemplate(template);
 
+    // A read-only install directory or a sandboxed home is passed over for the next.
     for (const candidate of candidates) {
-      try {
-        fs.mkdirSync(path.dirname(candidate), { recursive: true });
-        fs.writeFileSync(candidate, contents, 'utf8');
-        return candidate;
-      } catch {
-        // Read-only install directory, sandboxed home — try the next one.
-      }
+      if (createYaml(candidate, contents).ok) return candidate;
     }
 
     // Nothing was writable. The template still parses, so the app starts with

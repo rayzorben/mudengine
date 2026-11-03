@@ -175,6 +175,11 @@ notices:
     servers:
       noHost: '{file} does not name a host, so it is not a realm'
       readError: '{file} could not be read: {message}'
+      refilled: 'Copied the realms the client comes with that were missing from {serversDir}: {ids}.
+        Remove one from the Realms page to keep it gone.'
+      seedFailed:
+        'The realms the client comes with could not all be copied into {serversDir}, so the next start
+        tries again: {message}'
   simulator:
     workerFailed: 'Fight odds now take longer to work out, and the terminal can lag while they do
       ({error}).'

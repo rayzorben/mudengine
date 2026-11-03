@@ -13,13 +13,14 @@
  * window that will show it.
  */
 import fs from 'node:fs/promises';
-import { cpSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { ConfigStore } from './config/ConfigStore';
 import { RefusedEntries } from './config/RefusedEntries';
 import { reconcileWithTemplate } from './config/reconcile';
 import { InternalStore } from './config/InternalStore';
+import { seedServers } from './config/shippedRealms';
 import { setTuning, tuning } from './app/tuning';
 import { ProfileStore, type ProfileSnapshot } from './config/ProfileStore';
 import { ServerStore } from './config/ServerStore';
@@ -1096,27 +1097,23 @@ function configTemplate(): string {
 }
 
 /**
- * Puts the realms on disk the first time, so a fresh client has somewhere to
- * play rather than an empty Realms page.
- *
- * Six of them, one directory each: Paradigm's four game realms and its two
- * test realms, which is what the client ships for — `resources/world/` is
- * built from Paradigm's own database. The same reasoning as the options
- * template being copied on first run, and the same failure it avoids: a
- * feature nobody can find is one that was never built.
- *
- * Copied **only when the directory does not exist at all** — not per file —
- * so somebody who deleted a realm does not get it back on every launch, which
- * is a client arguing with a decision they made.
+ * Puts the realms the client ships into the home: on first run, and again on
+ * the start after one that stopped part way (`config/shippedRealms.ts`).
  */
-function seedServers(): void {
-  if (existsSync(home.serversDir)) return;
-  const shipped = path.join(resourcesDir(), 'servers');
-  if (!existsSync(shipped)) return;
-  try {
-    cpSync(shipped, home.serversDir, { recursive: true });
-  } catch (error) {
-    console.warn(`servers: could not copy the shipped realms: ${String(error)}`);
+function seedShippedRealms(): void {
+  const serversDir = home.serversDir;
+  const refilling = existsSync(serversDir);
+  const { written, error } = seedServers({
+    shipped: path.join(resourcesDir(), 'servers'),
+    serversDir
+  });
+  if (error !== null) {
+    announce('servers', t('notices.config.servers.seedFailed', { serversDir, message: error }));
+  } else if (refilling && written.length > 0) {
+    announce(
+      'servers',
+      t('notices.config.servers.refilled', { ids: written.join(', '), serversDir })
+    );
   }
 }
 
@@ -3942,7 +3939,7 @@ function build(): void {
     note: (message) => announce('home', message, 'log')
   });
   config = createConfig();
-  seedServers();
+  seedShippedRealms();
   servers = createServers();
   loops = createLoops();
   publishTree();

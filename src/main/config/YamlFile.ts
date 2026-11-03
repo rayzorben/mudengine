@@ -11,6 +11,7 @@ import {
   type YAMLSeq
 } from 'yaml';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 
 /**
  * Editing a YAML file the user owns.
@@ -119,13 +120,26 @@ export function applyEdit(file: string, source: string | null, options: EditOpti
  */
 export function writeYaml(file: string, text: string): EditResult {
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
     if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
-    const temporary = `${file}.tmp-${process.pid}`;
-    fs.writeFileSync(temporary, text, 'utf8');
-    fs.renameSync(temporary, file);
+    writeWholeSync(file, text);
   } catch (error) {
     return { ok: false, error: `could not save ${path.basename(file)}: ${reason(error)}` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Puts a file the client ships into place the first time (a template, a
+ * realm), whole, so a crash part way leaves no file rather than half of one
+ * and the next run copies it again. A file already there is the player's and
+ * is left alone.
+ */
+export function createYaml(file: string, text: string): EditResult {
+  if (fs.existsSync(file)) return { ok: true };
+  try {
+    writeWholeSync(file, text);
+  } catch (error) {
+    return { ok: false, error: `could not create ${path.basename(file)}: ${reason(error)}` };
   }
   return { ok: true };
 }

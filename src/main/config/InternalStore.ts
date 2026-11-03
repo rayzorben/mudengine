@@ -17,7 +17,7 @@ import path from 'node:path';
 
 import { DEFAULT_INTERNAL, normalizeInternal, type InternalConfig } from '../../shared/internal';
 import { errorMessage } from '../../shared/values';
-import { parseOwned, yamlFault } from './YamlFile';
+import { createYaml, parseOwned, yamlFault } from './YamlFile';
 import { Poller } from './Poller';
 
 export interface InternalStoreOptions {
@@ -81,11 +81,10 @@ export class InternalStore extends EventEmitter {
     const { file, template } = this.options;
     if (fs.existsSync(file)) return;
     try {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, fs.readFileSync(template, 'utf8'), 'utf8');
+      createYaml(file, fs.readFileSync(template, 'utf8'));
     } catch {
-      // Unwritable, or no template: the defaults still apply, and `read`
-      // reports the missing file once.
+      // No template. Unwritable is the same: the defaults still apply, and
+      // `read` reports the missing file once.
     }
   }
 
