@@ -12,6 +12,7 @@
  */
 import { CMD, OPT, SUB, commandName, optionName } from './telnet-constants';
 import type { TelnetEvent, TerminalSize } from '../../shared/types';
+import { tuning } from '../app/tuning';
 
 /** RFC 1143 per-option negotiation state. */
 enum QState {
@@ -177,14 +178,14 @@ export class TelnetParser {
 
         case Mode.SubData:
           if (byte === CMD.IAC) this.mode = Mode.SubIac;
-          else this.subBuffer.push(byte);
+          else this.collectSub(byte, events);
           break;
 
         case Mode.SubIac:
           if (byte === CMD.IAC) {
             // Escaped 0xFF inside subnegotiation payload.
-            this.subBuffer.push(CMD.IAC);
             this.mode = Mode.SubData;
+            this.collectSub(CMD.IAC, events);
           } else if (byte === CMD.SE) {
             this.handleSubnegotiation(events);
             this.mode = Mode.Data;
@@ -365,6 +366,23 @@ export class TelnetParser {
   /** Side effects that fire the moment the peer starts performing an option. */
   private onRemoteEnabled(_option: number, _events: TelnetEvent[]): void {
     // Reserved for MCCP2 / MSSP handling once those are supported.
+  }
+
+  /**
+   * Adds a payload byte, or gives up on a subnegotiation that has run past any
+   * real one: unclosed, it would swallow every byte the session sent after it.
+   */
+  private collectSub(byte: number, events: TelnetEvent[]): void {
+    const cap = tuning().net.maxSubnegotiationBytes;
+    if (this.subBuffer.length < cap) {
+      this.subBuffer.push(byte);
+      return;
+    }
+    events.push(
+      this.event('in', `SB ${optionName(this.subOption)} abandoned unclosed after ${cap} bytes`)
+    );
+    this.subBuffer.length = 0;
+    this.mode = Mode.Data;
   }
 
   private handleSubnegotiation(events: TelnetEvent[]): void {

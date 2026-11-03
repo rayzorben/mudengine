@@ -110,6 +110,24 @@ describe('TelnetClient', () => {
     client.disconnect();
   });
 
+  it('decodes a UTF-8 character split across two socket reads whole', async () => {
+    const server = await startServer((socket) => socket.setNoDelay(true));
+    const client = new TelnetClient();
+    const text: string[] = [];
+    client.on('data', (chunk) => text.push(chunk));
+    await client.connect({ host: '127.0.0.1', port: server.port, encoding: 'utf8' });
+    await server.connected;
+
+    // `é` is C3 A9; the first read ends between its two bytes.
+    server.send(Buffer.from([0x63, 0x61, 0x66, 0xc3]));
+    await until(() => text.join('').startsWith('caf'));
+    server.send(Buffer.from([0xa9, 0x0d, 0x0a]));
+    await until(() => text.join('').endsWith('\r\n'));
+
+    expect(text.join('')).toBe('café\r\n');
+    client.disconnect();
+  });
+
   it('answers TERMINAL-TYPE and reports NAWS to the server', async () => {
     const server = await startServer((socket) => {
       socket.write(Buffer.from([CMD.IAC, CMD.DO, OPT.NAWS, CMD.IAC, CMD.DO, OPT.TERMINAL_TYPE]));

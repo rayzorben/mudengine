@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { TelnetParser } from '../TelnetParser';
 import { CMD, OPT, SUB } from '../telnet-constants';
+import { tuning } from '../../app/tuning';
 
 const IAC = CMD.IAC;
 
@@ -187,6 +188,19 @@ describe('TelnetParser subnegotiation', () => {
     const chunk = Buffer.from([IAC, CMD.SB, OPT.MSSP, 0x01, IAC, CMD.NOP, 0x41, 0x42]);
     const result = p.receive(chunk);
     expect(result.data.toString('latin1')).toBe('AB');
+  });
+
+  it('gives the stream back when a subnegotiation never closes', () => {
+    const p = parser();
+    const cap = tuning().net.maxSubnegotiationBytes;
+    const opened = p.receive(
+      Buffer.from([IAC, CMD.SB, OPT.MSSP, ...Array<number>(cap + 1).fill(0x01)])
+    );
+    expect(opened.data).toHaveLength(0);
+    expect(opened.events.map((e) => e.summary)).toContain(
+      `SB MSSP abandoned unclosed after ${cap} bytes`
+    );
+    expect(p.receive(Buffer.from('HP=10', 'latin1')).data.toString('latin1')).toBe('HP=10');
   });
 });
 

@@ -76,6 +76,11 @@ export class TelnetClient extends EventEmitter {
   private link: 'none' | 'dialling' | 'open' = 'none';
   private parser: TelnetParser;
   private encoding: StreamEncoding = 'cp437';
+  /**
+   * One stateful decoder per connection: a socket read can end inside a UTF-8
+   * character, and decoding each read alone would turn its halves into two U+FFFD.
+   */
+  private decoder: ReturnType<typeof iconv.getDecoder> = iconv.getDecoder(this.encoding);
   private quirks: QuirkOptions;
 
   /** Trailing fragment of an incomplete escape sequence, carried between chunks. */
@@ -146,6 +151,7 @@ export class TelnetClient extends EventEmitter {
     const generation = ++this.connectionGeneration;
 
     this.encoding = target.encoding;
+    this.decoder = iconv.getDecoder(target.encoding);
     this.escapeCarry = '';
     this.reported = null;
     this.closingIntentionally = false;
@@ -405,7 +411,7 @@ export class TelnetClient extends EventEmitter {
 
       // Decode after framing removal, never before: an IAC byte inside a CP437
       // decode would otherwise become a printable glyph.
-      const decoded = iconv.decode(result.data, this.encoding);
+      const decoded = this.decoder.write(result.data);
       const combined = this.escapeCarry + decoded;
       const { emit, hold } = splitTrailingEscape(combined);
       this.escapeCarry = hold;

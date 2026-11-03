@@ -149,6 +149,12 @@ const TUNING_DEFAULTS = {
      */
     maxPartialEscapeBytes: 32,
     /**
+     * Longest Telnet subnegotiation payload collected while its `IAC SE` is
+     * awaited. A server that opens one and never closes it would otherwise
+     * swallow the rest of the session into the buffer.
+     */
+    maxSubnegotiationBytes: 8192,
+    /**
      * How long after `end()` a closing socket is destroyed outright. `end()`
      * waits for the FIN handshake; this guarantees the socket is gone even if
      * the peer never replies.
