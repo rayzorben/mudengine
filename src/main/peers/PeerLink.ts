@@ -33,6 +33,7 @@ import {
   type ShareEntry
 } from '../../shared/peerWire';
 import { errorMessage, sameJson } from '../../shared/values';
+import { t } from '../app/i18n';
 import type { BookFrame } from './PeerBook';
 import { sentOf, sheetChange, type SentSheet } from './peerSheet';
 
@@ -353,9 +354,7 @@ export class PeerLink {
     const frame = asPeerDown(value);
     if (frame === null) {
       this.tell(
-        isUnknownKind(value, PEER_DOWN_KINDS)
-          ? 'the sharing server sent a kind of message from a newer build, and it was ignored'
-          : 'the sharing server sent something this build does not read, and it was ignored'
+        isUnknownKind(value, PEER_DOWN_KINDS) ? t('peers.link.newerKind') : t('peers.link.unread')
       );
       return;
     }

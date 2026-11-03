@@ -8337,7 +8337,7 @@ remote:
   refused: 'Refused: {why}'
   failed: 'Remote control: {message}'
   controlledAria: Remote control of this character
-  controlledBy: '{names} is controlling this character by remote control.'
+  controlledBy: '{name} is controlling this character by remote control.'
   stopControl: Stop
   stopControlTitle: End their remote control now
 
@@ -8347,6 +8347,10 @@ peers:
   noBuildSecret: this build was made without the registration secret, so it cannot share
   trouble: 'Sharing: {message}'
   keyNot: "Sharing: this character's key could not be kept, so it is not shared: {message}"
+  # What the gateway sent that this build does not read.
+  link:
+    newerKind: the sharing server sent a kind of message from a newer build, and it was ignored
+    unread: the sharing server sent something this build does not read, and it was ignored
   # Remote control: another player watching a shared character's terminal
   # and sending it a line, a move, rest, stop, play or a switch.
   control:

@@ -10,7 +10,7 @@ export type ShareAsked = {
   character: string;
   /** The player it is shared with. */
   player: string;
-  /** Whether Allow remote control starts ticked: it does when that is what was pressed. */
+  /** Whether Allow Remote Control starts ticked: it does when that is what was pressed. */
   control: boolean;
 };
 
@@ -28,7 +28,7 @@ export interface SharePromptProps {
  * player will see everything about the character while both are logged in
  * to this realm, its room included. Cancel is the safe answer, the default
  * focus and what Escape means. Turning a share off asks nothing. Allow
- * remote control lets the other player watch this character's terminal and
+ * Remote Control lets the other player watch this character's terminal and
  * send it the actions both builds understand (`peerControl.ts`), the user's
  * answer of 2026-11-03.
  */

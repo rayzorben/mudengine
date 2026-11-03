@@ -15,6 +15,7 @@ import Histogram from './viz/Histogram';
 import Recency from './viz/Recency';
 import { knownPlayers, playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import type { SessionId } from '@shared/ipc';
+import { errorMessage } from '@shared/values';
 
 export interface PlayersCardProps extends CardChrome {
   /**
@@ -137,7 +138,7 @@ function PlayersCard({
     (name: string) => {
       shares
         .controlOpen(session, name)
-        .then(setControlRefused, (error: unknown) => setControlRefused(String(error)));
+        .then(setControlRefused, (error: unknown) => setControlRefused(errorMessage(error)));
     },
     [shares, session]
   );

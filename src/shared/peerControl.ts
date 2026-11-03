@@ -5,8 +5,8 @@
  * The settings, loops and cards are not reached: an action is one of
  * `CONTROL_ACTIONS`, read field by field, and one this build does not know is
  * refused with its name, never fatal. The two switches are the toolbar's own
- * presses (the master switch is the one the toolbar keeps in the file, as
- * the toolbar does). Nothing here can name the account or a share. See `mudengine-session` › *Peers*.
+ * presses; the master switch is saved to the file as the toolbar saves it.
+ * Nothing here can name the account or a share. See `mudengine-session` › *Peers*.
  */
 import { asDirection, type Direction } from './world';
 import { isRecord, memberOf } from './values';

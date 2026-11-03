@@ -68,7 +68,7 @@ export default function PlayerSharing({
           />
         )}
         {/* Raising a share asks again; lowering it ends control at once. */}
-        {grant.share !== 'off' && (
+        {grant.share !== 'off' && character !== null && (
           <CheckField
             checked={grant.share === 'control'}
             hint={t('cards.player.share.controlHint')}

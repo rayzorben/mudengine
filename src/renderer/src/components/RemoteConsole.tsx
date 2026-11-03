@@ -17,6 +17,7 @@ import type { TerminalConfig } from '@shared/config';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { ControlAction, ControlAnswer } from '@shared/peerControl';
 import type { TerminalPalette } from '@shared/themes';
+import { errorMessage } from '@shared/values';
 import { DIRECTIONS } from '@shared/world';
 
 export type RemoteConsoleApi = Pick<
@@ -40,6 +41,8 @@ const NO_RESULT = (): void => {};
 function RemoteConsole({ api, session, name, settings, fontStack, palette }: RemoteConsoleProps) {
   const handle = useRef<TerminalHandle | null>(null);
   const seq = useRef(0);
+  // Pieces that come before the backlog is written wait here, so none is drawn twice or above older text.
+  const held = useRef<string[] | null>([]);
   const [line, setLine] = useState('');
   const [confirm, setConfirm] = useState<Extract<ControlAnswer, { r: 'confirm' }> | null>(null);
 
@@ -52,8 +55,16 @@ function RemoteConsole({ api, session, name, settings, fontStack, palette }: Rem
   const ready = useCallback(
     (terminal: TerminalHandle) => {
       handle.current = terminal;
-      api.controlBacklog(session).then(write, (error: unknown) => {
-        terminal.notice(t('remote.failed', { message: String(error) }));
+      const release = (backlog: string): void => {
+        const waiting = held.current ?? [];
+        held.current = null;
+        // What came while main answered is already in the backlog it answered with, or after it.
+        const joined = waiting.join('');
+        write(joined.length > 0 && backlog.endsWith(joined) ? backlog : backlog + joined);
+      };
+      api.controlBacklog(session).then(release, (error: unknown) => {
+        release('');
+        terminal.notice(t('remote.failed', { message: errorMessage(error) }));
       });
     },
     [api, session, write]
@@ -61,7 +72,9 @@ function RemoteConsole({ api, session, name, settings, fontStack, palette }: Rem
   useEffect(
     () =>
       api.onControlText(({ session: from, payload }) => {
-        if (from === session) write(payload);
+        if (from !== session) return;
+        if (held.current !== null) held.current.push(payload);
+        else write(payload);
       }),
     [api, session, write]
   );
@@ -75,7 +88,8 @@ function RemoteConsole({ api, session, name, settings, fontStack, palette }: Rem
             handle.current?.notice(t('remote.refused', { why: answer.why }));
           if (answer.r === 'confirm') setConfirm(answer);
         },
-        (error: unknown) => handle.current?.notice(t('remote.failed', { message: String(error) }))
+        (error: unknown) =>
+          handle.current?.notice(t('remote.failed', { message: errorMessage(error) }))
       );
     },
     [api, session]
