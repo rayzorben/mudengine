@@ -74,6 +74,10 @@ export class HostTrips implements SessionModule {
     for (const trip of this.trips) trip.reset();
   }
 
+  dispose(): void {
+    this.cash.dispose();
+  }
+
   /** A death: wherever any was going is somewhere else now. */
   abandon(): void {
     for (const trip of this.trips) trip.abandon();

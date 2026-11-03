@@ -516,6 +516,17 @@ describe('going round', () => {
     expect(runner.progress.laps).toBe(1);
   });
 
+  /* A closed tab: the dwell's clock goes with the session, and no leg is planned after. */
+  it('walks nowhere once disposed mid-dwell', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, state());
+    runner.onWalkEnded(true, null, state());
+    runner.dispose();
+    vi.advanceTimersByTime(2_100);
+    expect(walked).toEqual(['Arena']);
+  });
+
   it('holds the dwell open while a fight runs', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});

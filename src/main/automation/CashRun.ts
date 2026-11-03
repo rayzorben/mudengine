@@ -147,6 +147,11 @@ export class CashRun implements SessionModule {
     this.run = null;
   }
 
+  /** The session is gone: a look or a bank wait still on the clock does nothing after it. */
+  dispose(): void {
+    this.clear();
+  }
+
   /** A trip off the loop under way: the lap held, not the opening looks or the collecting. */
   get busy(): boolean {
     const run = this.run;

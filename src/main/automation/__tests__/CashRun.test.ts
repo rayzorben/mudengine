@@ -405,6 +405,18 @@ describe('a cash run', () => {
     );
   });
 
+  /* A closed tab: the look's wait goes with the session, and no second look follows. */
+  it('looks at nothing more once disposed mid-look', () => {
+    const run = make();
+    expect(run.start(ASK, current)).toBeNull();
+    drain();
+    expect(sent).toEqual(['look token of Silvermere']);
+    run.dispose();
+    vi.advanceTimersByTime(tuning().cashRun.lookMs + 1);
+    drain();
+    expect(sent).toEqual(['look token of Silvermere']);
+  });
+
   it('ends, and the loop goes on, when every token is used up', () => {
     const run = make();
     started(run, [0, 0]);

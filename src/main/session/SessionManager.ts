@@ -2462,7 +2462,7 @@ export class SessionManager {
     this.forgetPlayers();
     this.feed.dispose();
     this.reconsiderTimer?.clear();
-    this.reconsiderTimer = null;
+    this.loops.dispose();
     this.publisher.dispose();
     this.queue.dispose();
     this.link.dispose();

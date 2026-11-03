@@ -654,6 +654,11 @@ export class LoopRunner implements SessionModule {
     return null;
   }
 
+  /** The session is gone: a dwell or a wait still on the clock plans nothing after it. */
+  dispose(): void {
+    this.clearTimer();
+  }
+
   reset(): void {
     this.clearTimer();
     this.loop = null;
