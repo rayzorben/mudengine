@@ -36,6 +36,7 @@ import { errorMessage } from '../../shared/values';
 import { platformUserData } from '../app/home';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { fileUnderHome } from './chosen';
 import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Host';
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
@@ -180,6 +181,8 @@ export function createWebHost(layout: Layout): Host {
   let windows: ClientHooks['windows'] | null = null;
   /** Where a file the tab asks to save is written, known once the client opens. */
   let exportsDir: string | null = null;
+  /** The home a tab picks from, known once the client opens. */
+  let homeRoot: string | null = null;
   const downloads = new Downloads();
 
   const transport: Transport = {
@@ -286,6 +289,7 @@ export function createWebHost(layout: Layout): Host {
 
     open: (hooks) => {
       exportsDir = hooks.home.state('exports');
+      homeRoot = hooks.home.root;
       windows = hooks.windows;
       log = new WebLog(() => hooks.logDirectory());
       // What each tab is sent, by channel (`TabTraffic`).
@@ -358,6 +362,9 @@ export function createWebHost(layout: Layout): Host {
       console.warn('web: asked for a native file picker; there is none here.');
       return Promise.resolve(null);
     },
+    // The tab's picker lists only the home, so only a file under it was picked there.
+    chosenPath: (_caller, file) =>
+      homeRoot === null ? Promise.resolve(null) : fileUnderHome(homeRoot, file),
     /*
      * No dialog on the machine the files are on, so the file goes to
      * `exports/` under the home, under the suggested name or the next free

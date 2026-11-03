@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { LAYOUT_FILE_KIND } from '../../../shared/cardLayoutFile';
 import { Invoke, type SavedFile, type TextFileRead } from '../../../shared/ipc';
+import { fileUnderHome } from '../../host/chosen';
 import { handleLayoutFiles } from '../layoutFiles';
 
 type Handler = (caller: unknown, ...args: unknown[]) => Promise<unknown>;
@@ -29,6 +30,8 @@ describe('card layout files', () => {
           handle: (channel: string, handler: Handler) => handlers.set(channel, handler)
         } as never,
         chooseFile: async () => picked,
+        // As a browser tab's: anything under the directory it picks from.
+        chosenPath: (_caller, file) => fileUnderHome(dir, file),
         chooseSaveFile: async () => picked,
         deliver: () => null
       }
@@ -54,6 +57,24 @@ describe('card layout files', () => {
     const other = path.join(dir, 'other.json');
     fs.writeFileSync(other, JSON.stringify({ password: 'hunter2' }));
     expect((await read(other)).kind).toBe('refused');
+  });
+
+  it('reads nothing the window could not have picked, and says nothing of it', async () => {
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'layout-elsewhere-'));
+    try {
+      const outside = path.join(elsewhere, 'hunting-layout.json');
+      fs.writeFileSync(outside, LAYOUT);
+      const there = await read(outside);
+      const missing = await read(path.join(elsewhere, 'missing.json'));
+      expect(there.kind).toBe('refused');
+      // The same answer whether the file exists or not, and never its text.
+      expect(JSON.stringify(missing).replace('missing.json', 'hunting-layout.json')).toBe(
+        JSON.stringify(there)
+      );
+      expect(JSON.stringify(there)).not.toContain('Hunting');
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 
   it('refuses to write text that is not a card layout', async () => {

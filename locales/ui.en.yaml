@@ -70,6 +70,7 @@ app:
     notALayout: This is not a card layout saved by mudengine.
     saveFailed: 'The card layout could not be saved: {message}'
   files:
+    notPicked: '{file} was not picked in this window, so it was not read.'
     unreadable: 'Could not read {file}: {message}'
   errorBoundary:
     body: Active character sessions are unaffected. Reload to restore the interface.

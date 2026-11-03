@@ -33,20 +33,26 @@ export async function writeChosenFile(
 export type ChosenRead = { ok: true; bytes: Buffer } | { ok: false; error: string };
 
 /**
- * Read a file a picker returned. Its size is asked before it is read, so a
- * device, a directory or a huge file picked by mistake is refused without
- * main holding it; `refused` is the sentence for that, and for no path at all.
+ * Read a file a picker returned. The host first says the window could have
+ * picked it (`Host.chosenPath`), so a window naming any other file learns
+ * nothing about it. Its size is asked before it is read, so a device, a
+ * directory or a huge file picked by mistake is refused without main holding
+ * it; `refused` is the sentence for that, and for no path at all.
  */
 export async function readChosenFile(
+  host: Pick<Host, 'chosenPath'>,
+  caller: Caller,
   rawFile: unknown,
   maxBytes: number,
   refused: string
 ): Promise<ChosenRead> {
   if (typeof rawFile !== 'string' || rawFile.length === 0) return { ok: false, error: refused };
   try {
-    const info = await fs.promises.stat(rawFile);
+    const file = await host.chosenPath(caller, rawFile);
+    if (file === null) return { ok: false, error: t('app.files.notPicked', { file: rawFile }) };
+    const info = await fs.promises.stat(file);
     if (!info.isFile() || info.size > maxBytes) return { ok: false, error: refused };
-    return { ok: true, bytes: await fs.promises.readFile(rawFile) };
+    return { ok: true, bytes: await fs.promises.readFile(file) };
   } catch (error) {
     return { ok: false, error: unreadable(rawFile, error) };
   }

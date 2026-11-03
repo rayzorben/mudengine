@@ -20,7 +20,7 @@ import { readChosenFile, unreadable, writeChosenFile } from './chosenFile';
 
 export interface TransferDeps {
   home: Home;
-  host: Pick<Host, 'transport' | 'chooseFile' | 'chooseSaveFile' | 'deliver'>;
+  host: Pick<Host, 'transport' | 'chooseFile' | 'chosenPath' | 'chooseSaveFile' | 'deliver'>;
   /** Whether a loaded character already uses this id, file or no file. */
   loaded(id: string): boolean;
   /** An import has written its files: the stores read them now rather than at their next check. */
@@ -61,9 +61,10 @@ export function handleCharacterTransfer({ home, host, loaded, imported }: Transf
     })
   );
 
-  handle(Invoke.importCharacter, async (_caller, rawFile: unknown): Promise<CharacterImport> => {
+  handle(Invoke.importCharacter, async (caller, rawFile: unknown): Promise<CharacterImport> => {
     const { maxImportBytes } = tuning().transfer;
-    const read = await readChosenFile(rawFile, maxImportBytes, t('app.transfer.notACharacter'));
+    const notACharacter = t('app.transfer.notACharacter');
+    const read = await readChosenFile(host, caller, rawFile, maxImportBytes, notACharacter);
     if (!read.ok) return { kind: 'refused', error: read.error };
     let result: CharacterImport;
     try {

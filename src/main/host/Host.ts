@@ -196,6 +196,13 @@ export interface Host {
   /** A native file picker. Null when dismissed — or when there is no such thing. */
   chooseFile(caller: Caller, choice: FileChoice): Promise<string | null>;
   /**
+   * The path main may read for a file a window sends back as picked, or null
+   * when that window could not have picked it (`host/chosen.ts`): the
+   * desktop's dialog's last answer to it, or a file under the home for a
+   * browser tab. Throws the filesystem's error for a path it cannot resolve.
+   */
+  chosenPath(caller: Caller, file: string): Promise<string | null>;
+  /**
    * Where to write a file: the player's choice in a native dialog, or, where
    * the host has none on the machine the files are on, a free name under
    * `exports/` in the home. Null when dismissed.

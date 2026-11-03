@@ -41,6 +41,44 @@ export function isWithin(root: string, candidate: string): boolean {
   );
 }
 
+/** Where a path a window named lies, against the home root, resolved. */
+export type ResolvedPath =
+  | { kind: 'within'; rootReal: string; real: string }
+  | { kind: 'outside'; asked: string }
+  | { kind: 'unreadable'; at: string; error: unknown };
+
+/**
+ * A path a window named, relative to the root or absolute, resolved to its
+ * real path and kept only when that is the root or under it.
+ *
+ * Refused on the *stated* path before the filesystem is asked anything.
+ * Resolving first would answer a path outside the root with "does not exist"
+ * or "could not be read", a message that says, one path at a time, what is on
+ * the machine beyond the home. The root as given is accepted beside its real
+ * path, because a client whose home sits under a symlink states its own paths
+ * in the spelling it was configured with. The real path is checked again, so
+ * a symlink out of the tree is outside.
+ */
+export async function resolveWithin(root: string, target: string): Promise<ResolvedPath> {
+  let rootReal: string;
+  try {
+    rootReal = await fs.realpath(root);
+  } catch (error) {
+    return { kind: 'unreadable', at: root, error };
+  }
+  const asked = path.resolve(rootReal, target);
+  if (!isWithin(path.resolve(root), asked) && !isWithin(rootReal, asked)) {
+    return { kind: 'outside', asked };
+  }
+  let real: string;
+  try {
+    real = await fs.realpath(asked);
+  } catch (error) {
+    return { kind: 'unreadable', at: asked, error };
+  }
+  return isWithin(rootReal, real) ? { kind: 'within', rootReal, real } : { kind: 'outside', asked };
+}
+
 export async function listHome(
   root: string,
   target: string | null,
@@ -56,33 +94,13 @@ export async function listHome(
     error
   });
 
-  let rootReal: string;
-  try {
-    rootReal = await fs.realpath(root);
-  } catch (error) {
-    return refused(root, wording.unreadable(root, errorMessage(error)));
+  const asked = target === null || target.trim().length === 0 ? '' : target;
+  const resolved = await resolveWithin(root, asked);
+  if (resolved.kind === 'outside') return refused(resolved.asked, wording.outside());
+  if (resolved.kind === 'unreadable') {
+    return refused(resolved.at, wording.unreadable(resolved.at, errorMessage(resolved.error)));
   }
-
-  const asked =
-    target === null || target.trim().length === 0 ? rootReal : path.resolve(rootReal, target);
-  /*
-   * Refused on the *stated* path before the filesystem is asked anything.
-   * Resolving first would answer a path outside the root with "does not
-   * exist" or "could not be read" — a message that says, one path at a time,
-   * what is on the machine beyond the home. The root as given is accepted
-   * beside its real path, because a client whose home sits under a symlink
-   * states its own paths in the spelling it was configured with.
-   */
-  if (!isWithin(path.resolve(root), asked) && !isWithin(rootReal, asked)) {
-    return refused(asked, wording.outside());
-  }
-  let real: string;
-  try {
-    real = await fs.realpath(asked);
-  } catch (error) {
-    return refused(asked, wording.unreadable(asked, errorMessage(error)));
-  }
-  if (!isWithin(rootReal, real)) return refused(asked, wording.outside());
+  const { rootReal, real } = resolved;
 
   let dir = real;
   let selected: string | null = null;

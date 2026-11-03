@@ -17,7 +17,7 @@ import { t } from './i18n';
 import { tuning } from './tuning';
 
 export interface LayoutFilesDeps {
-  host: Pick<Host, 'transport' | 'chooseFile' | 'chooseSaveFile' | 'deliver'>;
+  host: Pick<Host, 'transport' | 'chooseFile' | 'chosenPath' | 'chooseSaveFile' | 'deliver'>;
 }
 
 /** What a card layout file is called on disk; the dialogs filter on it. */
@@ -61,9 +61,10 @@ export function handleLayoutFiles({ host }: LayoutFilesDeps): void {
     })
   );
 
-  handle(Invoke.readCardLayout, async (_caller, rawFile: unknown): Promise<TextFileRead> => {
+  handle(Invoke.readCardLayout, async (caller, rawFile: unknown): Promise<TextFileRead> => {
     const notALayout = t('app.cardLayout.notALayout');
-    const read = await readChosenFile(rawFile, tuning().transfer.maxLayoutBytes, notALayout);
+    const { maxLayoutBytes } = tuning().transfer;
+    const read = await readChosenFile(host, caller, rawFile, maxLayoutBytes, notALayout);
     if (!read.ok) return { kind: 'refused', error: read.error };
     const text = read.bytes.toString('utf8');
     return layoutFileValue(text) === null

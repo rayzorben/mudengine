@@ -30,6 +30,7 @@ import type { CpuProfile, ProfilerPort } from '../../shared/profiler';
 import { t } from '../app/i18n';
 import { ownTheProfile } from '../app/instance';
 import type { QuitAnswer } from '../app/quit';
+import { PickedFiles } from './chosen';
 import type { Caller, ClientHooks, Host, Layout, Transport } from './Host';
 import { staysOnClient } from './navigation';
 import { RepeatedCharacters } from './repeats';
@@ -62,6 +63,9 @@ export function createElectronHost(layout: Layout): Host {
         ((await contents.debugger.sendCommand('Profiler.stop')) as { profile: CpuProfile }).profile
     };
   }
+
+  /** What each window's own file dialog last returned, the one file it may then have read. */
+  const picks = new PickedFiles();
 
   /** Each window's repeated characters, so a reply's replay and a push share one record. */
   const repeats = new WeakMap<Electron.WebContents, RepeatedCharacters>();
@@ -206,6 +210,7 @@ export function createElectronHost(layout: Layout): Host {
 
     window.on('closed', () => {
       recording.dispose();
+      picks.forget(window.id);
       client.windows.remove(window.id);
       /*
        * Its characters go back to the main window rather than with it. Closing
@@ -408,8 +413,12 @@ export function createElectronHost(layout: Layout): Host {
       const result = owner
         ? await dialog.showOpenDialog(owner, options)
         : await dialog.showOpenDialog(options);
-      return result.canceled ? null : (result.filePaths[0] ?? null);
+      return picks.remember(
+        caller.windowId,
+        result.canceled ? null : (result.filePaths[0] ?? null)
+      );
     },
+    chosenPath: (caller, file) => Promise.resolve(picks.chosen(caller.windowId, file)),
 
     chooseSaveFile: async (caller, choice) => {
       const owner = BrowserWindow.fromId(caller.windowId);
