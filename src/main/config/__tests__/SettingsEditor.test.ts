@@ -12,6 +12,7 @@ import { ServerStore } from '../ServerStore';
 import { LoopStore } from '../LoopStore';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import { UNCATEGORISED, type Loop } from '../../../shared/loops';
+import { NO_PEER_GRANT } from '../../../shared/peerGrant';
 
 let dir = '';
 let home: Home;
@@ -1663,7 +1664,8 @@ describe('one player’s @ command permissions', () => {
         allow: ['health'],
         deny: [],
         allowAll: false,
-        autoInvite: false
+        autoInvite: false,
+        ...NO_PEER_GRANT
       }).ok
     ).toBe(true);
     expect(grantsOf('vaelor')).toEqual({
@@ -1683,10 +1685,40 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     const text = fs.readFileSync(home.profile('vaelor').file, 'utf8');
     expect(text).toMatch(/players:\n\s+soul:\n\s+allow:\n\s+- health/);
+  });
+
+  it('writes a share and its pinned keys only while they say something', () => {
+    const key = 'K'.repeat(43);
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: [],
+      deny: [],
+      allowAll: false,
+      autoInvite: false,
+      share: 'state',
+      receive: true,
+      keys: [key, key]
+    });
+    expect(grantsOf('vaelor')['soul']).toEqual({
+      allow: [],
+      deny: [],
+      autoInvite: false,
+      share: 'state',
+      receive: true,
+      keys: [key]
+    });
+    editor.setRemoteGrant('vaelor', 'Soul', {
+      allow: ['health'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false,
+      ...NO_PEER_GRANT
+    });
+    expect(grantsOf('vaelor')['soul']).toEqual({ allow: ['health'], deny: [], autoInvite: false });
   });
 
   it('writes allowAll only while it is on, and reads it back', () => {
@@ -1694,7 +1726,8 @@ describe('one player’s @ command permissions', () => {
       allow: [],
       deny: ['do'],
       allowAll: true,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')['soul']).toEqual({
       allow: [],
@@ -1706,7 +1739,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')['soul']).toEqual({ allow: ['health'], deny: [], autoInvite: false });
   });
@@ -1716,7 +1750,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: ['do'],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')['rend']).toEqual({
       allow: ['health'],
@@ -1735,7 +1770,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health', 'do'],
       deny: ['do'],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')['soul']).toEqual({
       allow: ['health'],
@@ -1749,7 +1785,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health', 'health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')['soul']!.allow).toEqual(['health']);
   });
@@ -1764,13 +1801,15 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     editor.setRemoteGrant('vaelor', 'Soul', {
       allow: [],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(remotesOf('vaelor')['players']).toBeUndefined();
   });
@@ -1781,14 +1820,16 @@ describe('one player’s @ command permissions', () => {
       allow: [],
       deny: [],
       allowAll: false,
-      autoInvite: true
+      autoInvite: true,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')).toEqual({ soul: { allow: [], deny: [], autoInvite: true } });
     editor.setRemoteGrant('vaelor', 'Soul', {
       allow: [],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(remotesOf('vaelor')['players']).toBeUndefined();
   });
@@ -1798,19 +1839,22 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     editor.setRemoteGrant('vaelor', 'Yang', {
       allow: ['where'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     editor.setRemoteGrant('vaelor', 'Soul', {
       allow: [],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')).toEqual({ yang: { allow: ['where'], deny: [], autoInvite: false } });
   });
@@ -1820,13 +1864,15 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     editor.setRemoteGrant('vaelor', 'SOUL', {
       allow: ['where'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(grantsOf('vaelor')).toEqual({ soul: { allow: ['where'], deny: [], autoInvite: false } });
   });
@@ -1836,14 +1882,16 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     const after = fs.readFileSync(home.profile('vaelor').file, 'utf8');
     editor.setRemoteGrant('vaelor', 'Soul', {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(fs.readFileSync(home.profile('vaelor').file, 'utf8')).toBe(after);
   });
@@ -1861,7 +1909,8 @@ describe('one player’s @ command permissions', () => {
         allow: ['do'],
         deny: [],
         allowAll: false,
-        autoInvite: false
+        autoInvite: false,
+        ...NO_PEER_GRANT
       }).ok
     ).toBe(true);
     expect(grantsOf('sparse')['soul']!.allow).toEqual(['do']);
@@ -1875,7 +1924,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(fs.readFileSync(scope.file, 'utf8')).toContain('# Mine, and I wrote it.');
   });
@@ -1885,7 +1935,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     expect(result.ok).toBe(false);
     expect(fs.existsSync(home.profile('nobody-at-all').file)).toBe(false);
@@ -1897,7 +1948,8 @@ describe('one player’s @ command permissions', () => {
         allow: ['health'],
         deny: [],
         allowAll: false,
-        autoInvite: false
+        autoInvite: false,
+        ...NO_PEER_GRANT
       }).ok
     ).toBe(false);
   });
@@ -1913,7 +1965,8 @@ describe('one player’s @ command permissions', () => {
       allow: ['health'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     const after = read('vaelor');
     expect(after['name']).toEqual(before['name']);
@@ -1982,7 +2035,8 @@ describe('the gang list and the gangpath switch', () => {
       allow: ['do'],
       deny: [],
       allowAll: false,
-      autoInvite: false
+      autoInvite: false,
+      ...NO_PEER_GRANT
     });
     editor.setGangRemotes('vaelor', ['health']);
     const players = remotesOf('vaelor')['players'] as Record<string, unknown>;

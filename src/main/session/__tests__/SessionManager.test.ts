@@ -45,6 +45,7 @@ import type { QuestWatched } from '../../../shared/quests';
 import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../../shared/belongings';
 import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
+import { NO_PEER_GRANT } from '../../../shared/peerGrant';
 
 /**
  * These drive a real socket rather than a mocked client: framing sits directly
@@ -5039,8 +5040,8 @@ describe('a follower pacing the loop', () => {
           // the pacing pair reaching the loop, not about who was granted it.
           party: [],
           players: {
-            soul: { allow: ['wait', 'ok'], deny: [], allowAll: false, autoInvite: false },
-            yang: { allow: ['wait', 'ok'], deny: [], allowAll: false, autoInvite: false }
+            soul: { allow: ['wait', 'ok'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT },
+            yang: { allow: ['wait', 'ok'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
           }
         }
       }
@@ -7934,7 +7935,8 @@ describe('starting and stopping a movement', () => {
             allow: ['stop', 'rego', 'loop', 'goto', 'comeback-room'],
             deny: [],
             allowAll: false,
-            autoInvite: false
+            autoInvite: false,
+            ...NO_PEER_GRANT
           }
         }
       },

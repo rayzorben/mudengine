@@ -26,7 +26,9 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/node/**/*.ts",
+    "src/gateway/**/*.ts",
     "src/shared/**/*.ts",
     "electron.vite.config.ts"
-  ]
+  ],
+  "exclude": ["src/gateway/__tests__/**"]
 }

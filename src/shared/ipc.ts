@@ -28,6 +28,7 @@ import type { CharacterState } from './character';
 import type { DecisionKind } from './decisionSettings';
 import type { PlayerRegistry } from './players';
 import type { PortraitChange, PortraitView } from './portrait';
+import type { ShareView } from './peers';
 import type { RoomArtView } from './roomArt';
 import type { DebugRecord } from './debug';
 import type { UnreadLine } from './unread';
@@ -812,6 +813,8 @@ export const Invoke = {
   treatMonster: 'settings:treat-monster',
   /** The character's portrait as it stands, for a panel that opens (todo 20261019-0931-01). */
   portrait: 'art:portrait',
+  /** What the character shares and is shared, for a window that opens (todo 20261031-1156-01). */
+  shares: 'peers:shares',
   /** The character's portrait written to a file the player picks. */
   savePortrait: 'art:save-portrait',
   /** The picture of the room the character is in, for a game view that opens (todo 20261020-2015-01). */
@@ -1238,6 +1241,8 @@ export const Push = {
   players: 'session:players',
   /** The character's portrait, when it or why it is what it is changed (todo 20261019-0931-01). */
   portrait: 'art:portrait-changed',
+  /** What the character shares and is shared, when it changed (todo 20261031-1156-01). */
+  shares: 'peers:shares-changed',
   /** The picture of the room the character is in, when it changed (todo 20261020-2015-01). */
   roomArt: 'art:room-changed',
   /** Route-walk progress, on change. */
@@ -1456,6 +1461,8 @@ export interface IpcApi {
   treatMonster(session: SessionId, mob: string, treat: MobTreatment | null): Promise<string | null>;
   /** The character's portrait and why it is what it is; asks the art server nothing. */
   portrait(session: SessionId): Promise<PortraitView>;
+  /** What the character shares and is shared, as main holds it. */
+  shares(session: SessionId): Promise<ShareView>;
   /** The character's portrait, saved where the player picks (a browser tab downloads it). */
   savePortrait(session: SessionId): Promise<SavedFile>;
   /** The picture of the room the character is in, as main holds it; asks the art server nothing. */
@@ -1882,6 +1889,7 @@ export interface IpcApi {
   onCharacter(handler: (message: Addressed<CharacterState>) => void): () => void;
   onPlayers(handler: (message: Addressed<PlayerRegistry>) => void): () => void;
   onPortrait(handler: (message: Addressed<PortraitChange>) => void): () => void;
+  onShares(handler: (message: Addressed<ShareView>) => void): () => void;
   onRoomArt(handler: (message: Addressed<RoomArtView>) => void): () => void;
   onWalk(handler: (message: Addressed<WalkProgress>) => void): () => void;
   onLoop(handler: (progress: Addressed<LoopProgress>) => void): () => void;
@@ -1924,6 +1932,7 @@ export const PUSH_METHODS = [
   'onCharacter',
   'onPlayers',
   'onPortrait',
+  'onShares',
   'onRoomArt',
   'onWalk',
   'onLoop',

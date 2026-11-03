@@ -7,6 +7,7 @@ import { constants as zlibConstants, deflateRawSync, inflateRawSync } from 'node
 import {
   acceptKey,
   acceptUpgrade,
+  connectWebSocket,
   frame,
   isWebSocketUpgrade,
   OPCODE,
@@ -467,5 +468,71 @@ describe('permessage-deflate', () => {
     expect(bomb.length).toBeLessThan(126);
     socket.write(masked(OPCODE.text, bomb, true, true));
     expect(await closeCode).toBe(1009);
+  });
+});
+
+describe('the client side', () => {
+  const dial = (): Promise<WebSocketConnection> =>
+    connectWebSocket(`ws://127.0.0.1:${port}/ws`, { ...GENEROUS, timeoutMs: 5000 });
+
+  it('masks what it sends and reads what the server sends, deflated or not', async () => {
+    const client = await dial();
+    const connection = accepted[0]!;
+    const long = JSON.stringify({ room: 'Town Square '.repeat(60) });
+    const atServer = nextMessage(connection);
+    client.send(long);
+    expect(await atServer).toBe(long);
+    const atClient = nextMessage(client);
+    connection.send(long);
+    expect(await atClient).toBe(long);
+    const short = nextMessage(client);
+    connection.send('{"k":"beat"}');
+    expect(await short).toBe('{"k":"beat"}');
+    client.close();
+  });
+
+  it('hears the pong to its own ping', async () => {
+    const client = await dial();
+    const pong = new Promise<void>((resolve) => {
+      client.onPong = resolve;
+    });
+    client.ping();
+    await pong;
+    client.close();
+  });
+
+  it('is refused by a server that answers without upgrading', async () => {
+    server.removeAllListeners('upgrade');
+    server.on('upgrade', (_request, socket: net.Socket) => {
+      socket.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n');
+    });
+    await expect(dial()).rejects.toThrow(/403|could not be reached/);
+  });
+
+  it('refuses a masked frame from the server with 1002', async () => {
+    const raw: net.Socket[] = [];
+    server.removeAllListeners('upgrade');
+    server.on('upgrade', (request: http.IncomingMessage, socket: net.Socket) => {
+      raw.push(socket);
+      // The close frame the client sends is answered by ending this half.
+      socket.on('data', () => socket.end());
+      socket.write(
+        [
+          'HTTP/1.1 101 Switching Protocols',
+          'Upgrade: websocket',
+          'Connection: Upgrade',
+          `Sec-WebSocket-Accept: ${acceptKey(String(request.headers['sec-websocket-key']))}`,
+          '',
+          ''
+        ].join('\r\n')
+      );
+    });
+    const client = await dial();
+    const closedWith = new Promise<number>((resolve) => {
+      client.onClose = (code) => resolve(code);
+    });
+    raw[0]!.write(frame(OPCODE.text, Buffer.from('x'), false, Buffer.from([1, 2, 3, 4])));
+    expect(await closedWith).toBe(1002);
+    raw[0]!.destroy();
   });
 });

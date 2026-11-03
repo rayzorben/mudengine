@@ -4,6 +4,7 @@ import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 
 import { ON_DISK, type EditResult, type YamlFiles } from './YamlFile';
 import { grantIsEmpty, type RemoteGrant, type RemoteName } from '../../shared/remotes';
+import { writtenPeerGrant } from '../../shared/peerGrant';
 import { unknownWrites, type LayerWrite } from '../../shared/extensions';
 import { LoopStore, readLoops, type LoopLists } from './LoopStore';
 import { ServerStore, type ServerList } from './ServerStore';
@@ -19,6 +20,7 @@ import {
 } from '../../shared/config';
 import { type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
 import { type RetreatConfig } from '../../shared/safety';
+import { asServiceAddress } from '../../shared/serviceAddress';
 import { fileSlug, isLoopFileName } from '../../shared/files';
 import {
   loopFileName,
@@ -54,7 +56,6 @@ import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases'
 import { statedKeys } from '../../shared/keys';
 import { normalizeMobRules, treated, type MobTreatment } from '../../shared/mobRules';
 import { mobKey } from '../../shared/world';
-import { asArtServer } from '../../shared/artConfig';
 
 /**
  * Writing what a settings screen collects into the files that own it.
@@ -579,7 +580,10 @@ export class SettingsEditor {
       allow,
       deny,
       allowAll: grant.allowAll,
-      autoInvite: grant.autoInvite
+      autoInvite: grant.autoInvite,
+      share: grant.share,
+      receive: grant.receive,
+      keys: [...new Set(grant.keys)]
     };
 
     return this.files.edit(file, {
@@ -598,8 +602,13 @@ export class SettingsEditor {
           return;
         }
         // `allowAll` only while on: absent reads as off, and a key per grant saying so is noise.
-        const { allowAll, ...named } = kept;
-        const written = allowAll ? kept : named;
+        // Sharing only where it says something, for the same reason.
+        const { allowAll, share, receive, keys, ...named } = kept;
+        const written = {
+          ...named,
+          ...(allowAll ? { allowAll } : {}),
+          ...writtenPeerGrant({ share, receive, keys })
+        };
         document.setIn(['automation', 'remotes', 'players', key], document.createNode(written));
         /*
          * Block style, explicitly, because the map this writes into is usually
@@ -1137,6 +1146,7 @@ export class SettingsEditor {
       },
       gameView: { ...config.gameView },
       art: { ...config.art },
+      peers: { ...config.peers },
       rooms: statedRoomNames(stated['rooms']),
       logging: {
         enabled: config.logging.enabled,
@@ -1214,11 +1224,18 @@ export class SettingsEditor {
    * default means anyway.
    */
   saveGlobal(draft: GlobalDraft): EditResult {
-    const artServer = asArtServer(draft.art.server);
+    const artServer = asServiceAddress(draft.art.server);
     if (artServer === null) {
       return {
         ok: false,
         error: t('errors.settings.artServerInvalid', { server: draft.art.server })
+      };
+    }
+    const peersServer = asServiceAddress(draft.peers.server);
+    if (peersServer === null) {
+      return {
+        ok: false,
+        error: t('errors.settings.peersServerInvalid', { server: draft.peers.server })
       };
     }
     const written = this.files.edit(this.home.options, {
@@ -1279,6 +1296,8 @@ export class SettingsEditor {
         set(['art', 'enabled'], draft.art.enabled);
         set(['art', 'rooms'], draft.art.rooms);
         set(['art', 'server'], artServer);
+        set(['peers', 'enabled'], draft.peers.enabled);
+        set(['peers', 'server'], peersServer);
         // Only when changed, so a hand-written list keeps its layout and comments.
         const rooms = document.get('rooms', true);
         const written = writtenRoomNames(draft.rooms);

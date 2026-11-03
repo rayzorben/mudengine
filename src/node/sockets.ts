@@ -1,6 +1,8 @@
 /**
- * The server side of a WebSocket, RFC 6455, in the two hundred lines it takes,
- * for the web host's browser tabs and the peer gateway's installs alike.
+ * A WebSocket, RFC 6455, in the few hundred lines it takes: the server side
+ * for the web host's browser tabs and the peer gateway's installs, and the
+ * client side for an install dialling the gateway (`connectWebSocket`), since
+ * Electron's Node 20 has no WebSocket client.
  *
  * Written rather than depended on, for the reason `yaml` and `mdb-reader` are
  * bundled: the main chunk externalises its dependencies, so a package here is
@@ -23,9 +25,10 @@
  * network layer, off the page's thread, and nothing is kept per socket. A
  * compressed message is inflated under the same cap.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import http, { type IncomingMessage } from 'node:http';
+import https from 'node:https';
 import { constants as zlib, deflateRawSync, inflateRawSync } from 'node:zlib';
-import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
 /** The constant the handshake mixes into the key. It is what the RFC says it is. */
@@ -44,6 +47,14 @@ export const OPCODE = {
 const DEFLATE_TAIL = Buffer.from([0x00, 0x00, 0xff, 0xff]);
 /** The bit a compressed message's first frame carries. */
 const RSV1 = 0x40;
+
+/**
+ * How long a socket this side closed waits for the peer to finish its half
+ * before it is destroyed. A peer that has gone never does, and its socket
+ * would hold its slot, and a client's reconnect, until the operating system
+ * gave up on it.
+ */
+const CLOSE_GRACE_MS = 5000;
 
 /** The extension this server agrees to: each message deflated on its own. */
 const DEFLATE_RESPONSE =
@@ -77,28 +88,41 @@ export function isWebSocketUpgrade(request: IncomingMessage): boolean {
 }
 
 /**
- * One frame, server to client: never masked, which is what the RFC says of
- * a server. Exported for the tests, which are the other side of the wire.
+ * One frame. A server's is never masked and a client's always is, which is
+ * what the RFC says of each; `mask` is the client's four random bytes.
+ * Exported for the tests, which are the other side of the wire.
  */
-export function frame(opcode: number, payload: Buffer, compressed = false): Buffer {
+export function frame(
+  opcode: number,
+  payload: Buffer,
+  compressed = false,
+  mask: Buffer | null = null
+): Buffer {
   const length = payload.length;
   const first = 0x80 | (compressed ? RSV1 : 0) | opcode;
+  const maskBit = mask === null ? 0 : 0x80;
   let header: Buffer;
   if (length < 126) {
-    header = Buffer.from([first, length]);
+    header = Buffer.from([first, maskBit | length]);
   } else if (length < 0x10000) {
     header = Buffer.alloc(4);
     header[0] = first;
-    header[1] = 126;
+    header[1] = maskBit | 126;
     header.writeUInt16BE(length, 2);
   } else {
     header = Buffer.alloc(10);
     header[0] = first;
-    header[1] = 127;
+    header[1] = maskBit | 127;
     header.writeBigUInt64BE(BigInt(length), 2);
   }
-  return Buffer.concat([header, payload]);
+  if (mask === null) return Buffer.concat([header, payload]);
+  const masked = Buffer.alloc(length);
+  for (let i = 0; i < length; i += 1) masked[i] = payload[i]! ^ mask[i & 3]!;
+  return Buffer.concat([header, mask, masked]);
 }
+
+/** Which end of the socket this is: a client masks what it sends, a server never does. */
+export type SocketSide = 'server' | 'client';
 
 export interface ConnectionOptions {
   /** The largest message accepted, declared length included. */
@@ -147,7 +171,8 @@ export class WebSocketConnection {
     private readonly socket: Duplex,
     private readonly options: ConnectionOptions,
     /** `permessage-deflate` was agreed in the handshake. */
-    private readonly deflate = false
+    private readonly deflate = false,
+    private readonly side: SocketSide = 'server'
   ) {
     socket.on('data', (chunk: Buffer) => this.feed(chunk));
     socket.on('error', () => this.socket.destroy());
@@ -181,10 +206,19 @@ export class WebSocketConnection {
 
   private textFrame(payload: Buffer): Buffer {
     if (!this.deflate || payload.length < this.options.deflateMinBytes) {
-      return frame(OPCODE.text, payload);
+      return this.frameOf(OPCODE.text, payload);
     }
     const deflated = deflateRawSync(payload, { finishFlush: zlib.Z_SYNC_FLUSH });
-    return frame(OPCODE.text, deflated.subarray(0, deflated.length - DEFLATE_TAIL.length), true);
+    return this.frameOf(
+      OPCODE.text,
+      deflated.subarray(0, deflated.length - DEFLATE_TAIL.length),
+      true
+    );
+  }
+
+  /** A frame from this side: masked with fresh bytes from a client, as the RFC asks. */
+  private frameOf(opcode: number, payload: Buffer, compressed = false): Buffer {
+    return frame(opcode, payload, compressed, this.side === 'client' ? randomBytes(4) : null);
   }
 
   /**
@@ -200,7 +234,7 @@ export class WebSocketConnection {
 
   ping(): void {
     if (!this.open) return;
-    this.socket.write(frame(OPCODE.ping, Buffer.alloc(0)));
+    this.socket.write(this.frameOf(OPCODE.ping, Buffer.alloc(0)));
   }
 
   /**
@@ -217,8 +251,9 @@ export class WebSocketConnection {
     const payload = Buffer.alloc(2 + text.length);
     payload.writeUInt16BE(code, 0);
     text.copy(payload, 2);
-    this.socket.write(frame(OPCODE.close, payload));
+    this.socket.write(this.frameOf(OPCODE.close, payload));
     this.socket.end();
+    setTimeout(() => this.socket.destroy(), CLOSE_GRACE_MS).unref();
   }
 
   private ended(code: number, reason: string): void {
@@ -267,16 +302,22 @@ export class WebSocketConnection {
         length = Number(wide);
         offset = 10;
       }
-      // The client's frames are masked; that is the protocol, and an unmasked
-      // one is a peer that is not a browser and not our bridge.
-      if (!masked) return this.fail(1002, 'client frame not masked');
+      // A client's frames are masked and a server's are not; that is the
+      // protocol, and either the other way is a peer that is not our bridge.
+      if (this.side === 'server' && !masked) return this.fail(1002, 'client frame not masked');
+      if (this.side === 'client' && masked) return this.fail(1002, 'server frame masked');
       if (length > this.options.maxMessageBytes) return this.fail(1009, 'message too large');
-      if (this.buffer.length < offset + 4 + length) return;
+      const maskBytes = masked ? 4 : 0;
+      if (this.buffer.length < offset + maskBytes + length) return;
 
-      const mask = this.buffer.subarray(offset, offset + 4);
-      const payload = Buffer.from(this.buffer.subarray(offset + 4, offset + 4 + length));
-      for (let i = 0; i < payload.length; i += 1) payload[i] = payload[i]! ^ mask[i & 3]!;
-      this.buffer = this.buffer.subarray(offset + 4 + length);
+      const payload = Buffer.from(
+        this.buffer.subarray(offset + maskBytes, offset + maskBytes + length)
+      );
+      if (masked) {
+        const mask = this.buffer.subarray(offset, offset + 4);
+        for (let i = 0; i < payload.length; i += 1) payload[i] = payload[i]! ^ mask[i & 3]!;
+      }
+      this.buffer = this.buffer.subarray(offset + maskBytes + length);
 
       if (opcode >= 0x8) {
         if (!fin || length > 125) return this.fail(1002, 'control frame malformed');
@@ -326,7 +367,7 @@ export class WebSocketConnection {
       return;
     }
     if (opcode === OPCODE.ping) {
-      this.socket.write(frame(OPCODE.pong, payload));
+      this.socket.write(this.frameOf(OPCODE.pong, payload));
       return;
     }
     if (opcode === OPCODE.pong) {
@@ -390,4 +431,84 @@ export function acceptUpgrade(
   // Bytes that arrived with the upgrade are the first frames.
   if (head.length > 0) socket.unshift(head);
   return connection;
+}
+
+/** What dialling a server needs beyond the frame limits: how long the handshake may take. */
+export interface DialOptions extends ConnectionOptions {
+  timeoutMs: number;
+}
+
+/**
+ * Dial a WebSocket server at `url` (`wss://` or `ws://`) and hand back the
+ * connection once the server has accepted the handshake. It offers
+ * `permessage-deflate` as a browser does, each message on its own. A
+ * refusal, a wrong accept key or a handshake past `timeoutMs` rejects with
+ * what happened; the socket is destroyed either way.
+ */
+export function connectWebSocket(url: string, options: DialOptions): Promise<WebSocketConnection> {
+  return new Promise((resolve, reject) => {
+    let target: URL;
+    try {
+      target = new URL(url);
+    } catch {
+      reject(new Error(`${url} is not an address`));
+      return;
+    }
+    const secure = target.protocol === 'wss:';
+    if (!secure && target.protocol !== 'ws:') {
+      reject(new Error(`${url} is not a WebSocket address`));
+      return;
+    }
+    const key = randomBytes(16).toString('base64');
+    const request = (secure ? https : http).request({
+      hostname: target.hostname.replace(/^\[|\]$/g, ''),
+      port: target.port === '' ? (secure ? 443 : 80) : Number(target.port),
+      path: `${target.pathname}${target.search}`,
+      headers: {
+        Connection: 'Upgrade',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Key': key,
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Extensions': DEFLATE_RESPONSE
+      },
+      timeout: options.timeoutMs
+    });
+    let settled = false;
+    const fail = (reason: string): void => {
+      if (settled) return;
+      settled = true;
+      request.destroy();
+      reject(new Error(reason));
+    };
+    request.on('timeout', () =>
+      fail(`${target.host} did not answer within ${Math.round(options.timeoutMs / 1000)} s`)
+    );
+    request.on('error', (error) => fail(`${target.host} could not be reached: ${error.message}`));
+    request.on('response', (response) => {
+      response.resume();
+      fail(`${target.host} answered ${response.statusCode ?? 'nothing'} instead of a WebSocket`);
+    });
+    request.on('upgrade', (response, socket, head) => {
+      if (settled) {
+        socket.destroy();
+        return;
+      }
+      if (response.headers['sec-websocket-accept'] !== acceptKey(key)) {
+        socket.destroy();
+        fail(`${target.host} answered the handshake with the wrong key`);
+        return;
+      }
+      settled = true;
+      socket.setTimeout(0);
+      const deflate =
+        String(response.headers['sec-websocket-extensions'] ?? '')
+          .split(';')[0]!
+          .trim()
+          .toLowerCase() === 'permessage-deflate';
+      const connection = new WebSocketConnection(socket, options, deflate, 'client');
+      if (head.length > 0) socket.unshift(head);
+      resolve(connection);
+    });
+    request.end();
+  });
 }

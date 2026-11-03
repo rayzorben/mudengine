@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { appearanceOf } from '../appearance';
-import { asArtServer } from '../artConfig';
 import { bandOf } from '../lookBands';
+import { asServiceAddress } from '../serviceAddress';
 
 /* GreaterMUD `Player.cs` GetHealthDesc .. GetWillpowerDesc (todo 20261019-0931-01). */
 describe('the look phrase for a stat', () => {
@@ -54,12 +54,12 @@ describe('the appearance a look states', () => {
   });
 });
 
-describe('the art server’s address', () => {
+describe('a service’s address', () => {
   it('takes https, and http only on this machine', () => {
-    expect(asArtServer('https://art.example/')).toBe('https://art.example');
-    expect(asArtServer('http://127.0.0.1:8190')).toBe('http://127.0.0.1:8190');
-    expect(asArtServer('http://art.example')).toBeNull();
-    expect(asArtServer('https://art.example/?key=1')).toBeNull();
-    expect(asArtServer('art.example')).toBeNull();
+    expect(asServiceAddress('https://art.example/')).toBe('https://art.example');
+    expect(asServiceAddress('http://127.0.0.1:8190')).toBe('http://127.0.0.1:8190');
+    expect(asServiceAddress('http://art.example')).toBeNull();
+    expect(asServiceAddress('https://art.example/?key=1')).toBeNull();
+    expect(asServiceAddress('art.example')).toBeNull();
   });
 });

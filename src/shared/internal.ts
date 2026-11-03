@@ -680,6 +680,29 @@ const TUNING_DEFAULTS = {
     /** The shortest, so a server naming 0 is not asked in a tight loop. */
     pollLeastMs: 1_000
   },
+  /** The sharing gateway's client (todo 20261031-1156-01): `PeerLink`, `PeerBook`. */
+  peers: {
+    /**
+     * A sheet not heard of for this long counts as none: three of the
+     * sharer's `freshEveryMs` missed is a link gone quiet, not a character
+     * standing still.
+     */
+    staleMs: 90_000,
+    /** How often a sharer whose sheet has not changed says it is still current, by an empty patch. */
+    freshEveryMs: 30_000,
+    /** How long the handshake and one registration request may take. */
+    requestMs: 20_000,
+    /** The first wait before dialling the gateway again after a loss, doubled on each. */
+    retryLeastMs: 2_000,
+    /** The longest wait between dials. */
+    retryMostMs: 300_000,
+    /** How long registering's proof of work may take, as the art server's. */
+    workMs: 60_000,
+    /** The most zero bits of work a registration is done for. */
+    mostBits: 28,
+    /** How often the gateway's socket is pinged; one that has not answered the last is dropped. */
+    pingEveryMs: 30_000
+  },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
     /** How long a heal proposal stays worth sending. */

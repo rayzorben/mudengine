@@ -123,8 +123,11 @@ import { ART_BUILD_SECRET } from './art/buildSecret';
 import { pngOfDataUrl } from './art/pngOfDataUrl';
 import { handlePortraitFiles } from './art/portraitFiles';
 import { wireArt, type Art } from './art/wiring';
+import { wirePeers, type Peers } from './peers/wiring';
 import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
 import { NO_PORTRAIT } from '../shared/portrait';
+import { NO_SHARES } from '../shared/peers';
+import { DEFAULT_PEERS } from '../shared/peersConfig';
 import { NO_ROOM_ART } from '../shared/roomArt';
 import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
@@ -192,6 +195,7 @@ import { settledSupply, type SupplyItem } from '../shared/packConfig';
 import { withSupply } from '../shared/supplies';
 import { DEFAULT_INTERNAL } from '../shared/internal';
 import { isRemoteName, REMOTE_NAMES, type RemoteGrant, type RemoteName } from '../shared/remotes';
+import { asPeerGrant } from '../shared/peerGrant';
 import { DEFAULT_RECONNECT_TRIES, UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
 import type { SessionSummary } from '../shared/ipc';
 import type { RealmWorld } from '../shared/realm';
@@ -364,6 +368,8 @@ let simulatorWorker = '';
 let artWorker = '';
 /** Every character's portrait and room picture from the art server (todo 20261019-0931-01, 20261020-2015-01). */
 let art: Art | null = null;
+/** The characters shared through the gateway, both ways (todo 20261031-1156-01). */
+let peers: Peers | null = null;
 
 /**
  * The realm knowledge base, loaded once.
@@ -1464,9 +1470,10 @@ function asGrant(value: unknown): RemoteGrant | null {
   const allow = asRemoteNames(record['allow']);
   const deny = asRemoteNames(record['deny']);
   const { allowAll, autoInvite } = record;
-  if (allow === null || deny === null) return null;
+  const sharing = asPeerGrant(record);
+  if (allow === null || deny === null || sharing === null) return null;
   if (typeof allowAll !== 'boolean' || typeof autoInvite !== 'boolean') return null;
-  return { allow, deny, allowAll, autoInvite };
+  return { allow, deny, allowAll, autoInvite, ...sharing };
 }
 
 /** Every character on disk, and whether a session is open for it. */
@@ -1619,6 +1626,8 @@ function createProfiles(): ProfileStore {
     }
     syncSessions(snapshot);
     publishRosters();
+    // A row shared or pinned, or a character added or gone.
+    peers?.refresh();
   });
   store.watch();
   return store;
@@ -1716,6 +1725,26 @@ function createArt(): Art {
   });
 }
 
+/** The sharing gateway's client: off until `peers.enabled` and a share (todo 20261031-1156-01). */
+function createPeers(): Peers {
+  return wirePeers({
+    home,
+    settings: () => config?.config.peers ?? DEFAULT_PEERS,
+    tuning,
+    buildSecret: ART_BUILD_SECRET,
+    worker: artWorker,
+    sessions: () =>
+      (host?.ids ?? []).map((id) => ({
+        id,
+        realm: playedBy(id),
+        grants: configFor(id).automation.remotes.players
+      })),
+    publish: (id, view) => windows.toAll(Push.shares, { session: id, payload: view }),
+    say: (id, message) => pushNotice({ session: id, message }),
+    announce: (message) => announce('peers', message, 'log')
+  });
+}
+
 function createHost(): SessionHost {
   return new SessionHost({
     worldFor,
@@ -1787,10 +1816,12 @@ function createHost(): SessionHost {
       walkPaging.forget(id);
       lapIndexes.get(id)?.dispose();
       lapIndexes.delete(id);
+      peers?.forget(id);
     },
     characterSeen: (id, state) => {
       art?.portraits.observe(id, state);
       art?.rooms.observe(id, state);
+      peers?.observe(id, state);
     },
     // Before the index is read it is taken to have the room, so no look is spent on one it has.
     roomArtShipped: (realm, map, room) =>
@@ -2387,6 +2418,9 @@ function registerIpc(): void {
     typeof session === 'string' && host?.has(session) && art !== null
       ? art.portraits.view(session)
       : NO_PORTRAIT
+  );
+  handle(Invoke.shares, (_caller, session: unknown) =>
+    typeof session === 'string' && peers !== null ? peers.view(session) : NO_SHARES
   );
   handle(Invoke.roomArt, (_caller, session: unknown) =>
     typeof session === 'string' && host?.has(session) && art !== null
@@ -3939,6 +3973,7 @@ function build(): void {
     () => new SlicedSimulator()
   );
   art = createArt();
+  peers = createPeers();
   lore = createLore();
   playerBook = createPlayerBook();
   destinations = createDestinations();
@@ -4117,6 +4152,10 @@ function teardown(): void {
   // And the loops started by name, on the same deferred timer.
   for (const [id, history] of loopHistories) settle(`recent loops ${id}`, () => history.close());
   loopHistories.clear();
+  settle('peers', () => {
+    peers?.dispose();
+    peers = null;
+  });
   settle('sessions', () => {
     host?.disposeAll();
     host = null;

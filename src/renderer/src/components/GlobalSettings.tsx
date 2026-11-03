@@ -31,6 +31,7 @@ import SettingsSection from './SettingsSection';
 import { GAME_DOCKS, isGameDock } from '@shared/gameMap';
 import { asCombatZoom, COMBAT_ZOOMS, GAME_VIEW_OPACITY_FLOOR } from '@shared/gameViewConfig';
 import ArtFields from './ArtFields';
+import PeerFields from './PeerFields';
 import { dockLabel } from '../lib/gameDock';
 import type { SettingsFind } from '../hooks/useSettingsFind';
 import AttackFields, { ATTACK_KIND } from './AttackFields';
@@ -212,6 +213,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   extensions: [{ id: 'extensions', label: t('settings.extensions.legend') }],
   realm: [
     { id: 'realm-portraits', label: t('settings.global.art.legend') },
+    { id: 'realm-sharing', label: t('settings.global.peers.legend') },
     { id: 'realm-login', label: t('settings.realms.loginLegend') }
   ],
   combat: [
@@ -790,6 +792,7 @@ export default function GlobalSettings({
             </div>
 
             <ArtFields onChange={(art) => patch('art', art)} value={draft.art} />
+            <PeerFields onChange={(peers) => patch('peers', peers)} value={draft.peers} />
 
             <Advanced label={t('settings.advancedWire')}>
               <SelectField

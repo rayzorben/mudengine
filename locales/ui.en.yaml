@@ -5039,6 +5039,15 @@ settings:
         With brief on, the client sends l once in such a room, only while nothing moves you.
       server: Art Server
       serverHint: The art server's address, starting https://.
+    peers:
+      legend: Sharing
+      enabled: Share Characters
+      enabledHint: Sends the sheet of each character you share, its health, mana, conditions,
+        spells, level, experience and room, to the players you share it with, and shows the
+        characters shared with you. Shares are set on a player's Access tab. It applies to every
+        character.
+      server: Sharing Server
+      serverHint: The sharing server's address, starting https://.
     saved: Settings saved.
     startingValuesNote: Starting values. A new realm or character copies these when you create it
       and keeps its own copy afterwards, so changing them here only affects new ones.
@@ -6192,6 +6201,7 @@ errors:
   settings:
     characterNotFound: No character called {id}.
     artServerInvalid: '"{server}" is not an art server address. It starts with https://.'
+    peersServerInvalid: '"{server}" is not a sharing server address. It starts with https://.'
     aliasNotLoaded:
       'The alias {word} would not load: it runs itself, through the macros it calls, or is
       set twice.'
@@ -8208,6 +8218,13 @@ art:
   roomNot: 'Room picture: {message}'
   roomIndexUnread: "The shipped room pictures could not be indexed, so the art server is asked for
     every room's picture: {message}"
+
+# Sharing characters with other players through the gateway (peers in the
+# options file).
+peers:
+  noBuildSecret: this build was made without the registration secret, so it cannot share
+  trouble: 'Sharing: {message}'
+  keyNot: "Sharing: this character's key could not be kept, so it is not shared: {message}"
 
 # A character is down to its last few lives with automation on, and the client
 # asks before logging it in.

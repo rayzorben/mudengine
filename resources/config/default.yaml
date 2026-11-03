@@ -1451,6 +1451,11 @@ automation:
   # `autoInvite: true` sends them `invite` when they are in the room with this
   # character, unless they are already in the party or invited, or this
   # character is following somebody (Invite When Seen on the Player flyout).
+  # `share: state` sends them this character's sheet through the sharing
+  # server, and `receive: true` shows what they share with this character
+  # (the Access tab on the Player flyout; `peers.enabled` turns sharing on at
+  # all). `keys` are their character's keys, one per computer they play it
+  # from: nothing is sent to or shown from a key you have not confirmed there.
   #
   #   remotes:
   #     enabled: true
@@ -3029,3 +3034,15 @@ art:
   # room to read the description, only while nothing moves you.
   rooms: true
   server: https://art.150-136-117-176.sslip.io
+
+# Sharing a character with another player (the Access tab on a player's card):
+# with a share on, this client sends the gateway what that character's sheet
+# says, its health, mana, conditions, spells, level, experience and room, and
+# the gateway passes it to the players it is shared with while both are logged
+# in to the same realm. A share never reaches another realm. Off, nothing is
+# sent and nothing is received, whatever the shares say. server is the
+# gateway's address, https only. For every character, so a character's file
+# has no say.
+peers:
+  enabled: false
+  server: https://peers.150-136-117-176.sslip.io

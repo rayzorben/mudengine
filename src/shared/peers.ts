@@ -214,3 +214,40 @@ export function asPeerSheet(value: unknown): PeerSheet | null {
     leader: text(value['leader'])
   };
 }
+
+/** A key offered for this player to pin: a claim of a name, or a share from it. */
+export interface KeyOffer {
+  readonly name: string;
+  readonly key: string;
+}
+
+/** A sheet another player's character shares with this one, as its player accepted it. */
+export interface SharedSheet {
+  readonly from: PeerKey;
+  readonly key: string;
+  readonly sheet: PeerSheet;
+  readonly heardAt: number;
+}
+
+/** Whether the gateway's socket is open, being dialled, or not wanted. */
+export type ShareLink = 'off' | 'connecting' | 'connected';
+
+/** What one character's window is shown of sharing (`Push.shares`). */
+export interface ShareView {
+  readonly link: ShareLink;
+  /** This character's own key on its realm, for the other player to compare; null until a share needs one. */
+  readonly ownKey: string | null;
+  /** Claims of names this character shares with, under keys its player has not pinned. */
+  readonly unpinned: readonly KeyOffer[];
+  /** Shares this character takes from a name, under keys its player has not pinned. */
+  readonly offered: readonly KeyOffer[];
+  readonly sheets: readonly SharedSheet[];
+}
+
+export const NO_SHARES: ShareView = {
+  link: 'off',
+  ownKey: null,
+  unpinned: [],
+  offered: [],
+  sheets: []
+};

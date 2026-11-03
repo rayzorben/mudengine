@@ -83,6 +83,8 @@ import {
 import { asLoops, type Loop } from './loops';
 import { normalizeGameView, type GameViewConfig } from './gameViewConfig';
 import { DEFAULT_ART, type ArtConfig } from './artConfig';
+import { asPeerGrant, NO_PEER_GRANT } from './peerGrant';
+import { DEFAULT_PEERS, type PeersConfig } from './peersConfig';
 import { statedRoomNames, type StatedRoomName } from './roomNicknames';
 import { asCoinNames, type CoinNames } from './coins';
 import { asGearWeights, type GearWeights } from './gearWeighing';
@@ -282,6 +284,8 @@ export interface GlobalDraft {
   gameView: GameViewConfig;
   /** The art server (todo 20261019-0931-01): the address as typed, checked when saved. */
   art: ArtConfig;
+  /** The peer gateway (todo 20261031-1156-01): the address as typed, checked when saved. */
+  peers: PeersConfig;
   /** The player's own room names as the file states them, refused entries included (todo 153). */
   rooms: StatedRoomName[];
   automation: {
@@ -1387,6 +1391,14 @@ function artDraft(value: unknown): ArtConfig {
   };
 }
 
+function peersDraft(value: unknown): PeersConfig {
+  const block = isRecord(value) ? value : {};
+  return {
+    enabled: typeof block['enabled'] === 'boolean' ? block['enabled'] : DEFAULT_PEERS.enabled,
+    server: text(block['server']).slice(0, 400)
+  };
+}
+
 /**
  * The options file's own draft, from a window.
  *
@@ -1489,6 +1501,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
     },
     gameView: normalizeGameView(value['gameView']),
     art: artDraft(value['art']),
+    peers: peersDraft(value['peers']),
     rooms: statedRoomNames(value['rooms']),
     automation: {
       enabled: automation['enabled'] === true,
@@ -1649,7 +1662,8 @@ function playerGrants(value: unknown): Record<string, RemoteGrant> {
       allow: remoteNames(grant['allow']),
       deny: remoteNames(grant['deny']),
       allowAll: grant['allowAll'] === true,
-      autoInvite: grant['autoInvite'] === true
+      autoInvite: grant['autoInvite'] === true,
+      ...(asPeerGrant(grant) ?? NO_PEER_GRANT)
     };
   }
   return out;

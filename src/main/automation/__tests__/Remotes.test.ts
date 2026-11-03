@@ -29,6 +29,7 @@ import {
 } from '../../../shared/remotes';
 import { NO_PLAYERS, recordOf, type PlayerRegistry } from '../../../shared/players';
 import type { DecisionKind } from '../../../shared/decisionSettings';
+import { NO_PEER_GRANT } from '../../../shared/peerGrant';
 
 /**
  * Every name these tests speak as.
@@ -78,7 +79,7 @@ const config: AutomationConfig = {
     players: Object.fromEntries(
       SPEAKERS.map((name) => [
         name.toLowerCase(),
-        { allow: [...ACTIONABLE_REMOTES], deny: [], allowAll: false, autoInvite: false }
+        { allow: [...ACTIONABLE_REMOTES], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
       ])
     )
   },
@@ -644,7 +645,7 @@ describe('answering the imperative ones', () => {
     // Rayzor's `/brak @attack-last on` to Brakkle, allowed `@do` only (2026-11-02 03:33).
     it('tells somebody granted something else that it is not allowed', () => {
       const refusing = remotes(true);
-      const onlyDo = { allow: ['do' as const], deny: [], allowAll: false, autoInvite: false };
+      const onlyDo = { allow: ['do' as const], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT };
       refusing.configure({
         ...at(true),
         remotes: { ...config.remotes, players: { rand: onlyDo } }
@@ -657,7 +658,7 @@ describe('answering the imperative ones', () => {
 
     it('sends no refusal with automation off, and still says it here', () => {
       const refusing = remotes(true);
-      const onlyDo = { allow: ['do' as const], deny: [], allowAll: false, autoInvite: false };
+      const onlyDo = { allow: ['do' as const], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT };
       refusing.configure({
         ...at(true),
         enabled: false,
@@ -839,7 +840,7 @@ describe('joining when invited', () => {
 
   it('says a leader denied @join by name is denied', () => {
     const players = {
-      swampfox: { allow: [], deny: ['join' as const], allowAll: false, autoInvite: false }
+      swampfox: { allow: [], deny: ['join' as const], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
     };
     joining({ players }).onBlock(invited('Swampfox'), who());
     drain();
@@ -936,7 +937,8 @@ describe('letting @kill, @hangup, @relog and @panic! through', () => {
           allow: [...ACTIONABLE_REMOTES, ...standingFour],
           deny: [],
           allowAll: false,
-          autoInvite: false
+          autoInvite: false,
+          ...NO_PEER_GRANT
         }
       }
     };
@@ -1416,7 +1418,8 @@ describe('the gate: who may ask, and for what', () => {
             allow: [...entry.allow] as never,
             deny: [...(entry.deny ?? [])] as never,
             allowAll: false,
-            autoInvite: false
+            autoInvite: false,
+            ...NO_PEER_GRANT
           }
         ])
       )
@@ -2948,7 +2951,7 @@ describe('the decision behind each line and command (todo 119)', () => {
         ...config.remotes,
         players: {
           ...config.remotes.players,
-          yang: { allow: ['health'], deny: [], allowAll: false, autoInvite: false }
+          yang: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
         }
       }
     });

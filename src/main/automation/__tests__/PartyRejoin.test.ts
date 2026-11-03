@@ -9,6 +9,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../.
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { asUnderway, type CarriedParty } from '../../../shared/underway';
 import type { Block } from '../../../shared/blocks';
+import { NO_PEER_GRANT } from '../../../shared/peerGrant';
 
 const MINUTES = DEFAULT_CONFIG.automation.party.reinviteMinutes;
 const LEADER_GAP = DEFAULT_INTERNAL.tuning.remotes.leaderDroppedMs;
@@ -336,7 +337,7 @@ describe('following, when the leader hangs up or quits', () => {
         ...config,
         remotes: {
           ...config.remotes,
-          players: { rand: { allow: [], deny: ['join'], allowAll: false, autoInvite: false } }
+          players: { rand: { allow: [], deny: ['join'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
         }
       },
       queue,

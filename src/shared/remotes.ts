@@ -48,6 +48,7 @@
  */
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
+import { NO_PEER_GRANT, peerGrantIsEmpty, type PeerGrant } from './peerGrant';
 import type { MemberSheet, PartyMember, Stealth } from './character';
 import type { RecentDeath } from './recentDeaths';
 import type { AutomationSwitch } from './automationSwitches';
@@ -1513,7 +1514,7 @@ export function isRemoteName(value: unknown): value is RemoteName {
  * spelling on disk — and a name in both lists is resolved by `deny` winning,
  * the same precedence the old block list had.
  */
-export interface RemoteGrant {
+export interface RemoteGrant extends PeerGrant {
   allow: RemoteName[];
   deny: RemoteName[];
   /**
@@ -1532,12 +1533,22 @@ export interface RemoteGrant {
 }
 
 /** An empty grant: the state every name starts in, and the one nothing is allowed by. */
-export const NO_GRANT: RemoteGrant = { allow: [], deny: [], allowAll: false, autoInvite: false };
+export const NO_GRANT: RemoteGrant = {
+  allow: [],
+  deny: [],
+  allowAll: false,
+  autoInvite: false,
+  ...NO_PEER_GRANT
+};
 
 /** Whether a grant says nothing, so its name is dropped from `players` rather than kept empty. */
 export function grantIsEmpty(grant: RemoteGrant): boolean {
   return (
-    grant.allow.length === 0 && grant.deny.length === 0 && !grant.allowAll && !grant.autoInvite
+    grant.allow.length === 0 &&
+    grant.deny.length === 0 &&
+    !grant.allowAll &&
+    !grant.autoInvite &&
+    peerGrantIsEmpty(grant)
   );
 }
 

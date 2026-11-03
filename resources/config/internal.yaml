@@ -588,6 +588,30 @@ tuning:
     pollMostMs: 60000
     pollLeastMs: 1000
 
+  # Sharing characters through the gateway (peers in the options file).
+  peers:
+    # A shared character's sheet not heard of for this long counts as none,
+    # and how often a sharer whose sheet has not changed says it is still
+    # current, in milliseconds.
+    staleMs: 90000
+    freshEveryMs: 30000
+
+    # How long the handshake and one registration request may take.
+    requestMs: 20000
+
+    # The first wait before dialling the gateway again after a loss, doubled
+    # each time, and the longest wait, in milliseconds.
+    retryLeastMs: 2000
+    retryMostMs: 300000
+
+    # How long registering's proof of work may take, and the most zero bits
+    # of work it is done for.
+    workMs: 60000
+    mostBits: 28
+
+    # How often the gateway's socket is pinged, in milliseconds.
+    pingEveryMs: 30000
+
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
     # How long a heal proposal stays worth sending.

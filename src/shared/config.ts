@@ -20,6 +20,8 @@ import { PRIORITY } from './automation';
 import { bool, fraction, int, isRecord, oneOf, str } from './values';
 import { DEFAULT_GAME_VIEW, normalizeGameView, type GameViewConfig } from './gameViewConfig';
 import { DEFAULT_ART, normalizeArt, type ArtConfig } from './artConfig';
+import { asPeerGrant, NO_PEER_GRANT } from './peerGrant';
+import { DEFAULT_PEERS, normalizePeers, type PeersConfig } from './peersConfig';
 import { DEFAULT_SAFETY, normalizeSafety, type SafetyConfig } from './safety';
 import {
   DEFAULT_DROP,
@@ -2373,6 +2375,8 @@ export interface AppConfig {
   gameView: GameViewConfig;
   /** The art server and whether portraits are asked of it, global only (todo 20261019-0931-01). */
   art: ArtConfig;
+  /** The peer gateway, whether characters are shared through it, global only (todo 20261031-1156-01). */
+  peers: PeersConfig;
   /** The player's own room names, in front of MegaMUD's shipped ones, global only (todo 153). */
   rooms: RoomNickname[];
 }
@@ -2801,6 +2805,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   extensions: DEFAULT_EXTENSION_SWITCHES,
   gameView: DEFAULT_GAME_VIEW,
   art: DEFAULT_ART,
+  peers: DEFAULT_PEERS,
   rooms: []
 };
 
@@ -2993,6 +2998,7 @@ export function normalizeConfig(input: unknown): AppConfig {
     extensions: normalizeExtensionSwitches(raw['extensions']),
     gameView: normalizeGameView(raw['gameView']),
     art: normalizeArt(raw['art']),
+    peers: normalizePeers(raw['peers']),
     rooms: asRoomNicknames(raw['rooms'])
   };
 }
@@ -3722,7 +3728,9 @@ function playerGrants(
       allow: [...new Set([...held.allow, ...remoteNames(grant['allow'], [])])],
       deny: [...new Set([...held.deny, ...remoteNames(grant['deny'], [])])],
       allowAll: held.allowAll || bool(grant['allowAll'], false),
-      autoInvite: held.autoInvite || bool(grant['autoInvite'], false)
+      autoInvite: held.autoInvite || bool(grant['autoInvite'], false),
+      // A row whose sharing does not read shares nothing: a key read wrong is a stranger.
+      ...(asPeerGrant(grant) ?? NO_PEER_GRANT)
     };
   }
   return out;
