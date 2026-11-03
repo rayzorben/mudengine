@@ -23,6 +23,7 @@ import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import {
   ACTIONABLE_REMOTES,
+  REFUSED_REPLY,
   REMOTES,
   parseRemoteReply,
   type MoveAnswer,
@@ -31,6 +32,7 @@ import {
 } from '../../../shared/remotes';
 import { NO_PLAYERS, recordOf, type PlayerRegistry } from '../../../shared/players';
 import type { DecisionKind } from '../../../shared/decisionSettings';
+import type { SafetyDecision } from '../../../shared/automation';
 import { NO_PEER_GRANT } from '../../../shared/peerGrant';
 
 /**
@@ -762,6 +764,65 @@ describe('answering the imperative ones', () => {
     peers.onBlock(said('conversation-local', 'Swampfox', '@party go rift'), who());
     drain();
     expect(sent).toEqual(['go rift']);
+  });
+
+  /*
+   * Todo 20261103-0930-01: somebody granted `@do` here could make this
+   * character send `@do` on to another, which trusts this one and obeys. A
+   * command run for a sender's `@do` or `@party` is refused when it would send
+   * an `@` command to another character.
+   */
+  describe('a remote that would pass a remote on', () => {
+    const chained = (): { listening: Remotes; decisions: SafetyDecision[] } => {
+      const decisions: SafetyDecision[] = [];
+      const listening = new Remotes(config, queue, {
+        notice: (m) => notices.push(m),
+        decided: (decision) => decisions.push(decision)
+      });
+      return { listening, decisions };
+    };
+
+    it.each([
+      ['/Brakkle @do drop all', 'do'],
+      ['>Brakkle @do drop all', 'do'],
+      ['.@do drop all', 'do'],
+      ['bg @party drop all', 'do'],
+      ['@do drop all', 'do'],
+      ['/Brakkle @hangup', 'party']
+    ])('refuses %s through @%s, says so and records it', (inner, outer) => {
+      const { listening, decisions } = chained();
+      listening.onBlock(said('conversation-telepath', 'Sesub', `@${outer} ${inner}`), who());
+      // Positive control: a plain command through the same remote still runs.
+      listening.onBlock(said('conversation-telepath', 'Sesub', `@${outer} look`), who());
+      drain();
+      expect(sent.some((line) => line.includes('@'))).toBe(false);
+      expect(sent).toContain('look');
+      expect(notices).toContain(
+        t('automation.remotes.refusedChained', { from: 'Sesub', command: inner })
+      );
+      expect(decisions).toEqual([
+        {
+          at: expect.any(Number),
+          action: 'remote',
+          because: t('automation.remotes.whyChained', { from: 'Sesub', command: inner }),
+          acted: false,
+          refused: t('automation.remotes.chainedReason')
+        }
+      ]);
+    });
+
+    it('answers a refused @do as refused, so the sender is not waiting on it', () => {
+      peers.onBlock(said('conversation-telepath', 'Sesub', '@do /Brakkle @do n'), who());
+      drain();
+      expect(sent).toEqual([`/Sesub ${REFUSED_REPLY}`]);
+    });
+
+    // The player's own remotes go out as typed, and the client's own as proposed.
+    it('leaves a plain telepath through @do alone', () => {
+      peers.onBlock(said('conversation-telepath', 'Sesub', '@do /Brakkle hello'), who());
+      drain();
+      expect(sent).toEqual(['/Brakkle hello', '/Sesub {ok}']);
+    });
   });
 
   /*

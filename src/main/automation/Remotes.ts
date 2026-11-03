@@ -155,6 +155,7 @@ import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 import { PartyLeavers } from './PartyLeavers';
 import { DeathsRemote } from './DeathsRemote';
 import { AbilitiesRemote } from './AbilitiesRemote';
+import { refusedChain, type ChainedRemoteEvents } from './ChainedRemote';
 import type { Quest } from '../../shared/quests';
 
 /**
@@ -285,7 +286,7 @@ function followerPaced(name: 'wait' | 'held' | 'ok', from: string): string {
 }
 
 /** `hangUp` and `relog` are `@hangup`, `@relog` and `@panic!` let through (`StandingRemotes`). */
-export interface RemoteEvents extends StandingRemoteEvents {
+export interface RemoteEvents extends StandingRemoteEvents, ChainedRemoteEvents {
   notice?: NoticeSink;
   /**
    * Somebody asked this character to stop and wait, or said they are ready;
@@ -1538,6 +1539,10 @@ export class Remotes implements SessionModule {
 
       case 'do': {
         if (command.argument === null) return;
+        if (refusedChain(from, command.argument, this.events, 'remote-do')) {
+          this.reply(from, REFUSED_REPLY, prefix, 'remote-do');
+          return;
+        }
         /*
          * Run as though typed, which is what the command means — so it goes in
          * at the band a typed command uses, and is never coalesced: two `@do`s
@@ -1566,6 +1571,7 @@ export class Remotes implements SessionModule {
           this.events.notice?.(t('automation.remotes.ignoredParty', { from }), PARTY_CMD);
           return;
         }
+        if (refusedChain(from, command.argument, this.events, PARTY_CMD)) return;
         this.queue.enqueue({
           command: command.argument,
           priority: 'movement',

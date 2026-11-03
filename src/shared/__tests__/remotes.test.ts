@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  passesOnARemote,
   judgeRemote,
   formatEncumbrance,
   formatExp,
@@ -628,5 +629,38 @@ describe('@abil', () => {
     expect(formatAbilities(told, 50)).toBe('{GoodQuest(126) - 5, GoodQuest(127) - 5 +1 more}');
     expect(formatAbilities([{ id: 9, name: null, value: 1, setBy: [] }], 255)).toBe('{(9) - 1}');
     expect(formatAbilities([], 255)).toBe('{none}');
+  });
+});
+
+/* Todo 20261103-0930-01: what a command run on a sender's `@do` may not send. */
+describe('whether a command passes a remote on', () => {
+  it.each([
+    '/Brakkle @do drop all',
+    '/ Brakkle  @do drop all',
+    '>Brakkle @health',
+    '.@do n',
+    '. @do n',
+    '"@do n',
+    '-@do n',
+    "'@do n",
+    'gos @do n',
+    'bg @party n',
+    'gb @do n',
+    '@do n',
+    '  @hangup'
+  ])('reads %s as passing one on', (command) => {
+    expect(passesOnARemote(command)).toBe(true);
+  });
+
+  it.each([
+    'look',
+    '/Brakkle hello',
+    '/Brakkle hi @do n',
+    'gos look at @do',
+    'get sword@do',
+    '/Brakkle {ok}',
+    '/Brakkle @lol'
+  ])('reads %s as passing none on', (command) => {
+    expect(passesOnARemote(command)).toBe(false);
   });
 });

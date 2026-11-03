@@ -7927,6 +7927,10 @@ automation:
       answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
+    # Todo 20261103-0930-01: a @do or @party may not send a remote on to another character.
+    refusedChained: 'Not running "{command}" for {from}: a command sent by @do or @party may not send an @ command on to another character.'
+    whyChained: '{from} asked for "{command}", which sends an @ command on'
+    chainedReason: 'a remote may not send a remote on'
     statsReset: '{from} sent @reset; the combat statistics start again from now.'
     switchUnread: '{from} sent @{remote} without on or off, so {setting} was not changed.'
     switchSet: '{from} sent @{remote} {word}; {setting} is {word}.'

@@ -1260,7 +1260,7 @@ export class SessionManager {
     const switchNow = (name: ConfigSwitch, on: boolean): boolean =>
       this.sink.switchAutomationNow?.(name, on) ?? false;
     this.remotes = new Remotes(automation, this.queue, {
-      notice,
+      ...reports,
       ...new RemoteMoves(this, this.errands, notice, {
         own: () => this.automationConfig.loops,
         shelf: () => sink.loopShelf?.() ?? []
