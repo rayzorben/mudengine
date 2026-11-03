@@ -6,12 +6,13 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { withPinnedKey } from '@shared/peerGrant';
 import { keyFingerprint, type KeyOffer, type ShareView } from '@shared/peers';
+import { MOST_SHARE_KEYS } from '@shared/peerWire';
 import { playerKey } from '@shared/players';
 import type { RemoteGrant } from '@shared/remotes';
 
 export interface PlayerSharingProps {
-  /** The character whose Access face this is. */
-  character: string;
+  /** The character whose Access face this is; null before the realm has named it. */
+  character: string | null;
   /** The player the row is about. */
   player: string;
   grant: RemoteGrant;
@@ -47,21 +48,25 @@ export default function PlayerSharing({
   const waiting = [...shares.unpinned, ...shares.offered]
     .filter(theirs)
     .filter((offer, at, all) => all.findIndex((each) => each.key === offer.key) === at);
+  const full = grant.keys.length >= MOST_SHARE_KEYS;
   const sheet = shares.sheets.find((each) => playerKey(each.from.name) === playerKey(player));
 
   return (
     <div className="player-sharing" data-sharing={shares.enabled ? 'on' : 'off'}>
       <div className="settings-inline">
-        <CheckField
-          checked={grant.share !== 'off'}
-          hint={t('cards.player.share.shareHint')}
-          label={t('cards.player.share.share')}
-          name="player-share"
-          onChange={(on) => {
-            if (on) setAsked({ character, player });
-            else set({ ...grant, share: 'off' });
-          }}
-        />
+        {/* Not offered before the realm has named this character: the prompt says whose it is. */}
+        {(character !== null || grant.share !== 'off') && (
+          <CheckField
+            checked={grant.share !== 'off'}
+            hint={t('cards.player.share.shareHint')}
+            label={t('cards.player.share.share')}
+            name="player-share"
+            onChange={(on) => {
+              if (on && character !== null) setAsked({ character, player });
+              else set({ ...grant, share: 'off' });
+            }}
+          />
+        )}
         <CheckField
           checked={grant.receive}
           hint={t('cards.player.share.receiveHint')}
@@ -85,6 +90,7 @@ export default function PlayerSharing({
           </span>
           <button
             className="quiet"
+            disabled={full}
             onClick={() => set({ ...grant, ...withPinnedKey(grant, offer.key) })}
             onMouseDown={keepFocus}
             type="button"
@@ -93,6 +99,11 @@ export default function PlayerSharing({
           </button>
         </div>
       ))}
+      {full && waiting.length > 0 && (
+        <p className="settings-warn">
+          {t('cards.player.share.keysFull', { most: MOST_SHARE_KEYS })}
+        </p>
+      )}
       {grant.keys.map((key) => (
         <div className="settings-control-row" data-pinned-key={key} key={key}>
           <span>{t('cards.player.share.pinned', { key: keyFingerprint(key) })}</span>
@@ -113,8 +124,8 @@ export default function PlayerSharing({
         <p className="settings-note" data-shared-sheet>
           {t('cards.player.share.hearing', {
             name: sheet.from.name,
-            hp: sheet.sheet.vitals?.hp ?? '—',
-            hpMax: sheet.sheet.vitals?.hpMax ?? '—'
+            hp: sheet.sheet.vitals?.hp?.toLocaleString() ?? '—',
+            hpMax: sheet.sheet.vitals?.hpMax?.toLocaleString() ?? '—'
           })}
         </p>
       )}

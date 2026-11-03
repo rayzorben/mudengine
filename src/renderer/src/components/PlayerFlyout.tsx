@@ -332,7 +332,7 @@ export default function PlayerFlyout({
           />
         ) : (
           <PlayerAccess
-            character={character.name ?? ''}
+            character={character.name}
             gang={ownGang(character) ?? null}
             inGang={inGang}
             inParty={joinedTheParty(character, asked.name)}
@@ -767,8 +767,8 @@ function PlayerAccess({
   onGrant,
   returnFocus
 }: {
-  /** This character's name, for the share prompt. */
-  character: string;
+  /** This character's name, for the share prompt; null before the realm has named it. */
+  character: string | null;
   shares: ShareView;
   onAsking(open: boolean): void;
   record: PlayerRecord;

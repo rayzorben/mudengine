@@ -5040,8 +5040,20 @@ describe('a follower pacing the loop', () => {
           // the pacing pair reaching the loop, not about who was granted it.
           party: [],
           players: {
-            soul: { allow: ['wait', 'ok'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT },
-            yang: { allow: ['wait', 'ok'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+            soul: {
+              allow: ['wait', 'ok'],
+              deny: [],
+              allowAll: false,
+              autoInvite: false,
+              ...NO_PEER_GRANT
+            },
+            yang: {
+              allow: ['wait', 'ok'],
+              deny: [],
+              allowAll: false,
+              autoInvite: false,
+              ...NO_PEER_GRANT
+            }
           }
         }
       }

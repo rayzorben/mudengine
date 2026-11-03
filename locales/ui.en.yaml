@@ -3320,7 +3320,8 @@ cards:
     unpinHint: 'Unpin: close on the next click elsewhere'
   player:
     # Sharing this character with the player, and seeing what they share
-    # (sharing in the options file; the Access tab).
+    # (share, receive and keys on a player's row under automation.remotes.players;
+    # peers.enabled turns it on; the Access tab).
     share:
       share: Share This Character
       shareHint: Sends this character's health, mana, conditions, spells, level, experience and
@@ -3334,6 +3335,7 @@ cards:
       confirm: Confirm
       pinned: 'Confirmed key {key}'
       forget: Remove
+      keysFull: '{most} keys are confirmed for this player. Remove one before confirming another.'
       noKey: Nothing is sent until {name} turns on Show Their Share and you confirm their key.
       hearing: '{name} is sharing: {hp}/{hpMax} HP'
     access:

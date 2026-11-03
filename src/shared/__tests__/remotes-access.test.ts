@@ -51,7 +51,9 @@ describe('what one player may ask for', () => {
 
   it('allows a remote on that player’s own list', () => {
     const settings = access({
-      players: { soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('Soul', 'health', settings, stranger)).toEqual({
       allowed: true,
@@ -65,14 +67,18 @@ describe('what one player may ask for', () => {
      * `@do` along with `@health`, and there was no way to say otherwise.
      */
     const settings = access({
-      players: { soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('Soul', 'do', settings, stranger).allowed).toBe(false);
   });
 
   it('files a name without regard to case, because the server does not keep it', () => {
     const settings = access({
-      players: { soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('SOUL', 'health', settings, stranger).allowed).toBe(true);
     expect(judgeRemote('  Soul  ', 'health', settings, stranger).allowed).toBe(true);
@@ -178,7 +184,9 @@ describe('the party grants, and only to somebody who has joined it', () => {
      */
     const named = access({
       party: ['exp'],
-      players: { rend: { allow: [], deny: ['exp'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        rend: { allow: [], deny: ['exp'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('Rend', 'exp', named, { inGang: null, inParty: true })).toEqual({
       allowed: false,
@@ -234,7 +242,9 @@ describe('a deny is about one person and outranks everything', () => {
   it('beats the gang', () => {
     const settings = access({
       gang: ['health'],
-      players: { rend: { allow: [], deny: ['health'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        rend: { allow: [], deny: ['health'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('Rend', 'health', settings, inGang)).toEqual({
       allowed: false,
@@ -244,7 +254,9 @@ describe('a deny is about one person and outranks everything', () => {
 
   it('beats an allow on the same player, so a name in both lists is refused', () => {
     const settings = access({
-      players: { rend: { allow: ['do'], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        rend: { allow: ['do'], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('Rend', 'do', settings, stranger).because).toBe('denied');
   });
@@ -252,7 +264,9 @@ describe('a deny is about one person and outranks everything', () => {
   it('takes away only what it names', () => {
     const settings = access({
       gang: ['health', 'where'],
-      players: { rend: { allow: [], deny: ['health'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        rend: { allow: [], deny: ['health'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(judgeRemote('Rend', 'where', settings, inGang).allowed).toBe(true);
   });
@@ -284,14 +298,24 @@ describe('reachability is a different question from permission', () => {
     // Somebody with one remote allowed and one denied is still somebody this
     // character has a relationship with, and their attempts are worth seeing.
     const settings = access({
-      players: { soul: { allow: ['health'], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        soul: {
+          allow: ['health'],
+          deny: ['do'],
+          allowAll: false,
+          autoInvite: false,
+          ...NO_PEER_GRANT
+        }
+      }
     });
     expect(reachableBy('Soul', settings, stranger)).toBe(true);
   });
 
   it('is false for somebody who is only denied things', () => {
     const settings = access({
-      players: { rend: { allow: [], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        rend: { allow: [], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      }
     });
     expect(reachableBy('Rend', settings, stranger)).toBe(false);
   });
@@ -310,7 +334,15 @@ describe('the stance a form shows is the decision, not the verdict', () => {
 
   it('reads what the player’s own entry says otherwise', () => {
     const settings = access({
-      players: { soul: { allow: ['health'], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT } }
+      players: {
+        soul: {
+          allow: ['health'],
+          deny: ['do'],
+          allowAll: false,
+          autoInvite: false,
+          ...NO_PEER_GRANT
+        }
+      }
     });
     expect(stanceFor(settings, 'Soul', 'health')).toBe('allow');
     expect(stanceFor(settings, 'Soul', 'do')).toBe('deny');
@@ -423,14 +455,32 @@ describe('the two halves of the remote union move together', () => {
       automation: {
         remotes: {
           players: {
-            Soul: { allow: ['health'], deny: [], allowAll: false, autoInvite: false, ...NO_PEER_GRANT },
-            soul: { allow: ['where'], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+            Soul: {
+              allow: ['health'],
+              deny: [],
+              allowAll: false,
+              autoInvite: false,
+              ...NO_PEER_GRANT
+            },
+            soul: {
+              allow: ['where'],
+              deny: ['do'],
+              allowAll: false,
+              autoInvite: false,
+              ...NO_PEER_GRANT
+            }
           }
         }
       }
     });
     expect(config.automation.remotes.players).toEqual({
-      soul: { allow: ['health', 'where'], deny: ['do'], allowAll: false, autoInvite: false, ...NO_PEER_GRANT }
+      soul: {
+        allow: ['health', 'where'],
+        deny: ['do'],
+        allowAll: false,
+        autoInvite: false,
+        ...NO_PEER_GRANT
+      }
     });
   });
 
@@ -451,7 +501,9 @@ describe('the two halves of the remote union move together', () => {
 
 describe('Allow all on one player', () => {
   const everything = (deny: RemoteName[] = [], allow: RemoteName[] = []): RemoteAccess =>
-    access({ players: { soul: { allow, deny, allowAll: true, autoInvite: false, ...NO_PEER_GRANT } } });
+    access({
+      players: { soul: { allow, deny, allowAll: true, autoInvite: false, ...NO_PEER_GRANT } }
+    });
 
   it('grants every remote this client answers, the newest included, without naming one', () => {
     for (const name of ACTIONABLE_REMOTES) {
