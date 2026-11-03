@@ -34,10 +34,15 @@ export interface CarriedRoute {
   run: boolean;
 }
 
-/** Somebody the party had: `droppedAt` is when it lost them to a hangup, null while they are in it. */
+/**
+ * Somebody the party had: `droppedAt` is when it lost them to a hangup or a
+ * quit, null while they are in it. `quit` says it was a quit, which is owed an
+ * invite and never waited for; it is false while they are in the party.
+ */
 export interface CarriedMember {
   name: string;
   droppedAt: number | null;
+  quit: boolean;
 }
 
 /** The party as `PartyRejoin` keeps it: the members this character leads, or the leader it follows. */
@@ -125,7 +130,7 @@ function sameParty(a: CarriedParty | null, b: CarriedParty | null): boolean {
 }
 
 function sameMember(a: CarriedMember, b: CarriedMember | undefined): boolean {
-  return b !== undefined && a.name === b.name && a.droppedAt === b.droppedAt;
+  return b !== undefined && a.name === b.name && a.droppedAt === b.droppedAt && a.quit === b.quit;
 }
 
 /** Parses a record read off disk. A part that does not parse is nothing carried, never a guess. */
@@ -184,7 +189,9 @@ function asCarriedMember(value: unknown): CarriedMember | null {
   if (!isRecord(value)) return null;
   const { name } = value;
   if (typeof name !== 'string' || !/^\w+$/.test(name)) return null;
-  return { name, droppedAt: clock(value['droppedAt']) };
+  const droppedAt = clock(value['droppedAt']);
+  // Before 2026-11-02 a quit was never carried, so a record without the word holds hangups only.
+  return { name, droppedAt, quit: droppedAt !== null && value['quit'] === true };
 }
 
 /** A figure the runner may not have had: null stays null, never zero. */

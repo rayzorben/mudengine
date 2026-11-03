@@ -5559,8 +5559,8 @@ settings:
       unknown: The stat sheet has not been read yet.
     pickTries: Picks Per Door
     sneak: Auto-Sneak on Move
-    sneakHint: 'Sneaks before every move: a route''s, your own, and a party leader''s. Decides
-      whether the next room notices you arrive. Sneaking can fail.'
+    sneakHint: "Sneaks before every move: a route's, your own, and a party leader's. Decides
+      whether the next room notices you arrive. Sneaking can fail."
     runBetweenRounds: Run Between Rounds
     runBetweenRoundsHint: On Run it, and on the walk back after running, a step into a lair waits
       for the round to go off unless there is time to step in and out again before it.
@@ -7765,6 +7765,8 @@ automation:
     reasonRejoin: 'joining {leader} again after the disconnect'
     memberDropped: '{member} disconnected; inviting them back when they are in the room, for {minutes} min.'
     leaderDropped: '{leader} disconnected; joining them again when they invite this character, for {minutes} min.'
+    memberQuit: '{member} left the Realm; inviting them back when they are in the room, for {minutes} min. The lap does not wait for them.'
+    leaderQuit: '{leader} left the Realm; joining them again when they invite this character, for {minutes} min.'
     reformLeading: 'Reconnected; inviting {members} back when each is in the room, for {minutes} min.'
     reformFollowing: 'Reconnected; joining {leader} again when they invite this character, for {minutes} min.'
     memberGaveUp: '{member} was not back in the party within {minutes} min; not inviting them again.'

@@ -727,8 +727,8 @@ describe('what this character was doing when the app closed', () => {
     const party = {
       kind: 'leading' as const,
       members: [
-        { name: 'Brakkle', droppedAt: null },
-        { name: 'Soul', droppedAt: 1_700_000_002_000 }
+        { name: 'Brakkle', droppedAt: null, quit: false },
+        { name: 'Soul', droppedAt: 1_700_000_002_000, quit: true }
       ]
     };
     const first = new Belongings({ file, realm: REALM });

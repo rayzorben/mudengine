@@ -2,7 +2,7 @@
  * Inviting a named player when they are in the room with this character: they
  * walked in, or this character walked in on them (todo 851, fatavatar
  * `7896db7`). The per-player `autoInvite` in `automation.remotes.players`,
- * and a member a hangup took out of the party (`PartyRejoin.owesInvite`).
+ * and a member a hangup or a quit took out of the party (`PartyRejoin.owesInvite`).
  * Never somebody already in the party or invited, never while this character
  * is following, and the same name not again within
  * `tuning.remotes.inviteSeenAgainMs`, so a player stepping in and out is not
