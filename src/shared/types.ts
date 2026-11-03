@@ -437,6 +437,19 @@ export interface TerminalSize {
   rows: number;
 }
 
+/**
+ * A window's reported geometry, or null. It crosses IPC on every layout
+ * change and goes on the wire as NAWS, so a missing size would throw in the
+ * coalescing timer and a non-numeric one would reach the server as `0x0`.
+ */
+export function asTerminalSize(value: unknown): TerminalSize | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { cols, rows } = value as Partial<TerminalSize>;
+  return isCount(cols) && isCount(rows) ? { cols, rows } : null;
+}
+
+const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0;
+
 // Presentation defaults — terminal font, scrollback, connection target — live
 // in `./config.ts`, which is the single source of truth the YAML options file
 // normalises into. Nothing here should restate them.

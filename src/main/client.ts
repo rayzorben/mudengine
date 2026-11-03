@@ -239,6 +239,7 @@ import { version as APP_VERSION } from '../../package.json';
 import {
   asConnectionTarget,
   asLostEnter,
+  asTerminalSize,
   realmAddress,
   realmName,
   realmNamedAt,
@@ -246,8 +247,7 @@ import {
   TERMINAL_ACTIONS,
   type ConnectionTarget,
   type Realm,
-  type TerminalActionName,
-  type TerminalSize
+  type TerminalActionName
 } from '../shared/types';
 import {
   asGlobalDraft,
@@ -1942,8 +1942,10 @@ function registerIpc(): void {
     host?.get(session)?.manager.dropTyped();
   });
 
-  on(Send.resize, (_caller, session: SessionId, size: TerminalSize) => {
-    host?.get(session)?.manager.resize(size);
+  // Parsed: a size that is not one would throw in the NAWS timer, or report 0x0.
+  on(Send.resize, (_caller, session: SessionId, size: unknown) => {
+    const parsed = asTerminalSize(size);
+    if (parsed !== null) host?.get(session)?.manager.resize(parsed);
   });
 
   on(Send.lostEnter, (_caller, session: SessionId, report: unknown) => {
