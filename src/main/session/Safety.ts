@@ -11,6 +11,7 @@
  */
 import { t } from '../app/i18n';
 import {
+  PVP_WINDOW_MINUTES,
   PVP_WINDOW_MS,
   playersHere,
   type HangUpAssessment,
@@ -86,6 +87,8 @@ export class Safety implements SessionModule {
   private readonly pvpSaid = new Map<string, number>();
   /** When each attacker's held-back alert was last written down, with the switch off. */
   private readonly pvpRefused = new Map<string, number>();
+  /** When each attacker the who list does not name was last said to start the PvP timer. */
+  private readonly pvpUnlisted = new Map<string, number>();
   /** The last refusal reported, so it is said once rather than per status line. */
   private lastHangUpRefusal: string | null = null;
   /**
@@ -144,6 +147,7 @@ export class Safety implements SessionModule {
   reset(): void {
     this.pvpSaid.clear();
     this.pvpRefused.clear();
+    this.pvpUnlisted.clear();
     this.lastHangUpRefusal = null;
     this.stalkerSaid = null;
     this.protectedSaid = null;
@@ -170,10 +174,11 @@ export class Safety implements SessionModule {
    * coalesced with any other escape, under the same cooldown so a blow per
    * round is one move.
    */
-  onPvpBlow(attacker: string, at: number): void {
+  onPvpBlow(attacker: string, at: number, listed: boolean): void {
     const pvp = this.automationConfig.safety.pvp;
     const state = this.tracker.current;
     if (state.phase !== 'in-game') return;
+    if (!listed) this.unlistedAttacker(attacker, at);
     if (!this.automationConfig.enabled) {
       // The blow is a fact the fight record keeps; what the switch holds back
       // is the alert and the run, and a refusal is written down like any other,
@@ -253,6 +258,24 @@ export class Safety implements SessionModule {
   }
 
   /**
+   * An attacker no listing names is counted as a player (todo 20261103-0930-01):
+   * the PvP timer starts and the hang-up waits it out as it would for one.
+   * Said and written down once per attacker per window, switch on or off,
+   * since it is a reading and not a send.
+   */
+  private unlistedAttacker(attacker: string, at: number): void {
+    if (!firstInWindow(this.pvpUnlisted, attacker, at)) return;
+    const said = t('session.safety.pvpUnlisted', { attacker, minutes: PVP_WINDOW_MINUTES });
+    this.session.notice(said, HANG_UP);
+    this.publisher.noteSafety({
+      at,
+      action: 'pvp timer',
+      because: t('session.safety.whyPvpUnlisted', { attacker }),
+      acted: true
+    });
+  }
+
+  /**
    * MegaMUD's Flee Then Hangup: the hangup waits until the attack no longer
    * counts, so it is never charged as PvP, and each later blow moves it on.
    * Said when it is first set.
@@ -265,7 +288,7 @@ export class Safety implements SessionModule {
       this.session.notice(
         t('session.safety.pvpHangUpLater', {
           attacker,
-          minutes: Math.ceil(PVP_WINDOW_MS / 60_000)
+          minutes: PVP_WINDOW_MINUTES
         }),
         'hang-up-pvp'
       );

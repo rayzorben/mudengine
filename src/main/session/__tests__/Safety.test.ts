@@ -627,8 +627,8 @@ describe('reacting to a player', () => {
   it('asks the run with the end of the window, and moves it on with a later blow', () => {
     const state = standing([]);
     const { safety, ran, hungUp } = build(reacting('retreat'), state);
-    safety.onPvpBlow('Rayzor', 10_000);
-    safety.onPvpBlow('Rayzor', 40_000);
+    safety.onPvpBlow('Rayzor', 10_000, true);
+    safety.onPvpBlow('Rayzor', 40_000, true);
     expect(ran).toEqual([
       { attacker: 'Rayzor', windowEnds: 10_000 + PVP_WINDOW_MS },
       { attacker: 'Rayzor', windowEnds: 40_000 + PVP_WINDOW_MS }
@@ -646,9 +646,9 @@ describe('reacting to a player', () => {
       reacting('retreat-then-hangup'),
       state
     );
-    safety.onPvpBlow('Rayzor', 10_000);
+    safety.onPvpBlow('Rayzor', 10_000, true);
     vi.setSystemTime(40_000);
-    safety.onPvpBlow('Rayzor', 40_000);
+    safety.onPvpBlow('Rayzor', 40_000, true);
     expect(ran).toHaveLength(2);
     expect(notices).toEqual([
       t('session.safety.pvpHangUpLater', { attacker: 'Rayzor', minutes: PVP_WINDOW_MS / 60_000 })
@@ -676,8 +676,8 @@ describe('reacting to a player', () => {
     const state = standing([]);
     const config = { ...reacting('retreat'), enabled: false };
     const { safety, ran, decisions, notices } = build(config, state);
-    safety.onPvpBlow('Rayzor', 10_000);
-    safety.onPvpBlow('Rayzor', 20_000);
+    safety.onPvpBlow('Rayzor', 10_000, true);
+    safety.onPvpBlow('Rayzor', 20_000, true);
     expect(ran).toEqual([]);
     expect(notices).toEqual([]);
     expect(decisions).toEqual([
@@ -693,16 +693,40 @@ describe('reacting to a player', () => {
     // told at once; the refusal's clock is not the alert's.
     config.enabled = true;
     config.safety.pvp = { notifyGang: true, action: 'retreat' };
-    safety.onPvpBlow('Rayzor', 30_000);
+    safety.onPvpBlow('Rayzor', 30_000, true);
     expect(ran).toHaveLength(1);
     expect(decisions.at(-1)).toMatchObject({ action: 'pvp-alert', acted: true });
+  });
+
+  /* Todo 20261103-0930-01: unknown is the unsafe answer, so the timer starts and is said. */
+  it('says and records an attacker the who list does not name, once per window', () => {
+    vi.useFakeTimers({ now: 10_000 });
+    const state = standing([]);
+    const { safety, ran, notices, decisions } = build(reacting('retreat'), state);
+    // Positive control: a listed player runs and says nothing about the list.
+    safety.onPvpBlow('Rayzor', 10_000, true);
+    expect(ran).toHaveLength(1);
+    expect(decisions).toEqual([]);
+    safety.onPvpBlow('Gorgo', 20_000, false);
+    safety.onPvpBlow('Gorgo', 30_000, false);
+    expect(ran).toHaveLength(3);
+    const minutes = PVP_WINDOW_MS / 60_000;
+    expect(notices).toEqual([t('session.safety.pvpUnlisted', { attacker: 'Gorgo', minutes })]);
+    expect(decisions).toEqual([
+      {
+        at: 20_000,
+        action: 'pvp timer',
+        because: t('session.safety.whyPvpUnlisted', { attacker: 'Gorgo' }),
+        acted: true
+      }
+    ]);
   });
 
   it('records no refusal where the settings would have done nothing anyway', () => {
     const state = standing([]);
     const config = { ...reacting('none'), enabled: false };
     const { safety, decisions } = build(config, state);
-    safety.onPvpBlow('Rayzor', 10_000);
+    safety.onPvpBlow('Rayzor', 10_000, true);
     expect(decisions).toEqual([]);
   });
 
@@ -711,7 +735,7 @@ describe('reacting to a player', () => {
     const state = standing([]);
     const config = reacting('retreat-then-hangup');
     const { safety, hungUp } = build(config, state);
-    safety.onPvpBlow('Rayzor', 10_000);
+    safety.onPvpBlow('Rayzor', 10_000, true);
     config.safety.pvp = { notifyGang: false, action: 'retreat' };
     vi.setSystemTime(10_000 + PVP_WINDOW_MS);
     safety.considerHangingUp(state);
@@ -730,7 +754,7 @@ describe('reacting to a player', () => {
       state,
       { clean: false, reasons: ['orc attacks on sight'], clearInMs: null }
     );
-    safety.onPvpBlow('Rayzor', 10_000);
+    safety.onPvpBlow('Rayzor', 10_000, true);
     vi.setSystemTime(10_000 + PVP_WINDOW_MS);
     safety.considerHangingUp(state);
     expect(hungUp).toEqual([]);

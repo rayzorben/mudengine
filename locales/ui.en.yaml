@@ -6569,6 +6569,8 @@ session:
     # Todo 78: MegaMUD's Flee Then Hangup.
     pvpHangUpLater: "Hanging up in {minutes} min, once {attacker}'s PvP timer runs out."
     pvpNoGang: 'Not telling anyone about {attacker}: the who list shows you in no gang.'
+    # Todo 20261103-0930-01: an attacker missing from the who list counts as a player.
+    pvpUnlisted: '{attacker} attacked you and is not on the who list, so the PvP timer runs for {minutes} min.'
     pvpNoGangReason: the who list shows no gang to tell
     refusalSwitchedOff: automation is off
     whyHealth: health at {percent}
@@ -6576,6 +6578,7 @@ session:
     whyAttackers: '{count} attackers'
     whyCompany: Player present in room (PvP abort)
     whyPvp: '{attacker} attacked you'
+    whyPvpUnlisted: '{attacker} attacked you and is not on the who list'
     whyPvpOver: "{attacker}'s PvP timer ran out"
     # Todo 818: a monster's row says to escape it, or to hang up on it.
     whyDreaded: '{mob} is here, and its monster rule says to run'

@@ -48,7 +48,7 @@ describe('whether hanging up would be penalised', () => {
   /* `PenalizeHangInMobCombat` is false and assigned nowhere (`GMUDServer.cs:120`). */
   it('charges nothing for a fight with a monster, which still threatens', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('mob-hits', { attacker: 'orc' }), []);
+    watch.observe(block('mob-hits', { attacker: 'orc' }), state());
     const fighting = state({
       inCombat: true,
       room: { ...EMPTY_CHARACTER.room, occupants: mobs_([['giant rat', 'hostile']]) }
@@ -61,7 +61,7 @@ describe('whether hanging up would be penalised', () => {
 
   it('threatens while something is still swinging, and stops once it has stopped', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('mob-hits', { attacker: 'orc' }), []);
+    watch.observe(block('mob-hits', { attacker: 'orc' }), state());
     expect(watch.threatened(state(), T0 + 1000)).toBe(true);
     expect(watch.threatened(state(), T0 + MOB_ENGAGED_MS + 1)).toBe(false);
   });
@@ -69,9 +69,9 @@ describe('whether hanging up would be penalised', () => {
   /* 2026-10-19: Soul hung up naked in the temple seconds after the killing blow. */
   it('forgets the killing blow at the death', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('mob-hits', { attacker: 'orc' }), []);
+    watch.observe(block('mob-hits', { attacker: 'orc' }), state());
     expect(watch.threatened(state(), T0 + 1000)).toBe(true);
-    watch.observe(block('user-dies', {}, T0 + 1500), []);
+    watch.observe(block('user-dies', {}, T0 + 1500), state());
     expect(watch.threatened(state(), T0 + 2000)).toBe(false);
     expect(watch.monsterNear(state(), T0 + 2000)).toBe(false);
   });
@@ -116,7 +116,10 @@ describe('whether hanging up would be penalised', () => {
 
   it('charges four minutes after a player hit you, and not six', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     expect(watch.clean(state(), T0 + 4 * 60_000)).toBe(false);
     expect(watch.clean(state(), T0 + 6 * 60_000)).toBe(true);
   });
@@ -127,7 +130,10 @@ describe('whether hanging up would be penalised', () => {
    */
   it('refuses for five minutes after a player hits you', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     expect(watch.assess(state(), T0 + 60_000).clean).toBe(false);
     expect(watch.assess(state(), T0 + PVP_WINDOW_MS - 1).clean).toBe(false);
     expect(watch.assess(state(), T0 + PVP_WINDOW_MS + 1).clean).toBe(true);
@@ -136,47 +142,98 @@ describe('whether hanging up would be penalised', () => {
   /* The server penalises the aggressor exactly as it penalises the victim. */
   it('refuses for five minutes after you hit a player', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'You', target: 'Grimjaw' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'You', target: 'Grimjaw' }),
+      state({ online: [who('Grimjaw')] })
+    );
     expect(watch.assess(state(), T0 + 60_000).clean).toBe(false);
   });
 
   it('names who it was, because five minutes of refusing needs a reason', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     expect(watch.assess(state(), T0 + 1000).reasons.join(' ')).toContain('Grimjaw');
   });
 
   it('says how long is left, so waiting is a choice rather than a mystery', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     const result = watch.assess(state(), T0 + 60_000);
     expect(result.clearInMs).toBeGreaterThan(0);
     expect(result.clearInMs).toBeLessThanOrEqual(PVP_WINDOW_MS - 60_000);
   });
 
   /*
-   * A name not in the roster is treated as a monster. Treating every unknown
-   * name as a player would keep the window permanently open and make a clean
-   * hangup unreachable — the roster is what makes the distinction real.
+   * Todo 20261103-0930-01: a player missing from the who list is the case that
+   * matters, and unknown is the unsafe answer, so only a known monster is one.
    */
-  it('does not open the PvP window for a name nobody has listed', () => {
-    const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), []);
-    // Read as a monster's blow: a threat that lapses in seconds, and no charge.
+  it('opens the PvP window for a name nothing has placed, and says it is unlisted', () => {
+    const blows: string[] = [];
+    const watch = new HangUpWatch({
+      pvpBlow: (name, _at, listed) => blows.push(`${name}:${listed}`)
+    });
+    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), state());
+    expect(watch.clean(state(), T0 + 60_000)).toBe(false);
+    expect(blows).toEqual(['Grimjaw:false']);
+    // It may be a monster too, so it threatens as one.
+    expect(watch.monsterSwung(T0 + 1000)).toBe(true);
+  });
+
+  it('opens it for a player the room listing marked, though the who list has not', () => {
+    const blows: string[] = [];
+    const watch = new HangUpWatch({
+      pvpBlow: (name, _at, listed) => blows.push(`${name}:${listed}`)
+    });
+    const room = { ...EMPTY_CHARACTER.room, occupants: here_(['Grimjaw*']) };
+    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), state({ room }));
+    expect(blows).toEqual(['Grimjaw:true']);
+    expect(watch.monsterSwung(T0 + 1000)).toBe(false);
+  });
+
+  it('does not open it for a monster the room lists, which still threatens', () => {
+    const blows: string[] = [];
+    const watch = new HangUpWatch({ pvpBlow: (name) => blows.push(name) });
+    const room = { ...EMPTY_CHARACTER.room, occupants: mobs_([['Champion Gudruk', 'hostile']]) };
+    watch.observe(
+      block('user-hits', { attacker: 'Champion Gudruk', target: 'you' }),
+      state({ room })
+    );
     expect(watch.threatened(state(), T0 + 1000)).toBe(true);
     expect(watch.clean(state(), T0 + 1000)).toBe(true);
-    expect(watch.threatened(state(), T0 + MOB_ENGAGED_MS + 1)).toBe(false);
+    expect(blows).toEqual([]);
+    // Positive control: the same blow from a name nothing placed opens it.
+    watch.observe(block('user-hits', { attacker: 'Gorgo', target: 'you' }, T0 + 2000), state());
+    expect(blows).toEqual(['Gorgo']);
+  });
+
+  it('does not open it for a blow that names nobody', () => {
+    const watch = new HangUpWatch();
+    watch.observe(block('user-hits', { target: 'you' }), state());
+    expect(watch.clean(state(), T0 + 1000)).toBe(true);
+    expect(watch.monsterSwung(T0 + 1000)).toBe(true);
   });
 
   it('matches a roster name whatever its case', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'GRIMJAW', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'GRIMJAW', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     expect(watch.assess(state(), T0 + 60_000).clean).toBe(false);
   });
 
   it('reports every reason at once rather than only the first', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     const result = watch.assess(
       state({
         online: [who('Grimjaw', 'Outlaw')],
@@ -233,7 +290,10 @@ describe('whether hanging up would be penalised', () => {
 
   it('forgets everything on reset', () => {
     const watch = new HangUpWatch();
-    watch.observe(block('user-hits', { attacker: 'Grimjaw', target: 'you' }), [who('Grimjaw')]);
+    watch.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
     watch.reset();
     expect(watch.assess(state(), T0 + 1000).clean).toBe(true);
   });
@@ -321,7 +381,7 @@ describe('whether a monster is near', () => {
   it('counts a monster that swung lately, with the room empty and no fight flagged', () => {
     const watch = new HangUpWatch();
     expect(watch.monsterNear(state(), T0)).toBe(false);
-    watch.observe(block('mob-misses', { attacker: 'orc' }), []);
+    watch.observe(block('mob-misses', { attacker: 'orc' }), state());
     expect(watch.monsterNear(state(), T0 + 1)).toBe(true);
     expect(watch.monsterNear(state(), T0 + MOB_ENGAGED_MS)).toBe(false);
   });

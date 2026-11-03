@@ -1265,6 +1265,34 @@ describe('the receipt for an addressed message carries what was said', () => {
    * stunned `@wait`s to Ire got no receipt, and every later telepath to Ire
    * showed the words of the one sent two before it.
    */
+  /*
+   * Todo 20261103-0930-01: a guessed attacker now starts the PvP timer, so a
+   * sentence the realm composes with no name in it must not hand one over.
+   */
+  describe('a blow the realm composes with no name in it', () => {
+    const rows = MessageBook.fromRows(
+      parseMessagesCsv(
+        [
+          'number,kind,line1,line2,line3',
+          '51,other,"%s takes %d acid damage!","Acid burns you for %d damage!","%s is burned by acid for %s damage!"'
+        ].join('\n')
+      )
+    );
+    const read = (text: string) =>
+      new Classifier(NAMES, undefined, undefined, undefined, (said) => rows.match(said)).classify(
+        line(text)
+      ).block;
+
+    it('names no attacker for the realm sentence, and still guesses a player', () => {
+      const acid = read('Acid burns you for 1 damage!');
+      expect(acid.type).toBe('user-hits');
+      expect(acid.groups['attacker']).toBeUndefined();
+      // Positive control: the same frame with a name in it is still guessed.
+      const rend = read('Rend chops you for 9 damage!');
+      expect(rend.groups).toMatchObject({ attacker: 'Rend', guessed: 'attacker' });
+    });
+  });
+
   describe('a send the server threw away', () => {
     const rows = MessageBook.fromRows(
       parseMessagesCsv(

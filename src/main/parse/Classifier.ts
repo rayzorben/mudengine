@@ -692,7 +692,7 @@ export class Classifier {
        * it is what the server actually said, and an unresolved one is the
        * only record of a monster nothing could name.
        */
-      this.resolveNames(rule, groups);
+      this.resolveNames(rule, groups, text);
       if (rule.named && groups['attacker'] === undefined) continue;
       this.receipts.bind(rule.type, groups);
       if (rule.type === 'spell-cast') this.markHeal(groups);
@@ -968,7 +968,7 @@ export class Classifier {
    * grammar (`nameFallback`), which is how a hidden player's opening blow gets
    * an attacker before any listing has shown them.
    */
-  private resolveNames(rule: Rule, groups: Record<string, string | undefined>): void {
+  private resolveNames(rule: Rule, groups: Record<string, string | undefined>, text: string): void {
     const middle = groups['line'];
     const first = groups['first'];
     delete groups['first'];
@@ -988,7 +988,12 @@ export class Classifier {
     if (mode === 'attacker') {
       const named = this.names ? nameInMessage(middle, this.names) : null;
       if (named !== null) groups['attacker'] = named;
-      else if (rule.nameFallback && first !== undefined && !ARTICLE.test(first)) {
+      else if (
+        rule.nameFallback &&
+        first !== undefined &&
+        !ARTICLE.test(first) &&
+        !this.namesNobody(text)
+      ) {
         // A name by grammar alone. `Acid burns you for 1 damage!` has the
         // same shape as `Rend chops you for 9 damage!`, so the tracker holds
         // this to the roster and the room before it becomes an attacker.
@@ -1030,6 +1035,18 @@ export class Classifier {
       const byGrammar = targetByGrammar(rest);
       if (byGrammar !== null) groups['target'] = byGrammar;
     }
+  }
+
+  /**
+   * Whether the realm's message table composes this whole line with no name in
+   * it: `Acid burns you for 1 damage!` and `Lightning strikes you for 7
+   * damage!` are a row's target line (`messages.csv` 51, 1150), so the leading
+   * word is the realm's and not an attacker. Guessed, it read to `HangUpWatch`
+   * as a player nobody had listed (todo 20261103-0930-01).
+   */
+  private namesNobody(text: string): boolean {
+    const hit = this.messages?.(text) ?? null;
+    return hit !== null && hit.fills.every((_, index) => hit.numeric[index] === true);
   }
 
   /**

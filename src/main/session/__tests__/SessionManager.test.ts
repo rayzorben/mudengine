@@ -5356,6 +5356,30 @@ describe('a player opening on this character', () => {
     expect(seen()).not.toMatch(/\bw\r\n/);
   });
 
+  /* Todo 20261103-0930-01: a player the who list has never named is not a monster. */
+  it('tells the gang about an attacker no listing names, and records why', async () => {
+    const { sink, notices, traces } = collect();
+    manager = build(sink, { automation: pvpConfig({ notifyGang: true }) });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+
+    socket.write('[HP=62]:\r\n');
+    await until(() => manager!.character.phase === 'in-game');
+    socket.write('Zed slashes you for 9 damage!\r\n');
+    await until(() => Buffer.concat(received).toString('latin1').includes('bg attacked by Zed'));
+    expect(manager.character.online).toEqual([]);
+    expect(notices.some(composes('session.safety.pvpUnlisted'))).toBe(true);
+    const timer = () =>
+      traces.flatMap((trace) => trace.safety).find((d) => d.action === 'pvp timer');
+    await until(() => timer() !== undefined);
+    expect(timer()).toMatchObject({
+      acted: true,
+      because: t('session.safety.whyPvpUnlisted', { attacker: 'Zed' })
+    });
+  });
+
   it('does nothing at all while both halves are off', async () => {
     const { sink, notices } = collect();
     manager = build(sink, { automation: pvpConfig() });

@@ -346,7 +346,7 @@ export class SessionManager {
   private phaseWas: SessionPhase = 'unknown';
   /** Whether a disconnect would be penalised, tracked from the stream. */
   private readonly hangUp = new HangUpWatch({
-    pvpBlow: (attacker, at) => this.safety.onPvpBlow(attacker, at)
+    pvpBlow: (attacker, at, listed) => this.safety.onPvpBlow(attacker, at, listed)
   });
   /** Not a direction: hanging up and the gang alert (`Safety`); the teleport (`FleeGoto`). */
   private readonly safety: Safety;
@@ -2729,15 +2729,12 @@ export class SessionManager {
         )
         .map((occupant) => occupant.name)
     );
-    // Evidence about whether hanging up would be penalised: who hit whom, and
-    // whether they are a player. Fed the roster as it stands *before* this
-    // block is applied, which is right — a name arrives in the roster from a
-    // listing or a broadcast, never from a blow.
-    this.hangUp.observe(block, this.tracker.current.online);
     this.publisher.publishAutomation();
 
     const roomBefore = this.tracker.current.room;
     const fed = applyAct(this.tracker, step);
+    // Who hit whom, read once the blow has put a known attacker in the room (`HangUpWatch.observe`).
+    this.hangUp.observe(block, this.tracker.current);
     // An escape in flight reads what the server said back (todos 06, 813).
     this.travel.settleEscape(block, roomBefore);
     this.fleeGoto.settle(block, this.answering);

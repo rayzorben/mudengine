@@ -3,10 +3,11 @@ import type { Block } from '../../shared/blocks';
 import {
   fightIsRunning,
   standingOf,
-  type Adventurer,
-  type CharacterState
+  type CharacterState,
+  type RoomOccupant
 } from '../../shared/character';
 import { occupantAttacksOnSight } from '../../shared/mobRules';
+import { mobKey } from '../../shared/world';
 import type { SessionModule } from './Module';
 
 /**
@@ -64,6 +65,9 @@ export interface HangUpAssessment {
  */
 export const PVP_WINDOW_MS = 5 * 60 * 1000;
 
+/** The same window in whole minutes, as a notice says it. */
+export const PVP_WINDOW_MINUTES = Math.ceil(PVP_WINDOW_MS / 60_000);
+
 /**
  * How recently a monster must have swung for it to count as still fighting
  * the character: a hang-up beside it, a naked one, a rest or a blessing.
@@ -76,16 +80,17 @@ export const MOB_ENGAGED_MS = 12 * 1000;
 
 export interface HangUpEvents {
   /**
-   * A player opened on, or landed a blow on, *this* character — the moment
-   * the five-minute window starts from the victim's side. Deliberately not
-   * fired when this character is the aggressor: the reaction this feeds is
-   * "tell the gang I am being attacked", and a character's own attack is not
-   * that. The attacker is always named, because the roster is what made them
-   * a player at all — an unvouched name never fires this, per the rule that
-   * `players` counts occupants *known* from the roster. Fired once per
-   * evidencing line; whoever reacts rate-limits.
+   * Something that is not a known monster opened on, or landed a blow on,
+   * *this* character: the moment the five-minute window starts from the
+   * victim's side. Deliberately not fired when this character is the
+   * aggressor: the reaction this feeds is "tell the gang I am being
+   * attacked", and a character's own attack is not that. `listed` is true
+   * for a player the roster, the party or the room's listing names, false for
+   * a name nothing has placed, which counts because unknown is the unsafe
+   * answer (todo 20261103-0930-01). Fired once per evidencing line; whoever
+   * reacts rate-limits.
    */
-  pvpBlow?(attacker: string, at: number): void;
+  pvpBlow?(attacker: string, at: number, listed: boolean): void;
 }
 
 export class HangUpWatch implements SessionModule {
@@ -106,20 +111,20 @@ export class HangUpWatch implements SessionModule {
   }
 
   /**
-   * Reads one block for evidence.
+   * Reads one block for evidence, against the state it left: a blow puts a
+   * named or vouched attacker in the room, classified by the roster and the
+   * realm's monster table (`FightTracker.blowOnMe`); a name guessed by grammar
+   * that nothing knows stays out of the room and so reads as unknown.
    *
-   * `roster` decides whether a name is a *player*, which is the whole
-   * difference between "a monster hit me" and "the five-minute PvP window just
-   * started". Somebody not in the roster is treated as a mob: the roster is
-   * seeded by a `who` listing and maintained by arrival broadcasts, so a name
-   * missing from it is usually a monster — and the alternative, treating every
-   * unknown name as a player, would keep the window permanently open and make
-   * a clean hangup unreachable.
+   * Whether the attacker is a *player* is the whole difference between "a
+   * monster hit me" and "the five-minute PvP window just started". A monster
+   * the room lists is a monster; a player the roster, party or listing names
+   * is a player; anything else is unknown and counts as a player, since a
+   * player missing from the `who` list is the case that matters (todo
+   * 20261103-0930-01). A line the realm composes with no name in it (`Acid
+   * burns you`) names no attacker at all (`Classifier.namesNobody`).
    */
-  observe(block: Block, roster: readonly Adventurer[]): void {
-    const isPlayer = (name: string | undefined): boolean =>
-      name !== undefined && roster.some((entry) => entry.name.toLowerCase() === name.toLowerCase());
-
+  observe(block: Block, state: CharacterState): void {
     switch (block.type) {
       // `The <mob> ... you` — the article is what distinguishes a monster's
       // blow from a player's in this server's phrasing.
@@ -143,20 +148,21 @@ export class HangUpWatch implements SessionModule {
       case 'user-hits': {
         const attacker = block.groups['attacker'];
         const target = block.groups['target'];
-        // Somebody hit *this* character. A player doing it starts the window.
+        // Somebody hit *this* character. Anything but a known monster starts the
+        // window; an unknown one may be a monster too, so it threatens as one.
         if (target !== undefined && /^you$/i.test(target)) {
-          if (attacker !== undefined && isPlayer(attacker)) {
+          const kind = attacker === undefined ? 'mob' : kindOf(state, attacker);
+          if (attacker !== undefined && kind !== 'mob') {
             this.lastPvpAt = block.at;
             this.lastPvpWith = attacker;
-            this.events.pvpBlow?.(attacker, block.at);
-          } else {
-            this.lastMobBlowAt = block.at;
+            this.events.pvpBlow?.(attacker, block.at, kind === 'player');
           }
+          if (kind !== 'player') this.lastMobBlowAt = block.at;
           return;
         }
         // This character hit somebody. Hitting a player starts it too — the
         // server penalises the aggressor exactly as it penalises the victim.
-        if (isPlayer(target)) {
+        if (target !== undefined && kindOf(state, target) === 'player') {
           this.lastPvpAt = block.at;
           this.lastPvpWith = target ?? null;
         }
@@ -261,22 +267,32 @@ export class HangUpWatch implements SessionModule {
 }
 
 /**
+ * What a name in a blow is, as the client knows it: a player where the roster,
+ * the party or the room's listing says so, a monster where the listing does
+ * (the realm's table placed it), else unknown.
+ */
+function kindOf(state: CharacterState, name: string): RoomOccupant['kind'] {
+  const key = mobKey(name);
+  const named = (entry: { name: string }): boolean => mobKey(entry.name) === key;
+  if (state.online.some(named) || state.party.members.some(named)) return 'player';
+  return state.room.occupants.find(named)?.kind ?? 'unknown';
+}
+
+/**
  * Who in the fight may be a player, by the name the fight holds, or null: a
- * listed player first, else a name the room does not list as a monster (an
+ * player first, else a name the room does not list as a monster (an
  * `unknown` occupant, or one not listed at all). The server does not charge
  * for it in a protected room (`Room.safe`); a Colliseum is not in the realm
  * data, so it counts.
  */
 function playerFighting(state: CharacterState): HangUpFindings['pvpNow'] {
   if (state.room.safe === true) return null;
-  const kindOf = (name: string) =>
-    state.room.occupants.find((who) => who.name.toLowerCase() === name.toLowerCase())?.kind;
   const fighting = [state.combat.target, ...state.combat.attackers].filter(
     (name): name is string => name !== null
   );
-  const player = fighting.find((name) => kindOf(name) === 'player');
+  const player = fighting.find((name) => kindOf(state, name) === 'player');
   if (player !== undefined) return { name: player, sure: true };
-  const doubt = fighting.find((name) => kindOf(name) !== 'mob');
+  const doubt = fighting.find((name) => kindOf(state, name) !== 'mob');
   return doubt === undefined ? null : { name: doubt, sure: false };
 }
 

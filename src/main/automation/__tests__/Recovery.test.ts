@@ -1277,7 +1277,7 @@ describe('no rest while a monster here is still swinging', () => {
         terminator: 'newline',
         confidence: 1
       },
-      []
+      EMPTY_CHARACTER
     );
   const signsOf = (on: HangUpWatch): FightSigns => ({
     monsterSwung: (now) => on.monsterSwung(now),
