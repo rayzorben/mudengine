@@ -122,6 +122,67 @@ describe('a way that lands only some of the time', () => {
   });
 });
 
+describe('a try answered by a fight', () => {
+  // Mutant: `beforeTry` answers false, so the dig after the fight goes out unlisted.
+  it('lists the pack before the next try when a fight sent it again', () => {
+    let now = standing;
+    const { walker, sent } = walkerOn({
+      stateNow: () => now,
+      replan: () => 'no other way',
+      combatOn: () => true
+    });
+    walker.start(dig({ breaks: [{ item: 1415, chance: 0.02 }] }), standing);
+    vi.advanceTimersByTime(50);
+    expect(moves(sent).filter((command) => command === 'dig grave')).toHaveLength(1);
+    // A zombie walks in before the try's deadline and is fought; then the fight ends.
+    const fighting = at(1, 1, { inCombat: true });
+    now = fighting;
+    walker.onCharacter(fighting);
+    now = standing;
+    walker.onCharacter(standing);
+    vi.advanceTimersByTime(2_000);
+    // Positive control: the walk did go on after the fight, with the listing first.
+    expect(sent).toContain('i');
+    expect(moves(sent).filter((command) => command === 'dig grave')).toHaveLength(1);
+    // The listing answered with the shovel still there: the dig goes again.
+    now = listed([1415]);
+    vi.advanceTimersByTime(4_000);
+    expect(moves(sent).filter((command) => command === 'dig grave')).toHaveLength(2);
+  });
+});
+
+describe('a listing a fight arrived before', () => {
+  // Mutant: `beforeTry` leaves an asked listing unread, so the broken shovel is dug with.
+  it('is read before the next try, and the item fetched when it is gone', () => {
+    const fetched: Array<[readonly number[], string]> = [];
+    let now = standing;
+    const { walker, sent } = walkerOn({
+      stateNow: () => now,
+      replan: () => 'no other way',
+      combatOn: () => true,
+      fetchAgain: (items, to) => {
+        fetched.push([items, to]);
+        return true;
+      }
+    });
+    walker.start(dig({ breaks: [{ item: 1415, chance: 0.02 }] }), standing);
+    vi.advanceTimersByTime(50);
+    walker.onCharacter(standing);
+    tries(1);
+    expect(sent).toContain('i');
+    // The listing lacks the shovel; a skeleton walks in before it is read, and is killed.
+    const fighting = listed([]);
+    fighting.inCombat = true;
+    now = fighting;
+    walker.onCharacter(fighting);
+    now = listed([]);
+    walker.onCharacter(now);
+    vi.advanceTimersByTime(4_000);
+    expect(fetched).toEqual([[[1415], '1/2']]);
+    expect(moves(sent).filter((command) => command === 'dig grave')).toHaveLength(1);
+  });
+});
+
 describe("a ship's passage", () => {
   /** Paying at 14/759, waiting in 14/715–716, landing on the beach at 14/1812. */
   const passage: Route = routeOf({

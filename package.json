@@ -87,6 +87,7 @@
     "probe:scroll": "node --import ./scripts/lib/register.mjs scripts/scroll-probe.mjs",
     "probe:statall": "node --import ./scripts/lib/register.mjs scripts/statall-probe.mjs",
     "probe:goto": "node --import ./scripts/lib/register.mjs scripts/goto-probe.mjs",
+    "probe:dig": "node --import ./scripts/lib/register.mjs scripts/dig-probe.mjs",
     "probe:signal": "node scripts/signal-probe.mjs"
   },
   "build": {

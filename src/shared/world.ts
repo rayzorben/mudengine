@@ -4313,15 +4313,16 @@ export function itemsWanted(route: Route): Array<{ id: number; name: string }> {
 }
 
 /**
- * What a way planned as though the pack held it (`Route.needs`) wants for a
- * door among **its own** steps: a prefix of that way (*Walk here*) that stops
- * short of the door wants nothing for it. Required, where `itemsWanted`'s
- * walls and spells are the reader's to tick.
- */
+ * What `Route.needs` wants for a door among the way's **own** steps (a *Walk here* prefix short
+ * of the door wants nothing): required, where `itemsWanted`'s walls and spells are ticked. */
 export function needsAlong(route: Route): Array<{ id: number; name: string }> {
-  const demanded = new Set(route.steps.flatMap((step) => itemsDemanded(step.requirement)));
+  const demanded = itemsDemandedAlong(route);
   return (route.needs ?? []).filter((item) => demanded.has(item.id));
 }
+
+/** Every item a route's own steps demand be carried (`itemsDemanded`, step by step). */
+export const itemsDemandedAlong = (route: Pick<Route, 'steps'>): Set<number> =>
+  new Set(route.steps.flatMap((step) => itemsDemanded(step.requirement)));
 
 /** A route this character can walk: found, and crossing no wall. */
 export function walkable(route: Route): boolean {

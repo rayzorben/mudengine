@@ -47,13 +47,36 @@ function carried(step: RouteStep): number[] {
   );
 }
 
+/** Whether a try at this step can take the item it wants carried: the shovel's 2%. */
+function canBreak(step: RouteStep): boolean {
+  return (step.requirement?.breaks?.length ?? 0) > 0 && carried(step).length > 0;
+}
+
+/** A listing asked after a try that may have taken an item: when, and how many holds it was waited. */
+interface PackListing {
+  step: RouteStep;
+  askedAt: number;
+  waits: number;
+}
+
+/** Whether the pack was listed since the listing was asked. */
+function listedSince(listing: PackListing, state: CharacterState): boolean {
+  const listedAt = state.inventory.listedAt;
+  return listedAt !== null && listedAt >= listing.askedAt;
+}
+
+/** One way's key, so a replan of the same way keeps its count. */
+const wayKey = (step: RouteStep): string => `${step.from}|${step.command ?? ''}`;
+
 export class ChanceWays {
   /** The tries said at one way, keyed by its room and command so a replan keeps the count. */
   private tries: { key: string; count: number } | null = null;
   /** The way found to be the only way there, so it is not asked again. */
   private onlyWay: string | null = null;
   /** A listing asked after a try that may have taken an item, and when. */
-  private listing: { step: RouteStep; askedAt: number; waits: number } | null = null;
+  private listing: PackListing | null = null;
+  /** A try that can break the item, sent and not yet followed by a listing. */
+  private unlisted: { key: string; at: number } | null = null;
 
   constructor(
     private readonly queue: Pick<CommandQueue, 'enqueue'>,
@@ -69,7 +92,7 @@ export class ChanceWays {
   stayed(step: RouteStep, state: CharacterState): boolean {
     if (!byChance(step) || roomAddress(state.room) !== step.from) return false;
     this.clock.clear();
-    const key = `${step.from}|${step.command ?? ''}`;
+    const key = wayKey(step);
     const count = this.tries?.key === key ? this.tries.count + 1 : 1;
     this.tries = { key, count };
     const limit = Math.ceil(this.walk.chanceTries() * (step.requirement?.tries ?? 1));
@@ -83,12 +106,42 @@ export class ChanceWays {
       this.walk.detour(round, state);
       return true;
     }
-    if ((step.requirement?.breaks?.length ?? 0) > 0 && carried(step).length > 0) {
+    if (canBreak(step)) {
       this.askPack(step);
       return true;
     }
     this.again(count === 1 ? step : null);
     return true;
+  }
+
+  /**
+   * Ahead of a try, where the last one could have broken the item: the pack
+   * listed first, or the listing already asked read now. The step's deadline
+   * lists it (`stayed`), but a try answered another way never reaches it: a
+   * monster walking in, the fight, then the step sent again on `*Combat Off*`,
+   * which also cleared the timer that would have read the listing (orohost,
+   * 2026-11-02: the shovel broke, the listing lacked it, and the next dig
+   * was answered `Nothing happens.`). True where the try does not go now.
+   */
+  beforeTry(step: RouteStep, state: CharacterState): boolean {
+    if (!byChance(step) || !canBreak(step)) return false;
+    const listing = this.listing;
+    if (listing !== null) {
+      if (this.stillWaiting(listing, state)) {
+        this.whenListed();
+        return true;
+      }
+      if (this.judge(listing, state)) return true;
+    }
+    const key = wayKey(step);
+    const listedAt = state.inventory.listedAt;
+    const owed = this.unlisted;
+    if (owed?.key === key && (listedAt === null || listedAt < owed.at)) {
+      this.askPack(step);
+      return true;
+    }
+    this.unlisted = { key, at: Date.now() };
+    return false;
   }
 
   /**
@@ -171,6 +224,8 @@ export class ChanceWays {
   /** The pack listed before the next try, since this one may have taken what the way wants. */
   private askPack(step: RouteStep): void {
     const askedAt = Date.now();
+    // This listing answers the try owed one, whatever it finds.
+    this.unlisted = null;
     this.listing = { step, askedAt, waits: 0 };
     this.queue.enqueue({
       ...REFRESH.pack,
@@ -183,25 +238,40 @@ export class ChanceWays {
   }
 
   private whenListed(): void {
+    const listing = this.listing;
     this.clock.afterHold(tuning().walk.holdMs, () => {
-      const listing = this.listing;
       const state = this.events.stateNow?.();
-      if (listing === null || state === undefined || !this.walk.walking()) return;
-      const listedAt = state.inventory.listedAt;
-      const fresh = listedAt !== null && listedAt >= listing.askedAt;
-      if (!fresh && listing.waits * tuning().walk.holdMs < tuning().queue.unreadRetryMs) {
+      // Read already (`beforeTry`), or a later listing asked: this timer has nothing to answer.
+      if (listing === null || this.listing !== listing) return;
+      if (state === undefined || !this.walk.walking()) return;
+      if (this.stillWaiting(listing, state)) {
         listing.waits += 1;
         this.whenListed();
         return;
       }
-      this.listing = null;
-      const gone = carried(listing.step).filter((item) => !state.inventory.rows.includes(item));
-      if (!fresh || gone.length === 0) {
-        this.again();
-        return;
-      }
-      this.fetch(listing.step, gone, state);
+      if (!this.judge(listing, state)) this.again();
     });
+  }
+
+  /** Whether the listing asked has not come yet and is still worth waiting for. */
+  private stillWaiting(listing: PackListing, state: CharacterState): boolean {
+    return (
+      !listedSince(listing, state) &&
+      listing.waits * tuning().walk.holdMs < tuning().queue.unreadRetryMs
+    );
+  }
+
+  /**
+   * The listing read: true where it lacks what the way wants and that is
+   * being fetched, false where the way is tried again (the item is there, or
+   * no listing came to say otherwise).
+   */
+  private judge(listing: PackListing, state: CharacterState): boolean {
+    this.listing = null;
+    const gone = carried(listing.step).filter((item) => !state.inventory.rows.includes(item));
+    if (!listedSince(listing, state) || gone.length === 0) return false;
+    this.fetch(listing.step, gone, state);
+    return true;
   }
 
   /** What the try took, fetched again, and the journey walked on from there. */

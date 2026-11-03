@@ -104,10 +104,13 @@ export class RoomCommands {
    * off), so `nomonsters` refuses. Spending the command would only print the
    * realm's `You cannot do that right now!`; the refusal is taken now. A way
    * the room's own spell opens is waited out where the character stands,
-   * nothing sent (`room-spell`). Returns whether it answered the send.
+   * nothing sent (`room-spell`), and a try that could have broken the item is
+   * followed by a pack listing before the next (`ChanceWays.beforeTry`).
+   * Returns whether it answered the send.
    */
   inPlaceOfSending(step: RouteStep, state: CharacterState): boolean {
     if (step.requirement?.kind === 'room-spell') return this.chance.waitsOut(step, step.from);
+    if (this.chance.beforeTry(step, state)) return true;
     if (!wantsEmptyRoom(step) || countMobs(state.room.occupants) === 0) return false;
     this.refuse(step, state);
     return true;

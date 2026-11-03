@@ -64,7 +64,11 @@ function travel(
   walk: 'stepping' | 'held' | 'none',
   going = true,
   master = { on: true, writes: true },
-  overrides: Partial<TravelSession> & { settings?: AutomationConfig; combatOn?: boolean } = {}
+  overrides: Partial<TravelSession> & {
+    settings?: AutomationConfig;
+    combatOn?: boolean;
+    world?: TravelParts['world'];
+  } = {}
 ) {
   const sent: string[] = [];
   const kinds: Array<DecisionKind | undefined> = [];
@@ -80,7 +84,7 @@ function travel(
       retraced: vi.fn(),
       players: {}
     },
-    world: undefined,
+    world: overrides.world,
     errands: {
       planFromHere: vi.fn(),
       planTo: vi.fn(() => null),
@@ -478,6 +482,49 @@ describe('collecting before a walk', () => {
       { id: 1, name: 'rope', from: { step, moves: 1 } },
       { id: 2, name: 'torch' }
     ]);
+  });
+});
+
+describe('fetching again what a try took', () => {
+  const shovel = { id: 1415, name: 'shovel' } as const;
+  const world = {
+    byId: () => undefined,
+    item: () => ({ ...shovel })
+  } as unknown as TravelParts['world'];
+  /** One step into 1/9: `d` behind a door, or `dig grave` wanting the shovel. */
+  const way = (dig: boolean): Route => ({
+    steps: [
+      {
+        from: '1/1',
+        to: '1/9',
+        direction: dig ? 'portal' : 'd',
+        command: dig ? 'dig grave' : 'd',
+        name: 'Musty Grottos, Portal',
+        requirement: dig
+          ? {
+              kind: 'text',
+              raw: 'dig grave',
+              gates: [{ kind: 'carry', item: 1415, name: 'shovel' }]
+            }
+          : null,
+        dark: false
+      }
+    ],
+    cost: 1,
+    blocked: false
+  });
+
+  // Mutant: the plan from here never read, so the shovel is hunted for a way that no longer wants it.
+  it('walks on where the way from here no longer wants it, and fetches it where it does', () => {
+    const { travel: moving, parts } = travel(beside(), 'none', true, undefined, { world });
+    vi.mocked(parts.itemErrand.collect).mockReturnValue(null);
+    vi.mocked(parts.errands.planFromHere).mockReturnValue(way(false));
+    expect(moving.fetchAgain([1415], '1/9', 'walk')).toBe(false);
+    expect(parts.itemErrand.collect).not.toHaveBeenCalled();
+    // Positive control: the way from here is still the dig, so the shovel is fetched.
+    vi.mocked(parts.errands.planFromHere).mockReturnValue(way(true));
+    expect(moving.fetchAgain([1415], '1/9', 'walk')).toBe(true);
+    expect(vi.mocked(parts.itemErrand.collect).mock.calls[0]?.[0]).toEqual([shovel]);
   });
 });
 

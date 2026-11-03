@@ -72,6 +72,7 @@ import {
   fareRoom,
   fareShortfall,
   itemsDemanded,
+  itemsDemandedAlong,
   newDemands,
   OPPOSITE,
   roomAddress,
@@ -758,12 +759,16 @@ export class Travel implements SessionModule {
    * What a way's try took (the shovel broke), fetched again and the journey
    * to `to` walked after (`WalkerEvents.fetchAgain`), as the route panel's
    * collect-then-walk does. Never for a lap or an errand's walk, which plans
-   * its own items: whether the fetch started.
+   * its own items, and never where the way from here no longer wants the
+   * item (gmud's walk into Musty Grottos): the walk plans on from here
+   * instead. Whether the fetch started.
    */
   fetchAgain(items: readonly number[], to: RoomId, kind: WalkKind): boolean {
     if (kind !== 'walk') return false;
     const route = this.errands.planFromHere(to, {}, kind);
     if (typeof route === 'string') return false;
+    const demanded = itemsDemandedAlong(route);
+    if (!route.blocked && !items.some((item) => demanded.has(item))) return false;
     const wanted = items.flatMap((id) => {
       const name = this.world?.item(id)?.name;
       return name === undefined ? [] : [{ id, name }];
