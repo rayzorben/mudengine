@@ -162,7 +162,8 @@ const api: WireApi = {
   slotGear: (session, slot) => ipcRenderer.invoke(Invoke.slotGear, session, slot),
   chosenWords: (session) => ipcRenderer.invoke(Invoke.chosenWords, session),
   blessingChoice: (session) => ipcRenderer.invoke(Invoke.blessingChoice, session),
-  huntingGrounds: (session, measure) => ipcRenderer.invoke(Invoke.huntingGrounds, session, measure),
+  huntingGrounds: (session, measure, held) =>
+    ipcRenderer.invoke(Invoke.huntingGrounds, session, measure, held),
   trainers: (session) => ipcRenderer.invoke(Invoke.trainers, session),
   banks: (session) => ipcRenderer.invoke(Invoke.banks, session),
   supplyCounters: (session) => ipcRenderer.invoke(Invoke.supplyCounters, session),

@@ -105,6 +105,22 @@ export class RoomClocks {
     return timedWithMoves(entry) ? entry : null;
   }
 
+  /**
+   * What the realm's timed refills come to, as one string: how many rooms and
+   * refills, and the newest. Every character in the realm writes the same
+   * lore, so this reads it rather than counting this session's own.
+   */
+  timedKey(): string {
+    let refills = 0;
+    let newest = 0;
+    const all = this.lore.allSpawns();
+    for (const entry of all.values()) {
+      refills += entry.refills.length;
+      newest = Math.max(newest, entry.at);
+    }
+    return `${all.size}|${refills}|${newest}`;
+  }
+
   /** Rooms `isLair` does not admit that have a timed clock: an arena, read off the wire. */
   refilling(isLair: (room: RoomId) => boolean): RefillingRoom[] {
     const least = tuning().hunting.refillsLeast;

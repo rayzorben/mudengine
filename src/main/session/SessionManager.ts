@@ -190,7 +190,7 @@ import type {
   TerminalSize
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
-import { NOT_KEPT, type HuntingAdvice } from '../../shared/hunting';
+import { NOT_KEPT } from '../../shared/hunting';
 import type { SessionSink } from './SessionSink';
 
 /**
@@ -3144,9 +3144,9 @@ export class SessionManager {
     return this.errands.lapTraveller(state);
   }
 
-  /** Where this character should hunt. See `Errands.huntingGrounds`. */
-  huntingGrounds(radius: number | null, measure: string | null = null): HuntingAdvice {
-    return this.errands.huntingGrounds(radius, measure);
+  /** The Hunting card's answer, `held` the key of the survey it holds. See `Errands.huntingAnswer`. */
+  huntingAnswer(held: string | null, measure: string | null): ReturnType<Errands['huntingAnswer']> {
+    return this.errands.huntingAnswer(held, measure);
   }
 
   /** Collect what the way needs, then walk it. See `Travel.collectThenWalk`. */

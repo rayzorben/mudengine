@@ -27,6 +27,21 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * A value as one string for a key: a `Set` or `Map` as its entries, a
+ * function left out. What decides a way (`Errands.reachKey`), what a survey
+ * reads (`Errands.surveyKey`).
+ */
+export function keyJson(value: unknown): string {
+  return JSON.stringify(value, (_key, part: unknown) =>
+    typeof part === 'function'
+      ? undefined
+      : part instanceof Set || part instanceof Map
+        ? [...part]
+        : part
+  );
+}
+
 /** Whether two plain values say the same thing, key order included: drafts, marks, quest ways. */
 export function sameJson<T>(a: T, b: T): boolean {
   return JSON.stringify(a) === JSON.stringify(b);

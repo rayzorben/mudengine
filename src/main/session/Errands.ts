@@ -18,7 +18,7 @@ import { Navigation } from './navigation';
 import { exitGates, itemsAsked, tollCharge } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
-import { minutesMs } from '../../shared/values';
+import { keyJson, minutesMs } from '../../shared/values';
 import { partyTraps, walkersThrough } from '../../shared/barrierHands';
 import { killShare } from '../../shared/company';
 import { partyPlan, withParty } from '../../shared/partyFight';
@@ -100,6 +100,7 @@ import {
   type FillerInput,
   type HealingCast,
   type HuntVia,
+  type GatedGround,
   type HuntingAdvice,
   type KillPay,
   type HuntingAssumptions,
@@ -125,6 +126,8 @@ import {
 } from '../../shared/prowess';
 import { attackFor } from '../../shared/attackOptions';
 import { fightWords, type FightWords } from './fightWords';
+import { HuntAnswers, identityOf, surveyedState, type SurveyHere } from './huntAnswers';
+import type { HuntingReply } from '../../shared/huntReply';
 import { EFFECT_ABILITY } from '../../shared/abilities';
 import { abilitySum } from '../../shared/light';
 import { chooseByExp } from '../../shared/statGains';
@@ -260,6 +263,32 @@ export interface RealmClass extends ProwessClass {
 /** What `chooseAttackSpell` is handed about the caster, before a target. */
 export type CastingInput = KillCasting;
 
+/** The survey's figures that are not the realm's (`Errands.surveyFigures`). */
+interface SurveyFigures {
+  c: HuntingConstants;
+  family: RealmFamily | null;
+  attack: ProwessAttack;
+  sheet: ProwessSheet;
+  speed: number;
+  backstab: boolean;
+  character: SpotCharacter;
+  party: ReturnType<typeof partyPlan>;
+  assumptions: HuntingAssumptions;
+  cashPerHour: number;
+}
+
+/** How the survey prices a monster here (`Errands.surveyPricing`). */
+interface SurveyPricing {
+  player: MenacePlayer;
+  naked: MenacePlayer;
+  weapon: ReturnType<typeof wieldedWeapon>;
+  weights: ReturnType<typeof tuning>['menace'];
+  casting: CastingInput | null;
+  measured: HuntingAssumptions['measured'];
+  pay: KillPay;
+  priceKey: string;
+}
+
 /**
  * The realm's answers these read, and no more: the router's, the catalogue's
  * and the quest planner's, which todos 710–712 give homes of their own.
@@ -389,6 +418,12 @@ export class Errands implements SessionModule {
   private readonly navigation: Navigation;
   /** The grounds behind a level gate, for the survey (todo 2322-01). */
   private readonly gatedGrounds: GatedGrounds;
+  /** The survey the Hunting card was last answered, kept while nothing it reads but the room moves. */
+  private readonly answers = new HuntAnswers({
+    inputs: (measure) => this.surveyKey(measure),
+    survey: (measure) => this.huntingGrounds(null, measure),
+    here: () => this.surveyHere()
+  });
   /** Every toll the realm's exits charge, in copper, cheapest first; read once. */
   private tolls: number[] | null = null;
   /** `gateItems`, read once per realm. */
@@ -1134,15 +1169,14 @@ export class Errands implements SessionModule {
     // a staff bought every 12 s planned every trainer route again each time).
     const opens = this.gateItems();
     const carried = keys?.filter((id) => opens.has(id));
-    return JSON.stringify(
-      { ...reach, keys: carried, tollsPaid, tollsCarried, hitsWalled, fights: this.combatOn() },
-      (_key, value: unknown) =>
-        typeof value === 'function'
-          ? undefined
-          : value instanceof Set || value instanceof Map
-            ? [...value]
-            : value
-    );
+    return keyJson({
+      ...reach,
+      keys: carried,
+      tollsPaid,
+      tollsCarried,
+      hitsWalled,
+      fights: this.combatOn()
+    });
   }
   /** How many of the realm's tolls `copper` pays; null while it is unread. */
   private tollsWithin(copper: number | null | undefined): number | null {
@@ -2068,6 +2102,72 @@ export class Errands implements SessionModule {
     return { shops, asks, droppers: drops.droppers, lairs: drops.lairs };
   }
 
+  /** The Hunting card's answer: the survey, or `same` for the one it holds (`HuntAnswers`). */
+  huntingAnswer(held: string | null, measure: string | null): HuntingReply {
+    return this.answers.answer(held, measure);
+  }
+
+  /**
+   * Everything the card's survey reads but the room it is asked from, as one
+   * string (`HuntAnswers`): its figures and prices, what decides a way, the
+   * kills' pay, the timed refills, the odds book's fights, the rates still
+   * kept, the settings and the character as the survey reads it. Null
+   * worldless.
+   */
+  private surveyKey(measure: string | null): string | null {
+    const world = this.world;
+    if (world === undefined) return null;
+    const state = this.tracker.current;
+    const figures = this.surveyFigures(state);
+    const { weights: _weights, ...pricing } = this.surveyPricing(state, world, figures);
+    const { measuredForgetMs } = tuning().hunting;
+    const now = Date.now();
+    const rates = [...this.session.rates()].filter(([, rate]) => now - rate.at < measuredForgetMs);
+    return keyJson({
+      measure,
+      world: identityOf(world),
+      tuning: identityOf(tuning()),
+      settings: this.automationConfig,
+      figures: {
+        ...figures,
+        party: figures.party?.said ?? null,
+        partyKey: figures.party?.odds?.key
+      },
+      pricing,
+      kills: this.kills.allKillExp(),
+      reach: this.reachKey(state),
+      timed: this.clocks.timedKey(),
+      odds: this.session.odds().lairsRun,
+      rates,
+      state: surveyedState(state)
+    });
+  }
+
+  /** Where the character stands, for the survey kept (`HuntAnswers`); null while unplaced or worldless. */
+  private surveyHere(): SurveyHere | null {
+    const state = this.tracker.current;
+    const here = roomAddress(state.room);
+    const start = here === null ? undefined : this.world?.byId(here);
+    if (here === null || start === undefined) return null;
+    const reach = this.navigation.withinNow(here, Number.POSITIVE_INFINITY, state);
+    return {
+      from: { id: here, name: start.name },
+      reach,
+      gated: this.shutAround(state, here, null, reach)
+    };
+  }
+
+  /** The grounds behind a level gate from `from` (`GatedGrounds.around`), as the survey lists them. */
+  private shutAround(
+    state: CharacterState,
+    from: RoomId,
+    radius: number | null,
+    reach: ReadonlyMap<RoomId, number>
+  ): GatedGround[] {
+    const steps = radius ?? Number.POSITIVE_INFINITY;
+    return this.gatedGrounds.around(state, from, steps, reach, tuning().hunting.maxSpots);
+  }
+
   /**
    * Where this character should hunt (todo 05; revamped 2026-09-13, todo 00).
    *
@@ -2103,138 +2203,11 @@ export class Errands implements SessionModule {
   ): HuntingAdvice {
     const state = as;
     const world = this.world;
-    // Every figure the model runs on, named here so each has a reader.
-    const {
-      roundSeconds,
-      engageMs,
-      restTickSeconds,
-      passiveTickSeconds,
-      roomRegenSeconds,
-      killOverheadMs,
-      stepMs,
-      greatermudRespawnOffsetSeconds,
-      backstabMultiplier,
-      maxLoopRooms,
-      maxSpots,
-      trivialShare,
-      clusterRadius,
-      fillerRadius,
-      sizeTolerance,
-      measuredFightsMin,
-      measuredForgetMs,
-      measuredMinutesLeast,
-      paceLeast,
-      paceMost,
-      measuredLevels,
-      partyDamageStep
-    } = tuning().hunting;
-    const { maxDamageShare, trivialLevelMargin, cashExpShare } = this.automationConfig.hunting;
-    // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
-    const speed = this.speed.multiplier;
-    const c: HuntingConstants = timedBy(
-      atSpeed(
-        {
-          roundSeconds,
-          engageMs,
-          restTickSeconds,
-          passiveTickSeconds,
-          roomRegenSeconds,
-          killOverheadMs,
-          stepMs,
-          greatermudRespawnOffsetSeconds,
-          backstabMultiplier,
-          maxLoopRooms,
-          maxSpots,
-          maxDamageShare,
-          trivialShare,
-          trivialLevelMargin,
-          clusterRadius,
-          fillerRadius,
-          sizeTolerance
-        },
-        speed
-      ),
-      this.fightRecord.timing?.(measuredFightsMin) ?? null
-    );
-    const { combat, magery, crits, rounds, mageryType, family, attack } = this.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery, crits, rounds });
-    const regen = regeneration(sheet, mageryType, family);
-    /*
-     * The opener is `bs` and the weapon in hand lets it land: a weapon the
-     * server will not backstab with (`backstabsWith`, a pig on a spit) is
-     * refused every time, and crediting the opener anyway priced every
-     * single-monster lair as a one-round kill whatever the stats (2026-10-03,
-     * a level-11 Mystic). An empty hand lands; a weapon of unknown kind is
-     * credited, as before; so is the weapon the gear sets wear for it (todo 76).
-     */
-    const backstab =
-      commandOf(this.words.opener()) === 'BackStab' &&
-      (this.session.backstabWeapon() !== null || backstabsWith(state.inventory.items) !== false);
-    /*
-     * One step is the server's own movement delay from the pack's weight
-     * (`MoveCommand.cs:40`), where the family states one; the measured round
-     * otherwise. A full pack slows the whole loop, and the estimate says so.
-     */
-    const step =
-      moveDelayMs(state.inventory.encumbrance, state.inventory.encumbranceMax, family, stepMs) /
-      speed;
-    const heal = this.healingCast(state, sheet, family);
-    /*
-     * `RestCommand.cs:28` refuses a poisoned character, immunity excepted
-     * (`poisonRefusesRest`). A cure — a configured spell, an antidote rule, or
-     * one the book would yield under `autoChoose` — lifts it for the estimate.
-     */
-    const poisonHoldsRest =
-      poisonRefusesRest(this.capabilities(), family) && !this.curesPoison(state);
-    const character: SpotCharacter = {
-      hpMax: state.vitals.hpMax,
-      restingHealthPerTick: regen?.restingHealth.value ?? null,
-      passiveHealthPerTick: regen?.health.value ?? null,
-      backstab,
-      /*
-       * The caster's half (todo 26). A round costs mana only where a round
-       * spell is configured — or derived under `autoChoose` — so a melee
-       * character carries null here and the cycle is exactly what it was.
-       * **Meditating is not resting tripled**: `TimedEventManager` gives a
-       * resting character `HPRegen * 3` and a meditating one
-       * `GetBaseMARegen()` flat, so the mana rate is the standing rate.
-       */
-      ...this.castingCost(state),
-      meditatingManaPerTick: regen?.meditatingMana?.value ?? null,
-      passiveManaPerTick: regen?.mana?.value ?? null,
-      stepMs: step,
-      heal,
-      poisonHoldsRest
-    };
-    /*
-     * The party fighting beside it (todo 152): its members' damage a round off
-     * this session's fights, at the realm's round as this character's own is.
-     */
-    const party = partyPlan(
-      joinedMembers(state),
-      (name) =>
-        this.fightRecord.memberMeasured?.(name, {
-          least: measuredFightsMin,
-          roundMs: c.roundSeconds * 1000,
-          openerRounds: 1
-        })?.perRound ?? null,
-      state.progress.charm,
-      partyDamageStep
-    );
-    const assumptions: HuntingAssumptions = {
-      family,
-      hpMax: state.vitals.hpMax,
-      restingHealthPerTick: character.restingHealthPerTick,
-      passiveHealthPerTick: character.passiveHealthPerTick,
-      backstab,
-      stepMs: step,
-      heal,
-      poisonHoldsRest,
-      measured: null,
-      party: party?.said ?? null,
-      constants: c
-    };
-    const cashPerHour = this.automationConfig.hunting.cashPerHour;
+    const figures = this.surveyFigures(state);
+    const { c, family, attack, sheet, speed, character, party, assumptions, cashPerHour } = figures;
+    const { cashExpShare } = this.automationConfig.hunting;
+    const { measuredForgetMs, measuredMinutesLeast } = tuning().hunting;
+    const { paceLeast, paceMost, measuredLevels } = tuning().hunting;
     const refused = (refusal: string): HuntingAdvice => ({
       from: null,
       radius,
@@ -2302,64 +2275,11 @@ export class Errands implements SessionModule {
       groupOfRoom.set(seen.room, key);
     }
 
-    const player = this.menacePlayer(state);
-    // The same character with nothing on: every blow lands, at its full figure.
-    const naked: MenacePlayer = {
-      armourClass: 0,
-      damageResist: 0,
-      magicRes: player.magicRes,
-      family: player.family
-    };
-    const weapon = wieldedWeapon(state.inventory.items);
-    const weights = tuning().menace;
-    /*
-     * The caster's rounds (todo 108): the spell the character would cast at
-     * *this* monster, at one cast a round over the full pool, ahead of the
-     * swing, since the spell goes first (todo 20); the swing where none is cast.
-     */
-    const casting = this.castingInput(state, sheet, family);
-    /*
-     * Where the arithmetic *declines* — `swing` is null only on the family
-     * gate or an unread accuracy, neither of which reads the target, and a
-     * book with no attack spell casts nothing — a kill is priced from what
-     * this character has measured dealing a round. Where either *refuses*
-     * (no blow lands, the spell is resisted), the refusal stands.
-     */
-    const blank = { armourClass: null, damageResist: null, dodge: null, health: null };
-    const declines =
-      swing(sheet, weapon, blank, family, attack) === null &&
-      (casting === null ||
-        attacksWithNothing(
-          chooseAttackSpell({ ...casting, target: null, excluded: new Set() }).refusal
-        ));
-    const level = state.progress.level;
-    const measured =
-      !declines || level === null
-        ? null
-        : (this.fightRecord.measured?.(level, {
-            least: measuredFightsMin,
-            roundMs: c.roundSeconds * 1000,
-            openerRounds: backstab ? backstabMultiplier : 1
-          }) ?? null);
-    const learnedExp = this.kills.allKillExp();
-    const pay: KillPay = { ...killExpScale(learnedExp, world), share: killShare(state) };
-    const priceKey = [
-      this.fitness(state),
-      [...learnedExp.values()].reduce((sum, exp) => sum + exp, 0),
-      pay.scale,
-      pay.share,
-      this.automationConfig.spells.attack,
-      this.automationConfig.spells.autoChoose,
-      this.words.opener(),
-      backstab,
-      this.words.attack().verb,
-      state.spellbook?.length ?? -1,
-      state.vitals.manaMax,
-      measured === null ? '-' : Math.round(measured.perRound),
-      speed,
-      this.noEffectsKey(),
-      party?.odds?.key ?? '-'
-    ].join('|');
+    const { player, naked, weapon, weights, casting, measured, pay, priceKey } = this.surveyPricing(
+      state,
+      world,
+      figures
+    );
     const live = as === this.tracker.current;
     if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
       this.huntPrices = { key: priceKey, world, groups: new Map() };
@@ -2629,13 +2549,7 @@ export class Errands implements SessionModule {
       swept: reach.size,
       spots: known,
       unmeasured: rest.filter((spot) => !taken.has(spot)),
-      gated: this.gatedGrounds.around(
-        state,
-        from,
-        radius ?? Number.POSITIVE_INFINITY,
-        reach,
-        c.maxSpots
-      ),
+      gated: this.shutAround(state, from, radius, reach),
       excluded,
       assumptions: { ...assumptions, measured },
       floor,
@@ -2643,6 +2557,217 @@ export class Errands implements SessionModule {
       pay,
       refusal: null
     };
+  }
+
+  /** What the survey runs on that is not the realm's: the model's figures, the character, the party. */
+  private surveyFigures(state: CharacterState): SurveyFigures {
+    // Every figure the model runs on, named here so each has a reader.
+    const {
+      roundSeconds,
+      engageMs,
+      restTickSeconds,
+      passiveTickSeconds,
+      roomRegenSeconds,
+      killOverheadMs,
+      stepMs,
+      greatermudRespawnOffsetSeconds,
+      backstabMultiplier,
+      maxLoopRooms,
+      maxSpots,
+      trivialShare,
+      clusterRadius,
+      fillerRadius,
+      sizeTolerance,
+      measuredFightsMin,
+      partyDamageStep
+    } = tuning().hunting;
+    const { maxDamageShare, trivialLevelMargin } = this.automationConfig.hunting;
+    // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
+    const speed = this.speed.multiplier;
+    const c: HuntingConstants = timedBy(
+      atSpeed(
+        {
+          roundSeconds,
+          engageMs,
+          restTickSeconds,
+          passiveTickSeconds,
+          roomRegenSeconds,
+          killOverheadMs,
+          stepMs,
+          greatermudRespawnOffsetSeconds,
+          backstabMultiplier,
+          maxLoopRooms,
+          maxSpots,
+          maxDamageShare,
+          trivialShare,
+          trivialLevelMargin,
+          clusterRadius,
+          fillerRadius,
+          sizeTolerance
+        },
+        speed
+      ),
+      this.fightRecord.timing?.(measuredFightsMin) ?? null
+    );
+    const { combat, magery, crits, rounds, mageryType, family, attack } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits, rounds });
+    const regen = regeneration(sheet, mageryType, family);
+    /*
+     * The opener is `bs` and the weapon in hand lets it land: a weapon the
+     * server will not backstab with (`backstabsWith`, a pig on a spit) is
+     * refused every time, and crediting the opener anyway priced every
+     * single-monster lair as a one-round kill whatever the stats (2026-10-03,
+     * a level-11 Mystic). An empty hand lands; a weapon of unknown kind is
+     * credited, as before; so is the weapon the gear sets wear for it (todo 76).
+     */
+    const backstab =
+      commandOf(this.words.opener()) === 'BackStab' &&
+      (this.session.backstabWeapon() !== null || backstabsWith(state.inventory.items) !== false);
+    /*
+     * One step is the server's own movement delay from the pack's weight
+     * (`MoveCommand.cs:40`), where the family states one; the measured round
+     * otherwise. A full pack slows the whole loop, and the estimate says so.
+     */
+    const step =
+      moveDelayMs(state.inventory.encumbrance, state.inventory.encumbranceMax, family, stepMs) /
+      speed;
+    const heal = this.healingCast(state, sheet, family);
+    /*
+     * `RestCommand.cs:28` refuses a poisoned character, immunity excepted
+     * (`poisonRefusesRest`). A cure — a configured spell, an antidote rule, or
+     * one the book would yield under `autoChoose` — lifts it for the estimate.
+     */
+    const poisonHoldsRest =
+      poisonRefusesRest(this.capabilities(), family) && !this.curesPoison(state);
+    const character: SpotCharacter = {
+      hpMax: state.vitals.hpMax,
+      restingHealthPerTick: regen?.restingHealth.value ?? null,
+      passiveHealthPerTick: regen?.health.value ?? null,
+      backstab,
+      /*
+       * The caster's half (todo 26). A round costs mana only where a round
+       * spell is configured — or derived under `autoChoose` — so a melee
+       * character carries null here and the cycle is exactly what it was.
+       * **Meditating is not resting tripled**: `TimedEventManager` gives a
+       * resting character `HPRegen * 3` and a meditating one
+       * `GetBaseMARegen()` flat, so the mana rate is the standing rate.
+       */
+      ...this.castingCost(state),
+      meditatingManaPerTick: regen?.meditatingMana?.value ?? null,
+      passiveManaPerTick: regen?.mana?.value ?? null,
+      stepMs: step,
+      heal,
+      poisonHoldsRest
+    };
+    /*
+     * The party fighting beside it (todo 152): its members' damage a round off
+     * this session's fights, at the realm's round as this character's own is.
+     */
+    const party = partyPlan(
+      joinedMembers(state),
+      (name) =>
+        this.fightRecord.memberMeasured?.(name, {
+          least: measuredFightsMin,
+          roundMs: c.roundSeconds * 1000,
+          openerRounds: 1
+        })?.perRound ?? null,
+      state.progress.charm,
+      partyDamageStep
+    );
+    const assumptions: HuntingAssumptions = {
+      family,
+      hpMax: state.vitals.hpMax,
+      restingHealthPerTick: character.restingHealthPerTick,
+      passiveHealthPerTick: character.passiveHealthPerTick,
+      backstab,
+      stepMs: step,
+      heal,
+      poisonHoldsRest,
+      measured: null,
+      party: party?.said ?? null,
+      constants: c
+    };
+    const cashPerHour = this.automationConfig.hunting.cashPerHour;
+    return {
+      c,
+      family,
+      attack,
+      sheet,
+      speed,
+      backstab,
+      character,
+      party,
+      assumptions,
+      cashPerHour
+    };
+  }
+
+  /** How the survey prices a monster for this character in this realm, and the key its prices are kept under. */
+  private surveyPricing(
+    state: CharacterState,
+    world: ErrandsWorld,
+    { c, family, attack, sheet, speed, backstab, party }: SurveyFigures
+  ): SurveyPricing {
+    const { measuredFightsMin, backstabMultiplier } = tuning().hunting;
+    const player = this.menacePlayer(state);
+    // The same character with nothing on: every blow lands, at its full figure.
+    const naked: MenacePlayer = {
+      armourClass: 0,
+      damageResist: 0,
+      magicRes: player.magicRes,
+      family: player.family
+    };
+    const weapon = wieldedWeapon(state.inventory.items);
+    const weights = tuning().menace;
+    /*
+     * The caster's rounds (todo 108): the spell the character would cast at
+     * *this* monster, at one cast a round over the full pool, ahead of the
+     * swing, since the spell goes first (todo 20); the swing where none is cast.
+     */
+    const casting = this.castingInput(state, sheet, family);
+    /*
+     * Where the arithmetic *declines* — `swing` is null only on the family
+     * gate or an unread accuracy, neither of which reads the target, and a
+     * book with no attack spell casts nothing — a kill is priced from what
+     * this character has measured dealing a round. Where either *refuses*
+     * (no blow lands, the spell is resisted), the refusal stands.
+     */
+    const blank = { armourClass: null, damageResist: null, dodge: null, health: null };
+    const declines =
+      swing(sheet, weapon, blank, family, attack) === null &&
+      (casting === null ||
+        attacksWithNothing(
+          chooseAttackSpell({ ...casting, target: null, excluded: new Set() }).refusal
+        ));
+    const level = state.progress.level;
+    const measured =
+      !declines || level === null
+        ? null
+        : (this.fightRecord.measured?.(level, {
+            least: measuredFightsMin,
+            roundMs: c.roundSeconds * 1000,
+            openerRounds: backstab ? backstabMultiplier : 1
+          }) ?? null);
+    const learnedExp = this.kills.allKillExp();
+    const pay: KillPay = { ...killExpScale(learnedExp, world), share: killShare(state) };
+    const priceKey = [
+      this.fitness(state),
+      [...learnedExp.values()].reduce((sum, exp) => sum + exp, 0),
+      pay.scale,
+      pay.share,
+      this.automationConfig.spells.attack,
+      this.automationConfig.spells.autoChoose,
+      this.words.opener(),
+      backstab,
+      this.words.attack().verb,
+      state.spellbook?.length ?? -1,
+      state.vitals.manaMax,
+      measured === null ? '-' : Math.round(measured.perRound),
+      speed,
+      this.noEffectsKey(),
+      party?.odds?.key ?? '-'
+    ].join('|');
+    return { player, naked, weapon, weights, casting, measured, pay, priceKey };
   }
 
   /**

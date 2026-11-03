@@ -141,7 +141,7 @@ export interface CardContext {
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
   /** Where to hunt from where this character stands — addressed, like the book. */
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(measure: string | null, held: string | null): ReturnType<IpcApi['huntingGrounds']>;
   /** The Gear card's slots, its trip planned, walked or run, and stopped — addressed, like the book. */
   loadGear(): ReturnType<IpcApi['gearChoices']>;
   loadBlessItems(): ReturnType<IpcApi['gearBlessItems']>;
@@ -252,7 +252,7 @@ export interface AddressedActions {
   loadReach: LoadQuestReach;
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadHunting(measure: string | null, held: string | null): ReturnType<IpcApi['huntingGrounds']>;
   loadGear(): ReturnType<IpcApi['gearChoices']>;
   loadBlessItems(): ReturnType<IpcApi['gearBlessItems']>;
   planGear(picks: GearPick[]): ReturnType<IpcApi['gearPlan']>;
@@ -491,7 +491,7 @@ export function useCardContext({
         loadReach: (marks) => api.questReach(sid, marks),
         runPlan: (block, marked) => api.questRun(sid, block, marked),
         stopRun: () => void api.questStop(sid),
-        loadHunting: (measure) => api.huntingGrounds(sid, measure),
+        loadHunting: (measure, held) => api.huntingGrounds(sid, measure, held),
         loadGear: () => api.gearChoices(sid),
         loadBlessItems: () => api.gearBlessItems(sid),
         planGear: (picks) => api.gearPlan(sid, picks),

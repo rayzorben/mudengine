@@ -157,6 +157,7 @@ import { roomBrief } from './world/roomBrief';
 import { slotGear, weighingOf } from './world/slotGear';
 import { asGearPicks } from '../shared/gearTrip';
 import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, NOT_KEPT, type HuntingAdvice } from '../shared/hunting';
+import type { HuntingReply } from '../shared/huntReply';
 import { DEFAULT_HUNT_CHOICES } from '../shared/huntChoices';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
@@ -2985,43 +2986,50 @@ function registerIpc(): void {
         : roomId(room.map, room.number);
     return gameMapsFor(world).window(parsed, lairLevelOf(session), here);
   });
-  handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {
-    const manager = host?.get(session)?.manager;
-    if (!manager) {
-      return {
-        from: null,
-        radius: null,
-        swept: 0,
-        spots: [],
-        unmeasured: [],
-        gated: [],
-        excluded: { ...NO_EXCLUSIONS },
-        assumptions: {
-          family: null,
-          hpMax: null,
-          restingHealthPerTick: null,
-          passiveHealthPerTick: null,
-          backstab: false,
-          stepMs: tuning().hunting.stepMs,
-          heal: null,
-          poisonHoldsRest: false,
-          measured: null,
-          party: null,
-          constants: { ...atSpeed(tuning().hunting, 1), ...DEFAULT_HUNT_CHOICES }
-        },
-        floor: NO_FLOOR,
-        pace: null,
-        pay: null,
-        refusal: t('session.hunt.noSession')
-      } satisfies HuntingAdvice;
+  handle(
+    Invoke.huntingGrounds,
+    async (_caller, session: SessionId, measure: unknown, held: unknown) => {
+      const manager = host?.get(session)?.manager;
+      if (!manager) {
+        const advice = {
+          from: null,
+          radius: null,
+          swept: 0,
+          spots: [],
+          unmeasured: [],
+          gated: [],
+          excluded: { ...NO_EXCLUSIONS },
+          assumptions: {
+            family: null,
+            hpMax: null,
+            restingHealthPerTick: null,
+            passiveHealthPerTick: null,
+            backstab: false,
+            stepMs: tuning().hunting.stepMs,
+            heal: null,
+            poisonHoldsRest: false,
+            measured: null,
+            party: null,
+            constants: { ...atSpeed(tuning().hunting, 1), ...DEFAULT_HUNT_CHOICES }
+          },
+          floor: NO_FLOOR,
+          pace: null,
+          pay: null,
+          refusal: t('session.hunt.noSession')
+        } satisfies HuntingAdvice;
+        return { kind: 'whole', key: null, advice } satisfies HuntingReply;
+      }
+      // A kill the realm cannot price is priced off the fight record, folded
+      // off the thread; the card waits for it rather than showing a first
+      // answer with every fight unpriced.
+      await fightLogs.get(session)?.ready();
+      // Everywhere the exits reach: distance is a column of the answer, not its bound.
+      return manager.huntingAnswer(
+        typeof held === 'string' ? held : null,
+        typeof measure === 'string' ? measure : null
+      );
     }
-    // A kill the realm cannot price is priced off the fight record, folded
-    // off the thread; the card waits for it rather than showing a first
-    // answer with every fight unpriced.
-    await fightLogs.get(session)?.ready();
-    // Everywhere the exits reach: distance is a column of the answer, not its bound.
-    return manager.huntingGrounds(null, typeof measure === 'string' ? measure : null);
-  });
+  );
   /*
    * Where this character may go and level. Addressed, and answered from the
    * realm's own shop rows rather than from a room name — see `trainersTaking`.

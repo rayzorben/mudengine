@@ -319,7 +319,8 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     slotGear: (session, slot) => invoke(Invoke.slotGear, session, slot),
     chosenWords: (session) => invoke(Invoke.chosenWords, session),
     blessingChoice: (session) => invoke(Invoke.blessingChoice, session),
-    huntingGrounds: (session, measure) => invoke(Invoke.huntingGrounds, session, measure),
+    huntingGrounds: (session, measure, held) =>
+      invoke(Invoke.huntingGrounds, session, measure, held),
     trainers: (session) => invoke(Invoke.trainers, session),
     banks: (session) => invoke(Invoke.banks, session),
     supplyCounters: (session) => invoke(Invoke.supplyCounters, session),

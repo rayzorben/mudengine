@@ -22,6 +22,7 @@ import {
   type HuntingUnknown,
   type KillPay
 } from '@shared/hunting';
+import { movedTo } from '@shared/huntReply';
 import type { AfflictionKind } from '@shared/menace';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
@@ -49,13 +50,15 @@ import type { LoopDestination } from '../lib/loops';
  * rate could not be finished says which part was unknown and ranks below
  * every known rate; one whose fight itself could not be priced ranks below
  * those, nearest first and never by what it pays, and the head says how many;
- * a deadly spot is last. A move re-asks on `huntReaskMs`, since only the
- * steps column moves with the character.
+ * a deadly spot is last. A move re-asks on `huntReaskMs` with the key of the
+ * survey drawn, and main answers `same` with the steps from the room the
+ * character is in while nothing else the survey reads has moved
+ * (`HuntingReply`, todo 20261102-2305-02).
  */
 export interface HuntingCardProps extends CardChrome {
   session: SessionId;
-  /** Asks main, addressed at this card's own character; `measure` is a rough row opened. */
-  loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  /** Asks main, addressed at this card's own character; `measure` is a rough row opened, `held` the survey's key. */
+  loadHunting(measure: string | null, held: string | null): ReturnType<IpcApi['huntingGrounds']>;
   /** Opens the route panel on a room; null on a pinned float. */
   chooseOnMap: ((map: number, room: number) => void) | null;
   /** Walks a loop built here, filed or not; null on a pinned float. */
@@ -166,6 +169,8 @@ function HuntingCard({
   const lastAsk = useRef(0);
   const answered = useRef(asked);
   const answeredMeasure = useRef(measure);
+  /* The survey drawn and its key, handed back so a move is answered with the steps alone. */
+  const drawn = useRef<{ key: string | null; advice: HuntingAdvice } | null>(null);
 
   useEffect(() => {
     let stale = false;
@@ -173,16 +178,27 @@ function HuntingCard({
     const run = (): void => {
       lastAsk.current = Date.now();
       setLoading(true);
-      void loadHunting(measure).then((answer) => {
+      const held = drawn.current?.key ?? null;
+      void loadHunting(measure, held).then((reply) => {
         if (stale) return;
-        setAdvice(answer);
         setLoading(false);
+        const advice =
+          reply.kind === 'whole'
+            ? reply.advice
+            : drawn.current !== null && reply.key === held
+              ? movedTo(drawn.current.advice, reply.moved)
+              : null;
+        // Steps for a survey this card does not hold: ask for the whole one at once.
+        drawn.current = advice === null ? null : { key: reply.key, advice };
+        if (advice === null) setAsked((n) => n + 1);
+        else setAdvice(advice);
       });
     };
     /*
      * The sweep is realm-wide and costs main a few hundred milliseconds, and
-     * a lap moves every second and a quarter; a step changes nothing but the
-     * steps column, so a move re-asks on `huntReaskMs` and *Ask again* at once.
+     * a lap moves every second and a quarter, so a move re-asks on
+     * `huntReaskMs` and *Ask again* at once. A `same` answer is the survey
+     * drawn with the steps moved, the same object where none did.
      */
     const pressed = asked !== answered.current || measure !== answeredMeasure.current;
     answered.current = asked;

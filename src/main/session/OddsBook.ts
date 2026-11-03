@@ -63,7 +63,14 @@ export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 export type OddsPeeker = OddsReader &
   Pick<
     OddsBook,
-    'pass' | 'mobKnown' | 'lairKnown' | 'passKnown' | 'lairsLeft' | 'partyLair' | 'alone'
+    | 'pass'
+    | 'mobKnown'
+    | 'lairKnown'
+    | 'passKnown'
+    | 'lairsLeft'
+    | 'lairsRun'
+    | 'partyLair'
+    | 'alone'
   >;
 
 /** What the session holds of the book: the readers, the what-if, and its life. */
@@ -81,6 +88,7 @@ export type SessionOdds = Pick<
   | 'pass'
   | 'passKnown'
   | 'lairsLeft'
+  | 'lairsRun'
   | 'reset'
   | 'configure'
   | 'dispose'
@@ -334,6 +342,17 @@ export class OddsBook implements SessionModule {
     if (book === null) return 0;
     const running = this.running?.book === book && this.running.job.kind === 'lair' ? 1 : 0;
     return running + book.queue.filter((job) => job.kind === 'lair' && !done(book, job)).length;
+  }
+
+  /**
+   * The lair fights the book holds for the character as it stands, as one
+   * string: what it is run for and how many it has run, alone and beside the
+   * party. A run only adds a fight, so the count moves whenever one comes in.
+   */
+  get lairsRun(): string {
+    const book = this.book;
+    if (book === null) return '-';
+    return `${book.key}|${book.lairs.size}|${book.party?.key ?? '-'}|${book.party?.lairs.size ?? 0}`;
   }
 
   reset(): void {

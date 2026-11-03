@@ -53,7 +53,7 @@ import type { MobFindPreview } from './mobFind';
 import type { NearPlace, PlaceKind } from './places';
 import type { CashRunAsk, CashRunToken } from './cashRun';
 import type { SupplyCounters } from './supplies';
-import type { HuntingAdvice } from './hunting';
+import type { HuntingReply } from './huntReply';
 import {
   type AlertsUiConfig,
   type AutomationSwitch,
@@ -1758,9 +1758,15 @@ export interface IpcApi {
    * arithmetic the Room card prices a fight with, the loop sized to the clock
    * and filled from the lairs beside it, best first. Addressed, and asked on
    * demand — the sweep and the pricing are work, and the steps move with the
-   * character. `measure` names one row past the measured few to measure too.
+   * character. `measure` names one row past the measured few to measure too;
+   * `held` is the key of the survey the card holds, answered `same` with the
+   * steps from here while nothing else it reads has moved (`HuntingReply`).
    */
-  huntingGrounds(session: SessionId, measure: string | null): Promise<HuntingAdvice>;
+  huntingGrounds(
+    session: SessionId,
+    measure: string | null,
+    held: string | null
+  ): Promise<HuntingReply>;
   /**
    * The trainers that will take this character, cheapest first (todo 18).
    *

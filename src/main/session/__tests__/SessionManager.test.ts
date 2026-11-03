@@ -8506,9 +8506,9 @@ describe('the hunting survey prices a kill off the fight record', () => {
 
   /** The survey once every lair's fight has been run (`OddsBook`), asked until it has. */
   async function settled(): Promise<HuntingAdvice> {
-    let advice = manager!.huntingGrounds(null);
+    let advice = manager!['errands'].huntingGrounds(null);
     await until(() => {
-      advice = manager!.huntingGrounds(null);
+      advice = manager!['errands'].huntingGrounds(null);
       return advice.excluded.unsimulated === 0;
     });
     return advice;
@@ -8829,7 +8829,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
 
     // And measures the one a reader opened, so what it would walk is a ring.
     const rough = advice.unmeasured[0]!.key;
-    const opened = manager!.huntingGrounds(null, rough);
+    const opened = manager!['errands'].huntingGrounds(null, rough);
     expect(opened.spots.map((spot) => spot.key)).toContain(rough);
     expect(opened.unmeasured).toHaveLength(0);
 
