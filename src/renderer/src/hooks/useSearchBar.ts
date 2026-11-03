@@ -45,7 +45,8 @@ export function useSearchBar(
   const clearOther = useCallback(
     (shown: SessionId) => {
       const held = searched.current;
-      if (held !== null && held.session !== shown) consoles.current.get(held.session)?.search('', 'next');
+      if (held !== null && held.session !== shown)
+        consoles.current.get(held.session)?.search('', 'next');
     },
     [consoles]
   );
