@@ -1,14 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import {
-  isPinned,
-  readDeviations,
-  resolvePins,
-  shippedPins,
-  withPin,
-  type PinDeviations,
-  type PinnableCommand
-} from '../lib/pins';
+import { usePinDeviations } from './usePinDeviations';
+import { resolvePins, shippedPins, type PinnableCommand } from '../lib/pins';
 
 /**
  * Per client, not per character, and not in a file.
@@ -33,37 +26,15 @@ export function usePinnedCommands(
   patterns: Record<string, string[]>,
   commands: readonly PinnableCommand[]
 ): PinnedCommands {
-  const [deviations, setDeviations] = useState<PinDeviations>(() => {
-    try {
-      return readDeviations(window.localStorage.getItem(KEY));
-    } catch {
-      // Private mode, or storage disabled. The shipped shelf is the fallback.
-      return {};
-    }
-  });
+  const shipped = useCallback(
+    (id: string) => shippedPins(patterns, commands).has(id),
+    [patterns, commands]
+  );
+  const [deviations, toggle] = usePinDeviations(KEY, shipped);
 
   const pinned = useMemo(
     () => resolvePins(patterns, commands, deviations),
     [patterns, commands, deviations]
-  );
-
-  const toggle = useCallback(
-    (id: string) => {
-      setDeviations((current) => {
-        // Recomputed here rather than closed over, so a config push that lands
-        // between the render and the click cannot make the click record what
-        // the file no longer says.
-        const shipped = shippedPins(patterns, commands).has(id);
-        const next = withPin(current, id, shipped, !isPinned(id, shipped, current));
-        try {
-          window.localStorage.setItem(KEY, JSON.stringify(next));
-        } catch {
-          // The choice still applies for as long as the window is open.
-        }
-        return next;
-      });
-    },
-    [patterns, commands]
   );
 
   return { pinned, toggle };

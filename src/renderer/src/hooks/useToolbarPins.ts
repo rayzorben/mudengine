@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { pinnedMatches } from '@shared/internal';
 
-import { readDeviations, isPinned, withPin, type PinDeviations } from '../lib/pins';
+import { usePinDeviations } from './usePinDeviations';
+import { isPinned } from '../lib/pins';
 
 /**
  * Which toolbar buttons are drawn, and which live behind the kebab.
@@ -43,42 +44,20 @@ export function shippedToolbar(patterns: readonly string[], ids: readonly string
 }
 
 export function useToolbarPins(patterns: readonly string[], ids: readonly string[]): PinnedToolbar {
-  const [deviations, setDeviations] = useState<PinDeviations>(() => {
-    try {
-      return readDeviations(window.localStorage.getItem(KEY));
-    } catch {
-      // Private mode, or storage disabled. The shipped row is the fallback.
-      return {};
-    }
-  });
+  const shipped = useCallback(
+    (id: string) => shippedToolbar(patterns, ids).has(id),
+    [patterns, ids]
+  );
+  const [deviations, toggle] = usePinDeviations(KEY, shipped);
 
   const pinned = useMemo(() => {
-    const shipped = shippedToolbar(patterns, ids);
+    const row = shippedToolbar(patterns, ids);
     const kept = new Set<string>();
     for (const id of ids) {
-      if (isPinned(id, shipped.has(id), deviations)) kept.add(id);
+      if (isPinned(id, row.has(id), deviations)) kept.add(id);
     }
     return kept;
   }, [patterns, ids, deviations]);
-
-  const toggle = useCallback(
-    (id: string) => {
-      setDeviations((current) => {
-        // Recomputed here rather than closed over, so a config push landing
-        // between the render and the click cannot make the click record what
-        // the file no longer says.
-        const shipped = shippedToolbar(patterns, ids).has(id);
-        const next = withPin(current, id, shipped, !isPinned(id, shipped, current));
-        try {
-          window.localStorage.setItem(KEY, JSON.stringify(next));
-        } catch {
-          // The choice still applies for as long as the window is open.
-        }
-        return next;
-      });
-    },
-    [patterns, ids]
-  );
 
   /*
    * One object for as long as the row and its control are, because the card
