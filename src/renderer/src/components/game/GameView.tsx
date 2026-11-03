@@ -21,7 +21,12 @@ import {
   type ReactNode
 } from 'react';
 
-import type { AppConfig, AutomationSwitch, UiConfig } from '@shared/config';
+import {
+  automationSwitches,
+  type AppConfig,
+  type AutomationSwitch,
+  type UiConfig
+} from '@shared/config';
 import type { GameViewConfig, HudThreshold } from '@shared/gameViewConfig';
 import type { GameCell } from '@shared/gameMap';
 import type { IpcApi, ProfileSummary, SessionId } from '@shared/ipc';
@@ -168,6 +173,13 @@ function GameView({
   const [since] = useState(() => Date.now());
   const start = useMemo(() => ({ seen, since }), [seen, since]);
   const unread = useMemo(() => unreadFor(view.talk, start, self), [view.talk, start, self]);
+  // The file's switches and the session's held ones, as the toolbar draws them.
+  const fileSwitches = profile?.switches;
+  const held = view.automation.held;
+  const switches = useMemo(
+    () => (fileSwitches === undefined ? null : automationSwitches(fileSwitches, held)),
+    [fileSwitches, held]
+  );
   const feed = useMemo(
     () => (talking ? [] : feedOf(view.talk, start)),
     [view.talk, start, talking]
@@ -477,7 +489,7 @@ function GameView({
         onThreshold={onThreshold}
         restBelow={profile?.restBelow ?? null}
         runBelow={profile?.runBelow ?? null}
-        switches={profile?.switches ?? null}
+        switches={switches}
       />
       <TargetCard character={character} inspect={inspect} target={target} />
       <PartyFrames

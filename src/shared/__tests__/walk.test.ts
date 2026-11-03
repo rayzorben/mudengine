@@ -155,17 +155,12 @@ describe('holdsPicklocks (todo 50)', () => {
 
 // Todo 129: MegaMUD's Walking to / Running to, by the auto-combat switch.
 describe('paceOf', () => {
-  const automation = (enabled: boolean, combat: boolean) => ({
-    enabled,
-    combat: { ...DEFAULT_CONFIG.automation.combat, enabled: combat }
-  });
-
   it('walks with auto-combat on and runs with it off', () => {
-    expect(paceOf(automation(true, true))).toBe('walking');
-    expect(paceOf(automation(true, false))).toBe('running');
+    expect(paceOf({ enabled: true }, true)).toBe('walking');
+    expect(paceOf({ enabled: true }, false)).toBe('running');
   });
 
   it('runs with the master switch off, since nothing fights then', () => {
-    expect(paceOf(automation(false, true))).toBe('running');
+    expect(paceOf({ enabled: false }, true)).toBe('running');
   });
 });

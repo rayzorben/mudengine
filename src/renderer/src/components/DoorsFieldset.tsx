@@ -3,7 +3,7 @@
  * pick and bash with their tries, how far under a barrier's number each is
  * tried, and the other three ways past what stands in a route (disarming a
  * trap, searching for a hidden exit, pulling a lever, todo 118). A count
- * shows beside its switch only while the switch is on, on both pages. The
+ * shows beside its switch whether it is on or off, on both pages. The
  * character page hands in the stat sheet's Picklocks for the sentence under
  * Auto-Pick Locks.
  */
@@ -94,15 +94,13 @@ export default function DoorsFieldset({
           setting="automation.movement.openDoors"
           onChange={(checked) => onChange({ openDoors: checked })}
         />
-        {value.openDoors && (
-          <NumberField
-            label={t('settings.movement.openTries')}
-            name={`${namePrefix}open-tries`}
-            setting="automation.movement.openTries"
-            onChange={(typed) => onChange({ openTries: typed })}
-            value={value.openTries}
-          />
-        )}
+        <NumberField
+          label={t('settings.movement.openTries')}
+          name={`${namePrefix}open-tries`}
+          setting="automation.movement.openTries"
+          onChange={(typed) => onChange({ openTries: typed })}
+          value={value.openTries}
+        />
       </div>
       {/* Picking above bashing, in the order the walk tries them: a failed
         pick costs a command, a failed bash a command and some health. */}
@@ -116,24 +114,20 @@ export default function DoorsFieldset({
           setting="automation.movement.pickLocks"
           onChange={(checked) => onChange({ pickLocks: checked })}
         />
-        {value.pickLocks && (
-          <>
-            <NumberField
-              label={t('settings.movement.pickTries')}
-              name={`${namePrefix}pick-tries`}
-              setting="automation.movement.pickTries"
-              onChange={(typed) => onChange({ pickTries: typed })}
-              value={value.pickTries}
-            />
-            {figure({
-              field: 'pickMargin',
-              name: 'pick-margin',
-              setting: 'automation.movement.pickMargin',
-              label: t('settings.movement.pickMargin'),
-              hint: t('settings.movement.pickMarginHint')
-            })}
-          </>
-        )}
+        <NumberField
+          label={t('settings.movement.pickTries')}
+          name={`${namePrefix}pick-tries`}
+          setting="automation.movement.pickTries"
+          onChange={(typed) => onChange({ pickTries: typed })}
+          value={value.pickTries}
+        />
+        {figure({
+          field: 'pickMargin',
+          name: 'pick-margin',
+          setting: 'automation.movement.pickMargin',
+          label: t('settings.movement.pickMargin'),
+          hint: t('settings.movement.pickMarginHint')
+        })}
       </div>
       {sheet && (
         <p className="settings-note" id={says}>
@@ -149,24 +143,20 @@ export default function DoorsFieldset({
           setting="automation.movement.bashDoors"
           onChange={(checked) => onChange({ bashDoors: checked })}
         />
-        {value.bashDoors && (
-          <>
-            <NumberField
-              label={t('settings.movement.bashTries')}
-              name={`${namePrefix}bash-tries`}
-              setting="automation.movement.bashTries"
-              onChange={(typed) => onChange({ bashTries: typed })}
-              value={value.bashTries}
-            />
-            {figure({
-              field: 'bashMargin',
-              name: 'bash-margin',
-              setting: 'automation.movement.bashMargin',
-              label: t('settings.movement.bashMargin'),
-              hint: t('settings.movement.bashMarginHint')
-            })}
-          </>
-        )}
+        <NumberField
+          label={t('settings.movement.bashTries')}
+          name={`${namePrefix}bash-tries`}
+          setting="automation.movement.bashTries"
+          onChange={(typed) => onChange({ bashTries: typed })}
+          value={value.bashTries}
+        />
+        {figure({
+          field: 'bashMargin',
+          name: 'bash-margin',
+          setting: 'automation.movement.bashMargin',
+          label: t('settings.movement.bashMargin'),
+          hint: t('settings.movement.bashMarginHint')
+        })}
       </div>
       <div className="settings-inline">
         <CheckField

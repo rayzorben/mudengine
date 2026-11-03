@@ -3259,10 +3259,7 @@ describe('which way out', () => {
     const world = haven();
     // Auto-combat on: a route holds only for a fight something is fighting.
     const automation = escaping();
-    manager = build(collected.sink, {
-      world,
-      automation: { ...automation, combat: { ...automation.combat, enabled: true } }
-    });
+    manager = build(collected.sink, { world, automation });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -3442,6 +3439,8 @@ describe('which way out', () => {
     });
     underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    // Auto-combat off for now, so the walk home is a run (todo 129).
+    manager.switches.set('combat', false);
     const socket = await client();
     const seen = wire(socket);
     socket.write('Health: 100/100 [100%]\r\n');
@@ -3822,6 +3821,8 @@ describe('which way out', () => {
     manager = build(sink, { world: haven(), automation: escaping({ cooldownMs: 1 }) });
     underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    // Auto-combat off for now: nothing here will end the fight.
+    manager.switches.set('combat', false);
     const socket = await client();
     const seen = wire(socket);
     socket.write('Health: 100/100 [100%]\r\n');
@@ -3926,7 +3927,6 @@ describe('the per-line order in act()', () => {
     over: Partial<AutomationConfig['combat']> = {}
   ): AutomationConfig['combat'] => ({
     ...DEFAULT_CONFIG.automation.combat,
-    enabled: true,
     engage: 'none',
     ...over
   });
@@ -4776,10 +4776,7 @@ describe('typing while a route is being walked', () => {
    */
   it('waits a fight out and then walks on, from wherever the fight left it', async () => {
     // Auto-combat on: a route holds only for a fight something is fighting.
-    const { socket, world } = await atTheNorthEnd({
-      ...quiet,
-      combat: { ...quiet.combat, enabled: true }
-    });
+    const { socket, world } = await atTheNorthEnd(quiet);
     walkSouth(world);
     await until(() => manager!.walker.progress.status === 'walking');
 
@@ -5532,7 +5529,7 @@ describe('a step the server never answers', () => {
         idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
         onEnterRealm: [],
         rules: [],
-        combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true, retaliate: true }
+        combat: { ...DEFAULT_CONFIG.automation.combat, retaliate: true }
       }
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
@@ -5694,32 +5691,32 @@ describe('a step the server never answers', () => {
 
 /*
  * Auto-combat off is off (the user, 2026-10-02): hit round after round with
- * the switch off, nothing is swung and the switch is never written on. The
- * harness stands in for the file and records any write.
+ * the switch off, nothing is swung and the switch is never turned on. The
+ * switch is the session's (todo 20261102-1830-01), and a dial turns it back on.
  */
 describe('auto-combat off while being hit', () => {
-  const config = (combat: boolean): AutomationConfig => ({
+  const config = (): AutomationConfig => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
     onEnterRealm: [],
-    rules: [],
-    combat: { ...DEFAULT_CONFIG.automation.combat, enabled: combat }
+    rules: []
   });
 
   it('never turns it on and never hits back', async () => {
     const collected = collect();
-    const flips: boolean[] = [];
+    const flips: string[] = [];
     const sink: SessionSink = {
       ...collected.sink,
-      switchAutomationNow: (_name, on) => {
-        flips.push(on);
+      switchAutomationNow: (name, on) => {
+        flips.push(`${name}:${String(on)}`);
         return true;
       }
     };
-    manager = build(sink, { automation: config(false) });
+    manager = build(sink, { automation: config() });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
+    manager.switches.set('combat', false);
     const chunks: Buffer[] = [];
     socket.on('data', (chunk) => chunks.push(chunk));
     const wire = (): string => Buffer.concat(chunks).toString('latin1');
@@ -5737,34 +5734,25 @@ describe('auto-combat off while being hit', () => {
       await settled(hp);
     }
     expect(flips).toEqual([]);
+    expect(manager.switches.on('combat')).toBe(false);
     expect(wire()).not.toContain('slime beast');
   });
 
-  /* 2026-10-08: a run that turned it off ended with the launch, and the next launch fought nothing all night. */
-  it('is turned back on at the dial when the record says a run turned it off', async () => {
+  /* Todo 20261102-1830-01: a switch turned off for now is back on at the next dial. */
+  it('is turned back on at a reconnect, and says so', async () => {
     const collected = collect();
-    const flips: boolean[] = [];
-    let kept: Underway = { ...NOTHING_UNDERWAY, combatOffForRun: true };
-    const record: CharacterRecord = {
-      ...NO_RECORD,
-      recallUnderway: () => kept,
-      rememberUnderway: (underway) => {
-        kept = underway;
-      }
-    };
-    const sink: SessionSink = {
-      ...collected.sink,
-      switchAutomationNow: (_name, on) => {
-        flips.push(on);
-        return true;
-      }
-    };
-    manager = build(sink, { automation: config(false) });
-    manager.useRealm(NO_REALM_PLAYERS, record);
+    manager = build(collected.sink, { automation: config() });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await until(() => flips.length > 0);
-    expect(flips).toEqual([true]);
-    expect(collected.notices).toContain(t('automation.combat.onAfterLaunch'));
+    await client();
+    manager.switches.set('combat', false);
+    // Positive control: off, and nothing has said it is back on.
+    expect(manager.switches.on('combat')).toBe(false);
+    expect(collected.notices).not.toContain(t('automation.combat.onAtDial'));
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    expect(manager.switches.on('combat')).toBe(true);
+    expect(collected.notices.filter((n) => n === t('automation.combat.onAtDial'))).toHaveLength(1);
+    // The trace carries it to the toolbar.
+    expect(manager.automation.held).toEqual({ combat: true });
   });
 });
 
@@ -8005,7 +7993,7 @@ describe('starting and stopping a movement', () => {
       expect(manager!.walker.progress).toMatchObject({ destination: 'Room 36', total: 4 });
       await until(() => sent().includes('/Brackle {ok}'));
       expect(notices).toContain(
-        t('session.remotes.gotoRunning', {
+        t('session.remotes.gotoWalking', {
           who: 'Brackle',
           stepCount: 4,
           room: 'Room 36',
@@ -8028,7 +8016,7 @@ describe('starting and stopping a movement', () => {
       expect(manager!.loops.progress.status).toBe('stopped');
       expect(manager!.walker.progress.total).toBe(13);
       expect(notices).toContain(
-        t('session.remotes.gotoReplacedRunning', {
+        t('session.remotes.gotoReplaced', {
           who: 'Brackle',
           stepCount: 13,
           room: 'Town Gates',
@@ -9127,7 +9115,6 @@ describe('a monster in the room a step arrives in', () => {
         ...quiet,
         combat: {
           ...DEFAULT_CONFIG.automation.combat,
-          enabled: true,
           engage: 'hostile',
           attack: 'aa'
         }

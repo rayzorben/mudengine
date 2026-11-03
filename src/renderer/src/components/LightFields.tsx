@@ -22,10 +22,10 @@ export interface LightFieldsProps {
 }
 
 /**
- * The light fieldset's switches, drawn by both settings forms: the three that
- * depend on readying a light are disclosed behind that switch on every page
- * that shows it, one setting, one shape. A fragment, so each switch stays a
- * cell of the fieldset's grid.
+ * The light fieldset's switches, drawn by both settings forms: Provide Light
+ * and the three that depend on it, shown whether it is on or off (todo
+ * 20261102-1830-01). A fragment, so each switch stays a cell of the
+ * fieldset's grid.
  */
 export default function LightFields({
   value,
@@ -44,54 +44,50 @@ export default function LightFields({
         setting="automation.movement.provideLight"
         onChange={(checked) => onChange({ provideLight: checked })}
       />
-      {value.provideLight && (
-        <>
-          <CheckField
-            checked={value.lightDimRooms}
-            hint={t('settings.movement.lightDimRoomsHint')}
-            label={t('settings.movement.lightDimRooms')}
-            name={`${namePrefix}light-dim-rooms`}
-            setting="automation.movement.lightDimRooms"
-            onChange={(checked) => onChange({ lightDimRooms: checked })}
+      <CheckField
+        checked={value.lightDimRooms}
+        hint={t('settings.movement.lightDimRoomsHint')}
+        label={t('settings.movement.lightDimRooms')}
+        name={`${namePrefix}light-dim-rooms`}
+        setting="automation.movement.lightDimRooms"
+        onChange={(checked) => onChange({ lightDimRooms: checked })}
+      />
+      <CheckField
+        checked={value.extinguishInLight}
+        hint={t('settings.movement.extinguishInLightHint')}
+        label={t('settings.movement.extinguishInLight')}
+        name={`${namePrefix}extinguish-in-light`}
+        setting="automation.movement.extinguishInLight"
+        onChange={(checked) => onChange({ extinguishInLight: checked })}
+      />
+      <div className="settings-inline">
+        <CheckField
+          checked={value.buyLight}
+          hint={t('settings.movement.buyLightHint')}
+          label={t('settings.movement.buyLight')}
+          name={`${namePrefix}buy-light`}
+          setting="automation.movement.buyLight"
+          onChange={(checked) => onChange({ buyLight: checked })}
+        />
+        {value.buyLight && (
+          <ChoiceFields
+            bare
+            namePrefix={namePrefix}
+            onChange={onChoice}
+            read={movementChoices}
+            rows={[
+              {
+                field: 'carryLights',
+                name: 'carry-lights',
+                setting: 'automation.movement.carryLights',
+                label: t('settings.movement.carryLights'),
+                hint: t('settings.movement.carryLightsHint')
+              }
+            ]}
+            values={choices}
           />
-          <CheckField
-            checked={value.extinguishInLight}
-            hint={t('settings.movement.extinguishInLightHint')}
-            label={t('settings.movement.extinguishInLight')}
-            name={`${namePrefix}extinguish-in-light`}
-            setting="automation.movement.extinguishInLight"
-            onChange={(checked) => onChange({ extinguishInLight: checked })}
-          />
-          <div className="settings-inline">
-            <CheckField
-              checked={value.buyLight}
-              hint={t('settings.movement.buyLightHint')}
-              label={t('settings.movement.buyLight')}
-              name={`${namePrefix}buy-light`}
-              setting="automation.movement.buyLight"
-              onChange={(checked) => onChange({ buyLight: checked })}
-            />
-            {value.buyLight && (
-              <ChoiceFields
-                bare
-                namePrefix={namePrefix}
-                onChange={onChoice}
-                read={movementChoices}
-                rows={[
-                  {
-                    field: 'carryLights',
-                    name: 'carry-lights',
-                    setting: 'automation.movement.carryLights',
-                    label: t('settings.movement.carryLights'),
-                    hint: t('settings.movement.carryLightsHint')
-                  }
-                ]}
-                values={choices}
-              />
-            )}
-          </div>
-        </>
-      )}
+        )}
+      </div>
     </>
   );
 }

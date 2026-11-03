@@ -338,6 +338,7 @@ function migrateAll(options: MigrationOptions): void {
   theRegroupWaitsUntilBack(home, note);
   heldAndComebackFollowWait(home, note);
   collectedRowsSayBuyOff(home, note);
+  theCombatSwitchLeftTheFiles(home, note);
 }
 
 /**
@@ -5085,6 +5086,34 @@ function collectedRowsSayBuyOff(home: Home, note: (message: string) => void): vo
     });
   }
   if (changed > 0) note(t('notices.migration.collectedRows', { count: changed }));
+}
+
+/**
+ * `automation.combat.enabled` goes from the options file and every character's
+ * (todo 20261102-1830-01): auto-combat is a switch the session holds, on unless
+ * the toolbar, `@auto-combat` or *Run it* turned it off for now, and no file
+ * says whether it runs. A block left empty goes too, as `theCombatOverridesWent`
+ * does it. The rest of the block, and its comments, stay.
+ */
+function theCombatSwitchLeftTheFiles(home: Home, note: (message: string) => void): void {
+  const cleaned: string[] = [];
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat) || !combat.has('enabled')) return false;
+      combat.delete('enabled');
+      if (combat.items.length === 0) document.deleteIn(['automation', 'combat']);
+      cleaned.push(file);
+      return true;
+    });
+  }
+  if (cleaned.length === 0) return;
+  const params = { count: cleaned.length, fileList: cleaned.join(', ') };
+  note(
+    cleaned.length === 1
+      ? t('notices.migration.combatSwitchLeft.one', params)
+      : t('notices.migration.combatSwitchLeft.many', params)
+  );
 }
 
 /**

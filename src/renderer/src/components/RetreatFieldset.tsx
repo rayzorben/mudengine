@@ -59,63 +59,55 @@ export default function RetreatFieldset({
           setting="automation.safety.retreat.enabled"
           onChange={(value) => patch({ retreat: value })}
         />
-        {form.retreat && (
-          <>
-            <NumberField
-              label={t('settings.health.belowHealthLabel')}
-              name="retreat-health"
-              setting="automation.safety.retreat.belowHealth"
-              bar={bar.hp(form.retreatBelow)}
-              figure={figure.hp(form.retreatBelow)}
-              onChange={(value) => patch({ retreatBelow: value })}
-              value={form.retreatBelow}
-            />
-            <NumberField
-              hint={t('settings.health.belowManaHint')}
-              label={t('settings.health.belowManaLabel')}
-              name="retreat-mana"
-              setting="automation.safety.retreat.belowMana"
-              bar={bar.mana(form.retreatBelowMana)}
-              figure={figure.mana(form.retreatBelowMana)}
-              onChange={(value) => patch({ retreatBelowMana: value })}
-              value={form.retreatBelowMana}
-            />
-            <NumberField
-              hint={t('settings.health.outnumberedHint')}
-              label={t('settings.health.outnumberedLabel')}
-              name="outnumbered"
-              setting="automation.safety.retreat.whenOutnumbered"
-              onChange={(value) => patch({ retreatOutnumbered: value })}
-              value={form.retreatOutnumbered}
-            />
-          </>
-        )}
+        <NumberField
+          label={t('settings.health.belowHealthLabel')}
+          name="retreat-health"
+          setting="automation.safety.retreat.belowHealth"
+          bar={bar.hp(form.retreatBelow)}
+          figure={figure.hp(form.retreatBelow)}
+          onChange={(value) => patch({ retreatBelow: value })}
+          value={form.retreatBelow}
+        />
+        <NumberField
+          hint={t('settings.health.belowManaHint')}
+          label={t('settings.health.belowManaLabel')}
+          name="retreat-mana"
+          setting="automation.safety.retreat.belowMana"
+          bar={bar.mana(form.retreatBelowMana)}
+          figure={figure.mana(form.retreatBelowMana)}
+          onChange={(value) => patch({ retreatBelowMana: value })}
+          value={form.retreatBelowMana}
+        />
+        <NumberField
+          hint={t('settings.health.outnumberedHint')}
+          label={t('settings.health.outnumberedLabel')}
+          name="outnumbered"
+          setting="automation.safety.retreat.whenOutnumbered"
+          onChange={(value) => patch({ retreatOutnumbered: value })}
+          value={form.retreatOutnumbered}
+        />
       </div>
-      {form.retreat && (
-        <>
-          <SelectField
-            hint={t('settings.health.retreatStrategyHint')}
-            label={t('settings.health.retreatStrategyLabel')}
-            name="retreat-strategy"
-            setting="automation.safety.retreat.strategy"
-            onChange={(value) => patch({ retreatStrategy: value })}
-            options={RETREAT_OPTIONS()}
-            value={form.retreatStrategy}
-          />
-          {form.retreatStrategy === 'safe-haven' && (
-            <TextField
-              hint={t('settings.health.safeHavenHint')}
-              label={t('settings.health.safeHavenLabel')}
-              name="retreat-haven"
-              setting="automation.safety.retreat.safeHavenRoom"
-              onChange={(value) => patch({ retreatHaven: value })}
-              placeholder={t('settings.health.safeHavenPlaceholder')}
-              spellCheck={false}
-              value={form.retreatHaven}
-              wide
-            />
-          )}
-        </>
+      <SelectField
+        hint={t('settings.health.retreatStrategyHint')}
+        label={t('settings.health.retreatStrategyLabel')}
+        name="retreat-strategy"
+        setting="automation.safety.retreat.strategy"
+        onChange={(value) => patch({ retreatStrategy: value })}
+        options={RETREAT_OPTIONS()}
+        value={form.retreatStrategy}
+      />
+      {form.retreatStrategy === 'safe-haven' && (
+        <TextField
+          hint={t('settings.health.safeHavenHint')}
+          label={t('settings.health.safeHavenLabel')}
+          name="retreat-haven"
+          setting="automation.safety.retreat.safeHavenRoom"
+          onChange={(value) => patch({ retreatHaven: value })}
+          placeholder={t('settings.health.safeHavenPlaceholder')}
+          spellCheck={false}
+          value={form.retreatHaven}
+          wide
+        />
       )}
       <FleeGotoFields bar={bar.hp} figure={figure.hp} form={form} patch={patch} />
     </fieldset>

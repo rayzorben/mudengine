@@ -52,52 +52,44 @@ export default function HangUpFieldset({
           setting="automation.safety.hangUp.enabled"
           onChange={(value) => patch({ hangUp: value })}
         />
-        {form.hangUp && (
-          <>
-            <NumberField
-              label={t('settings.health.belowHealthLabel')}
-              name="hangup-health"
-              setting="automation.safety.hangUp.belowHealth"
-              bar={bar(form.hangUpBelow)}
-              figure={figure(form.hangUpBelow)}
-              onChange={(value) => patch({ hangUpBelow: value })}
-              value={form.hangUpBelow}
-            />
-            <NumberField
-              hint={t('settings.health.hangUpAfterRunHint')}
-              label={t('settings.health.hangUpAfterRunLabel')}
-              name="hangup-after-run"
-              setting="automation.safety.hangUp.afterRunSeconds"
-              onChange={(value) => patch({ hangUpAfterRun: value })}
-              value={form.hangUpAfterRun}
-            />
-          </>
-        )}
+        <NumberField
+          label={t('settings.health.belowHealthLabel')}
+          name="hangup-health"
+          setting="automation.safety.hangUp.belowHealth"
+          bar={bar(form.hangUpBelow)}
+          figure={figure(form.hangUpBelow)}
+          onChange={(value) => patch({ hangUpBelow: value })}
+          value={form.hangUpBelow}
+        />
+        <NumberField
+          hint={t('settings.health.hangUpAfterRunHint')}
+          label={t('settings.health.hangUpAfterRunLabel')}
+          name="hangup-after-run"
+          setting="automation.safety.hangUp.afterRunSeconds"
+          onChange={(value) => patch({ hangUpAfterRun: value })}
+          value={form.hangUpAfterRun}
+        />
       </div>
-      {form.hangUp && (
-        <>
-          <SelectField
-            hint={t('settings.health.hangPenaltiesHint')}
-            label={t('settings.health.hangPenaltiesLabel')}
-            name="hang-penalties"
-            setting="automation.safety.hangUp.penalties"
-            onChange={(value) => patch({ hangUpPenalties: penaltiesOf(value) })}
-            options={[
-              { value: '', label: t('settings.health.hangPenaltiesRealm') },
-              { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
-              { value: 'no', label: t('settings.health.hangPenaltiesNo') }
-            ]}
-            value={penaltiesChoice(form.hangUpPenalties)}
-          />
-          <CheckField
-            checked={form.hangUpOnPlayer}
-            label={t('settings.health.hangUpOnPlayer')}
-            name="hangup-player"
-            setting="automation.safety.hangUp.onPlayerInRoom"
-            onChange={(value) => patch({ hangUpOnPlayer: value })}
-          />
-        </>
-      )}
+      <SelectField
+        hint={t('settings.health.hangPenaltiesHint')}
+        label={t('settings.health.hangPenaltiesLabel')}
+        name="hang-penalties"
+        setting="automation.safety.hangUp.penalties"
+        onChange={(value) => patch({ hangUpPenalties: penaltiesOf(value) })}
+        options={[
+          { value: '', label: t('settings.health.hangPenaltiesRealm') },
+          { value: 'yes', label: t('settings.health.hangPenaltiesYes') },
+          { value: 'no', label: t('settings.health.hangPenaltiesNo') }
+        ]}
+        value={penaltiesChoice(form.hangUpPenalties)}
+      />
+      <CheckField
+        checked={form.hangUpOnPlayer}
+        label={t('settings.health.hangUpOnPlayer')}
+        name="hangup-player"
+        setting="automation.safety.hangUp.onPlayerInRoom"
+        onChange={(value) => patch({ hangUpOnPlayer: value })}
+      />
       <NakedHangUpFields
         margin={form.hangUpNakedMargin}
         onMargin={(hangUpNakedMargin) => patch({ hangUpNakedMargin })}

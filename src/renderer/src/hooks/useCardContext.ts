@@ -24,7 +24,12 @@ import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { ToolbarSubject } from '../lib/toolbar';
 import type { CharacterState } from '@shared/character';
-import { type AppConfig, type AutomationSwitches, type RemotesConfig } from '@shared/config';
+import {
+  automationSwitches,
+  type AppConfig,
+  type ConfigSwitches,
+  type RemotesConfig
+} from '@shared/config';
 import { type SupplyItem } from '@shared/packConfig';
 import { canRestore, type GearAction } from '@shared/gear';
 import { stockCeiling, supplyFor, withSupply } from '@shared/supplies';
@@ -351,7 +356,7 @@ export interface CardContextInputs
   nameIndexes: Readonly<Record<SessionId, NameIndex>>;
   toolbarPins: PinnedToolbar;
   remotesFor(id: SessionId): RemotesConfig;
-  switchesFor(id: SessionId): AutomationSwitches;
+  switchesFor(id: SessionId): ConfigSwitches;
   suppliesFor(id: SessionId): SupplyItem[];
   profileNameFor(id: SessionId): string;
   /** A Talk-card line from the shown character. */
@@ -687,7 +692,7 @@ export function useCardContext({
          * of eight buttons at once.
          */
         toolbar: {
-          switches: switchesFor(sid),
+          switches: automationSwitches(switchesFor(sid), v.automation.held),
           connected: v.state.phase === 'connected',
           // The same reading the cards' `inGame` makes: every card stays
           // through a hang-up, and only what would send a command greys.

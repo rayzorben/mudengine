@@ -43,19 +43,17 @@ export default function FleeGotoFields({
           setting="automation.safety.fleeGoto.enabled"
           onChange={(value) => patch({ fleeGoto: value })}
         />
-        {form.fleeGoto && (
-          <NumberField
-            label={t('settings.health.belowHealthLabel')}
-            name={`${namePrefix}flee-goto-health`}
-            setting="automation.safety.fleeGoto.belowHealth"
-            bar={bar(form.fleeGotoBelow)}
-            figure={figure?.(form.fleeGotoBelow) ?? null}
-            onChange={(value) => patch({ fleeGotoBelow: value })}
-            value={form.fleeGotoBelow}
-          />
-        )}
+        <NumberField
+          label={t('settings.health.belowHealthLabel')}
+          name={`${namePrefix}flee-goto-health`}
+          setting="automation.safety.fleeGoto.belowHealth"
+          bar={bar(form.fleeGotoBelow)}
+          figure={figure?.(form.fleeGotoBelow) ?? null}
+          onChange={(value) => patch({ fleeGotoBelow: value })}
+          value={form.fleeGotoBelow}
+        />
       </div>
-      {form.fleeGoto && !withoutCommand && (
+      {!withoutCommand && (
         <TextField
           hint={t('settings.health.fleeGotoCommandHint')}
           label={t('settings.health.fleeGotoCommandLabel')}

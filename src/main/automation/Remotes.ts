@@ -58,9 +58,11 @@ import {
   type CharacterState
 } from '../../shared/character';
 import {
-  readAutomationSwitch,
+  HELD_DEFAULTS,
+  switchIsOn,
   type AutomationConfig,
   type AutomationSwitch,
+  type HeldSwitches,
   type RemotesConfig
 } from '../../shared/config';
 import {
@@ -376,11 +378,13 @@ export interface RemoteEvents extends StandingRemoteEvents {
   /** `@path`: where the character is going and how far, or null for `{none}`. */
   path?(): PathReport | null;
   /**
-   * `@auto-combat`, `@auto-sneak` and the rest of `SWITCH_REMOTES`: write the
-   * switch to this character's file and read it back. Returns whether it was
-   * written, which decides the `{ok}`.
+   * `@auto-combat`, `@auto-sneak` and the rest of `SWITCH_REMOTES`: flip the
+   * session's switch, or write the file's and read it back. Returns whether
+   * it took, which decides the `{ok}`.
    */
   switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
+  /** The switches the session holds (`SessionSwitches`); absent, their defaults. */
+  heldSwitches?(): HeldSwitches;
   /** The realm's quests, for the step behind an `@abil` counter; null where no world is loaded. */
   quests?(): readonly Quest[] | null;
 }
@@ -1435,14 +1439,14 @@ export class Remotes implements SessionModule {
 
       case 'settings': {
         /*
-         * This client's switches, by this client's names. Each is a thing the
-         * options file can turn on or off for this character, and a person
-         * reading the answer wants the word the settings screen uses.
+         * This client's switches, by this client's names: the file's, and
+         * auto-combat as the session holds it. A person reading the answer
+         * wants the word the toolbar uses.
          */
         const c = this.config;
         const switches: Array<[string, boolean]> = [
           ['Automation', c.enabled],
-          ['Combat', c.combat.enabled],
+          ['Combat', (this.events.heldSwitches?.() ?? HELD_DEFAULTS).combat],
           // Two switches each, because they are: coins and items are looted
           // by different rules, and health and mana are rested for on
           // different thresholds -- a caster that only rests for mana has its
@@ -1875,8 +1879,8 @@ export class Remotes implements SessionModule {
   }
 
   /**
-   * `@auto-combat on|off` and the other switch remotes: `{ok}` once the file
-   * says what was asked, already or now (todo 02, todo 85).
+   * `@auto-combat on|off` and the other switch remotes: `{ok}` once the
+   * switch says what was asked, already or now (todo 02, todo 85).
    */
   private switchByRemote(
     from: string,
@@ -1893,7 +1897,7 @@ export class Remotes implements SessionModule {
     const name = SWITCH_REMOTES[remote];
     const asked = { ...words, word: on ? 'on' : 'off' };
     if (
-      readAutomationSwitch(this.config, name) !== on &&
+      switchIsOn(this.config, this.events.heldSwitches?.() ?? HELD_DEFAULTS, name) !== on &&
       this.events.switchAutomation?.(name, on) !== true
     ) {
       this.events.notice?.(t('automation.remotes.switchNotWritten', asked), SWITCH);

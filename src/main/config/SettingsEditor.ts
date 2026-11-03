@@ -14,7 +14,7 @@ import {
   DEFAULT_CONFIG,
   mergeServers,
   normalizeConfig,
-  type AutomationSwitch,
+  type ConfigSwitch,
   type LoginStep
 } from '../../shared/config';
 import { type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
@@ -680,7 +680,7 @@ export class SettingsEditor {
    * gets here, so nothing off the wire chooses where this writes. Comments
    * survive, like every write here.
    */
-  setAutomationSwitch(id: string, name: AutomationSwitch, on: boolean): EditResult {
+  setAutomationSwitch(id: string, name: ConfigSwitch, on: boolean): EditResult {
     const file = this.profilePath(id);
     const missing = this.missing(id);
     if (missing !== null) return missing;

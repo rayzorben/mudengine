@@ -5,9 +5,13 @@ import {
   automationSwitches,
   AUTOMATION_SWITCH_NAMES,
   AUTOMATION_SWITCHES,
+  configSwitches,
   CP437_FALLBACK_FONT,
   DEFAULT_CONFIG,
+  HELD_DEFAULTS,
+  isHeldSwitch,
   readAutomationSwitch,
+  switchIsOn,
   normalizeConfig,
   resolveTerminalFonts,
   resolveUiFonts,
@@ -389,9 +393,11 @@ describe('automation.combat', () => {
   const combat = (raw: unknown): AppConfig['automation']['combat'] =>
     normalizeConfig({ automation: { combat: raw } }).automation.combat;
 
-  it('is off, and hits back, by default', () => {
+  /* Whether it runs is the session's switch, on unless turned off (todo 20261102-1830-01). */
+  it('hits back by default, and says nothing of whether it runs', () => {
     const d = DEFAULT_CONFIG.automation.combat;
-    expect(d.enabled).toBe(false);
+    expect('enabled' in d).toBe(false);
+    expect(HELD_DEFAULTS.combat).toBe(true);
     // The one default that is on, because it is the one that cannot start a
     // fight: something is already swinging.
     expect(d.retaliate).toBe(true);
@@ -819,34 +825,48 @@ describe('the automation switches the toolbar flips', () => {
   it('every path leads to a boolean in the shipped configuration', () => {
     const bad: string[] = [];
     for (const name of AUTOMATION_SWITCH_NAMES) {
+      const path = AUTOMATION_SWITCHES[name];
+      if (path === 'session') continue;
       let node: unknown = DEFAULT_CONFIG.automation;
-      for (const key of AUTOMATION_SWITCHES[name]) {
+      for (const key of path) {
         node = typeof node === 'object' && node !== null ? (node as never)[key] : undefined;
       }
-      if (typeof node !== 'boolean') bad.push(`${name} -> ${AUTOMATION_SWITCHES[name].join('.')}`);
+      if (typeof node !== 'boolean') bad.push(`${name} -> ${path.join('.')}`);
     }
     expect(bad, `switches whose path is not a boolean: ${bad.join(', ')}`).toEqual([]);
+  });
+
+  /* Todo 20261102-1830-01: auto-combat is the session's, and the only switch that is. */
+  it('holds auto-combat in the session and every other switch in the file', () => {
+    const held = AUTOMATION_SWITCH_NAMES.filter(isHeldSwitch);
+    expect(held).toEqual(['combat']);
+    expect(Object.keys(HELD_DEFAULTS)).toEqual(held);
+    const file = configSwitches(DEFAULT_CONFIG.automation);
+    expect('combat' in file).toBe(false);
+    expect(Object.keys(file)).toHaveLength(AUTOMATION_SWITCH_NAMES.length - held.length);
+    // Both halves together are every switch, the session's answer winning.
+    const all = automationSwitches(file, { combat: false });
+    expect(Object.keys(all).sort()).toEqual([...AUTOMATION_SWITCH_NAMES].sort());
+    expect(all.combat).toBe(false);
+    expect(switchIsOn(DEFAULT_CONFIG.automation, { combat: false }, 'combat')).toBe(false);
+    expect(switchIsOn(DEFAULT_CONFIG.automation, { combat: true }, 'combat')).toBe(true);
   });
 
   it('reads each one out of a resolved configuration', () => {
     const on: AppConfig = {
       ...DEFAULT_CONFIG,
-      automation: {
-        ...DEFAULT_CONFIG.automation,
-        enabled: true,
-        combat: { ...DEFAULT_CONFIG.automation.combat, enabled: true }
-      }
+      automation: { ...DEFAULT_CONFIG.automation, enabled: true }
     };
     expect(readAutomationSwitch(on.automation, 'automation')).toBe(true);
-    expect(readAutomationSwitch(on.automation, 'combat')).toBe(true);
+    expect(readAutomationSwitch(on.automation, 'retaliate')).toBe(true);
     // Off by default, like most of what is automated.
     expect(readAutomationSwitch(on.automation, 'retreat')).toBe(false);
     // The exceptions: a route that stops at a shut door stops for no reason a
     // player would recognise (2026-09-07), bashing is gated on the realm's own
     // strength number, and picking on the sheet's Picklocks (todo 50).
-    expect(automationSwitches(on.automation).bashDoors).toBe(true);
-    expect(automationSwitches(on.automation).openDoors).toBe(true);
-    expect(automationSwitches(on.automation).pickLocks).toBe(true);
+    expect(configSwitches(on.automation).bashDoors).toBe(true);
+    expect(configSwitches(on.automation).openDoors).toBe(true);
+    expect(configSwitches(on.automation).pickLocks).toBe(true);
   });
 
   it('refuses a name that is not one', () => {

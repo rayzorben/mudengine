@@ -11,7 +11,7 @@ import type { AutomationSnapshot } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { CharacterState, RealmFamily as RealmWord } from '../../shared/character';
-import type { AutomationSwitch } from '../../shared/config';
+import type { ConfigSwitch } from '../../shared/config';
 import type { RoomLook } from '../../shared/roomArt';
 import type { KeyBindings } from '../../shared/keys';
 import type { Find } from '../../shared/finds';
@@ -184,7 +184,7 @@ export interface SessionSink {
    * automation off is walked now, not on the next reload (todo 03), and Run
    * it's write lands before the first room. Whether it was written.
    */
-  switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
+  switchAutomationNow?(name: ConfigSwitch, on: boolean): boolean;
   /** Takes a row off this character's supplies list on disk (`SupplyListWriter`). */
   dropSupply?(name: string): boolean;
   /** The keys this character binds, its own over the options file's, for a macro's `{f2}` (todo 134). */

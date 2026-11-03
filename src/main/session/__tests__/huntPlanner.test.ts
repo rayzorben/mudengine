@@ -7,11 +7,7 @@ import { huntPlanner, type HuntPlannerModules } from '../huntPlanner';
 const ROUTE = { steps: [], cost: 0, blocked: false } as unknown as Route;
 
 /** The hunt's planner over fakes: what the walker answered, and what the travel said of the run. */
-function planner(answers: {
-  start?: string | null;
-  walking?: boolean;
-  offRefused?: string | null;
-}) {
+function planner(answers: { start?: string | null; walking?: boolean }) {
   const asked: Array<{
     asked: boolean | undefined;
     offRounds: boolean | undefined;
@@ -34,9 +30,9 @@ function planner(answers: {
     travel: {
       startLoop: () => ({ refused: 'unused' }),
       stoppedAtStart: () => ((answers.walking ?? true) ? null : 'stopped at the start'),
-      beginRun: () => {
+      combatOffForRun: () => {
         runs += 1;
-        return answers.offRefused ?? true;
+        return true;
       },
       combatOnAfterRun: () => undefined
     }
@@ -60,9 +56,5 @@ describe("the hunt's walk", () => {
     const stopped = planner({ walking: false });
     expect(stopped.hunt.walk(ROUTE, true)).toBe('stopped at the start');
     expect(stopped.runs()).toBe(0);
-  });
-
-  it('is refused where the file will not take combat off', () => {
-    expect(planner({ offRefused: 'no write' }).hunt.walk(ROUTE, true)).toBe('no write');
   });
 });

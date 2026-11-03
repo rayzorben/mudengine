@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { AUTOMATION_SWITCH_NAMES, automationSwitches, DEFAULT_CONFIG } from '@shared/config';
+import {
+  AUTOMATION_SWITCH_NAMES,
+  automationSwitches,
+  configSwitches,
+  DEFAULT_CONFIG,
+  HELD_DEFAULTS
+} from '@shared/config';
 import { DEFAULT_INTERNAL } from '@shared/internal';
 
 import { NOT_MOVING, type Movement } from '@shared/movement';
@@ -9,7 +15,7 @@ import { shippedToolbar } from '../../hooks/useToolbarPins';
 import { TOOLBAR_ACTIONS, toolbarButtons, type ToolbarSubject } from '../toolbar';
 
 const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
-  switches: automationSwitches(DEFAULT_CONFIG.automation),
+  switches: automationSwitches(configSwitches(DEFAULT_CONFIG.automation), HELD_DEFAULTS),
   connected: false,
   // Standing in the realm is the ordinary case every test below but the last
   // group is about; out of it is stated where it is the question.
@@ -94,8 +100,7 @@ describe('the toolbar vocabulary', () => {
 
   it('flips a switch to the opposite of what the character says', () => {
     const setSwitch = vi.fn();
-    const on = automationSwitches(DEFAULT_CONFIG.automation);
-    on.combat = true;
+    const on = automationSwitches(configSwitches(DEFAULT_CONFIG.automation), HELD_DEFAULTS);
     const buttons = toolbarButtons(subject({ switches: on, setSwitch }));
     buttons.find((button) => button.id === 'combat')!.run();
     expect(setSwitch).toHaveBeenCalledWith('combat', false);
@@ -180,8 +185,8 @@ describe('a toolbar drawn out of the realm', () => {
     for (const name of AUTOMATION_SWITCH_NAMES) {
       expect(key(name).disabled, `${name} was greyed`).toBeUndefined();
     }
-    key('combat', { setSwitch }).run();
-    expect(setSwitch).toHaveBeenCalledWith('combat', true);
+    key('retreat', { setSwitch }).run();
+    expect(setSwitch).toHaveBeenCalledWith('retreat', true);
   });
 
   /* The shelf and the builder are where a loop is found and drawn, neither of

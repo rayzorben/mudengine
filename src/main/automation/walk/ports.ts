@@ -112,6 +112,12 @@ export interface WalkerEvents {
    * fights nothing. See `Holds.canEndAFight`.
    */
   willFight?(): boolean;
+  /**
+   * Whether auto-combat is switched on for this session (`SessionSwitches`):
+   * off, a walk is a run. Absent, off: a walk built with no session (a test,
+   * a harness) has no auto-combat to fight with.
+   */
+  combatOn?(): boolean;
   /** Whether the session's escape is in flight or cooling down; the walk holds for it. */
   escaping?(): boolean;
   /**

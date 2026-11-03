@@ -41,24 +41,22 @@ export default function SneakAndRunFields({
           setting="automation.movement.sneak"
           onChange={(checked) => onChange({ sneak: checked })}
         />
-        {value.sneak && (
-          <ChoiceFields
-            bare
-            namePrefix={namePrefix}
-            onChange={onChoice}
-            read={movementChoices}
-            rows={[
-              {
-                field: 'sneakGiveUp',
-                name: 'sneak-give-up',
-                setting: 'automation.movement.sneakGiveUp',
-                label: t('settings.movement.sneakGiveUp'),
-                hint: t('settings.movement.sneakGiveUpHint')
-              }
-            ]}
-            values={choices}
-          />
-        )}
+        <ChoiceFields
+          bare
+          namePrefix={namePrefix}
+          onChange={onChoice}
+          read={movementChoices}
+          rows={[
+            {
+              field: 'sneakGiveUp',
+              name: 'sneak-give-up',
+              setting: 'automation.movement.sneakGiveUp',
+              label: t('settings.movement.sneakGiveUp'),
+              hint: t('settings.movement.sneakGiveUpHint')
+            }
+          ]}
+          values={choices}
+        />
       </div>
       <CheckField
         checked={value.runBetweenRounds}

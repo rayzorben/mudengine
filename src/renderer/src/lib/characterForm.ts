@@ -190,14 +190,14 @@ export interface CharacterFields {
   fleeGotoBelow: string;
   fleeGotoCommand: string;
   /**
-   * Auto-combat, as the form holds it.
+   * Auto-combat's settings, as the form holds them. Whether it runs is the
+   * session's switch, never the form's (todo 20261102-1830-01).
    *
    * The three lists are one comma-separated text field each rather than a row
    * editor like the login menus. A login step is two fields that have to stay
    * paired; these are just names, and a `+`-and-`×` list for typing three words
    * into is more chrome than the thing it holds.
    */
-  combat: boolean;
   combatAttack: string;
   combatOpener: string;
   /** Hide (or sneak, while moving) between fights so the opener lands again. */
@@ -578,7 +578,6 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     hangUpNakedMargin: percent(entry.hangUp.nakedMargin),
     pvpNotifyGang: entry.pvp.notifyGang,
     pvpAction: entry.pvp.action,
-    combat: entry.combat.enabled,
     combatAttack: entry.combat.attack,
     combatOpener: entry.combat.opener,
     combatHideForOpener: entry.combat.hideForOpener,
@@ -773,7 +772,6 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       command: form.fleeGotoCommand.trim()
     },
     combat: {
-      enabled: form.combat,
       attack: form.combatAttack,
       opener: form.combatOpener,
       hideForOpener: form.combatHideForOpener,
@@ -1153,7 +1151,6 @@ export function emptyForm(
     hangUpNakedMargin: percent(hangUp.nakedMargin),
     pvpNotifyGang: pvp.notifyGang,
     pvpAction: pvp.action,
-    combat: combat.enabled,
     combatAttack: combat.attack,
     combatOpener: combat.opener,
     combatHideForOpener: combat.hideForOpener,

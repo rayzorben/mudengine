@@ -67,7 +67,7 @@ afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-const combat = (): boolean | undefined => store.profiles[0]?.config.automation.combat.enabled;
+const retaliates = (): boolean | undefined => store.profiles[0]?.config.automation.combat.retaliate;
 
 function editor(): SettingsEditor {
   return new SettingsEditor({
@@ -90,23 +90,23 @@ const pollerOf = (owner: ProfileStore): Poller => (owner as unknown as { poller:
 
 describe('a store edit', () => {
   it('has a toolbar press live in the same turn, before the file is written', () => {
-    const before = combat();
+    const before = retaliates();
     const onDisk: string[] = [];
     store.on('change', () => onDisk.push(fs.readFileSync(file, 'utf8')));
 
-    expect(editor().setAutomationSwitch('thorn', 'combat', !before).ok).toBe(true);
+    expect(editor().setAutomationSwitch('thorn', 'retaliate', !before).ok).toBe(true);
 
-    expect(combat()).toBe(!before);
+    expect(retaliates()).toBe(!before);
     // The change was emitted while the file still held the old text.
     expect(onDisk).toEqual([BODY]);
     const written = fs.readFileSync(file, 'utf8');
     expect(written).toContain('# Thorn, played on the local realm.');
-    expect(written).toContain(`enabled: ${String(!before)}`);
+    expect(written).toContain(`retaliate: ${String(!before)}`);
   });
 
   it('lists no directory for a toolbar press, where reading the store does', () => {
     listings.count = 0;
-    expect(editor().setAutomationSwitch('thorn', 'combat', !combat()).ok).toBe(true);
+    expect(editor().setAutomationSwitch('thorn', 'retaliate', !retaliates()).ok).toBe(true);
     expect(listings.count).toBe(0);
     // The positive control: the same counter sees the store's own read.
     store.reload();
@@ -119,7 +119,7 @@ describe('a store edit', () => {
     let changes = 0;
     store.on('change', () => (changes += 1));
 
-    editor().setAutomationSwitch('thorn', 'combat', !combat());
+    editor().setAutomationSwitch('thorn', 'retaliate', !retaliates());
     expect(changes).toBe(1);
     await pollerOf(store).poll();
     settleDebounce();
@@ -139,7 +139,7 @@ describe('a store edit', () => {
     fs.mkdirSync(home.profile('mara').dir, { recursive: true });
     fs.writeFileSync(home.profile('mara').file, 'server: local\nname: Mara\n');
 
-    editor().setAutomationSwitch('thorn', 'combat', !combat());
+    editor().setAutomationSwitch('thorn', 'retaliate', !retaliates());
     expect(store.profiles.map((profile) => profile.id)).toEqual(['thorn']);
     await pollerOf(store).poll();
     settleDebounce();
@@ -147,17 +147,17 @@ describe('a store edit', () => {
   });
 
   it('puts the value back and says why when the write fails', () => {
-    const before = combat();
+    const before = retaliates();
     // A directory where the backup goes: the write fails for root too.
     fs.mkdirSync(`${file}.bak`);
     let changes = 0;
     store.on('change', () => (changes += 1));
 
-    const result = editor().setAutomationSwitch('thorn', 'combat', !before);
+    const result = editor().setAutomationSwitch('thorn', 'retaliate', !before);
 
     expect(result.ok).toBe(false);
     expect(result.ok ? '' : result.error).toContain(path.basename(file));
-    expect(combat()).toBe(before);
+    expect(retaliates()).toBe(before);
     expect(changes).toBe(2);
     expect(fs.readFileSync(file, 'utf8')).toBe(BODY);
   });
@@ -170,7 +170,7 @@ describe('a store edit', () => {
     let changes = 0;
     store.on('change', () => (changes += 1));
 
-    const result = editor().setAutomationSwitch('mara', 'combat', true);
+    const result = editor().setAutomationSwitch('mara', 'retaliate', true);
 
     expect(result.ok).toBe(false);
     expect(result.ok ? '' : result.error).toContain(path.basename(mara));
@@ -183,7 +183,7 @@ describe('a store edit', () => {
     fs.mkdirSync(path.dirname(mara), { recursive: true });
     fs.writeFileSync(mara, '# Mara, by hand.\nserver: local\nname: Mara\n');
 
-    expect(editor().setAutomationSwitch('mara', 'combat', true).ok).toBe(true);
+    expect(editor().setAutomationSwitch('mara', 'retaliate', true).ok).toBe(true);
 
     expect(fs.readFileSync(mara, 'utf8')).toContain('# Mara, by hand.');
     expect(store.profiles.find((profile) => profile.id === 'mara')?.name).toBe('Mara');

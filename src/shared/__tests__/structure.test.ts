@@ -72,6 +72,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the supplies' vault search, one `Errands.cashFrom` beside the fare's (todo 20261024-0804-01).
   // Lowered by a comment that named nothing below it, as a member's `@held` came (todo 20261024-1900-01).
   // Lowered by the timed passage, out whole (`TimedPassage`), as a look that lets go of a gone target came (2026-10-30).
+  // Held as the session's combat switch came, by the connect comment condensed
+  // (todo 20261102-1830-01).
   'src/main/session/SessionManager.ts': 3285,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
@@ -113,7 +115,9 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `scriptGated`, out to the room commands' unit (`walk/RoomCommands.ts`, todo 65).
   // Lowered by the comments before the step, condensed as the disarm came (`walk/Disarm.ts`, todo 53).
   // Lowered by the hold and trap getters' comments, and the journey's reads in `inFlight` once, as the monster wait came (2026-10-23).
-  'src/main/automation/Walker.ts': 1918,
+  // Lowered by the fight hold's skeleton comment, condensed as the session's
+  // combat switch came (todo 20261102-1830-01).
+  'src/main/automation/Walker.ts': 1917,
   // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
   // Lowered by `sameJson`, read from `@shared/values` with the error helper (todo 143).
   'src/renderer/src/components/SettingsScreen.tsx': 1213,
@@ -143,7 +147,9 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the figure rows drawn through `ChoiceFields`, held whole on the form (todo 118).
   // Lowered by the Retreat fieldset, out whole, and Avoiding, shared with the Global page (todo 119).
   // Lowered by the character's aliases and keys, out together (`MacroSections`, todo 134).
-  'src/renderer/src/components/CharacterForm.tsx': 1269
+  // Lowered by the Auto-Attack checkbox and the two guards behind it, gone to
+  // the session's switch (todo 20261102-1830-01).
+  'src/renderer/src/components/CharacterForm.tsx': 1236
 };
 
 /**

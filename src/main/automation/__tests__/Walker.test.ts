@@ -201,20 +201,23 @@ describe('refusing to start', () => {
 
   /* Todo 129: walking with auto-combat on, running with it off, as the switch stands. */
   it('walks with auto-combat on and runs with it off, and the word follows the switch', () => {
-    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
+    let on = true;
     const seen: WalkProgress[] = [];
-    const walk = new Walker(fights, queue, {
+    const walk = new Walker(config, queue, {
       notice: (m) => notices.push(m),
-      progress: (p) => void seen.push(p)
+      progress: (p) => void seen.push(p),
+      combatOn: () => on
     });
     walk.start(ROUTE, at(1, 1));
     expect(notices).toEqual([
       t('automation.walk.started.many', { stepCount: 2, destination: 'Third Room' })
     ]);
     expect(walk.progress.pace).toBe('walking');
+    on = false;
     walk.configure(config);
     expect(seen.at(-1)?.pace).toBe('running');
-    walk.configure(fights);
+    on = true;
+    walk.configure(config);
     expect(seen.at(-1)?.pace).toBe('walking');
     walk.dispose();
   });
@@ -227,14 +230,16 @@ describe('refusing to start', () => {
    * (`logs/2026-09-06_11-19-43_festus.mudcap.jsonl`): `aa big skeleton` at
    * t=7634, `*Combat Engaged*` at t=7703, and the route's opening `n` on the
    * wire at t=7916 — over a monster auto-combat had just re-engaged, on a
-   * profile with `combat.enabled`, `retaliate` and `whileWalking` all on.
+   * profile with auto-combat, `retaliate` and `whileWalking` all on.
    *
    * The pair is the point: same route, same live fight, same button, and the
    * player's own configuration is the only thing that differs.
    */
   it('holds a route the player asked for when auto-combat will clear the room', async () => {
-    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
-    const walk = new Walker(fights, queue, { notice: (m) => notices.push(m) });
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      combatOn: () => true
+    });
 
     expect(walk.start(ROUTE, at(1, 1, { inCombat: true }))).toBeNull();
     await vi.advanceTimersByTimeAsync(50);
@@ -251,8 +256,10 @@ describe('refusing to start', () => {
    * hold's face, which is the failure that decision was made against.
    */
   it('steps off once the fight it held for is over', async () => {
-    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
-    const walk = new Walker(fights, queue, { notice: (m) => notices.push(m) });
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      combatOn: () => true
+    });
 
     walk.start(ROUTE, at(1, 1, { inCombat: true }));
     await vi.advanceTimersByTimeAsync(50);
@@ -276,8 +283,10 @@ describe('refusing to start', () => {
    * always leaving one.
    */
   it('still leaves for a walk that does not wait fights out', async () => {
-    const fights: AutomationConfig = { ...config, combat: { ...config.combat, enabled: true } };
-    const walk = new Walker(fights, queue, { notice: (m) => notices.push(m) });
+    const walk = new Walker(config, queue, {
+      notice: (m) => notices.push(m),
+      combatOn: () => true
+    });
 
     expect(
       walk.start(ROUTE, at(1, 1, { inCombat: true }), {
@@ -4408,11 +4417,12 @@ describe('a fight on the way', () => {
    * itself how a fight is broken — there is no `flee`.
    */
   describe('the reason for waiting withdrawn', () => {
-    /** A configuration that will finish the fight it is holding for. */
-    const fights: AutomationConfig = {
-      ...config,
-      combat: { ...config.combat, enabled: true }
-    };
+    /** A configuration that will finish the fight it is holding for, with auto-combat on. */
+    const fights: AutomationConfig = config;
+    let on: boolean;
+    beforeEach(() => {
+      on = true;
+    });
 
     /**
      * A walker on a given configuration, holding a fight that stays running.
@@ -4425,7 +4435,8 @@ describe('a fight on the way', () => {
     const holding = async (started: AutomationConfig): Promise<Walker> => {
       const walk = new Walker(started, queue, {
         notice: (message) => notices.push(message),
-        stateNow: () => fighting(1, 1)
+        stateNow: () => fighting(1, 1),
+        combatOn: () => on
       });
       walk.start(ROUTE, at(1, 1));
       await vi.advanceTimersByTimeAsync(50);
@@ -4439,7 +4450,8 @@ describe('a fight on the way', () => {
       const walk = await holding(fights);
 
       sent.length = 0;
-      walk.configure({ ...fights, combat: { ...fights.combat, enabled: false } });
+      on = false;
+      walk.configure(fights);
       await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
 
       /*
@@ -4462,7 +4474,8 @@ describe('a fight on the way', () => {
       const walk = await holding(both);
 
       sent.length = 0;
-      walk.configure({ ...both, combat: { ...both.combat, enabled: false } });
+      on = false;
+      walk.configure(both);
       await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
 
       expect(walk.progress.hold).toBeNull();

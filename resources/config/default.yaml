@@ -2204,17 +2204,15 @@ automation:
   # Fighting for you, rather than keeping you alive.
   #
   # The thing MegaMUD was actually for, and the last part of this client you
-  # still had to do by hand. Off, like everything automated: a client that
-  # starts swinging at things the first time you open it is a client picking
-  # your fights.
+  # still had to do by hand. Whether it runs is not set here: the toolbar's
+  # Auto-Combat switch, @auto-combat and Run it turn it off for now, and the
+  # start of a loop, the end of a route and a reconnect turn it back on.
   #
   # Running away outranks fighting and that is not configurable. The retreat is
   # proposed in the emergency band and this in the combat band, and nothing here
   # opens a fight while an escape is in flight -- a client that ran from a room and
   # swung on the way out would have spent the escape and stayed in the fight.
   combat:
-    enabled: false
-
     # Hit back at whatever hits you. The one part of this that cannot start a
     # fight -- something is already swinging -- so it is on, and it ignores
     # every limit below.

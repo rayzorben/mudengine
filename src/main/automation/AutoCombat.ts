@@ -206,6 +206,13 @@ export interface AutoCombatEvents extends AttackSpellEvents {
    * read a character down as standing.
    */
   onTheGround(): boolean;
+  /**
+   * Whether auto-combat is switched on for this session (`SessionSwitches`,
+   * todo 20261102-1830-01): the toolbar, `@auto-combat` and *Run it* turn it
+   * off for now, and nothing in the character's file does. Required, so a
+   * construction cannot leave the switch unread.
+   */
+  combatOn(): boolean;
   /** How many times faster than the server's clocks the realm runs (`RealmSpeed`); 1 where unread. */
   realmSpeed?(): number;
   /**
@@ -797,7 +804,7 @@ export class AutoCombat implements SessionModule {
 
   /** Whether the player's switches let this fight at all. */
   get switchedOn(): boolean {
-    return this.enabled && this.config.enabled;
+    return this.enabled && this.events.combatOn();
   }
 
   /** Whether this would hit back at a monster swinging now. */
@@ -824,9 +831,9 @@ export class AutoCombat implements SessionModule {
 
   /**
    * Whether this module will act at all right now: the master switch and the
-   * block's own, and nothing else turns it on (the user, 2026-10-02). A route,
-   * a lap and a quest run used to fight with the switch off; the player's
-   * switch is the answer whatever the client is doing.
+   * session's auto-combat switch (`combatOn`), and nothing in a fight turns it
+   * on (the user, 2026-10-02). A route, a lap and a quest run used to fight
+   * with the switch off; the switch is the answer whatever the client is doing.
    */
   private get acting(): boolean {
     return this.switchedOn && !this.moveOnly;

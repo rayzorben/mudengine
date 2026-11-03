@@ -17,6 +17,7 @@ app:
     invalidList: The supplies list could not be read, so nothing was saved.
   automation:
     unknownSwitch: Unrecognized automation switch.
+    noSession: 'Not switched: this character is not open.'
     unknownThreshold: Unrecognized threshold, or not a number.
   config:
     reloadFailed: 'Options not reloaded: {error}'
@@ -555,6 +556,11 @@ notices:
         for starting a fight. Low health is handled by running and resting instead. {fileList}'
       one: '"combat.minHealth" was removed from {count} file. There is no longer a minimum health
         for starting a fight. Low health is handled by running and resting instead. {fileList}'
+    combatSwitchLeft:
+      many: '"combat.enabled" was removed from {count} files. Auto-combat is the toolbar''s switch,
+        on unless you turn it off, and back on at a loop''s start, an arrival and a reconnect. {fileList}'
+      one: '"combat.enabled" was removed from {count} file. Auto-combat is the toolbar''s switch,
+        on unless you turn it off, and back on at a loop''s start, an arrival and a reconnect. {fileList}'
     combatOverridesDropped:
       many: '"movement.fightOnArrival" and "combat.defendAfterRounds" were removed from {count}
         files. Auto-combat is turned on only by you, or when a route you ran arrives. {fileList}'
@@ -4808,7 +4814,6 @@ settings:
       records: Records
       extensions: Extensions
   combat:
-    attackForMe: Auto-Attack
     attackLegend: Attack
     attacksLegend: Attacks
     attackVerbHint: Blank uses the attack that hits hardest for this class and race. Type attack to
@@ -4934,7 +4939,6 @@ settings:
       route, so your opening backstab works again. Only used when the opener is bs.
     openingFightsWarning: Starting fights on its own can get a character killed; the default only
       fights back.
-    openWarning: With this on, the client starts fights by itself, but never with a player.
     refreshHint: Rounds between looks, to notice a monster that died or walked in. 0 never looks.
     refreshLabel: Room Look Interval (Rounds)
     rulesPointerNote: When to cast, bless and loot are set in automation.rules in the options file,
@@ -6917,16 +6921,13 @@ automation:
       standing still.'
   combat:
     # Todo 06: *Run it* is turn off, go, and on again when the run arrives. The
-    # run's start line says it (`walk.startedRunningCombatOff`).
+    # run's start line says it (`walk.startedRunningCombatOff`). The switch is
+    # the session's (todo 20261102-1830-01), so a dial turns it back on too.
     onAfterRun: 'Arrived: auto-combat back on.'
-    onAfterRunRefused: "Arrived, but auto-combat could not be turned on in the character's file."
     onAfterRunEnded: 'The run stopped short: auto-combat back on.'
-    onAfterRunEndedRefused: "The run stopped short, but auto-combat could not be turned on in the character's file."
     onForLap: 'The loop fights: auto-combat back on.'
-    onForLapRefused: "The loop fights, but auto-combat could not be turned on in the character's file."
     onAfterLaunch: 'Auto-combat back on: the last run before the client closed had turned it off.'
-    onAfterLaunchRefused: "The last run before the client closed had turned auto-combat off, and it could not be turned on in the character's file."
-    runRefused: "Not running it: auto-combat could not be turned off in the character's file."
+    onAtDial: 'Connecting: auto-combat back on.'
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something arrived that the world data could not place'
     # Todo 828: a MajorMUD server goes on casting the area spell into an empty room.

@@ -42,6 +42,7 @@ import { RecoveredCorpse } from '../automation/RecoveredCorpse';
 import { GearLockWatch } from '../automation/GearLockWatch';
 import { Afk } from '../automation/Afk';
 import { Attendance } from '../automation/Attendance';
+import { SessionSwitches } from '../automation/SessionSwitches';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import type { AutoInvoke } from '../automation/AutoInvoke';
@@ -170,7 +171,7 @@ import { Rewriter } from './Rewriter';
 import {
   DEFAULT_CONFIG,
   type AutomationConfig,
-  type AutomationSwitch,
+  type ConfigSwitch,
   type LoginConfig,
   type RewritesUiConfig
 } from '../../shared/config';
@@ -438,6 +439,8 @@ export class SessionManager {
   private readonly roomHazards: RoomHazards;
   readonly statsBaseline: StatsBaseline;
   private readonly attendance: Attendance;
+  /** Auto-combat, which the toolbar, the remotes and Run it flip (`SessionSwitches`). */
+  readonly switches: SessionSwitches;
   private readonly afk: Afk;
   private readonly heal: AutoHeal;
   private readonly castRound: CastRound;
@@ -768,13 +771,18 @@ export class SessionManager {
     // What the light, errands and travel tell the session: a console line, a safety decision.
     const moveInFlight = (): boolean => this.tracker.pendingMoves > 0;
     const sneakRefusals = new SneakRefusals(automation.movement, notice);
+    this.switches = new SessionSwitches({
+      notice,
+      changed: () => this.publisher.publishAutomation()
+    });
+    const combatOn = (): boolean => this.switches.on('combat');
     const reports = {
       notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
     // A route offers the command queue one verified step at a time, like everything else.
     this.walker = new Walker(automation, this.queue, {
-      ...{ realmSpeed, sneakRefusals },
+      ...{ realmSpeed, sneakRefusals, combatOn },
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
@@ -897,8 +905,7 @@ export class SessionManager {
         // The words fought with, typed or chosen (todo 47).
         attackWord: (target) => this.errands.words.attack([target]).verb,
         openerWord: () => this.errands.words.opener(),
-        onTheGround,
-        realmSpeed
+        ...{ onTheGround, realmSpeed, combatOn }
       },
       automation.spells,
       (name) => this.world?.spellNamed(name) ?? null,
@@ -964,7 +971,7 @@ export class SessionManager {
      * answer is a different command: `sn` for the step ahead, `hide` standing.
      */
     this.stealth = new AutoStealth(automation, automation.enabled, this.queue, {
-      ...{ notice, moveInFlight, sneakRefusals },
+      ...{ notice, moveInFlight, sneakRefusals, combatOn },
       escaping: () => this.travel.isRetreating(),
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
       openerRefused: () => this.combat.openerRefused(),
@@ -1243,7 +1250,7 @@ export class SessionManager {
     );
     this.afk = new Afk(automation.afk, automation.enabled, this.queue, this.attendance, this.sink);
     // Write a switch to the character's file and read it back (`switchAutomationNow`).
-    const switchNow = (name: AutomationSwitch, on: boolean): boolean =>
+    const switchNow = (name: ConfigSwitch, on: boolean): boolean =>
       this.sink.switchAutomationNow?.(name, on) ?? false;
     this.remotes = new Remotes(automation, this.queue, {
       notice,
@@ -1255,8 +1262,8 @@ export class SessionManager {
       peer: (who) => recordOf(this.tracker.players, who),
       ...partyRemotes(() => this.travel),
       held: (who, held) => this.cures.memberHeld(who, held),
-      switchAutomation: switchNow,
-      quests: () => this.world?.quests() ?? null,
+      ...{ switchAutomation: (name, on) => this.switches.flip(name, on, switchNow) },
+      ...{ heldSwitches: () => this.switches.snapshot, quests: () => this.world?.quests() ?? null },
       ...remoteRegistry(
         this.tracker,
         () => this.publisher,
@@ -1490,7 +1497,7 @@ export class SessionManager {
         keepFled: (entries) => this.belongings.rememberFled(entries),
         driven: () => this.extensions.driving,
         hangUpTakesOver: (state) => this.safety.takesOver(state),
-        switchAutomation: switchNow,
+        ...{ switchAutomation: switchNow, switches: this.switches },
         ...reports
       }
     );
@@ -1536,8 +1543,7 @@ export class SessionManager {
     );
     this.publisher = new Publisher(
       {
-        tracker: this.tracker,
-        appraisal: this.appraisal,
+        ...{ tracker: this.tracker, appraisal: this.appraisal, switches: this.switches },
         ...{ queue: this.queue, times: this.walker.times },
         ...{ rules: this.rules, client: this.client, attendance: this.attendance }
       },
@@ -1917,6 +1923,7 @@ export class SessionManager {
   }
 
   async connect(target: ConnectionTarget): Promise<ConnectionState> {
+    this.switches.dialled();
     this.carryOver.dial();
     this.telnetLog.length = 0;
     this.lineLog.length = 0;
@@ -1938,18 +1945,11 @@ export class SessionManager {
     this.answering = null;
     for (const { module } of this.modules) module.reset();
     /*
-     * The loop and the player's route are the two things a new connection
-     * does not put down — *when it is the same realm*. A loop is a list of
-     * rooms in one realm and a journey ends in one, so a dial to a different
-     * address puts both down and says so; `Reconnect` dials the address last
-     * dialled, so a loss carried this far comes back to the realm it was
-     * running on. `target` is the last address dialled, kept through `closed`.
-     *
-     * A loop that is not carried — stopped, idle, or running on a socket that
-     * has not closed yet — is reset as before, and the followers' `@wait` with
-     * it: a `@wait` from a session that ended must not hold a loop nobody
-     * asked it to. With a carried loop the set stays, because the followers
-     * who said it are still where they were and have not said `@ok`.
+     * A new connection keeps the loop and the player's route only in the same
+     * realm (`target`, the last address dialled, kept through `closed`, which
+     * `Reconnect` dials back): a dial elsewhere puts both down and says so. A
+     * loop not carried is reset with the followers' `@wait`, which must not
+     * hold a loop nobody asked it to; a carried loop keeps the set.
      */
     const sameRealm =
       this.publisher.state.target !== null && sameTarget(this.publisher.state.target, target);

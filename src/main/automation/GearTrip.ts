@@ -45,8 +45,8 @@ export interface GearTripPlanner extends TripPlanner {
   pace(): Pace;
   /** An escape in flight, which outranks the trip once it is under way. */
   escaping(): boolean;
-  /** *Run it*'s switch: true where auto-combat went off for the way, the refusal where it would not. */
-  combatOffForRun(): boolean | string;
+  /** *Run it*'s switch: true where auto-combat went off for the way. */
+  combatOffForRun(): boolean;
   /** The run's way is over, done or stopped short: auto-combat back on, said. */
   combatOnAfterRun(arrived: boolean): void;
   /** The commands that put the bought items on, the slot's weakest taken off first where it must be. */
@@ -148,11 +148,7 @@ export class GearTrip implements SessionModule {
       this.say(t('automation.gearTrip.refused', { why: refused }), refused);
       return refused;
     }
-    const combatOff = run ? this.planner.combatOffForRun() : false;
-    if (typeof combatOff === 'string') {
-      this.say(t('automation.gearTrip.refused', { why: combatOff }), combatOff);
-      return combatOff;
-    }
+    const combatOff = run && this.planner.combatOffForRun();
     const held = this.planner.looping();
     const trip: Trip = {
       plan,

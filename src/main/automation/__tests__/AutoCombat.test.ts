@@ -48,7 +48,6 @@ const automation: AutomationConfig = {
 
 const combat = (over: Partial<CombatConfig> = {}): CombatConfig => ({
   ...DEFAULT_CONFIG.automation.combat,
-  enabled: true,
   ...over
 });
 
@@ -199,6 +198,7 @@ function make(
       ...(canHide === undefined ? {} : { canHide }),
       onTheGround: () => down,
       realmSpeed: () => speed,
+      combatOn: () => true,
       ...extra
     },
     spells ?? DEFAULT_CONFIG.automation.spells,
@@ -209,6 +209,16 @@ function make(
     guard ?? null
   );
 }
+
+/** Built with the session's auto-combat switch answering `on` (`SessionSwitches`). */
+function switched(config: CombatConfig, on: () => boolean): AutoCombat {
+  return make(config, true, undefined, undefined, undefined, undefined, undefined, {
+    combatOn: on
+  });
+}
+
+/** Built with auto-combat switched off for the session. */
+const switchedOff = (config: CombatConfig): AutoCombat => switched(config, () => false);
 
 /** The refusals, as `target — reason` so a test reads like the card does. */
 function refusals(): string[] {
@@ -655,7 +665,7 @@ describe('refusing to start one', () => {
   const room = { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] };
 
   it('does nothing at all while it is switched off', () => {
-    const auto = make(combat({ enabled: false }));
+    const auto = switchedOff(combat());
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
@@ -736,7 +746,7 @@ describe('refusing to start one', () => {
    * and Festus walked into guardian wolves and swung at them.
    */
   it('fights nothing with the block switched off', () => {
-    const auto = make(combat({ enabled: false }));
+    const auto = switchedOff(combat());
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
@@ -744,7 +754,7 @@ describe('refusing to start one', () => {
   });
 
   it('does not hit back with the block switched off', () => {
-    const auto = make(combat({ enabled: false, engage: 'none' }));
+    const auto = switchedOff(combat({ engage: 'none' }));
     auto.onCharacter(
       state({
         inCombat: true,
@@ -757,7 +767,7 @@ describe('refusing to start one', () => {
 
   /* The positive control: the same blow with the block on. */
   it('still hits back with the block on', () => {
-    const auto = make(combat({ enabled: true, engage: 'none' }));
+    const auto = make(combat({ engage: 'none' }));
     auto.onCharacter(
       state({
         inCombat: true,
@@ -769,11 +779,12 @@ describe('refusing to start one', () => {
   });
 
   it('fights again once the player turns the switch back on', () => {
-    const auto = make(combat({ enabled: false }));
+    let on = false;
+    const auto = switched(combat(), () => on);
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
-    auto.configure(combat({ enabled: true }), true);
+    on = true;
     expect(auto.switchedOn).toBe(true);
     auto.onCharacter(state({ room }));
     drain();
@@ -782,7 +793,7 @@ describe('refusing to start one', () => {
 
   /* With automation off, only what the player types is ever sent. */
   it('fights nothing when automation itself is off', () => {
-    const auto = make(combat({ enabled: true }), false);
+    const auto = make(combat(), false);
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
@@ -829,7 +840,7 @@ describe('the beat a walk takes for it', () => {
 
   /* With the switch off nothing is opened, so the walker holds no beat for it. */
   it('is not asked for with the switch off', () => {
-    expect(make(combat({ enabled: false })).quarry(state({ room }))).toBe(false);
+    expect(switchedOff(combat()).quarry(state({ room }))).toBe(false);
   });
 
   it('is asked for with the switch on', () => {
@@ -1424,6 +1435,7 @@ describe('a verb the realm refuses', () => {
       },
       openerWord: () => opener,
       onTheGround: () => down,
+      combatOn: () => true,
       realmSpeed: () => speed
     });
     let opener = 'ju';
@@ -1758,7 +1770,7 @@ describe('casting in a fight', () => {
       combat({ engage: 'none' }),
       true,
       queue,
-      { notice: (m) => notices.push(m), onTheGround: () => down },
+      { notice: (m) => notices.push(m), onTheGround: () => down, combatOn: () => true },
       { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 },
       realm
     );
@@ -1841,7 +1853,7 @@ describe('casting in a fight', () => {
         combat({ engage: 'none' }),
         true,
         queue,
-        { notice: (m) => notices.push(m), onTheGround: () => down },
+        { notice: (m) => notices.push(m), onTheGround: () => down, combatOn: () => true },
         { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 },
         realm
       );
@@ -1888,7 +1900,12 @@ describe('casting in a fight', () => {
       combat({ engage: 'none' }),
       true,
       queue,
-      { notice: (m) => notices.push(m), needBook: () => (asked += 1), onTheGround: () => down },
+      {
+        notice: (m) => notices.push(m),
+        needBook: () => (asked += 1),
+        onTheGround: () => down,
+        combatOn: () => true
+      },
       { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 }
     );
     const fight = state({
@@ -3490,7 +3507,7 @@ describe('one target until it is dead', () => {
 describe('a typed break', () => {
   /* Todo 145: switched off, "it resumes when you move or attack" was untrue. */
   it('says nothing about resuming when auto-combat is switched off', () => {
-    make(combat({ enabled: false })).noteUserCommand('break');
+    switchedOff(combat()).noteUserCommand('break');
     expect(notices).not.toContain(t('automation.combat.standDown'));
     // Positive control: the same break with it switched on says it.
     make(combat()).noteUserCommand('break');
@@ -3615,13 +3632,8 @@ describe('fighting what the leader fights', () => {
   });
 
   it('swings at the leader’s target even when told to open nothing', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
-    auto.configure(
-      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
-      true,
-      undefined,
-      party
-    );
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
+    auto.configure({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' }, true, undefined, party);
     auto.onCharacter(
       state({
         party: following('giant rat'),
@@ -3634,13 +3646,8 @@ describe('fighting what the leader fights', () => {
   });
 
   it('does nothing when the leader’s target has left the room, or the sighting is stale', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
-    auto.configure(
-      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
-      true,
-      undefined,
-      party
-    );
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
+    auto.configure({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' }, true, undefined, party);
     auto.onCharacter(
       state({ party: following('giant rat'), room: { ...EMPTY_CHARACTER.room, occupants: [] } })
     );
@@ -3656,13 +3663,8 @@ describe('fighting what the leader fights', () => {
 
   /* The leader in a PvP fight is the leader's business. */
   it('never joins a fight against a player', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
-    auto.configure(
-      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
-      true,
-      undefined,
-      party
-    );
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
+    auto.configure({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' }, true, undefined, party);
     auto.onCharacter(
       state({
         party: following('Grimjaw'),
@@ -3674,13 +3676,8 @@ describe('fighting what the leader fights', () => {
   });
 
   it('picks its own monster when the leader attacks everyone in the room', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
-    auto.configure(
-      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
-      true,
-      undefined,
-      party
-    );
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
+    auto.configure({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' }, true, undefined, party);
     auto.onCharacter(
       state({
         party: followingRoom(),
@@ -3696,13 +3693,8 @@ describe('fighting what the leader fights', () => {
   });
 
   it('says why when the leader attacks the room and nothing there is worth a swing', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
-    auto.configure(
-      { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' },
-      true,
-      undefined,
-      party
-    );
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
+    auto.configure({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' }, true, undefined, party);
     auto.onCharacter(
       state({
         party: followingRoom(),
@@ -3717,7 +3709,7 @@ describe('fighting what the leader fights', () => {
   });
 
   it('is off unless asked', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
     auto.onCharacter(
       state({
         party: following('giant rat'),
@@ -3757,7 +3749,7 @@ describe('defending the party', () => {
     threatened: { Soul: { target, at } }
   });
   const defending = (engage: 'none' | 'hostile' = 'none') => {
-    const config = { ...DEFAULT_CONFIG.automation.combat, enabled: true, engage };
+    const config = { ...DEFAULT_CONFIG.automation.combat, engage };
     const auto = make(config);
     auto.configure(config, true, undefined, party);
     return auto;
@@ -3807,7 +3799,7 @@ describe('defending the party', () => {
   });
 
   it('is off unless asked', () => {
-    const auto = make({ ...DEFAULT_CONFIG.automation.combat, enabled: true, engage: 'none' });
+    const auto = make({ ...DEFAULT_CONFIG.automation.combat, engage: 'none' });
     auto.onCharacter(
       state({
         party: threatened('giant rat'),
@@ -4193,7 +4185,7 @@ describe('the size of the room and the size of the monster', () => {
     });
 
     it('asks for no rest with auto-combat off', () => {
-      const off = make(combat({ enabled: false, engage: 'all', mobRules: rules }));
+      const off = switchedOff(combat({ engage: 'all', mobRules: rules }));
       expect(off.waitingOn(at(11, mob('gravedigger', 'passive')))).toBeNull();
     });
   });
@@ -5082,7 +5074,7 @@ describe('draining when hurt', () => {
         rounds(),
         true,
         queue,
-        { notice: (m) => notices.push(m), onTheGround: () => false },
+        { notice: (m) => notices.push(m), onTheGround: () => false, combatOn: () => true },
         spells({ attack: '', drain: '', autoChoose: true }),
         (name) => rows[name] ?? null,
         undefined,

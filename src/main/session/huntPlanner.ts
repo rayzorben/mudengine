@@ -23,7 +23,7 @@ export interface HuntPlannerModules {
   belongings: Pick<Belongings, 'rememberHuntRate'>;
   walker: Pick<Walker, 'start' | 'walking'>;
   loops: Pick<LoopRunner, 'progress' | 'retime' | 'expect'>;
-  travel: Pick<Travel, 'startLoop' | 'stoppedAtStart' | 'beginRun' | 'combatOnAfterRun'>;
+  travel: Pick<Travel, 'startLoop' | 'stoppedAtStart' | 'combatOffForRun' | 'combatOnAfterRun'>;
 }
 
 export interface HuntPlannerParts {
@@ -50,8 +50,7 @@ export function huntPlanner(parts: HuntPlannerParts): HuntPlanner {
         walker.start(route, tracker.current, { asked: false, offRounds: run, startSaid: !run }) ??
         travel.stoppedAtStart();
       if (refused !== null) return refused;
-      const off = run ? travel.beginRun() : false;
-      return typeof off === 'string' ? off : { combatOff: off };
+      return { combatOff: run && travel.combatOffForRun() };
     },
     combatOnAfterRun: (arrived) => m().travel.combatOnAfterRun(arrived),
     runLoop: (loop) => {

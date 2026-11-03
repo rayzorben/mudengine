@@ -911,15 +911,6 @@ export default function GlobalSettings({
             <p className="settings-warn">{t('settings.combat.openingFightsWarning')}</p>
 
             <CheckField
-              checked={draft.automation.combat.enabled}
-              label={t('settings.combat.attackForMe')}
-              name="global-combat"
-              setting="automation.combat.enabled"
-              onChange={(value) =>
-                automation({ combat: { ...draft.automation.combat, enabled: value } })
-              }
-            />
-            <CheckField
               checked={draft.automation.combat.retaliate}
               hint={t('settings.combat.hitBackHint')}
               label={t('settings.combat.hitBack')}
@@ -2017,53 +2008,40 @@ export default function GlobalSettings({
                   automation({ remotes: { ...draft.automation.remotes, enabled: value } })
                 }
               />
-              {/*
-              The gate, here as well as on the character page.
-
-              These are the values a character **copies at creation**, so a Global
-              page that could set the switch and not the grants would hand every
-              new character a feature switched on and answering nobody — with the
-              only surface able to fix it being somewhere else. That is the
-              copied-once template failure this project already wrote down.
-            */}
-              {draft.automation.remotes.enabled && (
-                <>
-                  <RemoteSwitches
-                    autoJoin={draft.automation.remotes.autoJoin}
-                    gang={draft.automation.remotes.gang}
-                    gangpath={draft.automation.remotes.gangpath}
-                    killAndHangup={draft.automation.remotes.allowKillAndHangup}
-                    maxGets={draft.automation.remotes.maxGets}
-                    name="global-remotes"
-                    onAutoJoin={(value) =>
-                      automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
+              <RemoteSwitches
+                autoJoin={draft.automation.remotes.autoJoin}
+                gang={draft.automation.remotes.gang}
+                gangpath={draft.automation.remotes.gangpath}
+                killAndHangup={draft.automation.remotes.allowKillAndHangup}
+                maxGets={draft.automation.remotes.maxGets}
+                name="global-remotes"
+                onAutoJoin={(value) =>
+                  automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
+                }
+                onGang={(value) =>
+                  automation({ remotes: { ...draft.automation.remotes, gang: value } })
+                }
+                onGangpath={(value) =>
+                  automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
+                }
+                onKillAndHangup={(value) =>
+                  automation({
+                    remotes: { ...draft.automation.remotes, allowKillAndHangup: value }
+                  })
+                }
+                onMaxGets={(value) =>
+                  automation({
+                    remotes: {
+                      ...draft.automation.remotes,
+                      maxGets: int(
+                        value,
+                        DEFAULT_CONFIG.automation.remotes.maxGets,
+                        ...REMOTES_RANGES.maxGets
+                      )
                     }
-                    onGang={(value) =>
-                      automation({ remotes: { ...draft.automation.remotes, gang: value } })
-                    }
-                    onGangpath={(value) =>
-                      automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
-                    }
-                    onKillAndHangup={(value) =>
-                      automation({
-                        remotes: { ...draft.automation.remotes, allowKillAndHangup: value }
-                      })
-                    }
-                    onMaxGets={(value) =>
-                      automation({
-                        remotes: {
-                          ...draft.automation.remotes,
-                          maxGets: int(
-                            value,
-                            DEFAULT_CONFIG.automation.remotes.maxGets,
-                            ...REMOTES_RANGES.maxGets
-                          )
-                        }
-                      })
-                    }
-                  />
-                </>
-              )}
+                  })
+                }
+              />
               {/*
               Where the third list is. A permission page that showed two of the
               three grants would have somebody auditing who can drive this

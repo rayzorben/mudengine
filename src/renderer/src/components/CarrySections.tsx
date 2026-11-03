@@ -462,7 +462,7 @@ export default function CarrySections({
           Only where a realm has answered: the Global page is every realm at
           once, and a row id means nothing across two of them.
         */}
-        {banking.autoDeposit && banks !== null && banks.length > 0 && (
+        {banks !== null && banks.length > 0 && (
           <>
             <SelectField
               hint={t('settings.movement.bankWhichHint')}

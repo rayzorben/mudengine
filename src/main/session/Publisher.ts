@@ -12,6 +12,7 @@
  */
 import { tuning } from '../app/tuning';
 import type { Attendance } from '../automation/Attendance';
+import type { SessionSwitches } from '../automation/SessionSwitches';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { RuleEngine } from '../automation/RuleEngine';
 import { roundTimingAt, type WalkTimesRead } from '../automation/walk/WalkTimes';
@@ -40,6 +41,8 @@ export interface PublisherParts {
   readonly rules: Pick<RuleEngine, 'firings'>;
   readonly client: Pick<TelnetClient, 'negotiated'>;
   readonly attendance: Pick<Attendance, 'away'>;
+  /** The switches the session holds, which the toolbar draws (`AutomationSnapshot.held`). */
+  readonly switches: Pick<SessionSwitches, 'snapshot'>;
   /** The walk's clocks, for the ring round the room (`roundTimingAt`). */
   readonly times: WalkTimesRead;
 }
@@ -65,6 +68,7 @@ export class Publisher {
   private readonly rules: PublisherParts['rules'];
   private readonly client: PublisherParts['client'];
   private readonly attendance: PublisherParts['attendance'];
+  private readonly switches: PublisherParts['switches'];
   private readonly times: PublisherParts['times'];
   private current: ConnectionState = IDLE_CONNECTION;
   /**
@@ -130,6 +134,7 @@ export class Publisher {
     this.rules = parts.rules;
     this.client = parts.client;
     this.attendance = parts.attendance;
+    this.switches = parts.switches;
     this.times = parts.times;
   }
 
@@ -212,6 +217,7 @@ export class Publisher {
       extensions: this.session.extensions().views(),
       laid: [...this.session.extensions().laid],
       away: this.attendance.away,
+      held: this.switches.snapshot,
       rounds: roundTimingAt(this.times, Date.now())
     };
   }

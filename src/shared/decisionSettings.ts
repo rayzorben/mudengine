@@ -50,11 +50,7 @@ export type DecisionSettings =
 
 export const DECISION_SETTINGS = {
   // Combat
-  'attack-master-switch': [
-    'automation.combat.enabled',
-    'automation.combat.retaliate',
-    'automation.combat.engage'
-  ],
+  'attack-master-switch': ['automation.combat.retaliate', 'automation.combat.engage'],
   'mortally-wounded-stop': {
     exempt: 'the server lets a mortally wounded character do nothing',
     since: '2026-10-13'
@@ -154,11 +150,7 @@ export const DECISION_SETTINGS = {
     exempt: 'bookkeeping: an unknown hostility is read before it is fought',
     since: '2026-10-13'
   },
-  'hide-sneak': [
-    'automation.combat.hideForOpener',
-    'automation.combat.opener',
-    'automation.combat.enabled'
-  ],
+  'hide-sneak': ['automation.combat.hideForOpener', 'automation.combat.opener'],
   search: ['automation.search.enabled', 'automation.search.tries'],
   'unlisted-searcher': {
     exempt: 'a safety look at a player the room did not list',
@@ -432,7 +424,6 @@ export const DECISION_SETTINGS = {
   'walk-follow-settle': { exempt: "a timeout: the leader's move lands first", since: '2026-10-13' },
   'walk-player-took-over': { exempt: 'the player typed a move', since: '2026-10-13' },
   'walk-fight-hold': [
-    'automation.combat.enabled',
     'automation.combat.retaliate',
     'automation.combat.engage',
     'automation.combat.mobRules'
@@ -597,7 +588,7 @@ export const DECISION_SETTINGS = {
     'automation.remotes.gang',
     'automation.remotes.party'
   ],
-  'remote-switch': ['automation.combat.enabled', 'automation.movement.sneak'],
+  'remote-switch': ['automation.movement.sneak'],
   'remote-wait': ['automation.party.ignoreWait', 'automation.party.manageParty'],
   'remote-barrier': [
     'automation.movement.pickTries',

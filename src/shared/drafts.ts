@@ -491,7 +491,6 @@ export interface ProfileDraft {
    * split; `normalizeCombat` keys them the way the wire spells a monster.
    */
   combat: {
-    enabled: boolean;
     attack: string;
     opener: string;
     /** Hide, or sneak while moving, between fights so the opener lands. See `CombatConfig`. */
@@ -998,7 +997,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       action: oneOf<PvpAction>(pvp['action'], PVP_ACTIONS, 'none')
     },
     combat: {
-      enabled: combat['enabled'] === true,
       // Blank chooses the attack and the opener (`FightWords`, todo 47).
       attack: word(combat['attack']),
       opener: word(combat['opener']),

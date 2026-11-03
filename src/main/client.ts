@@ -183,8 +183,9 @@ import {
 } from '../shared/ipc';
 import {
   asAutomationSwitch,
-  automationSwitches,
+  configSwitches,
   DEFAULT_CONFIG,
+  isHeldSwitch,
   type AppConfig
 } from '../shared/config';
 import { settledSupply, type SupplyItem } from '../shared/packConfig';
@@ -1479,7 +1480,7 @@ function profileSummaries(): ProfileSummary[] {
     target: profile.target,
     serverName: profile.serverName,
     remotes: profile.config.automation.remotes,
-    switches: automationSwitches(profile.config.automation),
+    switches: configSwitches(profile.config.automation),
     restTo: profile.config.automation.health.restTo,
     restBelow: profile.config.automation.health.restBelow,
     runBelow: profile.config.automation.safety.retreat.belowHealth,
@@ -3593,6 +3594,12 @@ function registerIpc(): void {
     // nothing reads.
     const parsed = asAutomationSwitch(name);
     if (parsed === null) return t('app.automation.unknownSwitch');
+    // A held switch is the session's for now (`SessionSwitches`); the file never states it.
+    if (isHeldSwitch(parsed)) {
+      const manager = host?.get(session)?.manager;
+      manager?.switches.set(parsed, on === true);
+      return manager === undefined ? t('app.automation.noSession') : null;
+    }
     const result = editor().setAutomationSwitch(session, parsed, on === true);
     return result.ok ? null : result.error;
   });

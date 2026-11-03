@@ -74,7 +74,6 @@ function vaelorConfig(): AutomationConfig {
   base.enabled = true;
   base.combat = {
     ...base.combat,
-    enabled: true,
     attack: 'pu',
     opener: '',
     engage: 'likely',
@@ -130,7 +129,10 @@ function harness(engage: 'hostile' | 'likely' = 'likely'): Harness {
       }
     }
   });
-  const combat = new AutoCombat(config.combat, true, queue, { onTheGround: () => false });
+  const combat = new AutoCombat(config.combat, true, queue, {
+    onTheGround: () => false,
+    combatOn: () => true
+  });
   let seq = 0;
 
   const feed = (text: string): void => {

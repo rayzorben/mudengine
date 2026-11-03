@@ -9,6 +9,7 @@
  * as a string union in `rules.ts` — which is the same mistake as holding two
  * representations of a direction: the two agree until one of them is edited.
  */
+import { HELD_DEFAULTS, type HeldSwitches } from './automationSwitches';
 import type { CharacterState } from './character';
 import type { LaidSetting } from './extensions';
 import type { RoundTiming } from './roundTiming';
@@ -198,6 +199,8 @@ export interface AutomationSnapshot {
   laid: LaidSetting[];
   /** Nobody has pressed a key for `automation.afk.afterMinutes` (`Attendance`, todo 79). */
   away: boolean;
+  /** The switches the session holds, as the toolbar draws them (`SessionSwitches`). */
+  held: HeldSwitches;
   /** The room's rounds and off-rounds (todo 154); null before a round is seen this connection. */
   rounds: RoundTiming | null;
 }
@@ -212,5 +215,6 @@ export const EMPTY_AUTOMATION: AutomationSnapshot = {
   engagements: [],
   extensions: {},
   laid: [],
+  held: HELD_DEFAULTS,
   rounds: null
 };

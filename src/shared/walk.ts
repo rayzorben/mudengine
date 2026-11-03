@@ -165,8 +165,9 @@ export const pathOf = (steps: RouteStep[]): RoomId[] =>
  */
 export type Pace = 'walking' | 'running';
 
-export function paceOf(automation: Pick<AutomationConfig, 'enabled' | 'combat'>): Pace {
-  return automation.enabled && automation.combat.enabled ? 'walking' : 'running';
+/** `combatOn` is the session's auto-combat switch (`HeldSwitch`). */
+export function paceOf(automation: Pick<AutomationConfig, 'enabled'>, combatOn: boolean): Pace {
+  return automation.enabled && combatOn ? 'walking' : 'running';
 }
 
 /**

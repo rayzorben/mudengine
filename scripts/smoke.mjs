@@ -12290,57 +12290,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   /*
-   * Auto-combat, which is the one section of this form that makes the client
-   * *start* something rather than stop it.
-   *
-   * A section exists when there is a typed config block behind it, and this one
-   * is `automation.combat` -- attack *rules* are still `automation.rules`, and
-   * a form field for one would be a second representation of what the YAML
-   * already says. What is asserted here is that somebody can find it and that
-   * it says what it will and will not do, because the refusals are the part
-   * nobody would guess: never a player, at any setting.
+   * Auto-combat's settings. Whether it runs is the toolbar's switch, held by
+   * the session, so the section has no checkbox for it and draws every field
+   * whatever the switch says (todo 20261102-1830-01).
    */
   check(await clickSection('combat'), 'its Combat section is reachable');
-  const fighting = await readUntil(
-    () =>
-      evaluate(`
-    document.querySelector('.settings-form fieldset[data-fieldset="combat-attack"] .settings-warn')
-      ?.innerText ?? ''
-  `),
-    (fighting) => copyRx('settings.combat.openWarning').test(fighting)
-  );
-  check(
-    copyRx('settings.combat.openWarning').test(fighting),
-    'the combat setting says it will never attack a player',
-    fighting.slice(0, 200)
-  );
-
-  /*
-   * Switching it on reveals what it swings with -- the realm's own verbs. They
-   * are hidden until then on purpose: a field for an attack verb means nothing
-   * to somebody who has not turned this on, and the section would open on three
-   * boxes of vocabulary before saying what any of it is for.
-   */
-  check(
-    await evaluate(`
-      (() => {
-        const box = document.querySelector('.settings-check[data-field="combat"]');
-        const input = box?.querySelector('input');
-        if (!input) return false;
-        // An asked route that arrived earlier in this run turned it on (2026-10-08).
-        if (input.checked) input.click();
-        if (input.checked) return false;
-        input.click();
-        return input.checked;
-      })()
-    `),
-    'auto-combat can be switched on'
-  );
+  // Drawn first, so the checkbox's absence is read off a section that is there.
   await waitFor(async () =>
-    evaluate(`
-      document.querySelector('.settings-check[data-field="combat"]')
-        ?.querySelector('input')?.checked === true
-    `)
+    evaluate(`!!document.querySelector('.settings-form fieldset[data-fieldset="combat-attacks"]')`)
+  );
+  check(
+    await evaluate(`!document.querySelector('.settings-check[data-field="combat"]')`),
+    'the Combat section has no auto-combat checkbox'
   );
   const verbs = JSON.parse(
     await evaluate(`
@@ -12350,7 +12311,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   check(
     verbs.includes('combat-attacks'),
-    'and switching it on offers what to swing with',
+    'and it offers what to swing with',
     JSON.stringify(verbs)
   );
   check(verbs.includes('combat-monsters'), 'and what the realm’s own columns refuse');
@@ -12462,8 +12423,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and the monster name field is at least as wide as the treatment beside it',
     banded
   );
-  // Taken back off, like the switch below: this run does not save, and a later
-  // assertion reads the same form.
+  // Taken back off: this run does not save, and a later assertion reads the
+  // same form.
   await evaluate(`
     (() => {
       const box = document.querySelector('.settings-form fieldset[data-fieldset="combat-mob-rules"]');
@@ -12474,23 +12435,6 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       return true;
     })()
   `);
-  // Switched back off, so the smoke character's file is left as it was found:
-  // this run does not save, but a later assertion reads the same form.
-  await evaluate(`
-    (() => {
-      const box = document.querySelector('.settings-check[data-field="combat"]');
-      const input = box?.querySelector('input');
-      if (input?.checked) input.click();
-      return true;
-    })()
-  `);
-  await waitFor(async () =>
-    evaluate(`
-      document.querySelector('.settings-check[data-field="combat"]')
-        ?.querySelector('input')?.checked === false
-    `)
-  );
-
   /*
    * The loops a character walks, in the Movement section.
    *

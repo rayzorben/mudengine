@@ -17,7 +17,6 @@ const automation: AutomationConfig = {
 /** A backstabber with the switch on, unless told otherwise. */
 const combat = (over: Partial<CombatConfig> = {}): CombatConfig => ({
   ...DEFAULT_CONFIG.automation.combat,
-  enabled: true,
   opener: 'bs',
   hideForOpener: true,
   ...over
@@ -67,12 +66,13 @@ afterEach(() => {
 
 const make = (
   config = combat(),
-  events: StealthEvents = {},
+  events: Partial<StealthEvents> = {},
   enabled = true,
   sneak = false
 ): AutoStealth =>
   new AutoStealth({ combat: config, movement: { sneak } }, enabled, queue, {
     notice: (m) => notices.push(m),
+    combatOn: () => true,
     ...events
   });
 const drain = (): void => void vi.advanceTimersByTime(500);
@@ -164,12 +164,13 @@ describe('standing still in an empty room', () => {
     expect(sent).toEqual([]);
   });
 
-  /* The combat block's master switch governs everything under it. */
+  /* The session's auto-combat switch governs the opener. */
   it('stands down with auto-combat off, unless a lap has the character', () => {
-    make(combat({ enabled: false })).onCharacter(seen());
+    const off = { combatOn: () => false };
+    make(combat(), off).onCharacter(seen());
     drain();
     expect(sent).toEqual([]);
-    make(combat({ enabled: false }), { moving: () => true }).onCharacter(seen());
+    make(combat(), { ...off, moving: () => true }).onCharacter(seen());
     drain();
     expect(sent).toEqual(['sn']);
   });
@@ -218,8 +219,13 @@ describe('the Stealth ceiling', () => {
 
 // Auto-Sneak on Move asks whoever moves next, a leader included (the user, 2026-11-02).
 describe('Auto-Sneak on Move', () => {
-  const sneaker = (events: StealthEvents = {}, enabled = true): AutoStealth =>
-    make(combat({ opener: 'a', hideForOpener: false, enabled: false }), events, enabled, true);
+  const sneaker = (events: Partial<StealthEvents> = {}, enabled = true): AutoStealth =>
+    make(
+      combat({ opener: 'a', hideForOpener: false }),
+      { combatOn: () => false, ...events },
+      enabled,
+      true
+    );
 
   it('sneaks a seen character standing in an empty room, opener or not', () => {
     sneaker().onCharacter(seen());

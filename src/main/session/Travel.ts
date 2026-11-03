@@ -42,7 +42,7 @@ import type { Errands } from './Errands';
 import { anotherLoop, refusesToPlay, type PlayReading } from './Play';
 import { healthFraction, percentText, type SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
-import type { AutomationConfig, AutomationSwitch } from '../../shared/config';
+import type { AutomationConfig, ConfigSwitch, HeldSwitchPort } from '../../shared/config';
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { mobListed, rowName, stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress, type ResumedBy } from '../../shared/loops';
@@ -252,7 +252,9 @@ export interface TravelSession {
    * Write one automation switch into the character's file and read it back
    * before returning. Whether it was written.
    */
-  switchAutomation(name: AutomationSwitch, on: boolean): boolean;
+  switchAutomation(name: ConfigSwitch, on: boolean): boolean;
+  /** The switches the session holds: auto-combat, which a run turns off and an arrival back on. */
+  switches: HeldSwitchPort;
 }
 
 /** Why the client moves a character nowhere on its own: a leader decides, or nothing takes it anywhere. */
@@ -817,16 +819,9 @@ export class Travel implements SessionModule {
    * a gear trip's alike (todo 145); a walk stopped short leaves it as it was.
    */
   combatOnAfterRun(arrived: boolean): void {
-    if (arrived)
-      this.combatBackOn(
-        t('automation.combat.onAfterRun'),
-        t('automation.combat.onAfterRunRefused')
-      );
-    else
-      this.combatBackOn(
-        t('automation.combat.onAfterRunEnded'),
-        t('automation.combat.onAfterRunEndedRefused')
-      );
+    this.combatBackOn(
+      arrived ? t('automation.combat.onAfterRun') : t('automation.combat.onAfterRunEnded')
+    );
   }
 
   /**
@@ -840,7 +835,7 @@ export class Travel implements SessionModule {
 
   /** The lap is at its first stop: it fights (`LoopEvents.wantsCombat`). */
   combatOnForLap(): void {
-    this.combatBackOn(t('automation.combat.onForLap'), t('automation.combat.onForLapRefused'));
+    this.combatBackOn(t('automation.combat.onForLap'));
   }
 
   /**
@@ -850,24 +845,18 @@ export class Travel implements SessionModule {
    */
   combatBackAfterLaunch(): void {
     this.combatHeldOff = true;
-    this.combatBackOn(
-      t('automation.combat.onAfterLaunch'),
-      t('automation.combat.onAfterLaunchRefused')
-    );
+    this.combatBackOn(t('automation.combat.onAfterLaunch'));
   }
 
   /** Whether a run under way turned auto-combat off and has not given it back; on, by whoever, owes nothing. */
   get combatOffForRunNow(): boolean {
-    return this.combatHeldOff && !this.session.config().combat.enabled;
+    return this.combatHeldOff && !this.session.switches.on('combat');
   }
 
-  /** Writes auto-combat on where it is off, and says so, or says the file refused. */
-  private combatBackOn(said: string, refused: string): void {
-    const was = this.session.config().combat.enabled;
-    const on = was || this.session.switchAutomation('combat', true);
-    // On, by whoever: the run has nothing left to give back.
-    if (on) this.combatHeldOff = false;
-    if (!was) this.session.notice(on ? said : refused);
+  /** Turns auto-combat on where it is off, and says so; the run has nothing left to give back. */
+  private combatBackOn(said: string): void {
+    this.session.switches.backOn('combat', said);
+    this.combatHeldOff = false;
   }
 
   /** Whether the walk in progress is one the player asked for. */
@@ -2328,10 +2317,8 @@ export class Travel implements SessionModule {
    * connection are all the player's. A loop's leg goes another way. A refused
    * start leaves whatever was walking exactly as it was asked for.
    *
-   * **Run it is turn off, go.** The switch is written off and read back
-   * before this returns, so the first room the walk reaches is judged with it
-   * off. A file that will not take the write refuses the run out loud rather
-   * than walking a route that would fight.
+   * **Run it is turn off, go.** The session's switch is off before this
+   * returns, so the first room the walk reaches is judged with it off.
    */
   private startAsked(route: Route, run: boolean): string | null {
     const was = { asked: this.walkAsked, run: this.walkRun };
@@ -2371,9 +2358,7 @@ export class Travel implements SessionModule {
     const last = route.steps.at(-1);
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
     this.clearFor(route);
-    const off = run ? this.beginRun() : false;
-    if (typeof off === 'string') return off;
-    if (run) this.session.notice(runStarted(route, off));
+    if (run) this.session.notice(runStarted(route, this.combatOffForRun()));
     return null;
   }
 
@@ -2385,25 +2370,14 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * The walk just started is a run: auto-combat off for the way, and the walk
-   * stopped, with the reason, where the file will not take the write. The one
-   * way a run begins, the player's and the hunt's (todo 15). As
-   * `combatOffForRun`: whether this run turned the switch off, or the refusal.
+   * The walk just started is a run: auto-combat off for the way, before the
+   * first step. The one way a run begins, the player's, the hunt's (todo 15)
+   * and a gear trip's. True where it was on and is now off, false where it
+   * was already off, which leaves it off when the run ends.
    */
-  beginRun(): boolean | string {
-    const off = this.combatOffForRun();
-    if (typeof off === 'string') this.walker.stop(off);
-    return off;
-  }
-
-  /**
-   * *Run it* turns auto-combat off for the way, written and read back before
-   * the first step. True where it was on and is now off, false where it was
-   * already off, the refusal where the file would not take the write.
-   */
-  combatOffForRun(): boolean | string {
-    if (!this.session.config().combat.enabled) return false;
-    if (!this.session.switchAutomation('combat', false)) return t('automation.combat.runRefused');
+  combatOffForRun(): boolean {
+    if (!this.session.switches.on('combat')) return false;
+    this.session.switches.set('combat', false);
     this.combatHeldOff = true;
     return true;
   }

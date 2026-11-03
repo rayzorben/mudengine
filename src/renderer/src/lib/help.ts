@@ -4,7 +4,13 @@
  * bug. Every word is in `locales/ui.en.yaml` under `help:`; the settings stay
  * explained where they are edited, never here (`docs/terminology.md`).
  */
-import { AUTOMATION_SWITCH_NAMES, DEFAULT_CONFIG, readAutomationSwitch } from '@shared/config';
+import {
+  AUTOMATION_SWITCH_NAMES,
+  automationSwitches,
+  configSwitches,
+  DEFAULT_CONFIG,
+  HELD_DEFAULTS
+} from '@shared/config';
 import { CLIENT_KEYS } from '@shared/keys';
 
 import { cardLabel, CARDS, type CardId } from './cards';
@@ -92,9 +98,10 @@ function cardSentence(id: CardId): string {
  * page cannot disagree with them, by the toolbar's own labels.
  */
 function switchesOnByDefault(): string[] {
-  return AUTOMATION_SWITCH_NAMES.filter(
-    (name) => name !== 'automation' && readAutomationSwitch(DEFAULT_CONFIG.automation, name)
-  ).map(switchLabel);
+  const on = automationSwitches(configSwitches(DEFAULT_CONFIG.automation), HELD_DEFAULTS);
+  return AUTOMATION_SWITCH_NAMES.filter((name) => name !== 'automation' && on[name]).map(
+    switchLabel
+  );
 }
 
 export function helpSections(): HelpSection[] {

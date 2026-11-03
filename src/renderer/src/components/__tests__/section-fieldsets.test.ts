@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { AUTOMATION_SWITCHES } from '@shared/config';
+
 /*
  * The rail's jump targets and the fieldsets they scroll to are two halves of
  * one fact, written in two places: a table of `{id, label}` beside the section
@@ -35,7 +37,7 @@ function drawn(source: string): string[] {
  * `…Fieldset`, `…Sections`, `…Switches`), since those draw fieldsets for both
  * forms (`PartyFields`, todo 831; `HangUpFieldset`, todo 118).
  */
-function composed(file: string, seen = new Set<string>()): string {
+function sourcesOf(file: string, seen = new Set<string>()): string[] {
   seen.add(file);
   const source = read(file);
   const local = [
@@ -46,7 +48,28 @@ function composed(file: string, seen = new Set<string>()): string {
     .map((hit) => `${hit[1]!}.tsx`)
     .filter((name) => !seen.has(name));
   // Followed down, since a section can be drawn by a section it composes (`MacroSections`, todo 134).
-  return [source, ...local.map((name) => composed(name, seen))].join('\n');
+  return [source, ...local.flatMap((name) => sourcesOf(name, seen))];
+}
+
+const composed = (file: string): string => sourcesOf(file).join('\n');
+
+/** Where each switch the file holds lives, as a field's `setting` names it. */
+const SWITCH_SETTINGS = new Set(
+  Object.values(AUTOMATION_SWITCHES).flatMap((path) =>
+    path === 'session' ? [] : [`automation.${path.join('.')}`]
+  )
+);
+
+/** The expression each switch's checkbox draws from: its `checked={…}`. */
+function switchChecks(source: string): string[] {
+  return [...source.matchAll(/<CheckField\b([\s\S]*?)\/>/g)].flatMap((hit) => {
+    const props = hit[1]!;
+    const setting = /setting="([^"]+)"/.exec(props)?.[1];
+    const checked = /checked=\{([^}]+)\}/.exec(props)?.[1];
+    return setting !== undefined && checked !== undefined && SWITCH_SETTINGS.has(setting)
+      ? [checked.trim()]
+      : [];
+  });
 }
 
 // The form, the file its rail table is in, and the fieldsets that are not jump targets.
@@ -78,6 +101,23 @@ describe.each([
       (id) => !offered(table).includes(id) && !notNavigable.includes(id)
     );
     expect(stray).toEqual([]);
+  });
+
+  /*
+   * Todo 20261102-1830-01: a switch's checkbox is the character's standing
+   * value, and no field is drawn only while it is ticked. A run hid the whole
+   * Combat page behind the Auto-Attack box.
+   */
+  it("draws no field behind a switch's checkbox", () => {
+    // File by file: a name such as `enabled` means a different switch in each.
+    const files = sourcesOf(file);
+    const checks = files.flatMap((one) => switchChecks(one).map((expr) => ({ one, expr })));
+    // Positive control: the switches' checkboxes are found at all.
+    expect(checks.length).toBeGreaterThan(5);
+    const hidden = checks
+      .filter(({ one, expr }) => one.includes(`{${expr} && (`) || one.includes(`{${expr} ? (`))
+      .map(({ expr }) => expr);
+    expect(hidden).toEqual([]);
   });
 
   it('tags each fieldset exactly once', () => {

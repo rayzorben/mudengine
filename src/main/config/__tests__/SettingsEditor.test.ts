@@ -298,6 +298,22 @@ ui:
     expect((after['ui'] as Record<string, unknown>)['theme']).toBe('slate');
   });
 
+  /*
+   * Todo 20261102-1830-01: auto-combat is the session's switch, so the combat
+   * block a save writes says nothing of whether it runs.
+   */
+  it('writes the combat block with no auto-combat switch in it', () => {
+    const combat = { ...DEFAULT_CONFIG.automation.combat, retaliate: false, attack: 'kic' };
+    expect(editor.saveProfile('vaelor', draft({ combat }))).toEqual({ ok: true });
+    const written = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
+      'combat'
+    ];
+    // Positive control: the block was written, with the form's values.
+    expect(written?.['attack']).toBe('kic');
+    expect(written?.['retaliate']).toBe(false);
+    expect(written !== undefined && 'enabled' in written).toBe(false);
+  });
+
   /* Todo 07: the lives a character asks at, written and read back as the form shows them. */
   it('writes the lives it asks at, and reads them back', () => {
     expect(editor.saveProfile('vaelor', draft({ lowLives: 4 }))).toEqual({ ok: true });

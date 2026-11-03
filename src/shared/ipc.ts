@@ -56,7 +56,7 @@ import type { HuntingAdvice } from './hunting';
 import {
   type AlertsUiConfig,
   type AutomationSwitch,
-  type AutomationSwitches,
+  type ConfigSwitches,
   type CombatConfig,
   type ConfigSnapshot,
   type HealthConfig,
@@ -407,9 +407,10 @@ export interface ProfileSummary {
    * the renderer holds only the global config, so a toolbar drawn from that
    * would show the global answer on every character. Pushed rather than
    * fetched per card because a toolbar that draws a moment late draws the
-   * switch the player just pressed in its old position.
+   * switch the player just pressed in its old position. The file's switches
+   * only: auto-combat is the session's, on its trace (`AutomationSnapshot.held`).
    */
-  switches: AutomationSwitches;
+  switches: ConfigSwitches;
   /**
    * The ceiling a stretch of resting is carried on to — `automation.health`'s
    * `restTo`, resolved, as a fraction; 0 where the character rests only at the

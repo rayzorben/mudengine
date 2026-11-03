@@ -80,6 +80,7 @@ export type HoldsEvents = Pick<
   | 'notice'
   | 'escaping'
   | 'willFight'
+  | 'combatOn'
   | 'restInFlight'
   | 'floorInFlight'
   | 'lightComing'
@@ -569,7 +570,7 @@ export class Holds {
    *
    * The session answers live (`WalkerEvents.willFight`): the switches say only
    * what could fight, and a journey the player declined reads on and fights
-   * nothing. Without it, the switches: `combat` on, and either `retaliate` or
+   * nothing. Without it, the switches: auto-combat on, and either `retaliate` or
    * any `engage`, since hitting back ends a fight the character is in. The
    * retreat is not counted: it ends a fight by walking out too, only later and
    * hurt, which is no reason to stand in the blows first.
@@ -579,7 +580,8 @@ export class Holds {
     const fights = this.events.willFight?.();
     if (fights !== undefined) return fights;
     const combat = this.config.combat;
-    return combat.enabled && (combat.retaliate || combat.engage !== 'none');
+    const on = this.events.combatOn?.() === true;
+    return on && (combat.retaliate || combat.engage !== 'none');
   }
 
   /**

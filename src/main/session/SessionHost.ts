@@ -62,7 +62,7 @@ import {
   type SessionId,
   type SessionSummary
 } from '../../shared/ipc';
-import type { AppConfig, AutomationSwitch } from '../../shared/config';
+import type { AppConfig, ConfigSwitch } from '../../shared/config';
 import type { RealmWords } from '../../shared/profiles';
 import {
   realmName,
@@ -149,7 +149,7 @@ export interface SessionHostOptions {
    */
   worldFor(id: SessionId): WorldGraph | undefined;
   /** Set one automation switch, live and then in the character's file; whether it was written. */
-  flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
+  flipSwitch?(id: SessionId, name: ConfigSwitch, on: boolean): boolean;
   /** Takes a row off a character's supplies list on disk (`FoundSupplies`); whether it was written. */
   dropSupply?(id: SessionId, name: string): boolean;
   /** This character's own aliases as its file writes them (todo 134). */
@@ -831,7 +831,7 @@ export class SessionHost {
   }
 
   /** One switch set now: the profile store reconfigures this session before it writes the file. */
-  private switchNow(id: SessionId, name: AutomationSwitch, on: boolean): boolean {
+  private switchNow(id: SessionId, name: ConfigSwitch, on: boolean): boolean {
     return this.options.flipSwitch?.(id, name, on) ?? false;
   }
 

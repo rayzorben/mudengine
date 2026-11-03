@@ -634,8 +634,8 @@ export const ENGAGE_POLICIES: readonly EngagePolicy[] = ['none', 'hostile', 'lik
  * no guard expression can ask. `hp.percent < 0.3` is a rule; *"is the thing in
  * front of me going to attack me, and is it a person"* is not.
  *
- * Off by default, like everything automated. A client that starts swinging at
- * things the first time somebody opens it is a client picking their fights.
+ * Whether it runs is not here: auto-combat is a switch the session holds, on
+ * unless something turned it off for now (`HELD_DEFAULTS`, todo 20261102-1830-01).
  *
  * Ordering against the two safety nets is settled and not configurable:
  * **running away outranks fighting.** The retreat is proposed in the
@@ -645,8 +645,6 @@ export const ENGAGE_POLICIES: readonly EngagePolicy[] = ['none', 'hostile', 'lik
  * spent the escape and stayed in the fight.
  */
 export interface CombatConfig {
-  /** Off unless somebody asks for it. */
-  enabled: boolean;
   /**
    * The verb that opens a fight; blank chooses the best round the class and
    * race rows allow (`chooseAttack`, todo 47), and a typed verb wins.
@@ -2599,7 +2597,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     // the realm data says would attack you anyway, hit back at whatever hits
     // you, and let the server roll the rounds.
     combat: {
-      enabled: false,
       attack: '',
       opener: '',
       hideForOpener: false,
@@ -4109,7 +4106,6 @@ function normalizeCombat(value: unknown): CombatConfig {
   const d = DEFAULT_CONFIG.automation.combat;
   const engage = String(raw['engage'] ?? d.engage);
   return {
-    enabled: bool(raw['enabled'], d.enabled),
     attack: firstWord(raw['attack'], d.attack),
     opener: firstWord(raw['opener'], d.opener),
     hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),

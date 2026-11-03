@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandQueue } from '../CommandQueue';
 import { Remotes, SWITCH_REMOTES } from '../Remotes';
 import { t } from '../../app/i18n';
-import { DEFAULT_CONFIG } from '../../../shared/config';
+import { DEFAULT_CONFIG, HELD_DEFAULTS, type HeldSwitches } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import {
   EMPTY_CHARACTER,
@@ -417,9 +417,10 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     expect(sent).toHaveLength(2);
     expect(sent[0]).toMatch(/^\/Rand \{ON: /);
     expect(sent[1]).toMatch(/^\/Rand \{OFF: /);
-    // The words are ours: the test config has combat off and remotes on.
+    // The words are ours: the test config has remotes on, and auto-combat is
+    // the session's, on by default.
     expect(sent[0]).toContain('Remotes');
-    expect(sent[1]).toContain('Combat');
+    expect(sent[0]).toContain('Combat');
   });
 
   it('answers @status idle when nothing has told it what the character is doing', () => {
@@ -533,10 +534,9 @@ describe('answering the imperative ones', () => {
     {
       remote: 'auto-combat',
       setting: t('toolbar.combat'),
-      at: (on: boolean): AutomationConfig => ({
-        ...config,
-        combat: { ...config.combat, enabled: on }
-      })
+      // The session's switch, never the file's (todo 20261102-1830-01).
+      at: (): AutomationConfig => config,
+      held: (on: boolean): HeldSwitches => ({ ...HELD_DEFAULTS, combat: on })
     },
     {
       remote: 'auto-sneak',
@@ -544,7 +544,8 @@ describe('answering the imperative ones', () => {
       at: (on: boolean): AutomationConfig => ({
         ...config,
         movement: { ...config.movement, sneak: on }
-      })
+      }),
+      held: (): HeldSwitches => HELD_DEFAULTS
     },
     {
       remote: 'attack-last',
@@ -552,15 +553,17 @@ describe('answering the imperative ones', () => {
       at: (on: boolean): AutomationConfig => ({
         ...config,
         party: { ...config.party, attackLast: on }
-      })
+      }),
+      held: (): HeldSwitches => HELD_DEFAULTS
     }
-  ] as const)('@$remote', ({ remote, setting, at }) => {
+  ] as const)('@$remote', ({ remote, setting, at, held }) => {
     let switched: Array<[AutomationSwitch, boolean]>;
     let writes: boolean;
     const name = SWITCH_REMOTES[remote];
     const remotes = (switchOn: boolean): Remotes =>
       new Remotes(at(switchOn), queue, {
         notice: (m) => notices.push(m),
+        heldSwitches: () => held(switchOn),
         switchAutomation: (which, on) => {
           switched.push([which, on]);
           return writes;

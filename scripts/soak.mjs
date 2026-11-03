@@ -279,10 +279,9 @@ class Driver {
           loot: { coins: true, items: [] },
           combat: {
             ...profile.config.automation.combat,
-            enabled: true,
             retaliate: true
-            // A route fights on the way of its own accord since todo 00, so
-            // there is no third switch to set here.
+            // Auto-combat itself is the session's switch, on from the dial
+            // (todo 20261102-1830-01), so there is no switch to set here.
           },
           health: { ...profile.config.automation.health, restBelow: 0.5 },
           /*

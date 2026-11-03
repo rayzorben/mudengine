@@ -61,6 +61,8 @@ export interface StealthEvents {
   restsHidden?(): boolean;
   /** Whether refused sneaks in a row have stopped Auto-Sneak on Move's asks (`sneakRefusals.ts`). */
   sneakRefusals?: SneakGiveUp;
+  /** Whether auto-combat is switched on for this session (`SessionSwitches`). */
+  combatOn(): boolean;
 }
 
 /** What decides whether to ask: the opener's settings and Auto-Sneak on Move. */
@@ -86,7 +88,7 @@ export class AutoStealth implements SessionModule {
     private config: StealthSettings,
     private enabled: boolean,
     private readonly queue: CommandQueue,
-    private readonly events: StealthEvents = {},
+    private readonly events: StealthEvents,
     private readonly now: () => number = () => Date.now()
   ) {}
 
@@ -110,12 +112,12 @@ export class AutoStealth implements SessionModule {
     if (backstabber) this.sayCeiling(state);
     if (!this.enabled) return;
     const moving = this.events.moving?.() === true;
-    // The combat block's master switch governs the opener; a lap engages
-    // whatever the switch says, as `AutoCombat.acting` reads it.
+    // The auto-combat switch governs the opener. While moving, it hides for
+    // the next step whatever the switch says.
     const forOpener =
       combat.hideForOpener &&
       backstabber &&
-      (combat.enabled || moving) &&
+      (this.events.combatOn() || moving) &&
       this.events.openerRefused?.() !== true;
     /*
      * Auto-Sneak on Move asks for the next move, whoever makes it: the

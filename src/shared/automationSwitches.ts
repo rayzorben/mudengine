@@ -1,7 +1,8 @@
 /**
  * The toolbar's automation switches (moved out of `config.ts`, todo 140): one
- * table of names and their paths under `automation:`, so the union and the
- * path cannot drift.
+ * table of names, each saying where its answer lives, so the union and the
+ * place cannot drift. See `mudengine-settings` › *Settings and the toolbar
+ * switches are separate*.
  */
 import type { AutomationConfig } from './config';
 import { isRecord } from './values';
@@ -9,33 +10,22 @@ import { isRecord } from './values';
 /**
  * The automation switches that can be flipped without opening a form.
  *
- * Every one is a **boolean already in the options file** — this adds no
- * setting and invents no runtime state beside the config. There is one source
- * of truth for whether this character fights on its own, and it is the
- * character's own YAML, held by the profile store; the toolbar hands it the
- * change (through `SettingsEditor`), which is live at once and then written,
- * comments intact, exactly as the Gang card's permission grid does.
+ * A row is either a path to a boolean under `automation:`, the character's
+ * standing value that the toolbar writes to its file, or `'session'`: a
+ * switch the session holds and the file never states (2026-11-02, the user,
+ * todo 20261102-1830-01). Auto-combat is the one held switch: it is on
+ * unless the toolbar, `@auto-combat` or *Run it* turned it off for now, and a
+ * lap, an arrival and a dial turn it back on (`HeldSwitches`).
  *
- * The alternative — a session-scoped override the file does not know about —
- * was rejected for the reason `ui.showDiagnostics` was retired: two places
- * that can answer the same question eventually disagree, and the one somebody
- * reads is whichever is wrong.
- *
- * **One table, so the union and the path cannot drift.** The name is the type
- * and the array is where the value lives under `automation:`; a switch added
- * to one and not the other does not compile. `src/shared/__tests__` walks
- * every path against `DEFAULT_CONFIG` and fails for one that leads nowhere or
- * to something that is not a boolean, which is the failure `GUARD_FIELDS`
- * already records: a field in the type and not the list type-checks, then
- * silently does nothing.
- *
- * Only booleans, and only ones worth flipping mid-play. A threshold is a
- * number and belongs on the settings screen; a list is a list.
+ * A config row added here with no boolean behind it fails the test that
+ * walks every path against `DEFAULT_CONFIG`, the failure `GUARD_FIELDS`
+ * records: a field in the type and not the list type-checks, then silently
+ * does nothing.
  */
 export const AUTOMATION_SWITCHES = {
   /** The master switch. Off, only what the player types is sent, bar the keep-alive. */
   automation: ['enabled'],
-  combat: ['combat', 'enabled'],
+  combat: 'session',
   retaliate: ['combat', 'retaliate'],
   autoBless: ['spells', 'autoBless'],
   autoRest: ['health', 'autoRest'],
@@ -64,14 +54,38 @@ export const AUTOMATION_SWITCHES = {
   lookAtPlayers: ['talk', 'lookAtPlayers'],
   quests: ['quests', 'enabled'],
   gear: ['gear', 'enabled']
-} as const satisfies Record<string, readonly string[]>;
+} as const satisfies Record<string, readonly string[] | 'session'>;
 
-export type AutomationSwitch = keyof typeof AUTOMATION_SWITCHES;
+type SwitchTable = typeof AUTOMATION_SWITCHES;
+
+export type AutomationSwitch = keyof SwitchTable;
+
+/** A switch the session holds, never written to a file. */
+export type HeldSwitch = {
+  [K in AutomationSwitch]: SwitchTable[K] extends 'session' ? K : never;
+}[AutomationSwitch];
+
+/** A switch that is a boolean in the character's file. */
+export type ConfigSwitch = Exclude<AutomationSwitch, HeldSwitch>;
+
+/** Every held switch's answer for one session. */
+export type HeldSwitches = Record<HeldSwitch, boolean>;
+
+/** What a session's held switches say before anything turns one off: on. */
+export const HELD_DEFAULTS: HeldSwitches = { combat: true };
+
+/** Whether `name` is held by the session rather than written to the file. */
+export function isHeldSwitch(name: AutomationSwitch): name is HeldSwitch {
+  return AUTOMATION_SWITCHES[name] === 'session';
+}
 
 export const AUTOMATION_SWITCH_NAMES = Object.keys(AUTOMATION_SWITCHES) as AutomationSwitch[];
 
 /** Every switch's current answer for one character. */
 export type AutomationSwitches = Record<AutomationSwitch, boolean>;
+
+/** The file's switches for one character. */
+export type ConfigSwitches = Record<ConfigSwitch, boolean>;
 
 /**
  * A name off the wire, or null. Parse, do not validate.
@@ -94,10 +108,7 @@ export function asAutomationSwitch(value: unknown): AutomationSwitch | null {
  * nowhere is a bug the test catches, and a client that would not draw its
  * toolbar because of one is worse than a switch drawn off.
  */
-export function readAutomationSwitch(
-  automation: AutomationConfig,
-  name: AutomationSwitch
-): boolean {
+export function readAutomationSwitch(automation: AutomationConfig, name: ConfigSwitch): boolean {
   let node: unknown = automation;
   for (const key of AUTOMATION_SWITCHES[name]) {
     if (!isRecord(node)) return false;
@@ -106,11 +117,37 @@ export function readAutomationSwitch(
   return node === true;
 }
 
-/** Every switch for one character, as the toolbar draws them. */
-export function automationSwitches(automation: AutomationConfig): AutomationSwitches {
-  const out = {} as AutomationSwitches;
+/** The file's switches for one character, as its profile summary carries them. */
+export function configSwitches(automation: AutomationConfig): ConfigSwitches {
+  const out = {} as ConfigSwitches;
   for (const name of AUTOMATION_SWITCH_NAMES) {
-    out[name] = readAutomationSwitch(automation, name);
+    if (!isHeldSwitch(name)) out[name] = readAutomationSwitch(automation, name);
   }
   return out;
+}
+
+/** Every switch for one character, as the toolbar draws them: the file's and the session's. */
+export function automationSwitches(file: ConfigSwitches, held: HeldSwitches): AutomationSwitches {
+  return { ...file, ...held };
+}
+
+/** What one switch says now: the session's for a held one, the file's otherwise. */
+export function switchIsOn(
+  automation: AutomationConfig,
+  held: HeldSwitches,
+  name: AutomationSwitch
+): boolean {
+  return isHeldSwitch(name) ? held[name] : readAutomationSwitch(automation, name);
+}
+
+/**
+ * The session's held switches, as the modules that turn one off or back on
+ * see them (`SessionSwitches`). Nothing here can refuse: the session holds
+ * the answer, and no file is written.
+ */
+export interface HeldSwitchPort {
+  on(name: HeldSwitch): boolean;
+  set(name: HeldSwitch, on: boolean): void;
+  /** Turns `name` back on where it is off, says `said`, and answers whether it was off. */
+  backOn(name: HeldSwitch, said: string): boolean;
 }

@@ -13,6 +13,7 @@ import { mount } from './mount';
 import { t } from '../../lib/i18n';
 import { type SupplyItem } from '@shared/packConfig';
 import type { SessionId } from '@shared/ipc';
+import { configSwitches, DEFAULT_CONFIG } from '@shared/config';
 
 /*
  * What todo 761 feared: once the card context stopped being rebuilt on every
@@ -145,6 +146,26 @@ describe('useCardContext', () => {
     const shown = out.current?.contextFor(SHOWN, EMPTY_VIEW, chrome);
     expect(shown?.toolbar.openLoops).toBe(toggleClosed);
     expect(shown?.realmAt).toBe(2);
+  });
+
+  /*
+   * Todo 20261102-1830-01: auto-combat is the session's switch, so the
+   * toolbar draws it from the trace and every other switch from the file.
+   */
+  it("draws auto-combat from the session's trace and the rest from the file", () => {
+    const out: MutableRefObject<Contexts | null> = { current: null };
+    const file = { ...configSwitches(DEFAULT_CONFIG.automation), retreat: true };
+    const inputs = { ...stable, nameIndexes: {}, switchesFor: () => file };
+    probe.render(createElement(Probe, { inputs, out }));
+    const at = (combat: boolean): SessionView => ({
+      ...EMPTY_VIEW,
+      automation: { ...EMPTY_VIEW.automation, held: { combat } }
+    });
+    const off = out.current?.contextFor(PINNED, at(false), chrome).toolbar.switches;
+    expect(off?.combat).toBe(false);
+    expect(off?.retreat).toBe(true);
+    // Positive control: the same file, the session's switch on.
+    expect(out.current?.contextFor(PINNED, at(true), chrome).toolbar.switches.combat).toBe(true);
   });
 
   it('is not rebuilt when nothing it reads moved', () => {

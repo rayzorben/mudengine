@@ -404,7 +404,7 @@ export class Walker implements SessionModule {
       // A hold only means anything while the walk is still running: a stopped
       // walk that reported one would be drawn as recovering rather than ended.
       hold: this.holding,
-      pace: paceOf(this.config),
+      pace: paceOf(this.config, this.events.combatOn?.() === true),
       stoppedShort: this.route?.stopsBefore !== undefined,
       arrivalAt: this.arrival.arrivalAt(this.walked + this.index, ahead.length)
     };
@@ -668,10 +668,9 @@ export class Walker implements SessionModule {
      * (`logs/2026-09-06_11-19-43_festus.mudcap.jsonl`): auto-combat sent `aa
      * big skeleton` at t=7634, `*Combat Engaged*` came back at t=7703, and the
      * route's opening `n` went out at t=7916 — 213ms later, over a monster the
-     * client had just re-engaged and was two rounds from killing, on a profile
-     * with `combat.enabled` **and `retaliate` both on**, and a route that
-     * fights on the way; every one of them says *finish fights while walking*
-     * and this one line overrode the lot.
+     * client had just re-engaged and was two rounds from killing, with
+     * auto-combat and `retaliate` on and a route that fights on the way: this
+     * one line overrode the lot.
      *
      * `AutoCombat.quarry` already asks the journey override for precisely this —
      * the walker holds a step out of a room engagement would open on — but
@@ -703,7 +702,7 @@ export class Walker implements SessionModule {
     const arrival = route.steps.at(-1)!;
     const destination = arrival.name;
     if (!quiet && startSaid)
-      this.events.notice?.(walkStarted(stepCount, destination, paceOf(this.config)));
+      this.events.notice?.(walkStarted(stepCount, destination, this.progress.pace));
     // After the refusals above, so a walk that was declined is not written down
     // as a place this character went: every `return` above is the walk not happening.
     this.events.destination?.(arrival.to, destination);

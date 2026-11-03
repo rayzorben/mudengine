@@ -2056,6 +2056,51 @@ describe('the settings that turned auto-combat back on', () => {
   });
 });
 
+/*
+ * Todo 20261102-1830-01: auto-combat is the session's switch, so
+ * `combat.enabled` leaves every file that states it, and nothing else does.
+ */
+describe('the auto-combat switch leaving the files', () => {
+  const combatOf = (file: string): Record<string, unknown> | undefined =>
+    (
+      parse(fs.readFileSync(file, 'utf8')).automation as
+        Record<string, Record<string, unknown> | undefined> | undefined
+    )?.['combat'];
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  combat:\n    # Mine: off until I say.\n    enabled: false\n    # Hit back.\n    retaliate: true\n',
+      'utf8'
+    );
+  });
+
+  it('goes from the options file and a character, keeping the rest and its comments', () => {
+    const scope = home.profile('main');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(scope.file, 'automation:\n  combat:\n    enabled: true\n', 'utf8');
+    migrate();
+    expect(combatOf(home.options)?.['enabled']).toBeUndefined();
+    expect(combatOf(home.options)?.['retaliate']).toBe(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toContain('# Hit back.');
+    expect(combatOf(scope.file)?.['enabled']).toBeUndefined();
+    expect(fs.existsSync(`${home.options}.bak`)).toBe(true);
+    expect(notesOf(said, 'notices.migration.combatSwitchLeft.many')).toHaveLength(1);
+    expect(said.join('\n')).toContain(scope.file);
+  });
+
+  it('is safe to run again', () => {
+    migrate();
+    // Positive control: the first run removed it and said so.
+    expect(notesOf(said, 'notices.migration.combatSwitchLeft.one')).toHaveLength(1);
+    said.length = 0;
+    migrate();
+    expect(notesOf(said, 'notices.migration.combatSwitchLeft.one')).toHaveLength(0);
+    expect(combatOf(home.options)?.['enabled']).toBeUndefined();
+  });
+});
+
 /**
  * `combat.maxFightCost` had to go with the setting itself.
  *

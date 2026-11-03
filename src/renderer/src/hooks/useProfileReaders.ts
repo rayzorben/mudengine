@@ -10,9 +10,9 @@
 import { useCallback } from 'react';
 
 import {
-  automationSwitches,
+  configSwitches,
   DEFAULT_CONFIG,
-  type AutomationSwitches,
+  type ConfigSwitches,
   type RemotesConfig
 } from '@shared/config';
 import { type SupplyItem } from '@shared/packConfig';
@@ -60,7 +60,8 @@ export function useProfileReaders(
     [profiles]
   );
   /**
-   * This character's own automation switches, resolved, for the toolbar.
+   * This character's own automation switches as its file states them, for
+   * the toolbar; the session's held ones come with its trace.
    *
    * Read the same way and for the same reason as `remotesFor`: a character
    * states these sparsely over the options file, so the global block alone
@@ -71,9 +72,9 @@ export function useProfileReaders(
    * permission takes.
    */
   const switchesFor = useCallback(
-    (id: SessionId): AutomationSwitches =>
+    (id: SessionId): ConfigSwitches =>
       profiles.find((profile) => profile.id === id)?.switches ??
-      automationSwitches(DEFAULT_CONFIG.automation),
+      configSwitches(DEFAULT_CONFIG.automation),
     [profiles]
   );
   /**

@@ -517,108 +517,84 @@ export default function CharacterForm({
 
       {shows('combat') && (
         <SettingsSection {...sectionOf('combat')}>
-          {/*
-            The one warning left in the open on this screen, and the
-            rule for why: a sentence stays out of a tooltip when the
-            thing it warns about can cost a character. One sentence.
-            docs/terminology.md §1.
-          */}
           <fieldset className="settings-menus" data-fieldset="combat-attack">
             <legend>{t('settings.combat.attackLegend')}</legend>
-            <p className="settings-warn">{t('settings.combat.openWarning')}</p>
             <CheckField
-              checked={form.combat}
-              label={t('settings.combat.attackForMe')}
-              name="combat"
-              setting="automation.combat.enabled"
-              onChange={(value) => patch({ combat: value })}
+              checked={form.combatRetaliate}
+              hint={t('settings.combat.hitBackHint')}
+              label={t('settings.combat.hitBack')}
+              name="retaliate"
+              setting="automation.combat.retaliate"
+              onChange={(value) => patch({ combatRetaliate: value })}
             />
-            {form.combat && (
-              <>
-                <CheckField
-                  checked={form.combatRetaliate}
-                  hint={t('settings.combat.hitBackHint')}
-                  label={t('settings.combat.hitBack')}
-                  name="retaliate"
-                  setting="automation.combat.retaliate"
-                  onChange={(value) => patch({ combatRetaliate: value })}
-                />
-                <CheckField
-                  checked={form.combatPoliteAttacks}
-                  hint={t('settings.combat.politeAttacksHint')}
-                  label={t('settings.combat.politeAttacks')}
-                  name="polite-attacks"
-                  setting="automation.combat.politeAttacks"
-                  onChange={(value) => patch({ combatPoliteAttacks: value })}
-                />
-                {/* What it opens fights with, and the three limits
-                    that qualify it, on one row: each of the
-                    numbers is meaningless without the policy
-                    beside it. */}
-                <div className="settings-inline">
-                  <SelectField
-                    hint={t('settings.combat.engageHint')}
-                    label={t('settings.combat.engageLabel')}
-                    name="engage"
-                    setting="automation.combat.engage"
-                    onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
-                    options={[
-                      { value: 'none', label: t('settings.combat.engageNone') },
-                      { value: 'hostile', label: t('settings.combat.engageHostile') },
-                      { value: 'likely', label: t('settings.combat.engageLikely') },
-                      { value: 'all', label: t('settings.combat.engageAll') }
-                    ]}
-                    value={form.combatEngage}
-                  />
-                  <NumberField
-                    hint={t('settings.combat.maxMobsHint')}
-                    label={t('settings.combat.maxMobsLabel')}
-                    name="max-mobs"
-                    setting="automation.combat.maxMobs"
-                    onChange={(value) => patch({ combatMaxMobs: value })}
-                    value={form.combatMaxMobs}
-                  />
-                  <NumberField
-                    hint={t('settings.combat.minMobsHint')}
-                    label={t('settings.combat.minMobsLabel')}
-                    name="min-mobs"
-                    setting="automation.combat.minMobs"
-                    onChange={(value) => patch({ combatMinMobs: value })}
-                    value={form.combatMinMobs}
-                  />
-                </div>
-              </>
-            )}
+            <CheckField
+              checked={form.combatPoliteAttacks}
+              hint={t('settings.combat.politeAttacksHint')}
+              label={t('settings.combat.politeAttacks')}
+              name="polite-attacks"
+              setting="automation.combat.politeAttacks"
+              onChange={(value) => patch({ combatPoliteAttacks: value })}
+            />
+            {/* What it opens fights with, and the three limits that qualify
+                it, on one row: each number is meaningless without the policy. */}
+            <div className="settings-inline">
+              <SelectField
+                hint={t('settings.combat.engageHint')}
+                label={t('settings.combat.engageLabel')}
+                name="engage"
+                setting="automation.combat.engage"
+                onChange={(value) => patch({ combatEngage: value as EngagePolicy })}
+                options={[
+                  { value: 'none', label: t('settings.combat.engageNone') },
+                  { value: 'hostile', label: t('settings.combat.engageHostile') },
+                  { value: 'likely', label: t('settings.combat.engageLikely') },
+                  { value: 'all', label: t('settings.combat.engageAll') }
+                ]}
+                value={form.combatEngage}
+              />
+              <NumberField
+                hint={t('settings.combat.maxMobsHint')}
+                label={t('settings.combat.maxMobsLabel')}
+                name="max-mobs"
+                setting="automation.combat.maxMobs"
+                onChange={(value) => patch({ combatMaxMobs: value })}
+                value={form.combatMaxMobs}
+              />
+              <NumberField
+                hint={t('settings.combat.minMobsHint')}
+                label={t('settings.combat.minMobsLabel')}
+                name="min-mobs"
+                setting="automation.combat.minMobs"
+                onChange={(value) => patch({ combatMinMobs: value })}
+                value={form.combatMinMobs}
+              />
+            </div>
           </fieldset>
 
-          {form.combat && (
-            <>
-              <AttacksFieldset chosen={realm.chosen} form={form} patch={patch} />
+          <AttacksFieldset chosen={realm.chosen} form={form} patch={patch} />
 
-              <MonsterFields
-                namePrefix=""
-                caps={form.combatCaps}
-                choices={form.combatChoices}
-                onCaps={(next) => patch({ combatCaps: next })}
-                onChoices={(next) => patch({ combatChoices: next })}
-              />
+          <MonsterFields
+            namePrefix=""
+            caps={form.combatCaps}
+            choices={form.combatChoices}
+            onCaps={(next) => patch({ combatCaps: next })}
+            onChoices={(next) => patch({ combatChoices: next })}
+          />
 
-              <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
-                <legend>{t('settings.combat.mobRuleLegend')}</legend>
-                {/* In the open: the band skips the weighing (MobRuleList). */}
-                <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
-                <MobRuleList
-                  setting="automation.combat.mobRules"
-                  known={mobs}
-                  namePrefix="mob-rule"
-                  inherits={{ scope: 'character', realm: form.serverName ?? '' }}
-                  spells={shownBook.spells}
-                  onChange={(rows) => patch({ combatMobRules: rows })}
-                  rows={form.combatMobRules}
-                />
-              </fieldset>
-            </>
-          )}
+          <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
+            <legend>{t('settings.combat.mobRuleLegend')}</legend>
+            {/* In the open: the band skips the weighing (MobRuleList). */}
+            <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
+            <MobRuleList
+              setting="automation.combat.mobRules"
+              known={mobs}
+              namePrefix="mob-rule"
+              inherits={{ scope: 'character', realm: form.serverName ?? '' }}
+              spells={shownBook.spells}
+              onChange={(rows) => patch({ combatMobRules: rows })}
+              rows={form.combatMobRules}
+            />
+          </fieldset>
           <FightOddsFields
             namePrefix=""
             choices={form.combatChoices}
@@ -986,42 +962,33 @@ export default function CharacterForm({
               setting="automation.remotes.enabled"
               onChange={(value) => patch({ answerRemotes: value })}
             />
-            {/*
-              The gate. Only drawn with the switch on: grants for a
-              channel nobody is listening on are a form asking a
-              question that cannot matter yet.
-            */}
-            {form.answerRemotes && (
-              <>
-                <RemoteSwitches
-                  autoJoin={form.remoteAutoJoin}
-                  gang={form.remoteGang}
-                  gangpath={form.remoteGangpath}
-                  killAndHangup={form.remoteKillAndHangup}
-                  maxGets={form.remoteMaxGets}
-                  name="remotes"
-                  onAutoJoin={(value) => patch({ remoteAutoJoin: value })}
-                  onMaxGets={(remoteMaxGets) => patch({ remoteMaxGets })}
-                  onGang={(value) => patch({ remoteGang: value })}
-                  onGangpath={(value) => patch({ remoteGangpath: value })}
-                  onKillAndHangup={(value) => patch({ remoteKillAndHangup: value })}
-                />
+            <RemoteSwitches
+              autoJoin={form.remoteAutoJoin}
+              gang={form.remoteGang}
+              gangpath={form.remoteGangpath}
+              killAndHangup={form.remoteKillAndHangup}
+              maxGets={form.remoteMaxGets}
+              name="remotes"
+              onAutoJoin={(value) => patch({ remoteAutoJoin: value })}
+              onMaxGets={(remoteMaxGets) => patch({ remoteMaxGets })}
+              onGang={(value) => patch({ remoteGang: value })}
+              onGangpath={(value) => patch({ remoteGangpath: value })}
+              onKillAndHangup={(value) => patch({ remoteKillAndHangup: value })}
+            />
 
-                {/*
-                  The per-player half, which the Player flyout also
-                  writes — and it is here because the flyout can only
-                  be opened on somebody the client has *seen*. A pair
-                  of characters set up before either has logged in is
-                  the ordinary case, and a permission reachable only
-                  once the person is standing in front of you is one
-                  you cannot prepare.
-                */}
-                <PlayerGrants
-                  grants={form.remotePlayers}
-                  onChange={(players) => patch({ remotePlayers: players })}
-                />
-              </>
-            )}
+            {/*
+              The per-player half, which the Player flyout also
+              writes — and it is here because the flyout can only
+              be opened on somebody the client has *seen*. A pair
+              of characters set up before either has logged in is
+              the ordinary case, and a permission reachable only
+              once the person is standing in front of you is one
+              you cannot prepare.
+            */}
+            <PlayerGrants
+              grants={form.remotePlayers}
+              onChange={(players) => patch({ remotePlayers: players })}
+            />
             {/*
               Where the third list is. A permission page showing two
               of the three grants would have somebody auditing who

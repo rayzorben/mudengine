@@ -619,8 +619,8 @@ describe('a character', () => {
           politeAttacks: true
         }
       });
+      // `enabled` is not the draft's: auto-combat is the session's switch.
       expect(draft?.combat).toEqual({
-        enabled: true,
         attack: 'a',
         opener: 'bs',
         // Absent from the block above, so they take their defaults: each is a
@@ -707,10 +707,10 @@ describe('a character', () => {
       ).toBe(false);
     });
 
-    /* Off, with the one switch that cannot start a fight left on. */
-    it('defaults a missing block to off, and to hitting back', () => {
+    /* Hitting back on; whether it runs is no draft's (todo 20261102-1830-01). */
+    it('defaults a missing block to hitting back, and carries no switch', () => {
       const draft = asProfileDraft({ ...good, combat: undefined });
-      expect(draft?.combat.enabled).toBe(false);
+      expect(draft === null ? null : 'enabled' in draft.combat).toBe(false);
       expect(draft?.combat.retaliate).toBe(true);
       expect(draft?.combat.engage).toBe('hostile');
       expect(draft?.combat.attack).toBe('');
