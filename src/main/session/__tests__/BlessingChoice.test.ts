@@ -50,7 +50,7 @@ const SPELLS = [TORTOISE, OWL];
 /** A long fight of steady blows: the damage resistance a blessing adds is what decides it. */
 const ogre = {
   name: 'ogre',
-  source: 'realm',
+  source: 'mdb',
   hp: 1000,
   profiles: [
     {

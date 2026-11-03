@@ -7,7 +7,7 @@ import type { MobEntity } from '../../../shared/entities';
 /* Fights run on the asking thread, in slices, answered in the order asked. */
 const ogre = {
   name: 'ogre',
-  source: 'realm',
+  source: 'mdb',
   hp: 30,
   profiles: [
     {

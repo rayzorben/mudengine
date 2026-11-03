@@ -20,7 +20,6 @@ function errands(attack: string): Errands {
   const world = {
     classNamed: () => ({
       combat: 3,
-      magery: null,
       abilities: [
         [ATTACK_ABILITY.punch, 1],
         [ATTACK_ABILITY.jumpkick, 1]

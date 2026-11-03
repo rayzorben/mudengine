@@ -88,11 +88,14 @@ function travel(
     },
     world: overrides.world,
     errands: {
-      planFromHere: vi.fn(),
+      // As `Errands.planFromHere` from a room the tracker has not placed.
+      planFromHere: vi.fn<TravelParts['errands']['planFromHere']>(() =>
+        t('session.loop.unknownRoom')
+      ),
       planTo: vi.fn(() => null),
       routeBetween: vi.fn(() => t('session.loop.noRealmData')),
-      travellerNow: vi.fn(),
-      lapTraveller: vi.fn(),
+      travellerNow: vi.fn<TravelParts['errands']['travellerNow']>(() => ({})),
+      lapTraveller: vi.fn<TravelParts['errands']['lapTraveller']>(() => ({})),
       askCountersFor: vi.fn(),
       findStop: vi.fn(() => 'unplaced'),
       shun: vi.fn(),
@@ -136,9 +139,11 @@ function travel(
     },
     loops: {
       progress: NO_LOOP,
-      start: vi.fn(),
+      // As `LoopRunner.start`: null once the loop has started, otherwise the refusal.
+      start: vi.fn<TravelParts['loops']['start']>(() => null),
       stop: vi.fn(),
-      resume: vi.fn(),
+      // As `LoopRunner.resume` with no loop stopped.
+      resume: vi.fn<TravelParts['loops']['resume']>(() => t('automation.loops.refusalNotStopped')),
       restate: vi.fn(),
       noteEscaped: vi.fn(),
       notePvpWindow: vi.fn(),
@@ -150,9 +155,22 @@ function travel(
       place: null
     },
     combat: { willFight: true, alsoFight: vi.fn(), stopFighting: vi.fn() },
-    supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn(), fetch: vi.fn() },
+    supplies: {
+      current: null,
+      considerBeforeRoute: vi.fn<TravelParts['supplies']['considerBeforeRoute']>(() => null),
+      abandon: vi.fn(),
+      fetch: vi.fn<TravelParts['supplies']['fetch']>(() => null)
+    },
     remotes: {
-      stoppers: { settle: vi.fn(), askWealth: vi.fn(), purseOf: vi.fn(), forget: vi.fn() },
+      stoppers: {
+        settle: vi.fn<TravelParts['remotes']['stoppers']['settle']>(() => ({
+          asking: [],
+          answers: new Map()
+        })),
+        askWealth: vi.fn<TravelParts['remotes']['stoppers']['askWealth']>(() => true),
+        purseOf: vi.fn<TravelParts['remotes']['stoppers']['purseOf']>(() => undefined),
+        forget: vi.fn()
+      },
       ask: vi.fn(() => true),
       away: []
     },
@@ -162,7 +180,11 @@ function travel(
     hostTrips: { busy: false, abandon: vi.fn(), stop: vi.fn() },
     areaSearch: { busy: false, abandon: vi.fn(), stop: vi.fn() },
     hunt: { noteStopped: vi.fn(), noteLapStopped: vi.fn() },
-    itemErrand: { running: false, collect: vi.fn(), abandon: vi.fn() },
+    itemErrand: {
+      running: false,
+      collect: vi.fn<TravelParts['itemErrand']['collect']>(() => null),
+      abandon: vi.fn()
+    },
     questRunner: { running: false, abandon: vi.fn() },
     light: { beforeRoute: () => false, beforeLap: vi.fn() }
   };
@@ -831,7 +853,8 @@ describe('a light bought before the dark', () => {
     const state = beside();
     const { travel: looping, parts } = travel(state, 'none', false);
     const loop = { name: 'crypt', stops: [{ room: 'Crypt 1/3' }] };
-    parts.loops.start = () => 'no';
+    // As `LoopRunner.start` refuses an in-game character: its first leg failed (`fail`).
+    parts.loops.start = () => t('automation.loops.reasonStopMissing');
     looping.startLoop(loop);
     expect(parts.light.beforeLap).not.toHaveBeenCalled();
     parts.loops.start = () => null;

@@ -15,7 +15,7 @@ import type { WorldRoom } from '../../../shared/world';
 
 const ogre = {
   name: 'ogre',
-  source: 'realm',
+  source: 'mdb',
   hp: 30,
   profiles: [
     {
@@ -24,6 +24,17 @@ const ogre = {
     }
   ]
 } as unknown as MobEntity;
+
+/** A name the realm has no row for, as `WorldGraph.buildMobEntity` answers it: the wire's alone, health unknown. */
+const wireOnly = (name: string): MobEntity => ({
+  name,
+  rawName: name,
+  source: 'wire',
+  charmed: false,
+  disposition: null,
+  uncertain: false,
+  costly: 'never'
+});
 
 const lairRoom = {
   map: 1,
@@ -97,8 +108,7 @@ function book(
   const tracker = { current: inGame(10) };
   const world: OddsWorld = {
     mobNames: () => ['ogre'],
-    buildMobEntity: (name: string) =>
-      name === 'ogre' ? ogre : ({ name, source: 'wire', hp: null } as unknown as MobEntity),
+    buildMobEntity: (name: string) => (name === 'ogre' ? ogre : wireOnly(name)),
     mobAsPrinted: (name: string) => (name === 'ogre' ? { name: 'ogre' } : undefined),
     everyRoom: function* () {
       yield lairRoom;
@@ -270,7 +280,7 @@ describe('the odds book', () => {
     const tracker = { current: inGame(10) };
     const world = {
       mobNames: () => [],
-      buildMobEntity: () => undefined,
+      buildMobEntity: wireOnly,
       everyRoom: function* () {
         yield lairRoom;
       },
@@ -320,7 +330,7 @@ describe('the odds book', () => {
     const tracker = { current: inGame(10) };
     const world = {
       mobNames: () => [],
-      buildMobEntity: () => undefined,
+      buildMobEntity: wireOnly,
       everyRoom: function* () {
         yield lairRoom;
         yield plainRoom;

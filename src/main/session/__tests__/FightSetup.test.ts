@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { WorldSpell } from '../../../shared/world';
+import { PLAIN_ATTACK } from '../../../shared/prowess';
+import { PLAIN_ATTACK_VERB } from '../../../shared/attackOptions';
+import type { KillCasting } from '../../../shared/spellchoice';
 import { FightSetup, type FightCharacter, type FightSetupParts } from '../FightSetup';
 
 // Three rounds kill at 12.5 a round, two mana a round: the answer the book gives for any foe here.
@@ -10,6 +13,55 @@ vi.mock('../../../shared/spellchoice', async (actual) => ({
   ...(await actual<typeof import('../../../shared/spellchoice')>()),
   castsToKill: () => ({ rounds: 3, perRound: 12.5, mana: 2, spell: 'magic missile' })
 }));
+
+/** The errands port whole, answering as `Errands` does for a class with no round spell. */
+const errands = (over: Partial<FightSetupParts['errands']> = {}): FightSetupParts['errands'] => ({
+  realmClass: () => ({
+    combat: 3,
+    magery: 1,
+    mageryType: 1,
+    family: 'greatermud',
+    crits: 0,
+    poisonImmune: false,
+    rounds: null,
+    attack: PLAIN_ATTACK,
+    verb: PLAIN_ATTACK_VERB
+  }),
+  menacePlayer: (s: CharacterState) => ({
+    armourClass: s.progress.armourClass,
+    damageResist: 0,
+    magicRes: 0,
+    dodge: 5
+  }),
+  castingInput: () => null,
+  noEffectsKey: () => '',
+  realmSpeed: 1,
+  ...over
+});
+
+/** A caster's round-spell input as `Errands.castingInput` builds it; `castsToKill` is mocked above. */
+const CASTER: KillCasting = {
+  book: [{ name: 'magic missile', short: 'mmis', level: 1, cost: 2 }],
+  realm: () => null,
+  level: 4,
+  mana: 20,
+  sheet: {
+    level: 4,
+    agility: null,
+    intellect: null,
+    charm: null,
+    willpower: null,
+    health: null,
+    strength: null,
+    spellcasting: null,
+    combatLevel: null,
+    mageryLevel: null,
+    encumbrancePercent: null
+  },
+  family: 'greatermud',
+  pool: 'MA',
+  killConfidence: 0.9
+};
 
 describe('FightSetup.foes', () => {
   /*
@@ -20,7 +72,7 @@ describe('FightSetup.foes', () => {
     const setup = new FightSetup(
       {
         world: undefined,
-        errands: { castingInput: () => ({}) } as unknown as FightSetupParts['errands'],
+        errands: errands({ castingInput: () => CASTER }),
         blessings: () => ({ recastFloor: () => null }),
         joiners: undefined
       },
@@ -39,7 +91,7 @@ describe('FightSetup.foes', () => {
     const setup = new FightSetup(
       {
         world: undefined,
-        errands: { castingInput: () => null } as unknown as FightSetupParts['errands'],
+        errands: errands(),
         blessings: () => ({ recastFloor: () => null }),
         joiners: undefined
       },
@@ -104,24 +156,7 @@ describe('FightSetup.character', () => {
     new FightSetup(
       {
         world: { spellNamed: (name: string) => SPELLS[name] ?? null } as FightSetupParts['world'],
-        errands: {
-          realmClass: () => ({
-            combat: 3,
-            magery: 1,
-            mageryType: 1,
-            family: 'greatermud',
-            attack: 'a'
-          }),
-          menacePlayer: (s: CharacterState) => ({
-            armourClass: s.progress.armourClass,
-            damageResist: 0,
-            magicRes: 0,
-            dodge: 5
-          }),
-          castingInput: () => null,
-          noEffectsKey: () => '',
-          realmSpeed: 1
-        } as unknown as FightSetupParts['errands'],
+        errands: errands(),
         blessings: () => ({ recastFloor: recasts }),
         joiners: undefined
       },

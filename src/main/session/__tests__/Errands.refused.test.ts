@@ -13,7 +13,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 function errands(notices: string[]): Errands {
   return new Errands(
     {
-      world: null,
+      world: undefined,
       tracker: { current: EMPTY_CHARACTER, pendingMoves: 0 },
       fightRecord: {},
       lore: {}

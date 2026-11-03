@@ -9202,7 +9202,7 @@ describe('an extension configured', () => {
         home: '/nowhere',
         records: () => '/nowhere',
         keep: () => null,
-        backscroll: () => ''
+        backscroll: () => Promise.resolve('')
       }
     } as unknown as SessionDeps);
     const own = {
