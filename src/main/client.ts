@@ -1817,6 +1817,10 @@ function createHost(): SessionHost {
       lapIndexes.get(id)?.dispose();
       lapIndexes.delete(id);
       peers?.forget(id);
+      // A tab closed while connected gets no socket close, so its record's
+      // online clock is settled here, as at quit.
+      belongings.get(id)?.close();
+      belongings.delete(id);
     },
     peerSheets: (id) => peers?.sheetsFor(id) ?? [],
     characterSeen: (id, state) => {
