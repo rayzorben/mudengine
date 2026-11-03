@@ -1930,9 +1930,11 @@ export class Remotes implements SessionModule {
    * `prefix` is non-null by construction: `answer` returns on a realm-wide
    * channel before reaching any branch that replies.
    *
-   * **Coalesced by asker.** Two identical answers to the same person are one
-   * answer — the same intent, not two decisions, which is what separates this
-   * from `@do` (two of those are two decisions however alike they look). It
+   * **Coalesced by asker, channel and answer.** Two identical answers to the same
+   * person are one answer — the same intent, not two decisions, which is what
+   * separates this from `@do` (two of those are two decisions however alike
+   * they look). Keyed by asker alone, a second question's answer joined the
+   * first's and was never said (`@health` then `@version`). It
    * matters more since a reply became something spoken *in a room*: ten
    * `@health` says in a second were ten `>Soul {HP=…}` lines queued at `user`
    * priority, ahead of a probe and a fight.
@@ -1941,7 +1943,8 @@ export class Remotes implements SessionModule {
     this.queue.enqueue({
       command: `${prefix}${body}`,
       priority: 'user',
-      coalesceKey: `remote:reply:${to.toLowerCase()}`,
+      // Per asker, channel and answer: a say and a telepath are two answers.
+      coalesceKey: `remote:reply:${to.toLowerCase()}:${prefix.toLowerCase()}${body}`,
       reason: t('automation.remotes.reasonAnswering', { name: to }),
       decision
     });

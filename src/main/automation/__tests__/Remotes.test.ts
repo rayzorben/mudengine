@@ -4,7 +4,8 @@ import { CommandQueue } from '../CommandQueue';
 import { Remotes } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, HELD_DEFAULTS, type HeldSwitches } from '../../../shared/config';
-import { SWITCH_REMOTES } from '../../../shared/remotes';
+import { formatVersion, SWITCH_REMOTES } from '../../../shared/remotes';
+import { CLIENT_NAME, CLIENT_VERSION } from '../../app/version';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import {
   EMPTY_CHARACTER,
@@ -1400,6 +1401,19 @@ describe('coalescing an answer', () => {
     queue.noteTyping(false);
     drain();
     expect(sent).toEqual(['>Soul {HP=101/101,MA=5/5}']);
+  });
+
+  /* Two questions from one asker are two answers: neither is folded into the other. */
+  it('answers two different questions from one asker', () => {
+    queue.noteTyping(true);
+    peers.onBlock(said('conversation-telepath', 'Soul', '@health'), hurt());
+    peers.onBlock(said('conversation-telepath', 'Soul', '@version'), hurt());
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual([
+      '/Soul {HP=101/101,MA=5/5}',
+      `/Soul ${formatVersion(CLIENT_NAME, CLIENT_VERSION)}`
+    ]);
   });
 
   it('still answers two different askers', () => {
