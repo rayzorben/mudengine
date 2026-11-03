@@ -33,8 +33,9 @@ export interface RestAwayPlanner {
   neighbours(room: RoomId): { direction: Direction; to: RoomId; name: string }[];
   /**
    * The room's own spell that hurts the character as it stands, named, or
-   * null (`RoomHazards.roomHurts`): no rest is taken in such a room, and none
-   * is stepped into for one (todo 20261021-1200-01).
+   * null (`RoomHazards.roomHurts`; for damage the world database does not
+   * list, the phrase saying so): such a room is `LeaveHarm`'s to leave
+   * (todo 20261103-0140-01), and none is stepped into or back into for a rest.
    */
   roomHurts(room: RoomId): string | null;
   moveInFlight(): boolean;
@@ -58,9 +59,6 @@ export interface RestAwayEvents {
 
 /** What `consider` decided about this status line's rest. */
 export type RestAwayVerdict = 'not-mine' | 'took-over' | 'rest-here';
-
-/** Why the room stood in is no room to rest in: a lair about to fill, or a spell that hurts. */
-type Against = { kind: 'clock'; seconds: number } | { kind: 'hurts'; spell: string };
 
 type Phase =
   | { kind: 'idle' }
@@ -149,11 +147,11 @@ export class RestAway implements SessionModule {
     }
 
     if (!wantsRest || here === null) return 'not-mine';
-    const against = this.against(here);
-    if (against === null) return 'not-mine';
-    // A room whose spell hurts is `Recovery`'s refusal wherever this cannot step out.
-    const stays: RestAwayVerdict = against.kind === 'hurts' ? 'not-mine' : 'rest-here';
-    if (this.allowedIn === here) return stays;
+    // A room that hurts is left at any health, rest or none (`LeaveHarm`).
+    if (this.planner.roomHurts(here) !== null) return 'not-mine';
+    const seconds = this.lairClock(here);
+    if (seconds === null) return 'not-mine';
+    if (this.allowedIn === here) return 'rest-here';
     // `Recovery` refuses these itself; nothing steps out of a fight either.
     if (fightIsHere(state) || countThreats(state, this.mobRules) > 0) return 'took-over';
     if (this.walkedOn()) return 'took-over';
@@ -165,8 +163,8 @@ export class RestAway implements SessionModule {
      */
     const staying = this.planner.stayingReason();
     if (staying !== null) {
-      if (against.kind === 'clock') this.sayStaying(here, against.seconds, staying);
-      return stays;
+      this.sayStaying(here, seconds, staying);
+      return 'rest-here';
     }
 
     const tried = this.tried.get(here) ?? new Set<Direction>();
@@ -183,30 +181,23 @@ export class RestAway implements SessionModule {
     const next = ways.find((way) => way.to === this.cameFrom) ?? ways[0];
     if (next === undefined) {
       this.allowedIn = here;
-      if (against.kind === 'clock') {
-        this.events.notice?.(
-          t('automation.restAway.noSafeRoom', { seconds: Math.round(against.seconds) }),
-          AWAY
-        );
-      }
+      this.events.notice?.(
+        t('automation.restAway.noSafeRoom', { seconds: Math.round(seconds) }),
+        AWAY
+      );
       this.events.decided?.({
         at: this.now(),
         action: ACTION,
-        because: this.because(against),
+        because: t('automation.restAway.becauseClock', { seconds: Math.round(seconds) }),
         acted: false,
         refused: t('automation.restAway.refusalNoSafeRoom')
       });
-      return stays;
+      return 'rest-here';
     }
     if (this.saidIn !== here) {
       this.saidIn = here;
       this.events.notice?.(
-        against.kind === 'clock'
-          ? t('automation.restAway.refusingHere', {
-              seconds: Math.round(against.seconds),
-              name: next.name
-            })
-          : t('automation.restAway.refusingHereHurts', { spell: against.spell, name: next.name }),
+        t('automation.restAway.refusingHere', { seconds: Math.round(seconds), name: next.name }),
         AWAY
       );
     }
@@ -229,21 +220,10 @@ export class RestAway implements SessionModule {
     return 'took-over';
   }
 
-  /** Why this room is no room to rest in, or null: a lair clock within the setting, else a spell that hurts. */
-  private against(here: RoomId): Against | null {
+  /** The lair's clock in seconds where it is within the setting, else null: no room to rest in. */
+  private lairClock(here: RoomId): number | null {
     const clock = this.planner.lairClock(here);
-    if (clock !== null && clock <= this.config.restNextDoorMinutes * 60) {
-      return { kind: 'clock', seconds: clock };
-    }
-    const spell = this.planner.roomHurts(here);
-    return spell === null ? null : { kind: 'hurts', spell };
-  }
-
-  /** The reason, for the trace. */
-  private because(against: Against): string {
-    return against.kind === 'clock'
-      ? t('automation.restAway.becauseClock', { seconds: Math.round(against.seconds) })
-      : t('automation.restAway.becauseHurts', { spell: against.spell });
+    return clock !== null && clock <= this.config.restNextDoorMinutes * 60 ? clock : null;
   }
 
   /**
@@ -337,9 +317,10 @@ export class RestAway implements SessionModule {
    */
   private resting(state: CharacterState, wantsRest: boolean, here: RoomId | null): RestAwayVerdict {
     if (this.phase.kind !== 'resting') return 'not-mine';
-    const { back } = this.phase;
+    const { from, back } = this.phase;
     if (wantsRest || state.vitals.resting) return 'not-mine';
     this.phase = { kind: 'idle' };
+    if (this.planner.roomHurts(from) !== null) return 'not-mine';
     if (this.planner.looping() || this.planner.walking() || this.planner.moveInFlight()) {
       return 'not-mine';
     }

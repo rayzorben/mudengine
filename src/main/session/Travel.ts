@@ -58,6 +58,7 @@ import { FareCash, type FareCashStart } from './FareCash';
 import { StopperOutfit, type OutfitVerdict, type StopperOutfitParts } from './StopperOutfit';
 import type { RemoteEvents, Remotes } from '../automation/Remotes';
 import type { RoomHazards } from './RoomHazards';
+import { LeaveHarm } from './LeaveHarm';
 import { packHolds } from '../../shared/quests';
 import { playerKey } from '../../shared/players';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
@@ -182,9 +183,13 @@ export interface TravelParts {
     | 'legsThrough'
     | 'fareOf'
     | 'cashFrom'
+    | 'nearestRoom'
   >;
-  /** A room's spell against the character: what a way wants carried, and where it is sold. */
-  readonly roomHazards: Pick<RoomHazards, 'stoppersAlong' | 'counterFor'>;
+  /** A room's spell against the character: what a way wants carried, where it is sold, whether it hurts. */
+  readonly roomHazards: Pick<
+    RoomHazards,
+    'stoppersAlong' | 'counterFor' | 'roomHurts' | 'hurtsHere'
+  >;
   readonly queue: Pick<CommandQueue, 'enqueue' | 'cancel'>;
   readonly walker: Pick<
     Walker,
@@ -479,6 +484,9 @@ export class Travel implements SessionModule {
   private readonly outfit: StopperOutfit;
   /** A fare the purse is short for, drawn at a bank before the walk. See `FareCash`. */
   private readonly fareCash: FareCash;
+  private readonly leaveHarm: LeaveHarm;
+  /** When the realm's teleport went that has not landed or been refused; 0 for none. */
+  private teleportAt = 0;
 
   constructor(
     parts: TravelParts,
@@ -584,6 +592,25 @@ export class Travel implements SessionModule {
       escaping: () => this.escaping,
       notice: (message, decision) => this.session.notice(message, decision)
     });
+    this.leaveHarm = new LeaveHarm(
+      { ...parts, hazards: parts.roomHazards },
+      {
+        config: () => this.automationConfig,
+        escaping: () => this.escaping || this.teleportAt > 0,
+        notice: (message, decision) => this.session.notice(message, decision),
+        decided: (decision) => this.session.decided(decision)
+      }
+    );
+  }
+
+  /** Out of a room that hurts the character every tick, out of a fight (`LeaveHarm`). */
+  leaveHurtingRoom(state: CharacterState): void {
+    this.leaveHarm.consider(state);
+  }
+
+  /** A step out of a room that hurts is on its way, which the teleport waits on. */
+  get leavingHarm(): boolean {
+    return this.leaveHarm.underWay;
   }
 
   /** The errands a walk waits on, each state: the outfit's and the fare's cash. */
@@ -644,6 +671,8 @@ export class Travel implements SessionModule {
     this.keyBuying.reset();
     this.outfit.reset();
     this.fareCash.reset();
+    this.leaveHarm.reset();
+    this.teleportAt = 0;
   }
 
   /**
@@ -1393,6 +1422,8 @@ export class Travel implements SessionModule {
      * before `goingSomewhere()` because a follower may have a lap of its own.
      */
     if (state.party.following !== null) return { kind: 'following', leader: state.party.following };
+    // A room that hurts every tick kills a character left in it (todo 20261103-0140-01).
+    if (this.roomHazards.hurtsHere(state) !== null) return null;
     /*
      * **Only a character the client is taking somewhere moves** (todo 03): a
      * route that has arrived is where the player wanted to be.
@@ -1802,6 +1833,7 @@ export class Travel implements SessionModule {
    */
   teleportSent(now: number): void {
     this.lastEscapeSent = now;
+    this.teleportAt = now;
   }
 
   /**
@@ -1812,6 +1844,7 @@ export class Travel implements SessionModule {
    */
   teleportRefused(sentAt: number): void {
     if (this.lastEscapeSent === sentAt) this.lastEscapeSent = 0;
+    if (this.teleportAt === sentAt) this.teleportAt = 0;
   }
 
   /**
@@ -1819,6 +1852,7 @@ export class Travel implements SessionModule {
    * walked escape's own bookkeeping. No safe-haven walk: the landing is one.
    */
   teleportLanded(from: CharacterState['room'], now: number): void {
+    this.teleportAt = 0;
     this.leaving(roomAddress(from), now);
   }
 

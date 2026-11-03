@@ -16,6 +16,7 @@ import type { SessionModule } from '../automation/Module';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { EchoSince } from '../parse/echo';
 import type { Grounded } from './Grounded';
+import type { RoomHazards } from './RoomHazards';
 import type { Publisher } from './Publisher';
 import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
@@ -48,10 +49,17 @@ export interface FleeGotoParts {
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly travel: Pick<
     Travel,
-    'escapeUnanswered' | 'teleportSent' | 'teleportRefused' | 'teleportLanded' | 'stayingReason'
+    | 'escapeUnanswered'
+    | 'leavingHarm'
+    | 'teleportSent'
+    | 'teleportRefused'
+    | 'teleportLanded'
+    | 'stayingReason'
   >;
   readonly publisher: Pick<Publisher, 'noteSafety'>;
   readonly grounded: Pick<Grounded, 'down'>;
+  /** A room that hurts every tick, which low health is taken out of as out of a fight. */
+  readonly roomHazards: Pick<RoomHazards, 'hurtsHere'>;
 }
 
 /** What the session that built this answers for it. */
@@ -67,6 +75,7 @@ export class FleeGoto implements SessionModule {
   private readonly travel: FleeGotoParts['travel'];
   private readonly publisher: FleeGotoParts['publisher'];
   private readonly grounded: FleeGotoParts['grounded'];
+  private readonly roomHazards: FleeGotoParts['roomHazards'];
   /**
    * The teleport whose answer has not come: the command, why, the room it was
    * sent from, whether the byte has left, and by when. Only a block after the
@@ -103,6 +112,7 @@ export class FleeGoto implements SessionModule {
     this.travel = parts.travel;
     this.publisher = parts.publisher;
     this.grounded = parts.grounded;
+    this.roomHazards = parts.roomHazards;
   }
 
   /** On connect and on leaving the realm: a teleport still unanswered is dropped out loud. */
@@ -122,7 +132,7 @@ export class FleeGoto implements SessionModule {
   }
 
   /**
-   * Below its floor in a fight, after the walked escape has had its word.
+   * Below its floor in a fight or in a room that hurts, after the walked escape has had its word.
    * Called after `Travel.considerEscape` on the same line, so an escape it
    * just proposed is already unanswered here, and the teleport waits for it.
    */
@@ -135,7 +145,8 @@ export class FleeGoto implements SessionModule {
       this.giveUpIfLate(now);
       return;
     }
-    if (!state.inCombat && state.combat.attackers.length === 0) {
+    const harmed = this.roomHazards.hurtsHere(state) !== null;
+    if (!state.inCombat && state.combat.attackers.length === 0 && !harmed) {
       this.saidThisFight = false;
       return;
     }
@@ -148,7 +159,9 @@ export class FleeGoto implements SessionModule {
     // never across its move, which is answered first.
     const retreat = automation.safety.retreat;
     if (retreat.enabled && fraction > retreat.belowHealth) return;
-    if (this.travel.escapeUnanswered || this.tracker.pendingMoves > 0) return;
+    // And not across a step out of a room that hurts (`LeaveHarm`), which is answered first.
+    if (this.travel.escapeUnanswered || this.travel.leavingHarm) return;
+    if (this.tracker.pendingMoves > 0) return;
     if (now - this.lastAsked < retreat.cooldownMs) return;
 
     const why = t('session.safety.whyHealth', { percent: percentText(fraction) });

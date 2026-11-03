@@ -530,7 +530,7 @@ describe('one navigation engine', () => {
   const searchG = new RegExp(search.source, 'g');
   const calls = (file: string): number => read(file).match(searchG)?.length ?? 0;
   const callers: Readonly<Record<string, number>> = {
-    'src/main/session/navigation.ts': 2,
+    'src/main/session/navigation.ts': 3,
     'src/main/world/Router.ts': 2,
     'src/main/world/WorldGraph.ts': 7,
     'src/main/world/QuestPlanner.ts': 2

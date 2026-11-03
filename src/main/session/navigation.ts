@@ -16,6 +16,7 @@ import type { CharacterState } from '../../shared/character';
 import type { NavigationOracle, Plan } from '../../shared/navigation';
 import {
   roomAddress,
+  roomId,
   type FightOdds,
   type Requirement,
   type RoomId,
@@ -41,6 +42,7 @@ export interface NavigationParts {
         | 'withinSteps'
         | 'stoppersOf'
         | 'stockingPlaces'
+        | 'nearest'
       >
     | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
@@ -137,6 +139,18 @@ export class Navigation {
     const swept = this.within(from, steps, this.parts.errands.travellerNow(state));
     kept.sweeps.set(at, swept);
     return swept;
+  }
+
+  /**
+   * The nearest room `want` accepts from where the character stands, over
+   * exits that ask nothing, within `steps` (`Router.nearest`); null while
+   * unplaced, worldless or none is that near.
+   */
+  nearestRoom(want: (room: RoomId) => boolean, steps: number): Route | null {
+    const world = this.parts.world();
+    const here = roomAddress(this.parts.tracker.current.room);
+    if (world === undefined || here === null) return null;
+    return world.nearest(here, (room) => want(roomId(room.map, room.room)), steps);
   }
 
   /** This character's fights and purse, weighed for a plan made elsewhere; null while worldless. */

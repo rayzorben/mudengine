@@ -1179,8 +1179,7 @@ export class SessionManager {
       },
       { ...reports, progress: (progress) => this.sink.questRun?.(progress) }
     );
-    // And where a rest is taken: next door to a lair on a short clock (`Rooms.Delay`, as
-    // `huntingGrounds` reads it) or a room whose spell hurts, in a neighbour looked into first.
+    // And a rest next door to a lair on a short clock (`Rooms.Delay`), looked into first.
     this.restAway = new RestAway(
       automation,
       this.queue,
@@ -1604,7 +1603,7 @@ export class SessionManager {
       travel: this.travel,
       client: this.client,
       publisher: this.publisher,
-      grounded: this.grounded,
+      ...{ grounded: this.grounded, roomHazards: this.roomHazards },
       ...{ attendance: this.attendance, recoverGear: this.recoverGear }
     };
     const safetySession = {
@@ -1691,8 +1690,7 @@ export class SessionManager {
       { module: this.events, configure: (a) => this.events.configure(a.events, a.enabled) },
       { module: this.hangUp },
       { module: this.rowOverrides, configure: (a) => this.rowOverrides.configure(a) },
-      { module: this.safety },
-      { module: this.fleeGoto },
+      ...[{ module: this.safety }, { module: this.fleeGoto }, { module: this.roomHazards }],
       { module: this.locating },
       { module: this.macros },
       { module: this.travel },
@@ -2832,6 +2830,7 @@ export class SessionManager {
       // walker says "you moved the character yourself", not a wrong-room stop.
       this.notePlayerSteering(state);
       this.restAway.noteRoom();
+      this.roomHazards.note(state);
       this.marks.onCharacter(state);
       // The saved gear's hold after a death: bookkeeping, under no switch (todo 82).
       this.gearLocks.onCharacter(state);
@@ -2892,6 +2891,7 @@ export class SessionManager {
       // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);
+      this.travel.leaveHurtingRoom(state);
       // The walk home a `safe-haven` escape armed, after the fight; a walk held for `i` (todo 02).
       this.travel.walkHomeIfDue(state);
       this.travel.walkOnceListed(state);

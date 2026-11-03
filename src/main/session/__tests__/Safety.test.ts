@@ -70,7 +70,8 @@ function build(
   danger: { fight?: Survival | null; percent?: number | null } = {},
   run: { unanswered: boolean; landings?: number } = { unanswered: false },
   attendance: { away: boolean } = { away: true },
-  recoverGear: SafetyParts['recoverGear'] = { busy: false, deciding: () => false }
+  recoverGear: SafetyParts['recoverGear'] = { busy: false, deciding: () => false },
+  hurts: string | null = null
 ) {
   const notices: string[] = [];
   const kinds: Array<DecisionKind | undefined> = [];
@@ -106,7 +107,8 @@ function build(
     publisher: { state: LINK, noteSafety: (decision) => void decisions.push(decision) },
     grounded: { down: false },
     attendance,
-    recoverGear
+    recoverGear,
+    roomHazards: { hurtsHere: () => hurts }
   };
   const safety = new Safety(parts, {
     config: () => config,
@@ -407,6 +409,25 @@ describe('hanging up for health only where something could hit you', () => {
     expect(decisions).toEqual([
       expect.objectContaining({ action: 'hang up', acted: false, refused })
     ]);
+  });
+
+  /* Todo 20261103-0140-01: Vaelor went from 63 to -4 in the Silver River with nothing in it. */
+  it('hangs up in an empty room whose spell hurts', () => {
+    const away = { away: true };
+    const gear: SafetyParts['recoverGear'] = { busy: false, deciding: () => false };
+    const unanswered = { unanswered: false };
+    const { safety, hungUp } = build(
+      config,
+      low([]),
+      undefined,
+      {},
+      unanswered,
+      away,
+      gear,
+      'river damage'
+    );
+    safety.considerHangingUp(low([]));
+    expect(hungUp).toEqual(['client']);
   });
 
   it('hangs up once a monster walks in', () => {

@@ -53,6 +53,7 @@ function rig(config: AutomationConfig = settings()) {
   const queue = { enqueue: vi.fn((intent: Intent) => sent.push(intent) > 0) };
   const travel = {
     escapeUnanswered: false,
+    leavingHarm: false,
     teleportSent: vi.fn(),
     teleportRefused: vi.fn(),
     teleportLanded: vi.fn(),
@@ -63,10 +64,14 @@ function rig(config: AutomationConfig = settings()) {
   };
   const noteSafety = vi.fn();
   const grounded = { down: false };
+  const harm = { spell: null as string | null };
   const notice = vi.fn();
   let current = config;
   const flee = new FleeGoto(
-    { tracker, queue, travel, publisher: { noteSafety }, grounded },
+    {
+      ...{ tracker, queue, travel, publisher: { noteSafety }, grounded },
+      roomHazards: { hurtsHere: () => harm.spell }
+    },
     { config: () => current, notice }
   );
   /** The byte leaves: the queue's own `onSent`. */
@@ -84,7 +89,10 @@ function rig(config: AutomationConfig = settings()) {
   const reconfigure = (next: AutomationConfig): void => {
     current = next;
   };
-  return { flee, tracker, sent, travel, noteSafety, grounded, notice, leave, answer, reconfigure };
+  return {
+    ...{ flee, tracker, sent, travel, noteSafety, grounded, notice, leave, answer },
+    ...{ reconfigure, harm }
+  };
 }
 
 describe('FleeGoto', () => {
@@ -118,6 +126,22 @@ describe('FleeGoto', () => {
     // Once: the next status line does not send it again while it is unanswered.
     flee.consider(tracker.current);
     expect(sent).toHaveLength(1);
+  });
+
+  /* Todo 20261103-0140-01: Vaelor went from 63 to -4 in the Silver River after the fight. */
+  it('goes below its floor out of a fight in a room that hurts, and not in one that does not', () => {
+    const { flee, tracker, sent, harm, travel } = rig();
+    tracker.current = { ...fighting(15), inCombat: false, combat: EMPTY_CHARACTER.combat };
+    flee.consider(tracker.current);
+    expect(sent).toEqual([]);
+    harm.spell = 'river damage';
+    // Not across a step out of the room, which is answered first.
+    travel.leavingHarm = true;
+    flee.consider(tracker.current);
+    expect(sent).toEqual([]);
+    travel.leavingHarm = false;
+    flee.consider(tracker.current);
+    expect(sent.map((intent) => intent.command)).toEqual(['sys go 1 297']);
   });
 
   /* Todo 61: MegaMUD's `@panic!`, the leader's word to the party it is leaving. */

@@ -6438,6 +6438,21 @@ session:
     waiting: Reconnect failed. Trying again in {seconds}s (attempt {attempt}).
     waitingToBePlaced: Back in the realm; what was in progress continues once the client knows which
       room you are in.
+  # Leaving a room that hurts the character every tick (todo 20261103-0140-01).
+  harm:
+    # A room the world database gives no damage, where the game took health
+    # twice out of a fight and with no poison to blame.
+    unlisted: damage the world database does not list
+    because: '{spell} hurts in this room'
+    leavingBack: 'Leaving {room}: {because}. Going {direction}, back the way the character came,
+      into {name}.'
+    leavingNearest: 'Leaving {room}: {because}. Going {direction}, towards {name}, the nearest room
+      that does not hurt.'
+    staying: 'Staying in {room} though {because}: {refused}.'
+    noWay: no room within {steps} steps is free of it
+    unanswered: The step {direction} out of the room got no answer; trying again.
+    unansweredReason: the step {direction} got no answer
+    reason: 'leaving the room: {spell} hurts here'
   safety:
     escapeDoublesBack: 'Running {direction}: {why}. It leads back the way we came.'
     escapeKnown: 'Running {direction}: {why}. The world data knows where that exit goes.'
@@ -7984,9 +7999,6 @@ automation:
     refusalNoSafeRoom: no neighboring room is empty and free of lairs
     staying: 'Resting here though this room spawns monsters every {seconds}s: {why}.'
     becauseClock: the room spawns monsters every {seconds}s
-    # The room's own spell hurts and nothing carried stops it (todo 20261021-1200-01).
-    refusingHereHurts: 'Not resting here: {spell} hurts in this room. Checking {name} first.'
-    becauseHurts: '{spell} hurts in this room'
     becauseStepped: 'stepped {direction} out of the lair to rest'
     notSafe: 'Not resting in {name}: {who} standing there.'
     peekUnanswered: Nothing described {name} in time; not stepping into a room without seeing it.

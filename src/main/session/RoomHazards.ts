@@ -5,8 +5,10 @@
  * `Recovery` and `RestAway`), which room an area search walls for its spell
  * (`stopperFor`) and where a stopper is sold (`counterFor`). The pure
  * reading is `world/navigation/stoppers.ts`; this joins it to the pack, the
- * wards stated up and the level. `mudengine-world` › `parts/routing.md`.
+ * wards stated up and the level, and to the damage seen on the wire
+ * (`RoomDamageSeen`). `mudengine-world` › `parts/routing.md`.
  */
+import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import {
@@ -20,6 +22,8 @@ import type { WorldGraph } from '../world/WorldGraph';
 import { packRows, type CharacterState } from '../../shared/character';
 import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
+import type { SessionModule } from '../automation/Module';
+import { RoomDamageSeen } from './RoomDamageSeen';
 
 /** A counter selling one of a spell's stoppers, nearest from here. */
 export interface StopperCounter {
@@ -37,8 +41,24 @@ export interface RoomHazardsParts {
   errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard'>;
 }
 
-export class RoomHazards {
-  constructor(private readonly parts: RoomHazardsParts) {}
+export class RoomHazards implements SessionModule {
+  private readonly seen: RoomDamageSeen;
+
+  constructor(
+    private readonly parts: RoomHazardsParts,
+    now: () => number = () => Date.now()
+  ) {
+    this.seen = new RoomDamageSeen(now);
+  }
+
+  /** Every status line, for the damage the world database does not list. */
+  note(state: CharacterState): void {
+    this.seen.note(state);
+  }
+
+  reset(): void {
+    this.seen.forget();
+  }
 
   /** The room spells along a way that hurt and an item stops, whatever the pack holds (`stoppersAlong`). */
   stoppersAlong(rooms: Iterable<RoomId>): WayStopper[] {
@@ -51,14 +71,18 @@ export class RoomHazards {
   /**
    * The room's spell that hurts this character as it stands, named, or
    * null: the realm states a figure a tick and nothing carried or stated up
-   * stops it (`hurtsUnstopped`). No rest is taken in such a room.
+   * stops it (`hurtsUnstopped`), or the server took health there as such a
+   * room does (`RoomDamageSeen`). No rest is taken in such a room, and a
+   * character is not left in one (`LeaveHarm`).
    */
   roomHurts(room: RoomId, state: CharacterState = this.parts.tracker.current): string | null {
     const spell = this.roomSpell(room, state);
-    if (spell === null) return null;
     const { errands } = this.parts;
-    const hurts = hurtsUnstopped(spell.hazard, packRows(state.inventory), errands.spellsUp(state));
-    return hurts ? spell.name : null;
+    const stated =
+      spell !== null &&
+      hurtsUnstopped(spell.hazard, packRows(state.inventory), errands.spellsUp(state));
+    if (stated) return spell.name;
+    return this.seen.hurts(room) ? t('session.harm.unlisted') : null;
   }
 
   /** `roomHurts` for the room the character stands in; null unplaced. */

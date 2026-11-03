@@ -25,6 +25,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Grounded } from './Grounded';
 import type { Publisher } from './Publisher';
 import type { RealmMenu } from './RealmMenu';
+import type { RoomHazards } from './RoomHazards';
 import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
@@ -52,6 +53,8 @@ export interface SafetyParts {
   readonly attendance: Pick<Attendance, 'away'>;
   /** The walk back for the kit, which the naked hang-up leaves to finish (todo 79). */
   readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
+  /** A room that hurts every tick is as near as a monster (todo 20261103-0140-01). */
+  readonly roomHazards: Pick<RoomHazards, 'hurtsHere'>;
 }
 
 /** What the session that built this answers for it. */
@@ -74,6 +77,7 @@ export class Safety implements SessionModule {
   private readonly grounded: SafetyParts['grounded'];
   private readonly attendance: SafetyParts['attendance'];
   private readonly recoverGear: SafetyParts['recoverGear'];
+  private readonly roomHazards: SafetyParts['roomHazards'];
   /**
    * Gang alerts already sent, by attacker, so a fight producing a blow line
    * per round is one broadcast per attacker per five-minute window — the
@@ -129,6 +133,7 @@ export class Safety implements SessionModule {
     this.grounded = parts.grounded;
     this.attendance = parts.attendance;
     this.recoverGear = parts.recoverGear;
+    this.roomHazards = parts.roomHazards;
   }
 
   private get automationConfig(): AutomationConfig {
@@ -387,7 +392,7 @@ export class Safety implements SessionModule {
       : company || stalker === null
         ? t('session.safety.whyCompany')
         : whyStalker(state, stalker);
-    // Health alone is a reason only beside a monster or in a fight (todo 01).
+    // Health alone is a reason only beside a monster, in a fight or in a room that hurts (todo 01).
     if (hurt && !company && stalker === null && this.nothingHere(state, why)) return;
     this.nothingHereSaid = null;
     // MegaMUD's HangupNotAfk off, for health alone: company and a `hangup` row still go (todo 79).
@@ -621,6 +626,7 @@ export class Safety implements SessionModule {
    */
   private nothingHere(state: CharacterState, why: string): boolean {
     if (this.hangUp.monsterNear(state, Date.now())) return false;
+    if (this.roomHazards.hurtsHere(state) !== null) return false;
     const refused =
       state.room.resolvedBy === 'remembered'
         ? t('session.safety.hangUpRoomUnseen')

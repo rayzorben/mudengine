@@ -68,6 +68,8 @@ function travel(
     settings?: AutomationConfig;
     combatOn?: boolean;
     world?: TravelParts['world'];
+    /** The room's spell that hurts the character, by room (`RoomHazards.roomHurts`). */
+    hurts?: (room: string) => string | null;
   } = {}
 ) {
   const sent: string[] = [];
@@ -99,9 +101,20 @@ function travel(
       legsThrough: vi.fn(() => null),
       // A way that charges nothing, or within the share (`Errands.fareOf`).
       fareOf: vi.fn(() => null),
-      cashFrom: vi.fn(() => [])
+      cashFrom: vi.fn(() => []),
+      nearestRoom: vi.fn(() => null)
     },
-    roomHazards: { stoppersAlong: vi.fn(() => []), counterFor: vi.fn(() => null) },
+    roomHazards: {
+      stoppersAlong: vi.fn(() => []),
+      counterFor: vi.fn(() => null),
+      roomHurts: (room) => overrides.hurts?.(room) ?? null,
+      hurtsHere: (here) => {
+        const { map, number } = here.room;
+        return map === null || number === null
+          ? null
+          : (overrides.hurts?.(`${map}/${number}`) ?? null);
+      }
+    },
     queue: {
       enqueue: (intent) => {
         sent.push(intent.command);
@@ -355,6 +368,42 @@ describe('running from a fight', () => {
     moving.settleEscape({ type: 'room' } as never, first.room);
     moving.considerEscape(empty);
     expect(sent).toEqual(['n']);
+  });
+});
+
+/*
+ * Todo 20261103-0140-01: Vaelor's walk stopped in the Silver River. A room that
+ * hurts every tick is no place to stay because nothing is taking him anywhere.
+ */
+describe('running from a fight in a room that hurts', () => {
+  const plain: AutomationConfig = { ...config, combat: { ...config.combat, mobRules: [] } };
+  const river = (): CharacterState => {
+    const state = beside();
+    return {
+      ...state,
+      inCombat: true,
+      vitals: { ...state.vitals, hp: 25, hpMax: 100 },
+      room: { ...state.room, name: 'The Silver River', map: 1, number: 2605 },
+      combat: { ...state.combat, attackers: ['thin dragonfish'] }
+    };
+  };
+
+  it('runs though nothing is taking it anywhere', () => {
+    const state = river();
+    const { travel: stopped, sent } = travel(state, 'none', false, undefined, {
+      settings: plain,
+      hurts: (room) => (room === '1/2605' ? 'river damage' : null)
+    });
+    stopped.considerEscape(state);
+    expect(sent).toEqual(['n']);
+    expect(stopped.stayingReason(state)).toBeNull();
+  });
+
+  it('stays where the room does not hurt and nothing is taking it anywhere', () => {
+    const state = river();
+    const { travel: stopped, sent } = travel(state, 'none', false, undefined, { settings: plain });
+    stopped.considerEscape(state);
+    expect(sent).toEqual([]);
   });
 });
 

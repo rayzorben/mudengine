@@ -317,33 +317,29 @@ describe('everywhere else', () => {
     expect(hourly.consider(hurtInTheLair(), true)).not.toBe('not-mine');
   });
 
-  it('steps out of a room whose spell hurts, into a neighbour whose does not', () => {
-    const river = make(health(), {
-      lairClock: () => null,
-      roomHurts: (room) => (room === '8/915' || room === '8/914' ? 'river damage' : null)
+  it('looks next door from a lair past a neighbour whose spell hurts', () => {
+    const lair = make(health(), {
+      roomHurts: (room) => (room === '8/914' ? 'river damage' : null)
     });
-    expect(river.consider(hurtInTheLair(), true)).toBe('took-over');
+    expect(lair.consider(hurtInTheLair(), true)).toBe('took-over');
     drain();
     expect(sent).toEqual(['l e']);
     expect(notices[0]).toBe(
-      t('automation.restAway.refusingHereHurts', {
-        spell: 'river damage',
-        name: 'Ancient Stronghold, Hall'
-      })
+      t('automation.restAway.refusingHere', { seconds: 30, name: 'Ancient Stronghold, Hall' })
     );
   });
 
-  it('leaves a hurting room with no safe neighbour, or a stopped character in one, to Recovery', () => {
-    const hurting = { lairClock: () => null, roomHurts: () => 'river damage' };
+  /* Todo 20261103-0140-01: such a room is left at any health, by `LeaveHarm`. */
+  it('leaves a room whose spell hurts, lair or not, to LeaveHarm', () => {
+    const hurting = { roomHurts: (room: string) => (room === '8/915' ? 'river damage' : null) };
     expect(make(health(), hurting).consider(hurtInTheLair(), true)).toBe('not-mine');
-    expect(decisions.at(-1)?.because).toBe(
-      t('automation.restAway.becauseHurts', { spell: 'river damage' })
-    );
     expect(
-      make(health(), { ...hurting, stayingReason: () => 'stopped' }).consider(hurtInTheLair(), true)
+      make(health(), { ...hurting, lairClock: () => null }).consider(hurtInTheLair(), true)
     ).toBe('not-mine');
+    drain();
     expect(sent).toEqual([]);
     expect(notices).toEqual([]);
+    expect(decisions).toEqual([]);
   });
 
   it('waits out a move in flight, a marching walk and an escape rather than stepping', () => {

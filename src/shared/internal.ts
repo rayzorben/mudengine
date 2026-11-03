@@ -1334,6 +1334,17 @@ const TUNING_DEFAULTS = {
      */
     askedMs: 3000
   },
+  /** A room that hurts the character every tick, and leaving it — `RoomDamageSeen`, `LeaveHarm`. */
+  roomHarm: {
+    /** Health lost this many times out of a fight in one room is the room's damage. */
+    drops: 2,
+    /** And inside this long; the Silver River hit every 1.2s on orohost (2026-11-03). */
+    withinMs: 30000,
+    /** Rooms the damage was seen in, kept for the session. */
+    keptRooms: 64,
+    /** How far the nearest room that does not hurt is looked for. */
+    searchSteps: 10
+  },
   /** Commands on a clock — `Events`. */
   events: {
     tickMs: 1000,

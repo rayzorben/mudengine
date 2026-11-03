@@ -1042,6 +1042,19 @@ tuning:
     # asked for again; cleared the moment the flag does arrive.
     askedMs: 3000
 
+  # A room that hurts the character every tick, and leaving it.
+  roomHarm:
+    # Health lost this many times out of a fight in one room is the room's
+    # damage, whatever the world database says about the room.
+    drops: 2
+    # And inside this long. The Silver River hit every 1.2 s on orohost
+    # (2026-11-03).
+    withinMs: 30000
+    # Rooms the damage was seen in, kept for the session.
+    keptRooms: 64
+    # How many steps away the nearest room that does not hurt is looked for.
+    searchSteps: 10
+
   # Commands on a clock — `Events`.
   events:
     tickMs: 1000

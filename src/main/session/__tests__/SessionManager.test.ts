@@ -3306,6 +3306,43 @@ describe('which way out', () => {
     expect(notices.some(composes('session.safety.escapeRetrace'))).toBe(false);
   });
 
+  /*
+   * Todo 20261103-0140-01: Vaelor's walk stopped in the Silver River and nothing
+   * moved him out; 63 to -4 in five seconds. A room the world database gives no
+   * damage counts once the game takes health there twice out of a fight.
+   */
+  it('leaves a room that hurts every tick, back the way it came, with nothing taking it anywhere', async () => {
+    const { sink, notices } = collect();
+    const world = worldOf([
+      { m: 1, r: 20, n: 'Riverbank', x: { e: { m: 1, r: 21 } } },
+      { m: 1, r: 21, n: 'Fast River', x: { w: { m: 1, r: 20 } } }
+    ]);
+    manager = build(sink, { world, automation: escaping() });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,20\r\nRiverbank\r\nObvious exits: east\r\n');
+    await until(() => manager!.character.room.number === 20);
+    manager.send('e\r\n');
+    socket.write('Fast River\r\nObvious exits: west\r\n');
+    await until(() => manager!.character.room.number === 21);
+
+    socket.write('The river bashes you up against some rocks!\r\n[HP=84]:\r\n');
+    await settled(84);
+    expect(seen()).not.toMatch(/\bw\r\n/);
+    socket.write('The river bashes you up against some rocks!\r\n[HP=66]:\r\n');
+    await until(() => /\bw\r\n/.test(seen()));
+    expect(
+      notices.some(
+        composes('session.harm.leavingBack', {
+          because: t('session.harm.because', { spell: t('session.harm.unlisted') }),
+          direction: 'west'
+        })
+      )
+    ).toBe(true);
+  });
+
   /** At Haven Hall with a two-step route north to the Rat Lair under way. */
   async function walkingToTheLair(): Promise<{ socket: net.Socket; seen: () => string }> {
     const world = haven();

@@ -187,6 +187,10 @@ export const DECISION_SETTINGS = {
   'rest-with-leader': ['automation.party.restWithLeader', 'automation.health.useMeditate'],
   'rest-away': ['automation.health.restNextDoor', 'automation.health.restNextDoorMinutes'],
   'rest-away-back': ['automation.health.restNextDoor'],
+  'leave-harm': {
+    exempt: 'the server hurts a character every tick in a room whose spell nothing stops',
+    since: '2026-11-03'
+  },
   'rest-spell': ['automation.health.restSpell'],
   'auto-rest-back': ['automation.health.autoRest'],
   'heal-self': [

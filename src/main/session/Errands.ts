@@ -290,6 +290,7 @@ export type ErrandsWorld = Pick<
   | 'mobAsPrinted'
   | 'namedClasses'
   | 'namedRaces'
+  | 'nearest'
   | 'planStep'
   | 'priceAt'
   | 'quests'
@@ -498,6 +499,11 @@ export class Errands implements SessionModule {
   /** `legAs` held to `ms` of the thread: `spent` where it ran out (`Navigation.legWithin`). */
   legWithin(from: RoomId, to: RoomId, traveller: Traveller, ms: number): Route | 'spent' | null {
     return this.navigation.legWithin(from, to, traveller, ms);
+  }
+
+  /** The nearest room `want` accepts from where the character stands (`Navigation.nearestRoom`). */
+  nearestRoom(want: (room: RoomId) => boolean, steps: number): Route | null {
+    return this.navigation.nearestRoom(want, steps);
   }
 
   /** The plan from where the character stands to a room, keys and fights included, or null while unplaced. */
