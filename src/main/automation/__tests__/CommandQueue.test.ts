@@ -282,6 +282,38 @@ describe('deferring to the player', () => {
     q.dispose();
   });
 
+  /*
+   * An escape put back after `You fumble in confusion!` waits out the server's
+   * second. While it waits it is not an emergency that can go now, so it opens
+   * the hold for nothing else: an attack glued onto the player's half-typed
+   * line is the corruption the hold exists to stop.
+   */
+  it('lets nothing else through the hold while a fumbled emergency waits', () => {
+    const cleared: string[] = [];
+    const q = new CommandQueue(base, {
+      send: (command) => sent.push(command),
+      clearTypedLine: () => {
+        cleared.push('cleared');
+        q.noteTyping(false);
+      }
+    });
+    sent = [];
+    q.enqueue({ command: 'n', priority: 'emergency' });
+    q.notePrompt();
+    expect(q.resendLast('n')).toBe(true);
+    q.noteTyping(true);
+    q.enqueue({ command: 'aa orc', priority: 'combat' });
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['n']);
+    expect(cleared).toEqual([]);
+
+    // Due once the server's second is served, and the escape goes first.
+    vi.advanceTimersByTime(600);
+    expect(cleared).toEqual(['cleared']);
+    expect(sent.slice(0, 2)).toEqual(['n', 'n']);
+    q.dispose();
+  });
+
   it('holds even what the player asked for behind their own half-typed line', () => {
     // A login answer sent through a half-typed username corrupts both.
     queue.noteTyping(true);

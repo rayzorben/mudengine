@@ -192,6 +192,11 @@ interface Queued extends Intent {
   notBefore?: number;
 }
 
+/** Milliseconds until an intent may go out; 0 or less is due now (`Queued.notBefore`). */
+function dueIn(intent: Queued, now: number): number {
+  return (intent.notBefore ?? 0) - now;
+}
+
 export interface QueueEvents {
   /** Send this on the wire. */
   send(command: string, intent: Queued): void;
@@ -662,10 +667,9 @@ export class CommandQueue {
      * the fight. A wake is scheduled for the soonest one held back so nothing
      * sits in the queue waiting for another intent to arrive and drain it.
      */
-    const at = this.pending.findIndex((intent) => (intent.notBefore ?? 0) <= now);
+    const at = this.pending.findIndex((intent) => dueIn(intent, now) <= 0);
     if (at === -1) {
-      const soonest = Math.min(...this.pending.map((intent) => intent.notBefore ?? 0));
-      this.schedule(Math.max(1, soonest - now));
+      this.schedule(Math.max(1, Math.min(...this.pending.map((intent) => dueIn(intent, now)))));
       return;
     }
     const next = this.resolved(this.pending.splice(at, 1)[0]!);
@@ -738,12 +742,20 @@ export class CommandQueue {
   private blockedFor(now: number): number {
     if (this.typingHeld) {
       const lapse = this.typingHeldUntil - now;
-      // An emergency does not wait on the player's typing — see `drain`.
-      const emergency = this.pending.some((intent) => intent.priority === 'emergency');
+      /*
+       * An emergency does not wait on the player's typing (see `drain`), but
+       * only one that is due: an escape put back after a fumble serves out the
+       * server's second first, and opening the hold for it then lets the
+       * next intent that is due go out glued onto the player's line.
+       */
+      const emergencies = this.pending.filter((intent) => intent.priority === 'emergency');
+      const due = Math.min(...emergencies.map((intent) => dueIn(intent, now)));
+      const emergency = due <= 0;
       // Checked at a bounded cadence rather than sleeping the whole ceiling:
       // the release normally arrives as an event (`noteTyping(false)`), and
-      // this timer only exists to notice an abandoned line.
-      if (lapse > 0 && !emergency) return Math.min(lapse, 1000);
+      // this timer only exists to notice an abandoned line. A held-back
+      // emergency wakes it when it falls due.
+      if (lapse > 0 && !emergency) return Math.min(lapse, 1000, due);
       if (lapse <= 0) this.typingHeld = false;
     }
 
