@@ -41,6 +41,12 @@ export interface GatewayLimits {
   pingEveryMs: number;
   /** The largest registration body. */
   maxBodyBytes: number;
+  /** Challenge and registration requests one address may make each second on average (`AskLimit`). */
+  asksPerSecond: number;
+  /** How many it may make at once. */
+  askBurst: number;
+  /** Addresses whose asking is counted; past it the oldest goes first. */
+  mostAskers: number;
 }
 
 export const GATEWAY_LIMITS: GatewayLimits = {
@@ -60,5 +66,9 @@ export const GATEWAY_LIMITS: GatewayLimits = {
   burstBytes: 131_072,
   mostClaims: 8,
   pingEveryMs: 30_000,
-  maxBodyBytes: 4096
+  maxBodyBytes: 4096,
+  // Ten registrations at once (a household's installs, or one retrying), then one a minute.
+  asksPerSecond: 2 / 60,
+  askBurst: 20,
+  mostAskers: 10_000
 };

@@ -53,19 +53,37 @@ afterEach(async () => {
   await gateway.close();
 });
 
-async function register(secret = SECRET): Promise<Response> {
-  const asked = (await (await fetch(`http://${base}${PEER_PATHS.challenge}`)).json()) as {
+/** As Caddy says where a request came from. */
+const from = (address: string): Record<string, string> => ({ 'X-Forwarded-For': address });
+
+async function challengeFor(headers: Record<string, string> = {}): Promise<{
+  challenge: string;
+  bits: number;
+}> {
+  return (await (await fetch(`http://${base}${PEER_PATHS.challenge}`, { headers })).json()) as {
     challenge: string;
     bits: number;
   };
+}
+
+async function answer(
+  asked: { challenge: string; bits: number },
+  secret = SECRET,
+  headers: Record<string, string> = {}
+): Promise<Response> {
   const nonce = solveProofOfWork(asked.challenge, asked.bits);
   return fetch(`http://${base}${PEER_PATHS.register}`, {
     method: 'POST',
     headers: {
+      ...headers,
       [PEER_BUILD_HEADER]: createHmac('sha256', secret).update(asked.challenge).digest('hex')
     },
     body: JSON.stringify({ challenge: asked.challenge, nonce })
   });
+}
+
+async function register(secret = SECRET, headers: Record<string, string> = {}): Promise<Response> {
+  return answer(await challengeFor(headers), secret, headers);
 }
 
 /** One install's socket, with every frame it hears kept and waited on by kind. */
@@ -189,6 +207,58 @@ describe('registering', () => {
     expect((await fetch(url, { method: 'POST', headers, body })).status).toBe(200);
     const again = await fetch(url, { method: 'POST', headers, body });
     expect(await again.json()).toEqual({ error: 'unknown challenge' });
+  });
+});
+
+describe('asking too fast from one address', () => {
+  const flooder = from('203.0.113.9');
+
+  /** Ask for challenges from `headers` until one is refused, and say how many were given. */
+  async function floodUntilRefused(headers: Record<string, string>): Promise<number> {
+    for (let given = 0; given < 100; given += 1) {
+      const answer = await fetch(`http://${base}${PEER_PATHS.challenge}`, { headers });
+      if (answer.status === 429) {
+        expect(Number(answer.headers.get('retry-after'))).toBeGreaterThan(0);
+        expect(await answer.json()).toEqual({ error: 'too many requests' });
+        return given;
+      }
+      expect(answer.status).toBe(200);
+    }
+    throw new Error('never refused');
+  }
+
+  it('is refused past the burst, and a client elsewhere still registers', async () => {
+    await start({ askBurst: 4, mostChallenges: 6 });
+    // A real client asks for its challenge before the flood begins.
+    const asked = await challengeFor(from('198.51.100.7'));
+    expect(await floodUntilRefused(flooder)).toBe(4);
+    // Its challenge was not pushed out, and it registers.
+    const answered = await answer(asked, SECRET, from('198.51.100.7'));
+    expect(answered.status).toBe(200);
+    expect(asPeerToken(await answered.json())).not.toBeNull();
+    // And the flooder may not register either.
+    const refused = await fetch(`http://${base}${PEER_PATHS.register}`, {
+      method: 'POST',
+      headers: flooder,
+      body: '{}'
+    });
+    expect(refused.status).toBe(429);
+  });
+
+  it('counts registrations with the challenges', async () => {
+    await start({ askBurst: 3 });
+    expect((await register(SECRET, flooder)).status).toBe(200);
+    // The challenge and the registration spent two; one left.
+    expect(await floodUntilRefused(flooder)).toBe(1);
+  });
+
+  it('counts an IPv6 caller by its /64', async () => {
+    await start({ askBurst: 2 });
+    await challengeFor(from('2001:db8:1:2::1'));
+    await challengeFor(from('2001:db8:1:2:ffff::9'));
+    expect(await floodUntilRefused(from('2001:db8:1:2:abcd::5'))).toBe(0);
+    // Another /64 is another caller.
+    expect(await floodUntilRefused(from('2001:db8:1:3::1'))).toBe(2);
   });
 });
 

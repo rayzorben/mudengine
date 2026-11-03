@@ -17,7 +17,7 @@ import {
   type RefusedWhy
 } from '../shared/peerWire';
 import { errorMessage } from '../shared/values';
-import type { ByteBudget, ByteBudgets } from './ByteBudget';
+import type { TokenBucket, TokenBuckets } from './TokenBucket';
 import type { GatewayLimits } from './limits';
 import type { InstallLine, PeerRouter } from './PeerRouter';
 import type { Registrar } from './Registrar';
@@ -32,7 +32,7 @@ export interface InstallLinkDeps {
   registrar: Pick<Registrar, 'hello'>;
   router: PeerRouter;
   /** Each install's byte budget, kept across its sockets. */
-  budgets: Pick<ByteBudgets, 'of'>;
+  budgets: Pick<TokenBuckets, 'of'>;
   verify: ChecksSignature;
   limits: GatewayLimits;
   now(): number;
@@ -53,7 +53,7 @@ interface Pending {
 export class InstallLink implements InstallLine {
   private token: string | null = null;
   /** The install's budget, once its hello says which install it is. */
-  private budget: ByteBudget | null = null;
+  private budget: TokenBucket | null = null;
   /** Closes a socket that has said no hello by `helloMs`. */
   private readonly helloDue: ReturnType<typeof setTimeout>;
   /** Challenges sent and not yet answered, by `peerKeyText`. */

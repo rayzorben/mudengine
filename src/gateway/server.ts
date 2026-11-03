@@ -19,7 +19,9 @@ import {
   type ChecksSignature
 } from '../shared/peerWire';
 import { errorMessage } from '../shared/values';
-import { ByteBudgets } from './ByteBudget';
+import { addressOf } from './address';
+import { AskLimit } from './AskLimit';
+import { TokenBuckets } from './TokenBucket';
 import { InstallLink } from './InstallLink';
 import type { GatewayLimits } from './limits';
 import { PeerRouter } from './PeerRouter';
@@ -39,17 +41,6 @@ export interface Gateway {
   listen(port: number, host: string): Promise<number>;
   /** Stop listening and close every socket. */
   close(): Promise<void>;
-}
-
-/**
- * Where a socket came from. Caddy sets `X-Forwarded-For` to the address it
- * was dialled from, replacing whatever the caller sent, and the gateway is
- * reachable only through it; the last entry is Caddy's.
- */
-function addressOf(request: http.IncomingMessage): string {
-  const forwarded = String(request.headers['x-forwarded-for'] ?? '').split(',');
-  const last = forwarded[forwarded.length - 1]?.trim() ?? '';
-  return last.length > 0 ? last : (request.socket.remoteAddress ?? 'unknown');
 }
 
 function json(response: http.ServerResponse, status: number, value: unknown): void {
@@ -76,7 +67,8 @@ export function createGateway(options: GatewayOptions): Gateway {
   const registrar = new Registrar(options);
   const router = new PeerRouter(limits.maxMessageBytes);
   const open = new Map<string, InstallLink>();
-  const budgets = new ByteBudgets(limits.bytesPerSecond, limits.burstBytes, limits.mostInstalls);
+  const asking = new AskLimit(limits, options.log);
+  const budgets = new TokenBuckets(limits.bytesPerSecond, limits.burstBytes, limits.mostInstalls);
   /** Every open socket and the address it came from, and how many each address holds. */
   const links = new Map<InstallLink, string>();
   const perAddress = new Map<string, number>();
@@ -94,6 +86,12 @@ export function createGateway(options: GatewayOptions): Gateway {
     response: http.ServerResponse
   ): Promise<void> => {
     const path = (request.url ?? '/').split('?')[0];
+    const asks = path === PEER_PATHS.challenge || path === PEER_PATHS.register;
+    if (asks && !asking.allows(addressOf(request), options.now())) {
+      response.setHeader('Retry-After', String(asking.retryAfterSeconds));
+      json(response, 429, { error: 'too many requests' });
+      return;
+    }
     if (request.method === 'GET' && path === PEER_PATHS.challenge) {
       json(response, 200, registrar.challenge());
       return;
