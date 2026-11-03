@@ -8,7 +8,7 @@
  * `mudengine-automation` › *Going back for the kit is a leg, and it refuses
  * loudly*.
  */
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
@@ -241,7 +241,7 @@ export class Collect {
       sentAt: null
     };
     this.phase = phase;
-    const taken = this.queue.offer({
+    const outcome = this.queue.offer({
       command: 'search',
       priority: 'probe',
       coalesceKey: `${ask.key}:search`,
@@ -256,7 +256,7 @@ export class Collect {
       }
     });
     // Not taken, so no more are asked: what the open floor holds is still worth taking.
-    if (taken !== 'queued' && taken !== 'joined') {
+    if (!taken(outcome)) {
       phase.answered = true;
       phase.refused = true;
     }

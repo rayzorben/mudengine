@@ -13,7 +13,7 @@ import { fightIsRunning, type CharacterState } from '../../shared/character';
 import { certainRoom } from '../../shared/descriptions';
 import type { RoomLook } from '../../shared/roomArt';
 import type { RoomId } from '../../shared/world';
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 
 export const ROOM_LOOK_KEY = 'probe:look-room';
 
@@ -36,14 +36,14 @@ export class BriefLook {
     if (this.look.shipped(state.realm, room.map, room.number)) return;
     if (fightIsRunning(state) || !this.idle()) return;
     // A queue that is held or offline took nothing: asked again on the next state.
-    const taken = this.queue.offer({
+    const offered = this.queue.offer({
       command: 'l',
       priority: 'probe',
       coalesceKey: ROOM_LOOK_KEY,
       reason: t('automation.routines.reasonRoomLook'),
       decision: 'look-for-room-art'
     });
-    if (taken === 'queued' || taken === 'joined') this.looked.add(room.room);
+    if (taken(offered)) this.looked.add(room.room);
   }
 
   /** Out of the realm: the next entry may look at each room again. */

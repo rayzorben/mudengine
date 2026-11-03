@@ -39,7 +39,7 @@ import {
 import type { WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { CommandQueue, Intent } from './CommandQueue';
+import { taken, type CommandQueue, type Intent } from './CommandQueue';
 import { answerOf, holdFor, stillHeld, type InvokeHold, type UseOut } from './invokeAnswer';
 import type { ChargeLedger } from './ItemCharges';
 import { canPayFor } from './mana';
@@ -330,7 +330,7 @@ export class AutoInvoke implements SessionModule {
       );
     const offered = this.queue.offer(first);
     // Refused at the door (switched off, held): nothing of the swap goes.
-    if (offered !== 'queued' && offered !== 'joined') {
+    if (!taken(offered)) {
       this.swapBack.reset();
       return false;
     }

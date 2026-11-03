@@ -13,7 +13,7 @@
  * every refusal out loud. Off by default. See `mudengine-automation` § *Going
  * to collect the level is an errand, and the trainer is the player's*.
  */
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
@@ -748,7 +748,7 @@ export class TrainErrand implements SessionModule {
      * *the level did not move*, and never asked again at this level. The
      * mark goes back and the next status line after the hold lifts asks.
      */
-    if (offered !== 'queued' && offered !== 'joined') {
+    if (!taken(offered)) {
       this.phase = { kind: 'idle' };
       this.attempted = null;
       this.planner.release();

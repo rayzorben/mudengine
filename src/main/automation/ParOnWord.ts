@@ -14,7 +14,7 @@ import { tuning } from '../app/tuning';
 import { joinedMember, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { partyListingIntent } from './PartyListing';
 
 /** What the member said. */
@@ -49,8 +49,7 @@ export class ParOnWord {
     // A refusal keeps the window too, so a @wait at every step says it once.
     this.askedAt = now;
     const offered = this.queue.offer(partyListingIntent(this.config, decision));
-    const taken = offered === 'queued' || offered === 'joined';
-    const said = taken
+    const said = taken(offered)
       ? t('automation.remotes.parOnWord', words)
       : t('automation.remotes.parOnWordNotSent', words);
     this.notice(said, decision);

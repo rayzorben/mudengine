@@ -9,7 +9,7 @@
 import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { NoticeSink } from '../../shared/decisionSettings';
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 
 export const SELF_LOOK_KEY = 'probe:look-self';
 
@@ -35,14 +35,14 @@ export class SelfLook {
       return;
     }
     // A queue that is held or offline took nothing: asked again on the next state.
-    const taken = this.queue.offer({
+    const offered = this.queue.offer({
       command: `l ${state.name}`,
       priority: 'probe',
       coalesceKey: SELF_LOOK_KEY,
       reason: t('automation.routines.reasonSelfLook'),
       decision: 'look-at-self'
     });
-    this.settled = taken === 'queued' || taken === 'joined';
+    this.settled = taken(offered);
   }
 
   /** Out of the realm: the next entry looks again, if nothing has read the appearance. */

@@ -10,7 +10,7 @@
  * instead (`PartyHands`, todo 86). The why is `mudengine-automation` ›
  * `parts/walking.md`.
  */
-import type { CommandQueue } from '../CommandQueue';
+import { taken, type CommandQueue } from '../CommandQueue';
 import type { CharacterState } from '../../../shared/character';
 import type { MovementConfig } from '../../../shared/config';
 import {
@@ -121,7 +121,7 @@ export class DisarmBeforeStep {
       decision: 'trap-disarm',
       onSent: () => this.waitForAnswer(step)
     });
-    if (offered !== 'queued' && offered !== 'joined') {
+    if (!taken(offered)) {
       this.waiting = null;
       return false;
     }

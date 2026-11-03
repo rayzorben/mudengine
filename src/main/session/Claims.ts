@@ -11,7 +11,12 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { AutoCombat } from '../automation/AutoCombat';
-import type { CommandQueue, Intent, QueueRefusal } from '../automation/CommandQueue';
+import {
+  taken,
+  type CommandQueue,
+  type Intent,
+  type QueueRefusal
+} from '../automation/CommandQueue';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Vocabulary } from './Vocabulary';
 
@@ -94,7 +99,7 @@ export class Claims {
       reason,
       decision: 'locate-ask'
     });
-    return offered === 'queued' || offered === 'joined' ? { asked: word } : { refused: offered };
+    return taken(offered) ? { asked: word } : { refused: offered };
   }
 
   /**

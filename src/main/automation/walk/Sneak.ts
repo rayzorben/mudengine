@@ -34,7 +34,7 @@
  * anyway, because the step was queued behind the `sn` unanswered. A refusal
  * asks again; the bare `Attempting to sneak...` lets the step go.
  */
-import type { CommandQueue, Intent } from '../CommandQueue';
+import { taken, type CommandQueue, type Intent } from '../CommandQueue';
 import type { Block, BlockType } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
 import { PRIORITY } from '../../../shared/automation';
@@ -153,7 +153,7 @@ export class SneakBeforeStep {
       onSent: () => this.waitForAnswer(step)
     });
     // `joined`: `AutoStealth`'s `sn` under the same key, whose answer is as good.
-    if (offered !== 'queued' && offered !== 'joined') {
+    if (!taken(offered)) {
       this.answer = null;
       return false;
     }

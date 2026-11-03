@@ -8,7 +8,7 @@
  * says what each ending means; this reports which ending it was. See
  * `mudengine-automation` › *Outgrown gear is stashed, sold or dropped*.
  */
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
@@ -190,7 +190,7 @@ export class Handover {
         if (this.phase === phase) phase.sentAt = this.now();
       }
     });
-    if (offered === 'queued' || offered === 'joined') return;
+    if (taken(offered)) return;
     outcome.unsent.push(item);
     this.act(ask, index + 1, outcome, state);
   }

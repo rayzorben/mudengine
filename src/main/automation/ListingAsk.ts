@@ -12,7 +12,7 @@ import { tuning } from '../app/tuning';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { playerKey } from '../../shared/players';
 import type { RemoteName } from '../../shared/remotes';
-import type { CommandQueue, Offered } from './CommandQueue';
+import { taken, type CommandQueue, type Offered } from './CommandQueue';
 
 const ANSWER: DecisionKind = 'remote-answer';
 
@@ -88,7 +88,7 @@ export class ListingAsk<A extends ListingAsker> {
       });
       if (offered !== 'unavailable') break;
     }
-    if (offered === 'queued' || offered === 'joined') return;
+    if (taken(offered)) return;
     this.reset();
     const from = asker.from;
     this.notice?.(
