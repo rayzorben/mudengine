@@ -4,6 +4,8 @@
  * Byte figures are from the todo's `peer-feed-bytes.mjs` over an 8.8 h
  * capture: a sheet is 0.11 KB/s on average and 1.5 KB in its busiest second.
  */
+import { PEER_MAX_MESSAGE_BYTES } from '../shared/peerWire';
+
 export interface GatewayLimits {
   /** Zero bits the registration's proof of work must find: about a million hashes at 20, as the art server. */
   powBits: number;
@@ -51,7 +53,7 @@ export const GATEWAY_LIMITS: GatewayLimits = {
   helloMs: 10_000,
   mostSockets: 5000,
   mostSocketsPerAddress: 16,
-  maxMessageBytes: 65_536,
+  maxMessageBytes: PEER_MAX_MESSAGE_BYTES,
   maxBufferedBytes: 1_048_576,
   deflateMinBytes: 512,
   bytesPerSecond: 4096,

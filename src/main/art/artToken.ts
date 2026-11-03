@@ -1,14 +1,9 @@
 /**
  * The token and secret the art server gave this install at registration
- * (todo 20261019-0931-01), kept in `<home>/.art-token` readable by this user
- * only, as the web host keeps its password (`host/web/access.ts`). Written
- * whole through a temporary file; a file that does not parse is no token, and
- * the next request registers again.
+ * (todo 20261019-0931-01), kept in `<home>/.art-token` (`app/tokenFile.ts`).
  */
-import fs from 'node:fs';
-
-import { errorMessage, isRecord } from '../../shared/values';
-import { writeWhole } from '../app/writeWhole';
+import { isRecord } from '../../shared/values';
+import { tokensAt, type TokenFile } from '../app/tokenFile';
 
 export interface ArtToken {
   token: string;
@@ -28,33 +23,8 @@ export function asArtToken(value: unknown): ArtToken | null {
   return { token, secret };
 }
 
-export interface ArtTokens {
-  read(): Promise<ArtToken | null>;
-  write(token: ArtToken): Promise<void>;
-  forget(): Promise<void>;
-}
+export type ArtTokens = TokenFile<ArtToken>;
 
 export function artTokensAt(file: string): ArtTokens {
-  return {
-    async read() {
-      let text: string;
-      try {
-        text = await fs.promises.readFile(file, 'utf8');
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-        throw new Error(`${file} could not be read: ${errorMessage(error)}`);
-      }
-      try {
-        return asArtToken(JSON.parse(text));
-      } catch {
-        return null;
-      }
-    },
-    async write(token) {
-      await writeWhole(file, JSON.stringify(token), 0o600);
-    },
-    async forget() {
-      await fs.promises.rm(file, { force: true });
-    }
-  };
+  return tokensAt(file, asArtToken);
 }

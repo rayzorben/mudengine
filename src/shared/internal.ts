@@ -684,8 +684,7 @@ const TUNING_DEFAULTS = {
   peers: {
     /**
      * A sheet not heard of for this long counts as none: three of the
-     * sharer's `freshEveryMs` missed is a link gone quiet, not a character
-     * standing still.
+     * sharer's `freshEveryMs` missed means the link went quiet.
      */
     staleMs: 90_000,
     /** How often a sharer whose sheet has not changed says it is still current, by an empty patch. */
@@ -701,7 +700,13 @@ const TUNING_DEFAULTS = {
     /** The most zero bits of work a registration is done for. */
     mostBits: 28,
     /** How often the gateway's socket is pinged; one that has not answered the last is dropped. */
-    pingEveryMs: 30_000
+    pingEveryMs: 30_000,
+    /** What may wait unsent to the gateway before the socket is closed: sixteen whole sheets. */
+    maxBufferedBytes: 1_048_576,
+    /** Frames shorter than this go uncompressed; a change to a sheet is about 140 B. */
+    deflateMinBytes: 512,
+    /** Other players' characters heard of at once; past it the one heard of longest ago goes. */
+    mostSharers: 256
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {

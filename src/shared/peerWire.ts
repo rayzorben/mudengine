@@ -23,6 +23,12 @@ export const PEER_PATHS = {
   stream: '/v1/stream'
 } as const;
 
+/**
+ * The largest frame either side sends, a whole sheet included. The gateway
+ * refuses a larger one, and an install dialling it reads up to it.
+ */
+export const PEER_MAX_MESSAGE_BYTES = 65_536;
+
 /** The build's HMAC over the registration challenge, as the art server's `X-Art-Build`. */
 export const PEER_BUILD_HEADER = 'x-peer-build';
 

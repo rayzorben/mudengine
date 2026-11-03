@@ -39,14 +39,13 @@ interface Held {
 /** What a character's player accepted: whether they take this name's share, and under which keys. */
 export type Accepts = (name: string) => { receive: boolean; keys: readonly string[] };
 
-/** More sharers than this is not players sharing with a few friends; the oldest heard goes. */
-const MOST_SHARERS = 256;
-
 export class PeerBook {
   private readonly held = new Map<string, Held>();
 
   constructor(
     private readonly staleMs: () => number,
+    /** Sharers held at once; past it the one heard of longest ago goes. */
+    private readonly mostSharers: () => number,
     private readonly now: () => number,
     /** A sender's frame that did not fit what it sent before. */
     private readonly fault: (message: string) => void
@@ -59,7 +58,8 @@ export class PeerBook {
       return;
     }
     const entry = this.held.get(id) ?? this.add(id, frame.from, frame.key);
-    entry.heardAt = this.now();
+    // Only a sheet or a change keeps it fresh: a share list says nothing of the character.
+    if (frame.k !== 'shared') entry.heardAt = this.now();
     switch (frame.k) {
       case 'shared':
         entry.to = new Set(frame.to.map(playerKey));
@@ -141,7 +141,7 @@ export class PeerBook {
   private add(id: string, from: PeerKey, key: string): Held {
     const entry: Held = { from, key, to: new Set(), raw: null, sheet: null, heardAt: this.now() };
     this.held.set(id, entry);
-    if (this.held.size > MOST_SHARERS) {
+    if (this.held.size > this.mostSharers()) {
       const oldest = [...this.held].reduce((a, b) => (b[1].heardAt < a[1].heardAt ? b : a));
       this.held.delete(oldest[0]);
     }

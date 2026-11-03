@@ -35,7 +35,8 @@ function sharing(enabled: boolean, grants: Record<string, PeerGrant>) {
     book: { sheetsFor: () => [], offersFor: () => [] },
     reports: { reportsFor: () => [] },
     publish: () => undefined,
-    fault: () => undefined
+    fault: () => undefined,
+    announce: () => undefined
   });
   const claimed = async (): Promise<Claimant[]> => {
     await new Promise<void>((wake) => waiting.push(wake));

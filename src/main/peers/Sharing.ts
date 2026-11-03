@@ -46,11 +46,21 @@ export interface SharingDeps {
   publish(id: SessionId, view: ShareView): void;
   /** A character's key could not be read or made. */
   fault(id: SessionId, message: string): void;
+  /** Claiming failed for a reason that is nobody's character. */
+  announce(message: string): void;
 }
 
 const shared = (
   entry: [string, PeerGrant]
 ): entry is [string, PeerGrant & { share: ShareEntry['share'] }] => entry[1].share !== 'off';
+
+/** What a character's player accepted, by the other player's name. */
+function acceptsOf(grants: Readonly<Record<string, PeerGrant>>): Accepts {
+  return (name) => {
+    const grant = grants[playerKey(name)];
+    return { receive: grant?.receive ?? false, keys: grant?.keys ?? [] };
+  };
+}
 
 export class Sharing {
   /** Each session's name, once the realm has confirmed it. */
@@ -88,18 +98,24 @@ export class Sharing {
       this.again = true;
       return;
     }
-    this.refreshing = this.claimAll().finally(() => {
-      this.refreshing = null;
-      if (!this.again) return;
-      this.again = false;
-      this.refresh();
-    });
+    this.refreshing = this.claimAll()
+      .catch((error: unknown) => {
+        this.deps.announce(`the characters could not be claimed: ${errorMessage(error)}`);
+      })
+      .finally(() => {
+        this.refreshing = null;
+        if (!this.again) return;
+        this.again = false;
+        this.refresh();
+      });
   }
 
   /** The sheets `id`'s player accepted, fresh, from its own realm. */
   sheetsFor(id: SessionId): SharedSheet[] {
     const claim = this.claimed.get(id);
-    return claim === undefined ? [] : this.deps.book.sheetsFor(claim.peer, this.accepts(id));
+    const session = this.deps.sessions().find((each) => each.id === id);
+    if (claim === undefined || session === undefined) return [];
+    return this.deps.book.sheetsFor(claim.peer, acceptsOf(session.grants));
   }
 
   /** What `id`'s window was last shown. */
@@ -120,21 +136,13 @@ export class Sharing {
   private viewOf(session: SharingSession): ShareView {
     const claim = this.claimed.get(session.id);
     if (claim === undefined) return NO_SHARES;
-    const accepts = this.accepts(session.id);
+    const accepts = acceptsOf(session.grants);
     return {
       link: this.deps.link.link,
       ownKey: claim.pair.publicKey,
       unpinned: this.deps.reports.reportsFor(claim.peer, (name) => accepts(name).keys),
       offered: this.deps.book.offersFor(claim.peer, accepts),
       sheets: this.deps.book.sheetsFor(claim.peer, accepts)
-    };
-  }
-
-  private accepts(id: SessionId): Accepts {
-    const grants = this.deps.sessions().find((session) => session.id === id)?.grants ?? {};
-    return (name) => {
-      const grant = grants[playerKey(name)];
-      return { receive: grant?.receive ?? false, keys: grant?.keys ?? [] };
     };
   }
 

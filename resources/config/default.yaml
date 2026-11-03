@@ -3036,13 +3036,14 @@ art:
   server: https://art.150-136-117-176.sslip.io
 
 # Sharing a character with another player (the Access tab on a player's card):
-# with a share on, this client sends the gateway what that character's sheet
-# says, its health, mana, conditions, spells, level, experience and room, and
-# the gateway passes it to the players it is shared with while both are logged
-# in to the same realm. A share never reaches another realm. Off, nothing is
-# sent and nothing is received, whatever the shares say. server is the
-# gateway's address, https only. For every character, so a character's file
-# has no say.
+# with a share on, this client sends the sharing server what that character's
+# sheet says, its health, mana, conditions, spells, level, experience and
+# room, and the server passes it to the players it is shared with while both
+# are logged in to the same realm. A share never reaches another realm. To see
+# what another player shares with you, this client tells the server the
+# character's name and key, and nothing else. Off, nothing is sent and nothing
+# is received, whatever the rows say. server is the sharing server's address,
+# https only. For every character, so a character's file has no say.
 peers:
   enabled: false
   server: https://peers.150-136-117-176.sslip.io

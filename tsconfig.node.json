@@ -30,5 +30,7 @@
     "src/shared/**/*.ts",
     "electron.vite.config.ts"
   ],
+  // The gateway is listed so a main test can drive it in process (peers/PeerLink.test.ts);
+  // a composite project refuses a file it does not list. Its own tests are typecheck:gateway's.
   "exclude": ["src/gateway/__tests__/**"]
 }

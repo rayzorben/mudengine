@@ -24,6 +24,7 @@ import {
   type PeerDown,
   type PeerToken,
   type PeerUp,
+  type RefusedWhy,
   type ShareEntry
 } from '../../shared/peerWire';
 import { errorMessage, sameJson } from '../../shared/values';
@@ -92,6 +93,17 @@ interface Held {
 
 const EMPTY_CHANGE = { set: {}, deep: {}, drop: [] };
 
+/** What each refusal means, as the player reads it. */
+const REFUSED: Record<RefusedWhy, string> = {
+  'unknown-token': 'the sharing server no longer knows this client, so it registers again',
+  signature: "the sharing server did not accept this client's hello",
+  replaced: 'this client opened a second link, which replaced the first',
+  'over-limit': 'this client sent more than the sharing server takes',
+  malformed: 'the sharing server could not read what this client sent',
+  'not-claimed': 'the sharing server was sent a character it had not been told of',
+  'no-sheet': 'the sharing server was sent a change before the sheet'
+};
+
 export class PeerLink {
   private readonly held = new Map<string, Held>();
   private socket: PeerSocket | null = null;
@@ -109,6 +121,7 @@ export class PeerLink {
 
   /** The characters to claim now. None closes the socket; some opens it. */
   want(claimants: readonly Claimant[]): void {
+    if (this.disposed) return;
     const next = new Map(claimants.map((claimant) => [peerKeyText(claimant.peer), claimant]));
     for (const [id, held] of this.held) {
       const wanted = next.get(id);
@@ -155,11 +168,14 @@ export class PeerLink {
     this.disposed = true;
     this.held.clear();
     this.stopRetry();
+    if (this.beat !== null) clearInterval(this.beat);
+    this.beat = null;
     this.socket?.close(1000, 'client closing');
   }
 
   /** Open while somebody is claimed or wanted; closed otherwise. */
   private settle(): void {
+    if (this.disposed) return;
     if (this.held.size === 0) {
       this.stopRetry();
       this.retryMs = null;
@@ -240,8 +256,9 @@ export class PeerLink {
       held.listening = false;
       held.sent = null;
     }
+    if (this.disposed) return;
     this.deps.lost();
-    if (!this.disposed && this.held.size > 0) this.again();
+    if (this.held.size > 0) this.again();
   }
 
   /** Dial again after the doubling wait. */
@@ -295,8 +312,8 @@ export class PeerLink {
         if (frame.why === 'not-claimed') return;
         this.tell(
           REFUSALS_THAT_CLOSE.has(frame.why)
-            ? `the sharing server closed the link: ${frame.why}`
-            : `the sharing server refused a frame: ${frame.why}`
+            ? `${REFUSED[frame.why]}, and the link closed`
+            : REFUSED[frame.why]
         );
         return;
       case 'challenge': {

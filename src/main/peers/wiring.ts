@@ -12,10 +12,11 @@ import { connectWebSocket } from '../../node/sockets';
 import type { TuningConfig } from '../../shared/internal';
 import type { SessionId } from '../../shared/ipc';
 import type { ShareView, SharedSheet } from '../../shared/peers';
+import { asPeerToken, PEER_MAX_MESSAGE_BYTES } from '../../shared/peerWire';
 import type { PeersConfig } from '../../shared/peersConfig';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
-import { artTokensAt } from '../art/artToken';
+import { tokensAt } from '../app/tokenFile';
 import { solveOnWorker } from '../art/proofOfWork';
 import { PeerBook } from './PeerBook';
 import { peerKeysAt, type PeerKeyStore } from './peerKeys';
@@ -27,9 +28,6 @@ import type { CharacterState } from '../../shared/character';
 
 /** Where the gateway's token is kept, beside the art server's. */
 export const PEER_TOKEN_FILE = '.peer-token';
-
-/** The largest frame from the gateway: a whole sheet, as the gateway caps one. */
-const MAX_MESSAGE_BYTES = 65_536;
 
 export interface PeersDeps {
   home: Pick<Home, 'state'>;
@@ -69,6 +67,7 @@ export function wirePeers(deps: PeersDeps): Peers {
   };
   const book = new PeerBook(
     () => tuning().peers.staleMs,
+    () => tuning().peers.mostSharers,
     Date.now,
     (message) => deps.announce(t('peers.trouble', { message }))
   );
@@ -81,7 +80,7 @@ export function wirePeers(deps: PeersDeps): Peers {
       const { retryLeastMs, retryMostMs, pingEveryMs, freshEveryMs } = tuning().peers;
       return { retryLeastMs, retryMostMs, pingEveryMs, freshEveryMs };
     },
-    tokens: artTokensAt(deps.home.state(PEER_TOKEN_FILE)),
+    tokens: tokensAt(deps.home.state(PEER_TOKEN_FILE), asPeerToken),
     register: (server) => {
       const secret = deps.buildSecret;
       if (secret === null) return Promise.reject(new Error(t('peers.noBuildSecret')));
@@ -94,13 +93,15 @@ export function wirePeers(deps: PeersDeps): Peers {
         fetch
       });
     },
-    dial: (url) =>
-      connectWebSocket(url, {
-        timeoutMs: tuning().peers.requestMs,
-        maxMessageBytes: MAX_MESSAGE_BYTES,
-        maxBufferedBytes: 16 * MAX_MESSAGE_BYTES,
-        deflateMinBytes: 512
-      }),
+    dial: (url) => {
+      const { requestMs, maxBufferedBytes, deflateMinBytes } = tuning().peers;
+      return connectWebSocket(url, {
+        timeoutMs: requestMs,
+        maxMessageBytes: PEER_MAX_MESSAGE_BYTES,
+        maxBufferedBytes,
+        deflateMinBytes
+      });
+    },
     sign: signEd25519,
     random: (bytes) => randomBytes(bytes).toString('hex'),
     now: Date.now,
@@ -128,9 +129,13 @@ export function wirePeers(deps: PeersDeps): Peers {
     book,
     reports,
     publish: deps.publish,
-    fault: (id, message) => deps.say(id, t('peers.keyNot', { message }))
+    fault: (id, message) => deps.say(id, t('peers.keyNot', { message })),
+    announce: (message) => deps.announce(t('peers.trouble', { message }))
   });
   changed = () => sharing.publish();
+  // A sheet ages out with no frame to say so: the views are read again on the sharer's beat.
+  const aging = setInterval(changed, tuning().peers.freshEveryMs);
+  aging.unref();
   return {
     observe: (id, state) => sharing.observe(id, state),
     refresh: () => sharing.refresh(),
@@ -140,6 +145,9 @@ export function wirePeers(deps: PeersDeps): Peers {
     },
     sheetsFor: (id) => sharing.sheetsFor(id),
     view: (id) => sharing.view(id),
-    dispose: () => link.dispose()
+    dispose: () => {
+      clearInterval(aging);
+      link.dispose();
+    }
   };
 }

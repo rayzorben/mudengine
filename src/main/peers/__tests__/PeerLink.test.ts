@@ -56,6 +56,7 @@ function install(): {
   let token: PeerToken | null = null;
   const book = new PeerBook(
     () => 60_000,
+    () => 256,
     Date.now,
     (message) => said.push(message)
   );

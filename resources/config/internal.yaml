@@ -612,6 +612,15 @@ tuning:
     # How often the gateway's socket is pinged, in milliseconds.
     pingEveryMs: 30000
 
+    # What may wait unsent to the gateway before the socket is closed, and
+    # the shortest frame that is compressed, in bytes.
+    maxBufferedBytes: 1048576
+    deflateMinBytes: 512
+
+    # Other players' characters heard of at once; past it the one heard of
+    # longest ago goes.
+    mostSharers: 256
+
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
     # How long a heal proposal stays worth sending.
