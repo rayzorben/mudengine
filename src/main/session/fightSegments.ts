@@ -7,7 +7,6 @@
  * whole record. `mudengine-world` › *Every fight is written down* has why.
  */
 import fs from 'node:fs';
-import path from 'node:path';
 import zlib from 'node:zlib';
 
 import {
@@ -24,6 +23,7 @@ import {
 } from '../../shared/fights';
 import { isRecord } from '../../shared/values';
 import { nextTurn } from '../app/nextTurn';
+import { writeWhole, writtenOver } from '../app/writeWhole';
 import { tuning } from '../app/tuning';
 import { appendJsonLines, segmentPath, segmentsIn as segmentsInDir } from './segmentFiles';
 
@@ -46,23 +46,14 @@ export const segmentFile = (dir: string, segment: number): string =>
 export const foldFile = (dir: string, segment: number): string =>
   segmentPath(dir, segment, FOLD_EXT);
 
-let pendingWrites = 0;
-
 /**
- * A fold being written, named with a leading dot so the character export and
- * a segment listing pass over it, and left behind only by a crash mid-write.
- * Each write has its own, so two folds of one segment at once (a log closing
- * it while another reads it) never rename each other's.
+ * Whether a name in a record's directory is a fold write a crash left behind:
+ * `writeWhole`'s temporary, which the character export passes over too.
  */
-const pendingFoldFile = (dir: string, segment: number): string =>
-  path.join(
-    dir,
-    `.${path.basename(foldFile(dir, segment))}.${process.pid}-${(pendingWrites += 1)}.tmp`
-  );
-
-/** Whether a name in a record's directory is a fold write a crash left behind. */
-export const isPendingFold = (entry: string): boolean =>
-  /^\.\d{4,}\.folds\.json\..*\.tmp$/.test(entry);
+export const isPendingFold = (entry: string): boolean => {
+  const over = writtenOver(entry);
+  return over !== null && /^\d{4,}\.folds\.json$/.test(over);
+};
 
 /** The segment numbers in `dir`, in order; none for a directory that is not there. */
 export const segmentsIn = (dir: string): number[] => segmentsInDir(dir, FIGHTS_EXT);
@@ -163,9 +154,7 @@ export async function saveFold(
     folds: [...folded.folds],
     outputs: [...folded.outputs]
   };
-  const pending = pendingFoldFile(dir, segment);
-  await fs.promises.writeFile(pending, JSON.stringify(saved));
-  await fs.promises.rename(pending, foldFile(dir, segment));
+  await writeWhole(foldFile(dir, segment), JSON.stringify(saved));
 }
 
 /**

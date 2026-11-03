@@ -32,6 +32,7 @@ import { readRoundTally, RoundsBook } from './RoundsBook';
 import { runRepairs, type RepairDocument } from './fileRepairs';
 import { LORE_REPAIRS } from './loreRepairs';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
 
@@ -906,11 +907,9 @@ export class RealmLore {
     const castRounds = writeTables(this.rounds.section('casts'));
     const swingRounds = writeTables(this.rounds.section('swings'));
 
-    const temporary = `${this.options.file}.tmp`;
     try {
-      fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
-      fs.writeFileSync(
-        temporary,
+      writeWholeSync(
+        this.options.file,
         `${JSON.stringify(
           {
             v: 1,
@@ -931,7 +930,6 @@ export class RealmLore {
           2
         )}\n`
       );
-      fs.renameSync(temporary, this.options.file);
     } catch (error) {
       this.dirty = true;
       this.options.notify?.(
@@ -940,12 +938,6 @@ export class RealmLore {
           message: errorMessage(error)
         })
       );
-      try {
-        fs.rmSync(temporary, { force: true });
-      } catch {
-        // Nothing useful to do about a temp file that will not go away, and
-        // failing here would replace a warning with a crash.
-      }
     }
   }
 

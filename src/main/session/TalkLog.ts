@@ -35,6 +35,7 @@ import path from 'node:path';
 import { DAY_MS, errorMessage } from '../../shared/values';
 import type { Block } from '../../shared/blocks';
 import { tuning } from '../app/tuning';
+import { writeWholeSync } from '../app/writeWhole';
 
 /** What a session hands its conversation to, and what an attach reads back. */
 export interface TalkSink {
@@ -177,9 +178,7 @@ export class TalkLog implements TalkSink {
 
     if (dropped) {
       try {
-        const temp = `${this.file}.tmp`;
-        fs.writeFileSync(temp, kept.map((block) => `${JSON.stringify(block)}\n`).join(''), 'utf8');
-        fs.renameSync(temp, this.file);
+        writeWholeSync(this.file, kept.map((block) => `${JSON.stringify(block)}\n`).join(''));
       } catch (error) {
         // The prune failing costs disk space, never the session — and never
         // the backlog, which is already in hand.

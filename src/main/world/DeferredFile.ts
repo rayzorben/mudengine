@@ -1,11 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { tuning } from '../app/tuning';
+import { writeWholeSync } from '../app/writeWhole';
 
 /**
- * A record file written a while after it changes, atomically (temp file and
- * rename), and at once by `close()`. A failed write stays owed, so the next
+ * A record file written a while after it changes, whole (`writeWholeSync`),
+ * and at once by `close()`. A failed write stays owed, so the next
  * change tries again rather than the failure becoming permanent.
  */
 export class DeferredFile {
@@ -44,15 +42,11 @@ export class DeferredFile {
   }
 
   private write(): void {
-    const temporary = `${this.file}.tmp`;
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(temporary, `${JSON.stringify(this.payload(), null, 2)}\n`, 'utf8');
-      fs.renameSync(temporary, this.file);
+      writeWholeSync(this.file, `${JSON.stringify(this.payload(), null, 2)}\n`);
       this.dirty = false;
     } catch (error) {
       this.onFailure(error);
-      fs.rmSync(temporary, { force: true });
     }
   }
 }

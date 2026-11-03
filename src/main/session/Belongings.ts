@@ -54,6 +54,7 @@ import { sameItem } from '../../shared/items';
 import { errorMessage, faultWithin } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { writeWholeSync } from '../app/writeWhole';
 
 interface BelongingsFile {
   version: 1;
@@ -505,11 +506,8 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.lives !== null ? { lives: this.lives } : {}),
       ...(sameUnderway(this.underway, NOTHING_UNDERWAY) ? {} : { underway: this.underway })
     };
-    const temporary = `${this.options.file}.tmp`;
     try {
-      fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
-      fs.writeFileSync(temporary, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-      fs.renameSync(temporary, this.options.file);
+      writeWholeSync(this.options.file, `${JSON.stringify(payload, null, 2)}\n`);
       this.dirty = false;
     } catch (error) {
       this.options.notify?.(
@@ -520,7 +518,6 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       );
       // Left dirty, so the next balance tries again rather than the failure
       // quietly becoming permanent.
-      fs.rmSync(temporary, { force: true });
     }
   }
 }

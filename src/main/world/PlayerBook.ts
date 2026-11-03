@@ -12,6 +12,7 @@ import {
 } from '../../shared/players';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 import { realmKey } from './RealmLore';
 import { tuning } from '../app/tuning';
 
@@ -347,14 +348,11 @@ export class PlayerBook {
       realms[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
     }
 
-    const temporary = `${this.options.file}.tmp`;
     try {
-      fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
-      fs.writeFileSync(
-        temporary,
+      writeWholeSync(
+        this.options.file,
         `${JSON.stringify({ v: 1, realms } satisfies PlayerFile, null, 2)}\n`
       );
-      fs.renameSync(temporary, this.options.file);
     } catch (error) {
       this.dirty = true;
       this.options.notify?.(
@@ -363,12 +361,6 @@ export class PlayerBook {
           message: errorMessage(error)
         })
       );
-      try {
-        fs.rmSync(temporary, { force: true });
-      } catch {
-        // Nothing useful to do about a temp file that will not go away, and
-        // failing here would replace a warning with a crash.
-      }
     }
   }
 

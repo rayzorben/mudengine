@@ -44,6 +44,7 @@ import { isRecord } from '../../shared/values';
 import { credentialsNamed } from '../../shared/login';
 import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 import { ACTIONABLE_REMOTES } from '../../shared/remotes';
 import { DEFAULT_CONFIG, normalizeBands, type AppConfig } from '../../shared/config';
 import { DEFAULT_ART } from '../../shared/artConfig';
@@ -3077,11 +3078,9 @@ function rowKey(entry: unknown): string {
     : JSON.stringify(entry);
 }
 
-/** Temp file and rename, so a crash mid-write cannot leave a half-written record. */
+/** Written whole, so a crash mid-write cannot leave a half-written record. */
 function writeJsonAtomically(file: string, value: unknown): void {
-  const temporary = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-  fs.renameSync(temporary, file);
+  writeWholeSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 /**
@@ -9031,9 +9030,7 @@ function edit(file: string, change: (document: Document) => boolean): void {
 
   try {
     fs.copyFileSync(file, `${file}.bak`);
-    const temporary = `${file}.tmp-${process.pid}`;
-    fs.writeFileSync(temporary, String(document), 'utf8');
-    fs.renameSync(temporary, file);
+    writeWholeSync(file, String(document));
   } catch {
     // Reported by the store that reads it next; a failed move is not a reason
     // to refuse to start.

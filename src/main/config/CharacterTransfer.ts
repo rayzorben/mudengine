@@ -233,7 +233,7 @@ function isLoopFile(name: string): boolean {
 
 /**
  * A file directly inside a record that is a directory. A leading dot is a
- * file being written (`fightSegments.isPendingFold`), never part of the record.
+ * file being written whole (`writeWhole`), never part of the record.
  */
 function isRecordFile(name: string): boolean {
   return name.length > 0 && !name.startsWith('.') && !/[/\\]/.test(name);

@@ -4,6 +4,7 @@ import zlib from 'node:zlib';
 import crypto from 'node:crypto';
 
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 import { WorldGraph } from './WorldGraph';
 import { buildRealm, REALM_FORMAT } from './buildRealm';
 import { archiveWorldOf, databasePath, shippedArchives, shippedWorldPath } from './bundledArchive';
@@ -350,14 +351,11 @@ export class RealmLibrary {
       );
       source.close();
 
-      fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
       const body = [JSON.stringify(built.header), ...built.lines].join('\n') + '\n';
-      // Written to a temporary file and renamed: a crash or a second window
-      // converting the same realm must not leave a half-written cache that
-      // loads as a realm with a few thousand rooms in it.
-      const temporary = `${cacheFile}.tmp-${process.pid}`;
-      fs.writeFileSync(temporary, zlib.gzipSync(body, { level: 9 }));
-      fs.renameSync(temporary, cacheFile);
+      // Written whole: a crash or a second window converting the same realm
+      // must not leave a half-written cache that loads as a realm with a few
+      // thousand rooms in it.
+      writeWholeSync(cacheFile, zlib.gzipSync(body, { level: 9 }));
 
       this.options.notify?.(
         t('notices.world.converted', {

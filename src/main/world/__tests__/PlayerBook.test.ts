@@ -208,7 +208,7 @@ describe('what a realm knows about its players', () => {
       })
     );
     expect(fs.statSync(file).isDirectory()).toBe(true);
-    expect(fs.existsSync(`${file}.tmp`)).toBe(false);
+    expect(fs.readdirSync(path.dirname(file))).toEqual([path.basename(file)]);
     expect(realm.recall()).toHaveLength(2);
   });
 

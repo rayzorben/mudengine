@@ -1,11 +1,11 @@
 import fs from 'node:fs';
-import path from 'node:path';
 
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import { asShippedWorld, worldOfRealm, type ShippedWorld } from '../../shared/worlds';
 import type { KeptSpeed } from '../../shared/hunting';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 
 /**
  * What the server at each address dialled has shown itself to be: the bundled
@@ -158,21 +158,18 @@ export class WorldBook {
     }
   }
 
-  /** Temp file and rename, like every other file this client owns. */
+  /** Written whole, like every other file this client owns. */
   private save(): void {
     if (this.suspended) return;
     const byAddress = <T>(map: Map<string, T>): Record<string, T> =>
       Object.fromEntries([...map].sort(([a], [b]) => (a < b ? -1 : 1)));
     const realms = byAddress(this.known);
     const speeds = byAddress(this.speeds);
-    const temporary = `${this.options.file}.tmp-${process.pid}`;
     try {
-      fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
-      fs.writeFileSync(
-        temporary,
+      writeWholeSync(
+        this.options.file,
         `${JSON.stringify({ v: 1, realms, ...(this.speeds.size > 0 ? { speeds } : {}) } satisfies WorldFile, null, 2)}\n`
       );
-      fs.renameSync(temporary, this.options.file);
     } catch (error) {
       this.options.notify?.(
         t('notices.world.worlds.writeError', {
@@ -180,11 +177,6 @@ export class WorldBook {
           message: errorMessage(error)
         })
       );
-      try {
-        fs.rmSync(temporary, { force: true });
-      } catch {
-        // A temp file that will not go is a warning, not a crash.
-      }
     }
   }
 }

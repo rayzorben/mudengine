@@ -7,7 +7,6 @@
  * landing late, after the record was written whole, never outranks a newer one.
  */
 import fs from 'node:fs';
-import path from 'node:path';
 
 import { lineIdAt } from '../../shared/stamps';
 import {
@@ -18,6 +17,7 @@ import {
   type TerminalMark
 } from '../../shared/types';
 import { isRecord } from '../../shared/values';
+import { writeWhole, writeWholeSync } from '../app/writeWhole';
 
 /** The file beside a character's backscroll segments. */
 export const MARKS_FILE = 'marks.jsonl';
@@ -60,8 +60,6 @@ export class MarkRecord {
   private closed = false;
   /** Rows in the file, so it is written whole once it holds far more than the book. */
   private rows = 0;
-  /** Each whole write's own temporary file, so a close never shares one with a rewrite in the air. */
-  private wholes = 0;
 
   /**
    * @param snapshot The book as it stands, for a whole write.
@@ -118,14 +116,10 @@ export class MarkRecord {
   writeWhole(): void {
     this.pending = [];
     const rows = this.snapshot().map((row) => `${JSON.stringify(kept(row))}\n`);
-    const temporary = this.temporary();
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(temporary, rows.join(''), 'utf8');
-      fs.renameSync(temporary, this.file);
+      writeWholeSync(this.file, rows.join(''));
       this.rows = rows.length;
     } catch (error) {
-      fs.rmSync(temporary, { force: true });
       this.events.failed(error);
     }
   }
@@ -170,19 +164,8 @@ export class MarkRecord {
   }
 
   /** The record written whole off the thread; a close meanwhile wrote a newer one, which stands. */
-  private async replace(text: string): Promise<void> {
-    const temporary = this.temporary();
-    await fs.promises.writeFile(temporary, text, 'utf8');
-    if (this.closed) {
-      await fs.promises.rm(temporary, { force: true });
-      return;
-    }
-    await fs.promises.rename(temporary, this.file);
-  }
-
-  private temporary(): string {
-    this.wholes += 1;
-    return `${this.file}.tmp-${process.pid}-${this.wholes}`;
+  private replace(text: string): Promise<void> {
+    return writeWhole(this.file, text, { stillWanted: () => !this.closed });
   }
 }
 

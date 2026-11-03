@@ -148,7 +148,7 @@ describe('the file', () => {
     store.search(ROOM, []);
     close(store);
 
-    expect(fs.existsSync(`${file}.tmp`)).toBe(false);
+    expect(fs.readdirSync(path.dirname(file))).toEqual([path.basename(file)]);
     expect(book().all).toMatchObject([
       { name: '4 copper farthings', copper: 4, seen: 1, hits: 1, searched: 2 }
     ]);

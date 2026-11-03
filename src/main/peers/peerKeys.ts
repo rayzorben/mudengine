@@ -79,7 +79,7 @@ export function peerKeysAt(file: string, make: () => Ed25519Pair): PeerKeyStore 
       const pair = make();
       pairs.set(realm, pair);
       const text = JSON.stringify(Object.fromEntries(pairs));
-      const written = writing.then(() => writeWhole(file, text, 0o600));
+      const written = writing.then(() => writeWhole(file, text, { mode: 0o600 }));
       writing = written.catch(() => undefined);
       try {
         await written;

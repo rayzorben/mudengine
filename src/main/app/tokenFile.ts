@@ -34,7 +34,7 @@ export function tokensAt<T>(file: string, reader: (value: unknown) => T | null):
       }
     },
     async write(token) {
-      await writeWhole(file, JSON.stringify(token), 0o600);
+      await writeWhole(file, JSON.stringify(token), { mode: 0o600 });
     },
     async forget() {
       await fs.promises.rm(file, { force: true });

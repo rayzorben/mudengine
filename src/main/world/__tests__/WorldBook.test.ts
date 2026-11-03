@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { t } from '../../app/i18n';
 import { WorldBook } from '../WorldBook';
 
 let dir = '';
@@ -89,6 +90,20 @@ describe('what a realm has said it runs', () => {
     expect(held.at('a:1')).toBe('majormud');
     expect(fs.readFileSync(file, 'utf8')).toBe('{not json');
     expect(notices.join(' ')).toContain('worlds.json');
+  });
+
+  it('says a write that fails, keeps the answer for the run, and leaves no half file behind', () => {
+    const held = book();
+    held.learn('orohost:2427', 'greatermud', 1);
+    // A directory where the file was: the rename over it fails.
+    fs.rmSync(file);
+    fs.mkdirSync(file);
+    expect(held.learn('bbs.bearfather.net:23', 'majormud', 2)).toBe('majormud');
+    expect(held.at('bbs.bearfather.net:23')).toBe('majormud');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain(t('notices.world.worlds.writeError', { file, message: '' }));
+    expect(fs.statSync(file).isDirectory()).toBe(true);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['worlds.json']);
   });
 });
 

@@ -1,10 +1,8 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { matchVisits, rememberVisit, type VisitedDestination } from '../../shared/destinations';
 import { newestFirst } from '../../shared/recent';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 import { tuning } from '../app/tuning';
 import { realmKey } from './RealmLore';
 import { readJsonRecord } from './readJsonRecord';
@@ -160,14 +158,11 @@ export class DestinationBook {
       realms[realm] = rows;
     }
 
-    const temporary = `${this.options.file}.tmp`;
     try {
-      fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
-      fs.writeFileSync(
-        temporary,
+      writeWholeSync(
+        this.options.file,
         `${JSON.stringify({ v: 1, realms } satisfies DestinationFile, null, 2)}\n`
       );
-      fs.renameSync(temporary, this.options.file);
     } catch (error) {
       this.dirty = true;
       this.options.notify?.(
@@ -176,12 +171,6 @@ export class DestinationBook {
           message: errorMessage(error)
         })
       );
-      try {
-        fs.rmSync(temporary, { force: true });
-      } catch {
-        // Nothing useful to do about a temp file that will not go away, and
-        // failing here would replace a warning with a crash.
-      }
     }
   }
 

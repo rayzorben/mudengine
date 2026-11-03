@@ -4,6 +4,7 @@ import path from 'node:path';
 import { discoveryKey, isDiscoveryReason, type Discovery } from '../../shared/memory';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
+import { writeWholeSync } from '../app/writeWhole';
 import { tuning } from '../app/tuning';
 import { runRepairs, type RepairDocument } from './fileRepairs';
 import { MEMORY_REPAIRS } from './memoryRepairs';
@@ -228,11 +229,8 @@ export class WorldMemory {
       discoveries: this.discoveries,
       repaired: [...this.repaired]
     };
-    const temporary = `${this.file}.tmp`;
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(temporary, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-      fs.renameSync(temporary, this.file);
+      writeWholeSync(this.file, `${JSON.stringify(payload, null, 2)}\n`);
       this.dirty = false;
     } catch (error) {
       this.onError?.(
@@ -243,7 +241,6 @@ export class WorldMemory {
       );
       // Deliberately left dirty, so the next discovery tries again rather than
       // the failure quietly becoming permanent.
-      fs.rmSync(temporary, { force: true });
     }
   }
 }
