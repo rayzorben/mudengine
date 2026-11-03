@@ -31,6 +31,7 @@ import { t } from '../app/i18n';
 import { ownTheProfile } from '../app/instance';
 import type { QuitAnswer } from '../app/quit';
 import type { Caller, ClientHooks, Host, Layout, Transport } from './Host';
+import { staysOnClient } from './navigation';
 import { RepeatedCharacters } from './repeats';
 import { serialise } from './serialise';
 import { EXTENSION_SCHEME } from '../../shared/extensions';
@@ -240,10 +241,19 @@ export function createElectronHost(layout: Layout): Host {
     });
 
     const devServer = process.env['ELECTRON_RENDERER_URL'];
+    const page = path.join(layout.rendererDir, 'index.html');
+    const loaded = devServer || pathToFileURL(page).href;
+    // A link dragged onto the window or a file dropped on it navigates it, and
+    // the page it lands on would be handed the preload's bridge.
+    window.webContents.on('will-navigate', (event, url) => {
+      if (staysOnClient(loaded, url)) return;
+      event.preventDefault();
+      console.warn(`window ${window.id}: refused to navigate away from the client to ${url}`);
+    });
     if (devServer) {
       void window.loadURL(devServer);
     } else {
-      void window.loadFile(path.join(layout.rendererDir, 'index.html'));
+      void window.loadFile(page);
     }
     client.workspace()?.save();
     return window;
