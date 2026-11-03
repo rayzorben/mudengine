@@ -868,6 +868,42 @@ describe('batch blocks', () => {
     });
   });
 
+  it('reads a starred stat and the older Wisdom row', () => {
+    // Verbatim, captures/023 (MajorMUD): a star marks a stat raised by an item
+    // or a spell, and this server still calls willpower `Wisdom`.
+    const classifier = new Classifier();
+    const sheet = [
+      'Name: Merry Songster                   Lives/CP:      8/0',
+      'Race: Elf         Exp: 91216672        Perception:     79',
+      'Class: Bard       Level: 35            Stealth:       138',
+      'Hits:   193/320   Armour Class:  51/2  Thievery:      147',
+      'Mana:   136/146   Spellcasting: 144    Traps:         155',
+      '                                       Picklocks:     124',
+      'Strength: *90     Agility:*110         Tracking:        0',
+      'Intellect:*75     Health:  95          Martial Arts:   28',
+      'Wisdom:   *60     Charm:   100         MagicRes:      100',
+      '[HP=193/MA=136]:'
+    ];
+
+    let batch;
+    for (const text of sheet) {
+      const result = classifier.classify(line(text));
+      if (result.batch) batch = result.batch;
+    }
+
+    expect(batch?.groups).toMatchObject({
+      strength: '90',
+      agility: '110',
+      tracking: '0',
+      intellect: '75',
+      health: '95',
+      martialArts: '28',
+      willpower: '60',
+      charm: '100',
+      magicRes: '100'
+    });
+  });
+
   it('reads a two-word race, and the two fields that used to go with it', () => {
     /*
      * `Gaunt One` is one of the thirteen races the shipped realm data names,

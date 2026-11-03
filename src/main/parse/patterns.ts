@@ -3261,10 +3261,16 @@ export const BATCH_RULES: BatchRule[] = [
        */
       /^(?:(?<resourceWord>Mana|Kai):\s+(?:\*\s*)?(?<mana>\d+)\/(?<manaMax>\d+))?\s*(?:Spellcasting:\s+(?<spellcasting>\d+)\s+)?Traps:\s+(?<traps>\d+)/,
       /^\s*Picklocks:\s+(?<picklocks>\d+)/,
-      /^Strength:\s+(?<strength>\d+)\s+Agility:\s+(?<agility>\d+)\s+Tracking:\s+(?<tracking>\d+)/,
-      // Captured from the live server; the ported qualifiers did not have these.
-      /^Intellect:\s+(?<intellect>\d+)\s+Health:\s+(?<health>\d+)\s+Martial Arts:\s+(?<martialArts>\d+)/,
-      /^Willpower:\s+(?<willpower>\d+)\s+Charm:\s+(?<charm>\d+)\s+MagicRes:\s+(?<magicRes>\d+)/
+      /*
+       * The six base stats may carry a star, MajorMUD's mark for one raised by
+       * an item or a spell, and may lose the space before it (`Agility:*110`,
+       * captures/023, 002, 191); GreaterMUD shows the same bonus in red
+       * instead (`StatCommand.cs:43`). Older MajorMUD calls willpower
+       * `Wisdom` (captures/004, 023 and seven more).
+       */
+      /^Strength:\s*\*?\s*(?<strength>\d+)\s+Agility:\s*\*?\s*(?<agility>\d+)\s+Tracking:\s+(?<tracking>\d+)/,
+      /^Intellect:\s*\*?\s*(?<intellect>\d+)\s+Health:\s*\*?\s*(?<health>\d+)\s+Martial Arts:\s+(?<martialArts>\d+)/,
+      /^(?:Willpower|Wisdom):\s*\*?\s*(?<willpower>\d+)\s+Charm:\s*\*?\s*(?<charm>\d+)\s+MagicRes:\s+(?<magicRes>\d+)/
     ]
   }
 ];
