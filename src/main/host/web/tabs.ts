@@ -29,7 +29,7 @@ import { TabLink } from './link';
 import { TabOutbox } from './outbox';
 import { PushPatcher } from './patches';
 import { TabTraffic } from './traffic';
-import type { WebSocketConnection } from './sockets';
+import type { WebSocketConnection } from '../../../node/sockets';
 
 /** What of a socket the tabs use. */
 export type TabSocket = Pick<

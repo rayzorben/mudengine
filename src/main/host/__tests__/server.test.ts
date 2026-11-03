@@ -9,7 +9,7 @@ import { setTuning } from '../../app/tuning';
 import { AccessTokens, COOKIE } from '../web/access';
 import { Downloads } from '../web/downloads';
 import { createWebServer, loginPage, withConnectSrc, type WebServer } from '../web/server';
-import type { WebSocketConnection } from '../web/sockets';
+import type { WebSocketConnection } from '../../../node/sockets';
 
 /**
  * The gate, measured rather than assumed — the lesson the noVNC image's

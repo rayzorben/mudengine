@@ -25,6 +25,7 @@
   "include": [
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
+    "src/node/**/*.ts",
     "src/shared/**/*.ts",
     "electron.vite.config.ts"
   ]

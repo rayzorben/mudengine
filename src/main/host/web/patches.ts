@@ -8,7 +8,7 @@
  * between two pushes were 6% of it. So a tab is sent, per character, only the
  * top-level fields that differ from what it was last sent (`RpcPatch`), a
  * record or array among them as what changed inside it (`RpcFieldPatch`); the
- * tab puts the state back together (`lib/patches.ts`). See `mudengine-session`
+ * tab puts the state back together (`src/shared/patches.ts`). See `mudengine-session`
  * › *A browser tab outlives its socket*.
  */
 import { addressedOf } from '../../../shared/ipc';

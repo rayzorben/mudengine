@@ -322,11 +322,9 @@ export function asRpcFrame(value: unknown): RpcFrame | null {
   if (!isId(n)) return null;
   if (value['k'] === 'patch') {
     const { c, s } = value;
-    const fields = asFieldPatch({ ...value, k: 'fields' }, PATCH_DEPTH + 1);
-    if (!isChannel(c) || typeof s !== 'string' || fields === null || fields.k !== 'fields') {
-      return null;
-    }
-    return { k: 'patch', n, c, s, set: fields.set, deep: fields.deep, drop: fields.drop };
+    const fields = asTopPatch(value);
+    if (!isChannel(c) || typeof s !== 'string' || fields === null) return null;
+    return { k: 'patch', n, c, s, ...fields };
   }
   if (value['k'] === 'push') {
     if (!isChannel(value['c'])) return null;
@@ -337,6 +335,19 @@ export function asRpcFrame(value: unknown): RpcFrame | null {
     return { k: 'reply', n, id: value['id'], r: value['r'] };
   }
   return null;
+}
+
+/**
+ * The `set`, `deep` and `drop` of a whole payload's patch off the wire, a
+ * tab's (`RpcPatch`) or a peer sheet's (`peers.ts`), or null where they do
+ * not read.
+ */
+export function asTopPatch(
+  value: Record<string, unknown>
+): Pick<RpcPatch, 'set' | 'deep' | 'drop'> | null {
+  const fields = asFieldPatch({ ...value, k: 'fields' }, PATCH_DEPTH + 1);
+  if (fields === null || fields.k !== 'fields') return null;
+  return { set: fields.set, deep: fields.deep, drop: fields.drop };
 }
 
 /** A field patch off the wire, or null where it is not one, or nests past `depth`. */

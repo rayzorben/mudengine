@@ -1,5 +1,6 @@
 /**
- * The server side of a WebSocket, RFC 6455, in the two hundred lines it takes.
+ * The server side of a WebSocket, RFC 6455, in the two hundred lines it takes,
+ * for the web host's browser tabs and the peer gateway's installs alike.
  *
  * Written rather than depended on, for the reason `yaml` and `mdb-reader` are
  * bundled: the main chunk externalises its dependencies, so a package here is
@@ -13,8 +14,9 @@
  * not our bridge: an unmasked client frame (1002, the protocol says a client
  * masks), a reserved bit (1002), a control frame fragmented or over 125
  * bytes (1002), a binary frame (1003), invalid UTF-8 (1007), and a message
- * larger than the cap (1009). The cap is `tuning.web.maxMessageBytes` and is
- * checked on the *declared* length before a byte of payload is held.
+ * larger than the cap (1009). The cap is the caller's (`tuning.web.maxMessageBytes`
+ * for a tab, `GATEWAY_LIMITS` for an install) and is checked on the
+ * *declared* length before a byte of payload is held.
  *
  * `permessage-deflate` (RFC 7692) when the browser offers it, each message
  * on its own (no context takeover either way): the browser inflates in its

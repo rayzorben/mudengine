@@ -214,6 +214,47 @@ describe('dependencies point down', () => {
     expect(out, out.join('\n')).toEqual([]);
   });
 
+  /*
+   * The peer gateway is its own program (todo 20261031-1156-01): it reads
+   * only `src/shared/`, the Node-only layer it shares with main (`src/node/`)
+   * and Node's own modules, so its bundle holds nothing of the client. The
+   * Node layer reads only `src/shared/` and Node, and nothing reads the gateway.
+   */
+  const builtin = ({ target }: Import): boolean => target.startsWith('node:');
+  it('keeps the gateway to the shared and Node layers and Node itself', () => {
+    const out = sources('src/gateway')
+      .flatMap(importsOf)
+      .filter(
+        (imp) =>
+          !builtin(imp) &&
+          !into('src/gateway')(imp) &&
+          !into('src/node')(imp) &&
+          !into('src/shared')(imp)
+      )
+      .map(describeImport);
+    expect(out, out.join('\n')).toEqual([]);
+    // The filter matches where there is something to match: the gateway reads both layers.
+    const read = sources('src/gateway').flatMap(importsOf);
+    expect(read.some(into('src/node'))).toBe(true);
+    expect(read.some(into('src/shared'))).toBe(true);
+  });
+
+  it('keeps the Node layer to the shared layer and Node itself, and nothing reads the gateway', () => {
+    const out = sources('src/node')
+      .flatMap(importsOf)
+      .filter((imp) => !builtin(imp) && !into('src/node')(imp) && !into('src/shared')(imp))
+      .map(describeImport);
+    expect(out, out.join('\n')).toEqual([]);
+    const intoGateway = sources('src')
+      .filter((file) => !file.startsWith('src/gateway/'))
+      .flatMap(importsOf)
+      .filter(into('src/gateway'))
+      .map(describeImport);
+    expect(intoGateway, intoGateway.join('\n')).toEqual([]);
+    // Main reads the Node layer, so the walk sees across the boundary.
+    expect(importsOf('src/main/host/web/server.ts').some(into('src/node'))).toBe(true);
+  });
+
   it('keeps parse/ from importing automation/ or session/', () => {
     const up = sources('src/main/parse')
       .flatMap(importsOf)

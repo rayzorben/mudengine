@@ -334,6 +334,7 @@ const CONFIGS = [
   'tsconfig.json',
   'tsconfig.node.json',
   'tsconfig.web.json',
+  'tsconfig.gateway.json',
   'vitest.config.ts',
   'vitest.realm.config.ts',
   // What a `.yaml` import becomes, in the build and in every test run.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { Push } from '@shared/ipc';
-import type { RpcPatch } from '@shared/rpc';
+import { Push } from '../ipc';
+import type { RpcPatch } from '../rpc';
 
 import { PushPatches } from '../patches';
 

@@ -1,14 +1,15 @@
 /**
- * A browser tab's half of `main/host/web/patches.ts`: the last payload of
- * each patched push, per channel and character, and each patch applied to
- * it, inside a record or an array too (`RpcFieldPatch`). A field a patch
- * does not name keeps the same object, so a card that
- * reads only what did not change is not redrawn. Cleared when the client
- * starts the tab over, since what it remembered sending went with it.
+ * The receiving half of `main/host/web/patches.ts`: the last payload of each
+ * patched push, per channel and character, and each patch applied to it,
+ * inside a record or an array too (`RpcFieldPatch`). A browser tab holds one;
+ * the peer gateway keeps each sharer's sheet with `applyPatch` (`peers.ts`).
+ * A field a patch does not name keeps the same object, so a card that reads
+ * only what did not change is not redrawn. Cleared when the sender starts
+ * over, since what it remembered sending went with it.
  */
-import type { Addressed } from '@shared/ipc';
-import type { RpcFieldPatch, RpcPatch, RpcPush } from '@shared/rpc';
-import { isRecord } from '@shared/values';
+import type { Addressed } from './ipc';
+import type { RpcFieldPatch, RpcPatch, RpcPush } from './rpc';
+import { isRecord } from './values';
 
 /**
  * `before` with one field patch applied, keeping every member and item it
@@ -51,17 +52,26 @@ function patched(before: unknown, patch: RpcFieldPatch, field: string): unknown 
   }
 }
 
+/** A whole payload's patch (`asTopPatch`) applied to `before`, named `label` in a broken invariant. */
+export function applyPatch(
+  before: Record<string, unknown>,
+  patch: Pick<RpcPatch, 'set' | 'deep' | 'drop'>,
+  label: string
+): Record<string, unknown> {
+  return patched(
+    before,
+    { k: 'fields', set: patch.set, deep: patch.deep, drop: patch.drop },
+    label
+  ) as Record<string, unknown>;
+}
+
 export class PushPatches {
   private readonly last = new Map<string, Record<string, unknown>>();
 
   /** The push the patch stands for. */
   apply(patch: RpcPatch): RpcPush {
     const key = `${patch.c}\u0000${patch.s}`;
-    const payload = patched(
-      this.last.get(key) ?? {},
-      { k: 'fields', set: patch.set, deep: patch.deep, drop: patch.drop },
-      patch.c
-    ) as Record<string, unknown>;
+    const payload = applyPatch(this.last.get(key) ?? {}, patch, patch.c);
     this.last.set(key, payload);
     const addressed: Addressed<Record<string, unknown>> = { session: patch.s, payload };
     return { k: 'push', c: patch.c, p: addressed };

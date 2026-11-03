@@ -66,6 +66,7 @@ export type SessionPhase =
  * room notice you arrive.
  */
 export type Stealth = 'unknown' | 'sneaking' | 'seen';
+export const STEALTH_STATES: readonly Stealth[] = ['unknown', 'sneaking', 'seen'];
 
 /**
  * Whether the server has said a condition is on this character.
@@ -78,6 +79,7 @@ export type Stealth = 'unknown' | 'sneaking' | 'seen';
  * once per onset rather than once per status line.
  */
 export type Affliction = 'unknown' | 'yes' | 'no';
+export const AFFLICTION_STATES: readonly Affliction[] = ['unknown', 'yes', 'no'];
 
 /** The four conditions the corpus has sentences for, on and off. */
 export interface Afflictions {

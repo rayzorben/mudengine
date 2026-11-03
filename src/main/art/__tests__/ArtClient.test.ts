@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ArtClient } from '../ArtClient';
 import type { ArtToken, ArtTokens } from '../artToken';
-import { leadingZeroBits, solveProofOfWork } from '../proofOfWork';
+import { leadingZeroBits, solveProofOfWork } from '../../../node/proofOfWork';
 import type { PortraitFacts } from '../../../shared/portrait';
 import type { RoomArtRequest } from '../../../shared/roomArt';
 

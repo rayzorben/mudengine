@@ -23,9 +23,9 @@ import {
 } from '@shared/rpc';
 
 import { BUILD, buildId } from '@shared/build';
+import { PushPatches } from '@shared/patches';
 import { errorMessage } from '@shared/values';
 import { t } from './i18n';
-import { PushPatches } from './patches';
 import { readStored, writeStored } from './storage';
 import { TabHealth } from './tabHealth';
 import { tuning } from './tuning';

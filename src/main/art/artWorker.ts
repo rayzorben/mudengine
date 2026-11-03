@@ -5,7 +5,7 @@
  */
 import { parentPort, workerData } from 'node:worker_threads';
 
-import { solveProofOfWork } from './proofOfWork';
+import { solveProofOfWork } from '../../node/proofOfWork';
 
 const { challenge, bits } = workerData as { challenge: string; bits: number };
 parentPort?.postMessage(solveProofOfWork(challenge, bits));

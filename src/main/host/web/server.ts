@@ -39,7 +39,7 @@ import { t } from '../../app/i18n';
 import { isWithin } from '../../app/browse';
 import { tuning } from '../../app/tuning';
 import { AccessTokens, basicPassword, COOKIE, cookieToken, passwordMatches } from './access';
-import { acceptUpgrade, isWebSocketUpgrade, type WebSocketConnection } from './sockets';
+import { acceptUpgrade, isWebSocketUpgrade, type WebSocketConnection } from '../../../node/sockets';
 
 export interface WebServerOptions {
   /** `out/renderer`: the built window. */

@@ -67,6 +67,25 @@ export function oneOf<T extends string>(value: unknown, allowed: readonly T[], f
   return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
+/** One of a closed set, or null where it is none of them: a frame off the wire. */
+export function memberOf<T>(value: unknown, allowed: readonly T[]): T | null {
+  return allowed.find((each) => each === value) ?? null;
+}
+
+/**
+ * A list off the wire with every item read, or null where it is no list,
+ * holds more than `most`, or has one item that does not read.
+ */
+export function everyOf<T>(
+  value: unknown,
+  item: (each: unknown) => T | null,
+  most: number
+): T[] | null {
+  if (!Array.isArray(value) || value.length > most) return null;
+  const read = value.map(item);
+  return read.every((each): each is T => each !== null) ? read : null;
+}
+
 /**
  * A 0–1 fraction, read forgivingly.
  *

@@ -11,7 +11,7 @@ import {
   isWebSocketUpgrade,
   OPCODE,
   WebSocketConnection
-} from '../web/sockets';
+} from '../sockets';
 
 /**
  * The server side of RFC 6455, proved against the client Node ships — a real
