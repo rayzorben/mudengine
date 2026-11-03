@@ -311,8 +311,30 @@ describe('a vital that has just got worse', () => {
    * a player run from a fight they were winning.
    */
   it('never alerts because a maximum has not arrived yet', () => {
+    // Positive control: the same fall with the maximum known does alarm.
+    expect(vitalNotices(withVitals(60, 100), withVitals(20, 100), BOUNDS, t)).toHaveLength(1);
     expect(vitalNotices(withVitals(60, null), withVitals(20, null), BOUNDS, t)).toHaveLength(0);
-    expect(vitalNotices(withVitals(60, null), withVitals(20, 100), BOUNDS, t)).toHaveLength(0);
+    expect(vitalNotices(withVitals(null, null), withVitals(20, null), BOUNDS, t)).toHaveLength(0);
+    expect(vitalNotices(withVitals(60, 100), withVitals(20, null), BOUNDS, t)).toHaveLength(0);
+  });
+
+  /*
+   * Reconnected mid-fight at 10% health, with no earlier status line to cross
+   * from. Only an unknown maximum keeps an alarm down; an unknown earlier
+   * reading counts as better than caution, so a first low reading alarms.
+   */
+  it('alarms on a first reading that is already critical', () => {
+    const fresh = vitalNotices(withVitals(null, null), withVitals(10, 100), BOUNDS, t);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]!.severity).toBe('critical');
+    expect(fresh[0]!.desktop).toBe('hurt');
+    // A maximum arriving on a line that is already critical is the same news.
+    expect(vitalNotices(withVitals(60, null), withVitals(20, 100), BOUNDS, t)).toHaveLength(1);
+    // A first reading at caution warns; one that is fine says nothing.
+    expect(vitalNotices(withVitals(null, null), withVitals(40, 100), BOUNDS, t)[0]!.severity).toBe(
+      'warning'
+    );
+    expect(vitalNotices(withVitals(null, null), withVitals(80, 100), BOUNDS, t)).toHaveLength(0);
   });
 
   it('reports mana on its own thresholds, separately from health', () => {
@@ -600,10 +622,27 @@ describe('somebody in the party in trouble', () => {
     expect(
       partyNotices(party([member('Soul', null)]), party([member('Soul', null)]), BOUNDS.hp, t)
     ).toHaveLength(0);
-    // Nor on the *first* listing that gives them one: there is nothing to
-    // compare against, and "they were already hurt when I looked" is not news.
+  });
+
+  /*
+   * The first listing that gives a member a health has nothing earlier to
+   * cross from, and a member already at 10% is the one about to die. An
+   * unknown earlier listing counts as better than caution.
+   */
+  it('alarms on a first listing that is already critical', () => {
+    const named = partyNotices(
+      party([member('Soul', null)]),
+      party([member('Soul', 0.1)]),
+      BOUNDS.hp,
+      t
+    );
+    expect(named).toHaveLength(1);
+    expect(named[0]!.severity).toBe('critical');
+    // Nor does joining the party already hurt hide it.
+    expect(partyNotices(party([]), party([member('Soul', 0.1)]), BOUNDS.hp, t)).toHaveLength(1);
+    // A first listing at full health is not news.
     expect(
-      partyNotices(party([member('Soul', null)]), party([member('Soul', 0.1)]), BOUNDS.hp, t)
+      partyNotices(party([member('Soul', null)]), party([member('Soul', 0.9)]), BOUNDS.hp, t)
     ).toHaveLength(0);
   });
 
@@ -840,8 +879,24 @@ describe('a figure the player chose', () => {
   /* Unknown never alarms — the rule every threshold in this client follows. */
   it('crosses nothing while a figure or a maximum is unread', () => {
     const rules = [watch({ on: 'health', side: 'below', value: 60 })];
+    // Positive control: the same fall with both read does fire.
+    expect(watchNotices(withVitals(70, 100), withVitals(50, 100), rules, t)).toHaveLength(1);
     expect(watchNotices(withVitals(70, 100), withVitals(null, 100), rules, t)).toEqual([]);
     expect(watchNotices(withVitals(70, null), withVitals(50, null), rules, t)).toEqual([]);
+    expect(watchNotices(withVitals(null, null), withVitals(50, null), rules, t)).toEqual([]);
+  });
+
+  /*
+   * Reconnected already under the line, with nothing earlier to cross from:
+   * a `below` row fires. A row asking for *above* is waiting for a figure to
+   * come back, which a first reading is not.
+   */
+  it('fires on a first reading already below, and not on one already above', () => {
+    const below = [watch({ on: 'health', side: 'below', value: 60 })];
+    expect(watchNotices(withVitals(null, null), withVitals(50, 100), below, t)).toHaveLength(1);
+    expect(watchNotices(withVitals(null, null), withVitals(70, 100), below, t)).toEqual([]);
+    const above = [watch({ on: 'health', side: 'above', value: 80 })];
+    expect(watchNotices(withVitals(null, null), withVitals(90, 100), above, t)).toEqual([]);
   });
 
   it('ignores a row that is turned off', () => {

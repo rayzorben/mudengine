@@ -1145,9 +1145,11 @@ function noticedAt(state: CharacterState): number {
  * the figure is the player's. So this fires only where the previous status
  * line was on the other side.
  *
- * An unknown figure on either side crosses nothing: unknown never alarms, and
- * a maximum that has not arrived would make every percentage rule fire on the
- * first status line of a session.
+ * An unknown figure now, or an unknown maximum, crosses nothing: a maximum
+ * that has not arrived would make every percentage rule fire on the first
+ * status line of a session. An unknown figure *before* counts as above the
+ * mark, so a first reading already below a `below` row fires (unknown is the
+ * unsafe case), and one already above an `above` row does not.
  */
 export function watchNotices(
   before: CharacterState,
@@ -1162,12 +1164,15 @@ export function watchNotices(
     const was = rule.on === 'health' ? before.vitals.hp : before.vitals.mana;
     const now = rule.on === 'health' ? after.vitals.hp : after.vitals.mana;
     const max = rule.on === 'health' ? after.vitals.hpMax : after.vitals.manaMax;
-    if (was === null || now === null) continue;
+    if (now === null) continue;
     // The figure the rule is really about: a share needs a maximum, and
     // without one there is nothing to be a share of.
     if (rule.percent && (max === null || max <= 0)) continue;
     const mark = rule.percent ? ((max ?? 0) * rule.value) / 100 : rule.value;
-    const crossed = rule.side === 'below' ? was >= mark && now < mark : was <= mark && now > mark;
+    const crossed =
+      rule.side === 'below'
+        ? (was === null || was >= mark) && now < mark
+        : was !== null && was <= mark && now > mark;
     if (!crossed) continue;
     notices.push({
       id: `w${rule.on}${rule.side}${rule.value}-${at}`,
@@ -1198,12 +1203,16 @@ export function watchNotices(
 /**
  * The crossing worth an alert: into `critical` from anything better, or into
  * `caution` from `ok`. Defined once so the vitals and the party cannot come to
- * mean different things by "worse". `unknown` is the caller's problem — both
- * callers rule it out first, because unknown never alarms.
+ * mean different things by "worse". An unknown `previous` (the first reading
+ * after a connect, or a member's first listing) counts as better than either,
+ * because unknown is the unsafe case: a character reconnected mid-fight at 10%
+ * is in danger whether or not a line came before. An unknown `level` is the
+ * caller's to rule out, since an unknown maximum never alarms.
  */
 function crossedIntoWorse(previous: VitalLevel, level: VitalLevel): boolean {
   return (
-    (level === 'critical' && previous !== 'critical') || (level === 'caution' && previous === 'ok')
+    (level === 'critical' && previous !== 'critical') ||
+    (level === 'caution' && (previous === 'ok' || previous === 'unknown'))
   );
 }
 
@@ -1242,13 +1251,14 @@ export function vitalNotices(
      */
     alarm: DesktopAlert | undefined
   ): void => {
-    // Unknown is not zero: a figure that has not arrived yet must never raise
-    // an alarm, because the first thing a player does about a red bar is run from a
-    // fight they were winning.
+    // Unknown is not zero: a figure or maximum that has not arrived yet must
+    // never raise an alarm, because the first thing a player does about a red
+    // bar is run from a fight they were winning. An unknown earlier reading is
+    // different: the figure now is known, and `crossedIntoWorse` counts it.
     if (now.current === null || now.max === null) return;
     const previous = vitalLevel(was.current, was.max, bounds);
     const level = vitalLevel(now.current, now.max, bounds);
-    if (level === 'unknown' || previous === 'unknown') return;
+    if (level === 'unknown') return;
     if (!crossedIntoWorse(previous, level)) return;
     notices.push({
       id: `v${label}${now.current}-${at}`,
@@ -1407,7 +1417,9 @@ export function linkNotices(
  * On the **crossing**, like vitals, and only downward — a member listed at 30%
  * on every `party` is one alert, not one per listing, and healing back through
  * a threshold is good news. A member with no health yet raises nothing: the
- * follow announcements carry none, and unknown is not zero.
+ * follow announcements carry none, and unknown is not zero. A member whose
+ * first listed health is already low raises one alert, because there is no
+ * earlier listing to cross from.
  *
  * This character's own row is skipped. Its health already has a meter, a bar
  * and its own alerts; saying it twice is how a feed becomes one nobody reads.
@@ -1433,8 +1445,6 @@ export function partyNotices(
       previous?.health === null || previous === undefined
         ? 'unknown'
         : vitalLevel(previous.health, 1, thresholds);
-    // Unknown on either side is absence, and absence never alarms.
-    if (before_ === 'unknown') continue;
     if (!crossedIntoWorse(before_, level)) continue;
     notices.push({
       id: `p${member.name}-${Math.round(member.health * 100)}-${at}`,
