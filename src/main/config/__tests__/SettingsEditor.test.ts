@@ -1617,6 +1617,17 @@ connection:
     expect(written['automation']['supplies']).toMatchObject({ cashBuffer: 0, dearerSteps: 20 });
   });
 
+  // The Global page draws the search fields (`CarrySections`), and none was written.
+  it('writes the search block, and reads it back', () => {
+    const draft = global();
+    draft.automation.search = { ...draft.automation.search, enabled: true, tries: 4 };
+    expect(editor.saveGlobal(draft)).toEqual({ ok: true });
+
+    const written = parse(fs.readFileSync(configPath, 'utf8'));
+    expect(written['automation']['search']).toMatchObject({ enabled: true, tries: 4 });
+    expect(global().automation.search).toMatchObject({ enabled: true, tries: 4 });
+  });
+
   it('writes an extension switched off, and reads it back (todo 118)', () => {
     const draft = global();
     expect(draft.extensions).toEqual({});

@@ -1346,6 +1346,7 @@ export class SettingsEditor {
         set(['automation', 'loot'], { ...draft.automation.loot });
         set(['automation', 'drop'], { ...draft.automation.drop });
         set(['automation', 'outgrown'], { ...draft.automation.outgrown });
+        set(['automation', 'search'], { ...draft.automation.search });
         set(['automation', 'banking'], { ...draft.automation.banking });
         writeSupplies(document, draft.automation.supplies);
         set(['automation', 'remotes'], { ...draft.automation.remotes });
