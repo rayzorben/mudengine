@@ -8,6 +8,8 @@
  */
 import { aloneFigure } from './FightOutlook';
 import Icon from './Icon';
+import { PlayerName } from '../lib/players';
+import type { PopoverAnchor } from '../lib/popover';
 import { SURVIVAL_CHIP } from './RoomFight';
 import RoundChip from './RoundChip';
 import RowPeaceChip from './RowPeaceChip';
@@ -69,11 +71,13 @@ function OddsChip({ name, odds }: { name: string; odds: Odds }) {
 export default function RoomOccupants({
   character,
   verdict,
-  inspect
+  inspect,
+  onSelect
 }: {
   character: CharacterState;
   verdict: RoomVerdict;
   inspect?(name: string, anchor: HTMLElement): void;
+  onSelect?(name: string, anchor: PopoverAnchor): void;
 }) {
   const standing = standingOf(character);
   return (
@@ -84,9 +88,12 @@ export default function RoomOccupants({
         return (
           <li data-hostile={hostile} data-kind={who.kind} key={`${who.name}-${index}`}>
             <Icon name={KIND_ICON[who.kind]} />
-            {/* A monster's name opens the Reference card; a player's does not,
-                since the realm data has nothing to say about a person. */}
-            {inspect && who.kind !== 'player' ? (
+            {/* A person opens the Player flyout and a monster the Reference
+                card, each where this surface can open it. The monster keeps
+                its own button for the disposition in its tooltip. */}
+            {who.kind === 'player' && onSelect ? (
+              <PlayerName className={`occupant ${who.kind}`} name={who.name} onSelect={onSelect} />
+            ) : inspect && who.kind !== 'player' ? (
               <button
                 className={`occupant ${who.kind} lookup`}
                 onClick={(event) => inspect(who.name, event.currentTarget)}

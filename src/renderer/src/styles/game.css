@@ -924,6 +924,11 @@
   pointer-events: none;
 }
 
+/* The feed lets the map through; only a name in a line takes the pointer. */
+.gv-talk-feed button.lookup {
+  pointer-events: auto;
+}
+
 .gv-talk-feed p {
   margin: 0;
   padding: 3px 9px;
@@ -1544,6 +1549,11 @@ button.gv-portrait {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
+}
+
+/* The label lets the doll take the pointer; its name is the one part that opens something. */
+.gv-slot-name button.lookup {
+  pointer-events: auto;
 }
 
 .gv-slot-name small {

@@ -14,8 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import CardTable, { type Column } from './CardTable';
 import EntityNumber from './EntityNumber';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
+import EntityName from './EntityName';
 import { usePopoverFrame } from '../hooks/usePopoverFrame';
-import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { PopoverAnchor } from '../lib/popover';
 import type { CharacterState } from '@shared/character';
@@ -203,15 +203,7 @@ function columnsFor(
     value: (row) => row.name,
     cell: (row) => (
       <>
-        <button
-          className="what lookup"
-          onClick={(event) => inspect(row.name, event.currentTarget)}
-          onMouseDown={keepFocus}
-          title={t('cards.room.itemLookupTooltip')}
-          type="button"
-        >
-          {row.name}
-        </button>
+        <EntityName className="what" inspect={inspect} name={row.name} />
         {worn.some((name) => sameItem(name, row.name)) && (
           <span className="chip on">{t('cards.slotPeek.wornChip')}</span>
         )}

@@ -2,6 +2,7 @@ import { memo, useMemo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import Icon, { type IconName } from './Icon';
+import EntityName, { type Inspect, type PersonOpener } from './EntityName';
 import PartyMemberRow from './PartyMemberRow';
 import {
   ratio,
@@ -25,6 +26,8 @@ export interface PartyCardProps extends CardChrome {
   thresholds: VitalsUiConfig;
   /** A member's name clicked: the Player flyout on them, beside the row. */
   onSelect?(name: string, anchor: PopoverAnchor): void;
+  /** A class or a monster clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
   /** Whoever the flyout is about, as `playerKey` files them, so the row is marked — tonally, never the name. */
   subject?: string | null;
   /**
@@ -92,6 +95,7 @@ function PartyCard({
   players,
   thresholds,
   onSelect,
+  inspect,
   subject = null,
   ask,
   ...chrome
@@ -189,6 +193,7 @@ function PartyCard({
                         fighting={fightingWord(character, member.name)}
                         head={isHead(member)}
                         hitBy={hitByWord(character, member.name)}
+                        inspect={inspect}
                         key={member.name}
                         member={member}
                         onSelect={onSelect}
@@ -204,7 +209,9 @@ function PartyCard({
             })}
           </div>
         )}
-        {members.length > 0 && <BestHands best={best} />}
+        {members.length > 0 && (
+          <BestHands best={best} person={onSelect ? { players, character, onSelect } : null} />
+        )}
       </div>
     </BentoCard>
   );
@@ -298,7 +305,7 @@ const HANDS: ReadonlyArray<{ key: HandFigure; label: string; icon: IconName }> =
  * and Strength among the members whose sheet states one. The question those
  * three figures answer, asked once for the party.
  */
-function BestHands({ best }: { best: PartyBest }) {
+function BestHands({ best, person }: { best: PartyBest; person: PersonOpener | null }) {
   return (
     <div className="party-best from-medium">
       {HANDS.map(({ key, label, icon }) => {
@@ -311,7 +318,7 @@ function BestHands({ best }: { best: PartyBest }) {
               <b>{t('cards.party.sheetUnknown')}</b>
             ) : (
               <>
-                <span className="party-hand-name">{found.name}</span>
+                <EntityName className="party-hand-name" name={found.name} person={person} />
                 <b>{found.value}</b>
               </>
             )}

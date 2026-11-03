@@ -7,7 +7,7 @@
  * panel hands the caret back itself. See `mudengine-ui` › *A listing and the
  * detail chosen from it: two cards, and a flyout*.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { GangAsked } from '../components/GangFlyout';
 import type { PlayerAsked } from '../components/PlayerFlyout';
@@ -52,8 +52,10 @@ export interface SlideOutSlot {
   dismissGangFlyout(): void;
   selectSlot(session: SessionId, slot: string, anchor: PopoverAnchor): void;
   dismissSlot(): void;
-  /** A room on a map pointed at or clicked. */
-  peekRoom(room: RoomId, at: SVGGElement, settled: boolean): void;
+  /** `inspect` and `selectPlayer` together, one object while both are the same. */
+  openers: Pick<SlideOutSlot, 'inspect' | 'selectPlayer'>;
+  /** A room on a map, or named in a panel, pointed at or clicked. */
+  peekRoom(room: RoomId, at: Element, settled: boolean): void;
   /** A room on a plan pointed at or clicked, with the plan's own *walk here*. */
   peekPlanned(room: RoomId, at: Element, settled: boolean, here: PlannedHere | null): void;
   /** The pointer reached the panel: it is being read, so it stays. */
@@ -282,8 +284,10 @@ export function useSlideOuts(
    * nothing else.
    */
   const peekRoom = useCallback(
-    (room: RoomId, at: SVGGElement, settled: boolean) => {
-      openPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room), also: null });
+    (room: RoomId, at: Element, settled: boolean) => {
+      // A room named inside a panel outlasts it: the panel goes as this one opens.
+      const anchor = outlastingAnchor(roomAnchor(at));
+      openPeek({ room, anchor, settled, act: walkTo(room), also: null });
     },
     [openPeek, walkTo]
   );
@@ -354,6 +358,9 @@ export function useSlideOuts(
     [openPeek, walkTo]
   );
 
+  // `inspect` and `selectPlayer` as one object that changes only when either does: the game view is memoised.
+  const openers = useMemo(() => ({ inspect, selectPlayer }), [inspect, selectPlayer]);
+
   return {
     asked,
     flyout,
@@ -372,6 +379,7 @@ export function useSlideOuts(
     peekPlanned,
     holdPeek,
     endPeek,
-    dismissPeek
+    dismissPeek,
+    openers
   };
 }

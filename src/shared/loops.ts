@@ -30,7 +30,7 @@
 
 import { fileSlug } from './files';
 import { asRoomReference, type RoomId, type RoomReference } from './world';
-import type { AfflictionHold } from './walk';
+import type { AfflictionHold, NamedRoom } from './walk';
 import { ratePerHour } from './tally';
 
 /** The longest a stop's `linger` may be, in seconds. */
@@ -726,7 +726,8 @@ export interface LoopProgress {
    */
   remainingStops: RoomId[];
   /**
-   * Every stop of the lap, **named**, in order, as the loop writes them.
+   * Every stop of the lap, **named**, in order, as the loop writes them, each
+   * with the room the client placed it at (null where it could not).
    *
    * `remainingStops` beside it is what a map marks with, and it drops the stops
    * the client could not place; this is what a reader reads, and it drops
@@ -735,7 +736,7 @@ export interface LoopProgress {
    * and what is still owed. The last of those is the one a player acts on and
    * the only one the card never showed.
    */
-  stopNames: string[];
+  everyStop: NamedRoom[];
   /** Laps completed since it started. */
   laps: number;
   reason: string | null;
@@ -806,7 +807,7 @@ export const NO_LOOP: LoopProgress = {
   stops: 0,
   stopName: null,
   remainingStops: [],
-  stopNames: [],
+  everyStop: [],
   laps: 0,
   reason: null,
   hold: null,

@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 
 import { t } from '../lib/i18n';
+import { GangName } from '../lib/gangs';
 import { PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
@@ -32,6 +33,8 @@ export interface RealmCardProps extends CardChrome {
   subject: string | null;
   /** A name clicked, and where: the Player flyout slides out beside this card. */
   onSelect(name: string, anchor: PopoverAnchor): void;
+  /** A gang clicked, and where: the Gang flyout slides out beside this card. */
+  onSelectGang?(gang: string, anchor: PopoverAnchor): void;
 }
 
 /**
@@ -188,6 +191,7 @@ function RealmCard({
   session,
   subject,
   onSelect,
+  onSelectGang,
   ...chrome
 }: RealmCardProps) {
   const roster = useMemo(() => [...online].sort(order), [online]);
@@ -283,7 +287,9 @@ function RealmCard({
       from: 'large',
       value: (entry) => entry.gang,
       cell: (entry) =>
-        entry.gang === null ? null : <span className="realm-gang">{entry.gang}</span>
+        entry.gang === null ? null : (
+          <GangName className="realm-gang" gang={entry.gang} onSelect={onSelectGang} />
+        )
     }
   ];
 
@@ -311,7 +317,7 @@ function RealmCard({
                   data-hostile={entry.hostile ? 'true' : undefined}
                   key={entry.gang}
                 >
-                  {entry.gang}
+                  <GangName className="realm-gang" gang={entry.gang} onSelect={onSelectGang} />
                   <b>{entry.count}</b>
                 </li>
               ))}

@@ -47,7 +47,7 @@ function ShelfStrip({
                 className="shelf-tile"
                 onClick={() => goToRoom(shelf.room)}
                 onMouseDown={keepFocus}
-                title={t('cards.shops.goToTooltip', { room: shelf.room })}
+                title={t('entity.goToRoomTooltip', { room: shelf.room })}
                 type="button"
               >
                 {body}

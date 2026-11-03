@@ -586,10 +586,7 @@ export default function App() {
     return () => window.removeEventListener('focus', onWindowFocus);
   }, [returnFocus]);
 
-  /*
-   * The lists of tabs and characters, which are about the client rather than
-   * a character's facts (`useSessionViews` keeps those).
-   */
+  // The lists of tabs and characters; `useSessionViews` keeps each character's facts.
   useEffect(() => {
     const off = [
       // Not addressed: these *are* the lists of addresses.
@@ -603,11 +600,7 @@ export default function App() {
     return () => off.forEach((unsubscribe) => unsubscribe());
   }, [api]);
 
-  /*
-   * The roster is pushed on `clientReady`, but a window that reloads can listen
-   * a moment later than the push. Asking once closes that window; the push
-   * keeps it current afterwards.
-   */
+  // A reloaded window can listen after the roster's push on `clientReady`, so it asks once.
   useEffect(() => {
     void api.listSessions().then(setSessions);
   }, [api]);
@@ -1053,6 +1046,7 @@ export default function App() {
     startMovingIn,
     stepBackIn,
     selectPlayer,
+    selectGang: slideOuts.selectGang,
     resetStats
   });
   /** The chrome every card wears, and a put-away card's handles. */
@@ -1347,6 +1341,8 @@ export default function App() {
           config={config}
           configKnown={loadedAt > 0}
           openRouteOn={openRouteOn}
+          openers={slideOuts.openers}
+          nameIndex={nameIndexes[session] ?? null}
           profile={profiles.find((one) => one.id === session) ?? null}
           renderTalk={renderTalk}
           say={noticeTo}

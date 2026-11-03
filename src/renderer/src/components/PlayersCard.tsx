@@ -6,6 +6,7 @@ import type { PopoverAnchor } from '../lib/popover';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
+import { RoomName } from './EntityName';
 import type { Facet } from './ListTools';
 import Dot from './viz/Dot';
 import Histogram from './viz/Histogram';
@@ -28,6 +29,8 @@ export interface PlayersCardProps extends CardChrome {
   subject: string | null;
   /** A name clicked, and where: the Player flyout slides out beside this card. */
   onSelect(name: string, anchor: PopoverAnchor): void;
+  /** Opens the route panel at a person's last room. Null on a pinned float, which cannot. */
+  goToRoom?: ((room: string) => void) | null;
 }
 
 /**
@@ -118,6 +121,7 @@ function PlayersCard({
   session,
   subject,
   onSelect,
+  goToRoom,
   ...chrome
 }: PlayersCardProps) {
   const players = useMemo(() => knownPlayers(registry), [registry]);
@@ -189,7 +193,11 @@ function PlayersCard({
       // what the client has learned of them (`lib/cardSize.ts`).
       from: 'medium',
       value: (record) => record.lastRoomName ?? record.lastRoom,
-      cell: (record) => <span className="player-where">{place(record)}</span>
+      cell: (record) => (
+        <RoomName className="player-where" open={goToRoom} room={record.lastRoom}>
+          {place(record)}
+        </RoomName>
+      )
     },
     {
       id: 'seen',

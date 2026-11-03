@@ -4,8 +4,8 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import ItemThumb from './ItemThumb';
 import ShelfStrip from './ShelfStrip';
+import EntityName, { RoomName } from './EntityName';
 import { useItemArt } from '../hooks/useItemArt';
-import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { isOwnName } from '@shared/players';
@@ -60,19 +60,7 @@ function ShopsCard({
           <>
             {/* Large, each line carries the thing's picture. */}
             <ItemThumb art={art} className="from-large" realm={null} thing={line.item} />
-            {inspect ? (
-              <button
-                className="what lookup"
-                onClick={(event) => inspect(line.item.name, event.currentTarget)}
-                onMouseDown={keepFocus}
-                title={t('cards.room.itemLookupTooltip')}
-                type="button"
-              >
-                {line.item.name}
-              </button>
-            ) : (
-              <span className="what">{line.item.name}</span>
-            )}
+            <EntityName className="what" inspect={inspect} name={line.item.name} />
             {/* The counter's judgment about whoever listed it, so only this character's own. */}
             {line.item.note !== null && line.shelf.by !== null && isOwnName(self, line.shelf.by) ? (
               <>
@@ -107,20 +95,11 @@ function ShopsCard({
         label: t('cards.shops.column.shop'),
         from: 'medium',
         value: (line) => line.shelf.shopName,
-        cell: (line) =>
-          goToRoom === null ? (
-            line.shelf.shopName
-          ) : (
-            <button
-              className="lookup"
-              onClick={() => goToRoom(line.shelf.room)}
-              onMouseDown={keepFocus}
-              title={t('cards.shops.goToTooltip', { room: line.shelf.room })}
-              type="button"
-            >
-              {line.shelf.shopName}
-            </button>
-          )
+        cell: (line) => (
+          <RoomName open={goToRoom} room={line.shelf.room}>
+            {line.shelf.shopName}
+          </RoomName>
+        )
       },
       {
         id: 'listed',

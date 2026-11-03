@@ -8,6 +8,7 @@
 import { memo, useMemo } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import type { Inspect } from '../EntityName';
 import { useItemArt } from '../../hooks/useItemArt';
 import { t } from '../../lib/i18n';
 import { loadOf, packOf, PACK_GROUPS, type PackGroup } from '../../lib/packGroups';
@@ -23,7 +24,16 @@ const GROUP_LABEL: Record<PackGroup, string> = {
   other: t('game.pack.group.other')
 };
 
-function PackPanel({ character, onClose }: { character: CharacterState; onClose(): void }) {
+function PackPanel({
+  character,
+  inspect,
+  onClose
+}: {
+  character: CharacterState;
+  /** An item's name clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
+  onClose(): void;
+}) {
   const art = useItemArt();
   const { inventory, realm } = character;
   const pack = useMemo(() => packOf(inventory), [inventory]);
@@ -49,6 +59,7 @@ function PackPanel({ character, onClose }: { character: CharacterState; onClose(
               <PackCard
                 art={art}
                 group={group}
+                inspect={inspect}
                 items={pack.groups[group]}
                 key={group}
                 label={GROUP_LABEL[group]}
@@ -56,7 +67,13 @@ function PackPanel({ character, onClose }: { character: CharacterState; onClose(
               />
             ))}
           </div>
-          <PackTray art={art} inventory={inventory} realm={realm} tokens={pack.tokens} />
+          <PackTray
+            art={art}
+            inspect={inspect}
+            inventory={inventory}
+            realm={realm}
+            tokens={pack.tokens}
+          />
         </>
       )}
     </aside>

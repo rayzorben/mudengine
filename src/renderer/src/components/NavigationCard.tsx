@@ -191,13 +191,13 @@ function NavigationCard({
     : null;
 
   /*
-   * A room the character is not in is a control, not text: the destination
-   * and the step's room both open in the route panel, where the realm's facts
-   * about a room elsewhere are stated. `button.lookup`, the same control a
-   * name in a row is, so it reads as clickable without becoming a chip. Two
-   * things keep a name as text, both because a control bound to nowhere is
-   * worse than none: a room whose id did not parse, and a card on a pinned
-   * float, whose route panel is the shown character's.
+   * A room the character is not in is a control: the destination, the step's
+   * room, every room ahead and every stop of the lap open in the route panel,
+   * where the realm's facts about a room elsewhere are stated. `button.lookup`,
+   * the same control a name in a row is, so it reads as clickable without
+   * becoming a chip. Two things keep a name as text, both because a control
+   * bound to nowhere is worse than none: a room whose id did not parse, and a
+   * card on a pinned float, whose route panel is the shown character's.
    */
   const place = (name: string, room: { map: number; room: number } | null) => {
     if (room === null || onChoose === null) return name;
@@ -373,9 +373,9 @@ function NavigationCard({
       {walking && walk.ahead.length > 0 && (
         <div className="progression-scroller from-medium">
           <ol className="progression">
-            {walk.ahead.map((name, index) => (
+            {walk.ahead.map(({ name, room }, index) => (
               <li data-progress={index === 0 ? 'now' : 'left'} key={`${name}-${index}`}>
-                <span className="step-name">{name}</span>
+                <span className="step-name">{place(name, room)}</span>
               </li>
             ))}
           </ol>
@@ -494,10 +494,10 @@ function NavigationCard({
         ones still owed. Every stop the player wrote, including the ones no
         room could be found for.
       */}
-      {loop.stopNames.length > 0 && (
+      {loop.everyStop.length > 0 && (
         <div className="progression-scroller from-medium">
           <ol className="progression">
-            {loop.stopNames.map((name, index) => (
+            {loop.everyStop.map(({ name, room }, index) => (
               <li
                 data-progress={
                   !live || loop.stop === 0
@@ -510,7 +510,7 @@ function NavigationCard({
                 }
                 key={`${name}-${index}`}
               >
-                <span className="step-name">{name}</span>
+                <span className="step-name">{place(name, room)}</span>
               </li>
             ))}
           </ol>

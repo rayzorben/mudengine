@@ -14,18 +14,21 @@ import { COIN_NAME } from '../../lib/coins';
 import { t } from '../../lib/i18n';
 import { figure } from '../../lib/stats';
 import { coinPicture, pictureOf, type ItemArtIndex } from '../../lib/itemArt';
+import EntityName, { type Inspect } from '../EntityName';
 import ItemPicture from './ItemPicture';
 
 function PackTray({
   inventory,
   tokens,
   art,
-  realm
+  realm,
+  inspect
 }: {
   inventory: Inventory;
   tokens: readonly CarriedItem[];
   art: ItemArtIndex | null;
   realm: RealmFamily | null;
+  inspect?: Inspect;
 }) {
   return (
     <div className="gv-pack-tray">
@@ -63,7 +66,7 @@ function PackTray({
                 name={name}
                 src={art === null ? null : pictureOf(art, realm, { name })}
               />
-              {name}
+              <EntityName inspect={inspect} name={name} />
             </span>
           ))}
         </div>
@@ -80,7 +83,7 @@ function PackTray({
                 name={item.name}
                 src={art === null ? null : pictureOf(art, realm, item)}
               />
-              {item.name}
+              <EntityName inspect={inspect} name={item.name} />
               {(item.count ?? 1) > 1 && <b>×{item.count}</b>}
             </span>
           ))}

@@ -101,8 +101,8 @@ export interface StashRoom {
   map: number | null;
   room: number | null;
   name: string | null;
-  /** `3 torch`, `padded gloves`: the count before the name, as the server lists a pile. */
-  items: string[];
+  /** Each pile, its name and count apart so the name can open its card (`countedLabel` spells it). */
+  items: Array<{ name: string; count: number }>;
   at: number;
 }
 
@@ -110,7 +110,7 @@ export interface StashRoom {
 export function stashRooms(stash: Stash): StashRoom[] {
   const rooms: StashRoom[] = [];
   for (const entry of stash) {
-    const named = entry.count > 1 ? `${entry.count} ${entry.item}` : entry.item;
+    const named = { name: entry.item, count: entry.count };
     const held = rooms.find((room) => room.map === entry.map && room.room === entry.room);
     if (held === undefined) {
       const { map, room, name, at } = entry;

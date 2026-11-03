@@ -12,6 +12,7 @@ import type { Odds, Survival } from '@shared/survival';
 import type { RoomVerdict } from '@shared/verdict';
 import { t } from '../lib/i18n';
 import { horizonsShown, percent, survivalVital } from '../lib/outlook';
+import EntityName, { type Inspect } from './EntityName';
 import SplitBar, { type SplitPart } from './viz/SplitBar';
 import StackChart, { type StackColumn } from './viz/StackChart';
 
@@ -29,23 +30,20 @@ const CHIP: Record<ReturnType<typeof survivalVital>, string> = {
 
 /**
  * One monster fought on its own, as a chip: its odds when run, else the odds
- * book's state in the title. `named` puts the name in the chip, for the list
- * of the room's monsters; an attacker's row has the name beside it already.
+ * book's state in the title. The name is drawn beside it by the caller, as the
+ * control that opens the monster.
  */
-export function AloneChip({ name, odds, named }: { name: string; odds: Odds; named: boolean }) {
+export function AloneChip({ name, odds }: { name: string; odds: Odds }) {
   if (odds.kind === 'run') {
-    const figure = t('cards.combat.survival.figure', { percent: percent(odds.survival.survives) });
-    const words = aloneFigure(name, odds);
     return (
-      <span className={CHIP[survivalVital(odds.survival.level)]} title={words}>
-        {named ? words : figure}
+      <span className={CHIP[survivalVital(odds.survival.level)]} title={aloneFigure(name, odds)}>
+        {t('cards.combat.survival.figure', { percent: percent(odds.survival.survives) })}
       </span>
     );
   }
-  const words = aloneWords(name, odds);
   return (
-    <span className="chip off" title={words}>
-      {named ? words : '…'}
+    <span className="chip off" title={aloneWords(name, odds)}>
+      …
     </span>
   );
 }
@@ -133,7 +131,14 @@ function endOf(survival: Survival): SplitPart[] {
   ];
 }
 
-export default function FightOutlook({ verdict }: { verdict: RoomVerdict }) {
+export default function FightOutlook({
+  verdict,
+  inspect
+}: {
+  verdict: RoomVerdict;
+  /** A monster's name clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
+}) {
   const survival = verdict.survival;
   const alone = verdict.monsters.flatMap(({ name, alone: odds }) =>
     odds === undefined ? [] : [{ name, odds }]
@@ -168,7 +173,9 @@ export default function FightOutlook({ verdict }: { verdict: RoomVerdict }) {
             <dt>{t('cards.combat.outlook.aloneLabel')}</dt>
             <dd className="combat-alone">
               {alone.map(({ name, odds }) => (
-                <AloneChip key={name} name={name} named odds={odds} />
+                <span className="combat-alone-one" key={name}>
+                  <EntityName inspect={inspect} name={name} /> <AloneChip name={name} odds={odds} />
+                </span>
               ))}
             </dd>
           </>

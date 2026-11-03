@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 
-import { keepFocus } from '../lib/focus';
-import { t } from '../lib/i18n';
+import EntityName from './EntityName';
 import { runsOf, type NameIndex } from '../lib/names';
 import { PlayerName } from '../lib/players';
 import { isOwnName } from '@shared/players';
@@ -60,18 +59,7 @@ export default function NamedText({ text, index, self, inspect, onSelect }: Name
             />
           );
         }
-        return (
-          <button
-            className="name lookup"
-            key={at}
-            onClick={(event) => inspect(run.text, event.currentTarget)}
-            onMouseDown={keepFocus}
-            title={t('cards.room.itemLookupTooltip')}
-            type="button"
-          >
-            {run.text}
-          </button>
-        );
+        return <EntityName className="name" inspect={inspect} key={at} name={run.text} />;
       })}
     </>
   );

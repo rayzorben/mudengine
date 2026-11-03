@@ -5,6 +5,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { ago } from '../lib/players';
+import type { PopoverAnchor } from '../lib/popover';
 import { lightNote } from '../lib/room';
 import Icon from './Icon';
 import { nicknameMarks } from '../lib/nicknames';
@@ -46,6 +47,8 @@ export interface RoomCardProps extends CardChrome {
    * line with figures. The element is passed so the answer can open beside it.
    */
   inspect?(name: string, anchor: HTMLElement): void;
+  /** A person on the occupant line clicked: the Player flyout, beside it. */
+  onSelect?(name: string, anchor: PopoverAnchor): void;
   /** Who this character is in the realm's rows, for the floor's use marks (`useWearer`). */
   loadWearer?(): Promise<Wearer>;
   /**
@@ -118,6 +121,7 @@ function RoomCard({
   character,
   session,
   inspect,
+  onSelect,
   forget,
   ask,
   locate,
@@ -188,6 +192,7 @@ function RoomCard({
       character={character}
       inspect={inspect}
       nickname={nickname}
+      onSelect={onSelect}
       shop={shop}
       spellHazard={spellHazard}
       verdict={verdict}
@@ -463,6 +468,7 @@ function RoomCard({
                           finds={finds}
                           forget={forgetFind}
                           goToRoom={goToRoom}
+                          inspect={inspect}
                           returnFocus={chrome.returnFocus}
                           session={session}
                         />
@@ -489,12 +495,16 @@ function RoomBody({
   character,
   inspect,
   nickname,
+  onSelect,
   session,
   shop,
   spellHazard,
   verdict,
   wearer
-}: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict' | 'art' | 'session'> & {
+}: Pick<
+  RoomCardProps,
+  'ask' | 'asks' | 'character' | 'inspect' | 'onSelect' | 'verdict' | 'art' | 'session'
+> & {
   /** Who this character is, for the floor's use marks. */
   wearer: Wearer;
   /** MegaMUD's name for the room, or null (`useRoomNickname`). */
@@ -685,7 +695,12 @@ function RoomBody({
       )}
       {room.occupants.length > 0 && (
         <div className="from-medium">
-          <RoomOccupants character={character} inspect={inspect} verdict={verdict} />
+          <RoomOccupants
+            character={character}
+            inspect={inspect}
+            onSelect={onSelect}
+            verdict={verdict}
+          />
         </div>
       )}
 

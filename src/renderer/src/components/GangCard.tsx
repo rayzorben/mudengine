@@ -2,6 +2,7 @@ import { memo, useMemo, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
+import EntityName, { type Inspect } from './EntityName';
 import RemoteList from './RemoteList';
 import Dot from './viz/Dot';
 import Kpi from './viz/Kpi';
@@ -41,6 +42,8 @@ export interface GangCardProps extends CardChrome {
   onSetGangpath(on: boolean): void;
   /** A member's name clicked: the Player flyout on them, beside the row. */
   onSelect?(name: string, anchor: PopoverAnchor): void;
+  /** A member's race or class clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
   /** Whoever the flyout is about, as `playerKey` files them, so the row is marked. */
   subject?: string | null;
   /**
@@ -128,6 +131,7 @@ function GangCard({
   onSetGangRemotes,
   onSetGangpath,
   onSelect,
+  inspect,
   subject,
   ask,
   ...chrome
@@ -230,14 +234,24 @@ function GangCard({
       label: t('cards.gang.column.race'),
       from: 'medium',
       value: (row) => row.race,
-      cell: (row) => row.race ?? <span className="quiet-note">—</span>
+      cell: (row) =>
+        row.race === null ? (
+          <span className="quiet-note">—</span>
+        ) : (
+          <EntityName inspect={inspect} name={row.race} />
+        )
     },
     {
       id: 'class',
       label: t('cards.gang.column.class'),
       from: 'medium',
       value: (row) => row.className,
-      cell: (row) => row.className ?? <span className="quiet-note">—</span>
+      cell: (row) =>
+        row.className === null ? (
+          <span className="quiet-note">—</span>
+        ) : (
+          <EntityName inspect={inspect} name={row.className} />
+        )
     },
     {
       id: 'online',

@@ -40,6 +40,8 @@ import { useRoomArt } from '../../hooks/useRoomArt';
 import { useGameTutorial } from '../../hooks/useGameTutorial';
 import { useRoundAnchor } from '../../hooks/useRoundAnchor';
 import type { SessionView } from '../../hooks/useSessionViews';
+import type { SlideOutSlot } from '../../hooks/useSlideOuts';
+import type { PopoverAnchor } from '../../lib/popover';
 import { candidatesOf } from '../../lib/gameArena';
 import {
   commandFor,
@@ -67,6 +69,7 @@ import PackPanel from './PackPanel';
 import PartyFrames from './PartyFrames';
 import PlayerBar from './PlayerBar';
 import TalkFeed from './TalkFeed';
+import type { NameIndex } from '../../lib/names';
 import TargetCard from './TargetCard';
 import ViewSwitch from '../ViewSwitch';
 import WorldCanvas, { type WorldCanvasHandle } from './WorldCanvas';
@@ -105,6 +108,10 @@ export interface GameViewProps {
   say(session: SessionId, message: string): void;
   /** The Talk card, drawn for the panel `t` opens, with its own close. */
   renderTalk(onClose: () => void): ReactNode;
+  /** The panels a name opens: the realm's answer and the Player flyout. */
+  openers: Pick<SlideOutSlot, 'inspect' | 'selectPlayer'>;
+  /** The console's names for this character, so the talk feed's names open as the console's do. */
+  nameIndex: NameIndex | null;
 }
 
 /** The panel open over the map, one at a time: `c`'s or `i`'s. */
@@ -124,9 +131,16 @@ function GameView({
   openRouteOn,
   stepBack,
   say,
-  renderTalk
+  renderTalk,
+  openers,
+  nameIndex
 }: GameViewProps) {
   const { character } = view;
+  const { inspect, selectPlayer: openPlayer } = openers;
+  const selectPlayer = useCallback(
+    (name: string, anchor: PopoverAnchor) => openPlayer(session, name, anchor),
+    [openPlayer, session]
+  );
   const here = roomAddress(character.room);
   const [detached, setDetached] = useState(false);
   const map = useGameMap(api, session, character.room.map, character.room.number, detached);
@@ -465,8 +479,13 @@ function GameView({
         runBelow={profile?.runBelow ?? null}
         switches={profile?.switches ?? null}
       />
-      <TargetCard character={character} target={target} />
-      <PartyFrames character={character} />
+      <TargetCard character={character} inspect={inspect} target={target} />
+      <PartyFrames
+        character={character}
+        inspect={inspect}
+        onSelect={selectPlayer}
+        players={view.players}
+      />
       <CommandBar
         bound={bound}
         commands={commands}
@@ -503,10 +522,25 @@ function GameView({
         </button>
       </div>
       {panel === 'character' && (
-        <CharacterPanel api={api} character={character} onClose={closePanel} session={session} />
+        <CharacterPanel
+          api={api}
+          character={character}
+          inspect={inspect}
+          onClose={closePanel}
+          session={session}
+        />
       )}
-      {panel === 'pack' && <PackPanel character={character} onClose={closePanel} />}
-      <TalkFeed lines={feed} self={self} unread={unread} />
+      {panel === 'pack' && (
+        <PackPanel character={character} inspect={inspect} onClose={closePanel} />
+      )}
+      <TalkFeed
+        index={nameIndex}
+        inspect={inspect}
+        lines={feed}
+        onSelect={selectPlayer}
+        self={self}
+        unread={unread}
+      />
       {talking && (
         <div className="gv-hud gv-talk-panel" data-owns-keys="true">
           {renderTalk(closeTalk)}

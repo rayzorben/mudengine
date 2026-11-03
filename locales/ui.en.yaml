@@ -1777,6 +1777,8 @@ splitter:
 # name. `numberRows` is the honest answer where a name holds several rows and
 # nothing has settled which — see `EntityNumber`.
 entity:
+  goToRoomTooltip: Plan a route to {room}
+  lookupTooltip: What the world data says about it
   number: '#{id}'
   numberTooltip: Its number in the world data
   numberRows: '{rows} rows'
@@ -2779,7 +2781,6 @@ cards:
     copyRow: '{item}: {price}, {quantity} left at {shop} ({age})'
     empty: No shop has been listed yet. Type 'list' in a shop to add it here.
     findPlaceholder: Find an item or shop
-    goToTooltip: Plan a route to {room}
     listedBy: Listed by {name}
     priceShare: '{share}% of your wealth'
     priceOver: More than your wealth
@@ -3701,7 +3702,6 @@ cards:
     # *is this worth taking* about a thing nobody can take.
     fixedChip: fixed
     fixedTitle: The game will not let anyone pick this up
-    itemLookupTooltip: What the world data says about it
     usableTitle: This character may use it
     light:
       deadReckoning: guessed room
@@ -3793,7 +3793,6 @@ cards:
       forget: ''
       forgetAria: Forget the {what} found in {room}
       forgetTooltip: Forget this
-      goToTooltip: Plan a route to {room}
       many: How Many
       rarity: Rarity
       searchedTooltip: Found by {hits} of the {searched} searches counted here
@@ -3837,7 +3836,6 @@ cards:
     # GreaterMUD's source casts it every 6 s at the server's own speed (1.2 s on
     # orohost), and on the way in for an instant spell; no capture states it yet.
     labelTitle: The game casts this on everyone standing here, again and again while they stay.
-    lookupTooltip: What the game data says about this spell
     moves: it moves you somewhere else
     notAtYourLevel: not at your level
     passage: Passage
@@ -4169,7 +4167,6 @@ cards:
       removeTooltip: Stop keeping {item}
       # A max typed under the min is kept at the min (todo 149).
       maxRaised: 'Max for {item} raised to its min, {min}.'
-      itemTooltip: Open the item, where the shop is chosen
       columnHave: Have
       packUnread: Your inventory has not been read yet; send 'i'.
       columnShop: Shop

@@ -378,7 +378,7 @@ export class Walker implements SessionModule {
        * `to` after it is further ahead — which is exactly the list a reader
        * wants and exactly what `ahead` above is already sliced to.
        */
-      ahead: ahead.map((entry) => entry.name),
+      ahead: ahead.map((entry) => ({ name: entry.name, room: asRoomReference(entry.to) })),
       destination: last?.name ?? null,
       // No route is stated as null, not laundered through a parser's refusal.
       destinationRoom: last === null ? null : asRoomReference(last.to),

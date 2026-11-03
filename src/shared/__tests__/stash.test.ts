@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { countedLabel } from '../items';
 import { isStashEntry, stashRooms, withHidden, withTaken, type StashPlace } from '../stash';
 
 const VAULT: StashPlace = { map: 1, room: 2150, name: 'Ganghouse, Vault' };
@@ -47,7 +48,7 @@ describe('the stash record', () => {
       1,
       2
     );
-    expect(stashRooms(stash).map((room) => [room.name, room.items])).toEqual([
+    expect(stashRooms(stash).map((room) => [room.name, room.items.map(countedLabel)])).toEqual([
       ['Ganghouse, Vault', ['3 torch', 'katana']],
       ['Newhaven, Village Entrance', ['padded gloves']]
     ]);

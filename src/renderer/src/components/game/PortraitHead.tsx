@@ -7,6 +7,8 @@
 import { memo } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import EntityName, { type Inspect } from '../EntityName';
+import { NameList } from '../Sentence';
 import type { PortraitStatus, PortraitView } from '@shared/portrait';
 import { useCharacterPicture } from '../../hooks/useCharacterPicture';
 import { t } from '../../lib/i18n';
@@ -41,9 +43,12 @@ function PortraitHead({
   character,
   art,
   portrait,
-  onOpen
+  onOpen,
+  inspect
 }: {
   character: CharacterState;
+  /** This character's class or race clicked: the realm's answer, as a stranger's opens. */
+  inspect?: Inspect;
   art: ItemArtIndex | null;
   portrait: PortraitView;
   /** The drawn portrait pressed: shown whole. */
@@ -93,13 +98,21 @@ function PortraitHead({
       <div>
         <h3>{name}</h3>
         <div className="gv-quiet">
-          {[
-            character.race,
-            character.className,
-            p.level === null ? null : t('game.sheet.level', { level: p.level })
-          ]
-            .filter((one) => one !== null)
-            .join(' · ')}
+          <NameList
+            draw={(part) =>
+              part.kind === 'name' ? <EntityName inspect={inspect} name={part.text} /> : part.text
+            }
+            items={[
+              ...(character.race === null ? [] : [{ kind: 'name', text: character.race }]),
+              ...(character.className === null
+                ? []
+                : [{ kind: 'name', text: character.className }]),
+              ...(p.level === null
+                ? []
+                : [{ kind: 'level', text: t('game.sheet.level', { level: p.level }) }])
+            ]}
+            separator=" · "
+          />
         </div>
         <div className="gv-chips">
           <span>

@@ -7,6 +7,7 @@ import GearBudget from './GearBudget';
 import GearSlots from './GearSlots';
 import GearTripFace from './GearTripFace';
 import Icon from './Icon';
+import type { Inspect } from './EntityName';
 import { t } from '../lib/i18n';
 import {
   buysOf,
@@ -53,6 +54,10 @@ export interface GearCardProps extends CardChrome {
   trip: GearTripProgress | null;
   /** What is worn and the level, so a change re-asks. */
   kitKey: string;
+  /** An item's or spell's name clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
+  /** Opens the route panel at a stop's room. Null on a pinned float, which cannot. */
+  goToRoom: ((room: string) => void) | null;
 }
 
 export function gearCopyText(choices: GearChoices | null): string {
@@ -85,6 +90,8 @@ function GearCard({
   banks,
   trip,
   kitKey,
+  inspect,
+  goToRoom,
   ...chrome
 }: GearCardProps) {
   const [choices, setChoices] = useState<GearChoices | null>(null);
@@ -223,6 +230,7 @@ function GearCard({
         ) : (
           <GearSlots
             budget={budget}
+            inspect={inspect}
             loading={loading}
             onChoose={choose}
             onDecline={decline}
@@ -264,7 +272,9 @@ function GearCard({
       id: 'bless',
       label: t('cards.gear.blessFace'),
       paned: true,
-      content: <GearBlessFace askKey={`${kitKey}|${asked}`} load={loadBlessItems} />
+      content: (
+        <GearBlessFace askKey={`${kitKey}|${asked}`} inspect={inspect} load={loadBlessItems} />
+      )
     },
     ...(shown === null
       ? []
@@ -275,6 +285,8 @@ function GearCard({
             paned: true,
             content: (
               <GearTripFace
+                goToRoom={goToRoom}
+                inspect={inspect}
                 onGo={(run) => void goGear(picks, run)}
                 onReplan={doPlan}
                 onStop={stopGear}

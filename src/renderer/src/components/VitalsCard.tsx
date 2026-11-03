@@ -15,7 +15,9 @@ import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { levelWord, meterValue } from '../lib/vitals';
+import EntityName, { type Inspect } from './EntityName';
 import LevelMeter, { levelReading } from './LevelMeter';
+import { NameList } from './Sentence';
 import Kpi from './viz/Kpi';
 import Ring from './viz/Ring';
 
@@ -35,6 +37,8 @@ export interface VitalsCardProps extends CardChrome {
    * the budget walking and fighting spend from for a fact it already has.
    */
   ask?(command: string): void;
+  /** This character's class or race clicked: the realm's answer, as for anybody else's. */
+  inspect?: Inspect;
 }
 
 /** The card's faces: the instrument, then what the levels above cost. */
@@ -129,7 +133,15 @@ function figure(value: number | null): string {
  * read — it is the server's own arithmetic, and it is right about the next
  * level every time.
  */
-function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: VitalsCardProps) {
+function VitalsCard({
+  character,
+  session,
+  thresholds,
+  away,
+  ask,
+  inspect,
+  ...chrome
+}: VitalsCardProps) {
   const { vitals, progress, phase, inCombat, stealth, afflictions } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'vitals-tab', FACE_IDS, FACE_IDS[0]!);
   const elapsed =
@@ -178,13 +190,19 @@ function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: Vi
 
   const hpLevel = vitalLevel(vitals.hp, vitals.hpMax, thresholds.hp);
   const manaLevel = vitalLevel(vitals.mana, vitals.manaMax, thresholds.mana);
-  const who = [
-    character.className,
-    character.race,
-    progress.level === null ? null : t('cards.party.level', { level: progress.level })
-  ]
-    .filter((part): part is string => part !== null)
-    .join(' · ');
+  // Class and race open the realm's answer, as anybody else's do; the level is a figure.
+  const who = (
+    <NameList
+      draw={(part) => part}
+      items={[
+        ...[character.className, character.race]
+          .filter((name) => name !== null)
+          .map((name) => <EntityName inspect={inspect} name={name} />),
+        ...(progress.level === null ? [] : [t('cards.party.level', { level: progress.level })])
+      ]}
+      separator=" · "
+    />
+  );
 
   const badge = inCombat ? (
     <span className="chip bad">{t('cards.vitals.badge.combat')}</span>

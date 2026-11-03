@@ -15711,9 +15711,9 @@ tr:hover .row-action.worn,
   gap: 4px;
 }
 
-/* A monster's name keeps the realm's lower case, as `.combat-name` does. */
-.combat-alone .chip {
-  text-transform: none;
+/* A monster's name beside its odds, kept together when the row wraps. */
+.combat-alone-one {
+  white-space: nowrap;
 }
 
 .combat-detail {

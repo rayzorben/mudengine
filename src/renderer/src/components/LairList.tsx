@@ -13,8 +13,8 @@
 import { Fragment, type CSSProperties } from 'react';
 
 import EntityNumber, { entityNumberText } from './EntityNumber';
+import EntityName from './EntityName';
 import { clockText, regenClockText } from '../lib/clockText';
-import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { attacksOnSight, DISPOSITION_WORD, type Standing } from '@shared/mobs';
 import type { WorldLair, WorldMob } from '@shared/world';
@@ -134,19 +134,7 @@ export default function LairList({ lair, standing, inspect }: LairListProps) {
              */
             <Fragment key={mob.row?.id ?? mob.name}>
               <dt>
-                {inspect ? (
-                  <button
-                    className="occupant mob lookup"
-                    onClick={(event) => inspect(mob.name, event.currentTarget)}
-                    onMouseDown={keepFocus}
-                    title={t('cards.room.itemLookupTooltip')}
-                    type="button"
-                  >
-                    {mob.name}
-                  </button>
-                ) : (
-                  <span className="occupant mob">{mob.name}</span>
-                )}
+                <EntityName className="occupant mob" inspect={inspect} name={mob.name} />
                 {/* The realm's own row, beside the name rather than in the
                     value column: a lair descriptor *names rows*, so this is
                     the one place a monster's number is certain, and it says

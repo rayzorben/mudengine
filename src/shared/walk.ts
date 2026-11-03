@@ -5,9 +5,15 @@
  * and the main process produces it, and `shared/` is the only module both may
  * import. Dependency-free, like everything else here.
  */
-import type { Requirement, RoomId, RouteStep } from './world';
+import type { Requirement, RoomId, RoomReference, RouteStep } from './world';
 import { isBlinding, type Afflictions, type CharacterState, type Vitals } from './character';
 import type { AutomationConfig, MovementConfig } from './config';
+
+/** A room as a reader reads it, with where it is; null where the client could not place it. */
+export interface NamedRoom {
+  name: string;
+  room: RoomReference | null;
+}
 
 /**
  * What a walk is for, which decides how each of its legs is planned (todo 19):
@@ -84,7 +90,7 @@ export interface WalkProgress {
    */
   path: RoomId[];
   /**
-   * The rooms still to be entered, **named**, in the order they come.
+   * The rooms still to be entered, **named** and placed, in the order they come.
    *
    * `path` beside it is the same journey as ids, which is what a map draws
    * with; this is the same journey as words, which is what a reader needs.
@@ -97,7 +103,7 @@ export interface WalkProgress {
    * is left*, which is the one a player actually acts on. Empty while nothing
    * is being walked.
    */
-  ahead: string[];
+  ahead: NamedRoom[];
   /**
    * Why it is no longer walking. Null while it still is.
    *

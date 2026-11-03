@@ -27,6 +27,7 @@ import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
 import { InventoryBody, type InventoryBodyProps } from './InventoryCard';
 import SelfAttributes from './SelfAttributes';
+import EntityName, { RoomName } from './EntityName';
 import SelfHero from './SelfHero';
 import WornGrid from './WornGrid';
 import StockBar from './viz/StockBar';
@@ -149,6 +150,7 @@ function SelfCard({
   inspect,
   gear,
   loadWearer,
+  goToRoom,
   ...chrome
 }: SelfCardProps) {
   const [face, chooseFace] = useRememberedChoice(session, 'self-tab', FACE_IDS, FACE_IDS[0]!);
@@ -197,6 +199,7 @@ function SelfCard({
     <>
       <SelfHero
         className={character.className}
+        inspect={inspect}
         progress={progress}
         race={character.race}
         title={title}
@@ -322,6 +325,7 @@ function SelfCard({
       character={character}
       finding={finding}
       gear={gear}
+      goToRoom={goToRoom}
       inspect={inspect}
       loadWearer={loadWearer}
       onFindDismiss={() => setFinding(false)}
@@ -338,20 +342,7 @@ function SelfCard({
       label: t('cards.room.shop.columnItem'),
       wide: true,
       value: (row) => row.name,
-      cell: (row) =>
-        inspect ? (
-          <button
-            className="what lookup"
-            onClick={(event) => inspect(row.name, event.currentTarget)}
-            onMouseDown={keepFocus}
-            title={t('cards.self.supplies.itemTooltip')}
-            type="button"
-          >
-            {row.name}
-          </button>
-        ) : (
-          <span className="what">{row.name}</span>
-        )
+      cell: (row) => <EntityName className="what" inspect={inspect} name={row.name} />
     },
     {
       id: 'have',
@@ -422,9 +413,13 @@ function SelfCard({
             {t('cards.self.supplies.collectOnly')}
           </span>
         ) : row.shop.length > 0 ? (
-          <span className="slot" title={row.at ? `${row.at.map}/${row.at.room}` : undefined}>
+          <RoomName
+            className="slot"
+            open={goToRoom}
+            room={row.at ? `${row.at.map}/${row.at.room}` : null}
+          >
             {row.shop}
-          </span>
+          </RoomName>
         ) : (
           <NearestShop counter={counters?.[row.name]} failed={failed} />
         )

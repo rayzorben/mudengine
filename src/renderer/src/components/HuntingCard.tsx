@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
+import EntityName, { type Inspect } from './EntityName';
 import GatedGrounds, { gatedRow } from './GatedGrounds';
 import HuntBest from './HuntBest';
 import HuntCycle from './HuntCycle';
@@ -63,6 +64,8 @@ export interface HuntingCardProps extends CardChrome {
   createLoop: ((rooms: HuntingRoom[], name: string) => void) | null;
   /** The room the character stands in, so a move re-asks. */
   hereKey: string | null;
+  /** A monster in a spot's detail clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
 }
 
 /** Two literal calls per word, as the dictionary's coverage test reads them. */
@@ -150,6 +153,7 @@ function HuntingCard({
   runLoop,
   createLoop,
   hereKey,
+  inspect,
   ...chrome
 }: HuntingCardProps) {
   const [advice, setAdvice] = useState<HuntingAdvice | null>(null);
@@ -469,6 +473,7 @@ function HuntingCard({
           <SpotDetail
             backstab={advice?.assumptions.backstab === true}
             chooseOnMap={chooseOnMap}
+            inspect={inspect}
             spot={opened}
           />
           <SpotActions
@@ -487,11 +492,13 @@ function HuntingCard({
 function SpotDetail({
   spot,
   backstab,
-  chooseOnMap
+  chooseOnMap,
+  inspect
 }: {
   spot: HuntingSpot;
   backstab: boolean;
   chooseOnMap: HuntingCardProps['chooseOnMap'];
+  inspect: HuntingCardProps['inspect'];
 }) {
   const { estimate } = spot;
   const poisonUnknown = estimate.unknown.includes('poison');
@@ -613,7 +620,7 @@ function SpotDetail({
         {spot.mobs.map((mob) => (
           <li key={mob.name}>
             <span>
-              {mob.name}
+              <EntityName inspect={inspect} name={mob.name} />
               {mob.afflictions.length > 0 ? (
                 <span className="hunt-afflicts">
                   {' '}

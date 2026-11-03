@@ -7,6 +7,7 @@
  */
 import { memo } from 'react';
 
+import EntityName, { type Inspect } from './EntityName';
 import Icon from './Icon';
 import {
   vitalLevel,
@@ -37,6 +38,8 @@ export interface PartyMemberRowProps {
   fighting: string | null;
   hitBy: string | null;
   onSelect?(name: string, anchor: PopoverAnchor): void;
+  /** A class or a monster clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
   ask?(command: string): void;
 }
 
@@ -110,6 +113,7 @@ function PartyMemberRow({
   fighting,
   hitBy,
   onSelect,
+  inspect,
   ask
 }: PartyMemberRowProps) {
   const hpLevel = vitalLevel(member.health, 1, thresholds.hp);
@@ -131,20 +135,22 @@ function PartyMemberRow({
           member.name
         )}
       </span>
-      <span className="party-class">{className ?? ''}</span>
+      <span className="party-class">
+        {className !== null && <EntityName inspect={inspect} name={className} />}
+      </span>
       <span className="party-fight">
         {/* The fact `assistLeader` acts on, and the monster a heal or a
             defence is for, while each sighting is fresh. */}
         {fighting !== null && (
           <span className="party-pill party-fighting" title={fighting}>
             <Icon name="sword" />
-            <span>{fighting}</span>
+            <EntityName inspect={inspect} name={fighting} />
           </span>
         )}
         {hitBy !== null && (
           <span className="party-pill party-hit-by" title={hitBy}>
             <Icon name="shield" />
-            <span>{hitBy}</span>
+            <EntityName inspect={inspect} name={hitBy} />
           </span>
         )}
         {/* `follow <name>` is how a leader is made on this realm; there is no

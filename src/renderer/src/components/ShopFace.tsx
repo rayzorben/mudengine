@@ -1,6 +1,6 @@
 import CardTable, { type Column } from './CardTable';
 import EntityNumber from './EntityNumber';
-import { keepFocus } from '../lib/focus';
+import EntityName from './EntityName';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { affordable, mergeStock, priceValue, type StockRow } from '../lib/shop';
@@ -196,22 +196,8 @@ export default function ShopFace({
       value: (row) => row.name,
       cell: (row) => (
         <>
-          {inspect ? (
-            /* The row shows the buy decision's number — the price. The name opens
-               the Reference card for the rest: weight, provenance, and who else
-               sells it. */
-            <button
-              className="what lookup"
-              onClick={(event) => inspect(row.name, event.currentTarget)}
-              onMouseDown={keepFocus}
-              title={t('cards.room.itemLookupTooltip')}
-              type="button"
-            >
-              {row.name}
-            </button>
-          ) : (
-            <span className="what">{row.name}</span>
-          )}
+          {/* The row shows the price; the name opens the rest: weight, provenance, who else sells it. */}
+          <EntityName className="what" inspect={inspect} name={row.name} />
           {/*
             The counter's judgments, as words beside the name — §6, a
             condition is never a hue alone. "can't use" is the counter's; "not

@@ -4,7 +4,7 @@
  * whether this character may use it (`canUse`, the console rewrite's verdict,
  * todo 146), and its worth or the `fixed` chip.
  */
-import { keepFocus } from '../lib/focus';
+import EntityName from './EntityName';
 import { t } from '../lib/i18n';
 import { canUse } from '@shared/canUse';
 import type { ItemEntity } from '@shared/entities';
@@ -48,19 +48,9 @@ export default function FloorItems({ items, coins, wearer, inspect }: FloorItems
             >
               {USE_MARK[use.state]}
             </span>{' '}
-            {inspect ? (
-              <button
-                className="lookup"
-                onClick={(event) => inspect(item.name, event.currentTarget)}
-                onMouseDown={keepFocus}
-                title={t('cards.room.itemLookupTooltip')}
-                type="button"
-              >
-                {countedLabel(item)}
-              </button>
-            ) : (
-              countedLabel(item)
-            )}
+            <EntityName inspect={inspect} name={item.name}>
+              {countedLabel(item)}
+            </EntityName>
             {/*
               What the realm says it is worth, absent for a name it cannot
               place and for the many things it says are worth nothing. Not for

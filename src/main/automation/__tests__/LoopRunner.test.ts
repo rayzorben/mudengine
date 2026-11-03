@@ -1186,6 +1186,20 @@ describe('the stops a lap still owes', () => {
     expect(runner.progress.remainingStops).toEqual(['1/1', '1/2', '1/3']);
   });
 
+  /* Todo 1523: every stop the card lists opens its room, and one nobody placed stays a name. */
+  it('names every stop with the room it was placed at, and none where it was not', () => {
+    const runner = new LoopRunner(
+      rooms({ roomOf: (stop) => (stop.name === 'B' ? null : '1/1') }).planner,
+      {}
+    );
+    runner.start(abc, state());
+    expect(runner.progress.everyStop).toEqual([
+      { name: 'A', room: { map: 1, room: 1 } },
+      { name: 'B', room: null },
+      { name: 'C', room: { map: 1, room: 1 } }
+    ]);
+  });
+
   it('drops a stop as the lap reaches it', () => {
     const runner = new LoopRunner(rooms().planner, {});
     runner.start(abc, state());

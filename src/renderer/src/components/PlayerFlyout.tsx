@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import EntityName, { RoomName, type Inspect } from './EntityName';
 import RemoteList from './RemoteList';
 import { CheckField } from './FormField';
 import PopupMenu from './PopupMenu';
@@ -87,6 +88,8 @@ export interface PlayerFlyoutProps {
   inspect?(name: string, anchor: HTMLElement): void;
   /** A slot word clicked: what the reading character can wear there, replacing this panel. */
   onSelectSlot?(slot: string, anchor: HTMLElement): void;
+  /** Their last room clicked: the route panel there. Null where the surface cannot open one. */
+  goToRoom?: ((room: string) => void) | null;
   /**
    * Their gang's name clicked: the Gang flyout on it, replacing this panel.
    *
@@ -177,7 +180,8 @@ export default function PlayerFlyout({
   onDismiss,
   returnFocus,
   inspect,
-  onSelectSlot
+  onSelectSlot,
+  goToRoom
 }: PlayerFlyoutProps) {
   const [face, setFace] = useState<Face>('player');
   const copy = useCopyMenu();
@@ -303,7 +307,13 @@ export default function PlayerFlyout({
           <p className="empty">{t('cards.player.unknownName', { name: asked.name })}</p>
         ) : face === 'player' ? (
           <>
-            <PlayerDetail now={now} onSelectGang={onSelectGang} record={record} />
+            <PlayerDetail
+              goToRoom={goToRoom}
+              inspect={inspect}
+              now={now}
+              onSelectGang={onSelectGang}
+              record={record}
+            />
             {onAsk && <PlayerAsks name={record.name} onAsk={onAsk} />}
           </>
         ) : face === 'equipment' ? (
@@ -414,7 +424,7 @@ function PlayerAsks({
   );
 }
 
-function PlayerStanding({ record }: { record: PlayerRecord }) {
+function PlayerStanding({ record, inspect }: { record: PlayerRecord; inspect?: Inspect }) {
   const reading = titleReading(record.title);
   const readClass = reading !== null && reading.classes.length === 1 ? reading.classes[0]! : null;
   const className = record.className ?? readClass;
@@ -432,7 +442,9 @@ function PlayerStanding({ record }: { record: PlayerRecord }) {
       {record.race === null ? null : (
         <>
           <dt>{t('cards.player.detail.race')}</dt>
-          <dd>{record.race}</dd>
+          <dd>
+            <EntityName inspect={inspect} name={record.race} />
+          </dd>
         </>
       )}
 
@@ -440,7 +452,7 @@ function PlayerStanding({ record }: { record: PlayerRecord }) {
         <>
           <dt>{t('cards.player.detail.class')}</dt>
           <dd>
-            {className}
+            <EntityName inspect={inspect} name={className} />
             {classIsRead ? (
               <span className="quiet-note"> ({t('cards.player.fromTitle')})</span>
             ) : null}
@@ -482,11 +494,15 @@ function PlayerStanding({ record }: { record: PlayerRecord }) {
 function PlayerDetail({
   record,
   now,
-  onSelectGang
+  onSelectGang,
+  inspect,
+  goToRoom
 }: {
   record: PlayerRecord;
   now: number;
   onSelectGang?: (gang: string, anchor: PopoverAnchor) => void;
+  inspect?: Inspect;
+  goToRoom?: ((room: string) => void) | null;
 }) {
   return (
     <dl className="readout player-detail">
@@ -504,7 +520,7 @@ function PlayerDetail({
         </>
       )}
 
-      <PlayerStanding record={record} />
+      <PlayerStanding inspect={inspect} record={record} />
 
       {/* From their who row or a look at them: the one fact the `gang` ground
           is decided on, so it is shown where that decision is made — and a
@@ -536,7 +552,11 @@ function PlayerDetail({
       </dd>
 
       <dt>{t('cards.player.detail.where')}</dt>
-      <dd>{place(record)}</dd>
+      <dd>
+        <RoomName open={goToRoom} room={record.lastRoom}>
+          {place(record)}
+        </RoomName>
+      </dd>
 
       <dt>{t('cards.player.detail.health')}</dt>
       <dd>
@@ -678,19 +698,7 @@ function PlayerEquipment({
               )}
             </dt>
             <dd>
-              {inspect === undefined ? (
-                worn.name
-              ) : (
-                <button
-                  className="lookup"
-                  onClick={(event) => inspect(worn.name, event.currentTarget)}
-                  onMouseDown={keepFocus}
-                  title={t('cards.room.itemLookupTooltip')}
-                  type="button"
-                >
-                  {worn.name}
-                </button>
-              )}
+              <EntityName inspect={inspect} name={worn.name} />
             </dd>
           </Fragment>
         ))}

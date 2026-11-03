@@ -7,6 +7,7 @@
  */
 import { memo } from 'react';
 
+import EntityName, { type Inspect } from './EntityName';
 import type { Progress } from '@shared/character';
 import { NO_PORTRAIT } from '@shared/portrait';
 import { useCharacterPicture } from '../hooks/useCharacterPicture';
@@ -18,12 +19,15 @@ function SelfHero({
   progress,
   race,
   className,
-  title
+  title,
+  inspect
 }: {
   progress: Progress;
   race: string | null;
   className: string | null;
   title: string;
+  /** The class or race clicked: the realm's answer, as for anybody else's. */
+  inspect?: Inspect;
 }) {
   const { src, failed, initial } = useCharacterPicture(
     useItemArt(),
@@ -39,8 +43,13 @@ function SelfHero({
       </span>
       <div className="self-hero-facts">
         <span className={`self-hero-who${className ? '' : ' inert'}`}>
-          {className ?? '—'}
-          {race ? ` · ${race}` : ''}
+          {className === null ? '—' : <EntityName inspect={inspect} name={className} />}
+          {race && (
+            <>
+              {' · '}
+              <EntityName inspect={inspect} name={race} />
+            </>
+          )}
         </span>
         <div className="self-hero-cells">
           <div className="stat-cell">

@@ -49,6 +49,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import ClearField from './ClearField';
+import { RoomName } from './EntityName';
 import Icon from './Icon';
 import { type BuilderMarks, type TeleportPress } from './MapPlan';
 import MapView from './MapView';
@@ -133,6 +134,8 @@ export interface LoopBuilderCardProps extends CardChrome {
    */
   onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | null;
   onPeekEnd: (() => void) | null;
+  /** Opens the route panel at a picked room. */
+  goToRoom?: ((room: string) => void) | null;
   /** The picks, planned by main against this character's realm. */
   draft(rooms: RoomId[]): Promise<LoopDraft>;
   /** Files the loop. Resolves to why it could not, or null. */
@@ -148,6 +151,7 @@ function LoopBuilderCard({
   finds,
   onPeek,
   onPeekEnd,
+  goToRoom,
   search,
   loadMap,
   draft,
@@ -580,9 +584,9 @@ function LoopBuilderCard({
                   )}
                   <div className="builder-waypoint" data-kind={index === 0 ? 'start' : 'waypoint'}>
                     <span className="builder-index">{index + 1}</span>
-                    <span className="step-name" title={stop.name}>
+                    <RoomName className="step-name" open={goToRoom} room={stop.id}>
                       {stop.name}
-                    </span>
+                    </RoomName>
                     <span className="chip off">
                       {stopParts({ room: `${stop.name} ${stop.id}` }).at}
                     </span>

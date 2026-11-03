@@ -26,6 +26,7 @@
 import { createPortal } from 'react-dom';
 import { Fragment, useEffect, useState } from 'react';
 
+import EntityName, { RoomName, type Inspect } from './EntityName';
 import EntityNumber from './EntityNumber';
 import LairList from './LairList';
 import { shopKindLabel } from './ShopFace';
@@ -105,6 +106,10 @@ export interface RoomQuickViewProps {
    */
   onPointerEnter(): void;
   onPointerLeave(): void;
+  /** A monster or item named here clicked: the realm's answer, replacing this panel. */
+  inspect?: Inspect;
+  /** A way out's room clicked: this panel on that room. */
+  peek?(room: RoomId, at: Element): void;
 }
 
 export default function RoomQuickView({
@@ -113,7 +118,9 @@ export default function RoomQuickView({
   standing,
   onDismiss,
   onPointerEnter,
-  onPointerLeave
+  onPointerLeave,
+  inspect,
+  peek
 }: RoomQuickViewProps) {
   const [brief, setBrief] = useState<RoomBrief | null | 'pending'>('pending');
 
@@ -191,7 +198,7 @@ export default function RoomQuickView({
         ) : brief === null ? (
           <div className="empty">{t('cards.roomPeek.unknownRoom')}</div>
         ) : (
-          <RoomFacts brief={brief} standing={standing} />
+          <RoomFacts brief={brief} inspect={inspect} peek={peek} standing={standing} />
         )}
         {/*
          * The one action, below the facts and above nothing: what the reader
@@ -236,7 +243,12 @@ export default function RoomQuickView({
  * under their own heading, because *what spawns here* is a list of things and
  * the rest of this is one fact per line.
  */
-function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }) {
+function RoomFacts({
+  brief,
+  standing,
+  inspect,
+  peek
+}: { brief: RoomBrief; standing: Standing } & Pick<RoomQuickViewProps, 'inspect' | 'peek'>) {
   const dark = brief.light === undefined ? null : lightPhrase(brief.light);
   /*
    * **One label column for the panel, across two `<dl>`s.** An `auto` track is
@@ -266,7 +278,7 @@ function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }
                 this is the one monster on the panel whose number is never in
                 question — the lair's are `LairList`'s. */}
             <dd className="span">
-              {brief.npc.name}
+              <EntityName inspect={inspect} name={brief.npc.name} />
               <EntityNumber of={{ id: brief.npc.id }} />
             </dd>
           </>
@@ -296,10 +308,10 @@ function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }
             stoppedBy={brief.stoppedBy}
           />
         )}
-        {/* What the realm furnishes it with and puts back every night —
-            format 42. Names, not controls, for the lair's reason below; the
-            ones nobody can pick up are drawn quiet, since the raft is the
-            thing a reader came for and the sign beside it is scenery. */}
+        {/* What the realm furnishes it with and puts back every night,
+            format 42. The ones nobody can pick up are drawn quiet, since the
+            raft is the thing a reader came for and the sign beside it is
+            scenery. */}
         {brief.placed !== undefined && (
           <>
             <dt title={t('cards.roomPeek.placedHint')}>{t('cards.roomPeek.placedLabel')}</dt>
@@ -309,10 +321,10 @@ function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }
                   {index > 0 && ', '}
                   {item.fixed === true ? (
                     <span className="quiet" title={t('cards.room.fixedTitle')}>
-                      {item.name}
+                      <EntityName inspect={inspect} name={item.name} />
                     </span>
                   ) : (
-                    item.name
+                    <EntityName inspect={inspect} name={item.name} />
                   )}
                   <EntityNumber of={{ id: item.id }} />
                 </Fragment>
@@ -345,7 +357,9 @@ function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }
                   <span aria-hidden="true" className="peek-exit-arrow">
                     →
                   </span>
-                  <span className="peek-exit-to">{exit.name ?? exit.to}</span>
+                  <RoomName className="peek-exit-to" open={peek} room={exit.to} title={null}>
+                    {exit.name ?? exit.to}
+                  </RoomName>
                   {exit.obstacle !== undefined && (
                     <span className="chip warn" title={exit.obstacle.detail}>
                       {exit.obstacle.label}
@@ -359,14 +373,13 @@ function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }
       </dl>
       {/*
        * What spawns here, in the words the Room card's own face uses, because
-       * it is the same readout. `inspect` is deliberately absent: this panel
-       * is already one panel deep and opening the realm's answer about a
-       * monster would replace it with something that cannot get back.
+       * it is the same readout. A monster opens the realm's answer, which
+       * replaces this panel (user, 2026-11-02): the room is one hover away.
        */}
       {brief.lair !== undefined && (
         <>
           <h3 className="peek-heading">{t('cards.room.tabs.lair')}</h3>
-          <LairList lair={brief.lair} standing={standing} />
+          <LairList inspect={inspect} lair={brief.lair} standing={standing} />
         </>
       )}
       {/*

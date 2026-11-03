@@ -6,9 +6,9 @@
  * the one join (`hazardFor`). See `LairList` for the same two-surface rule.
  */
 import EntityNumber from './EntityNumber';
+import EntityName from './EntityName';
 import { corridorTitle } from '../lib/corridor';
 import { healthShareWords } from '../lib/healthShare';
-import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
   hazardEffects,
@@ -178,19 +178,7 @@ export default function RoomSpellRows({
         <>
           <dt title={t('cards.roomSpell.labelTitle')}>{t('cards.roomSpell.label')}</dt>
           <dd className="span">
-            {inspect ? (
-              <button
-                className="lookup"
-                onClick={(event) => inspect(spell.name, event.currentTarget)}
-                onMouseDown={keepFocus}
-                title={t('cards.roomSpell.lookupTooltip')}
-                type="button"
-              >
-                {spell.name}
-              </button>
-            ) : (
-              spell.name
-            )}
+            <EntityName inspect={inspect} name={spell.name} />
             {/* Where it came from: the realm's own Spells row. */}
             <EntityNumber of={{ id: spell.id }} />
             {hazard !== undefined &&

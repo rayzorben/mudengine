@@ -19,6 +19,12 @@ export interface RouteOpenerInputs {
   openRouteOn(room: WorldRoom | null, search: string | null): void;
 }
 
+/** The route panel on a `map/room` string; one that is not one opens nothing. */
+export function openRoomAt(room: string, choose: (map: number, room: number) => void): void {
+  const at = asRoomReference(room);
+  if (at !== null) choose(at.map, at.room);
+}
+
 export function useRouteOpeners({ api, session, openRouteOn }: RouteOpenerInputs) {
   /**
    * A room clicked on the map opens the route panel with the plan already on
@@ -95,13 +101,7 @@ export function useRouteOpeners({ api, session, openRouteOn }: RouteOpenerInputs
    * `useCallback` rather than an arrow at the call site: `QuestCard` is
    * memoised, and a prop built in a render is a memo defeated.
    */
-  const goToRoom = useCallback(
-    (room: string) => {
-      const at = asRoomReference(room);
-      if (at !== null) chooseOnMap(at.map, at.room);
-    },
-    [chooseOnMap]
-  );
+  const goToRoom = useCallback((room: string) => openRoomAt(room, chooseOnMap), [chooseOnMap]);
 
   return { chooseOnMap, chooseRoomNamed, goToRoom };
 }

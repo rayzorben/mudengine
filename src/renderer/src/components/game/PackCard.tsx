@@ -9,6 +9,7 @@ import { t } from '../../lib/i18n';
 import { figure } from '../../lib/stats';
 import { pictureOf, type ItemArtIndex } from '../../lib/itemArt';
 import { weightOf, type PackGroup, type Weight } from '../../lib/packGroups';
+import EntityName, { type Inspect } from '../EntityName';
 import ItemPicture from './ItemPicture';
 
 /** A lower bound reads as one: `365+` while a row cannot be weighed. */
@@ -45,13 +46,15 @@ function PackCard({
   label,
   items,
   art,
-  realm
+  realm,
+  inspect
 }: {
   group: PackGroup;
   label: string;
   items: readonly CarriedItem[];
   art: ItemArtIndex | null;
   realm: RealmFamily | null;
+  inspect?: Inspect;
 }) {
   return (
     <section className="gv-pack-card" data-group={group}>
@@ -75,7 +78,7 @@ function PackCard({
               />
             </span>
             <span className="gv-pack-name">
-              {item.name}
+              <EntityName inspect={inspect} name={item.name} />
               {item.equipped && <WornSlot item={item} />}
             </span>
             {(item.count ?? 1) > 1 ? (

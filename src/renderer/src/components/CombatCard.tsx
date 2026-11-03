@@ -1,6 +1,7 @@
 import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import EntityName from './EntityName';
 import FightOutlook, { AloneChip } from './FightOutlook';
 import Icon from './Icon';
 import MobFactRow from './MobFactRow';
@@ -18,10 +19,9 @@ import type { PlayerRegistry } from '@shared/players';
 import type { RoomVerdict } from '@shared/verdict';
 import { woundBandFor } from '@shared/wounds';
 import { mobKey } from '@shared/world';
-import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { percent, survivalVital } from '../lib/outlook';
-import { isKnownPlayer, PlayerName } from '../lib/players';
+import { isKnownPlayer } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord, woundLevel } from '../lib/vitals';
 
@@ -37,45 +37,6 @@ export interface CombatCardProps extends CardChrome {
   onSelect?(name: string, anchor: PopoverAnchor): void;
   /** Treat as: a monster's row in this character's realm list, or taken out with null (todo 817). */
   onTreat?(name: string, treat: MobTreatment | null): void;
-}
-
-/**
- * A name in a fight as the control that opens its card.
- *
- * What is swinging at this character is the thing on this card most worth a
- * second look, and it used to be plain text. A person — on the roster or in
- * the registry — opens the Player flyout, because a player attacking you is
- * the fact `HangUp`'s clock runs on; anything else opens the realm's answer,
- * which is where a monster's real health and temper are.
- */
-function Combatant({
-  name,
-  character,
-  players,
-  inspect,
-  onSelect
-}: {
-  name: string;
-  character: CharacterState;
-  players: PlayerRegistry;
-  inspect?: CombatCardProps['inspect'];
-  onSelect?: CombatCardProps['onSelect'];
-}) {
-  if (onSelect && isKnownPlayer(players, character, name)) {
-    return <PlayerName className="name" name={name} onSelect={onSelect} />;
-  }
-  if (!inspect) return <span className="name">{name}</span>;
-  return (
-    <button
-      className="name lookup"
-      onClick={(event) => inspect(name, event.currentTarget)}
-      onMouseDown={keepFocus}
-      title={t('cards.room.itemLookupTooltip')}
-      type="button"
-    >
-      {name}
-    </button>
-  );
 }
 
 /**
@@ -287,15 +248,14 @@ function Attacker({ name, who }: { name: string; who: Who }) {
       >
         {target && <Icon name="crosshair" />}
       </span>
-      <Combatant
-        character={character}
+      <EntityName
+        className="name"
         inspect={inspect}
         name={name}
-        onSelect={onSelect}
-        players={players}
+        person={onSelect ? { players, character, onSelect } : null}
       />
       {health !== undefined && <HealthTick health={health} />}
-      {odds !== undefined && <AloneChip name={name} named={false} odds={odds} />}
+      {odds !== undefined && <AloneChip name={name} odds={odds} />}
       <RowPeaceChip character={character} name={name} verdict={verdict} />
       {onTreat && !person && <TreatAs name={name} onTreat={onTreat} />}
     </li>
@@ -359,12 +319,11 @@ function CombatCard({
     ) : (
       <div className="combat-target">
         <div className="combat-name">
-          <Combatant
-            character={character}
-            players={players}
+          <EntityName
+            className="name"
             inspect={inspect}
             name={combat.health.name}
-            onSelect={onSelect}
+            person={onSelect ? { players, character, onSelect } : null}
           />
           <RowPeaceChip character={character} name={combat.health.name} verdict={verdict} />
           {onTreat && !isKnownPlayer(players, character, combat.health.name) && (
@@ -527,7 +486,7 @@ function CombatCard({
                     {fighting && (
                       <span className="hint">{survivalWords(verdict, character.vitals.hp)}</span>
                     )}
-                    <FightOutlook verdict={verdict} />
+                    <FightOutlook inspect={inspect} verdict={verdict} />
                   </div>
                 )}
               </div>

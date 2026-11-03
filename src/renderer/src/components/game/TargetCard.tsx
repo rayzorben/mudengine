@@ -7,10 +7,20 @@
 import { memo } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import EntityName, { type Inspect } from '../EntityName';
 import { gaugeOf } from '../../lib/gameArena';
 import { t } from '../../lib/i18n';
 
-function TargetCard({ character, target }: { character: CharacterState; target: string | null }) {
+function TargetCard({
+  character,
+  target,
+  inspect
+}: {
+  character: CharacterState;
+  target: string | null;
+  /** The target's name clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
+}) {
   if (target === null) return <aside className="gv-hud gv-glass gv-target" data-shown="false" />;
   const { combat } = character;
   const fighting = combat.target === target;
@@ -30,7 +40,9 @@ function TargetCard({ character, target }: { character: CharacterState; target: 
   return (
     <aside className="gv-hud gv-glass gv-target" data-shown="true">
       <div className="gv-target-row">
-        <b>{target}</b>
+        <b>
+          <EntityName inspect={inspect} name={target} />
+        </b>
         <span>{gauge.points ?? observed ?? t('game.target.unknown')}</span>
       </div>
       <div className="gv-wound" data-unknown={gauge.health === null ? 'true' : undefined}>

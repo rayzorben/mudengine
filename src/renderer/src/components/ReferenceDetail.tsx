@@ -1,5 +1,7 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
 import { Fragment, useState } from 'react';
+import EntityName, { type Inspect } from './EntityName';
+import { NameList } from './Sentence';
 import EntityNumber from './EntityNumber';
 import MobAsks from './MobAsks';
 import MobFactRow from './MobFactRow';
@@ -461,7 +463,7 @@ function MobDetail({
             questions anybody asks about a monster. Capped at six by the build,
             so this is a lead rather than a drop table.
           */}
-          <dd>{mob.drops.join(', ')}</dd>
+          <RealmNames names={mob.drops} onName={names.onName} />
         </>
       )}
       {mob.asks !== undefined && <MobAsks asks={mob.asks} onAsk={onAsk} />}
@@ -758,42 +760,13 @@ function EffectRows({
 }
 
 /**
- * The monsters that drop this, each one a name the realm can be asked about.
- *
- * Same complaint as `SoldBy` and the same answer: a monster is an entity the
- * realm has a row for — health, temper, what else it carries — and printing
- * its name as text was the client holding the answer and drawing the question.
- * A click opens the realm's answer beside the name, which is the rule every
- * other name in this client already follows.
- *
- * Text when there is nothing to open it with, rather than a control bound to
- * nowhere.
+ * Realm names in a row, each one a control that opens its answer: the
+ * monsters that drop an item, and the items a monster drops.
  */
-function DroppedBy({
-  mobs,
-  onName
-}: {
-  mobs: readonly string[];
-  onName: ((name: string, anchor: HTMLElement) => void) | null;
-}) {
+function RealmNames({ names, onName }: { names: readonly string[]; onName: Inspect | null }) {
   return (
     <dd>
-      {mobs.map((mob, index) => (
-        <Fragment key={`${mob}-${index}`}>
-          {index > 0 && ', '}
-          {onName === null ? (
-            mob
-          ) : (
-            <button
-              className="lookup"
-              onClick={(event) => onName(mob, event.currentTarget)}
-              type="button"
-            >
-              {mob}
-            </button>
-          )}
-        </Fragment>
-      ))}
+      <NameList draw={(name) => <EntityName inspect={onName} name={name} />} items={names} />
     </dd>
   );
 }
@@ -901,7 +874,7 @@ function ItemDetail({
       {item.mobs && item.mobs.length > 0 && (
         <>
           <dt>{t('cards.reference.item.droppedByLabel')}</dt>
-          <DroppedBy mobs={item.mobs} onName={names.onName} />
+          <RealmNames names={item.mobs} onName={names.onName} />
         </>
       )}
       {item.from && item.from.length > 0 && (

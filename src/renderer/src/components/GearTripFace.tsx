@@ -1,7 +1,11 @@
+import { Fragment, type ReactNode } from 'react';
+
 import Icon from './Icon';
 import PlanFights from './PlanFights';
+import EntityName, { RoomName, type Inspect } from './EntityName';
 import { copperWords, unpricedWords } from '../lib/gearPicks';
 import { t } from '../lib/i18n';
+import Sentence, { NameList } from './Sentence';
 import { progressAt, type Progress } from '../lib/progression';
 import type { GearLeg, GearStop, GearTripPlan, GearTripProgress } from '@shared/gearTrip';
 import { describeBlock } from '@shared/world';
@@ -21,14 +25,23 @@ export interface GearTripFaceProps {
   onGo(run: boolean): void;
   onStop(): void;
   onReplan(): void;
+  /** An item's or spell's name clicked: the realm's answer, beside it. */
+  inspect: Inspect | undefined;
+  /** Opens the route panel at a stop's room. Null on a pinned float, which cannot. */
+  goToRoom: ((room: string) => void) | null;
 }
 
-function Stop({ stop }: { stop: GearStop }) {
+/** What a stop's names open: the realm's answer for a thing, the route panel for its room. */
+type Openers = Pick<GearTripFaceProps, 'inspect' | 'goToRoom'>;
+
+function Stop({ stop, inspect, goToRoom }: { stop: GearStop } & Openers) {
   switch (stop.kind) {
     case 'bank':
       return (
         <div className="gear-stop-what">
-          <span className="gear-item-name">{stop.bank}</span>
+          <RoomName className="gear-item-name" open={goToRoom} room={stop.room}>
+            {stop.bank}
+          </RoomName>
           <span className="chip info cased">
             {t('cards.gear.withdraw', { amount: copperWords(stop.withdraw) })}
           </span>
@@ -37,18 +50,25 @@ function Stop({ stop }: { stop: GearStop }) {
     case 'shop':
       return (
         <div className="gear-stop-what">
-          <span className="gear-item-name">{stop.shop}</span>
+          <RoomName className="gear-item-name" open={goToRoom} room={stop.room}>
+            {stop.shop}
+          </RoomName>
           <span className="gear-stop-items">
-            {stop.items.map((item) => (
-              <span className="chip cased" key={item.item}>
-                {item.charged === null
-                  ? item.name
-                  : t('cards.gear.itemPrice', {
-                      item: item.name,
-                      price: copperWords(item.charged)
-                    })}
-              </span>
-            ))}
+            {stop.items.map((item) => {
+              const name = <EntityName inspect={inspect} key="item" name={item.name} />;
+              return (
+                <span className="chip cased" key={item.item}>
+                  {item.charged === null ? (
+                    name
+                  ) : (
+                    <Sentence
+                      parts={{ item: name, price: copperWords(item.charged) }}
+                      text={t('cards.gear.itemPrice')}
+                    />
+                  )}
+                </span>
+              );
+            })}
           </span>
         </div>
       );
@@ -59,7 +79,7 @@ function Stop({ stop }: { stop: GearStop }) {
   }
 }
 
-function Leg({ leg }: { leg: GearLeg }) {
+function Leg({ leg, inspect }: { leg: GearLeg; inspect: Inspect | undefined }) {
   return (
     <div className="gear-leg">
       <span className="chip quiet cased">
@@ -72,7 +92,17 @@ function Leg({ leg }: { leg: GearLeg }) {
       {leg.blocked === null ? null : <span className="chip bad cased">{leg.blocked}</span>}
       {leg.needs.length === 0 ? null : (
         <span className="chip warn cased">
-          {t('cards.gear.legNeeds', { items: leg.needs.map((item) => item.name).join(', ') })}
+          <Sentence
+            parts={{
+              items: (
+                <NameList
+                  draw={(item) => <EntityName inspect={inspect} name={item.name} />}
+                  items={leg.needs}
+                />
+              )
+            }}
+            text={t('cards.gear.legNeeds')}
+          />
         </span>
       )}
       {leg.walls.map((wall, index) => (
@@ -82,7 +112,13 @@ function Leg({ leg }: { leg: GearLeg }) {
       ))}
       {leg.hazards.map((hazard) => (
         <span className="chip warn cased" key={`hazard-${hazard.id}`}>
-          {t('cards.gear.legHazard', { spell: hazard.spell, rooms: hazard.rooms })}
+          <Sentence
+            parts={{
+              spell: <EntityName inspect={inspect} name={hazard.spell} />,
+              rooms: hazard.rooms
+            }}
+            text={t('cards.gear.legHazard')}
+          />
         </span>
       ))}
       <PlanFights compact fights={leg.fights} />
@@ -100,24 +136,45 @@ function Figure({ label, value, tone }: { label: string; value: string; tone?: '
   );
 }
 
-export default function GearTripFace({ plan, trip, onGo, onStop, onReplan }: GearTripFaceProps) {
+export default function GearTripFace({
+  plan,
+  trip,
+  onGo,
+  onStop,
+  onReplan,
+  inspect,
+  goToRoom
+}: GearTripFaceProps) {
   const running = trip !== null && trip.stage !== 'ended' && trip.plan === plan;
   const progressOf = (index: number): Progress => (running ? progressAt(index, trip.stop) : 'left');
-  const notes = [
+  const notes: ReactNode[] = [
     unpricedWords(plan.unpriced),
     plan.purse === null ? t('cards.gear.tripPurseUnread') : '',
     plan.stops.some((stop) => stop.leg.blocked !== null) ? t('cards.gear.tripBlocked') : '',
-    plan.left.length === 0
-      ? ''
-      : t('cards.gear.tripLeft', {
-          items: plan.left
-            .map((left) =>
-              left.why === 'not-sold'
-                ? t('cards.gear.leftNotSold', { item: left.name })
-                : t('cards.gear.leftUnreachable', { item: left.name })
-            )
-            .join(', ')
-        }),
+    plan.left.length === 0 ? (
+      ''
+    ) : (
+      <Sentence
+        parts={{
+          items: (
+            <NameList
+              draw={(left) => (
+                <Sentence
+                  parts={{ item: <EntityName inspect={inspect} name={left.name} /> }}
+                  text={
+                    left.why === 'not-sold'
+                      ? t('cards.gear.leftNotSold')
+                      : t('cards.gear.leftUnreachable')
+                  }
+                />
+              )}
+              items={plan.left}
+            />
+          )
+        }}
+        text={t('cards.gear.tripLeft')}
+      />
+    ),
     trip?.ended ?? ''
   ].filter((note) => note !== '');
   return (
@@ -138,7 +195,16 @@ export default function GearTripFace({ plan, trip, onGo, onStop, onReplan }: Gea
       ) : (
         <p className="gear-reach">{plan.refusal}</p>
       )}
-      {notes.length === 0 ? null : <p className="gear-reach">{notes.join(' ')}</p>}
+      {notes.length === 0 ? null : (
+        <p className="gear-reach">
+          {notes.map((note, at) => (
+            <Fragment key={at}>
+              {at === 0 ? null : ' '}
+              {note}
+            </Fragment>
+          ))}
+        </p>
+      )}
       <div className="scroller gear-scroller">
         <ol className="progression gear-stops">
           {plan.stops.map((stop, index) => (
@@ -156,12 +222,14 @@ export default function GearTripFace({ plan, trip, onGo, onStop, onReplan }: Gea
               </span>
               <div className="gear-stop">
                 <div className="gear-stop-head">
-                  <Stop stop={stop} />
+                  <Stop goToRoom={goToRoom} inspect={inspect} stop={stop} />
                   {stop.place === (stop.kind === 'bank' ? stop.bank : stop.shop) ? null : (
-                    <span className="gear-meta">{stop.place}</span>
+                    <RoomName className="gear-meta" open={goToRoom} room={stop.room}>
+                      {stop.place}
+                    </RoomName>
                   )}
                 </div>
-                <Leg leg={stop.leg} />
+                <Leg inspect={inspect} leg={stop.leg} />
               </div>
             </li>
           ))}

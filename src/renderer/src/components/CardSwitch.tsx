@@ -70,6 +70,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // The pack stays readable after a hang-up; wearing from it does not,
           // for the reason the composer below gives.
           gear={ctx.inGame ? ctx.gear : undefined}
+          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
           profileName={ctx.profileName}
@@ -87,6 +88,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           ask={ctx.ask}
           away={view.automation.away}
           character={character}
+          inspect={ctx.inspect}
           session={ctx.session}
           thresholds={ctx.thresholds}
         />
@@ -101,6 +103,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           session={ctx.session}
           forget={ctx.forget}
           inspect={ctx.inspect}
+          onSelect={ctx.selectPlayer}
           loadWearer={ctx.loadWearer}
           learned={view.learned}
           finds={view.finds}
@@ -159,6 +162,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // The realm's find log, as the Map card takes it: where searching has
           // turned something up is a reason to route a lap through a room.
           finds={view.finds}
+          goToRoom={ctx.goToRoom}
           loadMap={ctx.builder.loadMap}
           /* The same quick view every other map has — the same panel, the same
              button — so the lair a room is worth picking for says what is in
@@ -210,6 +214,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           inGame={ctx.inGame}
           online={character.online}
           onSelect={ctx.selectPlayer}
+          onSelectGang={ctx.selectGang}
           self={character.name}
           session={ctx.session}
           subject={ctx.subject}
@@ -219,6 +224,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
       return (
         <PlayersCard
           {...chrome}
+          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           inGame={ctx.inGame}
           onSelect={ctx.selectPlayer}
           players={view.players}
@@ -241,6 +247,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           ask={ctx.ask}
           character={character}
+          inspect={ctx.inspect}
           players={view.players}
           onSelect={ctx.selectPlayer}
           onSetGangRemotes={ctx.setGangRemotes}
@@ -260,6 +267,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           ask={ctx.ask}
           character={character}
+          inspect={ctx.inspect}
           players={view.players}
           onSelect={ctx.selectPlayer}
           subject={ctx.subject}
@@ -303,6 +311,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           character={character}
           gear={ctx.inGame ? ctx.gear : undefined}
+          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
           session={ctx.session}
@@ -438,6 +447,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
               ? null
               : `${character.room.map}/${character.room.number}`
           }
+          inspect={ctx.inspect}
           loadHunting={ctx.loadHunting}
           runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
           session={ctx.session}
@@ -454,6 +464,8 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           {...chrome}
           banks={character.banks}
           goGear={ctx.goGear}
+          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          inspect={ctx.inspect}
           kitKey={`${character.progress.level ?? ''}|${character.inventory.items
             .filter((item) => item.equipped)
             .map((item) => item.name)

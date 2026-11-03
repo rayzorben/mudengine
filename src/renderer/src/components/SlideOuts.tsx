@@ -16,17 +16,19 @@ import ReferencePopover, { type ReferencePopoverProps } from './ReferencePopover
 import RoomQuickView, { type RoomQuickViewProps } from './RoomQuickView';
 import SlotQuickView from './SlotQuickView';
 import { EMPTY_VIEW, type SessionView } from '../hooks/useSessionViews';
+import { openRoomAt } from '../hooks/useRouteOpeners';
 import type { SlideOutSlot } from '../hooks/useSlideOuts';
 import { t } from '../lib/i18n';
 import { standingOf, type CharacterState } from '@shared/character';
 import type { RemotesConfig } from '@shared/config';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { RemoteName } from '@shared/remotes';
+import type { RoomId } from '@shared/world';
 import { askLine } from '@shared/asking';
 
 export interface SlideOutsProps {
-  /** The slot, less the openers a map calls: drawing and dismissing is all this does. */
-  slot: Omit<SlideOutSlot, 'peekRoom' | 'peekPlanned'>;
+  /** The slot, less the plan's opener: drawing, dismissing, and a way out's room peeked. */
+  slot: Omit<SlideOutSlot, 'peekPlanned'>;
   /** Every character's facts, for a flyout addressed at one of them. */
   views: Readonly<Record<SessionId, SessionView>>;
   /** The character on screen, whose realm the reference and the quick view ask. */
@@ -61,6 +63,9 @@ export default function SlideOuts({
   returnFocus
 }: SlideOutsProps) {
   const { asked, flyout, gangFlyout, peek, slotAsked, dismissAsked } = slot;
+  const goToRoom = useCallback((room: string) => openRoomAt(room, chooseOnMap), [chooseOnMap]);
+  const { peekRoom } = slot;
+  const peekExit = useCallback((room: RoomId, at: Element) => peekRoom(room, at, true), [peekRoom]);
 
   /**
    * One of the three questions put to a player, from the flyout hanging off
@@ -133,6 +138,8 @@ export default function SlideOuts({
           onDismiss={slot.dismissPeek}
           onPointerEnter={slot.holdPeek}
           onPointerLeave={slot.endPeek}
+          inspect={slot.inspect}
+          peek={peekExit}
         />
       )}
 
@@ -147,6 +154,8 @@ export default function SlideOuts({
           character={(views[flyout.session] ?? EMPTY_VIEW).character}
           players={(views[flyout.session] ?? EMPTY_VIEW).players}
           inspect={slot.inspect}
+          // The route panel is the shown character's, so only its own listing's flyout opens it.
+          goToRoom={views[flyout.session]?.character === character ? goToRoom : null}
           onSelectSlot={(worn, anchor) => slot.selectSlot(flyout.session, worn, anchor)}
           onAsk={askPlayer}
           onDismiss={slot.dismissFlyout}
@@ -169,6 +178,7 @@ export default function SlideOuts({
           players={(views[gangFlyout.session] ?? EMPTY_VIEW).players}
           onDismiss={slot.dismissGangFlyout}
           onSelectPlayer={slot.selectPlayer}
+          inspect={slot.inspect}
           returnFocus={returnFocus}
         />
       )}

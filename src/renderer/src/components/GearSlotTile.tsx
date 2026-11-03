@@ -4,6 +4,7 @@ import Icon from './Icon';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
 import GearToggle from './GearToggle';
+import EntityName, { type Inspect } from './EntityName';
 import { declineKey, gainWords, priceWords, slotState, sourceWords } from '../lib/gearPicks';
 import type { GearChoice, GearSlot } from '@shared/upgrades';
 
@@ -24,6 +25,7 @@ export interface GearSlotTileProps {
   /** Whether the suggestion is the player's own choice rather than the budget's. */
   chosen: boolean;
   budget: number;
+  inspect: Inspect | undefined;
   onDecline(slot: string, item: number): void;
   onChoose(slot: GearSlot, item: number): void;
   onReset(slot: string): void;
@@ -37,6 +39,7 @@ function GearSlotTile({
   declined,
   chosen,
   budget,
+  inspect,
   onDecline,
   onChoose,
   onReset,
@@ -78,13 +81,17 @@ function GearSlotTile({
       <dl className="gear-lines">
         <dt>{t('cards.gear.worn')}</dt>
         <dd className={slot.worn === null ? 'gear-empty' : 'gear-worn'}>
-          {slot.worn ?? t('cards.gear.nothingWorn')}
+          {slot.worn === null ? (
+            t('cards.gear.nothingWorn')
+          ) : (
+            <EntityName inspect={inspect} name={slot.worn} />
+          )}
         </dd>
         {best === undefined ? null : (
           <>
             <dt>{t('cards.gear.best')}</dt>
             <dd className="gear-best">
-              <span className="gear-item-name">{best.name}</span>
+              <EntityName className="gear-item-name" inspect={inspect} name={best.name} />
               <span className="gear-meta">
                 {sourceWords(best)}
                 {best.sold === null ? null : (

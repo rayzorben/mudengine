@@ -100,6 +100,7 @@ const stable: Omit<CardContextInputs, 'nameIndexes'> = {
   startMovingIn: noop,
   stepBackIn: noop,
   selectPlayer: noop,
+  selectGang: noop,
   resetStats: noop
 };
 

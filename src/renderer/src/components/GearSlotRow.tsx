@@ -1,6 +1,7 @@
 import { memo } from 'react';
 
 import GearToggle from './GearToggle';
+import EntityName, { type Inspect } from './EntityName';
 import Icon from './Icon';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
@@ -18,6 +19,7 @@ function GearSlotRow({
   state,
   suggested,
   declined,
+  inspect,
   onDecline,
   onOpen
 }: {
@@ -25,6 +27,7 @@ function GearSlotRow({
   state: SlotState;
   suggested: readonly GearChoice[];
   declined: ReadonlySet<string>;
+  inspect: Inspect | undefined;
   onDecline(slot: string, item: number): void;
   onOpen(slot: string): void;
 }) {
@@ -51,7 +54,7 @@ function GearSlotRow({
           </span>
         ) : state === 'reach' ? (
           <span className="gear-row-note" title={t('cards.gear.outOfReach')}>
-            {best?.name}
+            {best === undefined ? null : <EntityName inspect={inspect} name={best.name} />}
             {best?.sold === null || best === undefined ? null : (
               <span className="gear-price">{priceWords(best.charged)}</span>
             )}

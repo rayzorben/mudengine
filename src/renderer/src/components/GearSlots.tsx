@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 
 import GearSlotRow from './GearSlotRow';
 import GearSlotTile from './GearSlotTile';
+import type { Inspect } from './EntityName';
 import SplitBar, { type SplitPart } from './viz/SplitBar';
 import type { VizTone } from './viz/tones';
 import { useCardSize } from '../hooks/useCardSize';
@@ -30,6 +31,7 @@ function GearSlots({
   say,
   budget,
   loading,
+  inspect,
   onDecline,
   onChoose,
   onReset
@@ -39,6 +41,7 @@ function GearSlots({
   say: GearSay;
   budget: number;
   loading: boolean;
+  inspect: Inspect | undefined;
   onDecline(slot: string, item: number): void;
   onChoose(slot: GearSlot, item: number): void;
   onReset(slot: string): void;
@@ -85,6 +88,7 @@ function GearSlots({
               budget={budget}
               chosen={say.chosen[slot.slot] !== undefined}
               declined={say.declined}
+              inspect={inspect}
               key={slot.slot}
               onChoose={onChoose}
               onDecline={onDecline}
@@ -96,6 +100,7 @@ function GearSlots({
           ) : (
             <GearSlotRow
               declined={say.declined}
+              inspect={inspect}
               key={slot.slot}
               onDecline={onDecline}
               onOpen={open}

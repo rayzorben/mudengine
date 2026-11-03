@@ -25,6 +25,8 @@ import {
   type PlacedSlot
 } from '../../lib/paperDoll';
 import type { WornSlots as Worn } from '../../lib/wornSlots';
+import EntityName, { type Inspect } from '../EntityName';
+import Sentence, { NameList } from '../Sentence';
 import ItemPicture from './ItemPicture';
 
 const REGION_LABEL: Record<DollRegion, string> = {
@@ -61,11 +63,13 @@ function Figure() {
 function ItemName({
   slot,
   geometry,
-  name
+  name,
+  inspect
 }: {
   slot: PlacedSlot;
   geometry: DollGeometry;
   name: string;
+  inspect?: Inspect;
 }) {
   const box = nameBoxOf(slot, geometry);
   const n = geometry.name;
@@ -82,7 +86,7 @@ function ItemName({
       }}
     >
       <span className="gv-slot-name-text" style={{ WebkitLineClamp: row ? n.rowLines : n.lines }}>
-        {name}
+        <EntityName inspect={inspect} name={name} />
       </span>
       {!row && <small style={{ lineHeight: `${n.word}px` }}>{slot.word}</small>}
     </span>
@@ -95,7 +99,8 @@ function WornSlots({
   realm,
   drawing,
   name,
-  onOpen
+  onOpen,
+  inspect
 }: {
   /** Null until the pack is listed: every square is unknown. */
   worn: Worn | null;
@@ -107,6 +112,8 @@ function WornSlots({
   name: string;
   /** The drawing pressed: shown whole. */
   onOpen(): void;
+  /** A worn item's name clicked: the realm's answer. */
+  inspect?: Inspect;
 }) {
   const geometry = drawing === null ? DOLL_GEOMETRY : DRAWING_GEOMETRY;
   const placed = useMemo(() => layoutDoll(geometry), [geometry]);
@@ -181,14 +188,26 @@ function WornSlots({
                 {state === 'unknown' && <span className="gv-slot-unknown">?</span>}
                 {item === null && <span className="gv-slot-word">{slot.word}</span>}
               </div>
-              {item !== null && <ItemName geometry={geometry} name={item.name} slot={slot} />}
+              {item !== null && (
+                <ItemName geometry={geometry} inspect={inspect} name={item.name} slot={slot} />
+              )}
             </Fragment>
           );
         })}
       </div>
       {worn !== null && worn.elsewhere.length > 0 && (
         <p className="gv-quiet gv-doll-elsewhere">
-          {t('game.sheet.elsewhere', { items: worn.elsewhere.map((item) => item.name).join(', ') })}
+          <Sentence
+            parts={{
+              items: (
+                <NameList
+                  draw={(item) => <EntityName inspect={inspect} name={item.name} />}
+                  items={worn.elsewhere}
+                />
+              )
+            }}
+            text={t('game.sheet.elsewhere')}
+          />
         </p>
       )}
     </div>

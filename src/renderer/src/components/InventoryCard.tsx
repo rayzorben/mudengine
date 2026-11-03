@@ -9,6 +9,8 @@ import { findAction } from './findAction';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
 import EntityNumber, { entityNumberText } from './EntityNumber';
+import EntityName, { RoomName } from './EntityName';
+import Sentence, { NameList } from './Sentence';
 import { keepFocus } from '../lib/focus';
 import { entityNumber } from '@shared/entities';
 import { equipVerdict, type GearAction, type Wearer } from '@shared/gear';
@@ -19,7 +21,13 @@ import { loadOf } from '../lib/packGroups';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
-import { countedList, ITEM_KIND_WORD, type ItemKind } from '@shared/items';
+import {
+  countedEntries,
+  countedLabel,
+  countedList,
+  ITEM_KIND_WORD,
+  type ItemKind
+} from '@shared/items';
 import type { SessionId } from '@shared/ipc';
 import { stashRooms } from '@shared/stash';
 import type { WorldItem } from '@shared/world';
@@ -113,6 +121,8 @@ export interface InventoryCardProps extends CardChrome {
    * what this client does with every control bound to nowhere.
    */
   gear?(action: GearAction, item?: string): void;
+  /** Opens the route panel at a stash's room. Null on a pinned float, which cannot. */
+  goToRoom?: ((room: string) => void) | null;
 }
 
 /**
@@ -133,6 +143,7 @@ function InventoryCard({
   load,
   loadWearer,
   gear,
+  goToRoom,
   session,
   ...chrome
 }: InventoryCardProps) {
@@ -190,6 +201,7 @@ function InventoryCard({
         character={character}
         finding={finding}
         gear={gear}
+        goToRoom={goToRoom}
         inspect={inspect}
         loadWearer={loadWearer}
         onFindDismiss={() => setFinding(false)}
@@ -241,6 +253,7 @@ export interface InventoryBodyProps {
   inspect?: InventoryCardProps['inspect'];
   gear?: InventoryCardProps['gear'];
   loadWearer?: InventoryCardProps['loadWearer'];
+  goToRoom?: InventoryCardProps['goToRoom'];
   returnFocus?: () => void;
   /**
    * Whether the find row is out. Driven from the search glyph in the action
@@ -263,6 +276,7 @@ export function InventoryBody({
   inspect,
   gear,
   loadWearer,
+  goToRoom,
   returnFocus,
   finding,
   onFindDismiss
@@ -392,22 +406,7 @@ export function InventoryBody({
         <>
           {/* Large, each row carries the thing's picture. */}
           <ItemThumb art={art} className="from-large" realm={realm} thing={item} />
-          {inspect ? (
-            /* The name opens the Reference card: price, provenance, everything
-             the weight figure here leaves out. Clicked, never typed into, so
-             the caret stays with the game. */
-            <button
-              className="what lookup"
-              onClick={(event) => inspect(item.name, event.currentTarget)}
-              onMouseDown={keepFocus}
-              title={t('cards.room.itemLookupTooltip')}
-              type="button"
-            >
-              {item.name}
-            </button>
-          ) : (
-            <span className="what">{item.name}</span>
-          )}
+          <EntityName className="what" inspect={inspect} name={item.name} />
         </>
       )
     },
@@ -513,7 +512,9 @@ export function InventoryBody({
                 carried things the listing counts, and a `key` filter over
                 the pack answers a different question from this one. */}
                 <dt>{t('cards.inventory.keysLabel')}</dt>
-                <dd>{countedList(keys).join(', ')}</dd>
+                <dd className="keys">
+                  <CountedNames inspect={inspect} items={countedEntries(keys)} />
+                </dd>
               </>
             )}
             {stash.length > 0 && (
@@ -522,23 +523,30 @@ export function InventoryBody({
                 record, kept until a `get` in that room takes it back. */}
                 <dt>{t('cards.inventory.stashLabel')}</dt>
                 <dd className="stash">
-                  {stash.map((room) => (
-                    <div
-                      key={`${room.map ?? '?'}/${room.room ?? '?'}`}
-                      title={t('cards.inventory.stashTooltip', {
-                        when: new Date(room.at).toLocaleString()
-                      })}
-                    >
-                      {t('cards.inventory.stashRoom', {
-                        items: room.items.join(', '),
-                        room:
-                          room.name ??
-                          (room.map === null || room.room === null
-                            ? t('cards.inventory.stashUnplaced')
-                            : `${room.map}/${room.room}`)
-                      })}
-                    </div>
-                  ))}
+                  {stash.map((room) => {
+                    const at =
+                      room.map === null || room.room === null ? null : `${room.map}/${room.room}`;
+                    return (
+                      <div
+                        key={`${room.map ?? '?'}/${room.room ?? '?'}`}
+                        title={t('cards.inventory.stashTooltip', {
+                          when: new Date(room.at).toLocaleString()
+                        })}
+                      >
+                        <Sentence
+                          parts={{
+                            items: <CountedNames inspect={inspect} items={room.items} />,
+                            room: (
+                              <RoomName open={goToRoom} room={at}>
+                                {room.name ?? at ?? t('cards.inventory.stashUnplaced')}
+                              </RoomName>
+                            )
+                          }}
+                          text={t('cards.inventory.stashRoom')}
+                        />
+                      </div>
+                    );
+                  })}
                 </dd>
               </>
             )}
@@ -575,3 +583,23 @@ export function InventoryBody({
 }
 
 export default memo(InventoryCard);
+
+/** Piles as the server lists them (`2 bone key, torch`), each name opening its card. */
+function CountedNames({
+  items,
+  inspect
+}: {
+  items: ReadonlyArray<{ name: string; count: number }>;
+  inspect: InventoryCardProps['inspect'];
+}) {
+  return (
+    <NameList
+      draw={(pile) => (
+        <EntityName inspect={inspect} name={pile.name}>
+          {countedLabel(pile)}
+        </EntityName>
+      )}
+      items={items}
+    />
+  );
+}

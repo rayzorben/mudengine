@@ -8,6 +8,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import type { Inspect } from '../EntityName';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import { useItemArt } from '../../hooks/useItemArt';
 import { usePortrait } from '../../hooks/usePortrait';
@@ -22,9 +23,12 @@ function CharacterPanel({
   character,
   api,
   session,
+  inspect,
   onClose
 }: {
   character: CharacterState;
+  /** A class, race or worn item clicked: the realm's answer. */
+  inspect?: Inspect;
   api: Pick<IpcApi, 'portrait' | 'onPortrait' | 'copyImage' | 'savePortrait'>;
   session: SessionId;
   onClose(): void;
@@ -60,11 +64,18 @@ function CharacterPanel({
       >
         ×
       </button>
-      <PortraitHead art={art} character={character} onOpen={open} portrait={portrait} />
+      <PortraitHead
+        art={art}
+        character={character}
+        inspect={inspect}
+        onOpen={open}
+        portrait={portrait}
+      />
       <div className="gv-character-body">
         <WornSlots
           art={art}
           drawing={portrait.picture}
+          inspect={inspect}
           name={name}
           onOpen={open}
           realm={character.realm}

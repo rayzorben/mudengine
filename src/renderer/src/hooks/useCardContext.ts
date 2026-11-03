@@ -179,6 +179,8 @@ export interface CardContext {
   nameIndex: NameIndex | null;
   /** A name clicked on the Realm or Players card, and where, for the flyout to open beside. */
   selectPlayer(name: string, anchor: PopoverAnchor): void;
+  /** A gang's name clicked, and where, for the Gang flyout to open beside. */
+  selectGang(name: string, anchor: PopoverAnchor): void;
   /** This character's resolved `automation.remotes`, for the Gang card. */
   remotes: RemotesConfig;
   /** The toolbar: this character's own switches, and what its buttons do. */
@@ -245,6 +247,7 @@ export interface AddressedActions {
   startLoop(name: string): void;
   reverseLoop(): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
+  selectGang(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
   setGangpath(on: boolean): void;
   setSupplies(items: SupplyItem[]): void;
@@ -358,6 +361,7 @@ export interface CardContextInputs
   startMovingIn(sid: SessionId, loop: string | null, confirmed: number | null): void;
   stepBackIn(sid: SessionId, confirmed: number | null): void;
   selectPlayer(sid: SessionId, name: string, anchor: PopoverAnchor): void;
+  selectGang(sid: SessionId, name: string, anchor: PopoverAnchor): void;
   resetStats(sid: SessionId): void;
 }
 
@@ -412,6 +416,7 @@ export function useCardContext({
   startMovingIn,
   stepBackIn,
   selectPlayer,
+  selectGang,
   resetStats
 }: CardContextInputs): CardContexts {
   /*
@@ -420,6 +425,8 @@ export function useCardContext({
    */
   const selectPlayerRef = useRef(selectPlayer);
   selectPlayerRef.current = selectPlayer;
+  const selectGangRef = useRef(selectGang);
+  selectGangRef.current = selectGang;
   const sayRefusalRef = useRef(sayRefusal);
   sayRefusalRef.current = sayRefusal;
   const startMovingRef = useRef(startMovingIn);
@@ -485,6 +492,7 @@ export function useCardContext({
         reverseLoop: () =>
           void api.reverseLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
+        selectGang: (name, anchor) => selectGangRef.current(sid, name, anchor),
         setGangRemotes: (remotes) => void api.setGangRemotes(sid, remotes),
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
         setSupplies: (items) =>
@@ -651,6 +659,7 @@ export function useCardContext({
         reverseLoop: shown ? reverseLoop : bound.reverseLoop,
         subject: flyout !== null && flyout.session === sid ? playerKey(flyout.name) : null,
         selectPlayer: bound.selectPlayer,
+        selectGang: bound.selectGang,
         /*
          * Addressed at `sid`, never at the shown character, for the reason
          * every other addressed field here is: a pinned float belongs to

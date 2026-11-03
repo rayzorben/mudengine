@@ -6,6 +6,9 @@
 import { memo } from 'react';
 
 import type { CharacterState } from '@shared/character';
+import type { PlayerRegistry } from '@shared/players';
+import EntityName, { type Inspect } from '../EntityName';
+import type { PopoverAnchor } from '../../lib/popover';
 import { t } from '../../lib/i18n';
 
 const share = (value: number | null, max: number | null): number | null =>
@@ -19,7 +22,38 @@ function Bar({ value, tone }: { value: number | null; tone: 'hp' | 'mana' | 'kai
   );
 }
 
-function PartyFrames({ character }: { character: CharacterState }) {
+/** A frame's class, the control that opens it, then the level. */
+function ClassLevel({
+  className,
+  level,
+  inspect
+}: {
+  className: string | null;
+  level: number | null;
+  inspect?: Inspect;
+}) {
+  return (
+    <>
+      {className !== null && <EntityName inspect={inspect} name={className} />}
+      {className !== null && level !== null && ' '}
+      {level}
+    </>
+  );
+}
+
+function PartyFrames({
+  character,
+  players,
+  inspect,
+  onSelect
+}: {
+  character: CharacterState;
+  players: PlayerRegistry;
+  /** A class clicked: the realm's answer. */
+  inspect?: Inspect;
+  /** A member clicked: the Player flyout. */
+  onSelect(name: string, anchor: PopoverAnchor): void;
+}) {
   const { vitals, party, room } = character;
   const here = new Set(room.occupants.map((one) => one.name.toLowerCase()));
   const self = character.name?.toLowerCase() ?? null;
@@ -34,7 +68,9 @@ function PartyFrames({ character }: { character: CharacterState }) {
           <div className="gv-frame-row">
             <b>
               {character.name ?? t('game.arena.you')}
-              <small>{[character.className, level].filter((one) => one !== null).join(' ')}</small>
+              <small>
+                <ClassLevel className={character.className} inspect={inspect} level={level} />
+              </small>
             </b>
             <span>{vitals.hp ?? '?'}</span>
           </div>
@@ -66,11 +102,17 @@ function PartyFrames({ character }: { character: CharacterState }) {
             <div>
               <div className="gv-frame-row">
                 <b>
-                  {member.name}
+                  <EntityName
+                    inspect={inspect}
+                    name={member.name}
+                    person={{ players, character, onSelect }}
+                  />
                   <small>
-                    {[member.className, member.sheet?.level ?? null]
-                      .filter((one) => one !== null)
-                      .join(' ')}
+                    <ClassLevel
+                      className={member.className}
+                      inspect={inspect}
+                      level={member.sheet?.level ?? null}
+                    />
                   </small>
                 </b>
                 <span>{member.health === null ? '?' : `${Math.round(member.health * 100)}%`}</span>

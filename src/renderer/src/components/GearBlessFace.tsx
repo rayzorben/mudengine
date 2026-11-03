@@ -1,6 +1,8 @@
 import { memo, useEffect, useState } from 'react';
 
+import EntityName, { type Inspect } from './EntityName';
 import { t } from '../lib/i18n';
+import Sentence from './Sentence';
 import { copperWords, sourceWords } from '../lib/gearPicks';
 import type { BlessAdd, BlessItem } from '@shared/blessItems';
 import type { IpcApi } from '@shared/ipc';
@@ -16,9 +18,11 @@ export interface GearBlessFaceProps {
   load(): ReturnType<IpcApi['gearBlessItems']>;
   /** Changes when the level or the pack does, and with the card's refresh. */
   askKey: string;
+  /** An item's or spell's name clicked: the realm's answer, beside it. */
+  inspect: Inspect | undefined;
 }
 
-function GearBlessFace({ load, askKey }: GearBlessFaceProps) {
+function GearBlessFace({ load, askKey, inspect }: GearBlessFaceProps) {
   const [items, setItems] = useState<BlessItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -62,11 +66,12 @@ function GearBlessFace({ load, askKey }: GearBlessFaceProps) {
         <ul className="bless-items tile-grid" data-loading={loading ? 'true' : 'false'}>
           {(items ?? []).map((item) => (
             <li className="tile bless-item" data-renews={item.renews} key={item.item}>
-              <span className="gear-slot-name">{item.name}</span>
+              <EntityName className="gear-slot-name" inspect={inspect} name={item.name} />
               <span className="bless-item-casts">
-                {item.party
-                  ? t('cards.gear.blessCastsParty', { spell: item.spell })
-                  : t('cards.gear.blessCasts', { spell: item.spell })}
+                <Sentence
+                  parts={{ spell: <EntityName inspect={inspect} name={item.spell} /> }}
+                  text={item.party ? t('cards.gear.blessCastsParty') : t('cards.gear.blessCasts')}
+                />
                 {' · '}
                 {item.adds.map(addWords).join(', ')}
               </span>

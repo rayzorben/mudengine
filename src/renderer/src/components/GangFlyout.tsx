@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
+import EntityName, { type Inspect } from './EntityName';
+import { NameList } from './Sentence';
 import PopupMenu from './PopupMenu';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import { useCopyMenu } from '../hooks/useCopyMenu';
@@ -35,6 +37,8 @@ export interface GangFlyoutProps {
   players: PlayerRegistry;
   /** A member's name clicked: the Player flyout on them, replacing this. */
   onSelectPlayer(session: SessionId, name: string, anchor: PopoverAnchor): void;
+  /** A member's race or class clicked: the realm's answer, replacing this. */
+  inspect?: Inspect;
   onDismiss(): void;
   /** Hands the caret back to the game after a menu that took it. */
   returnFocus(): void;
@@ -87,6 +91,7 @@ export default function GangFlyout({
   character,
   players,
   onSelectPlayer,
+  inspect,
   onDismiss,
   returnFocus
 }: GangFlyoutProps) {
@@ -196,6 +201,7 @@ export default function GangFlyout({
             {members.map((row) => (
               <li key={playerKey(row.name)} data-online={row.online ? 'true' : 'false'}>
                 <MemberRow
+                  inspect={inspect}
                   onSelect={(name, anchor) => onSelectPlayer(asked.session, name, anchor)}
                   row={row}
                 />
@@ -242,18 +248,17 @@ export default function GangFlyout({
  */
 function MemberRow({
   row,
-  onSelect
+  onSelect,
+  inspect
 }: {
   row: Member;
   onSelect(name: string, anchor: PopoverAnchor): void;
+  inspect?: Inspect;
 }) {
-  const detail = [
-    row.level === null ? null : t('cards.gang.levelShort', { level: row.level }),
-    row.race,
-    row.className
-  ]
-    .filter((part): part is string => typeof part === 'string' && part.length > 0)
-    .join(' ');
+  const level = row.level === null ? null : t('cards.gang.levelShort', { level: row.level });
+  const named = [row.race, row.className].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0
+  );
 
   return (
     <>
@@ -273,7 +278,17 @@ function MemberRow({
           self={false}
         />
       )}
-      {detail.length > 0 && <span className="quiet-note gang-member-detail">{detail}</span>}
+      {(level !== null || named.length > 0) && (
+        <span className="quiet-note gang-member-detail">
+          {level}
+          {level !== null && named.length > 0 && ' '}
+          <NameList
+            draw={(part) => <EntityName inspect={inspect} name={part} />}
+            items={named}
+            separator=" "
+          />
+        </span>
+      )}
       {row.online ? null : <span className="chip off">{t('cards.gang.offline')}</span>}
     </>
   );

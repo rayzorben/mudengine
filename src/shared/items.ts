@@ -417,6 +417,11 @@ export function countedLabel(item: { name: string; count?: number }): string {
  * pluralises a name the realm did not.
  */
 export function countedList(names: readonly string[]): string[] {
+  return countedEntries(names).map(countedLabel);
+}
+
+/** `countedList` before it is spelled: each name once, first seen first, with its count. */
+export function countedEntries(names: readonly string[]): Array<{ name: string; count: number }> {
   const order: string[] = [];
   const counts = new Map<string, number>();
   for (const name of names) {
@@ -424,7 +429,7 @@ export function countedList(names: readonly string[]): string[] {
     if (seen === undefined) order.push(name);
     counts.set(name, (seen ?? 0) + 1);
   }
-  return order.map((name) => countedLabel({ name, count: counts.get(name)! }));
+  return order.map((name) => ({ name, count: counts.get(name)! }));
 }
 
 /**

@@ -6,18 +6,28 @@
  */
 import { memo } from 'react';
 
+import NamedText from '../NamedText';
 import type { Block } from '@shared/blocks';
 import { forYou } from '../../lib/gameTalk';
 import { t } from '../../lib/i18n';
+import type { NameIndex } from '../../lib/names';
+import type { PopoverAnchor } from '../../lib/popover';
 
+/** The names in a line open their panels, as the rail's Talk card's do; plain before the index arrives. */
 function TalkFeed({
   lines,
   self,
-  unread
+  unread,
+  index,
+  inspect,
+  onSelect
 }: {
   lines: readonly Block[];
   self: string | null;
   unread: number;
+  index: NameIndex | null;
+  inspect(name: string, anchor: HTMLElement): void;
+  onSelect(name: string, anchor: PopoverAnchor): void;
 }) {
   if (lines.length === 0) return null;
   return (
@@ -28,7 +38,17 @@ function TalkFeed({
           data-for-you={forYou(block, self) ? 'true' : undefined}
           key={block.seq}
         >
-          {block.text}
+          {index === null ? (
+            block.text
+          ) : (
+            <NamedText
+              index={index}
+              inspect={inspect}
+              onSelect={onSelect}
+              self={self}
+              text={block.text}
+            />
+          )}
         </p>
       ))}
       {unread > 0 && (

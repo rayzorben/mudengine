@@ -220,8 +220,10 @@ export function GangName({
   gang: string;
   /** The owning surface's cell class; `lookup` is added here. */
   className: string;
-  onSelect(gang: string, anchor: PopoverAnchor): void;
+  /** Absent where the surface cannot open the flyout, and then the name is text. */
+  onSelect?: ((gang: string, anchor: PopoverAnchor) => void) | undefined;
 }) {
+  if (!onSelect) return <span className={className}>{gang}</span>;
   return (
     <button
       className={`${className} lookup`}

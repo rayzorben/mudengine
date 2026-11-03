@@ -1209,7 +1209,12 @@ describe('progress', () => {
       destinationRoom: { map: 1, room: 3 },
       // The room each name stands for, so the card can open it: a room the
       // character is not in is a control, not text.
-      step: { command: 'e', name: 'Second Room', to: { map: 1, room: 2 } }
+      step: { command: 'e', name: 'Second Room', to: { map: 1, room: 2 } },
+      // Each room still to come, named and placed, so the card can open it (todo 1523).
+      ahead: [
+        { name: 'Second Room', room: { map: 1, room: 2 } },
+        { name: 'Third Room', room: { map: 1, room: 3 } }
+      ]
     });
 
     walker.stop('testing');

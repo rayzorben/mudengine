@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
 import Icon from './Icon';
+import EntityName, { RoomName, type Inspect } from './EntityName';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
@@ -39,6 +40,8 @@ export interface FindsFaceProps {
   days: number;
   /** Opens the route panel at a room. Null on a pinned float, which cannot. */
   goToRoom: ((room: string) => void) | null;
+  /** An item's name clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
   /** Strikes a row out, because the person reading it says it is wrong. */
   forget?(find: Pick<Find, 'room' | 'name'>): void;
   returnFocus?(): void;
@@ -69,6 +72,7 @@ export default function FindsFace({
   finds,
   days,
   goToRoom,
+  inspect,
   forget,
   returnFocus
 }: FindsFaceProps): React.JSX.Element {
@@ -87,7 +91,10 @@ export default function FindsFace({
         id: 'what',
         label: t('cards.room.finds.what'),
         wide: true,
-        value: (find) => find.name
+        value: (find) => find.name,
+        // Money is not an item, and the realm has no card for it.
+        cell: (find) =>
+          isCash(find) ? find.name : <EntityName inspect={inspect} name={find.name} />
       },
       {
         id: 'many',
@@ -107,20 +114,11 @@ export default function FindsFace({
         id: 'where',
         label: t('cards.room.finds.where'),
         value: (find) => find.roomName,
-        cell: (find) =>
-          goToRoom === null ? (
-            find.roomName
-          ) : (
-            <button
-              className="lookup"
-              onClick={() => goToRoom(find.room)}
-              onMouseDown={keepFocus}
-              title={t('cards.room.finds.goToTooltip', { room: find.room })}
-              type="button"
-            >
-              {find.roomName}
-            </button>
-          )
+        cell: (find) => (
+          <RoomName open={goToRoom} room={find.room}>
+            {find.roomName}
+          </RoomName>
+        )
       },
       {
         id: 'when',
@@ -180,7 +178,7 @@ export default function FindsFace({
             } satisfies Column<Find>
           ])
     ],
-    [forget, goToRoom, now]
+    [forget, goToRoom, inspect, now]
   );
 
   return (

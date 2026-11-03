@@ -61,10 +61,15 @@ import {
   type WalkConfig
 } from '../../shared/config';
 import { expRateGraceMs } from '../../shared/walkChoices';
-import { afflictionHolding, type AfflictionHold, type WalkKind } from '../../shared/walk';
+import {
+  afflictionHolding,
+  type AfflictionHold,
+  type NamedRoom,
+  type WalkKind
+} from '../../shared/walk';
 import type { CarriedLap } from '../../shared/underway';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
-import type { RoomId, Route } from '../../shared/world';
+import { asRoomReference, type RoomId, type Route } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
@@ -397,9 +402,9 @@ export class LoopRunner implements SessionModule {
       stops: this.loop?.stops.length ?? 0,
       stopName: this.stopName(),
       remainingStops: this.remainingStops(),
-      // Every stop, named, in order — including the ones no room could be found
+      // Every stop, named, in order, including the ones no room could be found
       // for, because the lap the player wrote is the lap they want to read.
-      stopNames: this.loop?.stops.map((entry) => splitStop(entry).name) ?? [],
+      everyStop: this.everyStop(),
       laps: this.laps,
       reason: this.reason,
       // Only a running loop is *held*; a stopped one is not waiting for
@@ -1670,6 +1675,14 @@ export class LoopRunner implements SessionModule {
           this.stopRooms.slice(0, this.index + 1).reverse()
         : this.stopRooms.slice(this.index);
     return ahead.filter((room): room is RoomId => room !== null);
+  }
+
+  /** Every stop of the lap by its written name, with the room it was placed at, if any. */
+  private everyStop(): NamedRoom[] {
+    return (this.loop?.stops ?? []).map((entry, index) => {
+      const room = this.stopRooms[index] ?? null;
+      return { name: splitStop(entry).name, room: room === null ? null : asRoomReference(room) };
+    });
   }
 
   /**
