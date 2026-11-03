@@ -27,7 +27,10 @@ const log = (line: string): void => {
 async function start(): Promise<void> {
   const data = process.env['PEER_DATA'] ?? '/data';
   const host = process.env['PEER_HOST'] ?? '0.0.0.0';
-  const port = Number.parseInt(process.env['PEER_PORT'] ?? '8192', 10);
+  const port = Number(process.env['PEER_PORT'] ?? '8192');
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    throw new Error(`PEER_PORT ${process.env['PEER_PORT'] ?? ''} is not a port`);
+  }
   const secretFile = path.join(data, 'build-secret');
   const buildSecret = (await fs.promises.readFile(secretFile, 'utf8')).trim();
   if (buildSecret.length === 0) throw new Error(`${secretFile} is empty`);
@@ -64,6 +67,18 @@ async function start(): Promise<void> {
   process.once('SIGTERM', () => stop('SIGTERM'));
   process.once('SIGINT', () => stop('SIGINT'));
 }
+
+/*
+ * A fault no socket contained is said and the gateway keeps serving: every
+ * install's shares go through this one process, as four characters go
+ * through the client's main (`guardTheProcess`).
+ */
+process.on('uncaughtException', (error) => {
+  log(`a fault no socket contained: ${error.stack ?? errorMessage(error)}`);
+});
+process.on('unhandledRejection', (reason) => {
+  log(`a promise nothing awaited failed: ${errorMessage(reason)}`);
+});
 
 start().catch((error: unknown) => {
   log(`the gateway could not start: ${errorMessage(error)}`);

@@ -16,7 +16,8 @@ import {
   type PeerUp,
   type RefusedWhy
 } from '../shared/peerWire';
-import { ByteBudget } from './ByteBudget';
+import { errorMessage } from '../shared/values';
+import type { ByteBudget, ByteBudgets } from './ByteBudget';
 import type { ClaimBook } from './ClaimBook';
 import type { GatewayLimits } from './limits';
 import type { InstallLine, PeerRouter } from './PeerRouter';
@@ -29,17 +30,20 @@ export type InstallSocket = Pick<
 >;
 
 export interface InstallLinkDeps {
-  registrar: Registrar;
-  claims: ClaimBook;
+  registrar: Pick<Registrar, 'hello'>;
+  claims: Pick<ClaimBook, 'claim'>;
   router: PeerRouter;
+  /** Each install's byte budget, kept across its sockets. */
+  budgets: Pick<ByteBudgets, 'of'>;
   verify: ChecksSignature;
   limits: GatewayLimits;
   now(): number;
   random(bytes: number): string;
   /** The open link of each install, so a second socket with the same token replaces the first. */
   open: Map<string, InstallLink>;
-  /** Every link with its socket open, hello or not, for the ping sweep. */
-  links: Set<InstallLink>;
+  /** The socket closed, however it ended. */
+  ended(link: InstallLink): void;
+  log(line: string): void;
 }
 
 interface Pending {
@@ -50,7 +54,10 @@ interface Pending {
 
 export class InstallLink implements InstallLine {
   private token: string | null = null;
-  private readonly budget: ByteBudget;
+  /** The install's budget, once its hello says which install it is. */
+  private budget: ByteBudget | null = null;
+  /** Closes a socket that has said no hello by `helloMs`. */
+  private readonly helloDue: ReturnType<typeof setTimeout>;
   /** Challenges sent and not yet answered, by `peerKeyText`. */
   private readonly pending = new Map<string, Pending>();
   /** Answered the last ping. */
@@ -60,13 +67,13 @@ export class InstallLink implements InstallLine {
     private readonly socket: InstallSocket,
     private readonly deps: InstallLinkDeps
   ) {
-    this.budget = new ByteBudget(deps.limits.bytesPerSecond, deps.limits.burstBytes, deps.now());
+    this.helloDue = setTimeout(() => this.socket.close(1008, 'no hello'), deps.limits.helloMs);
+    this.helloDue.unref();
     socket.onMessage = (text) => this.heard(text);
     socket.onPong = () => {
       this.answered = true;
     };
     socket.onClose = () => this.closed();
-    deps.links.add(this);
   }
 
   send(frame: PeerDown): void {
@@ -94,8 +101,27 @@ export class InstallLink implements InstallLine {
     this.socket.ping();
   }
 
+  /**
+   * One frame, and a fault in handling it contained to this socket: the
+   * gateway carries every install's shares, and one bad frame must not end them all.
+   */
   private heard(text: string): void {
-    if (!this.budget.take(Buffer.byteLength(text, 'utf8'), this.deps.now())) {
+    try {
+      this.read(text);
+    } catch (error) {
+      this.deps.log(
+        `stream: a frame broke the gateway, its socket is closed: ${errorMessage(error)}`
+      );
+      this.socket.close(1011, 'gateway fault');
+    }
+  }
+
+  /** Before the hello one frame is read, the hello, which the frame cap bounds; after it the install's budget. */
+  private read(text: string): void {
+    if (
+      this.budget !== null &&
+      !this.budget.take(Buffer.byteLength(text, 'utf8'), this.deps.now())
+    ) {
       return this.refuse('over-limit');
     }
     let frame: PeerUp | null;
@@ -117,7 +143,9 @@ export class InstallLink implements InstallLine {
   private hello(frame: Extract<PeerUp, { k: 'hello' }>): void {
     const check = this.deps.registrar.hello(frame);
     if (check !== 'ok') return this.refuse(check);
+    clearTimeout(this.helloDue);
     this.token = frame.token;
+    this.budget = this.deps.budgets.of(frame.token, this.deps.now());
     this.deps.open.get(frame.token)?.refuse('replaced');
     this.deps.open.set(frame.token, this);
     this.send({ k: 'welcome' });
@@ -182,7 +210,8 @@ export class InstallLink implements InstallLine {
   }
 
   private closed(): void {
-    this.deps.links.delete(this);
+    clearTimeout(this.helloDue);
+    this.deps.ended(this);
     this.deps.router.dropLine(this);
     if (this.token !== null && this.deps.open.get(this.token) === this) {
       this.deps.open.delete(this.token);

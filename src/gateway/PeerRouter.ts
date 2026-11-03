@@ -106,7 +106,7 @@ export class PeerRouter {
       // A patch that does not fit the sheet it was sent against: the install is off the wire.
       return 'malformed';
     }
-    if (JSON.stringify(next).length > this.mostSheetBytes) return 'malformed';
+    if (Buffer.byteLength(JSON.stringify(next), 'utf8') > this.mostSheetBytes) return 'malformed';
     this.sheets.set(id, next);
     for (const each of listening.keys()) each.send({ k: 'patch', from: peer, ...patch });
     return null;

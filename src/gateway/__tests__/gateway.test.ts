@@ -330,6 +330,52 @@ describe('the socket', () => {
     expect(install.heard).toContainEqual({ k: 'refused', why: 'over-limit' });
   });
 
+  it('closes a socket that says no hello in time', async () => {
+    await gateway.close();
+    await start({ helloMs: 50 });
+    const install = await Install.open();
+    expect(await install.whenClosed()).toBe(1008);
+    // A socket that says hello in time stays: the control.
+    const greeted = await installWith();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(greeted.closed).toBeNull();
+  });
+
+  it('refuses a socket past the most one address may hold', async () => {
+    await gateway.close();
+    await start({ mostSocketsPerAddress: 2 });
+    await Install.open();
+    await Install.open();
+    await expect(Install.open()).rejects.toBeDefined();
+    // One closed makes room again.
+    sockets[0]!.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await expect(Install.open()).resolves.toBeInstanceOf(Install);
+  });
+
+  it('keeps the byte budget of an install across its sockets', async () => {
+    await gateway.close();
+    await start({ burstBytes: 3000, bytesPerSecond: 1 });
+    const token = asPeerToken(await (await register()).json())!;
+    const filler = { k: 'leave', peer: { realm: 'x'.repeat(180), name: 'Brakkle' } };
+    const first = await Install.open();
+    first.hello(token);
+    await first.next('welcome');
+    for (let i = 0; i < 10; i += 1) first.send(filler);
+    const refused = (install: Install): number =>
+      install.heard.filter((frame) => frame.k === 'refused').length;
+    // All ten answered, so the budget they spent is counted before the second socket opens.
+    await first.until(() => refused(first) >= 10);
+    expect(first.closed).toBeNull();
+    const second = await Install.open();
+    second.hello(token);
+    await second.next('welcome');
+    for (let i = 0; i < 10; i += 1) second.send(filler);
+    // A fresh socket would have had 3000 bytes again; this one has what the first left.
+    expect(await second.whenClosed()).toBe(1008);
+    expect(second.heard).toContainEqual({ k: 'refused', why: 'over-limit' });
+  });
+
   it('closes the earlier socket of an install that says hello again', async () => {
     const token = asPeerToken(await (await register()).json())!;
     const first = await Install.open();

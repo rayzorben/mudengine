@@ -17,13 +17,21 @@ export interface GatewayLimits {
   mostInstalls: number;
   /** How far a hello's clock may be from the gateway's, either way. */
   helloSkewMs: number;
+  /** Hello nonces remembered against a replay; past it the oldest go first. */
+  mostHellos: number;
+  /** How long a socket may stay open without a hello. */
+  helloMs: number;
+  /** Sockets open at once, hello or not. */
+  mostSockets: number;
+  /** Sockets open at once from one address. */
+  mostSocketsPerAddress: number;
   /** The largest frame an install may send, a whole sheet included. */
   maxMessageBytes: number;
   /** What may wait unsent to an install that stopped reading before it is closed. */
   maxBufferedBytes: number;
   /** Frames shorter than this go uncompressed. */
   deflateMinBytes: number;
-  /** What one install may send each second on average, every character it plays together. */
+  /** What one install may send each second on average, every character it plays together, across reconnects. */
   bytesPerSecond: number;
   /** What it may send at once: a whole sheet for each of its characters, and their share lists. */
   burstBytes: number;
@@ -42,9 +50,13 @@ export interface GatewayLimits {
 export const GATEWAY_LIMITS: GatewayLimits = {
   powBits: 20,
   challengeMs: 120_000,
-  mostChallenges: 1000,
+  mostChallenges: 10_000,
   mostInstalls: 20_000,
   helloSkewMs: 120_000,
+  mostHellos: 100_000,
+  helloMs: 10_000,
+  mostSockets: 5000,
+  mostSocketsPerAddress: 16,
   maxMessageBytes: 65_536,
   maxBufferedBytes: 1_048_576,
   deflateMinBytes: 512,

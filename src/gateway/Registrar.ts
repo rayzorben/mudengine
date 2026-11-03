@@ -17,6 +17,7 @@ import {
   type PeerUp
 } from '../shared/peerWire';
 import type { GatewayLimits } from './limits';
+import { trimOldest } from './trimOldest';
 
 export interface RegistrarDeps {
   /** The build secret the client is built with (`ART_BUILD_SECRET`). */
@@ -44,14 +45,6 @@ function sameHex(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-/** Drop the oldest entries of an insertion-ordered map until it holds `most`. */
-function trim<K, V>(map: Map<K, V>, most: number): void {
-  for (const key of map.keys()) {
-    if (map.size <= most) return;
-    map.delete(key);
-  }
-}
-
 export class Registrar {
   /** Each challenge given out and when it lapses. */
   private readonly challenges = new Map<string, number>();
@@ -66,7 +59,7 @@ export class Registrar {
     const { limits } = this.deps;
     const challenge = this.deps.random(32);
     this.challenges.set(challenge, this.deps.now() + limits.challengeMs);
-    trim(this.challenges, limits.mostChallenges);
+    trimOldest(this.challenges, limits.mostChallenges);
     return { challenge, bits: limits.powBits };
   }
 
@@ -83,7 +76,7 @@ export class Registrar {
     }
     const token = { token: this.deps.random(12), secret: this.deps.random(32) };
     this.installs.set(token.token, token.secret);
-    trim(this.installs, this.deps.limits.mostInstalls);
+    trimOldest(this.installs, this.deps.limits.mostInstalls);
     return token;
   }
 
@@ -100,6 +93,9 @@ export class Registrar {
     if (Math.abs(frame.time * 1000 - now) > skew || this.nonces.has(seen)) return 'signature';
     if (!sameHex(frame.sig, hmac(secret, helloText(frame.time, frame.nonce)))) return 'signature';
     this.nonces.set(seen, now + 2 * skew);
+    // Past the cap a nonce older than the skew could be sent again, which the clock check still refuses
+    // unless the cap is reached inside one skew: a flood the byte budgets already bound.
+    trimOldest(this.nonces, this.deps.limits.mostHellos);
     return 'ok';
   }
 }

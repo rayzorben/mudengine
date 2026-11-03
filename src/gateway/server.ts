@@ -9,6 +9,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 
+import { readCapped } from '../node/body';
 import { acceptUpgrade, isWebSocketUpgrade } from '../node/sockets';
 import {
   asPeerRegistration,
@@ -19,6 +20,7 @@ import {
 } from '../shared/peerWire';
 import { errorMessage } from '../shared/values';
 import type { ClaimBook } from './ClaimBook';
+import { ByteBudgets } from './ByteBudget';
 import { InstallLink } from './InstallLink';
 import type { GatewayLimits } from './limits';
 import { PeerRouter } from './PeerRouter';
@@ -41,27 +43,15 @@ export interface Gateway {
   close(): Promise<void>;
 }
 
-type Body = { kind: 'read'; text: string } | { kind: 'too-large' };
-
-/** A request's body up to `most` bytes; past that the rest is not read. */
-function bodyOf(request: http.IncomingMessage, most: number): Promise<Body> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    request.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > most) {
-        resolve({ kind: 'too-large' });
-        request.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    request.on('end', () =>
-      resolve({ kind: 'read', text: Buffer.concat(chunks).toString('utf8') })
-    );
-    request.on('error', reject);
-  });
+/**
+ * Where a socket came from. Caddy sets `X-Forwarded-For` to the address it
+ * was dialled from, replacing whatever the caller sent, and the gateway is
+ * reachable only through it; the last entry is Caddy's.
+ */
+function addressOf(request: http.IncomingMessage): string {
+  const forwarded = String(request.headers['x-forwarded-for'] ?? '').split(',');
+  const last = forwarded[forwarded.length - 1]?.trim() ?? '';
+  return last.length > 0 ? last : (request.socket.remoteAddress ?? 'unknown');
 }
 
 function json(response: http.ServerResponse, status: number, value: unknown): void {
@@ -88,7 +78,18 @@ export function createGateway(options: GatewayOptions): Gateway {
   const registrar = new Registrar(options);
   const router = new PeerRouter(limits.maxMessageBytes);
   const open = new Map<string, InstallLink>();
-  const links = new Set<InstallLink>();
+  const budgets = new ByteBudgets(limits.bytesPerSecond, limits.burstBytes, limits.mostInstalls);
+  /** Every open socket and the address it came from, and how many each address holds. */
+  const links = new Map<InstallLink, string>();
+  const perAddress = new Map<string, number>();
+  const ended = (link: InstallLink): void => {
+    const address = links.get(link);
+    if (address === undefined) return;
+    links.delete(link);
+    const left = (perAddress.get(address) ?? 1) - 1;
+    if (left > 0) perAddress.set(address, left);
+    else perAddress.delete(address);
+  };
 
   const handle = async (
     request: http.IncomingMessage,
@@ -100,9 +101,11 @@ export function createGateway(options: GatewayOptions): Gateway {
       return;
     }
     if (request.method === 'POST' && path === PEER_PATHS.register) {
-      const body = await bodyOf(request, limits.maxBodyBytes);
-      if (body.kind === 'too-large') {
-        json(response, 413, { error: 'too large' });
+      const body = await readCapped(request, limits.maxBodyBytes);
+      // Too large is a request already destroyed, with nobody to answer.
+      if (body.kind === 'too-large') return;
+      if (body.kind === 'failed') {
+        options.log(`register: the body could not be read: ${body.reason}`);
         return;
       }
       const asked = asPeerRegistration(parsed(body.text));
@@ -140,13 +143,21 @@ export function createGateway(options: GatewayOptions): Gateway {
       refuse(socket, '404 Not Found');
       return;
     }
+    const address = addressOf(request);
+    if (
+      links.size >= limits.mostSockets ||
+      (perAddress.get(address) ?? 0) >= limits.mostSocketsPerAddress
+    ) {
+      options.log(`stream: refused a socket from ${address}: too many open`);
+      refuse(socket, '503 Service Unavailable');
+      return;
+    }
     const connection = acceptUpgrade(request, socket, head, {
       maxMessageBytes: limits.maxMessageBytes,
       maxBufferedBytes: limits.maxBufferedBytes,
       deflateMinBytes: limits.deflateMinBytes
     });
-    // The link keeps itself in `links` while its socket is open.
-    new InstallLink(connection, {
+    const link = new InstallLink(connection, {
       registrar,
       claims: options.claims,
       router,
@@ -154,13 +165,17 @@ export function createGateway(options: GatewayOptions): Gateway {
       limits,
       now: options.now,
       random: options.random,
+      budgets,
       open,
-      links
+      ended,
+      log: options.log
     });
+    links.set(link, address);
+    perAddress.set(address, (perAddress.get(address) ?? 0) + 1);
   });
 
   const sweep = setInterval(() => {
-    for (const link of links) link.sweep();
+    for (const link of links.keys()) link.sweep();
   }, limits.pingEveryMs);
   sweep.unref();
 
@@ -176,7 +191,7 @@ export function createGateway(options: GatewayOptions): Gateway {
     close: () =>
       new Promise((resolve) => {
         clearInterval(sweep);
-        for (const link of links) link.end();
+        for (const link of links.keys()) link.end();
         server.close(() => resolve());
         server.closeAllConnections();
       })

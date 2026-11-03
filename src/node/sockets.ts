@@ -6,9 +6,9 @@
  * bundled: the main chunk externalises its dependencies, so a package here is
  * a `node_modules` the container has to carry and a resolution Electron's ESM
  * loader has to get right, for a protocol whose server half is a handshake,
- * a frame header and a masking XOR. Text frames only — the wire is JSON
- * (`src/shared/rpc.ts`) — and a peer that sends anything else is closed with
- * the code that says why, never accommodated.
+ * a frame header and a masking XOR. Text frames only, since the wire is JSON
+ * (`src/shared/rpc.ts`); a peer that sends anything else is closed with the
+ * code that says why, never accommodated.
  *
  * What is refused, and with which close code, because each is a peer that is
  * not our bridge: an unmasked client frame (1002, the protocol says a client

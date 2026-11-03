@@ -39,6 +39,7 @@ import { t } from '../../app/i18n';
 import { isWithin } from '../../app/browse';
 import { tuning } from '../../app/tuning';
 import { AccessTokens, basicPassword, COOKIE, cookieToken, passwordMatches } from './access';
+import { readCapped } from '../../../node/body';
 import { acceptUpgrade, isWebSocketUpgrade, type WebSocketConnection } from '../../../node/sockets';
 
 export interface WebServerOptions {
@@ -274,22 +275,11 @@ export function createWebServer(options: WebServerOptions): WebServer {
     );
   };
 
-  const readBody = (request: http.IncomingMessage): Promise<string | null> =>
-    new Promise((resolve) => {
-      const chunks: Buffer[] = [];
-      let size = 0;
-      request.on('data', (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > LOGIN_BODY_LIMIT) {
-          resolve(null);
-          request.destroy();
-          return;
-        }
-        chunks.push(chunk);
-      });
-      request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-      request.on('error', () => resolve(null));
-    });
+  /** The sign-in form's body; one past the limit or cut off reads as no password. */
+  const readBody = async (request: http.IncomingMessage): Promise<string | null> => {
+    const body = await readCapped(request, LOGIN_BODY_LIMIT);
+    return body.kind === 'read' ? body.text : null;
+  };
 
   const login = async (
     request: http.IncomingMessage,
