@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isMap, isNode, isScalar, isSeq, parseDocument, type Document } from 'yaml';
+import { isMap, isNode, isScalar, isSeq, parseDocument, YAMLError, type Document } from 'yaml';
+import { t } from '../app/i18n';
 
 /**
  * Editing a YAML file the user owns.
@@ -72,7 +73,7 @@ export function applyEdit(file: string, source: string | null, options: EditOpti
       ok: false,
       error:
         `${path.basename(file)} does not parse, so it will not be edited: ` +
-        `${document.errors[0]?.message ?? 'unknown error'}`
+        yamlFault(document.errors[0])
     };
   }
 
@@ -94,7 +95,7 @@ export function applyEdit(file: string, source: string | null, options: EditOpti
   if (options.verify) {
     const round = parseDocument(text);
     if (round.errors.length > 0) {
-      return { ok: false, error: `the change would not parse back: ${round.errors[0]?.message}` };
+      return { ok: false, error: `the change would not parse back: ${yamlFault(round.errors[0])}` };
     }
     const complaint = options.verify(round.toJS() ?? {});
     if (complaint !== null) return { ok: false, error: complaint };
@@ -226,6 +227,24 @@ export function setKeeping(document: Document, at: readonly unknown[], value: un
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !isNode(value);
+}
+
+/**
+ * Why a file the user owns could not be read, said by place alone when YAML
+ * refused it.
+ *
+ * A YAML error's message quotes the source: the line it failed on, and in
+ * some messages the text itself (`Invalid escape sequence \q`). In a
+ * character's file that line can be the password, typed by hand with an `@`
+ * or a `: ` in it, and the message goes to a notice, stdout and the settings
+ * screen. Line and column are enough to find it.
+ */
+export function yamlFault(error: unknown): string {
+  if (!(error instanceof YAMLError)) return error === undefined ? 'unknown error' : reason(error);
+  const at = error.linePos?.[0];
+  return at === undefined
+    ? t('errors.yaml.unplaced')
+    : t('errors.yaml.at', { line: at.line, col: at.col });
 }
 
 /**

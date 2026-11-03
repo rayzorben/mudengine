@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 
-import { ON_DISK, setKeeping, type EditResult, type YamlFiles } from './YamlFile';
+import { ON_DISK, setKeeping, yamlFault, type EditResult, type YamlFiles } from './YamlFile';
 import { grantIsEmpty, type RemoteGrant, type RemoteName } from '../../shared/remotes';
 import { writtenPeerGrant } from '../../shared/peerGrant';
 import { unknownWrites, type LayerWrite } from '../../shared/extensions';
@@ -49,7 +49,7 @@ import type { GlobalDraft, ProfileDraft, ServerDraft } from '../../shared/drafts
 import type { ProfileEditable, SettingsSnapshot, SpellOption } from '../../shared/ipc';
 import type { CureGates } from '../../shared/spellcraft';
 import type { ConnectionTarget } from '../../shared/types';
-import { errorMessage, isRecord, sameJson } from '../../shared/values';
+import { isRecord, sameJson } from '../../shared/values';
 import { statedRoomNames, writtenRoomNames } from '../../shared/roomNicknames';
 import { pairsRecord, statedPairs, type StatedPair } from '../../shared/pairs';
 import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases';
@@ -738,7 +738,8 @@ export class SettingsEditor {
       const automation = isRecord(raw) && isRecord(raw['automation']) ? raw['automation'] : {};
       return statedPairs(automation['aliases']);
     } catch (error) {
-      throw new Error(`could not read ${file}: ${errorMessage(error)}`, { cause: error });
+      // No `cause`: a YAML error carries the line it failed on, which can be the password.
+      throw new Error(`could not read ${file}: ${yamlFault(error)}`);
     }
   }
 
@@ -1412,7 +1413,7 @@ export class SettingsEditor {
         // where somebody can actually do something about it.
         characters.push({
           ...blank(id),
-          error: error instanceof Error ? error.message : t('errors.settings.profileUnreadable')
+          error: error instanceof Error ? yamlFault(error) : t('errors.settings.profileUnreadable')
         });
         continue;
       }

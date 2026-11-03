@@ -18,6 +18,7 @@ import { parse } from 'yaml';
 
 import { DEFAULT_INTERNAL, normalizeInternal, type InternalConfig } from '../../shared/internal';
 import { errorMessage } from '../../shared/values';
+import { yamlFault } from './YamlFile';
 import { Poller } from './Poller';
 
 export interface InternalStoreOptions {
@@ -106,7 +107,7 @@ export class InternalStore extends EventEmitter {
     } catch (cause) {
       // The last good values stay; the edit that broke the file is reported
       // where somebody can fix it.
-      this.options.onError?.(`${path.basename(this.options.file)}: ${errorMessage(cause)}`);
+      this.options.onError?.(`${path.basename(this.options.file)}: ${yamlFault(cause)}`);
     }
   }
 }

@@ -826,6 +826,24 @@ describe('credentials in the messages', () => {
     }
   });
 
+  // A YAML error quotes the line it failed on, and that can be the password's.
+  it('says where a file will not parse without quoting the line', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      'server: GreaterMUD (local)\naccount:\n  username: me\n  password: @hunter2\n',
+      'utf8'
+    );
+    const saved = editor.saveProfile('vaelor', draft({ changePassword: false }));
+    const shown = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
+    for (const error of [saved.ok ? null : saved.error, shown?.error]) {
+      // Positive control: each refuses, and says where.
+      expect(error).toContain('line 4');
+      expect(error).not.toContain('hunter2');
+    }
+  });
+
   it('writes the password to the character file and nowhere else', () => {
     editor.saveProfile('vaelor', draft());
     expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });

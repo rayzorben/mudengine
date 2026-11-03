@@ -18,6 +18,7 @@ import { mergeLoops, type Loop } from '../../shared/loops';
 import { laidFromTable, mergeMobRules, type MobRule } from '../../shared/mobRules';
 import { resolveProfile, type Profile } from '../../shared/profiles';
 import { errorMessage } from '../../shared/values';
+import { yamlFault } from './YamlFile';
 import { PROFILE_FILE } from '../app/home';
 import { directoryNames } from './dirs';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
@@ -220,7 +221,7 @@ export class ProfileStore extends EventEmitter {
       try {
         raw = parse(this.held.read(file) ?? '');
       } catch (error) {
-        errors.push(`${id}: ${errorMessage(error)}`);
+        errors.push(`${id}: ${yamlFault(error)}`);
         continue;
       }
 

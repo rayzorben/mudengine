@@ -120,6 +120,22 @@ describe('ProfileStore', () => {
     expect(store.snapshot.errors.join(' ')).toContain('broken');
   });
 
+  /*
+   * A YAML error's message quotes the line it failed on, and a password with
+   * an `@` or a `: ` in it, typed by hand, is that line. The complaint is a
+   * notice, printed to stdout and drawn in the terminal.
+   */
+  it('says where a file will not parse without quoting the line', () => {
+    write('broken.yaml', 'server: local\naccount:\n  username: me\n  password: @hunter2\n');
+
+    const store = open();
+    const said = store.snapshot.errors.join(' ');
+    // Positive control: the complaint is made, and says where.
+    expect(said).toContain('broken');
+    expect(said).toContain('line 4');
+    expect(said).not.toContain('hunter2');
+  });
+
   it('skips a character that cannot name a server, and says why', () => {
     write('nowhere.yaml', 'name: Nowhere\n');
     write('thorn.yaml', 'server: local\n');

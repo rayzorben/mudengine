@@ -14,7 +14,8 @@ import {
   normalizeExtensionSwitches,
   type ExtensionSwitches
 } from '../../shared/extensionSwitches';
-import { errorMessage, isRecord } from '../../shared/values';
+import { isRecord } from '../../shared/values';
+import { yamlFault } from './YamlFile';
 
 /** The switches as stated, or why the file could not say. */
 export type SwitchesRead = { switches: ExtensionSwitches } | { unread: string };
@@ -32,6 +33,6 @@ export function readExtensionSwitches(file: string): SwitchesRead {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return { switches: DEFAULT_EXTENSION_SWITCHES };
     }
-    return { unread: errorMessage(error) };
+    return { unread: yamlFault(error) };
   }
 }

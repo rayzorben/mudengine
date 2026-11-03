@@ -37,6 +37,7 @@ import { LOOPS_DIR, type Home } from '../app/home';
 import { directoryNames } from './dirs';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
+import { yamlFault } from './YamlFile';
 import type { Watched } from './revision';
 
 /** The loops as a reader needs them: the settings editor's view of the live store. */
@@ -236,7 +237,7 @@ export function readLoops(parsed: unknown, fallbackName: string): Loop[] {
 }
 
 function unreadable(file: string, error: unknown): string {
-  return `${file} could not be read: ${error instanceof Error ? error.message : 'unknown error'}`;
+  return `${file} could not be read: ${yamlFault(error)}`;
 }
 
 /** Directory names inside `root`, sorted, or nothing if there is no `root`. */

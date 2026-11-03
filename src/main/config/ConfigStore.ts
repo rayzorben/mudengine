@@ -23,6 +23,7 @@ import {
 } from '../../shared/config';
 import { mergeLoops, sameLoops, type Loop } from '../../shared/loops';
 import { errorMessage } from '../../shared/values';
+import { yamlFault } from './YamlFile';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
 
@@ -208,7 +209,7 @@ export class ConfigStore extends EventEmitter {
     try {
       parsed = parse(text);
     } catch (cause) {
-      this.error = `${path.basename(this.file)}: ${errorMessage(cause)}`;
+      this.error = `${path.basename(this.file)}: ${yamlFault(cause)}`;
       return;
     }
 

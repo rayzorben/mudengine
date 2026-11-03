@@ -36,6 +36,7 @@ import { t } from '../app/i18n';
 import { directoryNames } from './dirs';
 import { HeldFiles, type OwnedFiles } from './HeldFiles';
 import { Poller } from './Poller';
+import { yamlFault } from './YamlFile';
 
 /** One server and the directory it was read from. */
 export interface StoredServer {
@@ -189,7 +190,7 @@ export class ServerStore extends EventEmitter {
   private readError(file: string, error: unknown): string {
     return t('notices.config.servers.readError', {
       file,
-      message: error instanceof Error ? error.message : 'unknown error'
+      message: yamlFault(error)
     });
   }
 

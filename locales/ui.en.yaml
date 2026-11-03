@@ -6252,6 +6252,11 @@ errors:
     realmSaveMismatch: the saved realm does not match what was asked for
     realmSaveVerifyFailed: the realm did not survive being saved
     profileUnreadable: could not be read
+  # Why a file of yours would not parse, by place only: the line itself can
+  # be a password.
+  yaml:
+    at: a YAML error at line {line}, column {col}
+    unplaced: a YAML error
 # What a session reports: connection, walking, safety, memory.
 session:
   # Under a timed spell the way in cast (todo 104): said once going in and
