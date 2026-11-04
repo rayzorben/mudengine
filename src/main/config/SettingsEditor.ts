@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 
 import {
@@ -23,6 +24,7 @@ import {
   DEFAULT_CONFIG,
   mergeServers,
   normalizeConfig,
+  type AppConfig,
   type ConfigSwitch,
   type LoginStep
 } from '../../shared/config';
@@ -57,7 +59,7 @@ import type { GlobalDraft, ProfileDraft, ServerDraft } from '../../shared/drafts
 import type { ProfileEditable, SettingsSnapshot, SpellOption } from '../../shared/ipc';
 import type { CureGates } from '../../shared/spellcraft';
 import type { ConnectionTarget } from '../../shared/types';
-import { isRecord, sameJson } from '../../shared/values';
+import { isRecord, sameJson, valueAt } from '../../shared/values';
 import { statedRoomNames, writtenRoomNames } from '../../shared/roomNicknames';
 import { pairsRecord, statedPairs, type StatedPair } from '../../shared/pairs';
 import { aliasRefusal, aliasRefusalText, aliasWord } from '../../shared/aliases';
@@ -373,132 +375,91 @@ export class SettingsEditor {
         else if (asLocateWord(document.get('locate')) !== null) document.deleteIn(['locate']);
 
         /*
-         * The two escapes, written whenever the character has anything to say
-         * about them — which now includes saying *no*.
-         *
-         * They used to be deleted when switched off, on the reading that a
-         * disabled block carries nothing but a threshold nobody chose. That is
-         * true of a fresh character and false of one whose defaults turned
-         * the retreat on: deleting the key put the character straight back on
-         * the inherited `enabled: true`, so the switch could not be switched
-         * off.
-         * Stating it is the only way to mean it.
+         * What the file resolves to before this save, as the form draws it
+         * (`drawnConfig`), which each block below is written against
+         * (`patchKeeping`): a key the file states is written, one it does not
+         * is written only where the form differs from it, so a save of one
+         * field writes that field (Festus, 2026-11-03). A character being
+         * made takes a copy of every field, so it is compared with nothing.
+         * Read after the server above, since the inherited values are its
+         * realm's.
          */
-        if (
-          creating ||
-          draft.retreat.enabled ||
-          document.hasIn(['automation', 'safety', 'retreat'])
-        ) {
-          writeRetreat(document, draft.retreat);
-        }
-
-        // The teleport on the retreat's rule; an empty command writes no key,
-        // which is what follows the realm (todo 813).
-        if (
-          creating ||
-          draft.fleeGoto.enabled ||
-          document.hasIn(['automation', 'safety', 'fleeGoto'])
-        ) {
-          setKeeping(document, ['automation', 'safety', 'fleeGoto'], {
-            enabled: draft.fleeGoto.enabled,
-            belowHealth: draft.fleeGoto.belowHealth,
-            ...(draft.fleeGoto.command.length > 0 ? { command: draft.fleeGoto.command } : {})
-          });
-        }
-
-        if (
-          creating ||
-          draft.hangUp.enabled ||
-          document.hasIn(['automation', 'safety', 'hangUp'])
-        ) {
-          setKeeping(document, ['automation', 'safety', 'hangUp'], {
-            enabled: draft.hangUp.enabled,
-            belowHealth: draft.hangUp.belowHealth,
-            // Absent leaves it to the realm and then the options file, so null
-            // writes no key rather than a copy of what is inherited.
-            ...(draft.hangUp.penalties === null ? {} : { penalties: draft.hangUp.penalties }),
-            onPlayerInRoom: draft.hangUp.onPlayerInRoom,
-            whenNaked: draft.hangUp.whenNaked,
-            nakedMargin: draft.hangUp.nakedMargin,
-            afterRunSeconds: draft.hangUp.afterRunSeconds
-          });
-        }
-
-        if (
-          creating ||
-          draft.pvp.notifyGang ||
-          draft.pvp.action !== 'none' ||
-          document.hasIn(['automation', 'safety', 'pvp'])
-        ) {
-          setKeeping(document, ['automation', 'safety', 'pvp'], {
-            notifyGang: draft.pvp.notifyGang,
-            action: draft.pvp.action
-          });
-        }
+        const stated: unknown = document.toJS() ?? {};
+        const was = creating ? undefined : resolveProfile(id, stated, base);
+        const now =
+          was !== undefined && was.error === undefined && isRecord(stated)
+            ? drawnConfig(was.profile.config, stated)
+            : undefined;
 
         /*
-         * The blocks a character owns outright, once it has been made here.
-         *
-         * Three reasons a block is written, and the order matters:
-         *
-         * - **It is being created.** The copy of the Global defaults is taken
-         *   now, whole, whether or not it happens to equal the shipped one —
-         *   otherwise the copy would be indistinguishable from inheritance and
-         *   a later change to Global would reach back into this character.
-         * - **The file already states it.** Once stated, kept: silently
-         *   deleting a block because its values drifted back to the defaults
-         *   would put the character back on inheritance without saying so.
-         * - **It differs from the shipped default.** Which is what a file
-         *   somebody wrote by hand, and has never opened this screen for, is
-         *   judged by.
-         *
-         * The lists are the reason this cannot simply follow the switch:
-         * `combat` carries which monsters to leave alone, which to go for
-         * first and what the character's opener is, and dropping those the
-         * moment somebody unticks a box loses work they typed with no way to
-         * know until they turn it back on.
+         * The escapes, written whenever the character says something about
+         * them that it does not already inherit, which includes saying *no*:
+         * deleting a switched-off retreat put the character straight back on
+         * an inherited `enabled: true`.
          */
-        for (const [at, block, defaults] of [
-          [['automation', 'combat'], draft.combat, DEFAULT_CONFIG.automation.combat],
-          [['automation', 'party'], draft.party, DEFAULT_CONFIG.automation.party],
-          [['automation', 'health'], draft.health, DEFAULT_CONFIG.automation.health],
-          [['automation', 'movement'], draft.movement, DEFAULT_CONFIG.automation.movement],
-          [['automation', 'hunting'], draft.hunting, DEFAULT_CONFIG.automation.hunting],
-          [['automation', 'train'], draft.train, DEFAULT_CONFIG.automation.train],
-          [['automation', 'quests'], draft.quests, DEFAULT_CONFIG.automation.quests],
-          [['automation', 'gear'], draft.gear, DEFAULT_CONFIG.automation.gear],
-          [['automation', 'loot'], draft.loot, DEFAULT_CONFIG.automation.loot],
-          [['automation', 'drop'], draft.drop, DEFAULT_CONFIG.automation.drop],
-          [['automation', 'outgrown'], draft.outgrown, DEFAULT_CONFIG.automation.outgrown],
-          [['automation', 'search'], draft.search, DEFAULT_CONFIG.automation.search],
-          [['automation', 'banking'], draft.banking, DEFAULT_CONFIG.automation.banking],
-          [['automation', 'spells'], draft.spells, DEFAULT_CONFIG.automation.spells],
-          [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
-          [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
-          [['automation', 'talk'], draft.talk, DEFAULT_CONFIG.automation.talk],
-          [['automation', 'statline'], draft.statline, DEFAULT_CONFIG.automation.statline],
-          [['automation', 'asks'], draft.asks, DEFAULT_CONFIG.automation.asks],
+        patchKeeping(document, ['automation', 'safety', 'retreat'], { ...draft.retreat }, now);
+        // The teleport on the retreat's rule; an empty command writes no key,
+        // which is what follows the realm (todo 813).
+        patchKeeping(
+          document,
+          ['automation', 'safety', 'fleeGoto'],
+          {
+            enabled: draft.fleeGoto.enabled,
+            belowHealth: draft.fleeGoto.belowHealth,
+            command: draft.fleeGoto.command.length > 0 ? draft.fleeGoto.command : undefined
+          },
+          now
+        );
+        patchKeeping(
+          document,
+          ['automation', 'safety', 'hangUp'],
+          {
+            ...draft.hangUp,
+            // Absent leaves it to the realm and then the options file, so null
+            // writes no key rather than a copy of what is inherited.
+            penalties: draft.hangUp.penalties ?? undefined
+          },
+          now
+        );
+        patchKeeping(document, ['automation', 'safety', 'pvp'], { ...draft.pvp }, now);
+
+        /*
+         * The blocks a character owns outright. Each field is kept where the
+         * file states it, even at its default: deleting it would put the
+         * character back on inheritance without saying so. The lists are why
+         * a block cannot follow its switch: `combat` carries which monsters
+         * to leave alone and the character's opener, and dropping those the
+         * moment somebody unticks a box loses work they typed.
+         */
+        for (const [at, block] of [
+          [['automation', 'combat'], draft.combat],
+          [['automation', 'party'], draft.party],
+          [['automation', 'health'], draft.health],
+          [['automation', 'movement'], draft.movement],
+          [['automation', 'hunting'], draft.hunting],
+          [['automation', 'train'], draft.train],
+          [['automation', 'quests'], draft.quests],
+          [['automation', 'gear'], draft.gear],
+          [['automation', 'loot'], draft.loot],
+          [['automation', 'drop'], draft.drop],
+          [['automation', 'outgrown'], draft.outgrown],
+          [['automation', 'search'], draft.search],
+          [['automation', 'banking'], draft.banking],
+          [['automation', 'spells'], draft.spells],
+          [['automation', 'remotes'], draft.remotes],
+          [['automation', 'afk'], draft.afk],
+          [['automation', 'talk'], draft.talk],
+          [['automation', 'statline'], draft.statline],
+          [['automation', 'asks'], draft.asks],
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
-          [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
-          [['ui', 'rewrites', 'bands'], draft.rewrites.bands, DEFAULT_CONFIG.ui.rewrites.bands]
+          [['ui', 'alerts'], draft.alerts],
+          [['ui', 'rewrites', 'bands'], draft.rewrites.bands]
         ] as const) {
-          if (
-            creating ||
-            document.hasIn(at) ||
-            statesSomething(block, defaults as unknown as Record<string, unknown>)
-          ) {
-            patchKeeping(document, at, { ...block });
-          }
+          patchKeeping(document, at, { ...block }, now);
         }
-        // Judged as the blocks above are, and its rows written as the Self card writes them.
-        if (
-          creating ||
-          document.hasIn(['automation', 'supplies']) ||
-          statesSomething({ ...draft.supplies }, { ...DEFAULT_CONFIG.automation.supplies })
-        ) {
-          writeSupplies(document, draft.supplies);
-        }
+        // Its rows written as the Self card writes them.
+        writeSupplies(document, draft.supplies, now);
         // Its own aliases and keys, added to Global's by the overlay, so never a copy of them.
         const aliases = pairsRecord(draft.aliases);
         if (document.hasIn(['automation', 'aliases']) || Object.keys(aliases).length > 0) {
@@ -1233,12 +1194,10 @@ export class SettingsEditor {
    * those comments with it — the same rule a character's file is edited under,
    * and it matters more here, because there is only one of these.
    *
-   * Unlike a character, **every key is written**, not only the ones that differ
-   * from the default. A character's file is an overlay and a key restating an
-   * inherited value takes it out of the inheritance; this file *is* what is
-   * inherited, so a value it does not state is a value the built-in default
-   * decides — which is exactly what somebody moving a slider back to the
-   * default means anyway.
+   * The automation blocks are patched as a character's are (`patchKeeping`),
+   * against this file as it resolves now: a key it states is written, and
+   * one it does not is written only where the form differs from the built-in
+   * default, so a save adds no key nobody typed.
    */
   saveGlobal(draft: GlobalDraft): EditResult {
     const artServer = asServiceAddress(draft.art.server);
@@ -1260,9 +1219,10 @@ export class SettingsEditor {
         const set = (path: readonly string[], value: unknown): void => {
           setKeeping(document, path, value);
         };
-        // A block the page patches: a key its draft does not carry stays (`patchKeeping`).
+        // A block the page patches against the file as it resolves before this save.
+        const now = normalizeConfig(document.toJS() ?? {});
         const patch = (path: readonly string[], value: Record<string, unknown>): void => {
-          patchKeeping(document, path, value);
+          patchKeeping(document, path, value, now);
         };
 
         set(['connection', 'host'], draft.connection.host);
@@ -1341,7 +1301,7 @@ export class SettingsEditor {
         patch(['automation', 'pacing'], { ...draft.automation.pacing });
         patch(['automation', 'walk'], { ...draft.automation.walk });
         patch(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
-        writeRetreat(document, draft.automation.retreat);
+        patch(['automation', 'safety', 'retreat'], { ...draft.automation.retreat });
         patch(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
         patch(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
         patch(['automation', 'combat'], { ...draft.automation.combat });
@@ -1361,7 +1321,7 @@ export class SettingsEditor {
         patch(['automation', 'outgrown'], { ...draft.automation.outgrown });
         patch(['automation', 'search'], { ...draft.automation.search });
         patch(['automation', 'banking'], { ...draft.automation.banking });
-        writeSupplies(document, draft.automation.supplies);
+        writeSupplies(document, draft.automation.supplies, now);
         patch(['automation', 'remotes'], { ...draft.automation.remotes });
         patch(['automation', 'afk'], { ...draft.automation.afk });
         patch(['automation', 'statline'], { ...draft.automation.statline });
@@ -1445,7 +1405,11 @@ export class SettingsEditor {
       // options file says, which is the whole point of a profile being an
       // overlay: a form that showed only what the character's own file
       // mentioned would show `false` for a setting switched on globally.
-      const effective = resolved.error === undefined ? resolved.profile.config : null;
+      // Falling back to the shipped defaults, which live in one place.
+      const shown = drawnConfig(
+        resolved.error === undefined ? resolved.profile.config : DEFAULT_CONFIG,
+        record
+      );
 
       characters.push({
         id,
@@ -1487,68 +1451,36 @@ export class SettingsEditor {
           : [],
         // Its own, read raw for `login`'s reason: the resolved one may be the realm's.
         locate: ownLocate(record),
-        /*
-         * Falling back to the shipped defaults rather than to numbers written
-         * out here. A default restated in a second place is a default that goes
-         * stale the first time the first one changes, which is the rule the
-         * options template already keeps: defaults live in exactly one place.
-         */
-        // The character's own answer about penalties, read raw as `mobRules`
-        // is below: the resolved one may be the realm's or the options file's.
-        hangUp: {
-          ...(effective?.automation.safety.hangUp ?? DEFAULT_CONFIG.automation.safety.hangUp),
-          penalties: ownHangPenalties(record)
-        },
-        retreat: retreatOf(
-          effective?.automation.safety.retreat ?? DEFAULT_CONFIG.automation.safety.retreat
-        ),
-        // Its own command, read raw: the resolved one may be the realm's.
-        fleeGoto: {
-          ...(effective?.automation.safety.fleeGoto ?? DEFAULT_CONFIG.automation.safety.fleeGoto),
-          command: ownFleeGotoCommand(record) ?? ''
-        },
-        pvp: effective?.automation.safety.pvp ?? DEFAULT_CONFIG.automation.safety.pvp,
-        /*
-         * The resolved combat block, except for the monster list, which is
-         * the character's **own** rows from the file as written (todo 01).
-         *
-         * `mobRules` is the one list here merged across the three scopes
-         * rather than replaced, so the resolved one holds the realm's rows and
-         * the global file's as well. Seeding the form with those and saving it
-         * back would write them into this character's own file — pinning down
-         * rules it was only inheriting, so that changing the realm's list
-         * afterwards would silently not reach it. The same distinction
-         * `login.steps` above keeps, for the same reason.
-         */
-        combat: {
-          ...(effective?.automation.combat ?? DEFAULT_CONFIG.automation.combat),
-          mobRules: ownMobRules(record)
-        },
-        party: effective?.automation.party ?? DEFAULT_CONFIG.automation.party,
-        health: effective?.automation.health ?? DEFAULT_CONFIG.automation.health,
-        movement: effective?.automation.movement ?? DEFAULT_CONFIG.automation.movement,
-        hunting: effective?.automation.hunting ?? DEFAULT_CONFIG.automation.hunting,
-        train: effective?.automation.train ?? DEFAULT_CONFIG.automation.train,
-        quests: effective?.automation.quests ?? DEFAULT_CONFIG.automation.quests,
-        gear: effective?.automation.gear ?? DEFAULT_CONFIG.automation.gear,
-        loot: effective?.automation.loot ?? DEFAULT_CONFIG.automation.loot,
-        drop: effective?.automation.drop ?? DEFAULT_CONFIG.automation.drop,
-        outgrown: effective?.automation.outgrown ?? DEFAULT_CONFIG.automation.outgrown,
-        search: effective?.automation.search ?? DEFAULT_CONFIG.automation.search,
-        banking: effective?.automation.banking ?? DEFAULT_CONFIG.automation.banking,
-        supplies: effective?.automation.supplies ?? DEFAULT_CONFIG.automation.supplies,
-        remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
-        afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
-        talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
-        statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
-        asks: effective?.automation.asks ?? DEFAULT_CONFIG.automation.asks,
+        hangUp: shown.automation.safety.hangUp,
+        retreat: retreatOf(shown.automation.safety.retreat),
+        fleeGoto: shown.automation.safety.fleeGoto,
+        pvp: shown.automation.safety.pvp,
+        combat: shown.automation.combat,
+        party: shown.automation.party,
+        health: shown.automation.health,
+        movement: shown.automation.movement,
+        hunting: shown.automation.hunting,
+        train: shown.automation.train,
+        quests: shown.automation.quests,
+        gear: shown.automation.gear,
+        loot: shown.automation.loot,
+        drop: shown.automation.drop,
+        outgrown: shown.automation.outgrown,
+        search: shown.automation.search,
+        banking: shown.automation.banking,
+        supplies: shown.automation.supplies,
+        remotes: shown.automation.remotes,
+        afk: shown.automation.afk,
+        talk: shown.automation.talk,
+        statline: shown.automation.statline,
+        asks: shown.automation.asks,
         // Its own, read raw: the resolved list holds Global's too.
         aliases: statedPairs(
           isRecord(record['automation']) ? record['automation']['aliases'] : null
         ),
         keys: statedPairs(record['keys']),
         macroBase: { keys: config.keys, aliases: config.automation.aliases },
-        rewrites: effective?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites,
+        rewrites: shown.ui.rewrites,
         /*
          * This character's *own* loops, from its own directory — not the
          * resolved list, which folds in the server's and the global ones. The
@@ -1561,10 +1493,10 @@ export class SettingsEditor {
           tree,
           typeof record['server'] === 'string' ? record['server'] : null
         ),
-        spells: effective?.automation.spells ?? DEFAULT_CONFIG.automation.spells,
+        spells: shown.automation.spells,
         spellbook: book.spellbook,
         cureGates: book.cureGates,
-        alerts: effective?.ui.alerts ?? DEFAULT_CONFIG.ui.alerts,
+        alerts: shown.ui.alerts,
         ...(resolved.error !== undefined ? { error: resolved.error } : {})
       });
     }
@@ -1640,13 +1572,20 @@ function inheritedLoops(
   ];
 }
 
-/** The supplies block's switch and figures, then its list (`writeSupplyItems`). */
-function writeSupplies(document: Document, supplies: SuppliesConfig): void {
-  const { enabled, cashBuffer, dearerSteps, items } = supplies;
-  document.setIn(['automation', 'supplies', 'enabled'], enabled);
-  document.setIn(['automation', 'supplies', 'cashBuffer'], cashBuffer);
-  document.setIn(['automation', 'supplies', 'dearerSteps'], dearerSteps);
-  writeSupplyItems(document, items);
+/** Where the supplies block sits in a file. */
+const SUPPLIES = ['automation', 'supplies'] as const;
+
+/**
+ * The supplies block's switch and figures, patched against what the file
+ * resolves to (`patchKeeping`), then its list (`writeSupplyItems`), rewritten
+ * only when it changed, since the writer styles every row afresh.
+ */
+function writeSupplies(document: Document, supplies: SuppliesConfig, resolved: unknown): void {
+  const { items, ...figures } = supplies;
+  patchKeeping(document, SUPPLIES, figures, resolved);
+  if (!isDeepStrictEqual(items, valueAt(resolved, [...SUPPLIES, 'items']))) {
+    writeSupplyItems(document, items);
+  }
 }
 
 /**
@@ -1710,17 +1649,33 @@ function retreatOf(retreat: RetreatConfig): ProfileEditable['retreat'] {
 }
 
 /**
- * Writes each retreat field on the form, so a `cooldownMs` set by hand stays
- * (`retreatOf`). A `retreat:` left empty or written as a word is replaced by a
- * map first, since a key cannot be set inside a scalar.
+ * A resolved config as the character page draws it, and as a save is compared
+ * against: resolved, except for three values the form edits as the file's own,
+ * read raw because the resolved ones may be the realm's or the options file's.
+ *
+ * - `combat.mobRules`, the character's **own** rows (todo 01). It is the one
+ *   list merged across the three scopes rather than replaced, so the resolved
+ *   one holds the realm's rows and the global file's too; seeded with those
+ *   and saved back, it would pin down rules the character was only
+ *   inheriting, the distinction `login.steps` keeps for the same reason.
+ * - `safety.hangUp.penalties`, null where the file leaves it to the realm.
+ * - `safety.fleeGoto.command`, empty where the file leaves it to the realm.
  */
-function writeRetreat(document: Document, retreat: ProfileEditable['retreat']): void {
-  const at = ['automation', 'safety', 'retreat'];
-  if (document.hasIn(at) && !isMap(document.getIn(at, true)))
-    document.setIn(at, document.createNode({}));
-  for (const [key, value] of Object.entries(retreat)) {
-    document.setIn([...at, key], value);
-  }
+function drawnConfig(config: AppConfig, record: Record<string, unknown>) {
+  const { automation } = config;
+  const { safety } = automation;
+  return {
+    ...config,
+    automation: {
+      ...automation,
+      combat: { ...automation.combat, mobRules: ownMobRules(record) },
+      safety: {
+        ...safety,
+        hangUp: { ...safety.hangUp, penalties: ownHangPenalties(record) },
+        fleeGoto: { ...safety.fleeGoto, command: ownFleeGotoCommand(record) ?? '' }
+      }
+    }
+  };
 }
 
 /** `ui.theme` as the file states it, or '' when it follows the options file. */

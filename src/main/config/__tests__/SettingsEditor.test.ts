@@ -561,6 +561,229 @@ ui:
   });
 });
 
+/*
+ * Festus, 2026-11-03: replaying his pre-save file through the character page
+ * (`formOf`, `draftOf`, the IPC round trip, `asProfileDraft`) added `share`,
+ * `receive` and `keys` to every remote player and `belowMana` to the retreat,
+ * although only `attack` was edited. A save writes a key the file does not
+ * state only when its value differs from what the file resolves to now.
+ */
+describe('a save writes only what the player changed', () => {
+  const FESTUS = [
+    'name: Festus',
+    'accent: cyan',
+    'autoConnect: false',
+    'autoReconnect: true',
+    'lowLives: 2',
+    'reconnectTries: 0',
+    'server: GreaterMUD (local)',
+    'account:',
+    '  username: festus',
+    '  password: secret-value',
+    'automation:',
+    '  combat:',
+    '    # Blank picks the attack.',
+    '    attack: ""',
+    '  safety:',
+    '    retreat:',
+    '      enabled: true',
+    '      belowHealth: 0.4',
+    '  remotes:',
+    '    enabled: true',
+    '    players:',
+    '      # The cleric.',
+    '      ana:',
+    '        allow: [ health, exp ]',
+    '      bo:',
+    '        allow: [ status ]',
+    ''
+  ].join('\n');
+
+  const file = (): string => home.profile('festus').file;
+  const write = (text: string): void => {
+    fs.mkdirSync(path.dirname(file()), { recursive: true });
+    fs.writeFileSync(file(), text, 'utf8');
+  };
+  /**
+   * The draft the page sends for the file as it is, after `edit` changes it:
+   * the screen's entry, each field as the form draws it (`formOf`, `draftOf`
+   * are the renderer's and outside this project), through the IPC reader.
+   */
+  const sent = (edit: (form: ProfileDraft) => void): ProfileDraft => {
+    const entry = editor.snapshot().characters.find((one) => one.id === 'festus');
+    if (entry === undefined || entry.serverName === null) throw new Error('festus is missing');
+    const form = draft({
+      name: entry.name,
+      accent: entry.accent,
+      theme: entry.theme,
+      autoConnect: entry.autoConnect,
+      autoReconnect: entry.autoReconnect,
+      autoLogin: entry.autoLogin,
+      lowLives: entry.lowLives,
+      reconnectTries: entry.reconnectTries,
+      server: { kind: 'saved', name: entry.serverName },
+      username: entry.username,
+      password: '',
+      changePassword: false,
+      login: entry.login,
+      locate: entry.locate,
+      hangUp: entry.hangUp,
+      retreat: entry.retreat,
+      fleeGoto: entry.fleeGoto,
+      pvp: entry.pvp,
+      combat: entry.combat,
+      party: entry.party,
+      health: entry.health,
+      movement: entry.movement,
+      hunting: entry.hunting,
+      train: entry.train,
+      quests: entry.quests,
+      gear: entry.gear,
+      loot: entry.loot,
+      drop: entry.drop,
+      outgrown: entry.outgrown,
+      search: entry.search,
+      banking: entry.banking,
+      supplies: entry.supplies,
+      remotes: entry.remotes,
+      afk: entry.afk,
+      talk: entry.talk,
+      statline: entry.statline,
+      asks: entry.asks,
+      aliases: entry.aliases,
+      keys: entry.keys,
+      rewrites: entry.rewrites,
+      loops: entry.loops,
+      spells: entry.spells,
+      alerts: entry.alerts
+    });
+    edit(form);
+    const parsed = asProfileDraft(JSON.parse(JSON.stringify(form)));
+    if (parsed === null) throw new Error('the draft did not parse');
+    return parsed;
+  };
+  const changed = (before: string, after: string): string[] => {
+    const was = before.split('\n');
+    return after.split('\n').filter((line, index) => line !== was[index]);
+  };
+
+  it('changes only the line that was edited, and a second save changes nothing', () => {
+    write(FESTUS);
+    const draft = sent((form) => {
+      form.combat = { ...form.combat, attack: 'a' };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    const once = fs.readFileSync(file(), 'utf8');
+    expect(once.split('\n')).toHaveLength(FESTUS.split('\n').length);
+    expect(changed(FESTUS, once)).toEqual(['    attack: "a"']);
+    expect(
+      editor.saveProfile(
+        'festus',
+        sent(() => undefined)
+      )
+    ).toEqual({ ok: true });
+    expect(fs.readFileSync(file(), 'utf8')).toBe(once);
+  });
+
+  it('keeps a player the file names in capitals through a save of another field', () => {
+    write(FESTUS.replace('      bo:\n', '      Bo:\n'));
+    const draft = sent((form) => {
+      form.combat = { ...form.combat, attack: 'a' };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    const players = (read('festus')['automation'] as { remotes: { players: object } }).remotes
+      .players as Record<string, { allow?: unknown }>;
+    // The control: the edit landed.
+    expect(fs.readFileSync(file(), 'utf8')).toContain('attack: "a"');
+    // The grant is kept, under the name the client files it as.
+    expect(players['bo']?.allow).toEqual(['status']);
+    expect(players['ana']).toEqual({ allow: ['health', 'exp'] });
+  });
+
+  it('writes a player the page added, and removes one it dropped', () => {
+    write(FESTUS);
+    const added: RemoteGrant = { ...NO_GRANT, allow: ['exp'] };
+    const draft = sent((form) => {
+      const ana = form.remotes.players['ana'];
+      if (ana === undefined) throw new Error('ana is not on the form');
+      form.remotes = { ...form.remotes, players: { ana, cy: added } };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    const players = (read('festus')['automation'] as { remotes: { players: object } }).remotes
+      .players;
+    expect(players).toEqual({ ana: { allow: ['health', 'exp'] }, cy: added });
+    expect(fs.readFileSync(file(), 'utf8')).toContain('# The cleric.');
+  });
+
+  it('writes nothing for a field set to what the file already resolves to', () => {
+    write(FESTUS);
+    const draft = sent((form) => {
+      form.retreat = { ...form.retreat, belowMana: 0 };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    expect(fs.readFileSync(file(), 'utf8')).toBe(FESTUS);
+  });
+
+  it('writes the default over a file that states something else', () => {
+    write(FESTUS.replace('    attack: ""', '    attack: kick'));
+    const draft = sent((form) => {
+      form.combat = { ...form.combat, attack: DEFAULT_CONFIG.automation.combat.attack };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    expect(read('festus')['automation']).toMatchObject({
+      combat: { attack: DEFAULT_CONFIG.automation.combat.attack }
+    });
+  });
+
+  // Inherited from the options file and moved back to the shipped default: a change.
+  it('writes the default over a value the options file states', () => {
+    fs.writeFileSync(configPath, `${OPTIONS}automation:\n  combat:\n    attack: kick\n`);
+    write(FESTUS.replace('  combat:\n    # Blank picks the attack.\n    attack: ""\n', ''));
+    const draft = sent((form) => {
+      form.combat = { ...form.combat, attack: DEFAULT_CONFIG.automation.combat.attack };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    expect(read('festus')['automation']).toMatchObject({
+      combat: { attack: DEFAULT_CONFIG.automation.combat.attack }
+    });
+  });
+
+  // An inherited list and an inherited player stay in the options file alone.
+  it('writes nothing the options file states for the character to inherit', () => {
+    fs.writeFileSync(
+      configPath,
+      [
+        OPTIONS,
+        'automation:',
+        '  combat:',
+        '    mobRules:',
+        '      - { mob: town guard, treat: never }',
+        '  loot:',
+        '    items: [ silver, gold ]',
+        '  remotes:',
+        '    players:',
+        '      cy:',
+        '        allow: [ exp ]',
+        ''
+      ].join('\n')
+    );
+    write(FESTUS);
+    expect(
+      editor.saveProfile(
+        'festus',
+        sent(() => undefined)
+      )
+    ).toEqual({ ok: true });
+    expect(fs.readFileSync(file(), 'utf8')).toBe(FESTUS);
+    // Positive control: the same draft with one edit is written.
+    const draft = sent((form) => {
+      form.combat = { ...form.combat, attack: 'a' };
+    });
+    expect(editor.saveProfile('festus', draft)).toEqual({ ok: true });
+    expect(changed(FESTUS, fs.readFileSync(file(), 'utf8'))).toEqual(['    attack: "a"']);
+  });
+});
+
 describe('keeping an extension’s settings (todo 84)', () => {
   it('writes each one under automation, and nothing the client does not have', () => {
     const file = home.profile('vaelor').file;
@@ -1798,7 +2021,11 @@ connection:
 
     const written = parse(fs.readFileSync(configPath, 'utf8'));
     expect(written['automation']['outgrown']).toMatchObject({ keepRare: false, sellDetour: 25 });
-    expect(written['automation']['supplies']).toMatchObject({ cashBuffer: 0, dearerSteps: 20 });
+    // The figure left at its default is not written, and reads back as it was.
+    expect(written['automation']['supplies']).toEqual({ cashBuffer: 0 });
+    expect(normalizeConfig(written).automation.supplies.dearerSteps).toBe(
+      DEFAULT_CONFIG.automation.supplies.dearerSteps
+    );
   });
 
   // The Global page draws the search fields (`CarrySections`), and none was written.

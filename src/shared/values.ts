@@ -27,6 +27,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** The value at a path in a plain object, or undefined. */
+export function valueAt(root: unknown, at: readonly string[]): unknown {
+  return at.reduce<unknown>((node, key) => (isRecord(node) ? node[key] : undefined), root);
+}
+
 /**
  * A value as one string for a key: a `Set` or `Map` as its entries, a
  * function left out. What decides a way (`Errands.reachKey`), what a survey

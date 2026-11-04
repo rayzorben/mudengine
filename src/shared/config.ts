@@ -18,6 +18,7 @@
  */
 import { PRIORITY } from './automation';
 import { bool, fraction, int, isRecord, oneOf, str } from './values';
+import { playerKey } from './players';
 import { DEFAULT_GAME_VIEW, normalizeGameView, type GameViewConfig } from './gameViewConfig';
 import { DEFAULT_ART, normalizeArt, type ArtConfig } from './artConfig';
 import { asPeerGrant, NO_PEER_GRANT } from './peerGrant';
@@ -3721,7 +3722,7 @@ function playerGrants(
   if (!isRecord(value)) return {};
   const out: Record<string, RemoteGrant> = {};
   for (const [name, grant] of Object.entries(value)) {
-    const key = name.trim().toLowerCase();
+    const key = playerKey(name);
     if (key.length === 0 || !isRecord(grant)) continue;
     const held = out[key] ?? NO_GRANT;
     out[key] = {

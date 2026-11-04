@@ -40,7 +40,7 @@ import {
 } from 'yaml';
 
 import { fileSlug } from '../../shared/files';
-import { errorMessage, isRecord } from '../../shared/values';
+import { errorMessage, isRecord, valueAt } from '../../shared/values';
 import { credentialsNamed } from '../../shared/login';
 import { asLoops, loopCategory, type Loop } from '../../shared/loops';
 import { t } from '../app/i18n';
@@ -6214,11 +6214,6 @@ const PROMOTIONS: readonly Promotion[] = [
 
 /** The figures the player had changed, converted, by the setting's dotted path. */
 type Carried = ReadonlyMap<string, unknown>;
-
-/** The value at a path in a plain object, or undefined. */
-function valueAt(root: unknown, at: readonly string[]): unknown {
-  return at.reduce<unknown>((node, key) => (isRecord(node) ? node[key] : undefined), root);
-}
 
 /**
  * Takes the promoted keys out of the player's `internal.yaml`, comment and

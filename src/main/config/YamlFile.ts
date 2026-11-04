@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   isMap,
   isNode,
@@ -8,10 +9,13 @@ import {
   parseDocument,
   YAMLError,
   type Document,
+  type YAMLMap,
   type YAMLSeq
 } from 'yaml';
 import { t } from '../app/i18n';
 import { writeWholeSync } from '../app/writeWhole';
+import { valueAt } from '../../shared/values';
+import { playerKey } from '../../shared/players';
 
 /**
  * Editing a YAML file the user owns.
@@ -225,10 +229,7 @@ export const ON_DISK: YamlFiles = {
 export function setKeeping(document: Document, at: readonly unknown[], value: unknown): void {
   const node = document.getIn(at, true);
   if (isMap(node) && isPlainRecord(value)) {
-    for (const pair of [...node.items]) {
-      const key = isScalar(pair.key) ? pair.key.value : pair.key;
-      if (typeof key !== 'string' || value[key] === undefined) node.delete(pair.key);
-    }
+    dropUnnamed(node, value);
     for (const [key, entry] of Object.entries(value)) {
       if (entry !== undefined) setKeeping(document, [...at, key], entry);
     }
@@ -242,25 +243,91 @@ export function setKeeping(document: Document, at: readonly unknown[], value: un
 }
 
 /**
- * `setKeeping` for a block a draft patches: each key `value` names is written
- * as `setKeeping` writes it, and a key it does not name stays as the file has
- * it, comment and all. A settings draft carries the fields on its form, and
- * `autoRest`, a toolbar switch, is not one: replaced whole, a save of the page
- * dropped it and put the character back on the inherited answer.
+ * `setKeeping` for a block a draft patches, writing only what the player
+ * changed. A key `value` does not name stays as the file has it, comment and
+ * all: `autoRest`, a toolbar switch, is not on the settings form, and replaced
+ * whole, a save of the page put it back on the inherited answer.
+ *
+ * `resolved` is what the whole file resolves to before this write, read at
+ * `at`. A key the file states is written whatever its value, so a stated
+ * default stays stated; a key it does not state is written only where the
+ * draft differs from what it resolves to (`writeChanged`). The form draws
+ * every field filled in, and a save of one field wrote `belowMana: 0` and
+ * `share: off` beside it (Festus, 2026-11-03). `undefined` resolves nothing,
+ * so every key is written, as a new character's copy of its defaults is.
  */
 export function patchKeeping(
   document: Document,
-  at: readonly unknown[],
-  value: Readonly<Record<string, unknown>>
+  at: readonly string[],
+  value: Readonly<Record<string, unknown>>,
+  resolved: unknown
 ): void {
-  if (!isMap(document.getIn(at, true))) {
+  const node = document.getIn(at, true);
+  if (node !== undefined && !isMap(node)) {
     setKeeping(document, at, value);
     return;
   }
+  const block = valueAt(resolved, at);
   for (const [key, entry] of Object.entries(value)) {
-    if (entry === undefined) document.deleteIn([...at, key]);
-    else setKeeping(document, [...at, key], entry);
+    if (entry === undefined) {
+      if (node !== undefined) document.deleteIn([...at, key]);
+    } else writeChanged(document, [...at, key], entry, valueAt(block, [key]));
   }
+}
+
+/**
+ * One value of a patched block: `setKeeping` where the file states the key;
+ * where it does not, nothing when the value is what the key resolves to, the
+ * keys that differ when both are maps (as the overlay merges them), and the
+ * value whole otherwise, a new row or a changed list. Inside a map the file
+ * states, a key the value lacks is removed, so a dropped remote player goes,
+ * and a row the file spelt another way is written whole under the value's key.
+ */
+function writeChanged(
+  document: Document,
+  at: readonly unknown[],
+  value: unknown,
+  resolved: unknown
+): void {
+  const node = document.getIn(at, true);
+  if (isMap(node) && isPlainRecord(value)) {
+    const dropped = dropUnnamed(node, value);
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry === undefined) continue;
+      // A row the file filed under another spelling (`Festus:`, read as `festus`) was just
+      // dropped: written whole, since skipping it as unchanged would lose the row.
+      if (dropped.has(playerKey(key))) document.setIn([...at, key], entry);
+      else writeChanged(document, [...at, key], entry, valueAt(resolved, [key]));
+    }
+    return;
+  } else if (node !== undefined) {
+    setKeeping(document, at, value);
+    return;
+  } else if (isDeepStrictEqual(value, resolved)) {
+    // Every key equal in any order: `sameJson` reads key order, and the draft's is not the resolver's.
+    return;
+  } else if (!isPlainRecord(value) || !isPlainRecord(resolved)) {
+    document.setIn([...at], value);
+    return;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) writeChanged(document, [...at, key], entry, valueAt(resolved, [key]));
+  }
+}
+
+/**
+ * Removes each key of a map `value` does not name or leaves `undefined`, as
+ * `setIn` would; the string keys removed, filed as a player's name is (`playerKey`).
+ */
+function dropUnnamed(node: YAMLMap, value: Readonly<Record<string, unknown>>): Set<string> {
+  const dropped = new Set<string>();
+  for (const pair of [...node.items]) {
+    const key = isScalar(pair.key) ? pair.key.value : pair.key;
+    if (typeof key === 'string' && value[key] !== undefined) continue;
+    node.delete(pair.key);
+    if (typeof key === 'string') dropped.add(playerKey(key));
+  }
+  return dropped;
 }
 
 /**
