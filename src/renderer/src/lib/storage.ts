@@ -5,6 +5,7 @@
  * own `sessionStorage`, which a reload and a discarded browser tab keep and
  * another tab never sees.
  */
+import type { SessionId } from '@shared/ipc';
 
 export type StorageArea = 'local' | 'session';
 
@@ -46,3 +47,24 @@ export function forgetStored(key: string): void {
     // Refused: the value stays until storage takes writes again.
   }
 }
+
+/** The key a card's remembered choice for one character is kept under. */
+export const rememberedKey = (name: string, session: SessionId): string =>
+  `mudengine.${name}.${session}`;
+
+/** Raw keys in and out, so a one-time read of an older value can be tested without a window. */
+export interface KeyStore {
+  read(key: string): string | null;
+  forget(key: string): void;
+}
+
+/** The window's `localStorage` as a {@link KeyStore}, inside the same guards. */
+export const localKeys: KeyStore = {
+  read: (key) =>
+    readStored(
+      key,
+      (stored) => stored,
+      () => null
+    ),
+  forget: forgetStored
+};

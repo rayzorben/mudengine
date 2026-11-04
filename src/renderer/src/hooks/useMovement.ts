@@ -7,8 +7,9 @@
  * Out of `App` (todo 733). See `mudengine-ui` › `parts/cards.md`, *Routing,
  * looping or stopped: one card, one face, one transport*.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
+import { refusalSayer } from '../lib/heldNotices';
 import { t } from '../lib/i18n';
 import { loopOwner, type LoopChoice, type LoopDestination } from '../lib/loops';
 import type { IpcApi, ProfileSummary, SessionId } from '@shared/ipc';
@@ -27,8 +28,8 @@ export interface MovementInputs {
   session: SessionId;
   profiles: readonly Pick<ProfileSummary, 'id' | 'serverName'>[];
   returnFocus(): void;
-  /** A sentence into one character's console. */
-  say(session: SessionId, message: string): void;
+  /** A sentence into one character's console, kept until that console is there. */
+  say(message: string, session: SessionId): void;
 }
 
 export interface Movement {
@@ -87,12 +88,7 @@ export function useMovement({
    * is said in the console of the character it was about, the same way the
    * palette's loop command reports one.
    */
-  const sayRefusal = useCallback(
-    (sid: SessionId) => (refused: string | null) => {
-      if (refused) say(sid, refused);
-    },
-    [say]
-  );
+  const sayRefusal = useMemo(() => refusalSayer(say), [say]);
   /**
    * Start a loop chosen from the modal, and keep it where the player said.
    *
@@ -125,7 +121,7 @@ export function useMovement({
   const runChosenLoop = useCallback(
     (choice: LoopChoice, destination: LoopDestination) => {
       const refuse = sayRefusal(session);
-      const said = (message: string) => say(session, message);
+      const said = (message: string) => say(message, session);
 
       void (async () => {
         // Already on disk: nothing to write, whatever the destination says.

@@ -87,3 +87,11 @@ export function heldNotices(): HeldNotices {
     }
   };
 }
+
+/** Says a refusal in its own character's console; nothing when there was none. */
+export const refusalSayer =
+  (say: (message: string, session: SessionId) => void) =>
+  (session: SessionId) =>
+  (refused: string | null): void => {
+    if (refused) say(refused, session);
+  };

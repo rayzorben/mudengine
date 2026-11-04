@@ -7,7 +7,7 @@
  * Out of `App` (todo 733); `cardElement` draws from it. See `mudengine-ui` ›
  * *The window redraws what changed*.
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { CardChrome } from '../components/BentoCard';
 import type { PlayerAsked } from '../components/PlayerFlyout';
@@ -18,6 +18,7 @@ import type { SessionView } from './useSessionViews';
 import type { MobTreatment } from '@shared/mobRules';
 import { ZERO_METER, type Pressure, type StreamMeter } from './useStreamPressure';
 import type { PinnedToolbar } from './useToolbarPins';
+import { refusalSayer } from '../lib/heldNotices';
 import { t } from '../lib/i18n';
 import type { LoopDestination } from '../lib/loops';
 import { keptCellsLoader } from '../lib/mapCells';
@@ -218,6 +219,8 @@ export interface CardContext {
   /** A talk-box line of several commands, and dropping what is left of one; addressed. */
   onMacro(line: string): void;
   dropMacro(): void;
+  /** A sentence in this character's console, kept until that console is there. */
+  say(message: string): void;
   /** This character's unsent typing, kept while its tab is away. */
   kept: KeptWork;
 }
@@ -274,6 +277,7 @@ export interface AddressedActions {
   send(line: string): void;
   macro(line: string): void;
   dropMacro(): void;
+  say(message: string): void;
 }
 
 /** The bridge calls a card makes, each addressed at one character. */
@@ -378,8 +382,8 @@ export interface CardContextInputs
   openAreaSearch(): void;
   dial(id: SessionId): void;
   hangUp(id: SessionId): void;
-  /** A refusal said in its own character's console. */
-  sayRefusal(sid: SessionId): (refused: string | null) => void;
+  /** A sentence in a character's console, kept until that console is there. */
+  say(message: string, session: SessionId): void;
   startMovingIn(sid: SessionId, loop: string | null, confirmed: number | null): void;
   stepBackIn(sid: SessionId, confirmed: number | null): void;
   selectPlayer(sid: SessionId, name: string, anchor: PopoverAnchor): void;
@@ -435,7 +439,7 @@ export function useCardContext({
   openAreaSearch,
   dial,
   hangUp,
-  sayRefusal,
+  say,
   startMovingIn,
   stepBackIn,
   selectPlayer,
@@ -450,8 +454,12 @@ export function useCardContext({
   selectPlayerRef.current = selectPlayer;
   const selectGangRef = useRef(selectGang);
   selectGangRef.current = selectGang;
-  const sayRefusalRef = useRef(sayRefusal);
-  sayRefusalRef.current = sayRefusal;
+  const sayRef = useRef(say);
+  sayRef.current = say;
+  const sayRefusal = useMemo(
+    () => refusalSayer((message, sid) => sayRef.current(message, sid)),
+    []
+  );
   const startMovingRef = useRef(startMovingIn);
   startMovingRef.current = startMovingIn;
 
@@ -498,7 +506,7 @@ export function useCardContext({
         planGear: (picks) => api.gearPlan(sid, picks),
         goGear: (picks, run) =>
           api.gearTrip(sid, picks, run).then((refused) => {
-            sayRefusalRef.current(sid)(refused);
+            sayRefusal(sid)(refused);
             return refused;
           }),
         stopGear: () => void api.gearStop(sid),
@@ -506,34 +514,32 @@ export function useCardContext({
         stopMoving: () => void api.stopMoving(sid),
         walkOnWithoutParty: () => void api.walkOnWithoutParty(sid),
         treatMonster: (name, treat) =>
-          void api
-            .treatMonster(sid, name, treat)
-            .then((refused) => sayRefusalRef.current(sid)(refused)),
+          void api.treatMonster(sid, name, treat).then((refused) => sayRefusal(sid)(refused)),
         // Through a ref like `selectPlayer` beside it: this one changes the
         // window's state rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
         resetStats: () => resetStatsRef.current(sid),
         startLoop: (name) =>
-          void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
-        reverseLoop: () =>
-          void api.reverseLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
+          void api.startLoop(sid, name).then((refused) => sayRefusal(sid)(refused)),
+        reverseLoop: () => void api.reverseLoop(sid).then((refused) => sayRefusal(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
         selectGang: (name, anchor) => selectGangRef.current(sid, name, anchor),
         setGangRemotes: (remotes) => void api.setGangRemotes(sid, remotes),
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
         setSupplies: (items) =>
-          void api.setSupplies(sid, items).then((refused) => sayRefusalRef.current(sid)(refused)),
+          void api.setSupplies(sid, items).then((refused) => sayRefusal(sid)(refused)),
         // `api.input`, as typing it would: main assembles it into a command there,
         // so the tracker sees it, a walk stops, the capture records it and a
         // password is redacted. Addressed at `sid`, the card's own character.
         send: (line) => void api.input(sid, `${line}\r`),
         macro: (line) => api.macro(sid, line),
-        dropMacro: () => api.dropMacro(sid)
+        dropMacro: () => api.dropMacro(sid),
+        say: (message) => sayRef.current(message, sid)
       };
       boundCache.current.set(sid, bound);
       return bound;
     },
-    [api]
+    [api, sayRefusal]
   );
 
   // A closed character's bundle must not linger for ever; the roster is the
@@ -590,9 +596,7 @@ export function useCardContext({
             next.max !== (current?.max ?? 0) &&
             stockCeiling(next) !== next.max
           ) {
-            sayRefusalRef.current(sid)(
-              t('cards.self.supplies.maxRaised', { item: next.name, min: next.min })
-            );
+            sayRefusal(sid)(t('cards.self.supplies.maxRaised', { item: next.name, min: next.min }));
           }
           const list = withSupply(newest, name, next);
           if (entry) entry.written = list;
@@ -603,7 +607,7 @@ export function useCardContext({
       suppliesCache.current.set(sid, { items, save, bundle, written: null });
       return bundle;
     },
-    [api, boundFor, suppliesFor]
+    [api, boundFor, sayRefusal, suppliesFor]
   );
 
   /**
@@ -753,6 +757,7 @@ export function useCardContext({
         onSend: bound.send,
         onMacro: bound.macro,
         dropMacro: bound.dropMacro,
+        say: bound.say,
         kept: keptFor(sid)
       };
     },

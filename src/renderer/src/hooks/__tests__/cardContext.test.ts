@@ -304,13 +304,11 @@ describe('the supplies bundle', () => {
             : pending
       }
     ) as CardContextInputs['api'];
-    const sayRefusal = () => (refused: string | null) => {
-      if (refused !== null) said.push(refused);
-    };
+    const say = (message: string): void => void said.push(message);
     const inputs = (list: () => SupplyItem[]): CardContextInputs => ({
       ...stable,
       api,
-      sayRefusal,
+      say,
       nameIndexes: {},
       suppliesFor: list
     });

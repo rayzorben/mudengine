@@ -53,7 +53,7 @@ export function cardInputs(
     openAreaSearch: noop,
     dial: noop,
     hangUp: noop,
-    sayRefusal: () => noop,
+    say: noop,
     startMovingIn: noop,
     stepBackIn: noop,
     selectPlayer: noop,

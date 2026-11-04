@@ -9,7 +9,7 @@ import {
 
 import type { SessionId } from '@shared/ipc';
 
-import { readStored, writeStored } from '../lib/storage';
+import { readStored, rememberedKey, writeStored } from '../lib/storage';
 
 /** State that re-reads when its key changes: switching character switches instrument. */
 function useStored<T>(read: () => T): [T, Dispatch<SetStateAction<T>>] {
@@ -43,7 +43,7 @@ export function useRemembered(
   name: string,
   allowed: readonly string[]
 ): { has(value: string): boolean; toggle(value: string): void } {
-  const key = `mudengine.${name}.${session}`;
+  const key = rememberedKey(name, session);
 
   const read = useCallback(
     (): Set<string> =>
@@ -78,7 +78,7 @@ export function useRemembered(
 
   // One object per set, not per render: a caller's memo keyed on this would
   // otherwise recompute every render — the Talk card's feed, and with it the
-  // jump-to-latest offer, on every status line while `All` is off.
+  // jump-to-latest offer, on every status line.
   return useMemo(() => ({ has: (value: string) => chosen.has(value), toggle }), [chosen, toggle]);
 }
 
@@ -102,7 +102,7 @@ export function useRememberedChoice(
   allowed: readonly string[],
   fallback: string
 ): [string, (value: string) => void] {
-  const key = `mudengine.${name}.${session}`;
+  const key = rememberedKey(name, session);
 
   const read = useCallback(
     (): string =>
@@ -158,7 +158,7 @@ export function useRememberedRanks(
   name: string,
   allowed: readonly string[]
 ): { get(key: string): number | null; set(key: string, rank: number | null): void } {
-  const storageKey = `mudengine.${name}.${session}`;
+  const storageKey = rememberedKey(name, session);
 
   const read = useCallback(
     (): Record<string, number> =>

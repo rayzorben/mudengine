@@ -778,7 +778,7 @@ export default function App() {
     wandered,
     stay,
     walkOn
-  } = useMovement({ api, session, profiles, returnFocus, say: noticeTo });
+  } = useMovement({ api, session, profiles, returnFocus, say: sayOnScreen });
   const recentMenu = useRecentMenu({ api, openRouteOn, sayRefusal });
   const chooseLoop = useLoopJoin({ api, session, runChosenLoop, openToJoin, say: noticeTo });
 
@@ -1027,7 +1027,7 @@ export default function App() {
     openAreaSearch: trips.opens.areaSearch,
     dial,
     hangUp,
-    sayRefusal,
+    say: sayOnScreen,
     startMovingIn,
     stepBackIn,
     selectPlayer,

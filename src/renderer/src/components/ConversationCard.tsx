@@ -22,6 +22,8 @@ import type { PopoverAnchor } from '../lib/popover';
 import { matches } from '../lib/table';
 import { tuning } from '../lib/tuning';
 import { linkify } from '../lib/linkify';
+import { localKeys } from '../lib/storage';
+import { settleTalkAll, takeTalkAllNotice } from '../lib/talkFilters';
 import { useKeptState } from '../hooks/useKeptState';
 import { useRemembered, useRememberedChoice } from '../hooks/useRemembered';
 import type { Kept } from '../lib/sessionMemory';
@@ -98,6 +100,8 @@ export interface ConversationCardProps extends CardChrome {
   names?: NameIndex | null;
   /** A monster's, an item's or a spell's name clicked in a quoted sentence. */
   inspect?(name: string, anchor: HTMLElement): void;
+  /** A sentence in this character's console, kept until that console is there. */
+  say(message: string): void;
 }
 
 /**
@@ -147,7 +151,7 @@ const CHANNELS: Record<string, string> = {
 interface TalkFace {
   id: string;
   label: string;
-  types: readonly string[] | null;
+  types: readonly string[];
 }
 
 /**
@@ -157,10 +161,9 @@ interface TalkFace {
  * **Toggles and not faces** (2026-09-10, todo 06). They were faces, which
  * means exactly one is showing — so watching gossip *and* the gang meant
  * watching everything, and *these two and not the rest* could not be said at
- * all, which is the one question a channel list is asked. `All` is the master:
- * on, every channel is drawn and the rest are disabled **in their own state**,
- * because *All is on* is a different fact from *this one is off* and turning
- * All back off has to put the reader's own choices back.
+ * all, which is the one question a channel list is asked. On is drawn and off
+ * is not, and no toggle disables another (user, 2026-11-03: *on means you see
+ * that channel off means you dont*).
  *
  * `local` folds the three channels that are the same conversation — what is
  * said in the room reaches the same ears whether it was said, yelled or
@@ -168,7 +171,6 @@ interface TalkFace {
  * same rule the chips followed: a control over nothing is chrome.
  */
 const FACES: readonly TalkFace[] = [
-  { id: 'talk', label: t('cards.talk.tabs.all'), types: null },
   { id: 'gossip', label: t('cards.talk.tabs.gossip'), types: ['conversation-gossip'] },
   {
     id: 'auction',
@@ -207,11 +209,10 @@ const FACES: readonly TalkFace[] = [
   { id: 'realm', label: t('cards.talk.tabs.realm'), types: TALK_PRESENCE_TYPES }
 ];
 
-const FACE_IDS = FACES.map((face) => face.id);
-/** Every toggle but the master, which is the set a reader can mute. */
-const CHANNEL_IDS = FACE_IDS.slice(1);
-/** The master's two remembered words. See the card's own note. */
-const ALL_WORDS = ['on', 'off'] as const;
+/** Every toggle, which is the set a reader can mute. */
+const CHANNEL_IDS = FACES.map((face) => face.id);
+/** Mentions' two remembered words. */
+const ON_OFF = ['on', 'off'] as const;
 
 /**
  * The two channels whose lines can be this character's own outbound half.
@@ -811,31 +812,30 @@ function ConversationCard({
   inspect,
   session,
   typing,
+  say,
   ...chrome
 }: ConversationCardProps) {
   /*
    * Which channels are showing, remembered per character like the rail's
    * arrangement: the channels somebody watches are a standing choice.
-   *
-   * Two remembered things, because the master and the row underneath it are
-   * two decisions. `talk-all` is one of two words and ships **on**, which is
-   * what the card has always opened as; `talk-muted` is the set the reader
-   * turned *off*, so nothing stored means nothing muted and a channel added to
-   * the parser later arrives visible rather than silently absent. A stored id
-   * the build no longer knows is dropped by the hook.
+   * `talk-muted` is the set the reader turned *off*, so nothing stored means
+   * nothing muted and a channel added to the parser later arrives visible
+   * rather than silently absent. A stored id the build no longer knows is
+   * dropped by the hook. The old `talk-all` is read once before it.
    */
-  const [allWord, chooseAll] = useRememberedChoice(session, 'talk-all', ALL_WORDS, 'on');
-  const all = allWord === 'on';
+  settleTalkAll(localKeys, session);
+  useEffect(() => {
+    if (takeTalkAllNotice(session)) say(t('notices.talkAllRemoved'));
+  }, [session, say]);
   const muted = useRemembered(session, 'talk-muted', CHANNEL_IDS);
   /*
-   * Only the lines with `@name` in them, from every channel (todo 29).
-   * Remembered like `All`, and off as shipped. While on, it decides alone and
-   * the channel toggles are drawn in their own state, the way `All` draws them.
+   * Only the lines with `@name` in them, within the channels that are on
+   * (todo 29; user, 2026-11-03). Remembered, and off as shipped.
    */
   const [mentionWord, chooseMentions] = useRememberedChoice(
     session,
     'talk-mentions',
-    ALL_WORDS,
+    ON_OFF,
     'off'
   );
   const onlyMentions = mentionWord === 'on';
@@ -976,45 +976,32 @@ function ConversationCard({
    * The faces with anything behind them, in their fixed order. The whole
    * stream is always offered; a channel earns its pill by having spoken.
    */
-  const anyMention = useMemo(
-    () => talked.some((message) => mentions(message, self)),
-    [talked, self]
-  );
   const faces = useMemo(
-    () =>
-      FACES.filter(
-        (face) =>
-          face.types === null || talked.some((message) => face.types!.includes(message.type))
-      ),
+    () => FACES.filter((face) => talked.some((message) => face.types.includes(message.type))),
     [talked]
   );
 
-  /*
-   * The block types on screen: every one while `All` is on, otherwise the
-   * union of the channels that are not muted.
-   *
-   * Null is *everything*, which is what `All` means and also what an empty
-   * mute set under it comes to — kept as null rather than the union so a
-   * channel the parser gains and this list has not caught up with is still
-   * drawn while All is on.
-   */
+  /* The block types on screen: the union of the channels that are not muted. */
   const showing = useMemo(() => {
-    if (all) return null;
     const types = new Set<string>();
     for (const entry of FACES) {
-      if (entry.types === null || muted.has(entry.id)) continue;
+      if (muted.has(entry.id)) continue;
       for (const type of entry.types) types.add(type);
     }
     return types;
-  }, [all, muted]);
+  }, [muted]);
+  // Mentions narrows the channels that are on, so only a mention among them earns its pill.
+  const anyMention = useMemo(
+    () => talked.some((message) => showing.has(message.type) && mentions(message, self)),
+    [talked, showing, self]
+  );
 
   const shown = useMemo(
     () =>
       talked.filter(
         (message) =>
-          (onlyMentions
-            ? mentions(message, self)
-            : showing === null || showing.has(message.type)) &&
+          showing.has(message.type) &&
+          (!onlyMentions || mentions(message, self)) &&
           matches(query, [
             CHANNELS[message.type] ?? message.type,
             message.groups['player'] ?? t('cards.map.legendYou'),
@@ -1187,7 +1174,7 @@ function ConversationCard({
    * effect above and a layout effect like it, so on a change it is this one
    * that lands, in the same frame.
    */
-  const showingKey = showing === null ? '*' : [...showing].sort().join(',');
+  const showingKey = [...showing].sort().join(',');
   useLayoutEffect(() => {
     follow();
   }, [showingKey, query, finding, session]);
@@ -1300,29 +1287,13 @@ function ConversationCard({
       />
     </>
   );
-  /*
-   * The heading's controls. `All` first and always live; every other one is
-   * drawn in its own state and refuses the press while `All` is on, so
-   * turning the master off puts the reader's own choices back rather than
-   * starting them again from nothing.
-   */
-  const filters: CardFilter[] = faces.map((entry) =>
-    entry.types === null
-      ? {
-          id: entry.id,
-          label: entry.label,
-          on: all,
-          disabled: onlyMentions,
-          toggle: () => chooseAll(all ? 'off' : 'on')
-        }
-      : {
-          id: entry.id,
-          label: entry.label,
-          on: !muted.has(entry.id),
-          disabled: all || onlyMentions,
-          toggle: () => muted.toggle(entry.id)
-        }
-  );
+  // The heading's controls: each one is its channel, on or off, and none waits on another.
+  const filters: CardFilter[] = faces.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    on: !muted.has(entry.id),
+    toggle: () => muted.toggle(entry.id)
+  }));
   // Earns its pill by a mention in the backlog, and keeps it while on so it can be turned off.
   if (onlyMentions || anyMention) {
     filters.push({

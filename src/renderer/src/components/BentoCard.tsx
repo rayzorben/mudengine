@@ -40,18 +40,13 @@ import { CardSizeContext, useMeasuredCardSize } from '../hooks/useCardSize';
  * face 0 unless the faces are genuinely both something else.
  */
 /**
- * One toggle in a card's heading. See `BentoCardProps.filters`.
- *
- * `disabled` draws it in its own state and refuses the press — the shape a
- * master toggle needs, since *All is on so this one does not decide right now*
- * is a different fact from *this one is off*, and hiding the row under a
- * master would lose the state the reader set.
+ * One toggle in a card's heading. See `BentoCardProps.filters`. Pressing it
+ * always turns it on or off: no toggle waits on another (user, 2026-11-03).
  */
 export interface CardFilter {
   id: string;
   label: string;
   on: boolean;
-  disabled?: boolean;
   toggle(): void;
 }
 
@@ -738,7 +733,6 @@ export default function BentoCard({
                   className="crumb"
                   data-active={filter.on ? 'true' : 'false'}
                   data-filter={filter.id}
-                  disabled={filter.disabled === true}
                   key={filter.id}
                   onClick={filter.toggle}
                   // A card is read, never typed into: narrowing it must not

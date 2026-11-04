@@ -216,6 +216,10 @@ notices:
       biggest: ', biggest blow {most}'
       killingBlow: ', killing blow'
       outside: '  Others, and blows that named nobody: {damage}'
+  # Said once in a character's console where the All toggle was on and some
+  # channels had been turned off underneath it.
+  talkAllRemoved: The Talk card no longer has an All toggle, so every channel is on again. Turn
+    off the ones you don't want to see.
   migration:
     roomNamesStated: '"rooms" was added to {file}, empty: your own room names, found by the room
       search and @goto. Add them under Movement on the Global settings page.'
@@ -4381,10 +4385,8 @@ cards:
     # for the same offer.
     jumpToLatest: Jump to latest ↓
     # The heading's toggles, in the realm's own channel words where one exists.
-    # `all` is the master: on, every channel is drawn and the rest are disabled
-    # in their own state.
+    # On, the channel is drawn; off, it is not.
     tabs:
-      all: All
       gossip: Gos
       auction: Auc
       broadcast: Br
@@ -4393,7 +4395,7 @@ cards:
       page: Page
       local: Local
       realm: Realm
-      # Only the lines with @name in them, from every channel.
+      # Only the lines with @name in them, within the channels that are on.
       mentions: Mentions
     messageInputAria: Say something
     # With a channel showing; the openers that go somewhere else are listed.

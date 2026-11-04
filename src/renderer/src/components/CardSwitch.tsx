@@ -548,6 +548,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           }
           onDropMacro={ctx.dropMacro}
           onSelect={ctx.selectPlayer}
+          say={ctx.say}
           // The `original` layout quotes the realm's whole sentence, so the
           // names in it are found the way the Alerts card finds them — through
           // the console's own index, so the two cannot disagree about what is

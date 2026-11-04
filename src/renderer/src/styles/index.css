@@ -9101,27 +9101,6 @@ button.gear-fold:hover:not(:disabled) {
 }
 
 /*
- * Under a master that is on, the rest are drawn **in their own state** and
- * refuse the press. Hidden or blanked, turning the master off would put the
- * reader back to nothing chosen; dimmed, the row still says what it will go
- * back to.
- */
-.crumbs[role='group'] .crumb:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.crumbs[role='group'] .crumb:disabled:hover {
-  background: color-mix(in srgb, var(--text-hi) 7%, transparent);
-  color: var(--text-lo-normal);
-}
-
-.crumbs[role='group'] .crumb:disabled[data-active='true']:hover {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-/*
  * The rooms the evidence still allowed, and the one that was taken.
  *
  * "You are at 1,219" and "you are at one of four places called Guild Street,

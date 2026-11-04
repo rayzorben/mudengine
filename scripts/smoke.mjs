@@ -5340,9 +5340,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * The channels are the heading's **toggles** (todo 06), not its faces. A
    * face means exactly one is showing, so watching gossip *and* the gang meant
    * watching everything and *these two and not the rest* could not be said at
-   * all. ALL is the master: on, every channel is drawn and the rest are
-   * disabled **in their own state**, so turning it off puts the reader's own
-   * choices back rather than starting them again from nothing.
+   * all. On is drawn and off is not, and there is no All over them (user,
+   * 2026-11-03): no toggle is ever disabled by another.
    */
   const toggle = (word) => `
     (() => {
@@ -5352,47 +5351,43 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `;
-  const crumbState = (word) => `
-    (() => {
-      const crumb = document.querySelector('.conversation-card .crumbs .crumb[data-filter="${word}"]');
-      return crumb
-        ? { on: crumb.getAttribute('aria-pressed'), disabled: crumb.disabled }
-        : null;
-    })()
-  `;
+  const feed = () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`);
   check(
     (await evaluate(
       `document.querySelector('.conversation-card .crumbs')?.getAttribute('role')`
     )) === 'group',
     'the channel row is a group of toggles, not a tablist'
   );
-  const underAll = await evaluate(crumbState('gossip'));
-  check(
-    underAll?.on === 'true' && underAll?.disabled === true,
-    'with ALL on, a channel is drawn in its own state and refuses the press',
-    JSON.stringify(underAll)
+  // The gossip toggle is the positive control: the row is drawn, so a missing
+  // All and an enabled row are read off a row that is there.
+  const row = JSON.parse(
+    await evaluate(`JSON.stringify(
+      [...document.querySelectorAll('.conversation-card .crumbs .crumb')].map((crumb) => ({
+        id: crumb.dataset.filter,
+        on: crumb.getAttribute('aria-pressed'),
+        disabled: crumb.disabled
+      }))
+    )`)
   );
-  check(await evaluate(toggle('talk')), 'ALL is the one control that is always live');
   check(
-    (await evaluate(crumbState('gossip')))?.disabled === false,
-    'and turning it off hands the row back'
+    row.some((crumb) => crumb.id === 'gossip' && crumb.on === 'true') &&
+      !row.some((crumb) => crumb.id === 'talk'),
+    'every channel that has spoken is on, and there is no All toggle',
+    JSON.stringify(row)
   );
-  // Nothing has been muted yet, so the whole stream is still on screen: the
-  // master is a master, not a second filter.
   check(
-    /meet me at the docks/.test(
-      await evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`)
-    ),
-    'with nothing muted, ALL off shows everything ALL on did'
+    row.length > 0 && row.every((crumb) => crumb.disabled === false),
+    'with Mentions off, no toggle is disabled',
+    JSON.stringify(row)
   );
   check(await evaluate(toggle('telepath')), 'a channel that has spoken earns a toggle');
   const muted = await readUntil(
-    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => !/meet me at the docks/.test(text) && /rope/.test(text)
+    feed,
+    (text) => !/meet me at the docks/.test(text) && /anyone selling a rope/.test(text)
   );
   check(
-    !/meet me at the docks/.test(muted) && /rope/.test(muted),
-    'turning one off takes that channel alone off the feed',
+    !/meet me at the docks/.test(muted) && /anyone selling a rope/.test(muted),
+    'turning one off takes that channel alone off the feed, and gossip stays',
     muted.slice(0, 120)
   );
   /*
@@ -5403,41 +5398,27 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   check(await evaluate(toggle('realm')), 'the comings and goings earned a toggle too');
   const withoutRealm = await readUntil(
-    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => !/just entered/.test(text) && /rope/.test(text)
+    feed,
+    (text) => !/just entered/.test(text) && /anyone selling a rope/.test(text)
   );
   check(
-    !/just entered/.test(withoutRealm) && /rope/.test(withoutRealm),
+    !/just entered/.test(withoutRealm) &&
+      !/meet me at the docks/.test(withoutRealm) &&
+      /anyone selling a rope/.test(withoutRealm),
     'and two off at once is two off, which a face could never say',
     withoutRealm.slice(0, 160)
   );
-  // The master forces them back on without forgetting what was chosen.
-  check(await evaluate(toggle('talk')), 'ALL goes back on');
-  const forced = await readUntil(
-    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
+  // Left as the rest of this run expects to find it, and proved on the way.
+  check(await evaluate(toggle('telepath')), 'telepath goes back on');
+  check(await evaluate(toggle('realm')), 'and so does realm');
+  const restored = await readUntil(
+    feed,
     (text) => /just entered/.test(text) && /meet me at the docks/.test(text)
   );
   check(
-    /just entered/.test(forced) && /meet me at the docks/.test(forced),
-    'and forces every channel back on top of what was muted'
+    /just entered/.test(restored) && /meet me at the docks/.test(restored),
+    'turning them back on draws both again'
   );
-  check(
-    (await evaluate(crumbState('telepath')))?.on === 'false',
-    'while the muted one still shows the state it will go back to'
-  );
-  check(await evaluate(toggle('talk')), 'and ALL off again');
-  const reverted = await readUntil(
-    () => evaluate(`document.querySelector('.conversation-log')?.innerText ?? ''`),
-    (text) => !/meet me at the docks/.test(text) && /rope/.test(text)
-  );
-  check(
-    !/meet me at the docks/.test(reverted),
-    'reverts to what the reader had chosen, not to nothing'
-  );
-  // Left as the rest of this run expects to find it.
-  await evaluate(toggle('telepath'));
-  await evaluate(toggle('realm'));
-  await evaluate(toggle('talk'));
 
   // The find row is put away until the search glyph in the action column
   // asks for it — the row it used to hold now shows conversation.
