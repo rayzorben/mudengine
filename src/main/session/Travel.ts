@@ -528,6 +528,7 @@ export class Travel implements SessionModule {
       retraced: (step) => this.tracker.retraced(step),
       lastSeen: (who) => recordOf(this.tracker.players, who)?.lastRoom ?? null,
       plan: (to) => this.errands.planFromHere(to),
+      moveInFlight: () => this.tracker.pendingMoves > 0,
       // Nobody's asked route, so a stopped lap stays the movement play picks up (`movementOf`).
       walk: (route) => this.walker.start(route, this.tracker.current, { asked: false }),
       stopWalk: (why) => this.walker.stop(why),
@@ -1031,9 +1032,9 @@ export class Travel implements SessionModule {
     this.comeBack.asked(who, this.tracker.current);
   }
 
-  /** A member asked to be walked to where they are (`@comeback-room`); whether it is coming. */
-  walkBackTo(who: string, to: RoomId): boolean {
-    return this.comeBack.askedTo(who, to, this.tracker.current);
+  /** A member asked to be walked to where they are (`@comeback-room`); `coming` once it is. */
+  walkBackTo(who: string, to: RoomId, coming: () => void): void {
+    this.comeBack.askedTo(who, to, this.tracker.current, coming);
   }
 
   /** Leading, whom the party waits for on their health. See `PartyWait.onCharacter`. */
@@ -3086,6 +3087,6 @@ export function partyRemotes(
   return {
     pace: (who, ready, left) => travel().pace(who, ready, left),
     walkBackFor: (who) => travel().walkBackFor(who),
-    comeBack: (from, map, room) => travel().walkBackTo(from, roomId(map, room))
+    comeBack: (from, map, room, coming) => travel().walkBackTo(from, roomId(map, room), coming)
   };
 }

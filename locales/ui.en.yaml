@@ -6381,6 +6381,7 @@ session:
     off: 'Not walking back for {who}: Walk Back For a Member is 0.'
     started: Walking back for {who}, up to {rooms} rooms.
     startedTo: '{who} asked this character to come to {address}; walking {stepCount} steps.'
+    startingTo: '{who} asked this character to come to {address}; walking there once the last move is answered.'
     notThere: 'this character is standing in {address}, and {who} is not here'
     notFound: Walked to the room {who} asked for and did not find them there; going on.
     stopped: 'Stopped walking back for {who}: {reason}'

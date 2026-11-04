@@ -51,6 +51,7 @@ import type { LoopProgress } from '../../shared/loops';
 import type { WalkProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
 import {
+  follows,
   inAParty,
   joinedMember,
   packRows,
@@ -357,12 +358,12 @@ export interface RemoteEvents extends StandingRemoteEvents, ChainedRemoteEvents 
   /** A member sent at a trap or a lock (`askHand`) answered `{ok}` or `{failed}` (todo 86). */
   handAnswered?(from: string, answer: HandAnswer): void;
   /**
-   * Somebody asked this character to come to a room, by address. Returns
-   * whether a walk actually started, which is what decides whether `{ok}` goes
-   * back: an acknowledgement for a route that was refused is a lie the sender
-   * waits on.
+   * Somebody asked this character to come to a room, by address. `coming` is
+   * called once a walk actually started, which is what decides whether `{ok}`
+   * goes back: an acknowledgement for a route that was refused is a lie the
+   * sender waits on. A leg held for a move still out starts, or not, later.
    */
-  comeBack?(from: string, map: number, room: number): boolean;
+  comeBack?(from: string, map: number, room: number, coming: () => void): void;
   /**
    * `@stop` and `@rego`: the player's own Stop and Play on the sender's word.
    * Each returns whether anything was stopped or resumed, which decides the
@@ -956,7 +957,7 @@ export class Remotes implements SessionModule {
     this.autoInvite.onCharacter(state);
     // An ask left unanswered is closed whatever the master switch says; the
     // sheet and the health asks go out under the gate their first answer did (todo 118).
-    if (this.config.remotes.enabled) this.sweep(Date.now());
+    if (this.config.remotes.enabled) this.sweep(Date.now(), state);
     this.stoppers.sweep(Date.now());
     for (const said of this.answers.sweep(Date.now())) this.events.notice?.(said);
     if (this.config.enabled && this.config.remotes.enabled) {
@@ -1044,11 +1045,14 @@ export class Remotes implements SessionModule {
    * only ever *later* than the deadline, never earlier, which is the direction
    * that costs nothing.
    */
-  private sweep(now: number): void {
+  private sweep(now: number, state: CharacterState): void {
     const deadline = now - tuning().remotes.replyMs;
     for (const [key, outstanding] of [...this.asked]) {
       if (outstanding.at > deadline) continue;
       this.asked.delete(key);
+      // This character follows them again, so nobody is left to ask back, and the
+      // silence says nothing about their client (Brakkle, 2026-11-03).
+      if (outstanding.name === 'comeback-room' && follows(state, outstanding.who)) continue;
       /*
        * Silence is evidence about the extended vocabulary and about nothing
        * else. A client that answers neither `@version` nor an extended
@@ -1124,6 +1128,14 @@ export class Remotes implements SessionModule {
       ) {
         this.ask(from, 'stats', state);
       }
+      return true;
+    }
+
+    // The leader walking back for this character: the only answer `comeback-room` has
+    // (`{ok}` only for a walk that started). Unread, it lapsed into a plain
+    // `@comeback` 30s later (Brakkle to Rayzor, 2026-11-03 19:37:49 and 19:38:19).
+    if (reply.kind === 'ok' && outstanding.name === 'comeback-room') {
+      this.asked.delete(key);
       return true;
     }
 
@@ -1751,11 +1763,12 @@ export class Remotes implements SessionModule {
           this.events.notice?.(t('automation.remotes.comebackUnreadable', { from }), MOVE);
           return;
         }
-        const walking = this.events.comeBack?.(from, where.map, where.room) === true;
         // `{ok}` only for a walk that actually started. The sender is waiting
         // on this character arriving, and an acknowledgement for a route the
         // realm data could not plan is a wait that never ends.
-        if (walking) this.reply(from, '{ok}', prefix, MOVE);
+        this.events.comeBack?.(from, where.map, where.room, () =>
+          this.reply(from, '{ok}', prefix, MOVE)
+        );
         return;
       }
 

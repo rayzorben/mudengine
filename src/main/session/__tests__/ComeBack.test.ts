@@ -22,6 +22,15 @@ function standing(at: RoomId, ...players: string[]): CharacterState {
   } as CharacterState;
 }
 
+/** Asks `@comeback-room`; `ok` turns true when `{ok}` would go back. */
+function askTo(back: ComeBack, who: string, to: RoomId, state: CharacterState) {
+  const said = { ok: false };
+  back.askedTo(who, to, state, () => {
+    said.ok = true;
+  });
+  return said;
+}
+
 const routeTo = (to: RoomId, steps = 1): Route =>
   ({
     steps: Array.from({ length: steps }, () => ({ to, name: to })),
@@ -35,6 +44,7 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
   const log: string[] = [];
   const walks: RoomId[] = [];
   let moving = true;
+  const flight = { out: false };
   const owed: UnfinishedRoute = { to: '9/9', name: 'Eastern Road', left: 20 };
   const fake: ComeBackPort = {
     trail: () => trail,
@@ -44,6 +54,7 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
     },
     lastSeen: () => null,
     plan: (to) => routeTo(to),
+    moveInFlight: () => flight.out,
     walk: (route) => {
       walks.push(route.steps.at(-1)!.to);
       return null;
@@ -66,7 +77,7 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
     notice: (message) => void log.push(message),
     ...over
   };
-  return { fake, trail, log, walks };
+  return { fake, trail, log, walks, flight };
 }
 
 describe('how far a walk back goes', () => {
@@ -206,6 +217,23 @@ describe('a leader walking back for a member (@comeback)', () => {
     expect(back.takeOwed()).toBeNull();
   });
 
+  /* Rayzor, 2026-11-03: a @comeback heard while his `n` was unanswered stopped the loop, planned nothing and went on. */
+  it('plans the first leg once the move still out lands', () => {
+    const { fake, log, walks, flight } = port(5);
+    flight.out = true;
+    const back = new ComeBack(fake);
+    back.asked('Brakkle', standing('1/5'));
+    expect(log[0]).toBe(`pause:${t('session.comeBack.started', { who: 'Brakkle', rooms: 4 })}`);
+    expect(walks).toEqual([]);
+    back.onCharacter(standing('1/5'));
+    expect(walks).toEqual([]);
+    flight.out = false;
+    back.onCharacter(standing('1/5'));
+    expect(walks).toEqual(['1/4']);
+    const noWay = t('session.comeBack.noWay', { who: 'Brakkle', reason: '' });
+    expect(log.some((line) => line.startsWith(noWay))).toBe(false);
+  });
+
   it('waits while an errand walks the character or a back press is walked', () => {
     const { fake, log, walks } = port(3, { busy: () => 'an errand' });
     new ComeBack(fake).asked('Killa', standing('1/3'));
@@ -219,7 +247,7 @@ describe('a leader walking to the room a member stated (@comeback-room)', () => 
   it('stops the lap, walks there, invites the member and goes on', () => {
     const { fake, log, walks, trail } = port(3);
     const back = new ComeBack(fake);
-    expect(back.askedTo('Brakkle', '7/732', standing('1/3'))).toBe(true);
+    expect(askTo(back, 'Brakkle', '7/732', standing('1/3')).ok).toBe(true);
     expect(log[0]).toBe(
       `pause:${t('session.comeBack.startedTo', { who: 'Brakkle', address: '7/732', stepCount: 1 })}`
     );
@@ -239,7 +267,7 @@ describe('a leader walking to the room a member stated (@comeback-room)', () => 
   it('goes on when the member is not in the room it walked to', () => {
     const { fake, log } = port(3);
     const back = new ComeBack(fake);
-    back.askedTo('Brakkle', '7/732', standing('1/3'));
+    askTo(back, 'Brakkle', '7/732', standing('1/3'));
     back.walkEnded(true, standing('7/732'));
     expect(log.slice(-2)).toEqual([
       t('session.comeBack.notFound', { who: 'Brakkle' }),
@@ -250,21 +278,97 @@ describe('a leader walking to the room a member stated (@comeback-room)', () => 
 
   it('answers a member already here with an invite, and refuses a room it cannot walk to', () => {
     const here = port(3);
-    expect(new ComeBack(here.fake).askedTo('Brakkle', '1/3', standing('1/3', 'Brakkle'))).toBe(
+    expect(askTo(new ComeBack(here.fake), 'Brakkle', '1/3', standing('1/3', 'Brakkle')).ok).toBe(
       true
     );
     expect(here.walks).toEqual([]);
     expect(here.log).toContain('invite:Brakkle');
     const nowhere = port(3, { plan: () => 'no route to 7/732' });
-    expect(new ComeBack(nowhere.fake).askedTo('Brakkle', '7/732', standing('1/3'))).toBe(false);
+    expect(askTo(new ComeBack(nowhere.fake), 'Brakkle', '7/732', standing('1/3')).ok).toBe(false);
     expect(nowhere.log).toEqual([
       t('session.comeBack.noWay', { who: 'Brakkle', reason: 'no route to 7/732' })
     ]);
   });
 
+  it('answers that it is coming while a move is out, and walks there once it lands', () => {
+    const { fake, log, walks, flight } = port(3);
+    flight.out = true;
+    const back = new ComeBack(fake);
+    const said = askTo(back, 'Brakkle', '7/733', standing('1/3'));
+    // `{ok}` only once the leg is on the way, never for a leg not yet planned.
+    expect(said.ok).toBe(false);
+    expect(log[0]).toBe(
+      `pause:${t('session.comeBack.startingTo', { who: 'Brakkle', address: '7/733' })}`
+    );
+    back.onCharacter(standing('1/3'));
+    expect(walks).toEqual([]);
+    flight.out = false;
+    back.onCharacter(standing('1/3'));
+    expect(walks).toEqual(['7/733']);
+    expect(said.ok).toBe(true);
+    expect(log[1]).toBe(
+      t('session.comeBack.startedTo', { who: 'Brakkle', address: '7/733', stepCount: 1 })
+    );
+    back.walkEnded(true, standing('7/733', 'Brakkle'));
+    expect(log.slice(2)).toEqual([
+      'invite:Brakkle',
+      'awaitJoin:Brakkle',
+      t('session.comeBack.here', { who: 'Brakkle' }),
+      'resume:Brakkle:1'
+    ]);
+  });
+
+  it('says so and goes on when the room stated cannot be reached from where the move landed', () => {
+    const { fake, log, walks, flight } = port(3, { plan: () => 'no route to 7/733' });
+    flight.out = true;
+    const back = new ComeBack(fake);
+    const said = askTo(back, 'Brakkle', '7/733', standing('1/3'));
+    flight.out = false;
+    back.onCharacter(standing('1/3'));
+    expect(walks).toEqual([]);
+    // No `{ok}`: the member's ask lapses into a plain @comeback, which walks the trail back.
+    expect(said.ok).toBe(false);
+    expect(log.slice(1)).toEqual([
+      t('session.comeBack.noWay', { who: 'Brakkle', reason: 'no route to 7/733' }),
+      'resume:Brakkle:0'
+    ]);
+    expect(back.active).toBe(false);
+  });
+
+  it('answers and invites a member who walks in before the move lands, and walks nothing', () => {
+    const { fake, log, walks, flight } = port(3);
+    flight.out = true;
+    const back = new ComeBack(fake);
+    const said = askTo(back, 'Brakkle', '7/733', standing('1/3'));
+    back.onCharacter(standing('1/3', 'Brakkle'));
+    expect(walks).toEqual([]);
+    expect(log.slice(1)).toEqual([
+      'invite:Brakkle',
+      'awaitJoin:Brakkle',
+      t('session.comeBack.here', { who: 'Brakkle' }),
+      'resume:Brakkle:0'
+    ]);
+    expect(back.active).toBe(false);
+    // A member already here is answered, as one here when asked is.
+    expect(said.ok).toBe(true);
+  });
+
+  it('plans nothing after a stop while the move was out', () => {
+    const { fake, walks, flight } = port(3);
+    flight.out = true;
+    const back = new ComeBack(fake);
+    const said = askTo(back, 'Brakkle', '7/733', standing('1/3'));
+    back.cancel('stopped');
+    flight.out = false;
+    back.onCharacter(standing('1/3'));
+    expect(walks).toEqual([]);
+    expect(said.ok).toBe(false);
+    expect(back.active).toBe(false);
+  });
+
   it('walks to the stated room whatever Walk Back For a Member is set to', () => {
     const { fake, walks } = port(3, { rooms: () => 0 });
-    expect(new ComeBack(fake).askedTo('Brakkle', '7/732', standing('1/3'))).toBe(true);
+    expect(askTo(new ComeBack(fake), 'Brakkle', '7/732', standing('1/3')).ok).toBe(true);
     expect(walks).toEqual(['7/732']);
   });
 });

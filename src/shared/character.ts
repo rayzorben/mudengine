@@ -2017,6 +2017,11 @@ export function leaderOf(state: CharacterState): PartyMember | undefined {
   return state.party.members.find((member) => member.name.toLowerCase() === leader);
 }
 
+/** Whether this character follows `who` (`party.following`). */
+export function follows(state: CharacterState, who: string): boolean {
+  return state.party.following?.toLowerCase() === who.trim().toLowerCase();
+}
+
 /**
  * Whether the server has placed this room since login, rather than the client
  * remembering where the character stood before (`resolvedBy: 'remembered'`).

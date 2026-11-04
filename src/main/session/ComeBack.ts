@@ -25,6 +25,11 @@ export interface ComeBackPort {
   lastSeen(who: string): RoomId | null;
   /** A route from here to `to`, or why there is none. */
   plan(to: RoomId): Route | string;
+  /**
+   * Whether a move is still unanswered (`CharacterTracker.pendingMoves`): the
+   * room on the books is the one being left, so no leg is planned until it lands.
+   */
+  moveInFlight(): boolean;
   /** Walk a leg back, as nobody's asked route; the refusal, or null once it started. */
   walk(route: Route): string | null;
   /** Stop the leg back on the way, saying why. */
@@ -63,6 +68,14 @@ interface Walk {
   due: boolean;
   /** Whether this walk back stopped something, so its end goes on with it. */
   stopped: boolean;
+  /** The room `@comeback-room` stated, until its one leg is planned. */
+  stated: Stated | null;
+}
+
+/** A `@comeback-room` whose leg waits on a move still out, and who hears `{ok}` once it starts. */
+interface Stated {
+  to: RoomId;
+  coming: () => void;
 }
 
 export class ComeBack {
@@ -118,37 +131,67 @@ export class ComeBack {
 
   /**
    * `who` said `@comeback-room` from `to`: one leg there, then the member is
-   * invited and what was stopped goes on, as for `@comeback`. Whether this
-   * character is coming or already with them, which is what `{ok}` answers.
+   * invited and what was stopped goes on, as for `@comeback`. `coming` once
+   * this character is on the way or already with them, which is what `{ok}`
+   * answers; never for a leg not yet planned.
    */
-  askedTo(who: string, to: RoomId, state: CharacterState): boolean {
+  askedTo(who: string, to: RoomId, state: CharacterState, coming: () => void): void {
     const answered = this.answered(who, state);
-    if (answered !== null) return answered;
-    const leg = planned(this.port.plan(to));
-    if (leg.kind === 'refused') return this.noWay(who, leg.reason);
-    if (leg.kind === 'there') {
-      return this.noWay(who, t('session.comeBack.notThere', { who, address: to }));
+    if (answered === true) coming();
+    if (answered !== null) return;
+    if (this.port.moveInFlight()) {
+      // The stop's last step is still out: the leg is planned from where it lands.
+      this.stop(who, 1, t('session.comeBack.startingTo', { who, address: to }));
+      if (this.walk === null) return;
+      this.walk.stated = { to, coming };
+      this.walk.due = true;
+      return;
     }
-    const { route } = leg;
-    const steps = route.steps.length;
+    const leg = planned(this.port.plan(to));
+    if (leg.kind !== 'walk') {
+      this.noWay(who, refusal(leg, who, to));
+      return;
+    }
+    const steps = leg.route.steps.length;
     this.stop(who, 1, t('session.comeBack.startedTo', { who, address: to, stepCount: steps }));
-    const walk = this.walk;
+    if (this.walk !== null) this.walkTo(this.walk, leg.route, coming);
+  }
+
+  /** The leg to a stated room, planned once the stop's last move landed; said, as `askedTo` would. */
+  private legTo(walk: Walk, stated: Stated): void {
+    walk.stated = null;
+    const { to } = stated;
+    const leg = planned(this.port.plan(to));
+    if (leg.kind !== 'walk') {
+      this.noWay(walk.who, refusal(leg, walk.who, to));
+      this.finish(walk);
+      return;
+    }
+    const steps = leg.route.steps.length;
+    this.port.notice(
+      t('session.comeBack.startedTo', { who: walk.who, address: to, stepCount: steps }),
+      COMEBACK
+    );
+    this.walkTo(walk, leg.route, stated.coming);
+  }
+
+  /** Starts the one leg to a stated room, and says `coming` once it is on the way. */
+  private walkTo(walk: Walk, route: Route, coming: () => void): void {
     const notWalked = this.port.walk(route);
     // Cancelled while the leg started: nothing is coming.
-    if (walk === null || this.walk !== walk) return false;
+    if (this.walk !== walk) return;
     if (notWalked === null) {
-      walk.leg = { step: null, steps };
-      return true;
+      walk.leg = { step: null, steps: route.steps.length };
+      coming();
+      return;
     }
-    this.noWay(who, notWalked);
+    this.noWay(walk.who, notWalked);
     this.finish(walk);
-    return false;
   }
 
   /** Says why there is no walk back for `who`. */
-  private noWay(who: string, reason: string): false {
+  private noWay(who: string, reason: string): void {
     this.port.notice(t('session.comeBack.noWay', { who, reason }), COMEBACK);
-    return false;
   }
 
   /**
@@ -181,7 +224,7 @@ export class ComeBack {
     const stopped = paused || this.port.partyWaiting();
     // Read once the route is stopped, and before the first leg back replaces it.
     this.owed = this.port.unfinished();
-    this.walk = { who, legsLeft: legs, leg: null, walked: 0, due: false, stopped };
+    this.walk = { who, legsLeft: legs, leg: null, walked: 0, due: false, stopped, stated: null };
   }
 
   /** Every state: the member walking into the room ends it, and the next leg goes. */
@@ -254,6 +297,15 @@ export class ComeBack {
   private next(): void {
     const walk = this.walk;
     if (walk === null) return;
+    // A leg planned from the room being left walks the wrong way: wait for the move to land.
+    if (this.port.moveInFlight()) {
+      walk.due = true;
+      return;
+    }
+    if (walk.stated !== null) {
+      this.legTo(walk, walk.stated);
+      return;
+    }
     if (walk.legsLeft <= 0) {
       this.port.notice(t('session.comeBack.gaveUp', { who: walk.who }), COMEBACK);
       this.finish(walk);
@@ -283,6 +335,8 @@ export class ComeBack {
 
   private found(walk: Walk): void {
     const said = t('session.comeBack.here', { who: walk.who });
+    // A member already here is what `{ok}` answers too, when their leg was still to plan.
+    walk.stated?.coming();
     this.port.invite(walk.who);
     // Before the walk is over, so the stop it holds is the party's to end.
     if (walk.stopped) this.port.awaitJoin(walk.who);
@@ -331,6 +385,15 @@ export function legsBack(
     }
   }
   return Math.min(trail.length, reach + rooms);
+}
+
+/** Why a stated room's leg is not walked: the planner's reason, or standing there without the member. */
+function refusal(
+  leg: { kind: 'refused'; reason: string } | { kind: 'there' },
+  who: string,
+  to: RoomId
+): string {
+  return leg.kind === 'refused' ? leg.reason : t('session.comeBack.notThere', { who, address: to });
 }
 
 function present(state: CharacterState, who: string): boolean {

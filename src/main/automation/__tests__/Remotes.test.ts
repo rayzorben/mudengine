@@ -129,8 +129,10 @@ let comebacks: string[];
 let handed: string[];
 /** What the registry holds, read through `peer` as the session's tracker is. */
 let registry: PlayerRegistry;
-/** Whether the fixture's `comeBack` says a walk started. See the block below. */
-let walks = true;
+/** Whether the fixture's `comeBack` says a walk started, or keeps `coming` for a leg held on a move. */
+let walks: boolean | 'later' = true;
+/** The `coming` a held leg calls once it starts. */
+let heldComing: (() => void) | null = null;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -143,6 +145,7 @@ beforeEach(() => {
   handed = [];
   registry = NO_PLAYERS;
   walks = true;
+  heldComing = null;
   queue = new CommandQueue(config, { send: (command) => sent.push(command) });
   peers = new Remotes(config, queue, {
     notice: (m) => notices.push(m),
@@ -151,9 +154,10 @@ beforeEach(() => {
     clientNamed: (from, client, extended) => clients.push(`${from}:${client ?? '-'}:${extended}`),
     placed: (from, map, room, name) => placed.push(`${from}:${map}/${room}:${name ?? '-'}`),
     handAnswered: (from, ok) => handed.push(`${from}:${ok}`),
-    comeBack: (from, map, room) => {
+    comeBack: (from, map, room, coming) => {
       comebacks.push(`${from}:${map}/${room}`);
-      return walks;
+      if (walks === 'later') heldComing = coming;
+      else if (walks) coming();
     }
   });
 });
@@ -2252,6 +2256,42 @@ describe('talking to another one of these clients', () => {
     expect(sent).toEqual(['/Soul @comeback-room 1/2150']);
   });
 
+  /* Brakkle to Rayzor, 2026-11-03: `{ok}` at 19:37:49, a plain `@comeback` at 19:38:19. */
+  it('takes the leader’s {ok} as the answer to @comeback-room and asks nothing after it', () => {
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'comeback', who(inRoom(1, 2150, 'Gates')));
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{ok}'), who());
+    vi.advanceTimersByTime(30_000);
+    peers.onCharacter(who());
+    drain();
+    expect(sent).toEqual(['/Soul @comeback-room 1/2150']);
+    expect(clients).toEqual([]);
+  });
+
+  // The positive control for the one above: silence still lapses into the plain wording.
+  it('asks @comeback when @comeback-room gets no answer and the leader is still away', () => {
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'comeback', who(inRoom(1, 2150, 'Gates')));
+    drain();
+    vi.advanceTimersByTime(30_000);
+    peers.onCharacter(who());
+    drain();
+    expect(sent).toEqual(['/Soul @comeback-room 1/2150', '/Soul @comeback']);
+  });
+
+  it('asks nothing more of a leader it follows again before @comeback-room lapses', () => {
+    knowing('Soul', 'yes');
+    peers.ask('Soul', 'comeback', who(inRoom(1, 2150, 'Gates')));
+    drain();
+    vi.advanceTimersByTime(30_000);
+    peers.onCharacter(
+      who({ party: { engaged: {}, threatened: {}, following: 'Soul', members: [] } })
+    );
+    drain();
+    expect(sent).toEqual(['/Soul @comeback-room 1/2150']);
+  });
+
   it('sends no @comeback-room from a room the realm data has not placed', () => {
     knowing('Soul', 'yes');
     peers.ask('Soul', 'comeback', who());
@@ -2264,6 +2304,16 @@ describe('talking to another one of these clients', () => {
     peers.onBlock(said('conversation-telepath', 'Soul', '@comeback-room 1/2150'), who());
     drain();
     expect(comebacks).toEqual(['Soul:1/2150']);
+    expect(sent).toEqual(['/Soul {ok}']);
+  });
+
+  it('acknowledges a leg held on a move once it starts, and not before', () => {
+    walks = 'later';
+    peers.onBlock(said('conversation-telepath', 'Soul', '@comeback-room 1/2150'), who());
+    drain();
+    expect(sent).toEqual([]);
+    heldComing?.();
+    drain();
     expect(sent).toEqual(['/Soul {ok}']);
   });
 
