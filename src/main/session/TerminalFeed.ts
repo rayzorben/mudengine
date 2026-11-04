@@ -206,10 +206,18 @@ interface HeldLine {
 
 /** One line the client draws in the realm's place, waiting for the session to read it. */
 interface UnreadLine {
+  kind: 'line';
   block: Block;
   text: string;
   terminator: LineTerminator;
   id?: LineId;
+}
+
+/** A listing that ended on its own last line, waiting for the session to read it. */
+interface UnreadListing {
+  kind: 'listing';
+  block: BatchBlock;
+  lines: HeldLine[];
 }
 
 /** A prompt that has begun but not finished: the tolerant pattern's own opening. */
@@ -370,8 +378,8 @@ export class TerminalFeed {
   private owesReset = false;
   /** The listing being withheld for a rewrite, its lines so far, and the clock that gives up on it. */
   private held: { type: BlockType; lines: HeldLine[]; timer: NodeJS.Timeout | null } | null = null;
-  /** A line drawn in the realm's place once the session has read it: see `drawUnread`. */
-  private unread: UnreadLine | null = null;
+  /** A line or a listing drawn in the realm's place once the session has read it: see `drawUnread`. */
+  private unread: UnreadLine | UnreadListing | null = null;
   /** Packets read so far, counted as each one starts: see `arrived`. */
   private received = 0;
   /** The packet the unframed tail began in, or null with no tail. */
@@ -529,14 +537,17 @@ export class TerminalFeed {
         return;
       }
       const closed = facts?.closed?.type === this.held.type ? facts.closed : undefined;
-      // A listing that ends on its own last line (`i`'s load line) keeps that
-      // line: it is drawn with the rest, not painted under the drawing.
-      const ownLast = closed !== undefined && type !== 'status-line';
-      if (ownLast) {
+      // A listing that ends on its own last line (`i`'s load line, a wrapped
+      // exit list) keeps that line, and is drawn once the session has read
+      // it, as a single line is: the room a wrapped `Obvious exits:` completes
+      // is placed only then.
+      if (closed !== undefined && type !== 'status-line') {
         this.held.lines.push({ text, terminator, ...(id ? { id } : {}), volunteered: false });
+        this.unread = { kind: 'listing', block: closed, lines: this.held.lines };
+        this.dropHeld();
+        return;
       }
       this.releaseHeld(closed ? (this.source.rewrite?.(closed) ?? null) : null);
-      if (ownLast) return;
     }
 
     /*
@@ -613,7 +624,7 @@ export class TerminalFeed {
       // One line the client draws in the realm's place: the experience line,
       // the exits. Drawn once the session has read it (`drawUnread`).
       if (facts.batchNow === null && type !== null && this.source.rewrites(type)) {
-        this.unread = { block: facts.block, text, terminator, ...(id ? { id } : {}) };
+        this.unread = { kind: 'line', block: facts.block, text, terminator, ...(id ? { id } : {}) };
         return;
       }
     }
@@ -674,6 +685,10 @@ export class TerminalFeed {
     if (unread === null) return;
     this.unread = null;
     const drawn = this.source.rewrite?.(unread.block) ?? null;
+    if (unread.kind === 'listing') {
+      this.paintListing(unread.lines, drawn);
+      return;
+    }
     if (drawn === null) {
       this.paintAsSent(unread.text, unread.terminator, true, unread.id);
       return;
@@ -868,12 +883,16 @@ export class TerminalFeed {
     const held = this.held;
     if (held === null) return;
     this.dropHeld();
+    this.paintListing(held.lines, drawn);
+  }
+
+  private paintListing(lines: readonly HeldLine[], drawn: Emitted | null): void {
     if (drawn === null) {
-      for (const line of held.lines) this.emit(line.text, line.terminator, line.id);
+      for (const line of lines) this.emit(line.text, line.terminator, line.id);
       return;
     }
     this.emitDrawn(drawn);
-    for (const line of held.lines) {
+    for (const line of lines) {
       if (line.volunteered) this.emit(line.text, line.terminator, line.id);
       else this.drop(line.id);
     }
@@ -920,7 +939,9 @@ export class TerminalFeed {
   /** Every line not yet in a chunk, at a reset: withheld, waiting to be drawn, or not yet taken. */
   private dropPending(): void {
     for (const line of this.held?.lines ?? []) this.drop(line.id);
-    this.drop(this.unread?.id);
+    const unread = this.unread;
+    if (unread?.kind === 'listing') for (const line of unread.lines) this.drop(line.id);
+    else this.drop(unread?.id);
     for (const line of this.out.lines) this.drop(line.id);
   }
 

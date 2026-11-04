@@ -31,7 +31,7 @@ import type { Block } from '../../shared/blocks';
 import { AnswerTimes } from '../../shared/answerTimes';
 import { tuning } from '../app/tuning';
 import { answeringAfter, EchoSince } from './echo';
-import { ROOM_EXITS } from './patterns';
+import { ROOM_EXITS_HEADER } from './patterns';
 
 /**
  * What the next room block is expected to be an answer to.
@@ -601,7 +601,7 @@ export class Expectations {
         return false;
       }
       // A pasted exit line goes out as a say; the room after it is not its answer.
-      const worth = context.inGame && effect === 'unknown' && !ROOM_EXITS.test(trimmed);
+      const worth = context.inGame && effect === 'unknown' && !ROOM_EXITS_HEADER.test(trimmed);
       const text = worth ? command.trim() : '';
       this.unmodelled = text.length > 0 ? text : null;
       return false;

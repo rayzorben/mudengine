@@ -417,6 +417,26 @@ describe('room assembly', () => {
     expect(names(r.occupants)).toEqual(['short wererat', 'wererat', 'wererat']);
   });
 
+  /* Festus's wire, 2026-11-03: the eighth exit folded onto a line of its own. */
+  it('completes a room with every exit of a list the server wrapped', () => {
+    const r = play([
+      'Blackwood Forest, Webbed Lair',
+      'Obvious exits: north, south, east, west, northeast, northwest, southeast,',
+      'southwest'
+    ]).current.room;
+    expect(r.name).toBe('Blackwood Forest, Webbed Lair');
+    expect(r.exits.map((exit) => exit.direction)).toEqual([
+      'n',
+      's',
+      'e',
+      'w',
+      'ne',
+      'nw',
+      'se',
+      'sw'
+    ]);
+  });
+
   /*
    * A death is a teleport and clears the trail, which is right for the escape
    * and would destroy the one fact going back for the kit needs (todo 07).

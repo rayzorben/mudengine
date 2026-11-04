@@ -3294,6 +3294,29 @@ describe('a room sentence the server wrapped', () => {
     );
   });
 
+  /* Festus's wire, 2026-11-03: Blackwood Forest, Webbed Lair folds after its seventh exit. */
+  it('joins an exit list the server folded after a comma', () => {
+    const [head, tail, prompt] = run([
+      'Obvious exits: north, south, east, west, northeast, northwest, southeast,',
+      'southwest',
+      '[HP=633/633,MA=141/155]:'
+    ]);
+    expect(head?.block.type).toBe('unknown');
+    expect(head?.batch).toBeUndefined();
+    expect(tail?.batch?.type).toBe('room-exits');
+    expect(tail?.batch?.groups['exits']).toBe(
+      'north, south, east, west, northeast, northwest, southeast, southwest'
+    );
+    expect(prompt?.batch).toBeUndefined();
+  });
+
+  it('reads a whole exit list on its own line, trailing marks and all', () => {
+    const [only] = run(['Obvious exits: north, south, east, west{P0}{A0}{L12}']);
+    expect(only?.block.type).toBe('room-exits');
+    expect(only?.block.groups['exits']).toBe('north, south, east, west');
+    expect(only?.batch).toBeUndefined();
+  });
+
   it('opens no record for a sentence that is whole on its own line', () => {
     const [only] = run(['You notice 3 gold crowns, 8 silver nobles here.']);
     expect(only?.block.type).toBe('room-items');

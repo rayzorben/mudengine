@@ -260,10 +260,18 @@ const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(
 );
 
 /**
- * A room's exit line. Exported so a typed line that is one (a selection of
- * the screen pasted back, todo 151) is never taken for a way out.
+ * The start of a room's exit line, whole or wrapped. Exported so a typed line
+ * that is one (a selection of the screen pasted back, todo 151) is never taken
+ * for a way out.
  */
-export const ROOM_EXITS = /^Obvious exits: (?<exits>[\w, ]+)/;
+export const ROOM_EXITS_HEADER = /^Obvious exits: /;
+
+/**
+ * A room's whole exit list. A line ending in a comma is one the server folded
+ * at 80 columns (Festus's wire, 2026-11-03: eight exits in Blackwood Forest,
+ * Webbed Lair, `southwest` alone on the next line), read by the record rule.
+ */
+export const ROOM_EXITS = /^(?!Obvious exits: [\w, ]*,\s*$)Obvious exits: (?<exits>[\w, ]+)/;
 
 /**
  * `Player.ObjDesc`'s first sentence up to ` with `, and what follows it through
@@ -2635,6 +2643,19 @@ export const BATCH_RULES: BatchRule[] = [
     wraps: 'record',
     maxLines: 6,
     qualifiers: [/^Also here: (?<who>.+?)\.$/]
+  },
+  {
+    /*
+     * The exit list, wrapped after a comma: eight exits overrun the server's
+     * 80 columns (`ROOM_EXITS`). Unjoined, the room completed without its last
+     * exit and the folded word was painted with no colour of its own.
+     */
+    type: 'room-exits',
+    header: ROOM_EXITS_HEADER,
+    shape: 'object',
+    wraps: 'record',
+    maxLines: 3,
+    qualifiers: [ROOM_EXITS]
   },
   {
     /*

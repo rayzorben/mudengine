@@ -91,10 +91,13 @@ export class Marks {
    * line: `l n` prints the neighbour in full and nothing in it says the
    * character is not standing there; pressing a neighbour's button would send
    * its command into the room the character is actually in.
+   *
+   * `closed` is the listing the line ended: an exit list the server wrapped
+   * is read on its last line, whose own block is `unknown`.
    */
-  markFor(block: Block): LineId | undefined {
+  markFor(block: Block, closed?: Block): LineId | undefined {
     if (!this.session.enrich()) return undefined;
-    if (block.type === 'room-exits') {
+    if (block.type === 'room-exits' || closed?.type === 'room-exits') {
       if (this.live !== null && !this.peeked) this.live.exitsRead = true;
       return undefined;
     }

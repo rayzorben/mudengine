@@ -2512,7 +2512,7 @@ export class SessionManager {
       line.terminator,
       line.plain,
       read?.block.type ?? null,
-      read ? this.marks.markFor(read.block) : undefined,
+      read ? this.marks.markFor(read.block, read.batch) : undefined,
       read
         ? {
             block: read.block,

@@ -2565,6 +2565,54 @@ describe('a listing the player has the client draw', () => {
     const actions = marks.flatMap((entry) => entry.mark?.inline ?? []).filter((g) => g.commands);
     expect(actions.map((g) => g.commands?.[0])).toEqual(['wear rope and grapple', 'wear torch']);
   });
+
+  /* Festus's wire, 2026-11-03: the folded `southwest` was painted alone, uncoloured. */
+  it('draws an exit list the server wrapped as one line, every exit in it', async () => {
+    const painted: TimedChunk[] = [];
+    const { sink } = collect();
+    // Placed, or the design draws nothing: a room the client has not placed is printed as sent.
+    const ways = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+    const world = worldOf([
+      {
+        m: 1,
+        r: 1,
+        n: 'Blackwood Forest, Webbed Lair',
+        x: Object.fromEntries(ways.map((way, at) => [way, { m: 1, r: at + 2 }]))
+      },
+      ...ways.map((_, at) => ({ m: 1, r: at + 2, n: 'Blackwood Forest', x: {} }))
+    ]);
+    manager = build({ ...sink, data: (chunk) => painted.push(chunk) }, { world });
+    manager.configure(
+      { ...DEFAULT_CONFIG.automation, enabled: false },
+      DEFAULT_CONFIG.connection.login,
+      {
+        ...DEFAULT_CONFIG.ui.rewrites,
+        designs: DEFAULT_CONFIG.ui.rewrites.designs.map((design) =>
+          design.entity === 'room' ? { ...design, enabled: true } : design
+        )
+      }
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write(
+      'Blackwood Forest, Webbed Lair\r\n' +
+        '\x1b[0;32mObvious exits: north, south, east, west, northeast, northwest, southeast,\r\n' +
+        'southwest\r\n' +
+        '[HP=633/633,MA=141/155]:' +
+        PROMPT_REPAINT
+    );
+    await until(() => manager!.character.room.number === 1);
+    expect(manager.character.room.exits).toHaveLength(8);
+    await until(() => painted.some((chunk) => chunk.text.includes('[HP=633')));
+    const plain = painted
+      .map((chunk) => chunk.text)
+      .join('')
+      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    expect(plain).toContain(
+      'Obvious exits: north, south, east, west, northeast, northwest, southeast, southwest\r\n'
+    );
+    expect(plain).not.toContain('\r\nsouthwest\r\n');
+  });
 });
 
 /*
