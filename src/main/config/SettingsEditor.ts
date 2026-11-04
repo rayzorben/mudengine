@@ -366,6 +366,8 @@ export class SettingsEditor {
         // Off is written; on is the default and removes the key.
         if (!draft.autoLogin) document.setIn(['login', 'enabled'], false);
         else if (document.hasIn(['login', 'enabled'])) document.deleteIn(['login', 'enabled']);
+        if (!draft.learnLogin) document.setIn(['login', 'learn'], false);
+        else if (document.hasIn(['login', 'learn'])) document.deleteIn(['login', 'learn']);
         const loginBlock = document.get('login');
         if (isMap(loginBlock) && loginBlock.items.length === 0) document.deleteIn(['login']);
 
@@ -1423,6 +1425,7 @@ export class SettingsEditor {
         // setting existed shows the tick it is actually running with.
         autoReconnect: record['autoReconnect'] !== false,
         autoLogin: login['enabled'] !== false,
+        learnLogin: login['learn'] !== false,
         lowLives: asLowLives(record['lowLives']),
         reconnectTries: asReconnectTries(record['reconnectTries']),
         theme: themeOf(record['ui']),
@@ -1699,6 +1702,7 @@ function blank(id: string): ProfileEditable {
     autoConnect: false,
     autoReconnect: true,
     autoLogin: true,
+    learnLogin: true,
     lowLives: DEFAULT_LOW_LIVES,
     reconnectTries: DEFAULT_RECONNECT_TRIES,
     serverName: null,

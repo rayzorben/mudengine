@@ -428,6 +428,8 @@ export interface ProfileDraft {
   autoReconnect: boolean;
   /** Answer the login menus; on unless the file's `login.enabled` says no. */
   autoLogin: boolean;
+  /** Learn what the player types on the way in; on unless the file's `login.learn` says no. */
+  learnLogin: boolean;
   /** Ask before logging in at this many lives left or fewer. See `Profile.lowLives`. */
   lowLives: number;
   /** Failed dials in a row before reconnecting stops; 0 never. See `Profile.reconnectTries`. */
@@ -951,6 +953,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     // `!== false`: on unless it was turned off. See the field.
     autoReconnect: value['autoReconnect'] !== false,
     autoLogin: value['autoLogin'] !== false,
+    learnLogin: value['learnLogin'] !== false,
     lowLives: asLowLives(value['lowLives']),
     reconnectTries: asReconnectTries(value['reconnectTries']),
     accent: PROFILE_ACCENTS.includes(accent as ProfileAccent)

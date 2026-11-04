@@ -45,7 +45,8 @@
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { commandOf } from '../../shared/commands';
-import { credentialsNamed, fillLogin, type Credential } from '../../shared/login';
+import { credentialsNamed, fillLogin, stepMatches, type Credential } from '../../shared/login';
+import { NO_LEARNED_WAY, type LearnedWayIn } from '../../shared/loginLearning';
 import { isPrompt, type Block } from '../../shared/blocks';
 import type { LoginConfig, LoginStep } from '../../shared/config';
 import type { SessionModule } from './Module';
@@ -96,8 +97,8 @@ function sameScript(before: readonly LoginStep[], after: readonly LoginStep[]): 
 }
 
 export class LoginAutomator implements SessionModule {
-  /** Menu rows already used this connection, by index. */
-  private used = new Set<number>();
+  /** Menu rows already used this connection: `s:<index>` in the script, `l:<when>` learned. */
+  private used = new Set<string>();
   /**
    * Credentials already sent this connection.
    *
@@ -128,12 +129,15 @@ export class LoginAutomator implements SessionModule {
   /**
    * @param entersRealm the master switch: off, the login stops at the realm's
    *   menu, the last prompt before the realm, and leaves `E` to the player.
+   * @param learned what the player taught on earlier ways in (`LoginLearner`),
+   *   answered ahead of the script.
    */
   constructor(
     private config: LoginConfig,
     private readonly queue: CommandQueue,
     private readonly events: LoginEvents = {},
-    private entersRealm = true
+    private entersRealm = true,
+    private readonly learned: LearnedWayIn = NO_LEARNED_WAY
   ) {}
 
   configure(config: LoginConfig, entersRealm: boolean): void {
@@ -289,7 +293,6 @@ export class LoginAutomator implements SessionModule {
      * first prompt that did not arrive. First unused match wins, which handles
      * a skipped menu for free and still cannot answer the same menu twice.
      */
-    const text = block.text.toLowerCase();
     /** A credential row matched but its credential has already gone out. */
     let repeated = false;
     /*
@@ -335,19 +338,26 @@ export class LoginAutomator implements SessionModule {
      * Reported, not stopped: the menus below may still be worth answering, and
      * the player may be logging in by hand on purpose.
      */
+    /*
+     * The learned rows first: each is the player's own answer at that prompt,
+     * and a script row they answered otherwise is no longer used.
+     */
+    const rows = [
+      ...this.learned.rows().map((step) => ({ step, key: `l:${step.when}`, learned: true })),
+      ...this.config.steps.flatMap((step, index) =>
+        this.learned.retires(step) ? [] : [{ step, key: `s:${index}`, learned: false }]
+      )
+    ];
     if (
       !this.saidAccountUnsent &&
-      !this.config.steps.some((step) => credentialsNamed(step.send).length > 0)
+      !rows.some(({ step }) => credentialsNamed(step.send).length > 0)
     ) {
       this.saidAccountUnsent = true;
       this.events.notice?.(t('automation.login.noAccountRow'), 'login-step');
     }
 
-    for (const [index, step] of this.config.steps.entries()) {
-      // Case-insensitively: a menu is a sentence somebody typed into a BBS
-      // config, and `Please Select A Realm` is the same prompt as
-      // `Please select a realm`. Being strict here would fail silently.
-      if (step.when.length === 0 || !text.includes(step.when.toLowerCase())) continue;
+    for (const { step, key, learned } of rows) {
+      if (!stepMatches(step, block.text)) continue;
       /*
        * A `repeat` row is answered only on a line that ends as a prompt. The Major BBS v10 prints
        * `(N)onstop, (Q)uit, or (C)ontinue?` with `\r\n` straight after it when
@@ -357,6 +367,8 @@ export class LoginAutomator implements SessionModule {
        * after the pager line means the BBS has already moved on.
        */
       if (step.repeat === true && !isPromptLine) continue;
+      // A learned row is a prompt's own text, so it answers a prompt and nothing else.
+      if (learned && !isPromptLine) continue;
       const names = credentialsNamed(step.send);
       if (names.length > 0) {
         // A credential answers a *prompt* and nothing else. See `isPromptLine`.
@@ -378,7 +390,7 @@ export class LoginAutomator implements SessionModule {
           repeated = true;
           continue;
         }
-      } else if (this.used.has(index) && !step.repeat) {
+      } else if (this.used.has(key) && !step.repeat) {
         /*
          * A menu that came back. Ordinary — a BBS reprints one after an
          * unrelated line — and skipping to the next unused row handles it.
@@ -412,9 +424,13 @@ export class LoginAutomator implements SessionModule {
         return;
       }
 
-      this.used.add(index);
+      this.used.add(key);
+      // A learned answer is this line's answer: a script row matching it is spent with it.
+      if (learned) this.spendScriptRowsAt(block.text);
       for (const name of filled.credentials) this.sentCredentials.add(name);
       this.send(
+        // On the wire: the learner reads the screen it answered as spent.
+        () => this.learned.answered(block),
         filled.command,
         // The reason is written down; a step carrying a credential is named by
         // what it asked for rather than by the answer it produced.
@@ -444,7 +460,15 @@ export class LoginAutomator implements SessionModule {
     }
   }
 
-  private send(command: string, reason: string, secret = false): void {
+  private spendScriptRowsAt(text: string): void {
+    for (const [index, step] of this.config.steps.entries()) {
+      if (credentialsNamed(step.send).length === 0 && stepMatches(step, text)) {
+        this.used.add(`s:${index}`);
+      }
+    }
+  }
+
+  private send(sent: () => void, command: string, reason: string, secret = false): void {
     this.queue.enqueue({
       command,
       priority: 'user',
@@ -462,7 +486,10 @@ export class LoginAutomator implements SessionModule {
        */
       stillWanted: () => this.config.enabled && !this.done && !this.stopped,
       // On the wire, so the next prompt is owed; the echo does not count.
-      onSent: () => this.events.promptOwed?.()
+      onSent: () => {
+        this.events.promptOwed?.();
+        sent();
+      }
     });
   }
 

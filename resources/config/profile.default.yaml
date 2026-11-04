@@ -60,8 +60,19 @@ server: Paradigm Game 1 PVE
 # password is never retried, a prompt that comes back a second time stops the
 # sequence, and a missing answer leaves the prompt for you.
 #
+# `learn` defaults to true (Learn the Login on the character page). Whatever
+# you type between connecting and the realm's menu ([MAJORMUD]: or
+# [PARADIGM]:) is kept in `logins/<id>.json` as a row like the ones below and
+# answered for you from the next login, ahead of the realm's list. A realm's
+# row that you answer differently on the same screen stops being used for this
+# character. A learned answer whose prompt does not come up on three logins in
+# a row is forgotten. Never kept: a password (it is kept as `{password}` when
+# it is this character's own), and every answer on the connection where you
+# type `new` to make an account, apart from a menu key.
+#
 # login:
 #   enabled: true
+#   learn: true
 #   steps:
 #     # The account prompts, filled in from `account:` above. A realm that words
 #     # them differently is described here the same way any other menu is.

@@ -114,3 +114,13 @@ export function credentialsNamed(send: string): readonly Credential[] {
   });
   return named;
 }
+
+/**
+ * Whether a row's `when` is in this line: anywhere, case-insensitively, as a
+ * menu is a sentence somebody typed into a BBS config and `Please Select A
+ * Realm` is the same prompt as `Please select a realm`. The automator answers
+ * by it and the learner counts a row as seen by it, so the two agree.
+ */
+export function stepMatches(step: { when: string }, text: string): boolean {
+  return step.when.length > 0 && text.toLowerCase().includes(step.when.toLowerCase());
+}

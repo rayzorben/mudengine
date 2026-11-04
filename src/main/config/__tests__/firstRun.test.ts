@@ -148,6 +148,44 @@ describe('seedServers', () => {
     expect(read('two')).toBeNull();
   });
 
+  it('copies a realm a later release ships into a home that finished the copy', () => {
+    seedServers({ shipped, serversDir: servers });
+    fs.rmSync(path.join(servers, 'two'), { recursive: true });
+    fs.mkdirSync(path.join(shipped, 'four'));
+    fs.writeFileSync(path.join(shipped, 'four', 'server.yaml'), 'name: four\n', 'utf8');
+
+    const again = seedServers({ shipped, serversDir: servers });
+
+    expect(again.written).toEqual(['four']);
+    expect(read('two')).toBeNull();
+    expect(fs.readFileSync(path.join(servers, '.shipped'), 'utf8')).toContain('four');
+  });
+
+  it('reads a list naming no realm as the six Paradigm realms shipped before it named them', () => {
+    fs.mkdirSync(path.join(shipped, 'paradigm-game-3'));
+    fs.writeFileSync(path.join(shipped, 'paradigm-game-3', 'server.yaml'), 'name: p3\n', 'utf8');
+    fs.mkdirSync(servers, { recursive: true });
+    fs.writeFileSync(
+      path.join(servers, '.shipped'),
+      '# Every shipped realm has been copied in once.\n'
+    );
+
+    const result = seedServers({ shipped, serversDir: servers });
+
+    expect(result.written).toEqual(['one', 'three', 'two']);
+    expect(read('paradigm-game-3')).toBeNull();
+  });
+
+  it('copies no shipped realm whose name another realm here has', () => {
+    fs.mkdirSync(path.join(servers, 'mine'), { recursive: true });
+    fs.writeFileSync(path.join(servers, 'mine', 'server.yaml'), 'name: TWO\nhost: h\n', 'utf8');
+
+    const result = seedServers({ shipped, serversDir: servers });
+
+    expect(result.written).toEqual(['one', 'three']);
+    expect(read('two')).toBeNull();
+  });
+
   it('copies nothing when the client ships no realms', () => {
     const result = seedServers({ shipped: path.join(dir, 'none'), serversDir: servers });
     expect(result.written).toEqual([]);

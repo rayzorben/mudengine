@@ -229,6 +229,11 @@ const TUNING_DEFAULTS = {
      */
     silentForMs: 15_000
   },
+  /** The learned login — `automation/LoginLearner.ts`. */
+  login: {
+    /** Complete logins in a row a learned answer's prompt may be missing from before it is forgotten. */
+    forgetAfterMisses: 3
+  },
   /** Reading the stream — `src/main/parse/`. */
   parse: {
     /** A text match on its own. Most blocks never get a colour opinion. */

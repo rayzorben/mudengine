@@ -80,7 +80,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Held as the reports became the session's own for remote control, by the record's comment
   // condensed (todo 20261031-1156-01).
   // Lowered by the typing hold's emergency comment, condensed as the room damage's fight signs came.
-  'src/main/session/SessionManager.ts': 3278,
+  'src/main/session/SessionManager.ts': 3277,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

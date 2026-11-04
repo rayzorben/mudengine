@@ -242,6 +242,14 @@ tuning:
     # own `autoReconnect`.
     silentForMs: 15000
 
+  # The learned login: what you type between connecting and the realm's menu
+  # is kept per character and answered from the next connection. An answer
+  # whose prompt has not appeared on this many complete logins in a row is
+  # forgotten, which is how a one-off (a mail notice, a new account's
+  # questions) leaves the list.
+  login:
+    forgetAfterMisses: 3
+
   # Reading the stream — `src/main/parse/`.
   parse:
     # A text match on its own. Most blocks never get a colour opinion.

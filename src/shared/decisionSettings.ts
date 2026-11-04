@@ -37,6 +37,7 @@ export type SettingPath =
   | `art.${keyof AppConfig['art']}`
   | `profile.${keyof Pick<Profile, 'lowLives' | 'autoReconnect' | 'reconnectTries' | 'locate'>}`
   | 'profile.login.enabled'
+  | 'profile.login.learn'
   | `server.${keyof Pick<Server, 'login' | 'hangPenalties' | 'fleeGoto'>}`
   | `loop.${keyof Pick<Loop, 'stops' | 'bounce'> | keyof Pick<LoopStop, 'linger' | 'every'>}`;
 
@@ -653,6 +654,7 @@ export const DECISION_SETTINGS = {
   ],
   'login-step': ['server.login', 'connection.login.steps', 'profile.login.enabled'],
   'login-stop': ['profile.login.enabled'],
+  'login-learn': ['profile.login.learn'],
   'queue-refuse': {
     exempt: 'nothing goes out at the stat screen, offline or with automation off',
     since: '2026-10-13'

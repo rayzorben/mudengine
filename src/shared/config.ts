@@ -172,6 +172,12 @@ export interface LoginStep {
  */
 export interface LoginConfig {
   enabled: boolean;
+  /**
+   * Keep what the player types on the way in, up to the realm's menu, and
+   * answer it from the next connection (`automation/LoginLearner.ts`). A
+   * character's own, as `login.learn` in its file.
+   */
+  learn: boolean;
   username: string;
   password: string;
   /**
@@ -2457,6 +2463,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       // Off until a character's credentials fill it in: a client that sends an
       // empty username at every connection is worse than one that waits.
       enabled: false,
+      learn: true,
       username: '',
       password: '',
       /*
@@ -3216,6 +3223,7 @@ function normalizeLogin(value: unknown): LoginConfig {
   return {
     // Enabling without credentials would send empty answers at a live service.
     enabled: bool(raw['enabled'], d.enabled) && username.length > 0 && password.length > 0,
+    learn: bool(raw['learn'], d.learn),
     username,
     password,
     steps: loginStepsFrom(raw, d.steps)

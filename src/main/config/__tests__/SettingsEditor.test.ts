@@ -50,6 +50,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   autoConnect: false,
   autoReconnect: true,
   autoLogin: true,
+  learnLogin: true,
   lowLives: 2,
   reconnectTries: 0,
   accent: 'cyan',

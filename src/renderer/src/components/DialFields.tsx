@@ -6,6 +6,7 @@ export interface DialSwitches {
   autoConnect: boolean;
   autoReconnect: boolean;
   autoLogin: boolean;
+  learnLogin: boolean;
   /** As typed; the model reads a blank as the default, never as 0, which never asks. */
   lowLives: string;
   /** As typed; blank is the default, 0, which never stops dialling. */
@@ -18,9 +19,10 @@ export interface DialFieldsProps {
 }
 
 /**
- * Connect on Start, Reconnect and its tries, Log In, and the lives at which the client asks before
- * any login (todo 07), Connect included. Together because the third holds back
- * the other two. A fragment, so each stays a cell of the form's grid.
+ * Connect on Start, Reconnect and its tries, Log In, Learn the Login, and the
+ * lives at which the client asks before any login (todo 07), Connect included.
+ * Together because the lives hold back the dialling. A fragment, so each stays
+ * a cell of the form's grid.
  */
 export default function DialFields({ value, onChange }: DialFieldsProps): React.JSX.Element {
   return (
@@ -56,6 +58,14 @@ export default function DialFields({ value, onChange }: DialFieldsProps): React.
         name="auto-login"
         setting="profile.login.enabled"
         onChange={(checked) => onChange({ autoLogin: checked })}
+      />
+      <CheckField
+        checked={value.learnLogin}
+        hint={t('settings.profile.learnLoginHint')}
+        label={t('settings.profile.learnLoginLabel')}
+        name="learn-login"
+        setting="profile.login.learn"
+        onChange={(checked) => onChange({ learnLogin: checked })}
       />
       <NumberField
         hint={t('settings.profile.lowLivesHint')}

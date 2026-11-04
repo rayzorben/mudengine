@@ -70,6 +70,7 @@ import { UnreadTally } from './session/UnreadTally';
 import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { LoopHistory } from './session/LoopHistory';
+import { LearnedLoginFile } from './session/LearnedLoginFile';
 import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
@@ -907,6 +908,19 @@ function loopHistoryFor(id: SessionId): LoopHistory {
   );
   loopHistories.set(id, history);
   return history;
+}
+
+/** One file per character (`CHARACTER_RECORDS.login`), held for the run like the loops started. */
+const learnedLogins = new Map<SessionId, LearnedLoginFile>();
+
+function learnedLoginFor(id: SessionId): LearnedLoginFile {
+  const existing = learnedLogins.get(id);
+  if (existing) return existing;
+  const file = new LearnedLoginFile(home.record('login', id), (message) =>
+    announce('session', message, 'warn', id)
+  );
+  learnedLogins.set(id, file);
+  return file;
 }
 
 function belongingsAt(id: SessionId, played: Realm): CharacterRecord {
@@ -1869,6 +1883,7 @@ function createHost(): SessionHost {
     shopsFor,
     descriptionsFor,
     floorFor,
+    learnedLoginFor,
     // What the realm called itself, by the realm played, so the next session
     // built for it starts on the right world.
     realmTold: (_id, realm, word) => worldBook?.learn(realmName(realm), word),
@@ -4226,6 +4241,9 @@ function teardown(): void {
   // And the loops started by name, on the same deferred timer.
   for (const [id, history] of loopHistories) settle(`recent loops ${id}`, () => history.close());
   loopHistories.clear();
+  // And what was learned of the way in, written at the menu on the same timer.
+  for (const [id, file] of learnedLogins) settle(`learned login ${id}`, () => file.close());
+  learnedLogins.clear();
   settle('peers', () => {
     peers?.dispose();
     peers = null;

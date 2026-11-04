@@ -1000,6 +1000,11 @@ notices:
       readError: 'Could not read {file} ({message}). Recent loops start empty this run, and the
         file is left as it is.'
       writeError: 'Could not write {file}: {message}'
+    learnedLogin:
+      notARecord: it holds no learned login
+      readError: 'Could not read {file} ({message}). Nothing learned of the login is used this
+        run, and the file is left as it is.'
+      writeError: 'Could not save the learned login to {file}: {message}'
   world:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the world database {file}…
@@ -5777,6 +5782,10 @@ settings:
     autoLoginHint: Answers the realm's menus with this character's account and slot. Off leaves
       every prompt for you.
     autoLoginLabel: Log In Automatically
+    learnLoginHint: Keeps what you type between connecting and the realm's menu, and answers it
+      for you from the next login while Log In Automatically is on. An answer whose prompt stops
+      appearing is forgotten after three logins.
+    learnLoginLabel: Learn the Login
     autoReconnectHint: Only after a lost connection. Pressing Disconnect, hanging up on low health,
       or leaving the realm yourself all stop it. Waits 0s, 5s, 10s, then 15s.
     autoReconnectLabel: Reconnect if the Connection Drops
@@ -7618,6 +7627,25 @@ automation:
       options file.
     unknownPlaceholder: The login step for "{promptText}" sends {placeholder}, which the client
       cannot fill in. Automatic login stopped instead of typing it to the game.
+    learn:
+      answeredFirst: 'Not learned: the client had already answered "{promptText}", so what you
+        typed went to whatever comes next.'
+      dropped: The last login closed before the realm's menu, so what it learned was not kept.
+      enter: Enter
+      forgot: 'Forgot the login answer {answer} for "{promptText}": that prompt has not come up on
+        the last {count} logins.'
+      learned: 'Learned for the next login: at "{promptText}", send {answer}.'
+      newAccount: A new account is being made. Its questions (name, password, birth date and the
+        rest) are asked once, so their answers are not learned.
+      oneTime: 'Not learned: "{promptText}" is a question asked when an account is made.'
+      pager: 'Learned for the next login: at "{promptText}", send {answer} every time it comes up.'
+      retired: 'You answered differently from the realm''s login step "{when}" ({answer}), so this
+        character no longer uses that step.'
+      tooShort: 'Not learned: "{promptText}" is too short to tell from other prompts.'
+      secret: 'Not learned: "{promptText}" asks for a password, and what you typed is not this
+        character''s password.'
+      unsendable: 'Not learned: the answer to "{promptText}" has braces in it, which a login step
+        reads as a placeholder.'
   afk:
     reasonReply: away reply
     replied: 'Told {player} you are away.'

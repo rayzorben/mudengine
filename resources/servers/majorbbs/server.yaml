@@ -1,0 +1,45 @@
+# A MajorMUD realm on a BBS, listed on https://turbosentry.info/realms
+# (2026-11-04). Twenty-nine of these ship beside Paradigm's six: the twelve
+# stock realms TurboSentry ranks and the seventeen others it lists. Each is in
+# its own directory, whose name is the id; the `name` below is what a player
+# reads. The annotated Paradigm file (`paradigm-game-1-pve`) explains every
+# key; this one explains what differs.
+#
+# The `login:` list is the one written for MajorBBS (bbs.themajorbbs.com,
+# The Major BBS v10), and every realm here starts from it. Its account rows
+# fit a BBS that asks for the User-ID and password in the same words; the
+# menu keys are MajorBBS's own: G at its TOP menu, then 3 at its game
+# showcase, reach MajorMUD there. Another BBS uses other keys, and several
+# (Omniverse, PlayPen, Sea Breeze, ThePenaltyBox) run more than one game behind
+# one address, so the right key there is the one you press.
+#
+# That is what Learn the Login on the character page is for. Log in by hand
+# once: what you type between connecting and [MAJORMUD]: is kept for that
+# character and answered from the next login, ahead of this list, and a row
+# below that you answered differently on the same screen stops being used for
+# that character. See `login:` in `profiles/<id>/profile.yaml`.
+#
+# No `database:`: the realm says [MAJORMUD]: at its menu, and the stock
+# MajorMUD world ships with the client.
+
+name: 'MajorBBS'
+host: bbs.themajorbbs.com
+port: 23
+encoding: cp437
+
+login:
+  - when: 'Please enter your User-ID'
+    send: '{user}'
+  - when: 'Enter your password:'
+    send: '{password}'
+  - when: Make your selection
+    send: G
+  - when: (SHOWCASE)
+    send: '3'
+  - when: '[MAJORMUD]'
+    send: E
+  - when: Do you want to see it now
+    send: N
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: Q
+    repeat: true

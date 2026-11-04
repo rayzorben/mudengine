@@ -699,6 +699,7 @@ describe('a BBS whose menus are nothing like Paradigm’s', () => {
    */
   const shift: LoginConfig = {
     enabled: true,
+    learn: false,
     username: 'vaelor',
     password: 'secret',
     steps: [

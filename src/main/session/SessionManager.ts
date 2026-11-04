@@ -5,6 +5,8 @@
  */
 import { CommandQueue, type Intent } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
+import { LoginLearner } from '../automation/LoginLearner';
+import type { LearnedLoginRecord } from '../../shared/loginLearning';
 import { Walker, cannotSneakHere } from '../automation/Walker';
 import { splitOntoChannel } from '../../shared/talk';
 import {
@@ -226,11 +228,9 @@ export interface SessionDeps {
   readonly world?: WorldGraph;
   readonly automation?: AutomationConfig;
   readonly login?: LoginConfig;
-  /**
-   * What is known about monsters and attack spells on *this character's*
-   * realm, and what fighting teaches. Defaults to knowing nothing, the honest
-   * state for a client with no realm data and the one every test wants.
-   */
+  /** Where this character's learned login is kept (`logins/<id>.json`); none in tests. */
+  readonly learnedLogin?: LearnedLoginRecord;
+  /** Monsters and attack spells on this character's realm, and what fighting teaches; none in tests. */
   readonly lore?: RealmLoreView;
   /**
    * Where what this character learns about the realm is kept; an interface, since
@@ -242,21 +242,13 @@ export interface SessionDeps {
   readonly fights?: FightSink;
   /** What each monster did to the character, kept beside the fights and absent likewise (todo 26). */
   readonly harm?: HarmSink;
-  /**
-   * What the realm knows about the other players on it, shared by every
-   * character dialling the same address. Defaults to a realm that knows
-   * nothing, which is what every test wants.
-   */
+  /** What the realm knows about its other players, shared by address; knowing nothing in tests. */
   readonly players?: RealmPlayers;
   /** Where the character's record last placed it, drawn before any dial (`parse/lastRoom.ts`). */
   readonly lastRoom?: KeptRoom | null;
   /** What each marked line in the console is marked with, beside the backscroll; in memory where absent. */
   readonly marks?: LineMarks;
-  /**
-   * The realm's sentences for an effect landing and ending, shipped and
-   * learned. Per realm like the lore beside it, and defaulting to none for
-   * the same reason.
-   */
+  /** The realm's sentences for an effect landing and ending, shipped and learned; none in tests. */
   readonly spellLore?: SpellLore;
   /**
    * Where what a `search` turns up in this realm is written down.
@@ -394,6 +386,7 @@ export class SessionManager {
   /** Each installed extension's session (todo 84). See `SessionExtensions`. */
   readonly extensions: SessionExtensions;
   private readonly login: LoginAutomator;
+  private readonly learner: LoginLearner;
   private readonly recovery: Recovery;
   private readonly loot: AutoLoot;
   private readonly deathSummons: DeathSummons;
@@ -1622,11 +1615,13 @@ export class SessionManager {
     this.fleeGoto = new FleeGoto(safetyParts, safetySession);
 
     this.publisher.useSecret(login.password);
+    this.learner = new LoginLearner(login, deps.learnedLogin, notice);
     this.login = new LoginAutomator(
       login,
       this.queue,
       { notice, promptOwed: () => this.link.owePrompt(), prompted: () => this.link.notePrompt() },
-      automation.enabled
+      automation.enabled,
+      this.learner
     );
     /*
      * The modules, in the order `connect` puts them down; `connect`,
@@ -1991,6 +1986,7 @@ export class SessionManager {
     // Off the list: leaving the realm lands at the menu, where the login has
     // already been made and what the menu said a hang-up costs still holds.
     this.login.reset();
+    this.learner.reset();
     this.realmMenu.reset();
     this.outbound = '';
     this.playerMove = null;
@@ -2107,6 +2103,7 @@ export class SessionManager {
        * reported unanswered eight seconds later — nine notices about nothing
        * (live, 2026-09-12, todo 10). The hold is the one fact that says so.
        */
+      this.learner.noteTyped(command);
       if (this.queue.holding !== null) {
         // Nothing to observe; the bytes still go out below.
       } else if (command.length > 0) {
@@ -2402,6 +2399,7 @@ export class SessionManager {
     for (const { configure } of this.modules) configure?.(automation);
     this.loops.configure(automation.health, automation.movement, automation.walk);
     this.login.configure(login, automation.enabled);
+    this.learner.configure(login);
     this.publisher.useSecret(login.password);
   }
 
@@ -2574,6 +2572,7 @@ export class SessionManager {
     // `onBlock`: the menu has to know it was asked before the answer goes.
     this.realmMenu.onBlock(block);
     this.login.onBlock(block);
+    this.learner.onBlock(block);
     /*
      * An unrecognised command is *said out loud* by this server (`exits`,
      * `time` came back as `You say "..."`). The Alerts card keeps it; the

@@ -1,0 +1,28 @@
+# Cedar Valley BBS: v1.00x-WG3NT. See `majorbbs/server.yaml` for the login list.
+
+name: 'Cedar Valley BBS'
+host: cedarvalleybbs.com
+port: 2525
+encoding: cp437
+
+login:
+  - when: 'Please enter your User-ID'
+    send: '{user}'
+  - when: 'Enter your password:'
+    send: '{password}'
+  - when: Make your selection
+    send: G
+  - when: (SHOWCASE)
+    send: '3'
+  - when: '[MAJORMUD]'
+    send: E
+  - when: Do you want to see it now
+    send: N
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: Q
+    repeat: true
+
+# TurboSentry lists this realm (v1.00x-WG3NT) among its other realms, not its
+# stock ones. With no `database:` the client walks the world the realm names
+# at its menu, the stock one for [MAJORMUD]:. Where this realm's rooms differ
+# from stock, name its own data here (a MegaMUD .mdb, or a .zip holding one).

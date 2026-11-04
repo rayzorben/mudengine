@@ -81,17 +81,47 @@ function realmOf(id: string) {
 }
 
 describe('the realms the client ships', () => {
-  it('is Paradigm’s six, one directory per realm', () => {
+  it('is Paradigm’s six and the MajorMUD realms TurboSentry lists, one directory per realm', () => {
     // A count, so deleting one is a decision somebody makes here rather than a
     // directory that goes missing. `gmud-5x` was a seventh between 2026-09-03
-    // and 2026-09-05, and taking it out was a decision made in this list.
+    // and 2026-09-05, and taking it out was a decision made in this list. The
+    // MajorMUD realms are https://turbosentry.info/realms as of 2026-11-04.
     expect(shipped).toEqual([
+      'adeptbbs',
+      'bearfather-edited',
+      'bearfather-stock',
+      'braintoys',
+      'cedar-valley',
+      'crimson-protocol-pve',
+      'crimson-protocol-pvp',
+      'darkwood',
+      'demonsnet',
+      'dreamline',
+      'grimoire-bbs',
+      'hated-reality',
+      'lostways',
+      'majorbbs',
+      'morningside-mortuary',
+      'omniverse-hellamud',
+      'omniverse-omnimud',
+      'omniverse-stock',
       'paradigm-game-1-pve',
       'paradigm-game-2-pvp',
       'paradigm-game-3',
       'paradigm-game-4',
       'paradigm-test-pve',
-      'paradigm-test-pvp'
+      'paradigm-test-pvp',
+      'penaltybox-hellamud',
+      'penaltybox-stock',
+      'playpen-hellamud',
+      'playpen-nexus',
+      'playpen-stock',
+      'psych-ward',
+      'sea-breeze-hellamud',
+      'sea-breeze-stock',
+      'sounds-of-silence',
+      'the-keep',
+      'tqps'
     ]);
   });
 
@@ -174,17 +204,30 @@ describe('the realms the client ships', () => {
     expect(realm?.send).toMatch(/^[1-4]$/);
   });
 
-  it.each(shipped)('%s can answer every menu it will meet', (id) => {
+  const paradigm = shipped.filter((id) => id.startsWith('paradigm-'));
+  const majormud = shipped.filter((id) => !id.startsWith('paradigm-'));
+
+  it.each(paradigm)('%s can answer every menu it will meet', (id) => {
     /*
      * A menu with no row is left alone silently, which is right for one this
-     * client has never seen and wrong for the three every WorldGroup front end
-     * puts up. A realm missing one of these stalls at it with the player
-     * watching a prompt nobody is going to answer.
+     * client has never seen and wrong for the three Paradigm puts up. A realm
+     * missing one of these stalls at it with the player watching a prompt
+     * nobody is going to answer.
      */
     const steps = realmOf(id)?.login ?? [];
     for (const prompt of [/enter your selection/i, /select a realm/i, /select a character/i]) {
       expect(steps.some((step) => prompt.test(step.when))).toBe(true);
     }
+  });
+
+  it.each(majormud)('%s starts from the MajorBBS login, account and realm menu included', (id) => {
+    // The menus between differ per BBS and are learned (`LoginLearner`); the
+    // account and `[MAJORMUD]:` are the rows every one of these needs.
+    const steps = realmOf(id)?.login ?? [];
+    expect(steps).toEqual(realmOf('majorbbs')?.login);
+    expect(steps.map((step) => step.send)).toEqual(
+      expect.arrayContaining(['{user}', '{password}', 'E'])
+    );
   });
 
   it('gives every realm its own name, because a character addresses one by name', () => {

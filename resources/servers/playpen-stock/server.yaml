@@ -1,0 +1,23 @@
+# PlayPen BBS - Stock: a stock MajorMUD realm. See `majorbbs/server.yaml` for the login list.
+
+name: 'PlayPen BBS - Stock'
+host: playpenbbs.com
+port: 23
+encoding: cp437
+
+login:
+  - when: 'Please enter your User-ID'
+    send: '{user}'
+  - when: 'Enter your password:'
+    send: '{password}'
+  - when: Make your selection
+    send: G
+  - when: (SHOWCASE)
+    send: '3'
+  - when: '[MAJORMUD]'
+    send: E
+  - when: Do you want to see it now
+    send: N
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: Q
+    repeat: true

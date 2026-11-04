@@ -1,0 +1,28 @@
+# Crimson Protocol PVP: MajorMUD v1.11p. See `majorbbs/server.yaml` for the login list.
+
+name: 'Crimson Protocol PVP'
+host: cp-bbs.com
+port: 2323
+encoding: cp437
+
+login:
+  - when: 'Please enter your User-ID'
+    send: '{user}'
+  - when: 'Enter your password:'
+    send: '{password}'
+  - when: Make your selection
+    send: G
+  - when: (SHOWCASE)
+    send: '3'
+  - when: '[MAJORMUD]'
+    send: E
+  - when: Do you want to see it now
+    send: N
+  - when: '(N)onstop, (Q)uit, or (C)ontinue?'
+    send: Q
+    repeat: true
+
+# TurboSentry lists this realm (MajorMUD v1.11p) among its other realms, not its
+# stock ones. With no `database:` the client walks the world the realm names
+# at its menu, the stock one for [MAJORMUD]:. Where this realm's rooms differ
+# from stock, name its own data here (a MegaMUD .mdb, or a .zip holding one).

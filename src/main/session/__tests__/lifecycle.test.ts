@@ -40,6 +40,7 @@ const EXCEPTIONS: Readonly<Record<string, string>> = {
   carryOver:
     'holds the record read at the top of `connect` until the reset the list walks is over: disposed by hand',
   login: 'never reset on leaving the realm: the menu it lands at has been logged in to',
+  learner: 'reset with `login` on connect: the login is learned once per connection',
   realmMenu: 'never reset on leaving the realm: the menu it lands at said what it said'
 };
 

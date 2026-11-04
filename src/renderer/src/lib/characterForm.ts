@@ -145,6 +145,7 @@ export interface CharacterFields {
   autoConnect: boolean;
   autoReconnect: boolean;
   autoLogin: boolean;
+  learnLogin: boolean;
   /** As typed. See `Profile.lowLives`. */
   lowLives: string;
   /** As typed. See `Profile.reconnectTries`. */
@@ -544,6 +545,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     autoConnect: entry.autoConnect,
     autoReconnect: entry.autoReconnect,
     autoLogin: entry.autoLogin,
+    learnLogin: entry.learnLogin,
     lowLives: String(entry.lowLives),
     reconnectTries: String(entry.reconnectTries),
     ...choiceFieldsOf(entry.spells, entry.hangUp, entry.gear),
@@ -749,6 +751,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     autoConnect: form.autoConnect,
     autoReconnect: form.autoReconnect,
     autoLogin: form.autoLogin,
+    learnLogin: form.learnLogin,
     // A field cleared to retype is the default, never 0: 0 turns the question off.
     lowLives: asLowLives(form.lowLives),
     reconnectTries: asReconnectTries(form.reconnectTries),
@@ -1103,6 +1106,7 @@ export function emptyForm(
      */
     autoReconnect: true,
     autoLogin: true,
+    learnLogin: true,
     lowLives: String(DEFAULT_LOW_LIVES),
     reconnectTries: String(DEFAULT_RECONNECT_TRIES),
     ...choiceFieldsOf(spells, hangUp, gear),

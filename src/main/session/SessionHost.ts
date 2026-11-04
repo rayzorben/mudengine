@@ -56,6 +56,7 @@ import type { RealmFinds } from '../../shared/finds';
 import type { RealmShops } from '../../shared/shops';
 import type { RealmDescriptions } from '../../shared/descriptions';
 import type { RealmFloor } from '../../shared/floor';
+import type { LearnedLoginRecord } from '../../shared/loginLearning';
 import {
   Push,
   type Addressed,
@@ -296,6 +297,8 @@ export interface SessionHostOptions {
   descriptionsFor?(id: SessionId): RealmDescriptions | undefined;
   /** Where the items seen lying in a room are kept, for an item's lookup. */
   floorFor?(id: SessionId): RealmFloor | undefined;
+  /** Where this character's learned login is kept (`CHARACTER_RECORDS.login`). */
+  learnedLoginFor?(id: SessionId): LearnedLoginRecord;
   /**
    * Where this character's record last placed it, read from the record for the
    * realm its file says it plays, so the tab draws that room before any dial.
@@ -678,6 +681,7 @@ export class SessionHost {
         world: this.options.worldFor(id),
         automation: config.automation,
         login: config.connection.login,
+        learnedLogin: this.options.learnedLoginFor?.(id),
         lore: this.options.loreFor(id),
         memory: this.options.memoryFor(id),
         fights: alsoTold(this.options.fightsFor(id), (fight) => this.recap(id, fight)),

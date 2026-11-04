@@ -713,6 +713,7 @@ describe('telling a lost socket from one that was closed', () => {
     manager = build(sink, {
       login: {
         enabled: true,
+        learn: false,
         username: 'vaelor',
         password: 'wrong',
         steps: []
@@ -764,6 +765,7 @@ describe('answering the login', () => {
       },
       login: {
         enabled: true,
+        learn: false,
         username: 'vaelor',
         password: 'secret',
         steps: [
@@ -1290,6 +1292,7 @@ describe('credentials in the record', () => {
         },
         login: {
           enabled: true,
+          learn: false,
           username: 'vaelor',
           password: 'secret',
           steps: [
@@ -7401,6 +7404,7 @@ describe('SessionManager dead link', () => {
       automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
       login: {
         enabled: true,
+        learn: false,
         username: 'vaelor',
         password: 'secret',
         steps: [
