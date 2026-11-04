@@ -487,11 +487,9 @@ function gradedCost(skill: number | null | undefined, difficulty: number): numbe
    * neither of which it could force: the grade, not the wall, had become the
    * objective.
    */
-  return tuning().world.wallCost + WALL_TIEBREAK + Math.round(WALL_TIEBREAK * (1 - ratio));
+  const { wallCost, wallTiebreak } = tuning().world;
+  return wallCost + wallTiebreak + Math.round(wallTiebreak * (1 - ratio));
 }
-
-/** The scale a door the character cannot force is graded on, past the wall. */
-export const WALL_TIEBREAK = 60;
 
 function forcedDoorCost(requirement: Requirement, traveller: Traveller): number {
   const { pickDifficulty, bashDifficulty } = requirement;

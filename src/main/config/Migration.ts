@@ -8947,6 +8947,8 @@ function theTuningBlockGainedKeys(
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
     // The name lines printed while lost that a resync reads back over (todo 20261029-1347-01).
     addKey('session', 'lostLinesKept', DEFAULT_INTERNAL.tuning.session.lostLinesKept);
+    // The grade between two doors the character cannot force (todo 20261103-1100-01).
+    addKey('world', 'wallTiebreak', DEFAULT_INTERNAL.tuning.world.wallTiebreak);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

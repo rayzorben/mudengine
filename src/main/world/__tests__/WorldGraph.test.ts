@@ -14,7 +14,7 @@ import {
 } from '../WorldGraph';
 import type { RouteOptions, Traveller } from '../WorldGraph';
 import { leg } from '../navigation/plan';
-import { Router, WALL_TIEBREAK } from '../Router';
+import { Router } from '../Router';
 import { planRealmOf } from '../navigation/realm';
 import type {
   Direction,
@@ -4171,8 +4171,9 @@ describe('what a door costs to force', () => {
      * them: a strength-90 character went three maps round to prefer a 100
      * door over a 251 one.
      */
-    expect(weak - nearly).toBeLessThanOrEqual(WALL_TIEBREAK);
-    expect(weak).toBeLessThanOrEqual(100_000 + WALL_TIEBREAK * 2);
+    const { wallCost, wallTiebreak } = tuning().world;
+    expect(weak - nearly).toBeLessThanOrEqual(wallTiebreak);
+    expect(weak).toBeLessThanOrEqual(wallCost + wallTiebreak * 2);
   });
 
   // A door the character can bash or pick costs nothing past its step (`gradedCost`).

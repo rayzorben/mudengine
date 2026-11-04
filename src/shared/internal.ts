@@ -2230,6 +2230,12 @@ const TUNING_DEFAULTS = {
      */
     wallCost: 100_000,
     /**
+     * The scale a door the character cannot force is graded on, past
+     * `wallCost`: a door further below its minimum costs up to this much more,
+     * so the grade picks between two walls without outweighing a corridor.
+     */
+    wallTiebreak: 60,
+    /**
      * How long a door or hidden exit the walk opened is routed as open
      * (todo 62): the shortest close timer GreaterMUD runs (`Para` of 1 is
      * 300 s, `RoomManager.cs:176`, `:196`), at the realm's measured speed.
