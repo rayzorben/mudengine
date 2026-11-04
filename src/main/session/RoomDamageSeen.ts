@@ -1,16 +1,16 @@
 /**
  * A room that hurt the character on the wire, whatever the world database says
  * (todo 20261103-0140-01): health lost `tuning.roomHarm.drops` times inside
- * `withinMs` in one room, out of a fight, not poisoned, not bleeding on the
- * ground and with the same maximum, is the room's damage. A monster's blow
- * on arrival lands before `*Combat Engaged*`, so the fight is read with its
- * signs (`fightHere`): Rayzor, 2026-11-04, left Brakkle webbed behind for a
- * winged horror's bite and acid on the way in. Unknown is the
- * unsafe case, so a room the data gives no spell still counts once the
- * server has taken health there twice. Read through
- * `RoomHazards`. `mudengine-automation` › `parts/safety.md`.
+ * `withinMs` in one room, not poisoned, not bleeding on the ground and with
+ * the same maximum, is the room's damage. Not while a fight is here
+ * (`fightHere`), nor inside `MOB_ENGAGED_MS` of a monster's damage line
+ * (`HangUpWatch.monsterHit`), wherever that monster is now. Unknown is the
+ * unsafe case, so a room the data gives no spell still counts once the server
+ * has taken health there twice. Read through `RoomHazards`.
+ * `mudengine-automation` › `parts/safety.md`.
  */
 import { tuning } from '../app/tuning';
+import type { HangUpWatch } from '../automation/HangUp';
 import { fightHere, type CharacterState, type FightSigns } from '../../shared/character';
 import { roomAddress, type RoomId } from '../../shared/world';
 
@@ -24,6 +24,7 @@ export class RoomDamageSeen {
 
   constructor(
     private readonly signs: FightSigns,
+    private readonly blows: Pick<HangUpWatch, 'monsterHit'>,
     private readonly now: () => number = () => Date.now()
   ) {}
 
@@ -43,7 +44,12 @@ export class RoomDamageSeen {
     if (here === null || hp === null || before === null || hp >= before) return;
     // A maximum that fell (gear taken off) lowers the figure without a blow.
     const at = this.now();
-    if (hpMax !== maxBefore || !unexplained(state, before, this.signs, at)) return;
+    if (
+      hpMax !== maxBefore ||
+      !unexplained(state, before, this.signs, at) ||
+      this.blows.monsterHit(at)
+    )
+      return;
     const { drops, withinMs, keptRooms } = tuning().roomHarm;
     this.drops = [...this.drops.filter((then) => at - then <= withinMs), at];
     if (this.drops.length < drops || this.seen.has(here)) return;

@@ -24,6 +24,7 @@ import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { SessionModule } from '../automation/Module';
 import { RoomDamageSeen } from './RoomDamageSeen';
+import type { HangUpWatch } from '../automation/HangUp';
 
 /** A counter selling one of a spell's stoppers, nearest from here. */
 export interface StopperCounter {
@@ -41,6 +42,8 @@ export interface RoomHazardsParts {
   errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard'>;
   /** A monster's blow the state does not show as a fight yet, for `RoomDamageSeen`. */
   signs: FightSigns;
+  /** A monster's damage line lately, wherever it is now, for `RoomDamageSeen`. */
+  hangUp: Pick<HangUpWatch, 'monsterHit'>;
 }
 
 export class RoomHazards implements SessionModule {
@@ -50,7 +53,7 @@ export class RoomHazards implements SessionModule {
     private readonly parts: RoomHazardsParts,
     now: () => number = () => Date.now()
   ) {
-    this.seen = new RoomDamageSeen(parts.signs, now);
+    this.seen = new RoomDamageSeen(parts.signs, parts.hangUp, now);
   }
 
   /** Every status line, for the damage the world database does not list. */

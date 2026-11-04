@@ -570,7 +570,7 @@ export class SessionManager {
     };
     // A room's own spell against this character: a way's stoppers, a rest refused, a room walled.
     const hazardParts = { world, tracker: this.tracker, errands: this.errands };
-    this.roomHazards = new RoomHazards({ ...hazardParts, signs });
+    this.roomHazards = new RoomHazards({ ...hazardParts, signs, hangUp: this.hangUp });
     this.vocabulary = new Vocabulary(
       { tracker: this.tracker, errands: this.errands, world, words },
       {

@@ -246,7 +246,11 @@ describe('leaving a room that hurts every tick', () => {
  * once the server has taken health there twice out of a fight.
  */
 describe('a room whose damage the world database does not list', () => {
-  const hazards = (current: { state: CharacterState }, signs: FightSigns = NO_FIGHT_SIGNS) =>
+  const hazards = (
+    current: { state: CharacterState },
+    signs: FightSigns = NO_FIGHT_SIGNS,
+    hit: { lately: boolean } = { lately: false }
+  ) =>
     new RoomHazards({
       world: undefined,
       tracker: {
@@ -255,7 +259,8 @@ describe('a room whose damage the world database does not list', () => {
         }
       },
       errands: {} as RoomHazardsParts['errands'],
-      signs
+      signs,
+      hangUp: { monsterHit: () => hit.lately }
     });
 
   it('counts once health falls twice out of a fight, and is left', () => {
@@ -277,7 +282,7 @@ describe('a room whose damage the world database does not list', () => {
    * for 1 damage!` landed before `*Combat Engaged*`. Counted as the room's,
    * they sent Rayzor out of the room where he had just invited Brakkle back.
    */
-  it('does not count a blow from a monster here that the state does not show as a fight yet', () => {
+  it('pauses on a monster damage line until the window passes, here or gone', () => {
     const current = { state: at(RIVER, 115) };
     const monster: RoomOccupant = {
       name: 'thin winged horror',
@@ -289,24 +294,54 @@ describe('a room whose damage the world database does not list', () => {
       hidden: false,
       free: false
     };
-    const feed = (room: RoomHazards): void => {
-      for (const hp of [115, 108, 107]) {
+    const hit = { lately: true };
+    const room = hazards(current, NO_FIGHT_SIGNS, hit);
+    const feed = (hps: readonly number[], occupants: RoomOccupant[]): void => {
+      for (const hp of hps) {
         current.state = at(RIVER, hp);
-        current.state = {
-          ...current.state,
-          room: { ...current.state.room, occupants: [monster] }
-        };
+        current.state = { ...current.state, room: { ...current.state.room, occupants } };
         room.note(current.state);
       }
     };
-    // The positive control: without the monster's blow, the same falls are the room's.
-    const blind = hazards(current);
-    feed(blind);
-    expect(blind.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
-    const signs: FightSigns = { monsterSwung: () => true, quarry: () => false };
-    const room = hazards(current, signs);
-    feed(room);
+    // The bite and the acid on the way in, the monster still here.
+    feed([115, 108, 107], [monster]);
     expect(room.hurtsHere(current.state)).toBeNull();
+    // Its last blow and its death in one burst: gone by the prompt that shows the loss.
+    feed([100, 95], []);
+    expect(room.hurtsHere(current.state)).toBeNull();
+    // The positive control: the window over, the same falls are the room's.
+    hit.lately = false;
+    feed([90, 85], []);
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
+  });
+
+  it('does not count health while a monster here swung lately, a miss included', () => {
+    const current = { state: at(RIVER, 115) };
+    const swung: FightSigns = { monsterSwung: () => true, quarry: () => false };
+    const monster: RoomOccupant = {
+      name: 'big bola spider',
+      kind: 'mob',
+      disposition: null,
+      uncertain: false,
+      costly: 'never',
+      charmed: false,
+      hidden: false,
+      free: false
+    };
+    const room = hazards(current, swung);
+    for (const hp of [115, 108, 107]) {
+      current.state = at(RIVER, hp);
+      current.state = { ...current.state, room: { ...current.state.room, occupants: [monster] } };
+      room.note(current.state);
+    }
+    expect(room.hurtsHere(current.state)).toBeNull();
+    // The positive control: the room's own line reads as a miss, and nothing is here to swing.
+    const river = hazards(current, swung);
+    for (const hp of [80, 70, 60]) {
+      current.state = at(RIVER, hp);
+      river.note(current.state);
+    }
+    expect(river.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
   });
 
   it('does not count health a fight or a poison took, or a single fall', () => {

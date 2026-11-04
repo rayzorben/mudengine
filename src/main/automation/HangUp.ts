@@ -2,6 +2,7 @@ import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import {
   fightIsRunning,
+  monstersHere,
   standingOf,
   type CharacterState,
   type RoomOccupant
@@ -98,6 +99,8 @@ export class HangUpWatch implements SessionModule {
   private lastPvpAt: number | null = null;
   /** Last time a mob hit or swung at this character. */
   private lastMobBlowAt: number | null = null;
+  /** Last time something not a player took health off this character with a damage line. */
+  private lastMobHitAt: number | null = null;
   /** Who, for the reason line. */
   private lastPvpWith: string | null = null;
 
@@ -107,6 +110,7 @@ export class HangUpWatch implements SessionModule {
   reset(): void {
     this.lastPvpAt = null;
     this.lastMobBlowAt = null;
+    this.lastMobHitAt = null;
     this.lastPvpWith = null;
   }
 
@@ -129,6 +133,9 @@ export class HangUpWatch implements SessionModule {
       // `The <mob> ... you` — the article is what distinguishes a monster's
       // blow from a player's in this server's phrasing.
       case 'mob-hits':
+        this.lastMobBlowAt = block.at;
+        this.hitBy(state, block.at);
+        return;
       case 'mob-misses':
         this.lastMobBlowAt = block.at;
         return;
@@ -137,6 +144,7 @@ export class HangUpWatch implements SessionModule {
       // moves the character to. A player's window stays: the server charges it.
       case 'user-dies':
         this.lastMobBlowAt = null;
+        this.lastMobHitAt = null;
         return;
 
       /*
@@ -157,7 +165,9 @@ export class HangUpWatch implements SessionModule {
             this.lastPvpWith = attacker;
             this.events.pvpBlow?.(attacker, block.at, kind === 'player');
           }
-          if (kind !== 'player') this.lastMobBlowAt = block.at;
+          if (kind === 'player') return;
+          this.lastMobBlowAt = block.at;
+          this.hitBy(state, block.at);
           return;
         }
         // This character hit somebody. Hitting a player starts it too — the
@@ -230,9 +240,27 @@ export class HangUpWatch implements SessionModule {
     );
   }
 
+  /**
+   * A line with a damage number on this character from anything not a player
+   * (`The <mob> <hits> you for N damage!`, `Acid sears you for 1 damage!`),
+   * with a monster here or a fight running as it landed, inside
+   * `MOB_ENGAGED_MS`, wherever that monster is now. A miss is not one: the
+   * realm's room message (`The river bashes you up against some rocks!`) reads
+   * as a miss, and a room spell's `Fire burns you for 8 damage!` comes with no
+   * monster here.
+   */
+  monsterHit(now: number): boolean {
+    return within(this.lastMobHitAt, now);
+  }
+
   /** A monster hit or swung at this character inside `MOB_ENGAGED_MS`. */
   monsterSwung(now: number): boolean {
-    return this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS;
+    return within(this.lastMobBlowAt, now);
+  }
+
+  /** A damage line on this character from no player: a monster's only with one here or a fight on. */
+  private hitBy(state: CharacterState, at: number): void {
+    if (monstersHere(state) || fightIsRunning(state)) this.lastMobHitAt = at;
   }
 
   /** Whether no reason to expect a charge was found. Never "safe". */
@@ -271,6 +299,11 @@ export class HangUpWatch implements SessionModule {
  * the party or the room's listing says so, a monster where the listing does
  * (the realm's table placed it), else unknown.
  */
+/** Whether a blow at `at` is inside `MOB_ENGAGED_MS` of `now`. */
+function within(at: number | null, now: number): boolean {
+  return at !== null && now - at < MOB_ENGAGED_MS;
+}
+
 function kindOf(state: CharacterState, name: string): RoomOccupant['kind'] {
   const key = mobKey(name);
   const named = (entry: { name: string }): boolean => mobKey(entry.name) === key;

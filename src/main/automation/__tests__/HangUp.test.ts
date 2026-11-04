@@ -219,6 +219,38 @@ describe('whether hanging up would be penalised', () => {
     expect(watch.monsterSwung(T0 + 1000)).toBe(true);
   });
 
+  /* The user, 2026-11-04: a monster's damage line stops the room damage count; the river's own line reads as a miss. */
+  it('marks a damage line from anything not a player, and never a miss or a player', () => {
+    const missed = new HangUpWatch();
+    missed.observe(block('mob-misses', {}), state());
+    expect(missed.monsterSwung(T0 + 1000)).toBe(true);
+    expect(missed.monsterHit(T0 + 1000)).toBe(false);
+    const player = new HangUpWatch();
+    player.observe(
+      block('user-hits', { attacker: 'Grimjaw', target: 'you' }),
+      state({ online: [who('Grimjaw')] })
+    );
+    expect(player.monsterHit(T0 + 1000)).toBe(false);
+    // A room spell's damage line with nothing here: the room's, not a monster's.
+    const spell = new HangUpWatch();
+    spell.observe(block('user-hits', { attacker: 'Fire', target: 'you' }), state());
+    spell.observe(block('mob-hits', {}), state());
+    expect(spell.monsterHit(T0 + 1000)).toBe(false);
+    // The positive controls: a monster's blow, and its weapon's extra damage, with it here.
+    const room = { ...EMPTY_CHARACTER.room, occupants: mobs_([['bola spider', 'hostile']]) };
+    const hit = new HangUpWatch();
+    hit.observe(block('mob-hits', {}), state({ room }));
+    expect(hit.monsterHit(T0 + 1000)).toBe(true);
+    expect(hit.monsterHit(T0 + MOB_ENGAGED_MS)).toBe(false);
+    const acid = new HangUpWatch();
+    acid.observe(block('user-hits', { attacker: 'Acid', target: 'you' }), state({ room }));
+    expect(acid.monsterHit(T0 + 1000)).toBe(true);
+    // In a fight the state shows, the monster need not be listed.
+    const fight = new HangUpWatch();
+    fight.observe(block('mob-hits', {}), state({ inCombat: true }));
+    expect(fight.monsterHit(T0 + 1000)).toBe(true);
+  });
+
   it('matches a roster name whatever its case', () => {
     const watch = new HangUpWatch();
     watch.observe(
