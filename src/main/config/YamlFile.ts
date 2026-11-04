@@ -242,6 +242,28 @@ export function setKeeping(document: Document, at: readonly unknown[], value: un
 }
 
 /**
+ * `setKeeping` for a block a draft patches: each key `value` names is written
+ * as `setKeeping` writes it, and a key it does not name stays as the file has
+ * it, comment and all. A settings draft carries the fields on its form, and
+ * `autoRest`, a toolbar switch, is not one: replaced whole, a save of the page
+ * dropped it and put the character back on the inherited answer.
+ */
+export function patchKeeping(
+  document: Document,
+  at: readonly unknown[],
+  value: Readonly<Record<string, unknown>>
+): void {
+  if (!isMap(document.getIn(at, true))) {
+    setKeeping(document, at, value);
+    return;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined) document.deleteIn([...at, key]);
+    else setKeeping(document, [...at, key], entry);
+  }
+}
+
+/**
  * A list written row by row, each row the file had kept with its comment
  * where it goes. A row the list still says exactly is the same node, wherever
  * it moved; a changed row is patched in place when its position held a row

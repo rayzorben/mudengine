@@ -5,6 +5,7 @@ import { isMap, isNode, isSeq, parse, Scalar, type Document } from 'yaml';
 import {
   ON_DISK,
   parseOwned,
+  patchKeeping,
   setKeeping,
   yamlFault,
   type EditResult,
@@ -487,7 +488,7 @@ export class SettingsEditor {
             document.hasIn(at) ||
             statesSomething(block, defaults as unknown as Record<string, unknown>)
           ) {
-            setKeeping(document, at, { ...block });
+            patchKeeping(document, at, { ...block });
           }
         }
         // Judged as the blocks above are, and its rows written as the Self card writes them.
@@ -1259,6 +1260,10 @@ export class SettingsEditor {
         const set = (path: readonly string[], value: unknown): void => {
           setKeeping(document, path, value);
         };
+        // A block the page patches: a key its draft does not carry stays (`patchKeeping`).
+        const patch = (path: readonly string[], value: Record<string, unknown>): void => {
+          patchKeeping(document, path, value);
+        };
 
         set(['connection', 'host'], draft.connection.host);
         set(['connection', 'port'], draft.connection.port);
@@ -1332,35 +1337,35 @@ export class SettingsEditor {
         set(['automation', 'enabled'], draft.automation.enabled);
         set(['automation', 'onEnterRealm'], [...draft.automation.onEnterRealm]);
         set(['automation', 'onPartyChange'], draft.automation.onPartyChange);
-        set(['automation', 'idle'], { ...draft.automation.idle });
-        set(['automation', 'pacing'], { ...draft.automation.pacing });
-        set(['automation', 'walk'], { ...draft.automation.walk });
-        set(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
+        patch(['automation', 'idle'], { ...draft.automation.idle });
+        patch(['automation', 'pacing'], { ...draft.automation.pacing });
+        patch(['automation', 'walk'], { ...draft.automation.walk });
+        patch(['automation', 'safety', 'hangUp'], { ...draft.automation.hangUp });
         writeRetreat(document, draft.automation.retreat);
-        set(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
-        set(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
-        set(['automation', 'combat'], { ...draft.automation.combat });
-        set(['automation', 'party'], { ...draft.automation.party });
-        set(['automation', 'health'], { ...draft.automation.health });
-        set(['automation', 'movement'], { ...draft.automation.movement });
-        set(['automation', 'hunting'], { ...draft.automation.hunting });
-        set(['automation', 'train'], {
+        patch(['automation', 'safety', 'fleeGoto'], { ...draft.automation.fleeGoto });
+        patch(['automation', 'safety', 'pvp'], { ...draft.automation.pvp });
+        patch(['automation', 'combat'], { ...draft.automation.combat });
+        patch(['automation', 'party'], { ...draft.automation.party });
+        patch(['automation', 'health'], { ...draft.automation.health });
+        patch(['automation', 'movement'], { ...draft.automation.movement });
+        patch(['automation', 'hunting'], { ...draft.automation.hunting });
+        patch(['automation', 'train'], {
           ...draft.automation.train,
           wanted: { ...draft.automation.train.wanted }
         });
-        set(['automation', 'quests'], { ...draft.automation.quests });
-        set(['automation', 'gear'], { ...draft.automation.gear });
-        set(['automation', 'spells'], { ...draft.automation.spells });
-        set(['automation', 'loot'], { ...draft.automation.loot });
-        set(['automation', 'drop'], { ...draft.automation.drop });
-        set(['automation', 'outgrown'], { ...draft.automation.outgrown });
-        set(['automation', 'search'], { ...draft.automation.search });
-        set(['automation', 'banking'], { ...draft.automation.banking });
+        patch(['automation', 'quests'], { ...draft.automation.quests });
+        patch(['automation', 'gear'], { ...draft.automation.gear });
+        patch(['automation', 'spells'], { ...draft.automation.spells });
+        patch(['automation', 'loot'], { ...draft.automation.loot });
+        patch(['automation', 'drop'], { ...draft.automation.drop });
+        patch(['automation', 'outgrown'], { ...draft.automation.outgrown });
+        patch(['automation', 'search'], { ...draft.automation.search });
+        patch(['automation', 'banking'], { ...draft.automation.banking });
         writeSupplies(document, draft.automation.supplies);
-        set(['automation', 'remotes'], { ...draft.automation.remotes });
-        set(['automation', 'afk'], { ...draft.automation.afk });
-        set(['automation', 'statline'], { ...draft.automation.statline });
-        set(['automation', 'asks'], { ...draft.automation.asks });
+        patch(['automation', 'remotes'], { ...draft.automation.remotes });
+        patch(['automation', 'afk'], { ...draft.automation.afk });
+        patch(['automation', 'statline'], { ...draft.automation.statline });
+        patch(['automation', 'asks'], { ...draft.automation.asks });
         set(['automation', 'aliases'], pairsRecord(draft.automation.aliases));
         set(['keys'], pairsRecord(draft.keys));
         // Name by name, so the block's own lines and comments stay where they are.

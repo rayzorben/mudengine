@@ -7,12 +7,19 @@ import { parse } from 'yaml';
 import { SettingsEditor } from '../SettingsEditor';
 import { homeAt, type Home } from '../../app/home';
 import { resolveProfile } from '../../../shared/profiles';
-import type { GlobalDraft, ProfileDraft, ServerDraft } from '../../../shared/drafts';
+import {
+  asGlobalDraft,
+  asProfileDraft,
+  type GlobalDraft,
+  type ProfileDraft,
+  type ServerDraft
+} from '../../../shared/drafts';
 import { ServerStore } from '../ServerStore';
 import { LoopStore } from '../LoopStore';
 import { DEFAULT_CONFIG, normalizeConfig } from '../../../shared/config';
 import { UNCATEGORISED, type Loop } from '../../../shared/loops';
 import { NO_PEER_GRANT } from '../../../shared/peerGrant';
+import { NO_GRANT, type RemoteGrant, type RemoteName } from '../../../shared/remotes';
 
 let dir = '';
 let home: Home;
@@ -423,6 +430,98 @@ ui:
     });
     expect(text).toContain('# run early, this one is fragile');
     expect(text).toContain('# kick, never bash');
+  });
+
+  /*
+   * Festus, 2026-11-03: a save of the settings page dropped `autoRest: true`
+   * and its comment. The draft crosses IPC and is read by `asProfileDraft`,
+   * which carries no `autoRest` (a toolbar switch, not on the form), so the
+   * draft here goes through the same reader.
+   */
+  it('keeps the comments and a stated key the form does not carry', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      [
+        'server: GreaterMUD (local)',
+        'automation:',
+        '  combat:',
+        "    # The realm's own words.",
+        '    #',
+        '    # Blank picks the attack.',
+        '    attack: ""',
+        '    # Sent instead of `attack` for the first blow of a fight.',
+        '    opener: ""',
+        '  health:',
+        '    restBelow: 0.7',
+        '    # Auto-Rest, the toolbar switch.',
+        '    autoRest: true',
+        '    # Left off by the toolbar.',
+        '    useWards: true',
+        ''
+      ].join('\n'),
+      'utf8'
+    );
+    const sent = draft({ combat: { ...DEFAULT_CONFIG.automation.combat, attack: 'a' } });
+    const parsed = asProfileDraft(JSON.parse(JSON.stringify(sent)));
+    if (parsed === null) throw new Error('the draft did not parse');
+    expect(editor.saveProfile('vaelor', parsed)).toEqual({ ok: true });
+    const once = fs.readFileSync(file, 'utf8');
+    // Positive control: the edited field was written.
+    expect(read('vaelor')['automation']).toMatchObject({ combat: { attack: 'a' } });
+    for (const line of [
+      "# The realm's own words.",
+      '# Blank picks the attack.',
+      '# Sent instead of `attack` for the first blow of a fight.',
+      '# Auto-Rest, the toolbar switch.',
+      'autoRest: true',
+      '# Left off by the toolbar.'
+    ]) {
+      expect(once).toContain(line);
+    }
+    // Saving the same draft again changes nothing.
+    expect(editor.saveProfile('vaelor', parsed)).toEqual({ ok: true });
+    expect(fs.readFileSync(file, 'utf8')).toBe(once);
+  });
+
+  // A toolbar switch turned off stays off through a save of the form.
+  it('keeps a toolbar switch the form does not carry at what the file says', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      'server: GreaterMUD (local)\nautomation:\n  health:\n    autoRest: false\n',
+      'utf8'
+    );
+    const parsed = asProfileDraft(JSON.parse(JSON.stringify(draft({ accent: 'amber' }))));
+    if (parsed === null) throw new Error('the draft did not parse');
+    expect(editor.saveProfile('vaelor', parsed)).toEqual({ ok: true });
+    expect(read('vaelor')['accent']).toBe('amber');
+    expect(read('vaelor')['automation']).toMatchObject({ health: { autoRest: false } });
+  });
+
+  // Inside a key the draft names, the draft is the whole value: a removed player goes.
+  it('removes a remote player the draft no longer names', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const grant = (allow: RemoteName[]): RemoteGrant => ({ ...NO_GRANT, allow });
+    const remotes = {
+      ...DEFAULT_CONFIG.automation.remotes,
+      players: { ana: grant(['health']), bo: grant(['exp']) }
+    };
+    expect(editor.saveProfile('vaelor', draft({ remotes }))).toEqual({ ok: true });
+    // Positive control: both were written.
+    expect(read('vaelor')['automation']).toMatchObject({
+      remotes: { players: { ana: {}, bo: {} } }
+    });
+    const kept = { ...remotes, players: { ana: remotes.players.ana } };
+    const parsed = asProfileDraft(JSON.parse(JSON.stringify(draft({ remotes: kept }))));
+    if (parsed === null) throw new Error('the draft did not parse');
+    expect(editor.saveProfile('vaelor', parsed)).toEqual({ ok: true });
+    const players = (read('vaelor')['automation'] as { remotes: { players: object } }).remotes
+      .players;
+    expect(Object.keys(players)).toEqual(['ana']);
   });
 
   it('does not leave the old server behind when switching to an inline one', () => {
@@ -1655,6 +1754,39 @@ connection:
         .filter((line) => line.startsWith('#'));
     expect(comments(after)).toEqual(comments(before));
     expect(parse(after)['automation']['safety']['retreat']['cooldownMs']).toBe(3000);
+  });
+
+  // The page's draft crosses IPC through `asGlobalDraft`, which carries no `autoRest`.
+  it('keeps the template through a save of the draft the page sends', () => {
+    fs.copyFileSync(path.resolve('resources/config/default.yaml'), configPath);
+    const before = fs.readFileSync(configPath, 'utf8');
+    const sent = global();
+    sent.terminal.fontSize = 18;
+    const parsed = asGlobalDraft(JSON.parse(JSON.stringify(sent)));
+    if (parsed === null) throw new Error('the draft did not parse');
+    expect(editor.saveGlobal(parsed)).toEqual({ ok: true });
+    const after = fs.readFileSync(configPath, 'utf8');
+    // Positive control: the change was written.
+    expect(parse(after)['terminal']['font']['size']).toBe(18);
+    const comments = (text: string): string[] =>
+      text
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('#'));
+    expect(comments(after)).toEqual(comments(before));
+    expect(parse(after)['automation']['health']['autoRest']).toBe(true);
+  });
+
+  it('keeps Auto-Rest off through a save of the page', () => {
+    fs.writeFileSync(configPath, `${OPTIONS}automation:\n  health:\n    autoRest: false\n`);
+    const sent = global();
+    sent.terminal.fontSize = 18;
+    const parsed = asGlobalDraft(JSON.parse(JSON.stringify(sent)));
+    if (parsed === null) throw new Error('the draft did not parse');
+    expect(editor.saveGlobal(parsed)).toEqual({ ok: true });
+    const after = parse(fs.readFileSync(configPath, 'utf8'));
+    expect(after['terminal']['font']['size']).toBe(18);
+    expect(after['automation']['health']['autoRest']).toBe(false);
   });
 
   // The outgrown block was read and never written back from this page before todo 118.
