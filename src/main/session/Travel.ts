@@ -30,7 +30,9 @@ import {
   fightIsRunning,
   packRows,
   placedByServer,
-  type CharacterState
+  fightHere,
+  type CharacterState,
+  type FightSigns
 } from '../../shared/character';
 import type { WalkKind } from '../../shared/walk';
 import type { WayLeftOut } from '../automation/walk/ports';
@@ -49,7 +51,7 @@ import { splitStop, type Loop, type LoopProgress, type ResumedBy } from '../../s
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
 import { PartyWait } from './PartyWait';
-import { ComeBack } from './ComeBack';
+import { COMEBACK, ComeBack } from './ComeBack';
 import { backLeg, settleBack } from './trailBack';
 import { inviteIntent } from '../automation/PartyRegroup';
 import { recordOf } from '../../shared/players';
@@ -59,6 +61,7 @@ import { StopperOutfit, type OutfitVerdict, type StopperOutfitParts } from './St
 import type { RemoteEvents, Remotes } from '../automation/Remotes';
 import type { RoomHazards } from './RoomHazards';
 import { LeaveHarm } from './LeaveHarm';
+import { ReturnToMember } from './ReturnToMember';
 import { packHolds } from '../../shared/quests';
 import { playerKey } from '../../shared/players';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
@@ -214,7 +217,9 @@ export interface TravelParts {
   readonly combat: Pick<AutoCombat, 'willFight' | 'alsoFight' | 'stopFighting'>;
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon' | 'fetch'>;
   /** The leader's question to each member about a room's spell on the way, and `@do` (todo 20261021-1200-01). */
-  readonly remotes: Pick<Remotes, 'ask' | 'away'> & { stoppers: StopperOutfitParts['stoppers'] };
+  readonly remotes: Pick<Remotes, 'ask' | 'away' | 'leftBehind'> & {
+    stoppers: StopperOutfitParts['stoppers'];
+  };
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
   readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
@@ -225,6 +230,8 @@ export interface TravelParts {
   readonly questRunner: Pick<QuestRunner, 'running' | 'abandon'>;
   /** A light bought before a dark route or lap (todo 11). */
   readonly light: Pick<LightAhead, 'beforeRoute' | 'beforeLap'>;
+  /** A monster's blow the state does not show as a fight yet (`fightHere`). */
+  readonly signs: FightSigns;
 }
 
 /** What the session that built this answers for it. */
@@ -478,6 +485,9 @@ export class Travel implements SessionModule {
   private readonly partyWait: PartyWait;
   /** A member's `@comeback` walked back for. See `ComeBack`. */
   private readonly comeBack: ComeBack;
+  /** Waiting for a member the lap waits on in the room they were last seen in. */
+  private readonly returnToMember: ReturnToMember;
+  private readonly signs: FightSigns;
   /** Auto-Rest put back on at each walk, loop, arrival and connection (todo 148). */
   private readonly autoRest: AutoRestBack;
   /** Everyone walking a way carries what stops its room spells first. See `StopperOutfit`. */
@@ -511,6 +521,7 @@ export class Travel implements SessionModule {
     this.itemErrand = parts.itemErrand;
     this.questRunner = parts.questRunner;
     this.light = parts.light;
+    this.signs = parts.signs;
     this.partyWait = new PartyWait({
       pauseMoving: (why) => this.pauseMoving(why, 'party-wait'),
       stopped: () => this.movementStopped(),
@@ -519,7 +530,8 @@ export class Travel implements SessionModule {
       waitMinutes: () => this.automationConfig.party.waitMinutes,
       walkingAsked: () => this.walker.walking && this.walker.progress.asked,
       leftBehind: (who) => {
-        this.session.notice(t('session.comeBack.leftBehind', { who }), 'party-comeback');
+        this.session.notice(t('session.comeBack.leftBehind', { who }), COMEBACK);
+        this.remotes.leftBehind(who, this.tracker.current, true);
         this.comeBack.asked(who, this.tracker.current);
       }
     });
@@ -533,16 +545,31 @@ export class Travel implements SessionModule {
       walk: (route) => this.walker.start(route, this.tracker.current, { asked: false }),
       stopWalk: (why) => this.walker.stop(why),
       busy: () => this.walkBackRefused(),
-      pause: (why) => this.pauseMoving(why, 'party-comeback'),
+      pause: (why) => this.pauseMoving(why, COMEBACK),
       unfinished: () => (this.session.movement().kind === 'route' ? this.walker.unfinished : null),
       resume: (who, walked) => this.resumeMoving(who, walked),
       partyWaiting: () => this.partyWait.holding,
       invite: (who) =>
         this.queue.enqueue(
-          inviteIntent(who, t('session.comeBack.inviteReason', { who }), 'party-comeback')
+          inviteIntent(who, t('session.comeBack.inviteReason', { who }), COMEBACK)
         ),
       awaitJoin: (who) => this.partyWait.pace(who, false, 'invited'),
       rooms: () => this.automationConfig.party.comebackRooms,
+      notice: (message, decision) => this.session.notice(message, decision)
+    });
+    this.returnToMember = new ReturnToMember({
+      lastSeen: (who) => recordOf(this.tracker.players, who)?.lastRoom ?? null,
+      holding: () => this.partyWait.holdingOnlyForAway,
+      fighting: (state) => fightHere(state, this.signs, Date.now()),
+      moving: () =>
+        this.walker.walking ||
+        this.comeBack.active ||
+        this.leaveHarm.underWay ||
+        this.steppingBack !== null,
+      hurts: (room) => this.roomHazards.roomHurts(room) !== null,
+      rooms: () => this.automationConfig.party.comebackRooms,
+      walkTo: (who, to, limit) =>
+        this.comeBack.askedTo(who, to, this.tracker.current, () => {}, { limit }),
       notice: (message, decision) => this.session.notice(message, decision)
     });
     this.autoRest = new AutoRestBack(session);
@@ -673,6 +700,7 @@ export class Travel implements SessionModule {
     this.outfit.reset();
     this.fareCash.reset();
     this.leaveHarm.reset();
+    this.returnToMember.forget();
     this.teleportAt = 0;
   }
 
@@ -1029,11 +1057,13 @@ export class Travel implements SessionModule {
 
   /** A member left behind asked to be walked back for (`@comeback`). See `ComeBack`. */
   walkBackFor(who: string): void {
+    this.remotes.leftBehind(who, this.tracker.current, false);
     this.comeBack.asked(who, this.tracker.current);
   }
 
   /** A member asked to be walked to where they are (`@comeback-room`); `coming` once it is. */
   walkBackTo(who: string, to: RoomId, coming: () => void): void {
+    this.remotes.leftBehind(who, this.tracker.current, false);
     this.comeBack.askedTo(who, to, this.tracker.current, coming);
   }
 
@@ -1041,19 +1071,22 @@ export class Travel implements SessionModule {
   watchParty(state: CharacterState): void {
     const { enabled, party, health } = this.automationConfig;
     const managed = enabled && party.manageParty;
+    const away = enabled ? this.remotes.away : [];
     this.partyWait.onCharacter(
       state,
       enabled ? party.waitBelow : 0,
       managed ? { health, marginWhenUncapped: tuning().loop.resumeMarginWhenUncapped } : null,
-      enabled ? this.remotes.away : []
+      away
     );
     this.comeBack.onCharacter(state);
+    this.returnToMember.onCharacter(state, away);
   }
 
   /** The session is closing: nothing may walk on for a wait it held. */
   dispose(): void {
     this.partyWait.forget();
     this.comeBack.cancel(null);
+    this.returnToMember.forget();
   }
 
   /**

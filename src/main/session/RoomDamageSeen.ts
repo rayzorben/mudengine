@@ -2,13 +2,16 @@
  * A room that hurt the character on the wire, whatever the world database says
  * (todo 20261103-0140-01): health lost `tuning.roomHarm.drops` times inside
  * `withinMs` in one room, out of a fight, not poisoned, not bleeding on the
- * ground and with the same maximum, is the room's damage. Unknown is the
+ * ground and with the same maximum, is the room's damage. A monster's blow
+ * on arrival lands before `*Combat Engaged*`, so the fight is read with its
+ * signs (`fightHere`): Rayzor, 2026-11-04, left Brakkle webbed behind for a
+ * winged horror's bite and acid on the way in. Unknown is the
  * unsafe case, so a room the data gives no spell still counts once the
  * server has taken health there twice. Read through
  * `RoomHazards`. `mudengine-automation` › `parts/safety.md`.
  */
 import { tuning } from '../app/tuning';
-import { fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightHere, type CharacterState, type FightSigns } from '../../shared/character';
 import { roomAddress, type RoomId } from '../../shared/world';
 
 export class RoomDamageSeen {
@@ -19,7 +22,10 @@ export class RoomDamageSeen {
   /** In the order seen, so the oldest goes first past `keptRooms`. */
   private readonly seen = new Set<RoomId>();
 
-  constructor(private readonly now: () => number = () => Date.now()) {}
+  constructor(
+    private readonly signs: FightSigns,
+    private readonly now: () => number = () => Date.now()
+  ) {}
 
   /** Every status line: a drop in health nothing in the room explains. */
   note(state: CharacterState): void {
@@ -36,9 +42,9 @@ export class RoomDamageSeen {
     }
     if (here === null || hp === null || before === null || hp >= before) return;
     // A maximum that fell (gear taken off) lowers the figure without a blow.
-    if (hpMax !== maxBefore || !unexplained(state, before)) return;
-    const { drops, withinMs, keptRooms } = tuning().roomHarm;
     const at = this.now();
+    if (hpMax !== maxBefore || !unexplained(state, before, this.signs, at)) return;
+    const { drops, withinMs, keptRooms } = tuning().roomHarm;
     this.drops = [...this.drops.filter((then) => at - then <= withinMs), at];
     if (this.drops.length < drops || this.seen.has(here)) return;
     this.seen.add(here);
@@ -63,13 +69,18 @@ export class RoomDamageSeen {
 }
 
 /**
- * No fight, poison or bleeding on the ground accounts for it: what is left is
- * the room. Below 1 the character bleeds a point a tick, so a fall from there
- * is not counted.
+ * No fight, a monster's recent blow, poison or bleeding on the ground accounts
+ * for it: what is left is the room. Below 1 the character bleeds a point a
+ * tick, so a fall from there is not counted.
  */
-function unexplained(state: CharacterState, before: number): boolean {
+function unexplained(
+  state: CharacterState,
+  before: number,
+  signs: FightSigns,
+  now: number
+): boolean {
   return (
-    !fightIsRunning(state) &&
+    !fightHere(state, signs, now) &&
     state.afflictions.poisoned !== 'yes' &&
     !state.mortallyWounded &&
     before > 0

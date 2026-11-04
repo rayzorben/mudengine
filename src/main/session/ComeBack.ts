@@ -10,11 +10,11 @@
 import { t } from '../app/i18n';
 import { backLeg, planned, settleBack } from './trailBack';
 import { standingHere, type CharacterState } from '../../shared/character';
-import type { NoticeSink } from '../../shared/decisionSettings';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { UnfinishedRoute } from '../../shared/walk';
 import { roomAddress, type RoomId, type Route, type TrailStep } from '../../shared/world';
 
-const COMEBACK = 'party-comeback';
+export const COMEBACK: DecisionKind = 'party-comeback';
 
 export interface ComeBackPort {
   /** The moves walked, oldest first (`CharacterTracker.trail`). */
@@ -70,12 +70,16 @@ interface Walk {
   stopped: boolean;
   /** The room `@comeback-room` stated, until its one leg is planned. */
   stated: Stated | null;
+  /** False for the room the member was last seen in, where this character waits for them. */
+  asked: boolean;
 }
 
 /** A `@comeback-room` whose leg waits on a move still out, and who hears `{ok}` once it starts. */
 interface Stated {
   to: RoomId;
   coming: () => void;
+  /** Steps the leg may take, for the room the member was last seen in; null for one they asked for. */
+  limit: number | null;
 }
 
 export class ComeBack {
@@ -133,46 +137,72 @@ export class ComeBack {
    * `who` said `@comeback-room` from `to`: one leg there, then the member is
    * invited and what was stopped goes on, as for `@comeback`. `coming` once
    * this character is on the way or already with them, which is what `{ok}`
-   * answers; never for a leg not yet planned.
+   * answers; never for a leg not yet planned. `lastSeen` is the room the member
+   * was last seen in, which they did not ask for, walked only within `limit`
+   * steps (`ReturnToMember`).
    */
-  askedTo(who: string, to: RoomId, state: CharacterState, coming: () => void): void {
+  askedTo(
+    who: string,
+    to: RoomId,
+    state: CharacterState,
+    coming: () => void,
+    lastSeen: { limit: number } | null = null
+  ): void {
     const answered = this.answered(who, state);
     if (answered === true) coming();
     if (answered !== null) return;
+    const limit = lastSeen?.limit ?? null;
     if (this.port.moveInFlight()) {
       // The stop's last step is still out: the leg is planned from where it lands.
-      this.stop(who, 1, t('session.comeBack.startingTo', { who, address: to }));
+      const params = { who, address: to };
+      const starting =
+        lastSeen === null
+          ? t('session.comeBack.startingTo', params)
+          : t('session.comeBack.returningOnce', params);
+      this.stop(who, 1, starting);
       if (this.walk === null) return;
-      this.walk.stated = { to, coming };
+      this.walk.asked = lastSeen === null;
+      this.walk.stated = { to, coming, limit };
       this.walk.due = true;
       return;
     }
-    const leg = planned(this.port.plan(to));
-    if (leg.kind !== 'walk') {
-      this.noWay(who, refusal(leg, who, to));
-      return;
-    }
-    const steps = leg.route.steps.length;
-    this.stop(who, 1, t('session.comeBack.startedTo', { who, address: to, stepCount: steps }));
-    if (this.walk !== null) this.walkTo(this.walk, leg.route, coming);
+    const leg = this.legThere(who, to, limit);
+    if (leg === null) return;
+    this.stop(who, 1, startedTo(lastSeen === null, who, to, leg.steps.length));
+    if (this.walk === null) return;
+    this.walk.asked = lastSeen === null;
+    this.walkTo(this.walk, leg, coming);
   }
 
   /** The leg to a stated room, planned once the stop's last move landed; said, as `askedTo` would. */
   private legTo(walk: Walk, stated: Stated): void {
     walk.stated = null;
     const { to } = stated;
-    const leg = planned(this.port.plan(to));
-    if (leg.kind !== 'walk') {
-      this.noWay(walk.who, refusal(leg, walk.who, to));
+    const leg = this.legThere(walk.who, to, stated.limit);
+    if (leg === null) {
       this.finish(walk);
       return;
     }
+    this.port.notice(startedTo(walk.asked, walk.who, to, leg.steps.length), COMEBACK);
+    this.walkTo(walk, leg, stated.coming);
+  }
+
+  /** The route to a stated room within `limit` steps, or null with why said. */
+  private legThere(who: string, to: RoomId, limit: number | null): Route | null {
+    const leg = planned(this.port.plan(to));
+    if (leg.kind !== 'walk') {
+      this.noWay(who, refusal(leg, who, to));
+      return null;
+    }
     const steps = leg.route.steps.length;
-    this.port.notice(
-      t('session.comeBack.startedTo', { who: walk.who, address: to, stepCount: steps }),
-      COMEBACK
-    );
-    this.walkTo(walk, leg.route, stated.coming);
+    if (limit !== null && steps > limit) {
+      this.port.notice(
+        t('session.comeBack.returnTooFar', { who, address: to, steps, rooms: limit }),
+        COMEBACK
+      );
+      return null;
+    }
+    return leg.route;
   }
 
   /** Starts the one leg to a stated room, and says `coming` once it is on the way. */
@@ -224,7 +254,16 @@ export class ComeBack {
     const stopped = paused || this.port.partyWaiting();
     // Read once the route is stopped, and before the first leg back replaces it.
     this.owed = this.port.unfinished();
-    this.walk = { who, legsLeft: legs, leg: null, walked: 0, due: false, stopped, stated: null };
+    this.walk = {
+      who,
+      legsLeft: legs,
+      leg: null,
+      walked: 0,
+      due: false,
+      stopped,
+      stated: null,
+      asked: true
+    };
   }
 
   /** Every state: the member walking into the room ends it, and the next leg goes. */
@@ -273,12 +312,11 @@ export class ComeBack {
       this.found(walk);
       return;
     }
-    this.port.notice(
-      arrived
-        ? t('session.comeBack.notFound', { who: walk.who })
-        : t('session.comeBack.cutShort', { who: walk.who }),
-      COMEBACK
-    );
+    const { who } = walk;
+    const found = walk.asked
+      ? t('session.comeBack.notFound', { who })
+      : t('session.comeBack.waitingThere', { who });
+    this.port.notice(arrived ? found : t('session.comeBack.cutShort', { who }), COMEBACK);
     this.finish(walk);
   }
 
@@ -385,6 +423,15 @@ export function legsBack(
     }
   }
   return Math.min(trail.length, reach + rooms);
+}
+
+/** The leg to a stated room, said: the room the member asked for, or where they were last seen. */
+function startedTo(asked: boolean, who: string, to: RoomId, steps: number): string {
+  const params = { who, address: to, stepCount: steps };
+  if (asked) return t('session.comeBack.startedTo', params);
+  return steps === 1
+    ? t('session.comeBack.returning.one', params)
+    : t('session.comeBack.returning.many', params);
 }
 
 /** Why a stated room's leg is not walked: the planner's reason, or standing there without the member. */

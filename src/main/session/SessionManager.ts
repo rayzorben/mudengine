@@ -564,8 +564,13 @@ export class SessionManager {
         notice
       }
     );
+    const signs: FightSigns = {
+      monsterSwung: (at) => this.hangUp.monsterSwung(at),
+      quarry: (state) => this.combat.quarry(state)
+    };
     // A room's own spell against this character: a way's stoppers, a rest refused, a room walled.
-    this.roomHazards = new RoomHazards({ world, tracker: this.tracker, errands: this.errands });
+    const hazardParts = { world, tracker: this.tracker, errands: this.errands };
+    this.roomHazards = new RoomHazards({ ...hazardParts, signs });
     this.vocabulary = new Vocabulary(
       { tracker: this.tracker, errands: this.errands, world, words },
       {
@@ -741,13 +746,9 @@ export class SessionManager {
         this.routines.noteSent();
       },
       notice,
-      /*
-       * The emergency exception to the typing hold (see `CommandQueue.drain`):
-       * committing the player's half-typed line goes through `send` — the
-       * path a keystroke takes — so the partial command is observed, reported
-       * and redacted exactly as if the player had pressed Enter themselves,
-       * and the shadow buffer empties the way the server's buffer does.
-       */
+      // The typing hold's emergency exception (`CommandQueue.drain`): the half-typed line goes
+      // through `send`, as a keystroke does, so it is observed, reported and redacted as if the
+      // player pressed Enter, and the shadow buffer empties as the server's does.
       clearTypedLine: () => this.send('\r'),
       unavailable: (command) => this.vocabulary.wordUnavailable(command),
       connected: () => this.client.connected
@@ -759,10 +760,6 @@ export class SessionManager {
     const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
     const moveOnly = (state: CharacterState): boolean => this.passage.over(state) !== null;
-    const signs: FightSigns = {
-      monsterSwung: (at) => this.hangUp.monsterSwung(at),
-      quarry: (state) => this.combat.quarry(state)
-    };
     this.routines = new Routines(automation, this.queue, {
       ...{ notice, onTheGround, portraits, roomLook: sink.roomLook },
       idle: () => !this.travel.goingSomewhere()
@@ -1494,7 +1491,7 @@ export class SessionManager {
         hunt: this.hunt,
         itemErrand: this.itemErrand,
         questRunner: this.questRunner,
-        light
+        ...{ light, signs }
       },
       {
         config: () => this.automationConfig,

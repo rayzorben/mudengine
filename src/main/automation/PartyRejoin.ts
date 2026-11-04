@@ -6,7 +6,8 @@
  * back). Leading, a member lost that way is owed an invite (`AutoInvite` sends it
  * once they are in the room); one who hung up is also `away`, which the lap
  * waits on, until a party list prints them joined, and one who quit is not
- * (the user, 2026-11-02); following, the leader is owed a `join` when
+ * (the user, 2026-11-02). A member left behind is owed as a hangup is
+ * (`behind`); following, the leader is owed a `join` when
  * they invite (`AutoJoin`). Either is owed for `party.reinviteMinutes`. What
  * it keeps rides in the character's record (`CarriedParty`), so this
  * character's own hangup, or a relaunch, owes the whole party.
@@ -115,6 +116,24 @@ export class PartyRejoin implements PartyCarrier {
     return [...this.members.values()]
       .filter((member) => this.owed(member) && !member.quit)
       .map((member) => member.name);
+  }
+
+  /**
+   * Leading, `who` was left behind: the realm dropped them held as this
+   * character stepped off, or they asked to be walked back for. Owed and
+   * waited for as a hangup is, so the lap waits past `waitMinutes` and they
+   * are invited wherever this character meets them (Rayzor, 2026-11-04: the
+   * wait for Brakkle's join gave up after 2 min, and the lap walked through
+   * his room 24 times without inviting him).
+   */
+  behind(who: string): void {
+    const minutes = this.config.party.reinviteMinutes;
+    const known = this.members.get(key(who));
+    if (this.leader !== null || minutes <= 0 || (known !== undefined && this.owed(known))) return;
+    const name = known?.name ?? who;
+    this.members.set(key(who), { name, droppedAt: this.now(), quit: false });
+    this.events.notice?.(t('automation.party.memberBehind', { member: name, minutes }), REJOIN);
+    this.write();
   }
 
   /** Whether `leader` is the leader a hangup or a quit took this character away from. */

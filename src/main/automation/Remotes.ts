@@ -603,6 +603,22 @@ export class Remotes implements SessionModule {
     return this.rejoin.away;
   }
 
+  /**
+   * Leading, `who` was left behind: owed back as a hangup is (`PartyRejoin.behind`).
+   * Only a member the realm dropped, `dropped` where the caller read the drop
+   * and otherwise within `leftPartyMs` of their leave line and no longer
+   * joined: a `@comeback` from anyone else owes nothing. A drop just read is
+   * not asked of the state, which may not have applied the leave line yet.
+   */
+  leftBehind(who: string, state: CharacterState, dropped: boolean): void {
+    const left =
+      dropped ||
+      (joinedMember(state, who) === undefined &&
+        this.leavers.within(who, tuning().remotes.leftPartyMs));
+    if (!left) return;
+    this.rejoin.behind(who);
+  }
+
   /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */
   regrouping(state: CharacterState): boolean {
     return this.regroup.regrouping(state);

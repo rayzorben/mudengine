@@ -5758,13 +5758,14 @@ settings:
     regroupMinutesLabel: Rejoin Wait (minutes)
     comebackRoomsHint:
       When a member says @comeback, walk back the way you came to the room they were last seen in,
-      and up to this many rooms past it, until they are here. Then invite them and go on. 0 never
-      walks back.
+      and up to this many rooms past it, until they are here. Then invite them and go on. When the
+      loop waits for a member who disconnected or was left behind, walk back to the room they were
+      last seen in, when it is no more than this many steps away. 0 never walks back.
     comebackRoomsLabel: Walk Back For a Member (rooms)
     reinviteMinutesHint:
-      After you or a member disconnects, form the party again for this many minutes. Leading, the
-      loop waits for each member, invites them back once they are in the room with you, and goes on
-      when the party list shows them joined. Following, join the leader when they invite you. 0
+      After you or a member disconnects, or a member is left behind, form the party again for this
+      many minutes. Leading, the loop waits for each member, invites them back once they are in the
+      room with you, and goes on when the party list shows them joined. Following, join the leader when they invite you. 0
       never does.
     reinviteMinutesLabel: Re-form the Party After a Disconnect (minutes)
     warning: It is not yet known whether the game limits commands per connection or per computer.
@@ -6353,7 +6354,7 @@ session:
     pausedForHealth: 'Waiting for {who}, under Wait For Party Members'
     pausedForRest: 'Waiting for {who} to rest to your own settings, under Manage Party Health If Leading'
     pausedForJoin: 'Waiting for {who} to join the party'
-    pausedForRejoin: 'Waiting for {who} to rejoin the party after a disconnect'
+    pausedForRejoin: 'Waiting for {who} to rejoin the party'
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.
@@ -6386,6 +6387,13 @@ session:
     notThere: 'this character is standing in {address}, and {who} is not here'
     notFound: Walked to the room {who} asked for and did not find them there; going on.
     stopped: 'Stopped walking back for {who}: {reason}'
+    returning:
+      one: '{who} was last seen in {address}; walking {stepCount} step there to wait for them.'
+      many: '{who} was last seen in {address}; walking {stepCount} steps there to wait for them.'
+    returningOnce: '{who} was last seen in {address}; walking there to wait for them once the last move is answered.'
+    waitingThere: Walked back to the room {who} was last seen in; waiting here for them.
+    returnHurts: 'Not walking back to {address}, where {who} was last seen: the room hurts this character.'
+    returnTooFar: 'Not walking back to {address}, where {who} was last seen: it is {steps} steps away, past Walk Back For a Member ({rooms}).'
   macro:
     dropped:
       one: Dropped the {count} command still waiting from the talk box.
@@ -7864,6 +7872,7 @@ automation:
     reasonRejoin: 'joining {leader} again after the disconnect'
     memberDropped: '{member} disconnected; inviting them back when they are in the room, for {minutes} min.'
     leaderDropped: '{leader} disconnected; joining them again when they invite this character, for {minutes} min.'
+    memberBehind: '{member} was left behind; the lap waits for them, and they are invited back when they are in the room, for {minutes} min.'
     memberQuit: '{member} left the Realm; inviting them back when they are in the room, for {minutes} min. The lap does not wait for them.'
     leaderQuit: '{leader} left the Realm; joining them again when they invite this character, for {minutes} min.'
     reformLeading: 'Reconnected; inviting {members} back when each is in the room, for {minutes} min.'

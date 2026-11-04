@@ -7,7 +7,12 @@ import { runStarted } from '../../automation/walk/startWords';
 import { Travel, type TravelParts, type TravelSession } from '../Travel';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { DecisionKind } from '../../../shared/decisionSettings';
-import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  NO_FIGHT_SIGNS,
+  type CharacterState,
+  type RoomOccupant
+} from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { NO_LOOP } from '../../../shared/loops';
 import { NOT_MOVING } from '../../../shared/movement';
@@ -162,6 +167,7 @@ function travel(
       fetch: vi.fn<TravelParts['supplies']['fetch']>(() => null)
     },
     remotes: {
+      leftBehind: vi.fn(),
       stoppers: {
         settle: vi.fn<TravelParts['remotes']['stoppers']['settle']>(() => ({
           asking: [],
@@ -186,7 +192,8 @@ function travel(
       abandon: vi.fn()
     },
     questRunner: { running: false, abandon: vi.fn() },
-    light: { beforeRoute: () => false, beforeLap: vi.fn() }
+    light: { beforeRoute: () => false, beforeLap: vi.fn() },
+    signs: NO_FIGHT_SIGNS
   };
   const settings = overrides.settings ?? config;
   // The session's auto-combat switch, on unless said, and every flip of it.

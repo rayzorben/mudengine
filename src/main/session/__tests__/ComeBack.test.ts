@@ -276,6 +276,30 @@ describe('a leader walking to the room a member stated (@comeback-room)', () => 
     expect(back.active).toBe(false);
   });
 
+  /* Rayzor, 2026-11-04: the room a member was last seen in, which they did not ask for (`ReturnToMember`). */
+  it('says a walk to where the member was last seen as that, and that it waits there', () => {
+    const { fake, log } = port(3);
+    const back = new ComeBack(fake);
+    back.askedTo('Brakkle', '7/732' as RoomId, standing('1/3'), () => {}, { limit: 15 });
+    expect(log[0]).toBe(
+      `pause:${t('session.comeBack.returning.one', { who: 'Brakkle', address: '7/732', stepCount: 1 })}`
+    );
+    back.walkEnded(true, standing('7/732'));
+    expect(log).toContain(t('session.comeBack.waitingThere', { who: 'Brakkle' }));
+    expect(log).not.toContain(t('session.comeBack.notFound', { who: 'Brakkle' }));
+  });
+
+  it('does not walk to where the member was last seen past its limit, and stops nothing', () => {
+    const { fake, log, walks } = port(3);
+    const back = new ComeBack(fake);
+    back.askedTo('Brakkle', '7/732' as RoomId, standing('1/3'), () => {}, { limit: 0 });
+    expect(log).toEqual([
+      t('session.comeBack.returnTooFar', { who: 'Brakkle', address: '7/732', steps: 1, rooms: 0 })
+    ]);
+    expect(walks).toEqual([]);
+    expect(back.active).toBe(false);
+  });
+
   it('answers a member already here with an invite, and refuses a room it cannot walk to', () => {
     const here = port(3);
     expect(askTo(new ComeBack(here.fake), 'Brakkle', '1/3', standing('1/3', 'Brakkle')).ok).toBe(
@@ -288,6 +312,24 @@ describe('a leader walking to the room a member stated (@comeback-room)', () => 
     expect(nowhere.log).toEqual([
       t('session.comeBack.noWay', { who: 'Brakkle', reason: 'no route to 7/732' })
     ]);
+  });
+
+  it('walks to where the member was last seen once the move still out lands, within its limit', () => {
+    const { fake, log, walks, flight } = port(3);
+    flight.out = true;
+    const back = new ComeBack(fake);
+    back.askedTo('Brakkle', '7/733' as RoomId, standing('1/3'), () => {}, { limit: 0 });
+    expect(log[0]).toBe(
+      `pause:${t('session.comeBack.returningOnce', { who: 'Brakkle', address: '7/733' })}`
+    );
+    flight.out = false;
+    back.onCharacter(standing('1/3'));
+    // Planned from where the move landed, and refused there for its limit.
+    expect(walks).toEqual([]);
+    expect(log).toContain(
+      t('session.comeBack.returnTooFar', { who: 'Brakkle', address: '7/733', steps: 1, rooms: 0 })
+    );
+    expect(back.active).toBe(false);
   });
 
   it('answers that it is coming while a move is out, and walks there once it lands', () => {

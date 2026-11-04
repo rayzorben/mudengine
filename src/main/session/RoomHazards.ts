@@ -19,7 +19,7 @@ import {
   type WayStopper
 } from '../world/navigation/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
-import { packRows, type CharacterState } from '../../shared/character';
+import { packRows, type CharacterState, type FightSigns } from '../../shared/character';
 import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { SessionModule } from '../automation/Module';
@@ -39,6 +39,8 @@ export interface RoomHazardsParts {
     Pick<WorldGraph, 'byId' | 'hazardOf' | 'spellById' | 'item' | 'stockingPlaces'> | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard'>;
+  /** A monster's blow the state does not show as a fight yet, for `RoomDamageSeen`. */
+  signs: FightSigns;
 }
 
 export class RoomHazards implements SessionModule {
@@ -48,7 +50,7 @@ export class RoomHazards implements SessionModule {
     private readonly parts: RoomHazardsParts,
     now: () => number = () => Date.now()
   ) {
-    this.seen = new RoomDamageSeen(now);
+    this.seen = new RoomDamageSeen(parts.signs, now);
   }
 
   /** Every status line, for the damage the world database does not list. */

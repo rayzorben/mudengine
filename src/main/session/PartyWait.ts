@@ -74,6 +74,14 @@ export class PartyWait {
   }
 
   /**
+   * Whether the stop holds for members away alone (`away`): nobody here
+   * asked to wait, is hurt, resting or invited, so stepping off drops nobody.
+   */
+  get holdingOnlyForAway(): boolean {
+    return this.paused && this.waiting.size > 0 && [...this.waiting.keys()].every(isAway);
+  }
+
+  /**
    * Leading, the members here under `waitBelow`, and under `managed` the ones
    * this character's own floors hold for, re-read from every state (MegaMUD's
    * *Wait For Party Members*): a member under the line is a reason to wait, as

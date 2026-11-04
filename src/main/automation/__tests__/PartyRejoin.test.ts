@@ -306,6 +306,71 @@ describe('leading, when a member hangs up or quits', () => {
   });
 });
 
+/*
+ * Rayzor on OCI, 2026-11-04 07:47: Brakkle was webbed, dropped from the party
+ * as Rayzor stepped off, and asked `@comeback`. The wait for his join gave up
+ * after 2 min, and the lap walked through his room 24 times without an invite.
+ */
+describe('leading, when a member is left behind', () => {
+  // Leave lines are read under the remotes switch, as `@comeback` is.
+  beforeEach(() => {
+    remotes = new Remotes({ ...config, remotes: { ...config.remotes, enabled: true } }, queue, {
+      notice: (m) => notices.push(m)
+    });
+  });
+
+  it('owes them as a hangup is: waited for, invited on meeting, until a party list prints them', () => {
+    remotes.onCharacter(state(733, ['Brakkle'], { members: ['Brakkle'] }));
+    remotes.onBlock(block('party-left', { player: 'Brakkle' }), state(734, []));
+    remotes.onCharacter(state(734, []));
+    expect(remotes.away).toEqual([]);
+    remotes.leftBehind('Brakkle', state(734, []), false);
+    expect(remotes.away).toEqual(['Brakkle']);
+    expect(notices).toEqual([
+      t('automation.party.memberBehind', { member: 'Brakkle', minutes: MINUTES })
+    ]);
+    // Said once: a second ask for the same member owes nothing new.
+    remotes.leftBehind('Brakkle', state(734, []), true);
+    expect(notices).toHaveLength(1);
+    remotes.onCharacter(state(733, ['Brakkle']));
+    drain();
+    expect(sent).toEqual(['invite Brakkle']);
+    remotes.onBlock(block('party-roster', {}), state(733, ['Brakkle']));
+    remotes.onCharacter(state(733, ['Brakkle'], { members: ['Brakkle'] }));
+    expect(remotes.away).toEqual([]);
+  });
+
+  it('owes nobody while following, or with the window at 0', () => {
+    remotes.onCharacter(state(733, ['Soul'], { following: 'Soul' }));
+    remotes.leftBehind('Brakkle', state(733, ['Soul'], { following: 'Soul' }), true);
+    expect(remotes.away).toEqual([]);
+    const off = make({ reinviteMinutes: 0 });
+    off.leftBehind('Brakkle', state(733, []), true);
+    expect(off.away).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('owes nobody the realm did not drop: a stranger, or a member still joined', () => {
+    // A player granted @comeback who was never in the party.
+    remotes.leftBehind('Soul', state(733, []), false);
+    // A member still in the party asking to be walked to.
+    remotes.onCharacter(state(733, [], { members: ['Brakkle'] }));
+    remotes.leftBehind('Brakkle', state(733, [], { members: ['Brakkle'] }), false);
+    expect(remotes.away).toEqual([]);
+    expect(notices).toEqual([]);
+    // A drop just read owes them though the state still lists them joined.
+    remotes.leftBehind('Brakkle', state(733, [], { members: ['Brakkle'] }), true);
+    expect(remotes.away).toEqual(['Brakkle']);
+    remotes.onBlock(block('party-roster', {}), state(733, ['Brakkle']));
+    remotes.onCharacter(state(733, ['Brakkle'], { members: ['Brakkle'] }));
+    expect(remotes.away).toEqual([]);
+    // The positive control: the same member once the realm has dropped them.
+    remotes.onBlock(block('party-left', { player: 'Brakkle' }), state(734, []));
+    remotes.leftBehind('Brakkle', state(734, []), false);
+    expect(remotes.away).toEqual(['Brakkle']);
+  });
+});
+
 describe('following, when the leader hangs up or quits', () => {
   const leaderHangsUp = (): void => {
     remotes.onCharacter(state(754, ['Rand'], { following: 'Rand' }));

@@ -6,7 +6,13 @@ import type { Intent } from '../../automation/CommandQueue';
 import { LeaveHarm, type LeaveHarmParts } from '../LeaveHarm';
 import { RoomHazards, type RoomHazardsParts } from '../RoomHazards';
 import type { SafetyDecision } from '../../../shared/automation';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  NO_FIGHT_SIGNS,
+  type CharacterState,
+  type FightSigns,
+  type RoomOccupant
+} from '../../../shared/character';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
@@ -240,7 +246,7 @@ describe('leaving a room that hurts every tick', () => {
  * once the server has taken health there twice out of a fight.
  */
 describe('a room whose damage the world database does not list', () => {
-  const hazards = (current: { state: CharacterState }) =>
+  const hazards = (current: { state: CharacterState }, signs: FightSigns = NO_FIGHT_SIGNS) =>
     new RoomHazards({
       world: undefined,
       tracker: {
@@ -248,7 +254,8 @@ describe('a room whose damage the world database does not list', () => {
           return current.state;
         }
       },
-      errands: {} as RoomHazardsParts['errands']
+      errands: {} as RoomHazardsParts['errands'],
+      signs
     });
 
   it('counts once health falls twice out of a fight, and is left', () => {
@@ -262,6 +269,44 @@ describe('a room whose damage the world database does not list', () => {
     }
     expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
     expect(sent.map((intent) => intent.command)).toEqual(['n']);
+  });
+
+  /*
+   * Rayzor, 2026-11-04 05:02:48 on OCI: walking into Cracked Plain, `The thin
+   * winged horror swoops down and bites you for 7 damage!` and `Acid sears you
+   * for 1 damage!` landed before `*Combat Engaged*`. Counted as the room's,
+   * they sent Rayzor out of the room where he had just invited Brakkle back.
+   */
+  it('does not count a blow from a monster here that the state does not show as a fight yet', () => {
+    const current = { state: at(RIVER, 115) };
+    const monster: RoomOccupant = {
+      name: 'thin winged horror',
+      kind: 'mob',
+      disposition: null,
+      uncertain: false,
+      costly: 'never',
+      charmed: false,
+      hidden: false,
+      free: false
+    };
+    const feed = (room: RoomHazards): void => {
+      for (const hp of [115, 108, 107]) {
+        current.state = at(RIVER, hp);
+        current.state = {
+          ...current.state,
+          room: { ...current.state.room, occupants: [monster] }
+        };
+        room.note(current.state);
+      }
+    };
+    // The positive control: without the monster's blow, the same falls are the room's.
+    const blind = hazards(current);
+    feed(blind);
+    expect(blind.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
+    const signs: FightSigns = { monsterSwung: () => true, quarry: () => false };
+    const room = hazards(current, signs);
+    feed(room);
+    expect(room.hurtsHere(current.state)).toBeNull();
   });
 
   it('does not count health a fight or a poison took, or a single fall', () => {
