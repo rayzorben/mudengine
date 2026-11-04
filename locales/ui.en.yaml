@@ -793,12 +793,11 @@ notices:
       that long before asking for a prompt, instead of assuming one second. Paradigm takes 1.24
       seconds, so the old setting made every normal step look late and showed every room twice.
       "tuning.walk.nudgeSamples" was added to your tuning file next to it.
+    attackParagraph: 'A typed "a" now stays as the plain attack. The comment above "attack:" in
+      {file} said to type "attack" instead, so it was replaced with the current one.'
     actionsFamilied: Actions on a carried item are now a set of separate controls. {file} had a
       rewrite using "{old}", which no longer draws anything, so it now uses
       "{new}". "{action.drop}" adds a drop control next to it.
-    attackChosen:
-      'The attack command was the old default "a", so it is now blank and the client uses
-      the attack that hits hardest for this class. Type "attack" to keep the plain one. {file}'
     sightingNamesItsMap: '{count} last rooms of other players in {file} named no map, so each was
       cleared; the room name and the time stay. The game view places a player from the next sighting.'
     foundPlayerNoEffect:
@@ -4874,7 +4873,7 @@ settings:
   combat:
     attackLegend: Attack
     attacksLegend: Attacks
-    attackVerbHint: Blank uses the attack that hits hardest for this class and race. Type attack to
+    attackVerbHint: Blank uses the attack that hits hardest for this class and race. Type "a" to
       always use the plain one. A command this class cannot use is dropped the first time the game
       says so.
     attackVerbLabel: Attack Command

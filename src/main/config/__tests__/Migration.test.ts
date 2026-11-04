@@ -8591,46 +8591,47 @@ describe('the themes that were cut', () => {
 });
 
 /*
- * Todo 47: a blank `combat.attack` chooses the attack, so a file still stating
- * the old default `a` is set blank, with the template's paragraphs, and says
- * so; a verb the player typed stays.
+ * Todo 20261103-1930-01: a typed `a` is the plain attack, so the old paragraph
+ * telling the player to type `attack` becomes the template's; a comment the
+ * player wrote stays.
  */
-describe('the attack is chosen', () => {
+describe('the attack paragraph says a', () => {
+  const OLD = [
+    '    # Blank picks the attack that does the most damage a round against the',
+    '    # monster, out of the ones this class and race can use: `pu` or `ju` for a',
+    '    # mystic, `aa` where bashing out-hits a plain `a`. A verb typed here is',
+    '    # always used instead; type `attack` for the plain attack, since an `a` is',
+    '    # read as the old default and set blank again.'
+  ].join('\n');
+  const combat = (comment: string): string =>
+    `automation:\n  combat:\n    enabled: false\n${comment}\n    attack: a\n`;
+  const attackOf = (file: string): string =>
+    (parse(fs.readFileSync(file, 'utf8')) as { automation: { combat: { attack: string } } })
+      .automation.combat.attack;
+
   beforeEach(() => {
     fs.mkdirSync(home.globalDir, { recursive: true });
   });
 
-  it('blanks the old default and keeps a typed verb, safe to run again', () => {
-    fs.writeFileSync(
-      home.options,
-      'automation:\n  combat:\n    enabled: false\n    attack: a\n    opener: ""\n',
-      'utf8'
-    );
-    const festus = profile('festus', 'automation:\n  combat:\n    attack: aa\n    opener: ""\n');
-    // The plain attack kept on purpose is spelled out, which the template asks for.
-    const yang = profile('yang', 'automation:\n  combat:\n    attack: attack\n');
+  it('replaces the old paragraph, leaves a custom one, and is safe to run again', () => {
+    fs.writeFileSync(home.options, combat(OLD), 'utf8');
+    const festus = profile('festus', combat(OLD));
+    const yang = profile('yang', combat('    # My own: type `attack` for the plain one.'));
     migrate(true);
     const text = fs.readFileSync(home.options, 'utf8');
-    const combat = (parse(text) as { automation: { combat: { attack: string } } }).automation
-      .combat;
-    expect(combat.attack).toBe('');
-    // The template's paragraph is above the key now.
-    const lines = text.split('\n');
-    expect(lines[lines.findIndex((line) => line.trim().startsWith('attack:')) - 1]).toMatch(
-      /^\s*#/
-    );
-    expect(
-      (parse(fs.readFileSync(festus, 'utf8')) as { automation: { combat: { attack: string } } })
-        .automation.combat.attack
-    ).toBe('aa');
-    expect(
-      (parse(fs.readFileSync(yang, 'utf8')) as { automation: { combat: { attack: string } } })
-        .automation.combat.attack
-    ).toBe('attack');
-    expect(notesOf(said, 'notices.migration.attackChosen')).toHaveLength(1);
+    expect(text).toContain('always used instead, and `a` is the plain attack.');
+    expect(text).not.toContain('set blank again');
+    expect(attackOf(home.options)).toBe('a');
+    expect(fs.readFileSync(festus, 'utf8')).toContain('`a` is the plain attack.');
+    expect(attackOf(festus)).toBe('a');
+    const custom = fs.readFileSync(yang, 'utf8');
+    expect(custom).toContain('# My own: type `attack` for the plain one.');
+    expect(custom).not.toContain('`a` is the plain attack.');
+    expect(notesOf(said, 'notices.migration.attackParagraph')).toHaveLength(2);
     migrate(true);
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
-    expect(notesOf(said, 'notices.migration.attackChosen')).toEqual([]);
+    expect(fs.readFileSync(yang, 'utf8')).toBe(custom);
+    expect(notesOf(said, 'notices.migration.attackParagraph')).toEqual([]);
   });
 });
 

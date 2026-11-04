@@ -319,8 +319,8 @@ function migrateAll(options: MigrationOptions): void {
   statedLowLives(home, note, options.profileTemplate);
   theThemesWereCut(home, note);
   pathFollowsStatus(home, note);
-  theAttackIsChosen(home, note, options.template);
   theSheetAnswersPickAndMeditate(home, note, options.template);
+  theAttackParagraphSaysA(home, note, options.template);
   aFoundPlayerIsNoEffect(home, note);
   theRealmIsTheMenusChoice(home, note, options.worlds);
   theSightingNamesItsMap(home, note);
@@ -682,43 +682,6 @@ function aFoundPlayerIsNoEffect(home: Home, note: (message: string) => void): vo
   fs.copyFileSync(file, `${file}.bak`);
   writeJsonAtomically(file, parsed);
   note(t('notices.migration.foundPlayerNoEffect', { count: dropped, file }));
-}
-
-/**
- * `automation.combat.attack` blank chooses the attack (todo 47, 2026-10-10),
- * so a file stating the old default `a` is set blank, and its paragraph and
- * the opener's are the template's again: the old ones said blank opener is
- * none. A file that typed any other verb keeps it. The limit is
- * `stoppedAnnouncingTheLook`'s: nothing records which migrations ran, so a
- * player who wants the plain attack types it `attack`, which the template and
- * the hint say; an `a` typed later is blanked again, and said again.
- */
-function theAttackIsChosen(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const comments = templateComments(template, 'automation');
-  for (const file of everySettingsFile(home)) {
-    let chosen = false;
-    edit(file, (document) => {
-      const combat = document.getIn(['automation', 'combat'], true);
-      if (!isMap(combat)) return false;
-      const attack = combat.get('attack', true);
-      if (!isScalar(attack) || attack.value !== 'a') return false;
-      attack.value = '';
-      for (const item of combat.items) {
-        const key = keyText(item);
-        const comment = comments.get(`automation.combat.${key}`);
-        if ((key === 'attack' || key === 'opener') && comment !== undefined && isScalar(item.key)) {
-          item.key.commentBefore = comment;
-        }
-      }
-      chosen = true;
-      return true;
-    });
-    if (chosen) note(t('notices.migration.attackChosen', { file }));
-  }
 }
 
 /**
@@ -3663,11 +3626,7 @@ const HEALTH_BLOCK = ['automation', 'health'] as const;
  * under it and is never moved again. A `false` with no paragraph above it is
  * left alone, and the step says which files it moved.
  */
-const STALE_SKILL_WORDS: ReadonlyArray<{
-  block: readonly string[];
-  key: string;
-  words: readonly string[];
-}> = [
+const STALE_SKILL_WORDS: readonly StaleParagraph[] = [
   {
     block: ['automation', 'movement'],
     key: 'pickLocks',
@@ -3687,22 +3646,11 @@ function theSheetAnswersPickAndMeditate(
     let flipped = false;
     edit(file, (document) => {
       let changed = false;
-      for (const { block, key, words } of STALE_SKILL_WORDS) {
-        const map = document.getIn(block, true);
-        if (!isMap(map)) continue;
-        const pair = map.items.find((item) => keyText(item) === key);
-        if (pair === undefined || !isScalar(pair.key)) continue;
-        // A map's first key does not own the comment above it (`templateComments`).
-        const onMap = pair.key.commentBefore === undefined && map.items[0] === pair;
-        const said = (onMap ? map.commentBefore : pair.key.commentBefore) ?? '';
-        if (!words.some((stale) => said.includes(stale))) continue;
-        const fresh = comments.get(`${block.join('.')}.${key}`);
-        // No template paragraph to put in its place: leave it, or the marker is lost.
-        if (fresh === undefined) continue;
-        if (onMap) map.commentBefore = fresh;
-        else pair.key.commentBefore = fresh;
-        if (map.get(key) === false) {
-          map.set(key, true);
+      for (const stale of STALE_SKILL_WORDS) {
+        const map = freshenedParagraph(document, comments, stale);
+        if (map === null) continue;
+        if (map.get(stale.key) === false) {
+          map.set(stale.key, true);
           flipped = true;
         }
         changed = true;
@@ -3719,6 +3667,58 @@ function theSheetAnswersPickAndMeditate(
       : t('notices.migration.sheetAnswersSkills.many', params)
   );
 }
+
+type StaleParagraph = { block: readonly string[]; key: string; words: readonly string[] };
+
+/**
+ * The template's comment above `key` in `block` replaces one carrying any of
+ * the stale shipped `words`; any other comment is left alone, and so is one with
+ * no template text to take its place, since the words are a step's marker.
+ */
+function freshenedParagraph(
+  document: Document,
+  comments: ReadonlyMap<string, string>,
+  { block, key, words }: StaleParagraph
+): YAMLMap | null {
+  const map = document.getIn(block, true);
+  if (!isMap(map)) return null;
+  const pair = map.items.find((item) => keyText(item) === key);
+  if (pair === undefined || !isScalar(pair.key)) return null;
+  // A map's first key does not own the comment above it (`templateComments`).
+  const onMap = pair.key.commentBefore === undefined && map.items[0] === pair;
+  const said = (onMap ? map.commentBefore : pair.key.commentBefore) ?? '';
+  if (!words.some((stale) => said.includes(stale))) return null;
+  const fresh = comments.get(`${block.join('.')}.${key}`);
+  if (fresh === undefined) return null;
+  if (onMap) map.commentBefore = fresh;
+  else pair.key.commentBefore = fresh;
+  return map;
+}
+
+/** A typed `a` is no longer set blank (2026-11-03): the advice to type `attack` goes. */
+function theAttackParagraphSaysA(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'automation');
+  for (const file of everySettingsFile(home)) {
+    let moved = false;
+    edit(file, (document) => (moved = freshenedParagraph(document, comments, OLD_ATTACK) !== null));
+    if (moved) note(t('notices.migration.attackParagraph', { file }));
+  }
+}
+
+/** The template's paragraph above `combat.attack` from todo 47 to 2026-11-03. */
+const OLD_ATTACK: StaleParagraph = {
+  block: ['automation', 'combat'],
+  key: 'attack',
+  words: [
+    ' always used instead; type `attack` for the plain attack, since an `a` is\n' +
+      ' read as the old default and set blank again.'
+  ]
+};
+
 const PARTY_BLOCK = ['automation', 'party'] as const;
 const SPELLS_BLOCK = ['automation', 'spells'] as const;
 const REMOTES_BLOCK = ['automation', 'remotes'] as const;

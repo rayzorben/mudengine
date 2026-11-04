@@ -2286,8 +2286,7 @@ automation:
     # Blank picks the attack that does the most damage a round against the
     # monster, out of the ones this class and race can use: `pu` or `ju` for a
     # mystic, `aa` where bashing out-hits a plain `a`. A verb typed here is
-    # always used instead; type `attack` for the plain attack, since an `a` is
-    # read as the old default and set blank again.
+    # always used instead, and `a` is the plain attack.
     #
     # A verb this character cannot use is dropped the first time the realm says
     # so -- `You don't know the first thing about bashing!` -- and said once in
