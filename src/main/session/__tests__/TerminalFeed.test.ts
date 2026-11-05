@@ -102,6 +102,7 @@ function harness(
     feed,
     tokenizer,
     facts,
+    read,
     chunk,
     flush,
     timed,
@@ -861,5 +862,18 @@ describe("an automated command's echo names the decision it carried out (todo 11
     const h = harness(['rm']);
     h.feed.sent('dance', 'automation');
     expect(h.timed.chunk(`${STATUS}dance\r\n`)).toBe(`${TIME}${STATUS}dance\r\n`);
+  });
+});
+
+describe('whether a chunk leaves the cursor at the prompt (todo 20261104-1915-01)', () => {
+  it('says so for a chunk ending on a status line, and not once anything follows it', () => {
+    const h = harness();
+    // Positive control: the same feed reports the prompt it was given.
+    expect(h.read(`You are standing in a hall.\r\n${PROMPT}`).prompt).toBe(true);
+    // The echo of a typed key lands after the prompt: the cursor has moved on.
+    expect(h.read('l').prompt).toBe(false);
+    expect(h.read(`ook\r\nA hall.\r\n${PROMPT_REPAINT}${PROMPT}`).prompt).toBe(true);
+    // Glued to the prompt, as the harness frames it: still not the input point.
+    expect(h.read('A giant rat bites you for 3 damage!\r\n').prompt).toBe(false);
   });
 });

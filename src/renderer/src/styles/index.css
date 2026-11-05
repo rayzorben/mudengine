@@ -16160,6 +16160,85 @@ tr:hover .row-action.worn,
   }
 }
 
+/*
+ * On a wide card each member is one line (the user, 2026-11-04): the rank is a
+ * column on the left, then name, class, health, mana, the fight pills and
+ * Follow. The bars stop at 240px and 120px, 2:1 as below, and the rest of the
+ * width goes to the fight pills, so a player who keeps the card wide can give
+ * it fewer rows. 640px: TODO measure in the smoke (todo 20261104-2009-01).
+ * Every cell names its column and row 1, because auto-placement would start a
+ * new row when the meters come after the fight pills in the markup.
+ */
+@container party (width >= 640px) {
+  .party-roster {
+    grid-template-columns:
+      [rank] max-content [name] fit-content(28%) [class] max-content
+      [hp] minmax(150px, 240px) [mana] minmax(80px, 120px) [fight] minmax(0, 1fr);
+    row-gap: 0;
+  }
+
+  .party-rank-group + .party-rank-group {
+    border-top: var(--rule) solid var(--ink-line);
+  }
+
+  .party-rank-head {
+    align-self: start;
+    grid-column: rank;
+    grid-row: 1;
+    margin: 0;
+    padding-top: 5px;
+  }
+
+  .party-rank-head::after {
+    display: none;
+  }
+
+  .party-list {
+    grid-column: name / -1;
+    grid-row: 1;
+  }
+
+  .party-name {
+    grid-column: name;
+    grid-row: 1;
+  }
+
+  .party-class {
+    grid-column: class;
+    grid-row: 1;
+  }
+
+  .party-meters {
+    display: contents;
+  }
+
+  .party-meter.hp {
+    grid-column: hp;
+    grid-row: 1;
+  }
+
+  .party-meter.mana {
+    grid-column: mana;
+    grid-row: 1;
+  }
+
+  .party-unlisted {
+    grid-column: hp / fight;
+    grid-row: 1;
+  }
+
+  .party-fight {
+    grid-column: fight;
+    grid-row: 1;
+    justify-content: flex-start;
+  }
+
+  /* Follow keeps the card's right edge, in one column down the card. */
+  .party-follow {
+    margin-left: auto;
+  }
+}
+
 /* The footer sits at the scroller's foot while there is room. */
 .party-card .scroller {
   container: party / inline-size;

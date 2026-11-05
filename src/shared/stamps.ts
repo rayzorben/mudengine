@@ -108,6 +108,18 @@ export function afterStamp(text: string): number {
   return end === -1 ? 0 : end + 1;
 }
 
+/** Where a stamp or line id that starts at `i` ends, else `i`: for a reader that walks painted text and passes them by. */
+export function stampEndAt(text: string, i: number): number {
+  const open = text.startsWith(STAMP_OPEN, i)
+    ? STAMP_OPEN
+    : text.startsWith(LINE_OPEN, i)
+      ? LINE_OPEN
+      : null;
+  if (open === null) return i;
+  const end = text.indexOf('\x07', i + open.length);
+  return end === -1 ? i : end + 1;
+}
+
 /** Painted text with every stamp and line id taken out, for a reader that measures or matches it. */
 export function unstamped(text: string): string {
   const untimed = text.includes(STAMP_OPEN) ? text.replace(STAMP, '') : text;

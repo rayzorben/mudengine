@@ -2375,6 +2375,10 @@ tuning:
     # input before the console says it did not, and where the caret was.
     enterTakenMs: 250
 
+    # How long a key drawn before the realm echoed it waits for the echo
+    # before the console takes it back off the screen.
+    localEchoGiveUpMs: 1500
+
     # How long a room search waits after the last keystroke, and the shortest
     # query worth running.
     #

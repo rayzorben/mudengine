@@ -354,6 +354,12 @@ export interface StreamChunk {
    * is nearly all of them.
    */
   marks?: MarkChange[];
+  /**
+   * The chunk ends on a status line with nothing after it, so the cursor sits
+   * where the realm's echo of the next key will land. Absent otherwise. Read
+   * by the console's local echo (`lib/localEcho.ts`, todo 20261104-1915-01).
+   */
+  prompt?: true;
 }
 
 /**

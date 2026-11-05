@@ -50,6 +50,7 @@ import { PROMPT_REPAINT } from '../net/stream-quirks';
 import { tuning } from '../app/tuning';
 import type { Block, BlockType } from '../../shared/blocks';
 import { tailAfterPrompt, type BatchBlock } from '../parse/Classifier';
+import { isWholePrompt } from '../parse/patterns';
 import type { LineId, LineTerminator, TerminalMark } from '../../shared/types';
 import { SGR_RESET } from '../../shared/template';
 import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
@@ -343,10 +344,12 @@ export interface Painted {
   text: string;
   lines: Array<NonNullable<TimedChunk['lines']>[number]>;
   times: Array<NonNullable<TimedChunk['times']>[number]>;
+  /** The text ends on a status line with nothing visible after it: `StreamChunk.prompt`. */
+  prompt: boolean;
 }
 
 function blank(): Painted {
-  return { text: '', lines: [], times: [] };
+  return { text: '', lines: [], times: [], prompt: false };
 }
 
 export class TerminalFeed {
@@ -596,6 +599,8 @@ export class TerminalFeed {
       if (rest.length === 0) this.time(kind, decision);
       this.emit(rest, terminator, id, kind, decision);
       if (drawn !== null) this.owesReset = true;
+      // The design ends where the player's template does; only its terminator says the row went on.
+      if (drawn !== null) this.out.prompt = terminator !== 'newline';
       if (end !== null) this.swallowed = true;
       return;
     }
@@ -825,6 +830,7 @@ export class TerminalFeed {
     if (drawn === null) return false;
     this.settle();
     this.append(drawn, 'status');
+    this.out.prompt = true;
     this.forwarded = pending.length;
     this.atLineStart = false;
     this.owesReset = true;
@@ -997,6 +1003,13 @@ export class TerminalFeed {
    */
   private append(text: string, kind: RowText, decision?: DecisionKind): void {
     const put = this.rows.before(text, kind, decision !== undefined);
+    // A finished status line leaves the cursor at the input point; anything visible after moves it on.
+    if (kind === 'status') {
+      const repaint = text.lastIndexOf(PROMPT_REPAINT);
+      this.out.prompt = isWholePrompt(
+        stripAnsi(repaint === -1 ? text : text.slice(repaint + PROMPT_REPAINT.length))
+      );
+    } else if (stripAnsi(text).length > 0) this.out.prompt = false;
     if (put !== null) {
       this.out.times.push({
         offset: this.out.text.length,

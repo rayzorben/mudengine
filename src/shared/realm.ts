@@ -195,6 +195,8 @@ export function familyOfBuild(build: RealmBuild | null): RealmFamily | null {
  * an answer with no provenance is indistinguishable from a guess.
  */
 export type FamilyTell =
+  /** The realm's menu prompt read `[MAJORMUD]:`. */
+  | 'menu-prompt'
   /** `exp` printed a table of level costs. GreaterMUD's prints none. */
   | 'experience-table'
   /** `rm` answered with coordinates, so this server has the word. */
@@ -218,13 +220,23 @@ export interface FamilyReading {
 /**
  * The server's family, from a block the client was already going to read.
  *
- * **Three positive tells and no negative ones.** Each says *this family*, and
+ * **Four positive tells and no negative ones.** Each says *this family*, and
  * absence says nothing — which is why it is written this way rather than as a
  * count of tables seen. An `exp` summary arriving with no table yet is not
  * evidence of GreaterMUD, it is evidence of nothing having arrived; a fold
  * that treated it as a tell would answer confidently on the first prompt of
  * every session.
  *
+ * - **The `[MAJORMUD]:` menu prompt ⇒ MajorMUD.** Every host that printed it
+ *   is a Worldgroup module (bearfather, themajorbbs, omniversebbs, all
+ *   majorMUD v1.11p-WG3NT on the wire). GreaterMUD prints `Welcome to the
+ *   official Paradigm server!` and `[PARADIGM]:` (paramud.mudinfo.net, and
+ *   orohost in all 259 sessions `worldOfRealm` counts), so `[PARADIGM]:` says
+ *   nothing about the server. It comes first because the
+ *   `rm` tell below is not GreaterMUD's alone: omniversebbs.com runs the
+ *   MajorMUD Plus extensions, whose `rm` prints `Location:      1,297` too,
+ *   and the session was priced as GreaterMUD from its first command
+ *   (session log 2026-11-05_04-12-45_yang, 2026-11-04 server time).
  * - **`user-experience-table` answering `exp` ⇒ MajorMUD.** `exp` on
  *   GreaterMUD answers with the summary line alone: zero tables across every
  *   recorded `orohost` session against three in one Paradigm session
@@ -275,6 +287,12 @@ export interface FamilyReading {
  * None costs a command the client does not already send for its own sake.
  */
 export function familyToldBy(block: Block, answering: string | null = null): FamilyReading | null {
+  // Printed at the menu, so it lands before the entry batch's `rm` and the first tell wins.
+  if (block.type === 'prompt-menu') {
+    return block.groups['realm']?.toUpperCase() === 'MAJORMUD'
+      ? { family: 'majormud', tell: 'menu-prompt' }
+      : null;
+  }
   // `? exp` prints the table on orohost too (2026-10-04): only a plain `exp` answered with one tells.
   if (block.type === 'user-experience-table') {
     return commandOf(answering ?? '') === 'Experience'

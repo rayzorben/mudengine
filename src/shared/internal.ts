@@ -3061,6 +3061,14 @@ const TUNING_DEFAULTS = {
      */
     enterTakenMs: 250,
     /**
+     * How long a key drawn ahead of the realm's echo may wait for it before
+     * the console takes it back (todo 20261104-1915-01). The echo comes in
+     * under 30ms from the realm (p90, Paradigm from OCI) plus the browser's
+     * round trip; a key still unechoed after this was lost on the way, as a
+     * web tab drops a key it held past `webLostCoverMs` rather than resend it.
+     */
+    localEchoGiveUpMs: 1500,
+    /**
      * How long a room search waits after the last keystroke, and the shortest
      * query worth running.
      *

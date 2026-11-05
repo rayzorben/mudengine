@@ -47,6 +47,8 @@ export type MarkedText = Pick<BackscrollPage, 'text' | 'marks'>;
 /** The handle the parent uses to drive the terminal once it has mounted. */
 export interface TerminalHandle {
   write(chunk: StreamChunk): void;
+  /** Draws what the console guessed the realm will echo, in order with its output (`lib/localEcho.ts`). */
+  echo(text: string): void;
   /** Lines already written, marked anew (`Push.marks`): drawn once what came before is parsed. */
   marks(changes: readonly MarkChange[]): void;
   /**
@@ -1044,6 +1046,7 @@ export default function TerminalView({
        * previous character's last chunk painted onto it.
        */
       marks: (changes) => writer.settled(() => marks.push(changes)),
+      echo: (text) => writer.write(text),
       restore: (page, done) => {
         for (const piece of sliceLines(page.text, tuning().restoreSliceChars)) writer.write(piece);
         writer.settled(() => {

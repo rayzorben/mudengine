@@ -12,6 +12,7 @@ import { documentVisibility, missedWhileHidden } from '../lib/hiddenPage';
 import { tuning } from '../lib/tuning';
 import { fillFrom } from '../hooks/useBackscrollPages';
 import { useReadBack } from '../hooks/useReadBack';
+import { useLocalEcho } from '../hooks/useLocalEcho';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { DecisionKind } from '@shared/decisionSettings';
 import type { TerminalConfig } from '@shared/config';
@@ -141,7 +142,14 @@ function SessionTerminal({
    */
   const sent = onePage(tuning().consoleLiveLines, settings.scrollback);
   const liveLines = onePage(tuning().consolePageLines, settings.scrollback);
-  const send = useCallback((data: string) => onInput(session, data), [onInput, session]);
+  const echo = useLocalEcho(handleRef);
+  const send = useCallback(
+    (data: string) => {
+      echo.typed(data);
+      onInput(session, data);
+    },
+    [echo, onInput, session]
+  );
   const readBack = useReadBack(handleRef, send);
   const { rewriting, close: closeReadBack, handOut, olderThanLive } = readBack;
 
@@ -149,12 +157,13 @@ function SessionTerminal({
   const redrawLive = useCallback(() => {
     const handle = handleRef.current;
     if (handle === null || !attached.current) return;
+    echo.reset();
     rewriting(true);
     fillFrom(api, session, sent, liveLines, handle, (older) => {
       if (older !== null) olderThanLive(older);
       rewriting(false);
     });
-  }, [api, session, sent, liveLines, rewriting, olderThanLive]);
+  }, [api, session, sent, liveLines, rewriting, olderThanLive, echo]);
   const redrawRef = useRef(redrawLive);
   redrawRef.current = redrawLive;
 
@@ -210,14 +219,16 @@ function SessionTerminal({
       onChunk(session, payload.text.length);
       const handle = handleRef.current;
       if (handle && attached.current) {
-        if (!hidden.skip()) handle.write(payload);
+        // A dropped chunk takes the guesses with it: the redraw on show replaces them, and nothing is undone on a hidden console.
+        if (hidden.skip()) echo.reset();
+        else handle.write(echo.arrived(payload));
       } else pending.current.push((to) => to.write(payload));
     });
     return () => {
       stop();
       hidden.dispose();
     };
-  }, [api, session, onChunk]);
+  }, [api, session, onChunk, echo]);
 
   /*
    * Its lines marked anew, in order with its output. A hidden page's are
@@ -248,6 +259,7 @@ function SessionTerminal({
     let live = true;
     let takeBack: (() => void) | null = null;
     attached.current = false;
+    echo.reset();
     // The shown console keeps the slot free until its own attach arrives.
     const letGo = shownRef.current ? restores.hold() : (): void => {};
 
@@ -307,7 +319,7 @@ function SessionTerminal({
       attached.current = false;
       void api.detach(session);
     };
-  }, [api, session, ready, onSnapshot, olderThanLive]);
+  }, [api, session, ready, onSnapshot, olderThanLive, echo]);
 
   const failedCopy = useCallback((message: string) => handleRef.current?.notice(message), []);
   const resize = useCallback((size: TerminalSize) => onResize(session, size), [onResize, session]);

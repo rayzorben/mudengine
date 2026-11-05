@@ -9,7 +9,7 @@
  */
 import { tuning } from '../app/tuning';
 import { stripAnsi, type FramedLine, type LineTokenizer } from '../net/LineTokenizer';
-import { STATUS_LINE } from '../parse/patterns';
+import { isWholePrompt, STATUS_LINE } from '../parse/patterns';
 import { promptOpened, type Painted, type TerminalFeed } from './TerminalFeed';
 import type { TimedChunk } from '../../shared/stamps';
 
@@ -168,16 +168,10 @@ export class Paint {
     return Math.max(this.quietMs, tuning().session.promptHoldMs - (now - this.promptOpenedAt));
   }
 
-  /**
-   * Whether the unterminated tail is a status line the server has finished:
-   * the colon closes it and nothing follows. `STATUS_LINE` accepts `]` alone
-   * and a state after the colon, and neither of those is a finished prompt.
-   */
+  /** Whether the unterminated tail is a status line the server has finished (`isWholePrompt`). */
   private tailIsWholePrompt(): boolean {
     if (this.promptTrails) return false;
-    const plain = stripAnsi(this.tokenizer.buffered).trimStart();
-    const match = STATUS_LINE.exec(plain);
-    return match !== null && match[0].endsWith(':') && match[0].length === plain.trimEnd().length;
+    return isWholePrompt(stripAnsi(this.tokenizer.buffered));
   }
 
   private cancelIdleFlush(): void {
@@ -201,7 +195,8 @@ export class Paint {
       at,
       text: painted.text,
       ...(painted.lines.length > 0 ? { lines: painted.lines } : {}),
-      ...(painted.times.length > 0 ? { times: painted.times } : {})
+      ...(painted.times.length > 0 ? { times: painted.times } : {}),
+      ...(painted.prompt ? { prompt: true as const } : {})
     });
   }
 }

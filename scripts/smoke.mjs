@@ -13699,15 +13699,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * The card's CSS shortens with an ellipsis rather than clipping, so the
    * assertion is that at the floor nothing needs shortening at all.
    */
+  // A number, not a box: a missing rail reads as NaN and fails the checks by
+  // name rather than throwing out of the harness.
+  const railWidth = async () =>
+    Number(
+      await evaluate(
+        `document.querySelector('.workspace > .rail')?.getBoundingClientRect().width ?? NaN`
+      )
+    );
   {
-    // A number, not a box: a missing rail reads as NaN and fails the checks by
-    // name rather than throwing out of the harness.
-    const railWidth = async () =>
-      Number(
-        await evaluate(
-          `document.querySelector('.workspace > .rail')?.getBoundingClientRect().width ?? NaN`
-        )
-      );
     /*
      * The narrowest a card on the rail can be is one column,
      * `--rail-column-min`: the rail is held to that for the measurement, and
@@ -13766,6 +13766,68 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     check(
       Math.abs(after - before) < 2,
       'and the rail is put back for the checks that follow',
+      `${before} -> ${after}`
+    );
+  }
+  /*
+   * On a wide card each member is one line (todo 20261104-2009-01): the rank,
+   * name, class and both meters side by side, the maximum still whole, and
+   * Follow inside the row. The rail is widened to just past the one-line
+   * width, the narrowest card that draws it, so a breakpoint set too low
+   * fails here as a shortened pill.
+   */
+  {
+    const before = await railWidth();
+    // TODO: the one-line width plus the card's padding and scrollbar, measured.
+    const wide = 700;
+    await evaluate(
+      `(document.querySelector('.workspace > .rail').style.width = '${wide}px', true)`
+    );
+    const widened = await readUntil(railWidth, (width) => width >= wide - 2);
+    check(widened >= wide - 2, 'the rail is widened past the one-line width', `${widened}`);
+    const line = JSON.parse(
+      await evaluate(`
+        (() => {
+          const li = [...document.querySelectorAll('.party-list li')]
+            .find((el) => (el.querySelector('.party-name')?.innerText ?? '').startsWith('Soul'));
+          const name = li?.querySelector('.party-name');
+          const meter = li?.querySelector('.party-meter.hp');
+          const value = li?.querySelector('.party-meter.hp .party-meter-value');
+          const head = li?.closest('.party-rank-group')?.querySelector('.party-rank-head');
+          if (!li || !name || !meter || !value || !head) return 'null';
+          const mid = (el) => { const b = el.getBoundingClientRect(); return (b.top + b.bottom) / 2; };
+          return JSON.stringify({
+            nameMid: mid(name),
+            meterMid: mid(meter),
+            meterLeft: meter.getBoundingClientRect().left,
+            nameRight: name.getBoundingClientRect().right,
+            headRight: head.getBoundingClientRect().right,
+            nameLeft: name.getBoundingClientRect().left,
+            valueShown: value.clientWidth,
+            valueNeeds: value.scrollWidth
+          });
+        })()
+      `)
+    );
+    check(line !== null, 'and Soul has a row to measure on the wide card', String(line));
+    check(
+      line !== null &&
+        Math.abs(line.nameMid - line.meterMid) < 4 &&
+        line.meterLeft > line.nameRight &&
+        line.headRight <= line.nameLeft,
+      'a wide card puts the rank, the name and the health meter on one line',
+      JSON.stringify(line)
+    );
+    check(
+      line !== null && line.valueNeeds <= line.valueShown,
+      'and the maximum is shown whole on one line',
+      JSON.stringify(line)
+    );
+    await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
+    const after = await readUntil(railWidth, (after) => Math.abs(after - before) < 2);
+    check(
+      Math.abs(after - before) < 2,
+      'and the rail is put back after the wide card',
       `${before} -> ${after}`
     );
   }

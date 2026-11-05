@@ -1382,6 +1382,14 @@ function sgrColour(colour: string, background: boolean): string {
 /** The SGR that puts the console back to its default ink. */
 export const SGR_RESET = '\x1b[0m';
 
+// eslint-disable-next-line no-control-regex
+const SGR = /\x1b\[[0-9;]*m/g;
+
+/** `text` with its colour sequences taken out, for a reader that asks what it draws. */
+export function withoutSgr(text: string): string {
+  return text.replace(SGR, '');
+}
+
 /**
  * The runs as bytes for the console: one SGR per run, and by default a reset
  * at the end so whatever the server prints after the line starts clean.

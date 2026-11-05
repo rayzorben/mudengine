@@ -277,7 +277,7 @@ export class Vocabulary {
    * Which lineage this server belongs to, from a block already being read.
    *
    * Free: `exp` and `rm` are both commands the client already sends, and the
-   * three tells `familyToldBy` reads are positive statements — *this server
+   * tells `familyToldBy` reads are positive statements — *this server
    * has `rm`*, *this server printed a level table* — so nothing is concluded
    * from an absence. See `shared/realm.ts` for why that matters: an `exp`
    * summary with no table yet is not evidence of GreaterMUD, and a fold that

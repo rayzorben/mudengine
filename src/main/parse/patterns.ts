@@ -101,6 +101,18 @@ export const STATUS_LINE =
   /^\[(?:HP|H)=(?<hp>-?\d{1,6})(?:\/(?<hpMax>\d{1,6}))?(?:[/,| ]\s*(?<manaType>MA|KAI|M|K)=(?<mana>\d{1,6})(?:\/(?<manaMax>\d{1,6}))?)?(?<fields>[^\]]*?)(?:\s?\((?<stateA>Resting|Meditating)\)\s?)?\]:?(?:\s?\((?<stateB>Resting|Meditating)\))?/;
 
 /**
+ * Whether `plain` is a status line the server has finished: the colon closes
+ * it and nothing follows. `STATUS_LINE` accepts `]` alone and a state after
+ * the colon, and neither of those is a finished prompt. Read by `Paint` (frame
+ * it now) and `TerminalFeed` (the cursor is at the input point).
+ */
+export function isWholePrompt(plain: string): boolean {
+  const text = plain.trimStart();
+  const match = STATUS_LINE.exec(text);
+  return match !== null && match[0].endsWith(':') && match[0].length === text.trimEnd().length;
+}
+
+/**
  * The sentence each condition begins with, and which condition it is.
  *
  * One statement of each pattern, read twice: by the rules below that type the

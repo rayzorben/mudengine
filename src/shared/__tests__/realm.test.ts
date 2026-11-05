@@ -137,6 +137,15 @@ describe('the Info record read back off a header', () => {
 });
 
 describe('the family the wire states', () => {
+  /* omniversebbs.com, 2026-11-04: `[MAJORMUD]:`, then a MajorMUD Plus `rm` that prints `Location:`. */
+  it('reads the [MAJORMUD]: menu prompt as the MajorMUD lineage, and [PARADIGM]: as nothing', () => {
+    expect(familyToldBy(block('prompt-menu', { realm: 'MAJORMUD' }))).toEqual({
+      family: 'majormud',
+      tell: 'menu-prompt'
+    });
+    expect(familyToldBy(block('prompt-menu', { realm: 'PARADIGM' }))).toBeNull();
+  });
+
   it('reads a printed experience table as the MajorMUD lineage', () => {
     expect(familyToldBy(block('user-experience-table'), 'exp')).toEqual({
       family: 'majormud',
