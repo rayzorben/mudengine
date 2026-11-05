@@ -157,7 +157,6 @@ import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
 import { NO_SHOPS, type RealmShops } from '../../shared/shops';
 import type { QuestWatched } from '../../shared/quests';
-import { identityOf, resetSignals } from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
 import type { RealmFamily } from '../../shared/realm';
 import { StatScreenHold } from './StatScreenHold';
@@ -194,6 +193,7 @@ import type {
 import { tuning } from '../app/tuning';
 import { NOT_KEPT } from '../../shared/hunting';
 import type { SessionSink } from './SessionSink';
+import { ResetWatch } from './ResetWatch';
 
 /**
  * Silence after which a partial line is released as one.
@@ -377,7 +377,7 @@ export class SessionManager {
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
-  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise'>;
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'reset' | 'dispose'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: SessionOdds;
   private automationConfig: AutomationConfig;
@@ -466,14 +466,8 @@ export class SessionManager {
   private readonly routines: Routines;
   /** Every module put down together, in order. See the constructor, where it is built. */
   private readonly modules: readonly Managed[];
-  /**
-   * Whether this session has already asked about a suspected reset.
-   *
-   * Once, and the remembered identity moves on either way: a prompt that came
-   * back on the next status line is a dialog somebody dismisses without
-   * reading, which is the same as no dialog at all.
-   */
-  private askedAboutReset = false;
+  /** Whether the character is still the one the records are about. See `ResetWatch`. */
+  private readonly resetWatch: ResetWatch;
   /**
    * Whether the far end is still answering. See `LinkWatch`.
    *
@@ -900,6 +894,7 @@ export class SessionManager {
         wield: (state, weapon, target) => this.gear.wieldFor(state, weapon, target),
         // The class row's `ClassStealth` (a Thief also has `Stealth`, todo 28); null never refuses.
         canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY),
+        menacePlayer: (state) => this.errands.menacePlayer(state),
         // The words fought with, typed or chosen (todo 47).
         attackWord: (target) => this.errands.words.attack([target]).verb,
         openerWord: () => this.errands.words.opener(),
@@ -1537,8 +1532,17 @@ export class SessionManager {
     ));
     this.appraisal = new Appraisal(
       { tracker: this.tracker, world, errands: this.errands, ...book },
-      { config: () => this.automationConfig, watched: () => this.questWatch.watched }
+      {
+        config: () => this.automationConfig,
+        watched: () => this.questWatch.watched,
+        ran: () => this.publisher.publishVerdict()
+      }
     );
+    this.resetWatch = new ResetWatch({
+      tracker: this.tracker,
+      record: () => this.belongings,
+      sink
+    });
     this.publisher = new Publisher(
       {
         ...{ tracker: this.tracker, appraisal: this.appraisal, switches: this.switches },
@@ -1688,6 +1692,8 @@ export class SessionManager {
       { module: this.extensions, configure: () => this.extensions.configure(this.configured[0]) },
       { module: this.invoke, configure: (a) => this.invoke.configure(a.spells, a.enabled) },
       { module: this.charges },
+      { module: this.appraisal },
+      { module: this.resetWatch },
       { module: this.events, configure: (a) => this.events.configure(a.events, a.enabled) },
       { module: this.hangUp },
       { module: this.rowOverrides, configure: (a) => this.rowOverrides.configure(a) },
@@ -1939,7 +1945,6 @@ export class SessionManager {
     this.publisher.forgetSent();
     this.link.reset();
     this.hungUpDead = false;
-    this.askedAboutReset = false;
     // A refusal arriving before the new session's first prompt is nobody's.
     this.answering = null;
     for (const { module } of this.modules) module.reset();
@@ -3209,54 +3214,14 @@ export class SessionManager {
     this.odds.refresh(this.tracker.current);
     this.publisher.character();
     this.publisher.publishAsks();
-    this.watchForReset();
+    this.resetWatch.watch();
     this.locating.onCharacter(this.tracker.current);
-  }
-
-  /**
-   * Whether the character in the realm is still the character this client's
-   * records are about.
-   *
-   * A player who deletes a character and makes a new one keeps the **name**,
-   * because the name is the login — so nothing about the connection changes,
-   * and every record kept against that name is quietly about somebody who no
-   * longer exists: a vault balance, a loadout of kit that is gone, a spellbook,
-   * a map, a quest counter.
-   *
-   * **It reports and nothing more.** The client cannot tell a reset from a
-   * realm that renumbered its classes, and deleting the only copy of what
-   * somebody learned is not a decision to take from a heuristic. What crosses
-   * is both characters and what was noticed; the answer is the player's
-   * (`Invoke.forgetCharacter`).
-   *
-   * Asked **once per session**, and the remembered identity is moved on
-   * immediately either way: a prompt that came back on the next status line
-   * would be a dialog somebody dismisses without reading, which is the same as
-   * no dialog at all.
-   */
-  private watchForReset(): void {
-    if (this.tracker.current.phase !== 'in-game') return;
-    const now = identityOf(this.tracker.current, Date.now());
-    if (now === null) return;
-
-    const remembered = this.belongings.recallIdentity();
-    // Moved on whatever happens next, so this asks once and the record stays
-    // current for the session after it.
-    this.belongings.rememberIdentity(now);
-    if (remembered === null || this.askedAboutReset) return;
-
-    const signals = resetSignals(remembered, now, tuning().session.resetExpDropShare);
-    if (signals.length === 0) return;
-
-    this.askedAboutReset = true;
-    this.sink.notice(t('session.reset.noticed', { signals: signals.join(', ') }));
-    this.sink.reset?.({ signals, before: remembered, after: now });
   }
 
   /**
    * Throws away what this client kept about the character that was here before.
    *
-   * The player's call and only ever the player's — see `watchForReset`. What
+   * The player's call and only ever the player's — see `ResetWatch`. What
    * goes is what is *about a character*: the vault, the loadout, the spellbook,
    * the measured spell durations, the quest counters and the identity itself.
    * What stays is what is about the **realm** — the map this character walked,

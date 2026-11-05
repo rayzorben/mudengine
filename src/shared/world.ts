@@ -1910,7 +1910,9 @@ export interface WorldLair {
  * being dropped: a descriptor that states no maximum would otherwise lose a
  * real monster to the slice.
  */
-export function parseLair(descriptor: string): { max: number | null; ids: number[] } {
+export function parseLair(descriptor: string): Lair {
+  const kept = LAIRS.get(descriptor);
+  if (kept !== undefined) return kept;
   // Everything from the first bracket on is the exporter's own parameters.
   const body = (descriptor.split('[')[0] ?? '').replace(/\(Max\s+(\d+)\)\s*:?/i, ' ');
   const max = /\(Max\s+(\d+)\)/i.exec(descriptor);
@@ -1919,16 +1921,37 @@ export function parseLair(descriptor: string): { max: number | null; ids: number
     const id = Number(match[0]);
     if (id > 0 && !ids.includes(id)) ids.push(id);
   }
-  return { max: max ? Number(max[1]) : null, ids };
+  const lair: Lair = Object.freeze({
+    max: max ? Number(max[1]) : null,
+    ids: Object.freeze(ids),
+    key: `${max ? Number(max[1]) : 1}:${[...ids].sort((a, b) => a - b).join(',')}`
+  });
+  if (LAIRS.size >= LAIRS_KEPT) LAIRS.clear();
+  LAIRS.set(descriptor, lair);
+  return lair;
 }
+
+/** A lair descriptor read: its cap, its rows, and both as one key (`lairKey`). */
+export interface Lair {
+  readonly max: number | null;
+  readonly ids: readonly number[];
+  readonly key: string;
+}
+
+/**
+ * Each descriptor as read, since a realm's descriptors never change and the
+ * odds book reads the room's on every job (2026-11-04: a tenth of every status
+ * line). Paradigm has 14,068 lairs; past this many the cache starts over.
+ */
+const LAIRS_KEPT = 50_000;
+const LAIRS = new Map<string, Lair>();
 
 /**
  * What a lair spawns, as one key: its cap and its rows. Two rooms with the
  * same key hold the same fight.
  */
 export function lairKey(descriptor: string): string {
-  const lair = parseLair(descriptor);
-  return `${lair.max ?? 1}:${[...lair.ids].sort((a, b) => a - b).join(',')}`;
+  return parseLair(descriptor).key;
 }
 
 /**

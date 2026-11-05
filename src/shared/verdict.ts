@@ -263,8 +263,14 @@ export function prowessSheetOf(
  * character's dodge, and the realm whose hit roll the blow meets. One reading
  * for the engine's ranking and the survey, so the card and the fight agree.
  */
+/** What of the character `menacePlayerOf` reads: a reader keeping its answer keys on these. */
+export type MenaceState = Pick<
+  CharacterState,
+  'progress' | 'inventory' | 'buffs' | 'stated' | 'className' | 'party' | 'name' | 'fullName'
+>;
+
 export function menacePlayerOf(
-  state: CharacterState,
+  state: MenaceState,
   cls: ProwessClass & { family: RealmFamily | null },
   spellOf: (name: string) => WorldSpell | null
 ): MenacePlayer {
@@ -349,9 +355,20 @@ export interface RoomVerdict {
    * cannot be run honestly, and the card says so rather than guessing.
    */
   survival: Survival | null;
+  /**
+   * Whether `survival` was run on the character as it stands. False while the
+   * simulator runs the newest state and the figure drawn is the last one for
+   * these same foes (`Appraisal.survivalOf`): the card shows it as last known.
+   */
+  survivalNow: boolean;
 }
 
-export const EMPTY_ROOM_VERDICT: RoomVerdict = { monsters: [], cost: null, survival: null };
+export const EMPTY_ROOM_VERDICT: RoomVerdict = {
+  monsters: [],
+  cost: null,
+  survival: null,
+  survivalNow: true
+};
 
 /** How far the client's round is from the server's, as a share of the server's; null where either is unknown or the server's is none. */
 export function roundGap(dealt: number | null, stated: number | undefined): number | null {
@@ -405,7 +422,8 @@ export function appraiseRoom(
     cost: complete ? { value: total, from: 'bound' } : null,
     // Run by the session, which alone holds the heal and the buffs; the
     // appraisal itself is the expectation and says nothing about the tail.
-    survival: null
+    survival: null,
+    survivalNow: true
   };
 }
 
@@ -561,6 +579,7 @@ export function roomVerdictKey(appraisal: RoomVerdict): string {
         }`
     ),
     health(appraisal.cost),
+    appraisal.survivalNow ? 'now' : 'before',
     appraisal.survival === null
       ? '-'
       : `${Math.round(appraisal.survival.survives * 100)}:${appraisal.survival.level}:${Math.round(

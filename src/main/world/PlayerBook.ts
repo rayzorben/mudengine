@@ -12,7 +12,7 @@ import {
 } from '../../shared/players';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
-import { writeWholeSync } from '../app/writeWhole';
+import { RecordWrites } from '../app/recordWrites';
 import { realmKey } from './RealmLore';
 import { tuning } from '../app/tuning';
 
@@ -99,7 +99,12 @@ export class PlayerBook {
   /** True once the file was found unreadable or unparseable; nothing is written over it. */
   private suspended = false;
 
-  constructor(private readonly options: PlayerBookOptions) {}
+  /** In the background while playing, at once after `flush` (`RecordWrites`). */
+  private readonly writes: RecordWrites;
+
+  constructor(private readonly options: PlayerBookOptions) {
+    this.writes = new RecordWrites(options.file, (error) => this.writeFailed(error));
+  }
 
   /**
    * The view one realm sees.
@@ -348,28 +353,27 @@ export class PlayerBook {
       realms[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
     }
 
-    try {
-      writeWholeSync(
-        this.options.file,
-        `${JSON.stringify({ v: 1, realms } satisfies PlayerFile, null, 2)}\n`
-      );
-    } catch (error) {
-      this.dirty = true;
-      this.options.notify?.(
-        t('notices.world.players.writeError', {
-          file: this.options.file,
-          message: errorMessage(error)
-        })
-      );
-    }
+    this.writes.write(`${JSON.stringify({ v: 1, realms } satisfies PlayerFile, null, 2)}\n`);
   }
 
-  /** Writes anything outstanding and stops the timer. Called on quit. */
+  /** Owed again, so the next change tries again. */
+  private writeFailed(error: unknown): void {
+    this.dirty = true;
+    this.options.notify?.(
+      t('notices.world.players.writeError', {
+        file: this.options.file,
+        message: errorMessage(error)
+      })
+    );
+  }
+
+  /** Writes anything outstanding, at once from now on, and stops the timer. Called on quit. */
   flush(): void {
     if (this.timer !== null) {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.writes.close();
     this.save();
   }
 }

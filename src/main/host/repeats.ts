@@ -1,8 +1,9 @@
 /**
  * A `character` push a window already holds is not sent to it again (todo
  * 836): 42 of 100 in one round of a party fight were repeats, and 3,719 of
- * the 8,345 pushed over twenty minutes of soul's capture (2026-10-06). Each
- * host keeps one per window or tab, beside the text it serialises anyway. A
+ * the 8,345 pushed over twenty minutes of soul's capture (2026-10-06). The
+ * desktop host keeps one per window, beside the text it serialises anyway; a
+ * browser tab's repeat is the patch that changes nothing (`PushPatcher`). A
  * character goes to every window (`WindowRegistry.toAll`), so what a window
  * was last sent for a session is what it holds once it has attached: a push
  * it missed while loading is covered by the attach snapshot. Every push to

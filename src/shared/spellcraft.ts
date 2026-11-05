@@ -110,19 +110,39 @@ export function resolveSpell(
   realmSpell: (name: string) => WorldSpell | null = () => null
 ): ResolvedSpell {
   const wanted = configured.trim();
+  const realm = wanted.length === 0 ? null : realmSpell(wanted);
+  // Kept by the book and the name, while the realm's row for it is the same row.
+  const book = spellbook ?? NO_BOOK;
+  let byName = RESOLVED.get(book);
+  if (byName === undefined) {
+    byName = new Map();
+    RESOLVED.set(book, byName);
+  }
+  const kept = byName.get(wanted);
+  if (kept !== undefined && kept.realm === realm) return kept;
   const needle = wanted.toLowerCase();
   const known =
     (spellbook ?? []).find(
       (spell) => spell.name.toLowerCase() === needle || spell.short?.toLowerCase() === needle
     ) ?? null;
-  const realm = wanted.length === 0 ? null : realmSpell(wanted);
-  return {
+  const resolved: ResolvedSpell = {
     configured: wanted,
-    word: castWord(wanted, spellbook, (name) => realmSpell(name)?.short ?? null),
+    word: castWord(wanted, spellbook, () => realm?.short ?? null),
     known,
     realm
   };
+  byName.set(wanted, resolved);
+  return resolved;
 }
+
+/**
+ * Each name as resolved against one spellbook, since the book is replaced
+ * rather than changed and every buff is matched against every configured
+ * spell on every line (2026-11-04: 6% of a status line on the hosted client).
+ * A book no state holds any more takes its answers with it.
+ */
+const RESOLVED = new WeakMap<object, Map<string, ResolvedSpell>>();
+const NO_BOOK: readonly CastableSpell[] = [];
 
 /**
  * Every spelling a spell answers to here, lower-cased: as written, the word a

@@ -128,7 +128,7 @@ import { sameItem } from '../../shared/items';
 import { heldWeapon } from '../../shared/gear';
 import { REACH_UNKNOWN, type WeaponReach } from '../../shared/reach';
 import { guardsFirst, inTheFight, protects } from '../../shared/guards';
-import { weighRoom, type HazardKind, type Menace } from '../../shared/menace';
+import { weighRoom, type HazardKind, type Menace, type MenacePlayer } from '../../shared/menace';
 import {
   menacePlayerOf,
   prowessSheetOf,
@@ -181,6 +181,12 @@ export interface AutoCombatEvents extends AttackSpellEvents {
    * and the stealth state decides as it always did.
    */
   canHide?(): boolean | null;
+  /**
+   * What a monster's blow is measured against, as the session keeps it for
+   * the state (`Errands.menacePlayer`), so the room's appraisal and this
+   * ranking read one answer a line. Absent, it is worked out here.
+   */
+  menacePlayer?(state: CharacterState): MenacePlayer;
   /**
    * The attack word against `target` and the opener, typed or, where blank,
    * chosen from the class rows (`FightWords`, todo 47). Absent, the typed
@@ -1430,7 +1436,8 @@ export class AutoCombat implements SessionModule {
     } = tuning().menace;
     return weighRoom(
       entities.map((entity) => entity ?? {}),
-      menacePlayerOf(state, this.realmClass(), (name) => this.realmSpell(name)),
+      this.events.menacePlayer?.(state) ??
+        menacePlayerOf(state, this.realmClass(), (name) => this.realmSpell(name)),
       {
         held,
         confused,

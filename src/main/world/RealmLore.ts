@@ -32,7 +32,7 @@ import { readRoundTally, RoundsBook } from './RoundsBook';
 import { runRepairs, type RepairDocument } from './fileRepairs';
 import { LORE_REPAIRS } from './loreRepairs';
 import { t } from '../app/i18n';
-import { writeWholeSync } from '../app/writeWhole';
+import { RecordWrites } from '../app/recordWrites';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
 
@@ -193,7 +193,12 @@ export class RealmLore {
    */
   private repaired = new Set(LORE_REPAIRS.map((step) => step.id));
 
-  constructor(private readonly options: RealmLoreOptions) {}
+  /** In the background while playing, at once after `flush` (`RecordWrites`). */
+  private readonly writes: RecordWrites;
+
+  constructor(private readonly options: RealmLoreOptions) {
+    this.writes = new RecordWrites(options.file, (error) => this.writeFailed(error));
+  }
 
   /**
    * The view one realm sees.
@@ -907,46 +912,47 @@ export class RealmLore {
     const castRounds = writeTables(this.rounds.section('casts'));
     const swingRounds = writeTables(this.rounds.section('swings'));
 
-    try {
-      writeWholeSync(
-        this.options.file,
-        `${JSON.stringify(
-          {
-            v: 1,
-            realms,
-            ...(Object.keys(slots).length > 0 ? { slots } : {}),
-            ...(Object.keys(spells).length > 0 ? { spells } : {}),
-            ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
-            ...(Object.keys(effects).length > 0 ? { effects } : {}),
-            ...(Object.keys(instants).length > 0 ? { instants } : {}),
-            ...(Object.keys(noEffects).length > 0 ? { noEffects } : {}),
-            ...(Object.keys(spawns).length > 0 ? { spawns } : {}),
-            ...(Object.keys(killExp).length > 0 ? { killExp } : {}),
-            ...(Object.keys(castRounds).length > 0 ? { castRounds } : {}),
-            ...(Object.keys(swingRounds).length > 0 ? { swingRounds } : {}),
-            ...(this.repaired.size > 0 ? { repaired: [...this.repaired] } : {})
-          } satisfies LoreFile,
-          null,
-          2
-        )}\n`
-      );
-    } catch (error) {
-      this.dirty = true;
-      this.options.notify?.(
-        t('notices.world.lore.writeError', {
-          file: this.options.file,
-          message: errorMessage(error)
-        })
-      );
-    }
+    this.writes.write(
+      `${JSON.stringify(
+        {
+          v: 1,
+          realms,
+          ...(Object.keys(slots).length > 0 ? { slots } : {}),
+          ...(Object.keys(spells).length > 0 ? { spells } : {}),
+          ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
+          ...(Object.keys(effects).length > 0 ? { effects } : {}),
+          ...(Object.keys(instants).length > 0 ? { instants } : {}),
+          ...(Object.keys(noEffects).length > 0 ? { noEffects } : {}),
+          ...(Object.keys(spawns).length > 0 ? { spawns } : {}),
+          ...(Object.keys(killExp).length > 0 ? { killExp } : {}),
+          ...(Object.keys(castRounds).length > 0 ? { castRounds } : {}),
+          ...(Object.keys(swingRounds).length > 0 ? { swingRounds } : {}),
+          ...(this.repaired.size > 0 ? { repaired: [...this.repaired] } : {})
+        } satisfies LoreFile,
+        null,
+        2
+      )}\n`
+    );
   }
 
-  /** Writes anything outstanding and stops the timer. Called on quit. */
+  /** Owed again, so the next change tries again. */
+  private writeFailed(error: unknown): void {
+    this.dirty = true;
+    this.options.notify?.(
+      t('notices.world.lore.writeError', {
+        file: this.options.file,
+        message: errorMessage(error)
+      })
+    );
+  }
+
+  /** Writes anything outstanding, at once from now on, and stops the timer. Called on quit. */
   flush(): void {
     if (this.timer !== null) {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.writes.close();
     this.save();
   }
 }

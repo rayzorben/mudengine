@@ -710,7 +710,8 @@ describe('the client’s round beside the server’s', () => {
         }
       ],
       cost: null,
-      survival: null
+      survival: null,
+      survivalNow: true
     };
     expect(monsterIn(verdict, 'lashworm')?.stated).toBe(10);
     expect(monsterIn(verdict, 'giant')).toBeUndefined();

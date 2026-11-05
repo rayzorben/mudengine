@@ -2921,6 +2921,7 @@ cards:
       heals: '{count} heals'
       roundsOnly: 'about {rounds} rounds'
       trials: the room's fight, simulated {count} times as you are now
+      lastKnown: the room's fight as you were a moment ago, simulated {count} times; simulating it again as you are now
       unknown: the fight cannot be simulated
       # Under the odds ring's figure while the odds are safe; a graver level shows its own word.
       tag: survive

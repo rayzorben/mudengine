@@ -21,7 +21,7 @@ import type {
   RpcRequest,
   RpcWelcome
 } from '../../../shared/rpc';
-import { asRpcInbound, PAGE_CLOSED, PATCH_UNFIT } from '../../../shared/rpc';
+import { asRpcInbound, PAGE_CLOSED, PATCH_UNFIT, PATCHED_PUSHES } from '../../../shared/rpc';
 import { BUILD, buildId } from '../../../shared/build';
 import { tuning } from '../../app/tuning';
 import { serialise } from '../serialise';
@@ -161,6 +161,11 @@ export class TabSessions {
   /** Numbers, holds and sends one message, counted under `counted`. */
   private deliver(tab: Tab, message: RpcOutbound, counted: string): void {
     if (this.tabs.get(tab.id) !== tab) return;
+    if (!tab.outbox.admits(message)) return;
+    if (message.k === 'push' && PATCHED_PUSHES.has(message.c)) {
+      this.deliverPatched(tab, message);
+      return;
+    }
     const { text, error } = serialise(message, `a web message on ${counted}`);
     if (text === null) {
       // A reply the tab is waiting on is answered with the failure.
@@ -169,10 +174,36 @@ export class TabSessions {
       }
       return;
     }
-    if (!tab.outbox.admits(message, text)) return;
-    // Numbered after the repeat test, which compares the message alone. The
-    // text is a JSON object, so the number goes in as its first field.
-    const body = (message.k === 'push' ? tab.patcher.patch(message) : null) ?? text.slice(1);
+    // The text is a JSON object, so the number goes in as its first field.
+    this.send(tab, text.slice(1), counted, message.k === 'reply');
+  }
+
+  /**
+   * A whole state sent as what changed since the tab was last sent one. One
+   * that changes nothing is the repeat, and is not sent (todo 836).
+   */
+  private deliverPatched(tab: Tab, message: RpcPush): void {
+    const patched = tab.patcher.patch(message);
+    switch (patched.k) {
+      case 'same':
+        return;
+      case 'patch':
+        this.send(tab, patched.body, message.c, false);
+        return;
+      case 'whole': {
+        const { text } = serialise(message, `a web message on ${message.c}`);
+        if (text !== null) this.send(tab, text.slice(1), message.c, false);
+        return;
+      }
+      default: {
+        const never: never = patched;
+        return never;
+      }
+    }
+  }
+
+  /** `body` numbered after its opening brace, held until acked, counted and sent. */
+  private send(tab: Tab, body: string, counted: string, requested: boolean): void {
     const framed = tab.link.hold((n) => `{"n":${n},${body}`);
     tab.traffic.count(counted, framed.length);
     if (tab.link.overflowing(tuning().web.resumeBytes)) {
@@ -180,7 +211,7 @@ export class TabSessions {
       return;
     }
     // A reply the tab asked for does not count against the cap (todo 836).
-    tab.connection?.send(framed, message.k === 'reply');
+    tab.connection?.send(framed, requested);
   }
 
   /**

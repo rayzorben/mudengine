@@ -1,14 +1,16 @@
+import { RecordWrites } from '../app/recordWrites';
 import { tuning } from '../app/tuning';
-import { writeWholeSync } from '../app/writeWhole';
 
 /**
- * A record file written a while after it changes, whole (`writeWholeSync`),
- * and at once by `close()`. A failed write stays owed, so the next
- * change tries again rather than the failure becoming permanent.
+ * A record file written a while after it changes, whole and in the
+ * background (`RecordWrites`), and at once by `close()`. A failed write stays
+ * owed, so the next change tries again rather than the failure becoming
+ * permanent.
  */
 export class DeferredFile {
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
+  private readonly writes: RecordWrites;
 
   /**
    * @param payload What to write, read when the write happens.
@@ -18,7 +20,12 @@ export class DeferredFile {
     readonly file: string,
     private readonly payload: () => unknown,
     private readonly onFailure: (error: unknown) => void
-  ) {}
+  ) {
+    this.writes = new RecordWrites(file, (error) => {
+      this.dirty = true;
+      onFailure(error);
+    });
+  }
 
   /** Something changed: write it after `records.memoryWriteDelayMs`. */
   schedule(): void {
@@ -38,15 +45,19 @@ export class DeferredFile {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.writes.close();
     if (this.dirty) this.write();
   }
 
   private write(): void {
+    let text: string;
     try {
-      writeWholeSync(this.file, `${JSON.stringify(this.payload(), null, 2)}\n`);
-      this.dirty = false;
+      text = `${JSON.stringify(this.payload(), null, 2)}\n`;
     } catch (error) {
       this.onFailure(error);
+      return;
     }
+    this.dirty = false;
+    this.writes.write(text);
   }
 }

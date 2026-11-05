@@ -420,7 +420,7 @@ describe('what the listing calls a worn slot', () => {
     expect(lore.slotWordsFor(5)).toEqual([]);
     lore.observeSlot(5, 'Feet', 1_000);
     expect(lore.slotWordsFor(5)).toEqual(['Feet']);
-    first.save();
+    first.flush();
 
     const again = store().forRealm('Test Realm', world, PLAYED);
     expect(again.slotWordsFor(5)).toEqual(['Feet']);
@@ -453,10 +453,11 @@ describe('what the listing calls a worn slot', () => {
     const lore = store();
     const view = lore.forRealm('Test Realm', world, PLAYED);
     view.observeSlot(5, 'Feet', 1_000);
-    lore.save();
+    lore.flush();
     const before = fs.statSync(file).mtimeMs;
     const size = fs.statSync(file).size;
     view.observeSlot(5, 'Feet', 2_000);
+    // Written at once after the flush, so a write it did make is on disk below.
     lore.save();
     expect(fs.statSync(file).size).toBe(size);
     expect(fs.statSync(file).mtimeMs).toBe(before);

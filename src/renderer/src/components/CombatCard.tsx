@@ -153,19 +153,24 @@ function Provenance({ health }: { health: TargetHealth }) {
  * has swung. A ring: the share of fights survived is its arc, the level its
  * hue (green is what the tuning calls safe, amber risky, red deadly) and the
  * word under it says the same, since a hue alone is not a reading. Unknown is
- * a dashed ring and a dash, never any of the three.
+ * a dashed ring and a dash, never any of the three. A figure run on the state
+ * before, while the newest is being run, is drawn in quieter ink and says so.
  */
 function SurvivalRing({ verdict }: { verdict: RoomVerdict }) {
   const survival = verdict.survival;
   const level: VitalLevel = survival === null ? 'unknown' : survivalVital(survival.level);
   const survives = survival === null ? null : percent(survival.survives);
+  const lastKnown = survival !== null && !verdict.survivalNow;
   return (
     <span
       className="combat-odds"
+      data-last-known={lastKnown || undefined}
       title={
         survival === null
           ? t('cards.combat.survival.unknown')
-          : t('cards.combat.survival.trials', { count: survival.trials })
+          : lastKnown
+            ? t('cards.combat.survival.lastKnown', { count: survival.trials })
+            : t('cards.combat.survival.trials', { count: survival.trials })
       }
     >
       <Ring

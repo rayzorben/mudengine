@@ -54,7 +54,7 @@ import { sameItem } from '../../shared/items';
 import { errorMessage, faultWithin } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import { writeWholeSync } from '../app/writeWhole';
+import { RecordWrites } from '../app/recordWrites';
 
 interface BelongingsFile {
   version: 1;
@@ -155,8 +155,21 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   private closed = false;
   /** True once the file was found unreadable; nothing is written over it. */
   private suspended = false;
+  /** In the background while playing, at once after `close` (`RecordWrites`). */
+  private readonly writes: RecordWrites;
 
   constructor(private readonly options: BelongingsOptions) {
+    this.writes = new RecordWrites(options.file, (error) => {
+      // Left dirty, so the next balance tries again rather than the failure
+      // quietly becoming permanent.
+      this.dirty = true;
+      this.options.notify?.(
+        t('notices.world.belongings.saveError', {
+          fileName: path.basename(this.options.file),
+          message: errorMessage(error)
+        })
+      );
+    });
     this.load();
   }
 
@@ -387,6 +400,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   /** Writes anything outstanding and stops the timer. Safe to call twice. */
   close(): void {
     this.closed = true;
+    this.writes.close();
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -506,19 +520,8 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.lives !== null ? { lives: this.lives } : {}),
       ...(sameUnderway(this.underway, NOTHING_UNDERWAY) ? {} : { underway: this.underway })
     };
-    try {
-      writeWholeSync(this.options.file, `${JSON.stringify(payload, null, 2)}\n`);
-      this.dirty = false;
-    } catch (error) {
-      this.options.notify?.(
-        t('notices.world.belongings.saveError', {
-          fileName: path.basename(this.options.file),
-          message: errorMessage(error)
-        })
-      );
-      // Left dirty, so the next balance tries again rather than the failure
-      // quietly becoming permanent.
-    }
+    this.dirty = false;
+    this.writes.write(`${JSON.stringify(payload, null, 2)}\n`);
   }
 }
 

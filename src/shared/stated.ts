@@ -16,6 +16,7 @@ import { loadPercent } from './load';
 import type { AttackKind } from './prowess';
 import { mobNameCandidates } from './mobs';
 import { mobKey } from './world';
+import { keptByParts } from './keptByParts';
 
 /**
  * The rows `Player.ShowStatAll` prints under `Attacks:`, by the title it
@@ -124,31 +125,56 @@ export interface StatedProwess {
 type BasisState = Pick<CharacterState, 'progress' | 'inventory'> &
   Partial<Pick<CharacterState, 'buffs' | 'className' | 'party' | 'name'>>;
 
+/**
+ * What a sheet was computed from, for the state as it stands. Asked three
+ * times a line (`statedNow`, `ownSheetFor`, `statedAgainst`) by each module
+ * that reads the sheet, so kept by the fields it reads (`keptByParts`).
+ */
 export function statedBasis(state: BasisState): StatedBasis {
-  const { progress, inventory } = state;
-  // A burning light is `equipped` and moves no figure; `wieldedWeapon`'s rule.
-  const worn = inventory.items
-    .filter((item) => item.equipped && item.kind !== 'light')
-    .map((item) => `${item.name}@${item.slot ?? ''}`)
-    .sort();
-  const effects = (state.buffs ?? []).map((buff) => buff.spell).sort();
-  const gear = JSON.stringify([
-    progress.level,
-    progress.strength,
-    progress.agility,
-    progress.intellect,
-    progress.willpower,
-    progress.health,
-    progress.charm,
-    state.className ?? null,
-    worn,
-    effects
-  ]);
-  const { encumbrance, encumbranceMax } = inventory;
-  const share = loadPercent(encumbrance, encumbranceMax);
-  const own = state.party?.members.find((member) => member.name === state.name);
-  return { gear, load: `${gear}|${JSON.stringify([share, own?.rank ?? null])}` };
+  return basisOf(
+    state.progress,
+    state.inventory,
+    state.buffs,
+    state.className,
+    state.party,
+    state.name
+  );
 }
+
+const basisOf = keptByParts(
+  8,
+  (
+    progress: BasisState['progress'],
+    inventory: BasisState['inventory'],
+    buffs: BasisState['buffs'],
+    className: BasisState['className'],
+    party: BasisState['party'],
+    name: BasisState['name']
+  ): StatedBasis => {
+    // A burning light is `equipped` and moves no figure; `wieldedWeapon`'s rule.
+    const worn = inventory.items
+      .filter((item) => item.equipped && item.kind !== 'light')
+      .map((item) => `${item.name}@${item.slot ?? ''}`)
+      .sort();
+    const effects = (buffs ?? []).map((buff) => buff.spell).sort();
+    const gear = JSON.stringify([
+      progress.level,
+      progress.strength,
+      progress.agility,
+      progress.intellect,
+      progress.willpower,
+      progress.health,
+      progress.charm,
+      className ?? null,
+      worn,
+      effects
+    ]);
+    const { encumbrance, encumbranceMax } = inventory;
+    const share = loadPercent(encumbrance, encumbranceMax);
+    const own = party?.members.find((member) => member.name === name);
+    return { gear, load: `${gear}|${JSON.stringify([share, own?.rank ?? null])}` };
+  }
+);
 
 /**
  * The most sheets kept at once. A loop's blessings come and go in the same few

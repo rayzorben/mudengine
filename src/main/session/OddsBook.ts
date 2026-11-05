@@ -33,6 +33,7 @@ import { mobTerms, worstModel } from '../../shared/mobRound';
 import { simulateFight, type Odds, type SurvivalInput } from '../../shared/survival';
 import type { PartyOdds } from '../../shared/partyFight';
 import { lairKey, parseLair, roomAddress, type WorldRoom } from '../../shared/world';
+import { keptByParts } from '../../shared/keptByParts';
 
 export type OddsWorld = Pick<
   WorldGraph,
@@ -403,28 +404,44 @@ export class OddsBook implements SessionModule {
    * the book without queueing it), then every monster.
    */
   private owed(world: OddsWorld): Omit<Book, 'key'> {
-    const hunts: Job[] = [];
-    const passes: Job[] = [];
-    const seen = new Set<string>();
-    for (const room of world.everyRoom()) {
-      if (room.lair === undefined) continue;
-      const hunt = this.lairJob(room, 'hunt');
-      if (seen.has(hunt.key)) continue;
-      seen.add(hunt.key);
-      hunts.push(hunt);
-      // Its pass where some of it waits to be struck; the hunt's own fight where none does.
-      const pass = this.lairJob(room, 'pass');
-      if (pass.key !== hunt.key) passes.push(pass);
-    }
+    const state = this.tracker.current;
     return {
       mobs: new Map(),
       lairs: new Map(),
-      queue: [...hunts, ...passes, ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))],
+      // Its own copy: a book puts what is asked for at the front of its queue.
+      queue: [...this.owedJobs(world, standingOf(state).alignment, state.inventory)],
       asked: new Set(),
       told: new Set(),
       party: null
     };
   }
+
+  /**
+   * Every lair hunted, its pass, then every monster, for a realm and what the
+   * lairs' monsters read of the character (`waitsToBeStruck`: the alignment
+   * and the pack). A buff that lapses moves the book's key and not these, and
+   * walking every room again for each new book was a tenth of a status line
+   * (2026-11-04).
+   */
+  private readonly owedJobs = keptByParts(
+    2,
+    (world: OddsWorld, _alignment: unknown, _pack: unknown): readonly Job[] => {
+      const hunts: Job[] = [];
+      const passes: Job[] = [];
+      const seen = new Set<string>();
+      for (const room of world.everyRoom()) {
+        if (room.lair === undefined) continue;
+        const hunt = this.lairJob(room, 'hunt');
+        if (seen.has(hunt.key)) continue;
+        seen.add(hunt.key);
+        hunts.push(hunt);
+        // Its pass where some of it waits to be struck; the hunt's own fight where none does.
+        const pass = this.lairJob(room, 'pass');
+        if (pass.key !== hunt.key) passes.push(pass);
+      }
+      return [...hunts, ...passes, ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))];
+    }
+  );
 
   /** Drops one party's fights and what is owed them; `key` is the party now asked about, null for none. */
   private forgetParty(book: Book, key: string | null): void {

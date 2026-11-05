@@ -4,7 +4,7 @@ import path from 'node:path';
 import { discoveryKey, isDiscoveryReason, type Discovery } from '../../shared/memory';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
-import { writeWholeSync } from '../app/writeWhole';
+import { RecordWrites } from '../app/recordWrites';
 import { tuning } from '../app/tuning';
 import { runRepairs, type RepairDocument } from './fileRepairs';
 import { MEMORY_REPAIRS } from './memoryRepairs';
@@ -71,8 +71,12 @@ export class WorldMemory {
     private readonly notify?: (message: string) => void
   ) {
     this.repaired = new Set(MEMORY_REPAIRS.map((step) => step.id));
+    this.writes = new RecordWrites(file, (error) => this.writeFailed(error));
     this.load();
   }
+
+  /** In the background while playing, at once after `close` (`RecordWrites`). */
+  private readonly writes: RecordWrites;
 
   /** Everything learned, oldest first. */
   get all(): readonly Discovery[] {
@@ -135,6 +139,7 @@ export class WorldMemory {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.writes.close();
     if (this.dirty) this.write();
   }
 
@@ -229,19 +234,19 @@ export class WorldMemory {
       discoveries: this.discoveries,
       repaired: [...this.repaired]
     };
-    try {
-      writeWholeSync(this.file, `${JSON.stringify(payload, null, 2)}\n`);
-      this.dirty = false;
-    } catch (error) {
-      this.onError?.(
-        t('notices.world.memory.saveError', {
-          fileName: path.basename(this.file),
-          message: errorMessage(error)
-        })
-      );
-      // Deliberately left dirty, so the next discovery tries again rather than
-      // the failure quietly becoming permanent.
-    }
+    this.dirty = false;
+    this.writes.write(`${JSON.stringify(payload, null, 2)}\n`);
+  }
+
+  /** Left dirty, so the next discovery tries again rather than the failure quietly becoming permanent. */
+  private writeFailed(error: unknown): void {
+    this.dirty = true;
+    this.onError?.(
+      t('notices.world.memory.saveError', {
+        fileName: path.basename(this.file),
+        message: errorMessage(error)
+      })
+    );
   }
 }
 

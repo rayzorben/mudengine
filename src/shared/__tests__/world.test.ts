@@ -14,6 +14,7 @@ import {
   type SpellHazard,
   newDemands,
   openableHere,
+  lairKey,
   parseLair,
   lairsAlong,
   trapOn,
@@ -381,7 +382,7 @@ describe('newDemands', () => {
 describe('parseLair', () => {
   /* GreaterMUD's own spelling, and what docs/greatermud/player-and-world.md records. */
   it('reads the slot count and the monster numbers', () => {
-    expect(parseLair('(Max 2): 1141,2175,2176,')).toEqual({
+    expect(parseLair('(Max 2): 1141,2175,2176,')).toMatchObject({
       max: 2,
       ids: [1141, 2175, 2176]
     });
@@ -393,13 +394,13 @@ describe('parseLair', () => {
    * four creatures the realm never placed onto the Room card's lair face.
    */
   it('refuses the exporter’s bracketed parameters as monsters', () => {
-    expect(parseLair('(Max 2): 781,190,[6-30-31-2]')).toEqual({
+    expect(parseLair('(Max 2): 781,190,[6-30-31-2]')).toMatchObject({
       max: 2,
       ids: [781, 190]
     });
     // The Temple Healer's own lair: one healer, not a healer plus a lashworm,
     // two ghouls and a giant rat.
-    expect(parseLair('(Max 1): 47,[2-16-16-1]')).toEqual({ max: 1, ids: [47] });
+    expect(parseLair('(Max 1): 47,[2-16-16-1]')).toMatchObject({ max: 1, ids: [47] });
   });
 
   /*
@@ -407,19 +408,22 @@ describe('parseLair', () => {
    * dropped. A descriptor stating no maximum would otherwise lose a monster.
    */
   it('keeps every number when no maximum is stated', () => {
-    expect(parseLair('12,44,')).toEqual({ max: null, ids: [12, 44] });
+    expect(parseLair('12,44,')).toMatchObject({ max: null, ids: [12, 44] });
   });
 
   it('de-duplicates, and names nothing for a blank descriptor', () => {
-    expect(parseLair('(Max 2): 5,5,7,')).toEqual({ max: 2, ids: [5, 7] });
+    expect(parseLair('(Max 2): 5,5,7,')).toMatchObject({ max: 2, ids: [5, 7] });
+    // The key is the cap and the rows in order, so two spellings of one lair are one fight.
+    expect(lairKey('(Max 2): 7,5,5,')).toBe('2:5,7');
+    expect(lairKey('12,44,')).toBe('1:12,44');
     // GreaterMUD writes a single space into every ordinary room's column.
-    expect(parseLair(' ')).toEqual({ max: null, ids: [] });
-    expect(parseLair('')).toEqual({ max: null, ids: [] });
+    expect(parseLair(' ')).toMatchObject({ max: null, ids: [] });
+    expect(parseLair('')).toMatchObject({ max: null, ids: [] });
   });
 
   /* Zero is the realm's own way of saying nothing, not monster #0. */
   it('drops a zero', () => {
-    expect(parseLair('(Max 1): 0,')).toEqual({ max: 1, ids: [] });
+    expect(parseLair('(Max 1): 0,')).toMatchObject({ max: 1, ids: [] });
   });
 });
 

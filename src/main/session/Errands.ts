@@ -164,11 +164,13 @@ import { statedNow } from '../../shared/stated';
 import { gearEffect } from '../../shared/blessingeffects';
 import { carriedCount, namesNoShop, stockCeiling, type SupplyCounter } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
+import { keptByParts } from '../../shared/keptByParts';
 import {
   lairPass,
   roadPass,
   passShare,
   menacePlayerOf,
+  type MenaceState,
   prowessSheetOf,
   weighVerdicts,
   wieldedWeapon,
@@ -248,6 +250,18 @@ interface HuntPriced extends HuntPrice {
   /** Training the level ready shuts the way back to it (kept only where the survey was asked `gated`). */
   closes: boolean;
 }
+
+/** The fields `menacePlayerOf` reads, in order, each compared by identity (`keptByParts`). */
+type MenaceParts = [
+  MenaceState['progress'],
+  MenaceState['inventory'],
+  MenaceState['buffs'],
+  MenaceState['stated'],
+  MenaceState['className'],
+  MenaceState['party'],
+  MenaceState['name'],
+  MenaceState['fullName']
+];
 
 /** The character's own side of the combat arithmetic. See `Errands.realmClass`. */
 export interface RealmClass extends ProwessClass {
@@ -406,12 +420,24 @@ export class Errands implements SessionModule {
   private readonly openedWays = new OpenedWays(() => this.world ?? null);
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
-  /** The last `menacePlayer` answer, by state and family: five modules ask it of one line's state. */
-  private menaced: {
-    state: CharacterState;
-    family: RealmFamily | null;
-    player: MenacePlayer;
-  } | null = null;
+  /**
+   * `menacePlayer`'s answers, by the fields it reads and the class rows as
+   * text: six modules ask it of each line's state, and a status line moves
+   * none of them (2026-11-04).
+   */
+  private readonly menaced = keptByParts(
+    4,
+    (
+      _rows: string,
+      world: ErrandsWorld | undefined,
+      ...[progress, inventory, buffs, stated, className, party, name, fullName]: MenaceParts
+    ): MenacePlayer =>
+      menacePlayerOf(
+        { progress, inventory, buffs, stated, className, party, name, fullName },
+        this.realmClass(),
+        (spell) => world?.spellNamed(spell) ?? null
+      )
+  );
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
   private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
   /** The one navigation engine for this character (`session/navigation.ts`). */
@@ -3327,16 +3353,12 @@ export class Errands implements SessionModule {
 
   /** What a monster's blow or cast is measured against (`menacePlayerOf`). */
   menacePlayer(state: CharacterState): MenacePlayer {
-    const family = this.serverFamily;
-    const kept = this.menaced;
-    if (kept?.state === state && kept.family === family) return kept.player;
-    const player = menacePlayerOf(
-      state,
-      this.realmClass(),
-      (name) => this.world?.spellNamed(name) ?? null
+    const { progress, inventory, buffs, stated, className, party, name, fullName } = state;
+    return this.menaced(
+      JSON.stringify(this.realmClass()),
+      this.world,
+      ...[progress, inventory, buffs, stated, className, party, name, fullName]
     );
-    this.menaced = { state, family, player };
-    return player;
   }
 
   /**

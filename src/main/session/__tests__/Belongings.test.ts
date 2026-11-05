@@ -650,16 +650,18 @@ describe('what the fighting added up to', () => {
 
   /* The totals move on every blow, so they wait on their own longer delay;
      a balance still lands on the short one, and brings them with it. */
-  it('waits longer to write the totals than a balance, and a balance brings them forward', () => {
+  it('waits longer to write the totals than a balance, and a balance brings them forward', async () => {
     vi.useFakeTimers();
     try {
       const store = new Belongings({ file, realm: REALM });
       store.rememberStats(tally);
       vi.advanceTimersByTime(2_500);
+      // No write is out: the totals' own timer has not fired, so nothing was started.
       expect(fs.existsSync(file)).toBe(false);
       store.rememberBanks([balance()]);
       vi.advanceTimersByTime(2_500);
-      expect(fs.existsSync(file)).toBe(true);
+      // Written in the background; the totals' own 30s were not waited for.
+      await vi.waitFor(() => expect(fs.existsSync(file)).toBe(true));
       expect(new Belongings({ file, realm: REALM }).recallStats()?.tally.kills).toBe(3);
       store.close();
     } finally {

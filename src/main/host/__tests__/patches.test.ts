@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PushPatcher } from '../web/patches';
+import { PushPatcher, type Patched } from '../web/patches';
 import { asRpcFrame, type RpcPatch, type RpcPush } from '../../../shared/rpc';
 import { Push } from '../../../shared/ipc';
 
@@ -11,10 +11,10 @@ const character = (session: string, payload: Record<string, unknown>): RpcPush =
 });
 
 /** What the tab reads off the wire, as its bridge parses it. */
-function onTheWire(body: string | null): RpcPatch {
-  if (body === null) throw new Error('not patched');
-  const frame = asRpcFrame(JSON.parse(`{"n":1,${body}`));
-  if (frame === null || frame.k !== 'patch') throw new Error(`not a patch: ${body}`);
+function onTheWire(patched: Patched): RpcPatch {
+  if (patched.k !== 'patch') throw new Error(`not patched: ${patched.k}`);
+  const frame = asRpcFrame(JSON.parse(`{"n":1,${patched.body}`));
+  if (frame === null || frame.k !== 'patch') throw new Error(`not a patch: ${patched.body}`);
   return frame;
 }
 
@@ -70,7 +70,9 @@ describe('a character push sent as what changed', () => {
   });
 
   it('sends every other push whole', () => {
-    expect(new PushPatcher().patch({ k: 'push', c: Push.notice, p: { message: 'x' } })).toBeNull();
+    expect(new PushPatcher().patch({ k: 'push', c: Push.notice, p: { message: 'x' } })).toEqual({
+      k: 'whole'
+    });
   });
 
   /*
@@ -100,7 +102,7 @@ describe('a character push sent as what changed', () => {
       },
       drop: []
     });
-    expect(body!.length).toBeLessThan(300);
+    expect(body.k === 'patch' ? body.body.length : Infinity).toBeLessThan(300);
   });
 
   it('sends a list trimmed at its head as its new end, and a changed one whole', () => {
@@ -111,5 +113,34 @@ describe('a character push sent as what changed', () => {
     );
     expect(next.deep).toEqual({ samples: { k: 'tail', skip: 1, keep: 2, tail: [4] } });
     expect(next.set).toEqual({ buffs: ['cure', 'light'] });
+  });
+
+  /* Todo 836's repeat test, made by the patch since 2026-11-04. */
+  it('says a push that changes nothing the tab holds is the same, and still sends a first one', () => {
+    const patcher = new PushPatcher();
+    expect(patcher.patch(character('festus', {})).k).toBe('patch');
+    const room = { name: 'Town Square' };
+    patcher.patch(character('festus', { room, hp: 5 }));
+    expect(patcher.patch(character('festus', { room, hp: 5 })).k).toBe('same');
+    expect(patcher.patch(character('festus', { room: { name: 'Town Square' }, hp: 5 })).k).toBe(
+      'same'
+    );
+    expect(onTheWire(patcher.patch(character('festus', { room, hp: 6 }))).set).toEqual({ hp: 6 });
+  });
+
+  it('patches each tab against what that tab was sent, from parts kept by object', () => {
+    const items = [{ name: 'torch' }, { name: 'rope' }];
+    const first = new PushPatcher();
+    const second = new PushPatcher();
+    first.patch(character('festus', { items, hp: 5 }));
+    const grown = [...items, { name: 'lantern' }];
+    expect(onTheWire(first.patch(character('festus', { items: grown, hp: 5 }))).deep).toEqual({
+      items: { k: 'tail', skip: 0, keep: 2, tail: [{ name: 'lantern' }] }
+    });
+    // A tab that holds nothing yet is sent the whole list.
+    expect(onTheWire(second.patch(character('festus', { items: grown, hp: 5 }))).set).toEqual({
+      items: grown,
+      hp: 5
+    });
   });
 });

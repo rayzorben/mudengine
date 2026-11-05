@@ -15672,6 +15672,10 @@ tr:hover .row-action.worn,
   font-size: calc(var(--ring-d) * 0.27);
 }
 
+.combat-odds[data-last-known] .ring-centre {
+  color: var(--text-lo);
+}
+
 .combat-odds-word {
   color: var(--text-lo);
   font-size: var(--font-micro);

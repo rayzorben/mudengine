@@ -23,7 +23,8 @@ import { inTheFight } from '../../shared/guards';
 import { attacksFirst, mobListed, rowPeaceFor } from '../../shared/mobRules';
 import { asksHere, type QuestWatched, type RoomAsk } from '../../shared/quests';
 import { statedAgainst } from '../../shared/stated';
-import { simulateFight, type Survival } from '../../shared/survival';
+import type { FightSimulator } from '../../shared/simulator';
+import type { Survival } from '../../shared/survival';
 import {
   appraiseRoom,
   EMPTY_ROOM_VERDICT,
@@ -44,6 +45,8 @@ export interface AppraisalParts {
   readonly setup: Pick<FightSetup, 'character' | 'foes'>;
   /** Each monster fought alone, rested. */
   readonly odds: OddsReader;
+  /** Runs the room's fight off main's thread where it can (`SimulatorPool`). */
+  readonly simulator: FightSimulator;
 }
 
 /** What the session that built this answers for it. */
@@ -52,6 +55,17 @@ export interface AppraisalSession {
   config(): AutomationConfig;
   /** The rank each quest has been seen to reach this session. */
   watched(): QuestWatched;
+  /** The room's fight came back from the simulator: the verdict is read again. */
+  ran(): void;
+}
+
+/** One run of the room's fight: what it was run on, and its answer once the simulator gives one. */
+interface FightRun {
+  key: string;
+  /** Who it was fought against, and where: an answer stays drawn only for the same foes. */
+  foes: string;
+  input: Parameters<FightSimulator['run']>[0];
+  survival: Survival | null;
 }
 
 export class Appraisal {
@@ -60,8 +74,13 @@ export class Appraisal {
   private readonly errands: AppraisalParts['errands'];
   private readonly setup: AppraisalParts['setup'];
   private readonly odds: AppraisalParts['odds'];
-  /** The room's last run and what it was run on, so a status line that moves nothing reruns nothing. */
-  private ran: { key: string; survival: Survival | null } | null = null;
+  /** The run the simulator has, and how to drop it. One at a time, so a slow worker still answers. */
+  private out: { run: FightRun; drop: () => void } | null = null;
+  /** The newest fight asked for while one was out: run next, the ones between skipped. */
+  private wanted: FightRun | null = null;
+  /** The last run that came back, so a status line that moves nothing reruns nothing. */
+  private settled: FightRun | null = null;
+  private readonly simulator: FightSimulator;
 
   constructor(
     parts: AppraisalParts,
@@ -72,6 +91,7 @@ export class Appraisal {
     this.errands = parts.errands;
     this.setup = parts.setup;
     this.odds = parts.odds;
+    this.simulator = parts.simulator;
   }
 
   /**
@@ -151,7 +171,7 @@ export class Appraisal {
         ...(stated === null ? {} : { stated })
       };
     });
-    return { ...appraisal, monsters, survival: this.survivalOf(state) };
+    return { ...appraisal, monsters, ...this.survivalOf(state) };
   }
 
   /**
@@ -195,24 +215,66 @@ export class Appraisal {
   }
 
   /**
-   * The room's fight run for this character as it stands (todo 02): what
-   * here would fight, with the character half `FightSetup` builds. Run again
-   * only when what
-   * it is run on moved. See `simulateFight` and mudengine-automation › *The
-   * verdict is also run as a fight*.
+   * The room's fight for this character as it stands (todo 02), with the
+   * character half `FightSetup` builds, run again only when what it is run on
+   * moved. Run by the simulator off main's thread (2026-11-04: on
+   * main it was a fifth of every status line), so its answer comes a moment
+   * after the state it was run on. Until then the last answer for these same
+   * foes is drawn as last known (`survivalNow` false); for other foes the
+   * fight is not yet known. See mudengine-automation › *The verdict is also
+   * run as a fight*.
    */
-  private survivalOf(state: CharacterState): Survival | null {
+  private survivalOf(state: CharacterState): Pick<RoomVerdict, 'survival' | 'survivalNow'> {
+    const unknown = { survival: null, survivalNow: true };
     const character = this.setup.character(state, 'now');
-    if (character === null) return null;
+    if (character === null) return unknown;
     const fights = this.foesOf(state);
-    if (fights.length === 0) return null;
+    if (fights.length === 0) return unknown;
     const met = fights.map((who) => ({ name: who.name, subject: who.mob ?? {} }));
     const input = { ...character, ...this.setup.foes(state, character, met, 'seen') };
     // A lapse's round decides when its effect goes, so it is keyed: one run a round while one is due.
     const key = JSON.stringify(input);
-    if (this.ran?.key === key) return this.ran.survival;
-    this.ran = { key, survival: simulateFight(input) };
-    return this.ran.survival;
+    const settled = this.settled;
+    if (settled?.key === key) return { survival: settled.survival, survivalNow: true };
+    const foes = `${state.room.map ?? '-'}/${state.room.number ?? '-'}:${met.map((who) => who.name).join(',')}`;
+    this.ask({ key, foes, input, survival: null });
+    return settled?.foes === foes ? { survival: settled.survival, survivalNow: false } : unknown;
+  }
+
+  private ask(run: FightRun): void {
+    if (this.out?.run.key === run.key) {
+      // Back to the state already being run: what waited behind it is older now.
+      this.wanted = null;
+      return;
+    }
+    if (this.out !== null) {
+      this.wanted = run;
+      return;
+    }
+    const out = { run, drop: () => undefined as void };
+    this.out = out;
+    out.drop = this.simulator.run(run.input, (survival) => {
+      if (this.out !== out) return;
+      this.out = null;
+      this.settled = { ...run, survival };
+      const next = this.wanted;
+      this.wanted = null;
+      if (next !== null && next.key !== run.key) this.ask(next);
+      this.session.ran();
+    });
+  }
+
+  /** A new dial: the room's fight was the character's that was, and one still out is dropped. */
+  reset(): void {
+    this.out?.drop();
+    this.out = null;
+    this.wanted = null;
+    this.settled = null;
+  }
+
+  /** The session is put down: a fight still out is dropped. */
+  dispose(): void {
+    this.reset();
   }
 
   /**

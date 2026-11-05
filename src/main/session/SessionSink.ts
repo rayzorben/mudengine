@@ -114,7 +114,7 @@ export interface SessionSink {
   shops?(shelves: Shelf[]): void;
   /**
    * The character in the realm may not be the character these records are
-   * about. Reported, never acted on: see `SessionManager.watchForReset`.
+   * about. Reported, never acted on: see `ResetWatch`.
    */
   reset?(notice: {
     signals: ResetSignal[];
