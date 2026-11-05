@@ -92,6 +92,14 @@ export interface TabHealthFigures {
   keys: number;
   slowKeys: number;
   slowestKeyMs: number;
+  /**
+   * Keys drawn ahead and echoed back by the realm, their total and slowest
+   * round trip from drawn to echoed. Only keys local echo drew are timed:
+   * none while it is off or away from a prompt.
+   */
+  echoes: number;
+  echoMs: number;
+  slowestEchoMs: number;
   /** The most a one-second timer ran late: the thread was busy or paused. */
   timerLagMs: number;
   /** Each socket that closed, as `code@seconds into the period`. */
@@ -266,6 +274,9 @@ const REPORT_COUNTS = [
   'keys',
   'slowKeys',
   'slowestKeyMs',
+  'echoes',
+  'echoMs',
+  'slowestEchoMs',
   'timerLagMs',
   'downMs',
   'resumes',

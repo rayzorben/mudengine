@@ -4801,6 +4801,8 @@ settings:
       cursorBlink: Blink Cursor
       timestampsLabel: Show Line Times
       timestampsHint: The time each line arrived, at the console's right edge.
+      localEchoLabel: Show Keys As Typed
+      localEchoHint: Draws each key at a prompt the moment you type it, before the game echoes it back.
       cursorBlock: Block
       cursorStyleLabel: Cursor
       cursorUnderline: Underline

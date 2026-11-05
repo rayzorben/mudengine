@@ -16165,15 +16165,24 @@ tr:hover .row-action.worn,
  * column on the left, then name, class, health, mana, the fight pills and
  * Follow. The bars stop at 240px and 120px, 2:1 as below, and the rest of the
  * width goes to the fight pills, so a player who keeps the card wide can give
- * it fewer rows. 640px: TODO measure in the smoke (todo 20261104-2009-01).
+ * it fewer rows. 736px, measured in the smoke: there both bars are at their
+ * maximum and the fight column has 171px, what a fight pill for `dark goblin
+ * archer` (the monster in the user's screenshot) and Follow need whole. With
+ * the bars at their least the same row needs 595px. The name column is
+ * `fit-content(28%)` against 45% on a narrow card, since here it shares the
+ * line with the bars.
  * Every cell names its column and row 1, because auto-placement would start a
  * new row when the meters come after the fight pills in the markup.
  */
-@container party (width >= 640px) {
+@container party (width >= 736px) {
   .party-roster {
+    /* The bars' least widths, read by the smoke's one-line measurement. */
+    --party-hp-min: 150px;
+    --party-mana-min: 80px;
     grid-template-columns:
       [rank] max-content [name] fit-content(28%) [class] max-content
-      [hp] minmax(150px, 240px) [mana] minmax(80px, 120px) [fight] minmax(0, 1fr);
+      [hp] minmax(var(--party-hp-min), 240px) [mana] minmax(var(--party-mana-min), 120px)
+      [fight] minmax(0, 1fr);
     row-gap: 0;
   }
 
@@ -16181,12 +16190,17 @@ tr:hover .row-action.worn,
     border-top: var(--rule) solid var(--ink-line);
   }
 
+  /*
+   * Level with its first member: the row's 3px padding, then the fight
+   * cell's 20px line, the tallest cell in a row (23px, border-box).
+   */
   .party-rank-head {
     align-self: start;
     grid-column: rank;
     grid-row: 1;
     margin: 0;
-    padding-top: 5px;
+    min-height: 23px;
+    padding-top: 3px;
   }
 
   .party-rank-head::after {

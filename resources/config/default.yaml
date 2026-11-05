@@ -196,6 +196,12 @@ terminal:
   # this line is edited. The session log always records the time.
   timestamps: false
 
+  # Draw each key you type at the statline prompt at once, instead of
+  # waiting for the game to echo it back. What the game receives is the same
+  # either way. If the game's echo differs from what was drawn (a repaint, a
+  # password's stars), the game's version replaces it.
+  localEcho: true
+
 ui:
   font:
     # The chrome around the terminal. Monospace by default so the whole client

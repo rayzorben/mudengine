@@ -323,6 +323,8 @@ export interface TerminalConfig {
   cursorStyle: 'block' | 'underline' | 'bar';
   /** Each line's time at the console's right edge: when it arrived, or a command's echo (todo 25). */
   timestamps: boolean;
+  /** A key typed at a prompt is drawn before the realm echoes it (todo 20261104-1915-01). */
+  localEcho: boolean;
 }
 
 /**
@@ -2505,7 +2507,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     scrollback: 100_000,
     cursorBlink: true,
     cursorStyle: 'block',
-    timestamps: false
+    timestamps: false,
+    localEcho: true
   },
   ui: {
     font: {
@@ -2977,7 +2980,8 @@ export function normalizeConfig(input: unknown): AppConfig {
         ['block', 'underline', 'bar'] as const,
         DEFAULT_CONFIG.terminal.cursorStyle
       ),
-      timestamps: bool(terminal['timestamps'], DEFAULT_CONFIG.terminal.timestamps)
+      timestamps: bool(terminal['timestamps'], DEFAULT_CONFIG.terminal.timestamps),
+      localEcho: bool(terminal['localEcho'], DEFAULT_CONFIG.terminal.localEcho)
     },
     ui: {
       font: normalizeFont(ui['font'], DEFAULT_CONFIG.ui.font),

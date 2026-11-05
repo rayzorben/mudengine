@@ -1098,7 +1098,8 @@ export class SettingsEditor {
         scrollback: config.terminal.scrollback,
         cursorBlink: config.terminal.cursorBlink,
         cursorStyle: config.terminal.cursorStyle,
-        timestamps: config.terminal.timestamps
+        timestamps: config.terminal.timestamps,
+        localEcho: config.terminal.localEcho
       },
       ui: {
         fontFamily: config.ui.font.family.join(', '),
@@ -1240,6 +1241,7 @@ export class SettingsEditor {
         set(['terminal', 'cursorBlink'], draft.terminal.cursorBlink);
         set(['terminal', 'cursorStyle'], draft.terminal.cursorStyle);
         set(['terminal', 'timestamps'], draft.terminal.timestamps);
+        set(['terminal', 'localEcho'], draft.terminal.localEcho);
 
         set(['ui', 'font', 'family'], splitNames(draft.ui.fontFamily));
         set(['ui', 'theme'], draft.ui.theme);

@@ -593,6 +593,10 @@ const server = net.createServer((socket) => {
           'latin1'
         ),
         Buffer.from(
+          '\x1b[0;37m  Brakkle                       (Ninja)               [H:100%]  - Frontrank\x1b[0m\r\n',
+          'latin1'
+        ),
+        Buffer.from(
           '\x1b[0;37m  Soul                          (Paladin)    [M:100%] [H:100%]  - Backrank\x1b[0m\r\n',
           'latin1'
         ),
@@ -622,6 +626,10 @@ const server = net.createServer((socket) => {
         ),
         Buffer.from(
           '\x1b[0;37m  Rayzor                        (Warrior)             [H:100%]  - Frontrank\x1b[0m\r\n',
+          'latin1'
+        ),
+        Buffer.from(
+          '\x1b[0;37m  Brakkle                       (Ninja)               [H:100%]  - Frontrank\x1b[0m\r\n',
           'latin1'
         ),
         Buffer.from(
@@ -13632,7 +13640,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   /* A resting member used to take the whole party with it: its row matched
      nothing, two members became one, and one member is not a party. */
-  check(members.length === 2, 'and lists everyone in it', JSON.stringify(members));
+  check(members.length === 3, 'and lists everyone in it', JSON.stringify(members));
   check(
     members.some(
       (m) =>
@@ -13692,13 +13700,6 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     await shown('.rail .party-card'),
     'the Party card, floating as shipped, docks onto the rail'
   );
-  /*
-   * Measured at the rail's floor, where the row is narrowest: the meter with
-   * the longer value must still sit inside its row, and the value must not be
-   * cut -- a `4,434` clipped to `4,4` is a wrong maximum stated confidently.
-   * The card's CSS shortens with an ellipsis rather than clipping, so the
-   * assertion is that at the floor nothing needs shortening at all.
-   */
   // A number, not a box: a missing rail reads as NaN and fails the checks by
   // name rather than throwing out of the harness.
   const railWidth = async () =>
@@ -13707,30 +13708,70 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         `document.querySelector('.workspace > .rail')?.getBoundingClientRect().width ?? NaN`
       )
     );
-  {
+  /** Soul's row on the Party card: the member with the widest health pill. */
+  const SOUL_ROW = `[...document.querySelectorAll('.party-list li')]
+    .find((el) => (el.querySelector('.party-name')?.innerText ?? '').startsWith('Soul'))`;
+  /** The boxes whose widths the floor and wide checks hold: the rail, and the Party card's query container. */
+  const RAIL = '.workspace > .rail';
+  const PARTY_SCROLLER = '.party-card .scroller';
+  /**
+   * Runs `measure` with the width of `selector` in its hands (`setWidth`
+   * takes a CSS length, `''` gives it back), then gives the box its own
+   * width back and checks the box went back, whatever the measurement threw.
+   */
+  const holdingWidth = async (selector, label, measure) => {
+    const widthOf = async () =>
+      Number(
+        await evaluate(
+          `document.querySelector(${JSON.stringify(selector)})?.getBoundingClientRect().width ?? NaN`
+        )
+      );
+    const before = await widthOf();
+    const setWidth = (width) =>
+      evaluate(`(() => {
+        const box = document.querySelector(${JSON.stringify(selector)});
+        box.style.width = ${JSON.stringify(width)};
+        box.style.maxWidth = ${JSON.stringify(width === '' ? '' : 'none')};
+        return true;
+      })()`);
+    try {
+      return await measure(setWidth);
+    } finally {
+      await setWidth('');
+      const after = await readUntil(widthOf, (after) => Math.abs(after - before) < 2);
+      check(
+        Math.abs(after - before) < 2,
+        `and its width is put back after ${label}`,
+        `${before} -> ${after}`
+      );
+    }
+  };
+
+  /*
+   * Measured at the rail's floor, where the row is narrowest: the meter with
+   * the longer value must still sit inside its row, and the value must not be
+   * cut -- a `4,434` clipped to `4,4` is a wrong maximum stated confidently.
+   * The card's CSS shortens with an ellipsis rather than clipping, so the
+   * assertion is that at the floor nothing needs shortening at all.
+   */
+  await holdingWidth(RAIL, 'the floor', async (setWidth) => {
     /*
      * The narrowest a card on the rail can be is one column,
      * `--rail-column-min`: the rail is held to that for the measurement, and
      * every card on it stretches to it.
      */
-    const before = await railWidth();
     const least = Number(
-      await evaluate(`
-        (() => {
-          const rail = document.querySelector('.workspace > .rail');
-          const least = getComputedStyle(rail).getPropertyValue('--rail-column-min');
-          rail.style.width = least;
-          return parseFloat(least);
-        })()
-      `)
+      await evaluate(
+        `parseFloat(getComputedStyle(document.querySelector('${RAIL}')).getPropertyValue('--rail-column-min'))`
+      )
     );
+    await setWidth(`${least}px`);
     const floor = await readUntil(railWidth, (floor) => floor <= least + 2);
     check(floor <= least + 2, 'the rail is one column wide for the measurement', `${floor}`);
     const fit = JSON.parse(
       await evaluate(`
         (() => {
-          const li = [...document.querySelectorAll('.party-list li')]
-            .find((el) => (el.querySelector('.party-name')?.innerText ?? '').startsWith('Soul'));
+          const li = ${SOUL_ROW};
           const meters = li?.querySelector('.party-meters');
           const meter = li?.querySelector('.party-meter.hp');
           const value = li?.querySelector('.party-meter.hp .party-meter-value');
@@ -13758,53 +13799,130 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and the maximum is shown whole, not shortened',
       JSON.stringify(fit)
     );
-    await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
-    const after = await readUntil(
-      () => railWidth(),
-      (after) => Math.abs(after - before) < 2
-    );
-    check(
-      Math.abs(after - before) < 2,
-      'and the rail is put back for the checks that follow',
-      `${before} -> ${after}`
-    );
-  }
+  });
   /*
    * On a wide card each member is one line (todo 20261104-2009-01): the rank,
-   * name, class and both meters side by side, the maximum still whole, and
-   * Follow inside the row. The rail is widened to just past the one-line
-   * width, the narrowest card that draws it, so a breakpoint set too low
-   * fails here as a shortened pill.
+   * name, class and both meters side by side, the maximum still whole. At
+   * the narrowest card that draws one line, the narrowest whole one-line row
+   * is measured from the cells' own widths: the widest rank, name and class,
+   * both meters at their least, and the widest fight cell's pills and Follow.
+   * A breakpoint below that fails here.
    */
-  {
-    const before = await railWidth();
-    // TODO: the one-line width plus the card's padding and scrollbar, measured.
-    const wide = 700;
-    await evaluate(
-      `(document.querySelector('.workspace > .rail').style.width = '${wide}px', true)`
+  /*
+   * A member's fight, so the wide card is measured with a real pill and
+   * Follow: Brakkle fighting `dark goblin archer`, the monster in the user's
+   * screenshot of 2026-11-04. The pill is fresh for `fightingFreshMs`, longer
+   * than this block.
+   */
+  liveSockets[0]?.write(
+    Buffer.from('\x1b[0;31mBrakkle slashes dark goblin archer for 12 damage!\x1b[0m\r\n', 'latin1')
+  );
+  const pillShown = await readUntil(
+    () => evaluate(`!!document.querySelector('.party-card .party-fighting')`),
+    (shown) => shown === true
+  );
+  check(pillShown, 'a member seen fighting has a fight pill on the Party card');
+  await holdingWidth(PARTY_SCROLLER, 'the wide card', async () => {
+    /*
+     * The smoke finds the breakpoint by searching the card's scroller, the
+     * query's container, for the narrowest width at which Soul's meters are
+     * cells of the row (`display: contents`, the one-line layout), in the
+     * page so each step is one frame. The scroller is sized itself because a
+     * wide rail adds columns rather than widening a docked card.
+     */
+    const flip = JSON.parse(
+      await evaluate(`
+        (async () => {
+          const scroller = document.querySelector('${PARTY_SCROLLER}');
+          if (!scroller) return 'null';
+          scroller.style.maxWidth = 'none';
+          const frame = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+          const oneLine = async (width) => {
+            scroller.style.width = width + 'px';
+            await frame();
+            const meters = (${SOUL_ROW})?.querySelector('.party-meters');
+            return meters !== undefined && meters !== null && getComputedStyle(meters).display === 'contents';
+          };
+          let low = Math.ceil(scroller.clientWidth);
+          let high = 2000;
+          if (await oneLine(low)) return JSON.stringify({ found: false, why: 'one line already at ' + low });
+          if (!(await oneLine(high))) return JSON.stringify({ found: false, why: 'never one line by ' + high });
+          while (high - low > 1) {
+            const mid = Math.floor((low + high) / 2);
+            if (await oneLine(mid)) high = mid;
+            else low = mid;
+          }
+          await oneLine(high);
+          const style = getComputedStyle(scroller);
+          const content =
+            scroller.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+          return JSON.stringify({ found: true, card: scroller.clientWidth, content, boxSizing: style.boxSizing });
+        })()
+      `)
     );
-    const widened = await readUntil(railWidth, (width) => width >= wide - 2);
-    check(widened >= wide - 2, 'the rail is widened past the one-line width', `${widened}`);
+    check(
+      flip !== null && flip.found,
+      'the Party card turns to one line per member when it is widened',
+      JSON.stringify(flip)
+    );
+    const breakpoint = flip?.found ? flip.card : NaN;
     const line = JSON.parse(
       await evaluate(`
         (() => {
-          const li = [...document.querySelectorAll('.party-list li')]
-            .find((el) => (el.querySelector('.party-name')?.innerText ?? '').startsWith('Soul'));
+          const li = ${SOUL_ROW};
           const name = li?.querySelector('.party-name');
           const meter = li?.querySelector('.party-meter.hp');
           const value = li?.querySelector('.party-meter.hp .party-meter-value');
           const head = li?.closest('.party-rank-group')?.querySelector('.party-rank-head');
-          if (!li || !name || !meter || !value || !head) return 'null';
-          const mid = (el) => { const b = el.getBoundingClientRect(); return (b.top + b.bottom) / 2; };
+          const roster = document.querySelector('.party-roster');
+          if (!li || !name || !meter || !value || !head || !roster) return 'null';
+          const box = (el) => el.getBoundingClientRect();
+          const mid = (el) => (box(el).top + box(el).bottom) / 2;
+          const widest = (selector) =>
+            Math.max(0, ...[...roster.querySelectorAll(selector)].map((el) => el.scrollWidth));
+          const rosterStyle = getComputedStyle(roster);
+          const gap = parseFloat(rosterStyle.columnGap) || 0;
+          const least = (name) => parseFloat(rosterStyle.getPropertyValue(name));
+          // The real pill and Follow on Brakkle's row (fed above): each whole, with the cell's gap.
+          const usualPill = () => {
+            const row = [...roster.querySelectorAll('.party-list li')].find((el) =>
+              (el.querySelector('.party-name')?.innerText ?? '').startsWith('Brakkle')
+            );
+            const pill = row?.querySelector('.party-fighting');
+            const follow = row?.querySelector('.party-follow');
+            if (!pill || !follow) return NaN;
+            const text = pill.querySelector('.lookup, span');
+            const cellGap = parseFloat(getComputedStyle(pill.parentElement).columnGap) || 0;
+            // The pill as drawn, less its shortened text, plus the text whole.
+            return Math.ceil(
+              pill.offsetWidth - text.clientWidth + text.scrollWidth + follow.offsetWidth + cellGap
+            );
+          };
+          // A fight cell's need: its pills whole and Follow, with the cell's own gaps.
+          const fight = Math.max(0, ...[...roster.querySelectorAll('.party-fight')].map((cell) => {
+            const kids = [...cell.children];
+            const cellGap = parseFloat(getComputedStyle(cell).columnGap) || 0;
+            return kids.reduce((sum, kid) => sum + kid.scrollWidth, 0) + cellGap * Math.max(0, kids.length - 1);
+          }));
+          const pad = document.querySelector('${PARTY_SCROLLER}').clientWidth - roster.clientWidth;
           return JSON.stringify({
             nameMid: mid(name),
             meterMid: mid(meter),
-            meterLeft: meter.getBoundingClientRect().left,
-            nameRight: name.getBoundingClientRect().right,
-            headRight: head.getBoundingClientRect().right,
-            nameLeft: name.getBoundingClientRect().left,
+            headMid: mid(head),
+            meterLeft: box(meter).left,
+            nameRight: box(name).right,
+            headRight: box(head).right,
+            nameLeft: box(name).left,
             valueShown: value.clientWidth,
-            valueNeeds: value.scrollWidth
+            valueNeeds: value.scrollWidth,
+            fightRoom: Math.min(...[...roster.querySelectorAll('.party-fight')].map((cell) => cell.clientWidth)),
+            pill: usualPill(),
+            least: Math.ceil(
+              widest('.party-rank-head') + widest('.party-name') + widest('.party-class') +
+                least('--party-hp-min') +
+                least('--party-mana-min') +
+                fight + 5 * gap + pad
+            )
           });
         })()
       `)
@@ -13813,6 +13931,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     check(
       line !== null &&
         Math.abs(line.nameMid - line.meterMid) < 4 &&
+        Math.abs(line.nameMid - line.headMid) < 4 &&
         line.meterLeft > line.nameRight &&
         line.headRight <= line.nameLeft,
       'a wide card puts the rank, the name and the health meter on one line',
@@ -13823,14 +13942,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and the maximum is shown whole on one line',
       JSON.stringify(line)
     );
-    await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
-    const after = await readUntil(railWidth, (after) => Math.abs(after - before) < 2);
     check(
-      Math.abs(after - before) < 2,
-      'and the rail is put back after the wide card',
-      `${before} -> ${after}`
+      line !== null && line.least <= breakpoint,
+      'and the breakpoint is no narrower than the narrowest whole one-line row',
+      JSON.stringify({ ...line, flip })
     );
-  }
+    check(
+      line !== null && line.pill <= line.fightRoom,
+      'and every fight cell has room for a usual pill and Follow',
+      JSON.stringify(line)
+    );
+  });
   /*
    * Whoever this character follows is drawn first, however the listing came --
    * and *within its own group*, because the card is arranged by formation: a

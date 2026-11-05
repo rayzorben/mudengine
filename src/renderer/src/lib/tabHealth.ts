@@ -1,12 +1,13 @@
 /**
  * How a browser tab is faring, gathered for its report to the client
  * (`RpcReport`, written to `logs/web.log`). The browser's own long tasks and
- * key timings, a one-second timer's lateness, and what the link saw: closes,
- * time down, comebacks. Each `take` hands over the figures since the last
+ * key timings, each drawn key's echo round trip, a one-second timer's
+ * lateness, and what the link saw: closes, time down, comebacks. Each `take` hands over the figures since the last
  * and starts again. A browser without an observer type reports zero for it.
  * Timed on `performance.now()`, which a wall-clock correction does not move.
  */
 import { REPORT_CLOSES, type TabHealthFigures } from '@shared/rpc';
+import { ECHO_MEASURE } from './localEcho';
 
 /** A key slower than this from press to paint is one a player feels. */
 const SLOW_KEY_MS = 100;
@@ -20,6 +21,9 @@ export class TabHealth {
   private keys = 0;
   private slowKeys = 0;
   private slowestKeyMs = 0;
+  private echoes = 0;
+  private echoMs = 0;
+  private slowestEchoMs = 0;
   private timerLagMs = 0;
   private closes: string[] = [];
   private downSince: number | null = null;
@@ -40,6 +44,12 @@ export class TabHealth {
       this.keys += 1;
       if (entry.duration > SLOW_KEY_MS) this.slowKeys += 1;
       this.slowestKeyMs = Math.max(this.slowestKeyMs, entry.duration);
+    });
+    this.observe('measure', (entry) => {
+      if (entry.name !== ECHO_MEASURE) return;
+      this.echoes += 1;
+      this.echoMs += entry.duration;
+      this.slowestEchoMs = Math.max(this.slowestEchoMs, entry.duration);
     });
     let expected = performance.now() + LAG_TICK_MS;
     const lag = setInterval(() => {
@@ -83,6 +93,9 @@ export class TabHealth {
       keys: this.keys,
       slowKeys: this.slowKeys,
       slowestKeyMs: this.slowestKeyMs,
+      echoes: this.echoes,
+      echoMs: this.echoMs,
+      slowestEchoMs: this.slowestEchoMs,
       timerLagMs: Math.max(0, this.timerLagMs),
       closes: this.closes,
       downMs,
@@ -95,6 +108,7 @@ export class TabHealth {
     if (this.downSince !== null) this.downSince = now;
     this.longTasks = this.longTaskMs = this.longestTaskMs = 0;
     this.keys = this.slowKeys = this.slowestKeyMs = this.timerLagMs = 0;
+    this.echoes = this.echoMs = this.slowestEchoMs = 0;
     this.closes = [];
     this.downMs = this.resumes = this.renewals = this.frames = this.chars = 0;
     return figures;

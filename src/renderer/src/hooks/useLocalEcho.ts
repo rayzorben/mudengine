@@ -2,11 +2,14 @@
  * The console's local echo, bound to one terminal: each key drawn as it is
  * typed, the realm's echo of it taken out of the stream, and a key the realm
  * never echoed taken back after `tuning().localEchoGiveUpMs`
- * (todo 20261104-1915-01). The rules are `lib/localEcho.ts`'s.
+ * (todo 20261104-1915-01). The rules are `lib/localEcho.ts`'s. Off
+ * (`terminal.localEcho`), nothing is drawn and the line is forgotten. Each
+ * echo that comes back is timed onto the page's performance timeline as
+ * `ECHO_MEASURE`, which a browser tab reports (`lib/tabHealth.ts`).
  */
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 
-import { LocalEcho } from '../lib/localEcho';
+import { ECHO_MEASURE, LocalEcho } from '../lib/localEcho';
 import { tuning } from '../lib/tuning';
 import type { StreamChunk } from '@shared/types';
 import type { TerminalHandle } from '../components/TerminalView';
@@ -21,11 +24,20 @@ export interface LocalEchoPort {
 }
 
 export function useLocalEcho(
-  handle: RefObject<Pick<TerminalHandle, 'echo'> | null>
+  handle: RefObject<Pick<TerminalHandle, 'echo'> | null>,
+  enabled: boolean
 ): LocalEchoPort {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const on = useRef(enabled);
+  on.current = enabled;
   const port = useMemo(() => {
-    const echo = new LocalEcho();
+    // Monotonic, so a wall-clock correction neither expires a guess nor skews its measure.
+    const now = (): number => performance.now();
+    const echo = new LocalEcho((drawnAt) => {
+      performance.measure(ECHO_MEASURE, { start: drawnAt, end: now() });
+      // The observer already has it; the page's own buffer would only grow.
+      performance.clearMeasures(ECHO_MEASURE);
+    });
     const draw = (text: string): void => {
       // A hidden page writes nothing (`lib/hiddenPage.ts`); its console is redrawn when shown.
       if (text.length > 0 && document.visibilityState !== 'hidden') handle.current?.echo(text);
@@ -39,15 +51,17 @@ export function useLocalEcho(
       timer.current = setTimeout(
         () => {
           timer.current = null;
-          draw(echo.expire(Date.now(), limit));
+          draw(echo.expire(now(), limit));
           arm();
         },
-        Math.max(0, oldest + limit - Date.now())
+        Math.max(0, oldest + limit - now())
       );
     };
     return {
       typed: (data: string) => {
-        draw(echo.typed(data, Date.now()));
+        // Off, a guess already drawn still waits for its echo; the line typed now is not counted.
+        if (on.current) draw(echo.typed(data, now()));
+        else echo.forget();
         arm();
       },
       arrived: (chunk: StreamChunk): StreamChunk => {

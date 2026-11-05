@@ -10,7 +10,7 @@
  * command, a take-back's erase) takes back what was drawn and lets the
  * chunk paint as sent, which is what the console drew before this existed.
  * Main still sends and reads every byte as before. Pure: the clock and the
- * console belong to the caller. `mudengine-ui` › *The console*.
+ * console belong to the caller. `mudengine-ui` › *A key is drawn before its echo, only at a prompt*.
  */
 import { stampEndAt, unstamped } from '@shared/stamps';
 import { withoutSgr } from '@shared/template';
@@ -22,11 +22,17 @@ interface Guess {
   readonly at: number;
 }
 
+/** The performance-timeline name of one key's round trip, drawn to echoed (`lib/tabHealth.ts` reads it). */
+export const ECHO_MEASURE = 'mudengine.echo';
+
 const ERASE = '\b \b';
 const PRINTABLE = /^[\x20-\x7e]$/;
 const ENTER = /[\r\n]/;
 
 export class LocalEcho {
+  /** `heard` is told when each drawn key's echo has come back whole, with the time it was drawn. */
+  constructor(private readonly heard: (drawnAt: number) => void = () => {}) {}
+
   private guesses: Guess[] = [];
   /** How far into the first guess's echo the realm has written. */
   private matched = 0;
@@ -75,6 +81,7 @@ export class LocalEcho {
       if (this.matched === head.echo.length) {
         this.guesses.shift();
         this.matched = 0;
+        this.heard(head.at);
       }
     }
     const rest = text.slice(i);
@@ -98,6 +105,12 @@ export class LocalEcho {
   reset(): void {
     this.guesses = [];
     this.matched = 0;
+    this.atInput = false;
+    this.line = null;
+  }
+
+  /** A key sent without being drawn: the line is no longer known, and nothing more is drawn until it is. Guesses on screen still wait for their echo. */
+  forget(): void {
     this.atInput = false;
     this.line = null;
   }

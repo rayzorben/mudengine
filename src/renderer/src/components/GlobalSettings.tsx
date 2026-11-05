@@ -713,6 +713,13 @@ export default function GlobalSettings({
                   name="global-timestamps"
                   onChange={(value) => patch('terminal', { timestamps: value })}
                 />
+                <CheckField
+                  checked={draft.terminal.localEcho}
+                  hint={t('settings.client.appearance.localEchoHint')}
+                  label={t('settings.client.appearance.localEchoLabel')}
+                  name="global-local-echo"
+                  onChange={(value) => patch('terminal', { localEcho: value })}
+                />
               </div>
               <TextField
                 hint={t('settings.client.appearance.uiFontHint')}

@@ -124,3 +124,31 @@ describe('Enter', () => {
     expect(c.echo.typed('\x7f', 0)).toBe('');
   });
 });
+
+describe('the echo round trip and the switch', () => {
+  it('tells when each drawn key came back whole, with when it was drawn', () => {
+    const heard: number[] = [];
+    const echo = new LocalEcho((at) => heard.push(at));
+    echo.arrived(PROMPT, true);
+    echo.typed('l', 10);
+    echo.typed('o', 20);
+    echo.arrived('l', false);
+    expect(heard).toEqual([10]);
+    echo.arrived('o', false);
+    expect(heard).toEqual([10, 20]);
+  });
+
+  it('forgets the line when a key is sent undrawn, and still takes out a drawn echo', () => {
+    const echo = new LocalEcho();
+    echo.arrived(PROMPT, true);
+    expect(echo.typed('l', 0)).toBe('l');
+    echo.forget();
+    // Sent while off: not drawn, and the drawn `l` still waits for its echo.
+    expect(echo.typed('o', 0)).toBe('');
+    expect(echo.arrived('lo', false)).toBe('o');
+    // The line is unknown now, so an erase is left to the realm even at the next prompt.
+    echo.arrived(`\r\n${PROMPT}`, true);
+    expect(echo.typed('\x7f', 0)).toBe('');
+    expect(echo.typed('k', 0)).toBe('k');
+  });
+});

@@ -245,6 +245,7 @@ export interface GlobalDraft {
     cursorBlink: boolean;
     cursorStyle: 'block' | 'underline' | 'bar';
     timestamps: boolean;
+    localEcho: boolean;
   };
   ui: {
     fontFamily: string;
@@ -1459,7 +1460,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       scrollback: clamp(terminal['scrollback'], 100, 1_000_000, 100_000),
       cursorBlink: terminal['cursorBlink'] === true,
       cursorStyle: oneOf(terminal['cursorStyle'], ['block', 'underline', 'bar'] as const, 'block'),
-      timestamps: terminal['timestamps'] === true
+      timestamps: terminal['timestamps'] === true,
+      localEcho: terminal['localEcho'] === true
     },
     ui: {
       fontFamily: text(ui['fontFamily']).slice(0, 200),

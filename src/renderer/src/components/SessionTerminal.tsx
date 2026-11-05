@@ -142,7 +142,7 @@ function SessionTerminal({
    */
   const sent = onePage(tuning().consoleLiveLines, settings.scrollback);
   const liveLines = onePage(tuning().consolePageLines, settings.scrollback);
-  const echo = useLocalEcho(handleRef);
+  const echo = useLocalEcho(handleRef, settings.localEcho);
   const send = useCallback(
     (data: string) => {
       echo.typed(data);
