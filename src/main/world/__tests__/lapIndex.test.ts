@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLapIndex, LapIndexCache } from '../lapIndex';
+import { buildLapIndex, LapIndexCache, type PlanLegs } from '../lapIndex';
 import { leg } from '../navigation/plan';
 import { planRealmOf } from '../navigation/realm';
 import type { WorldGraph } from '../WorldGraph';
@@ -20,16 +20,23 @@ function corridor(count: number): Array<Record<string, unknown>> {
 }
 
 /** A leg with every fight won, the shape the session's lap leg answers in. */
-const legOf = (graph: WorldGraph) => (from: string, to: string) => {
-  const route = leg(
+const legOf = (graph: WorldGraph) => (from: string, to: string) =>
+  leg(
     planRealmOf(graph),
     { fight: () => ({ kind: 'win', survives: null }), affords: () => null },
     from,
     to,
     {}
   );
-  return route.blocked ? null : route;
-};
+
+/** Each leg's rooms, as the route worker answers a batch. */
+const batchOf =
+  (each: (from: string, to: string) => ReturnType<ReturnType<typeof legOf>>): PlanLegs =>
+  (legs) =>
+    Promise.resolve(
+      legs.map(([from, to]) => each(from, to).steps.flatMap((step) => [step.from, step.to]))
+    );
+const planOf = (graph: WorldGraph): PlanLegs => batchOf(legOf(graph));
 
 const byId = (stop: { at: { map: number; room: number } | null }) =>
   stop.at === null ? null : `${stop.at.map}/${stop.at.room}`;
@@ -40,7 +47,7 @@ describe('the loops whose lap walks through a room', () => {
     const index = await buildLapIndex(
       [{ name: 'along', stops: [{ room: 'Room 1 1/1' }, { room: 'Room 5 1/5' }] }],
       byId,
-      legOf(graph),
+      planOf(graph),
       () => false
     );
     expect(index?.through('1/3')).toEqual(['along']);
@@ -52,7 +59,7 @@ describe('the loops whose lap walks through a room', () => {
     const index = await buildLapIndex(
       [{ name: 'lost', stops: [{ room: 'Nowhere' }, { room: 'Room 3 1/3' }] }],
       byId,
-      legOf(graph),
+      planOf(graph),
       () => false
     );
     expect(index?.through('1/2')).toEqual([]);
@@ -64,7 +71,7 @@ describe('the loops whose lap walks through a room', () => {
     const index = await buildLapIndex(
       [{ name: 'along', stops: [{ room: 'Room 1 1/1' }, { room: 'Room 3 1/3' }] }],
       byId,
-      legOf(graph),
+      planOf(graph),
       () => true
     );
     expect(index).toBeNull();
@@ -79,17 +86,17 @@ describe('one session keeps its lap index', () => {
     const planned = legOf(graph);
     return {
       legs: () => legs,
-      leg: (from: string, to: string) => {
+      planLegs: batchOf((from: string, to: string) => {
         legs += 1;
         return planned(from, to);
-      }
+      })
     };
   };
 
   it('plans once while the realm, the loops and the traveller hold', async () => {
     const cache = new LapIndexCache();
     const legs = counting();
-    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, leg: legs.leg };
+    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, planLegs: legs.planLegs };
     const first = await cache.index(ask);
     const again = await cache.index({ ...ask, loops: [...loops] });
     expect(first).toBe(again);
@@ -100,7 +107,7 @@ describe('one session keeps its lap index', () => {
   it('plans again when the traveller or the loops move', async () => {
     const cache = new LapIndexCache();
     const legs = counting();
-    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, leg: legs.leg };
+    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, planLegs: legs.planLegs };
     await cache.index(ask);
     await cache.index({ ...ask, traveller: { level: 6 } });
     expect(legs.legs()).toBe(4);
@@ -114,7 +121,7 @@ describe('one session keeps its lap index', () => {
 
   it('answers a stale ask from the build that replaced it', async () => {
     const cache = new LapIndexCache();
-    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, leg: legOf(graph) };
+    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, planLegs: planOf(graph) };
     const waiting = cache.index(ask);
     const newer = cache.index({ ...ask, traveller: { level: 6 } });
     const [first, second] = await Promise.all([waiting, newer]);
@@ -124,7 +131,7 @@ describe('one session keeps its lap index', () => {
 
   it('answers nothing once disposed', async () => {
     const cache = new LapIndexCache();
-    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, leg: legOf(graph) };
+    const ask = { graph, loops, traveller: { level: 5 }, resolve: byId, planLegs: planOf(graph) };
     const waiting = cache.index(ask);
     cache.dispose();
     expect(await waiting).toBeNull();

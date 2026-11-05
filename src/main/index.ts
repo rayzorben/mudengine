@@ -56,5 +56,6 @@ const { host } = web
 // The fight simulator's worker, built as its own entry beside this one.
 startClient(host, {
   simulatorWorker: path.join(outMain, 'simulatorWorker.js'),
-  artWorker: path.join(outMain, 'artWorker.js')
+  artWorker: path.join(outMain, 'artWorker.js'),
+  lapWorker: path.join(outMain, 'lapWorker.js')
 });

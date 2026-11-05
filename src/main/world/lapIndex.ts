@@ -2,18 +2,14 @@
  * Which loops' laps walk through a room, for the Loops modal's Passes
  * through here (todo 20261020-1303-01). A loop is kept as its fewest
  * waypoints, so a room between two stops is in no stop list; only the planned
- * lap knows it. Each leg is planned by the `leg` the caller gives, which main
- * makes the session's own lap leg, so the rooms are the ones the running lap
- * walks, fights weighed as the lap weighs them.
- *
- * Built one leg per turn of the event loop: the shipped shelf is 3,447 legs
- * (14.8 s measured on Paradigm, 2026-10-20), far too long to hold the thread
- * that reads every socket, and one loop is too coarse a slice: Black Fortress
- * alone is 24 legs and 3.3 s, where its longest leg, a blocked one, is 0.3 s.
+ * lap knows it. Each loop's legs are planned by the `planLegs` the caller
+ * gives, which main makes the session's own lap leg on the route worker
+ * (`LapPlanner`), so the rooms are the ones the running lap walks, fights
+ * weighed as the lap weighs them. The shipped shelf is 3,447 legs (14.8 s on
+ * Paradigm, 2026-10-20), and on main one leg held the thread for up to 310 ms.
  */
-import { nextTurn } from '../app/nextTurn';
 import type { Loop } from '../../shared/loops';
-import type { RoomId, Route } from '../../shared/world';
+import type { RoomId } from '../../shared/world';
 import { lapLegs, travellerFingerprint, type StopPlace } from './loopDraft';
 import type { Traveller, WorldGraph } from './WorldGraph';
 
@@ -24,11 +20,14 @@ export interface LapIndex {
   unresolved: readonly string[];
 }
 
-/** Null when `cancelled` answers true between two legs. */
+/** Each leg's rooms, every step's both ends; none for a leg with no way. */
+export type PlanLegs = (legs: ReadonlyArray<readonly [RoomId, RoomId]>) => Promise<RoomId[][]>;
+
+/** Null when `cancelled` answers true between two loops. */
 export async function buildLapIndex(
   loops: readonly Loop[],
   resolve: (stop: StopPlace) => RoomId | null,
-  leg: (from: RoomId, to: RoomId) => Route | null,
+  planLegs: PlanLegs,
   cancelled: () => boolean
 ): Promise<LapIndex | null> {
   const byRoom = new Map<RoomId, string[]>();
@@ -39,17 +38,10 @@ export async function buildLapIndex(
       unresolved.push(loop.name);
       continue;
     }
-    const rooms = new Set<RoomId>();
-    for (const [from, to] of legs) {
-      await nextTurn();
-      if (cancelled()) return null;
-      const route = leg(from, to);
-      if (route === null) continue;
-      for (const step of route.steps) {
-        rooms.add(step.from);
-        rooms.add(step.to);
-      }
-    }
+    if (cancelled()) return null;
+    const planned = await planLegs(legs);
+    if (cancelled()) return null;
+    const rooms = new Set(planned.flat());
     for (const room of rooms) {
       const names = byRoom.get(room);
       if (names === undefined) byRoom.set(room, [loop.name]);
@@ -67,7 +59,7 @@ export interface LapIndexAsk {
   /** What the lap's leg prices against; only the parts a route depends on key the index. */
   traveller: Traveller;
   resolve: (stop: StopPlace) => RoomId | null;
-  leg: (from: RoomId, to: RoomId) => Route | null;
+  planLegs: PlanLegs;
 }
 
 interface Build {
@@ -104,7 +96,7 @@ export class LapIndexCache {
       build.index = buildLapIndex(
         ask.loops,
         ask.resolve,
-        ask.leg,
+        ask.planLegs,
         () => build.cancelled || this.disposed
       );
       this.held = build;

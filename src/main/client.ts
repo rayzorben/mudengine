@@ -228,6 +228,7 @@ import {
   type ShopPlace
 } from '../shared/world';
 import { LapIndexCache } from './world/lapIndex';
+import { LapPlanner, planningLegs } from './world/LapPlanner';
 import { LoopDraftCache } from './world/loopDraft';
 import { pagesOf, type RoutePage, type RoutePages, type WalkPages } from '../shared/routeLegs';
 import { errorMessage, str } from '../shared/values';
@@ -366,6 +367,8 @@ const recorders = new Set<FlightRecorder>();
 let logSweep: LogSweep | null = null;
 /** The worker threads every session's fight trials run on (`SimulatorPool`). */
 let simulators: SimulatorPool | null = null;
+/** The route worker the lap index plans its legs on. See `LapPlanner`. */
+let lapPlanner: LapPlanner | null = null;
 /** Where the simulator's worker was built, as the entry states it (`index.ts`). */
 let simulatorWorker = '';
 /** Where the art server's proof of work was built, the same way. */
@@ -2215,7 +2218,7 @@ function registerIpc(): void {
   // the header of `loopDraft.ts`.
   const lapTravellerOf = (session: SessionId): Traveller => {
     const manager = host?.get(session)?.manager;
-    return manager ? manager.lapTraveller(manager.character) : nobody;
+    return manager ? manager.lap.lapTraveller(manager.character) : nobody;
   };
 
   /*
@@ -2641,8 +2644,9 @@ function registerIpc(): void {
   handle(Invoke.loopThrough, async (_caller, session: SessionId): Promise<LoopsThrough> => {
     const world = worldFor(session);
     const slot = await placedFirst(session);
-    if (!slot || !world || world.size === 0) return NO_LOOPS_THROUGH;
+    if (!slot || !world || world.size === 0 || lapPlanner === null) return NO_LOOPS_THROUGH;
     const { manager } = slot;
+    const planner = lapPlanner;
     let cache = lapIndexes.get(session);
     if (cache === undefined) {
       cache = new LapIndexCache();
@@ -2660,10 +2664,14 @@ function registerIpc(): void {
       ],
       traveller: lapTravellerOf(session),
       resolve: (stop) => manager.loops.roomOf(stop),
-      leg: (from, to) => {
-        const route = manager.leg(from, to, { lap: true });
-        return typeof route === 'string' ? null : route;
-      }
+      // On the route worker, as the session's own lap leg plans them.
+      planLegs: planningLegs(
+        planner,
+        realms?.fileOf(world) ?? null,
+        world,
+        manager.lap.lapLegAsk(manager.character),
+        (asked) => manager.lap.lapFight(asked)
+      )
     });
     const room = host?.get(session)?.manager.character.room;
     const here = room === undefined ? null : roomAddress(room);
@@ -3878,11 +3886,12 @@ function guardTheProcess(): void {
  */
 export function startClient(
   host: Host,
-  built: { simulatorWorker: string; artWorker: string }
+  built: { simulatorWorker: string; artWorker: string; lapWorker: string }
 ): void {
   platform = host;
   simulatorWorker = built.simulatorWorker;
   artWorker = built.artWorker;
+  lapPlanner = new LapPlanner(built.lapWorker, (message) => announce('routes', message));
   asked = homeRoot(process.env, host.defaultHome);
   home = homeAt(asked.root);
 
@@ -4196,6 +4205,7 @@ function teardown(): void {
   recorders.clear();
   settle('log sweep', () => logSweep?.dispose());
   settle('simulator', () => simulators?.dispose());
+  settle('routes', () => lapPlanner?.dispose());
   settle('internal', () => internal?.dispose());
   // Written before the sessions go: what the last fight taught is scheduled
   // lazily, and quitting is exactly when that schedule has not fired yet.

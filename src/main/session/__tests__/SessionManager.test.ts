@@ -6934,7 +6934,7 @@ describe('what this character costs to move', () => {
     });
     const forcing = { pick: false, bash: true, search: true, levers: true, disarm: true };
     expect(manager.travellerNow(manager.character).forcing).toEqual(forcing);
-    expect(manager.lapTraveller(manager.character).forcing).toEqual(forcing);
+    expect(manager.lap.lapTraveller(manager.character).forcing).toEqual(forcing);
   });
 
   /*
@@ -7085,7 +7085,7 @@ describe('what this character costs to move', () => {
       words: ['vortex'],
       allowed: []
     });
-    expect(manager.lapTraveller(manager.character).keepOut).toEqual({
+    expect(manager.lap.lapTraveller(manager.character).keepOut).toEqual({
       words: ['vortex'],
       allowed: []
     });

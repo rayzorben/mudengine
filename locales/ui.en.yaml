@@ -183,6 +183,8 @@ notices:
       seedFailed:
         'The realms the client comes with could not all be copied into {serversDir}, so the next start
         tries again: {message}'
+  routeWorker:
+    failed: 'Passes through here in the Loops window now takes longer to fill, and the terminal can lag while it does ({error}).'
   simulator:
     workerFailed: 'Fight odds now take longer to work out, and the terminal can lag while they do
       ({error}).'

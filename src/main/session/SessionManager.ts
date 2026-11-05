@@ -3140,9 +3140,9 @@ export class SessionManager {
     return this.errands.routeBetween(from, to, options.lap ? 'lap' : 'walk', options);
   }
 
-  /** What a lap's leg costs to move. See `Errands.lapTraveller`. */
-  lapTraveller(state: CharacterState): Traveller {
-    return this.errands.lapTraveller(state);
+  /** What a lap's leg costs to move, and what one is planned with off main's thread. See `Errands.lapTraveller`. */
+  get lap(): Pick<Errands, 'lapTraveller' | 'lapLegAsk' | 'lapFight'> {
+    return this.errands;
   }
 
   /** The Hunting card's answer, `held` the key of the survey it holds. See `Errands.huntingAnswer`. */

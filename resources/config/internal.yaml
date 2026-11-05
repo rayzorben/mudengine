@@ -1702,6 +1702,11 @@ tuning:
 
   # The realm knowledge base — conversion, routing and the local map.
   world:
+    # How long the route worker stays with nothing to plan before it exits,
+    # handing back its copy of the realm. The next Loops window loads it again,
+    # about 0.7 seconds on Paradigm, off the thread that holds the sockets.
+    routeWorkerIdleMs: 120000
+
     # Converted realms kept on disk. Editing a realm leaves the old conversion
     # behind, which makes going back free and was unbounded until this.
     keepRealms: 8

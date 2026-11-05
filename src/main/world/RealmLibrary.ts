@@ -92,6 +92,8 @@ export class RealmLibrary {
   private readonly graphs = new Map<string, WorldGraph>();
   /** The bundled worlds, each loaded once and kept for the process's life. */
   private readonly shipped = new Map<ShippedWorld, WorldGraph>();
+  /** The file each graph was read from, which the route worker reads again (`LapPlanner`). */
+  private readonly files = new WeakMap<WorldGraph, string>();
   /**
    * The bundled worlds' headers, read without indexing them, so a database a
    * player names can be matched against the archives they were built from
@@ -115,6 +117,11 @@ export class RealmLibrary {
 
   constructor(private readonly options: RealmLibraryOptions) {}
 
+  /** The file `graph` was read from; null for one this library did not read, or an empty one. */
+  fileOf(graph: WorldGraph): string | null {
+    return this.files.get(graph) ?? null;
+  }
+
   /** Where one bundled world is kept. */
   private shippedFile(world: ShippedWorld): string {
     return shippedWorldPath(this.options.shippedDir, world);
@@ -136,6 +143,7 @@ export class RealmLibrary {
     const graph = WorldGraph.load(file);
     this.shipped.set(world, graph);
     if (graph.size > 0) {
+      this.files.set(graph, file);
       this.options.notify?.(
         t('notices.world.shippedLoaded', {
           rooms: graph.size.toLocaleString(),
@@ -306,6 +314,7 @@ export class RealmLibrary {
       return fallback(t('notices.world.problemEmptyConversion', { file: path.basename(wanted) }));
     }
     this.graphs.set(key, graph);
+    this.files.set(graph, cacheFile);
     this.announceBuild(graph);
     return { graph, source: graph.info.source };
   }

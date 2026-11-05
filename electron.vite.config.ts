@@ -125,7 +125,9 @@ export default defineConfig({
           // A worker thread's own entry, beside `index.js` (`app/simulatorPool.ts`).
           simulatorWorker: resolve('src/main/app/simulatorWorker.ts'),
           // The art server's registration proof of work (`art/proofOfWork.ts`).
-          artWorker: resolve('src/main/art/artWorker.ts')
+          artWorker: resolve('src/main/art/artWorker.ts'),
+          // The route worker: the lap index's legs (`world/LapPlanner.ts`).
+          lapWorker: resolve('src/main/world/lapWorker.ts')
         }
       }
     }

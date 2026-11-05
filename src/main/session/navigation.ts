@@ -10,7 +10,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import { boughtOffer, leg, plan } from '../world/navigation/plan';
 import { planRealmOf } from '../world/navigation/realm';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
-import { chargedInCopper, coveredBy } from '../../shared/coins';
+import { affordsWith, purseOf } from '../world/navigation/purse';
 import { unfoughtShare } from '../../shared/danger';
 import type { CharacterState } from '../../shared/character';
 import type { NavigationOracle, Plan } from '../../shared/navigation';
@@ -36,6 +36,8 @@ export interface NavigationParts {
         | 'itemSources'
         | 'byId'
         | 'lairOf'
+        | 'shop'
+        | 'priceAt'
         | 'residentEntities'
         | 'item'
         | 'namedExitItems'
@@ -172,19 +174,14 @@ export class Navigation {
     return world === undefined ? null : this.oracle(world);
   }
 
-  private oracle(world: Pick<WorldGraph, 'byId' | 'lairOf' | 'item'>): NavigationOracle {
+  private oracle(
+    world: Pick<WorldGraph, 'byId' | 'lairOf' | 'item' | 'shop' | 'priceAt'>
+  ): NavigationOracle {
     const odds = this.parts.odds();
     return {
       fight: (monster, room) => fightOdds(odds, world, monster, room),
       // The purse, or a bank on record that makes up the rest (todo 02).
-      affords: (item, room) => {
-        const state = this.parts.tracker.current;
-        const name = world.item(item)?.name;
-        const price = name === undefined ? null : this.parts.errands.priceAt(name, room);
-        if (price === null) return null;
-        const owed = chargedInCopper(price, state.progress.charm);
-        return coveredBy(owed, state.inventory.wealth, state.banks);
-      }
+      affords: (item, room) => affordsWith(world, purseOf(this.parts.tracker.current), item, room)
     };
   }
 }

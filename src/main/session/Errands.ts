@@ -114,7 +114,7 @@ import {
   type SurveyAsk
 } from '../../shared/hunting';
 import { matchStop, type RoomMatch } from '../../shared/loops';
-import { bareName, sameItem } from '../../shared/items';
+import { sameItem } from '../../shared/items';
 import { afflictionsOf, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { attacksOnSight, fightable, waitsToBeStruck } from '../../shared/mobs';
 import {
@@ -165,6 +165,9 @@ import { gearEffect } from '../../shared/blessingeffects';
 import { carriedCount, namesNoShop, stockCeiling, type SupplyCounter } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import { keptByParts } from '../../shared/keptByParts';
+import { counterLine, priceAt, purseOf } from '../world/navigation/purse';
+import { relocatingShare } from '../world/relocating';
+import { lapFunctions, plainTraveller, type FightAsked, type LapLegsAsk } from '../world/lapLegs';
 import {
   lairPass,
   roadPass,
@@ -184,13 +187,13 @@ import {
   counterIn,
   hazardAvoided,
   hazardCarried,
-  nameAnswersTo,
   edgeKey,
   roomAddress,
   roomId,
   routeFares,
   type BuyingPlace,
   type CashPlace,
+  type FightOdds,
   type Requirement,
   type RoomId,
   type RoomReference,
@@ -1283,23 +1286,27 @@ export class Errands implements SessionModule {
    * never on `travellerNow`). See `mudengine-automation` › *A lap walks the
    * shortest way*.
    */
+  /**
+   * What a lap's legs are planned with on the route worker, as plain data:
+   * the traveller `routeBetween` plans a lap leg with, its functions dropped
+   * (`lapFunctions` builds them there), and the purse (`LapPlanner`).
+   */
+  lapLegAsk(state: CharacterState): Pick<LapLegsAsk, 'traveller' | 'purse'> {
+    return { traveller: plainTraveller(this.travellerFor('lap', state)), purse: purseOf(state) };
+  }
+
+  /** A fight a lap leg asked about, weighed as the session's own lap leg weighs it. */
+  lapFight(asked: FightAsked): FightOdds {
+    return this.navigation.weighing()?.fight(asked.monster, asked.room) ?? { kind: 'unread' };
+  }
+
   lapTraveller(state: CharacterState): Traveller {
     const priced = this.travellerNow(state, false);
-    const relocates = (
-      room: WorldRoom,
-      carrying: readonly number[] | undefined = priced.keys
-    ): number | null => {
-      const hazard = this.world?.hazardOf(room, state.progress.level) ?? null;
-      return hazard !== null && hazardCarried(hazard, carrying, priced.spellsUp).relocates === true
-        ? (priced.hazard?.(room, carrying) ?? null)
-        : null;
-    };
     return {
       ...priced,
       danger: undefined,
       runDeath: undefined,
-      hazard: relocates,
-      shareOfHealth: () => 0
+      ...lapFunctions(this.world, priced)
     };
   }
 
@@ -1328,18 +1335,11 @@ export class Errands implements SessionModule {
     // Carrying what stops it is not *unknown*, it is *free*: the room costs a
     // plain step, which is what it is for that character.
     if (hazardAvoided(stated, carrying, up)) return null;
+    // A room that moves the character is a wall (`relocatingShare`).
+    const relocating = relocatingShare(stated, carrying, up);
+    if (relocating !== null) return relocating;
     // And what stops one effect of it takes that effect off the price.
     const hazard = hazardCarried(stated, carrying, up);
-    /*
-     * **A room that moves you is a wall, exactly as an exit that casts one
-     * is** (`edgePenalty`'s `spellEffect === 'relocates'`). The walker's next
-     * command goes out from wherever the plan says it is standing, and a room
-     * that puts it somewhere the exit table does not name breaks every step
-     * after it. 1,557 rooms of the shipped realm cast one. `deadlyShare` and
-     * not `wallCost` because this is a *share*, and `dangerPenalty` turns a
-     * share at the wall into the wall — one place decides that number.
-     */
-    if (hazard.relocates === true) return tuning().world.deadlyShare;
     const health = this.healthNow(state, true);
     if (health === null) return null;
     /*
@@ -3208,23 +3208,14 @@ export class Errands implements SessionModule {
    * shelf no such row, or the realm file no coin.
    */
   priceAt(name: string, shop: RoomId): number | null {
-    const found = this.counterLine(name, shop);
-    return found === null ? null : found.world.priceAt(found.line.id, found.counter);
+    return this.world === undefined ? null : priceAt(this.world, name, shop);
   }
 
   /** What one of `name` weighs at the counter in `shop`, from its realm row (todo 80). */
   weightAt(name: string, shop: RoomId): number | null {
-    return this.counterLine(name, shop)?.line.encumbrance ?? null;
-  }
-
-  /** The counter in `shop` and its row answering to `name`, or null. */
-  private counterLine(name: string, shop: RoomId) {
-    const world = this.world;
-    const row = world?.byId(shop)?.shop;
-    const counter = row === undefined ? undefined : world?.shop(row);
-    const line = counter?.items.find((each) => nameAnswersTo(bareName(each.name), bareName(name)));
-    if (world === undefined || counter === undefined || line === undefined) return null;
-    return { world, counter: counter.id, line };
+    return this.world === undefined
+      ? null
+      : (counterLine(this.world, name, shop)?.line.encumbrance ?? null);
   }
 
   /**
