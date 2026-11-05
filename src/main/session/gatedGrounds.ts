@@ -73,7 +73,8 @@ export class GatedGrounds {
           room: ground.room,
           at: ground.at,
           came: [],
-          timed: null
+          timed: null,
+          arena: false
         });
         const paid = mobs.flatMap((mob) => (mob.experience === undefined ? [] : [mob.experience]));
         return {

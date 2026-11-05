@@ -8,6 +8,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import {
   RefillWatch,
+  madeInPlace,
   refillClock,
   refillCount,
   timedWithMoves,
@@ -20,8 +21,10 @@ import type { RoomId } from '../../shared/world';
 /** A room with no lair that refilled while the character stood in it. */
 export interface RefillingRoom {
   room: RoomId;
-  /** Seconds, the median timed gap. */
-  clock: number;
+  /** Seconds, the median timed gap; null for an arena not yet timed `refillsLeast` times. */
+  clock: number | null;
+  /** The room was seen making a monster in place (`madeInPlace`), as an arena does. */
+  arena: boolean;
   /** Every monster that came, by `mobKey`, commonest first. */
   names: string[];
 }
@@ -38,13 +41,14 @@ export class RoomClocks {
 
   /**
    * Every character line, with the block that brought it: only a death starts
-   * a clock, and an arrival while `moving` (a move of this character's
-   * unanswered) is the next room's.
+   * a clock, an arrival while `moving` (a move of this character's
+   * unanswered) is the next room's, and one `from nowhere` the room made.
    */
-  onCharacter(state: CharacterState, block: Pick<Block, 'type'>, moving: boolean): void {
+  onCharacter(state: CharacterState, block: Pick<Block, 'type' | 'groups'>, moving: boolean): void {
     const at = this.now();
     const killed = block.type === 'mob-dies' || block.type === 'user-gain-experience';
-    const timed = this.watch.observe(refillCount(state), at, killed, moving);
+    const made = block.type === 'mob-arrives-room' && block.groups['direction'] === 'nowhere';
+    const timed = this.watch.observe(refillCount(state), at, killed, moving, made);
     if (timed === null) return;
     this.lore.observeRefill(timed, at);
     this.came.clear();
@@ -121,7 +125,13 @@ export class RoomClocks {
     return `${all.size}|${refills}|${newest}`;
   }
 
-  /** Rooms `isLair` does not admit that have a timed clock: an arena, read off the wire. */
+  /**
+   * Rooms `isLair` does not admit that have a timed clock, or that were seen
+   * making a monster in place: an arena, read off the wire. One refill made
+   * in place is enough, since it says what the room is and its `Delay` gives
+   * the clock until it is timed `refillsLeast` times (Yang, Omniverse,
+   * 2026-11-04).
+   */
   refilling(isLair: (room: RoomId) => boolean): RefillingRoom[] {
     const least = tuning().hunting.refillsLeast;
     const rooms: RefillingRoom[] = [];
@@ -129,9 +139,10 @@ export class RoomClocks {
       if (isLair(room) || !timedWithMoves(entry)) continue;
       // An arena refills within a second (the Newhaven Arena), so no gap is too short here.
       const clock = refillClock(entry, least);
-      if (clock === null) continue;
+      const arena = madeInPlace(entry);
+      if (clock === null && !arena) continue;
       const names = cameIn(entry);
-      if (names.length > 0) rooms.push({ room, clock, names });
+      if (names.length > 0) rooms.push({ room, clock, arena, names });
     }
     return rooms;
   }

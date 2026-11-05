@@ -51,6 +51,8 @@ export interface LearnedSpawns {
   at: number;
   /** `SPAWNS_VERSION` where the refills were timed that way; absent on an older entry. */
   v?: number;
+  /** How many of the refills the room made in place (`RefillTimed.made`); absent where none. */
+  made?: number;
 }
 
 /** Whether an entry was timed with this character's moves accounted for (`SPAWNS_VERSION`). */
@@ -64,6 +66,19 @@ export interface RefillTimed {
   seconds: number;
   names: string[];
   lair: boolean;
+  /**
+   * The monster arrived `from nowhere`: MajorMUD's line for a monster the room
+   * made while a player stood in it. Of the 7,099 such lines in the OCI
+   * session logs to 2026-11-05, 7,070 came in the Newhaven Arena (Soul on
+   * themajorbbs, Yang on Omniverse) and the rest in lairs and three scripted
+   * rooms. GreaterMUD names a random exit instead (`Mob.cs:273`).
+   */
+  made: boolean;
+}
+
+/** Whether the room was seen making a monster in place (`RefillTimed.made`). */
+export function madeInPlace(entry: LearnedSpawns | null | undefined): boolean {
+  return (entry?.made ?? 0) > 0;
 }
 
 /**
@@ -74,7 +89,7 @@ export interface RefillTimed {
  */
 export function learnRefill(
   entry: LearnedSpawns | undefined,
-  refill: Pick<RefillTimed, 'seconds' | 'names' | 'lair'>,
+  refill: Pick<RefillTimed, 'seconds' | 'names' | 'lair' | 'made'>,
   at: number,
   keep: number,
   shortest: number
@@ -88,11 +103,13 @@ export function learnRefill(
     const key = mobKey(name);
     if (key.length > 0) seen[key] = (seen[key] ?? 0) + 1;
   }
+  const made = (kept?.made ?? 0) + (refill.made ? 1 : 0);
   return {
     refills: [...old, refill.seconds].slice(-Math.max(1, keep)),
     seen,
     at,
-    v: SPAWNS_VERSION
+    v: SPAWNS_VERSION,
+    ...(made > 0 ? { made } : {})
   };
 }
 
@@ -196,13 +213,15 @@ export class RefillWatch {
 
   /**
    * `killed`: the line that brought this was a death (`mob-dies`, or the
-   * experience line); `moving`: a move of this character's is unanswered.
+   * experience line); `moving`: a move of this character's is unanswered;
+   * `made`: the line was a monster arriving `from nowhere` (`RefillTimed.made`).
    */
   observe(
     held: RefillHeld | null,
     at: number,
     killed: boolean,
-    moving = false
+    moving = false,
+    made = false
   ): RefillTimed | null {
     if (held === null || held.room !== this.room) {
       this.room = held?.room ?? null;
@@ -227,7 +246,7 @@ export class RefillWatch {
       }
       const seconds = (at - this.emptiedAt) / 1000;
       this.emptiedAt = null;
-      return { room: held.room, seconds, names: [...held.names], lair: held.lair };
+      return { room: held.room, seconds, names: [...held.names], lair: held.lair, made };
     }
     return null;
   }

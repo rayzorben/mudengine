@@ -4,6 +4,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../char
 import {
   RefillWatch,
   learnRefill,
+  madeInPlace,
   refillClock,
   refillCount,
   SPAWNS_VERSION,
@@ -51,8 +52,39 @@ describe('timing a room’s refill', () => {
       room: '1/2156',
       seconds: 32,
       names: ['cave bear'],
-      lair: true
+      lair: true,
+      made: false
     });
+  });
+
+  /* 2026-11-04, Omniverse: `A fierce lashworm crawls into the room from nowhere.` 0.009 s after the rat died in the Newhaven Arena. */
+  it('marks a refill the room made in place, and counts it', () => {
+    const watch = new RefillWatch();
+    watch.observe(refillCount(standing(2150, ['giant rat'])), 0, false);
+    watch.observe(refillCount(standing(2150, [])), 1_000, true);
+    const timed = watch.observe(
+      refillCount(standing(2150, ['lashworm'])),
+      1_009,
+      false,
+      false,
+      true
+    );
+    expect(timed).toMatchObject({ room: '1/2150', made: true, lair: false });
+    const once = learnRefill(undefined, timed!, 1, 12, 3);
+    expect(madeInPlace(once)).toBe(true);
+    const walked = learnRefill(
+      once,
+      { seconds: 5, names: ['rat'], lair: false, made: false },
+      2,
+      12,
+      3
+    );
+    expect(walked.made).toBe(1);
+    expect(
+      madeInPlace(
+        learnRefill(undefined, { seconds: 5, names: [], lair: false, made: false }, 1, 12, 3)
+      )
+    ).toBe(false);
   });
 
   it('times nothing when the room emptied by a monster walking out', () => {
@@ -111,14 +143,14 @@ describe('timing a room’s refill', () => {
   it('prices a room only once it has refilled often enough, on the median', () => {
     let entry: LearnedSpawns | undefined;
     for (const seconds of [40, 20])
-      entry = learnRefill(entry, { seconds, names: ['rat'], lair: true }, 1, 12, 3);
+      entry = learnRefill(entry, { seconds, names: ['rat'], lair: true, made: false }, 1, 12, 3);
     expect(refillClock(entry, 3)).toBeNull();
-    entry = learnRefill(entry, { seconds: 30, names: ['rat'], lair: true }, 2, 12, 3);
+    entry = learnRefill(entry, { seconds: 30, names: ['rat'], lair: true, made: false }, 2, 12, 3);
     expect(refillClock(entry, 3)).toBe(30);
     expect(entry.seen).toEqual({ rat: 3 });
-    expect(learnRefill(entry, { seconds: 5, names: [], lair: true }, 3, 2, 3).refills).toEqual([
-      30, 5
-    ]);
+    expect(
+      learnRefill(entry, { seconds: 5, names: [], lair: true, made: false }, 3, 2, 3).refills
+    ).toEqual([30, 5]);
   });
 
   /* A lair's clock stands on its gaps over the floor, so starting afresh keeps those. */
@@ -127,7 +159,7 @@ describe('timing a room’s refill', () => {
     expect(timedWithMoves(old)).toBe(false);
     const learned = learnRefill(
       old,
-      { seconds: 70, names: ['carrion beast'], lair: true },
+      { seconds: 70, names: ['carrion beast'], lair: true, made: false },
       1,
       12,
       3
@@ -140,16 +172,16 @@ describe('timing a room’s refill', () => {
     });
     expect(timedWithMoves(learned)).toBe(true);
     // Once stamped, every gap it times is kept, under the floor or not.
-    expect(learnRefill(learned, { seconds: 0.4, names: [], lair: true }, 2, 12, 3).refills).toEqual(
-      [69, 71, 70, 0.4]
-    );
+    expect(
+      learnRefill(learned, { seconds: 0.4, names: [], lair: true, made: false }, 2, 12, 3).refills
+    ).toEqual([69, 71, 70, 0.4]);
   });
 
   /* Outside a lair the next room's spawn lands over the floor too: Crypt, Stone Hallway's 5.8, 4.8 and 3.4 s. */
   it('starts any other room’s old entry with nothing kept', () => {
     const old: LearnedSpawns = { refills: [5.8, 3.4, 4.8], seen: { zombie: 3 }, at: 0 };
     expect(
-      learnRefill(old, { seconds: 60, names: ['bat'], lair: false }, 1, 12, 3).refills
+      learnRefill(old, { seconds: 60, names: ['bat'], lair: false, made: false }, 1, 12, 3).refills
     ).toEqual([60]);
   });
 

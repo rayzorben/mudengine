@@ -227,7 +227,8 @@ function groundOf(group: HuntGroup): Ground {
     room: group.sample,
     at: group.rooms[0]?.id ?? null,
     came: group.seen?.names ?? [],
-    timed: group.seen?.clock ?? null
+    timed: group.seen?.clock ?? null,
+    arena: group.seen?.arena ?? false
   };
 }
 
@@ -619,7 +620,7 @@ export class Errands implements SessionModule {
    * a refill timed (an arrival while a move is unanswered is the next room's),
    * and a rise in health timed for the realm's speed.
    */
-  onCharacter(state: CharacterState, block: Pick<Block, 'type' | 'at'>): void {
+  onCharacter(state: CharacterState, block: Pick<Block, 'type' | 'at' | 'groups'>): void {
     this.unrefuseWhatTheRoomPrints(state);
     this.openedWays.onRoom(state);
     this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
@@ -2287,8 +2288,9 @@ export class Errands implements SessionModule {
     /*
      * And a room the world database gives no lair that refilled while the
      * character stood in it: the Newhaven Arena, which GreaterMUD fills from
-     * its monster group while a player is there (`Room.Regen`) and neither
-     * database marks. One monster at a time for one player.
+     * its monster group while a player is there (`Room.Regen`) and MajorMUD
+     * makes `from nowhere`, and which neither database marks. One monster at
+     * a time for one player (`RoomClocks.refilling`).
      */
     const isLair = (id: RoomId): boolean => this.isLair(id);
     for (const seen of this.clocks.refilling(isLair)) {

@@ -159,8 +159,14 @@ describe('keeping what was learned', () => {
   it('keeps the refills it timed per realm and reads them back', () => {
     const first = store();
     const view = first.forRealm('gmud.sqlite', world, PLAYED);
-    view.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'], lair: true }, 5);
-    view.observeRefill({ room: '1/2156', seconds: 19, names: ['cave bear'], lair: true }, 6);
+    view.observeRefill(
+      { room: '1/2156', seconds: 32, names: ['cave bear'], lair: true, made: false },
+      5
+    );
+    view.observeRefill(
+      { room: '1/2156', seconds: 19, names: ['cave bear'], lair: true, made: true },
+      6
+    );
     first.flush();
 
     const again = store();
@@ -168,7 +174,8 @@ describe('keeping what was learned', () => {
       refills: [32, 19],
       seen: { 'cave bear': 2 },
       at: 6,
-      v: SPAWNS_VERSION
+      v: SPAWNS_VERSION,
+      made: 1
     });
     expect(again.forRealm('other.sqlite', world, PLAYED).spawnsAt('1/2156')).toBeNull();
   });
@@ -178,7 +185,10 @@ describe('keeping what was learned', () => {
     const lore = store();
     const pve = lore.forRealm('gmud.sqlite', world, () => 'paramud:2323/Paradigm PVE');
     const pvp = lore.forRealm('gmud.sqlite', world, () => 'paramud:2323/Paradigm PVP');
-    pve.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'], lair: true }, 5);
+    pve.observeRefill(
+      { room: '1/2156', seconds: 32, names: ['cave bear'], lair: true, made: false },
+      5
+    );
     pve.observeKillExp?.('giant rat', 40, 5);
     pve.observe('grue', { damage: 420, killed: true, at: 5 });
     expect(pve.spawnsAt('1/2156')).not.toBeNull();

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { RoomClocks } from '../RoomClocks';
-import { NO_SPAWNS, SPAWNS_VERSION, type LearnedSpawns } from '../../../shared/spawns';
+import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
+import {
+  NO_SPAWNS,
+  SPAWNS_VERSION,
+  type LearnedSpawns,
+  type RefillTimed
+} from '../../../shared/spawns';
 
 const timed = (refills: number[]): LearnedSpawns => ({
   refills,
@@ -25,6 +31,42 @@ const LAIRS = new Set(['1/1', '1/2', '1/3']);
 const isLair = (room: string): boolean => LAIRS.has(room);
 
 describe('the clocks the wire timed', () => {
+  /* 2026-11-04, Omniverse: `A fierce lashworm crawls into the room from nowhere.` after the rat died. */
+  it('marks a refill made in place off an arrival from nowhere, and only that', () => {
+    for (const [direction, made] of [
+      ['nowhere', true],
+      ['the east', false]
+    ] as const) {
+      const learned: RefillTimed[] = [];
+      let at = 0;
+      const subject = new RoomClocks(
+        { ...NO_SPAWNS, observeRefill: (refill) => learned.push(refill) },
+        () => at
+      );
+      const inArena = (names: string[]): CharacterState => ({
+        ...EMPTY_CHARACTER,
+        room: {
+          ...EMPTY_CHARACTER.room,
+          name: 'Newhaven, Arena',
+          map: 1,
+          number: 2150,
+          occupants: names.map((name) => ({ name, kind: 'mob' }) as RoomOccupant)
+        }
+      });
+      subject.onCharacter(inArena(['giant rat']), { type: 'room-also-here', groups: {} }, false);
+      at = 1_000;
+      subject.onCharacter(inArena([]), { type: 'mob-dies', groups: {} }, false);
+      at = 1_009;
+      subject.onCharacter(
+        inArena(['lashworm']),
+        { type: 'mob-arrives-room', groups: { direction } },
+        false
+      );
+      expect(learned).toHaveLength(1);
+      expect(learned[0]?.made).toBe(made);
+    }
+  });
+
   it('outranks a stated delay with the lair’s own timed clock, the shortest of its rooms', () => {
     const subject = clocks({ '1/1': timed([20, 21, 22]), '1/2': timed([40, 40, 40]) });
     expect(subject.lairClock(['1/1', '1/2'], isLair, false)).toEqual({
@@ -56,7 +98,17 @@ describe('the clocks the wire timed', () => {
       '1/9': timed([0, 1, 0]),
       '1/8': timed([5])
     });
-    expect(subject.refilling(isLair)).toEqual([{ room: '1/9', clock: 0, names: ['rat'] }]);
+    expect(subject.refilling(isLair)).toEqual([
+      { room: '1/9', clock: 0, arena: false, names: ['rat'] }
+    ]);
+  });
+
+  /* 2026-11-04: Omniverse's Newhaven Arena made one lashworm `from nowhere` in Yang's three visits, and the survey never offered it. */
+  it('lists a room with no lair seen making a monster in place after one refill, with no clock yet', () => {
+    const subject = clocks({ '1/2150': { ...timed([0.01]), made: 1 }, '1/8': timed([0.03]) });
+    expect(subject.refilling(isLair)).toEqual([
+      { room: '1/2150', clock: null, arena: true, names: ['rat'] }
+    ]);
   });
 
   /* 2026-10-04: thugs and orc rogues came into the Darkwood Main Road's 1/1392 twelve times, and Vaelor died there ten. */

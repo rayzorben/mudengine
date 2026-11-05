@@ -26,6 +26,8 @@ export interface Ground {
   came: readonly string[];
   /** A `seen` room's timed clock, in seconds. */
   timed: number | null;
+  /** A `seen` room was seen making a monster in place (`RefillingRoom.arena`). */
+  arena: boolean;
 }
 
 interface GroundKind {
@@ -48,6 +50,19 @@ interface GroundKind {
   fills: boolean;
 }
 
+/** A room's `Delay` as its stated clock; `arena` reads the figure as seconds (`respawnSeconds`). */
+function delayClock(
+  room: WorldRoom,
+  family: RealmFamily | null,
+  c: HuntingConstants,
+  arena = false
+): { clock: HuntingSpot['clock']; respawn: number | null } {
+  return {
+    clock: room.delay === undefined ? null : 'delay',
+    respawn: respawnSeconds(room.delay ?? null, family, c, arena)
+  };
+}
+
 /** A placed monster's clock, `RegenTime` hours at the realm's speed. */
 const regenOf = (entities: readonly MobEntity[], speed: number): number | null =>
   regenSeconds(entities[0]?.regenHours, speed);
@@ -55,10 +70,7 @@ const regenOf = (entities: readonly MobEntity[], speed: number): number | null =
 export const GROUNDS = {
   lair: {
     entities: (world, ground) => world.lairEntities(ground.room),
-    stated: (ground, _entities, family, c) => ({
-      clock: ground.room.delay === undefined ? null : 'delay',
-      respawn: respawnSeconds(ground.room.delay ?? null, family, c)
-    }),
+    stated: (ground, _entities, family, c) => delayClock(ground.room, family, c),
     lair: true,
     fills: true
   },
@@ -75,7 +87,15 @@ export const GROUNDS = {
   seen: {
     entities: (world, ground) =>
       ground.came.map((name) => world.buildMobEntity(name, { at: ground.at })),
-    stated: (ground) => ({ clock: 'timed', respawn: ground.timed }),
+    /*
+     * An arena not yet timed enough runs on its `Delay`, which an arena states
+     * in seconds: themajorbbs's Newhaven Arena states 5 and refilled 0.01 s or
+     * 5 s after each kill (12 timed, 2026-11-05).
+     */
+    stated: (ground, _entities, family, c) =>
+      ground.timed !== null || !ground.arena
+        ? { clock: 'timed', respawn: ground.timed }
+        : delayClock(ground.room, family, c, true),
     lair: false,
     fills: true
   }

@@ -1008,7 +1008,7 @@ function writeTables<V>(
 /** One room's timed refills, or null when the row holds no gap. */
 function readSpawnsEntry(value: unknown): LearnedSpawns | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { refills, seen, at, v } = value as Record<string, unknown>;
+  const { refills, seen, at, v, made } = value as Record<string, unknown>;
   const gaps = Array.isArray(refills)
     ? refills.filter(
         (gap): gap is number => typeof gap === 'number' && Number.isFinite(gap) && gap >= 0
@@ -1025,7 +1025,8 @@ function readSpawnsEntry(value: unknown): LearnedSpawns | null {
     refills: gaps,
     seen: counts,
     at: typeof at === 'number' && Number.isFinite(at) ? at : 0,
-    ...(typeof v === 'number' && Number.isFinite(v) ? { v } : {})
+    ...(typeof v === 'number' && Number.isFinite(v) ? { v } : {}),
+    ...(typeof made === 'number' && Number.isInteger(made) && made > 0 ? { made } : {})
   };
 }
 
