@@ -6,8 +6,8 @@ import {
   handsFor,
   jobCommand,
   jobOdds,
-  partyTraps,
-  unknownPickers,
+  partyFigure,
+  unknownHands,
   walkersThrough,
   type Candidate
 } from '../barrierHands';
@@ -27,7 +27,8 @@ const hand = (
   name,
   self: false,
   sheet: { strength: null, traps: null, picklocks: null, ...over },
-  hp
+  hp,
+  share: null
 });
 
 /* Todo 86: who in the party goes at a trap or a locked door. */
@@ -85,7 +86,7 @@ describe('who goes', () => {
     expect(handsFor('pick', lock({ pickDifficulty: 10 }), null, [hand('Rand', {})])).toEqual([]);
   });
 
-  it('reads a member’s sheet and absolute hit points off the party record', () => {
+  it('reads a member’s sheet, absolute hit points and health share off the party record', () => {
     const member: PartyMember = partyMember('Rand', {
       className: 'Thief',
       health: 1,
@@ -101,7 +102,8 @@ describe('who goes', () => {
       name: 'Rand',
       self: false,
       sheet: { strength: 60, traps: 55, picklocks: 70 },
-      hp: 220
+      hp: 220,
+      share: 1
     });
   });
 });
@@ -128,13 +130,50 @@ describe('the party a leader sends from', () => {
 
   it('counts the party walking a trap, leading, and the best Traps among it', () => {
     expect(walkersThrough(leading())).toBe(3);
-    expect(partyTraps(leading())).toBe(70);
+    expect(partyFigure(leading(), 'traps')).toBe(70);
     expect(walkersThrough(leading('Rand'))).toBe(1);
-    expect(partyTraps(leading('Rand'))).toBe(30);
+    expect(partyFigure(leading('Rand'), 'traps')).toBe(30);
   });
 
-  it('offers a member with no sheet for a pick after the known', () => {
-    expect(unknownPickers(candidatesOf(leading()))).toEqual(['Soul']);
+  it('offers a member with no sheet for a pick or a bash after the known, never a disarm', () => {
+    const party = candidatesOf(leading());
+    const either = lock({ kind: 'key', keyId: 569, pickDifficulty: 41, bashDifficulty: 41 });
+    expect(unknownHands('pick', either, party, 0.5)).toEqual(['Soul']);
+    expect(unknownHands('bash', either, party, 0.5)).toEqual(['Soul']);
+    expect(unknownHands('disarm', either, party, 0.5)).toEqual([]);
+  });
+
+  /* A bash costs health: never a member under the leader's Rest If Below HP %, nor one the listing has not given. */
+  it('sends a bash only to a member whose health the listing gives at the floor or over', () => {
+    const either = lock({ kind: 'key', keyId: 569, pickDifficulty: 41, bashDifficulty: 41 });
+    const at = (health: number | null): Candidate[] =>
+      candidatesOf({
+        ...leading(),
+        party: { ...leading().party, members: [{ ...soul, health }] }
+      });
+    expect(unknownHands('bash', either, at(0.9), 0.5)).toEqual(['Soul']);
+    expect(unknownHands('bash', either, at(0.3), 0.5)).toEqual([]);
+    expect(unknownHands('bash', either, at(null), 0.5)).toEqual([]);
+    expect(unknownHands('pick', either, at(0.3), 0.5)).toEqual(['Soul']);
+  });
+
+  /* `Key: 593 [or 81 picklocks]`: the realm names no strength, so nobody is sent to bash it. */
+  it('sends nobody to bash a lock only a pick or its key opens', () => {
+    const pickOnly = lock({ kind: 'key', keyId: 593, pickDifficulty: 81 });
+    expect(unknownHands('bash', pickOnly, candidatesOf(leading()), 0)).toEqual([]);
+  });
+
+  /* The user, 2026-11-05: the switches are this character's own tries; a member counts either way. */
+  it("plans a lock on the party's best figure, this character's own only behind its switch", () => {
+    const state = leading();
+    state.progress = { ...state.progress, picklocks: 90, strength: 43 };
+    expect(partyFigure(state, 'picklocks', true)).toBe(90);
+    expect(partyFigure(state, 'picklocks', false)).toBe(70);
+    expect(partyFigure(state, 'strength', true)).toBe(60);
+    const following = leading('Rand');
+    following.progress = { ...following.progress, picklocks: 90 };
+    expect(partyFigure(following, 'picklocks', true)).toBe(90);
+    expect(partyFigure(following, 'picklocks', false)).toBeNull();
   });
 
   /* `Door.TryPickLock` needs the sum over 0 before it rolls. */

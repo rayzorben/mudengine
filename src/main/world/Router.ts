@@ -149,10 +149,15 @@ export interface Traveller {
    * half of `hazardAvoided` refused for a year. Absent is nobody has said.
    */
   spellsUp?: readonly number[];
-  /** Picklocks, for a door the realm lets that skill open. */
+  /** Picklocks, for a door the realm lets that skill open: leading, the party's best (`partyFigure`). */
   pickSkill?: number | null;
-  /** Strength, for the same doors — the realm accepts either. */
+  /** Strength, for the same doors — the realm accepts either. Leading, the party's best. */
   strength?: number | null;
+  /**
+   * This character's own Picklocks and Strength, for the door block's *you
+   * have*, where the two above are the party's. Absent is those two.
+   */
+  own?: { picklocks: number | null; strength: number | null };
   /** Traps, for a trapped way this character or a member may disarm first (`trapHurt`). Absent is nobody has said. */
   trapSkill?: number | null;
   /** How many walk a trapped way: the party leading, else one (`walkersThrough`). Absent is one. */
@@ -505,6 +510,22 @@ function forcedDoorCost(requirement: Requirement, traveller: Traveller): number 
   if (bashDifficulty !== undefined)
     costs.push(gradedCost(bash ? traveller.strength : null, bashDifficulty));
   return Math.min(...costs);
+}
+
+/**
+ * Whether a skill this traveller may spend opens a keyed lock without its key,
+ * so a plan fetches no key for it (the user, 2026-11-05: Rayzor was sent for
+ * the rusty iron key at a `Key: 569 [or 41 picklocks/strength]` door with 43
+ * strength). The price's own reading, so the two cannot disagree.
+ */
+export function skillOpens(requirement: Requirement | null, traveller: Traveller): boolean {
+  return (
+    requirement?.kind === 'key' &&
+    // `edgePenalty`'s key case: a lock is forced only where a pick is stated,
+    // and `parseInstruction` states strength only beside one.
+    requirement.pickDifficulty !== undefined &&
+    forcedDoorCost(requirement, traveller) === 0
+  );
 }
 
 /**
@@ -3462,8 +3483,8 @@ export class Router {
             name: this.rooms.get(cursor)?.name ?? cursor,
             ...(wall.pickDifficulty === undefined ? {} : { pickDifficulty: wall.pickDifficulty }),
             ...(wall.bashDifficulty === undefined ? {} : { bashDifficulty: wall.bashDifficulty }),
-            picklocks: traveller.pickSkill ?? null,
-            strength: traveller.strength ?? null,
+            picklocks: traveller.own ? traveller.own.picklocks : (traveller.pickSkill ?? null),
+            strength: traveller.own ? traveller.own.strength : (traveller.strength ?? null),
             ...(off.length === 0 ? {} : { switchedOff: off }),
             ...(wall.keyId === undefined ? {} : { keyId: wall.keyId }),
             ...(item === undefined ? {} : { itemName: item.name }),

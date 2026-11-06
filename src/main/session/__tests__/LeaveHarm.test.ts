@@ -5,6 +5,7 @@ import { setTuning, tuning } from '../../app/tuning';
 import type { Intent } from '../../automation/CommandQueue';
 import { LeaveHarm, type LeaveHarmParts } from '../LeaveHarm';
 import { RoomHazards, type RoomHazardsParts } from '../RoomHazards';
+import type { Block } from '../../../shared/blocks';
 import type { SafetyDecision } from '../../../shared/automation';
 import {
   EMPTY_CHARACTER,
@@ -274,6 +275,35 @@ describe('a room whose damage the world database does not list', () => {
     }
     expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
     expect(sent.map((intent) => intent.command)).toEqual(['n']);
+  });
+
+  /*
+   * Rayzor, 2026-11-06 00:56 on OCI, at Slum Street, Western Door: `bas w`,
+   * `You take 2 damage for bashing the door!` twice, and the room was left as
+   * one that hurts. A bash's cost is the character's own.
+   */
+  it('does not count health the character paid for its own bash', () => {
+    const current = { state: at(RIVER, 157) };
+    const room = hazards(current);
+    room.note(current.state);
+    const bash = (damage: number, hp: number): void => {
+      room.observe({
+        type: 'user-takes-damage',
+        groups: { damage: String(damage), paidFor: 'bashing the door' }
+      } as unknown as Block);
+      current.state = at(RIVER, hp);
+      room.note(current.state);
+    };
+    bash(2, 155);
+    bash(1, 154);
+    bash(2, 152);
+    expect(room.hurtsHere(current.state)).toBeNull();
+    // The positive control: the same falls with no bash line are the room's.
+    for (const hp of [150, 148]) {
+      current.state = at(RIVER, hp);
+      room.note(current.state);
+    }
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
   });
 
   /*

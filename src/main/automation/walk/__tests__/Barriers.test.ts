@@ -297,6 +297,16 @@ describe('what the ladder remembers, let go', () => {
     expect(notices).toContain(t('automation.walk.handHeld', RAND_PICK));
   });
 
+  /*
+   * The user, 2026-11-05: Auto-Pick Locks is this character's own tries.
+   * Rayzor, 0 picklocks and the switch off, still sends Brakkle to pick.
+   */
+  it('sends a member who picks with its own Auto-Pick Locks off, never picking itself', () => {
+    const { asked, sent } = askingRand(skilled(0, 0), { picklocks: 90 }, BASHING);
+    expect(asked).toEqual(['Rand pick e']);
+    expect(moves(sent)).not.toContain('pi e');
+  });
+
   /* Todo 133: a stopped walk withdraws the member, so a later {ok} is no answer to it. */
   it('withdraws the member when the walk stops, and reads no later {ok} as the pick', () => {
     const { walker, sent, asked, withdrawn, notices } = askingRand(

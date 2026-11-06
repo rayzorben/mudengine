@@ -131,6 +131,54 @@ describe('a plan made whole before the first step', () => {
   });
 
   /*
+   * The user, 2026-11-05: Rayzor, 43 strength, was sent for the rusty iron
+   * key at Slum Street's `Key: 569 [or 41 picklocks/strength]` on the way to
+   * Massive Doors' `Key: 593 [or 81 picklocks]`. Only the second is fetched.
+   */
+  it('fetches no key for a lock the party can bash', () => {
+    const bashable = {
+      kind: 'key',
+      raw: 'Key: 1 [or 41 picklocks/strength]',
+      keyId: 1,
+      pickDifficulty: 41,
+      bashDifficulty: 41
+    } as const;
+    const twoDoors: Route = {
+      steps: [
+        { ...step('here', 'hall'), requirement: bashable },
+        { ...step('hall', 'goal', 2), direction: 'e' }
+      ],
+      cost: 10,
+      blocked: false
+    };
+    const forced: PlanRealm = {
+      ...realm,
+      route: (from, to, traveller: Traveller) => {
+        if (to !== 'goal') return way(from, to);
+        const keys = traveller.keys ?? [];
+        const first = keys.includes(1) || (traveller.strength ?? 0) >= 41;
+        return first && keys.includes(2) ? twoDoors : shut;
+      },
+      sources: (item): ItemSource[] => [{ kind: 'buy', room: `shop${item}` }]
+    };
+    const bought = (traveller: Traveller): string[] => {
+      const made = plan(forced, odds(WON), 'here', 'goal', traveller);
+      return made.kind === 'plan'
+        ? made.steps.flatMap((s) => (s.kind === 'buy' ? [s.item.name] : []))
+        : [made.kind];
+    };
+    // Positive control: too weak to bash it, both keys are bought.
+    expect(bought({ ...nobody, strength: 30 }).sort()).toEqual(['bone key', 'iron key']);
+    expect(bought({ ...nobody, strength: 43 })).toEqual(['iron key']);
+    // Bashing switched off and no member to send: the key again.
+    const off = { pick: false, bash: false, search: true, levers: true, disarm: true };
+    expect(bought({ ...nobody, strength: 43, forcing: off }).sort()).toEqual([
+      'bone key',
+      'iron key'
+    ]);
+  });
+
+  /*
    * Survival never refuses a plan (the user, 2026-10-03): a fight the
    * character would lose, or one not worked out yet, is planned with its odds
    * on the step, and whether to go is the player's.

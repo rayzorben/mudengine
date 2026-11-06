@@ -4,7 +4,9 @@
  * `withinMs` in one room, not poisoned, not bleeding on the ground and with
  * the same maximum, is the room's damage. Not while a fight is here
  * (`fightHere`), nor inside `MOB_ENGAGED_MS` of a monster's damage line
- * (`HangUpWatch.monsterHit`), wherever that monster is now. Unknown is the
+ * (`HangUpWatch.monsterHit`), wherever that monster is now, nor what the
+ * character paid for its own bash (`paidFor`, the user, 2026-11-05: Rayzor
+ * was led out of Slum Street, Western Door for it). Unknown is the
  * unsafe case, so a room the data gives no spell still counts once the server
  * has taken health there twice. Read through `RoomHazards`.
  * `mudengine-automation` › `parts/safety.md`.
@@ -12,6 +14,7 @@
 import { tuning } from '../app/tuning';
 import type { HangUpWatch } from '../automation/HangUp';
 import { fightHere, type CharacterState, type FightSigns } from '../../shared/character';
+import type { Block } from '../../shared/blocks';
 import { roomAddress, type RoomId } from '../../shared/world';
 
 export class RoomDamageSeen {
@@ -19,6 +22,8 @@ export class RoomDamageSeen {
   private hp: number | null = null;
   private hpMax: number | null = null;
   private drops: number[] = [];
+  /** Health the server said this character paid for its own command, still to show on a status line. */
+  private paid = 0;
   /** In the order seen, so the oldest goes first past `keptRooms`. */
   private readonly seen = new Set<RoomId>();
 
@@ -28,6 +33,13 @@ export class RoomDamageSeen {
     private readonly now: () => number = () => Date.now()
   ) {}
 
+  /** `You take 2 damage for bashing the door!`: a drop the character's own command explains. */
+  observe(block: Pick<Block, 'type' | 'groups'>): void {
+    if (block.type !== 'user-takes-damage' || block.groups['paidFor'] === undefined) return;
+    const damage = Number(block.groups['damage']);
+    if (Number.isFinite(damage)) this.paid += damage;
+  }
+
   /** Every status line: a drop in health nothing in the room explains. */
   note(state: CharacterState): void {
     const here = roomAddress(state.room);
@@ -36,12 +48,16 @@ export class RoomDamageSeen {
     const maxBefore = this.hpMax;
     this.hp = hp;
     this.hpMax = hpMax;
+    // What was paid is spent on this line, a drop or not, so it excuses no later one.
+    const paid = this.paid;
+    this.paid = 0;
     if (here !== this.room) {
       this.room = here;
       this.drops = [];
       return;
     }
     if (here === null || hp === null || before === null || hp >= before) return;
+    if (before - hp <= paid) return;
     // A maximum that fell (gear taken off) lowers the figure without a blow.
     const at = this.now();
     if (
@@ -70,6 +86,7 @@ export class RoomDamageSeen {
     this.hp = null;
     this.hpMax = null;
     this.drops = [];
+    this.paid = 0;
     this.seen.clear();
   }
 }

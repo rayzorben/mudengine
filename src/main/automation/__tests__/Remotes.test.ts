@@ -2019,13 +2019,16 @@ describe('talking to another one of these clients', () => {
     expect(sent).toEqual(['/Soul @pick ne', '/Rand @do pi e']);
   });
 
-  /* An `@do` is answered on taking it, before the roll: a disarm taken as held walks into the trap. */
-  it('never sends a disarm or a bash through @do, and reads an @do {ok} as tried', () => {
+  /*
+   * An `@do` is answered on taking it, before the roll: a disarm taken as held
+   * walks into the trap, where a lock that held only stops the move (the user,
+   * 2026-11-05, asked for `@do bas`).
+   */
+  it('never sends a disarm through @do, sends a bash, and reads an @do {ok} as tried', () => {
     expect(peers.askHand('Rand', 'disarm', 'e')).toBe(false);
-    expect(peers.askHand('Rand', 'bash', 'e')).toBe(false);
-    peers.askHand('Rand', 'pick', 'e');
+    peers.askHand('Rand', 'bash', 'e');
     drain();
-    expect(sent).toEqual(['/Rand @do pi e']);
+    expect(sent).toEqual(['/Rand @do bas e']);
     peers.onBlock(said('conversation-telepath', 'Rand', '{ok}'), who());
     expect(handed).toEqual(['Rand:tried']);
   });

@@ -36,7 +36,7 @@ import {
   type RouteHazard,
   type RouteStep
 } from '../../../shared/world';
-import type { RouteOptions, Traveller } from '../Router';
+import { skillOpens, type RouteOptions, type Traveller } from '../Router';
 import { routePrices } from '../../../shared/walkChoices';
 import type { ItemSource } from './sources';
 import { standingRequirement } from './exitFamily';
@@ -216,7 +216,8 @@ function wayHolding(
 /**
  * The items a way's steps demand that the pack does not hold, each once, in
  * order; an exit standing open for the traveller demands nothing
- * (`standingRequirement`, todo 62).
+ * (`standingRequirement`, todo 62), nor a lock the party picks or bashes
+ * (`skillOpens`).
  */
 function keysUsed(
   realm: PlanRealm,
@@ -226,9 +227,9 @@ function keysUsed(
 ): PlannedItem[] {
   const needs = new Map<number, PlannedItem>();
   for (const step of way.steps) {
-    const ids = itemsDemanded(
-      standingRequirement(step.requirement, step.from, step.direction, traveller)
-    );
+    const standing = standingRequirement(step.requirement, step.from, step.direction, traveller);
+    if (skillOpens(standing, traveller)) continue;
+    const ids = itemsDemanded(standing);
     for (const id of ids) {
       if (held.includes(id) || needs.has(id)) continue;
       needs.set(id, { id, name: realm.itemName(id) ?? `#${id}` });

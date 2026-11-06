@@ -6,6 +6,7 @@
  * a member's client reads the same odds to bound its own tries.
  * `mudengine-automation` › parts/remotes.md.
  */
+import { healthFraction } from './automation';
 import { joinedMembers, standingHere, type CharacterState } from './character';
 import { barrierStated, disarmOdds } from './walk';
 import type { Requirement } from './world';
@@ -64,6 +65,8 @@ export interface Candidate {
   sheet: HandSheet;
   /** Hit points now, or null when nothing has said the absolute figure. */
   hp: number | null;
+  /** Health as a share of the maximum, 0–1, or null when nothing has said. */
+  share: number | null;
 }
 
 /** A candidate with the odds one try holds. */
@@ -129,7 +132,8 @@ export function candidatesOf(state: CharacterState): Candidate[] {
     name: state.name ?? '',
     self: true,
     sheet: { strength, traps, picklocks },
-    hp: state.vitals.hp
+    hp: state.vitals.hp,
+    share: healthFraction(state)
   };
   const members = joinedMembers(state).map((member): Candidate => ({
     name: member.name,
@@ -139,7 +143,8 @@ export function candidatesOf(state: CharacterState): Candidate[] {
       traps: member.sheet?.traps ?? null,
       picklocks: member.sheet?.picklocks ?? null
     },
-    hp: member.vitals?.hp ?? null
+    hp: member.vitals?.hp ?? null,
+    share: member.health
   }));
   return [self, ...members];
 }
@@ -161,26 +166,64 @@ export function walkersThrough(state: CharacterState): number {
 }
 
 /**
- * The best Traps a trap could be disarmed with: this character's, or leading,
- * the best stated among it and its members. Null when nobody's is known.
+ * The best figure on one channel: following, this character's own; leading,
+ * the best stated among it and its joined members. Traps prices a trap the
+ * walk sends the best hand at; Picklocks and Strength a lock. This
+ * character's own counts only where its switch lets it try (`selfTries`):
+ * *Auto-Pick Locks* and *Auto-Bash Doors* are this character's own tries, and
+ * a member is sent either way (the user, 2026-11-05). Null when nobody's is
+ * known.
  */
-export function partyTraps(state: CharacterState): number | null {
-  if (state.party.following !== null) return state.progress.traps;
+export function partyFigure(
+  state: CharacterState,
+  channel: keyof HandSheet,
+  selfTries = true
+): number | null {
+  const leading = state.party.following === null;
   const figures = candidatesOf(state)
-    .map((candidate) => candidate.sheet.traps)
-    .filter((traps): traps is number => traps !== null);
+    .filter((candidate) => (candidate.self ? selfTries : leading))
+    .map((candidate) => candidate.sheet[channel])
+    .filter((figure): figure is number => figure !== null);
   return figures.length === 0 ? null : Math.max(...figures);
 }
 
 /**
- * Members with no sheet, who can still be sent `@do pi` after every member
- * with known odds: a failed pick costs nothing (`Door.TryPickLock`). Never for
- * a disarm, which fires the trap on unknown odds, or a bash, which costs HP.
+ * Members with no figure for `job`, who can still be sent `@do pi` or `@do
+ * bas` after every member with known odds. A failed pick costs nothing
+ * (`Door.TryPickLock`) and a failed bash a few hit points; a lock that held
+ * stops the move, so the walk opens it to see (the user, 2026-11-05, asked
+ * for the bash). A bash only for a member whose health share the listing
+ * gives at `restBelow` or over, the leader's own bash's floor
+ * (`tooHurtToBash`); unknown is the unsafe case. Never a disarm, which fires
+ * the trap on unknown odds, nor a channel the lock shuts (`needOf`).
  */
-export function unknownPickers(candidates: readonly Candidate[]): string[] {
-  return candidates
-    .filter((candidate) => !candidate.self && candidate.sheet.picklocks === null)
-    .map((candidate) => candidate.name);
+export function unknownHands(
+  job: BarrierJob,
+  need: Requirement | null | undefined,
+  candidates: readonly Candidate[],
+  restBelow: number
+): string[] {
+  switch (job) {
+    case 'disarm':
+      return [];
+    case 'pick':
+    case 'bash': {
+      const channel = job === 'pick' ? need?.pickDifficulty : need?.bashDifficulty;
+      if (needOf(need, channel) === null) return [];
+      const figure = job === 'pick' ? 'picklocks' : 'strength';
+      const fit = (share: number | null): boolean =>
+        job === 'pick' || (share !== null && share >= restBelow);
+      return candidates
+        .filter(
+          (candidate) => !candidate.self && candidate.sheet[figure] === null && fit(candidate.share)
+        )
+        .map((candidate) => candidate.name);
+    }
+    default: {
+      const never: never = job;
+      return never;
+    }
+  }
 }
 
 /**

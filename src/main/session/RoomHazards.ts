@@ -19,6 +19,7 @@ import {
   type WayStopper
 } from '../world/navigation/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
+import type { Block } from '../../shared/blocks';
 import { packRows, type CharacterState, type FightSigns } from '../../shared/character';
 import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
@@ -59,6 +60,11 @@ export class RoomHazards implements SessionModule {
   /** Every status line, for the damage the world database does not list. */
   note(state: CharacterState): void {
     this.seen.note(state);
+  }
+
+  /** Every block, for the health the character paid for its own command. */
+  observe(block: Block): void {
+    this.seen.observe(block);
   }
 
   reset(): void {

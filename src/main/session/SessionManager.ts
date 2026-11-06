@@ -2734,9 +2734,9 @@ export class SessionManager {
 
     const roomBefore = this.tracker.current.room;
     const fed = applyAct(this.tracker, step);
-    // Who hit whom, read once the blow has put a known attacker in the room (`HangUpWatch.observe`).
+    // Once applied: who hit whom, a bash's cost, an escape's answer (todos 06, 813).
     this.hangUp.observe(block, this.tracker.current);
-    // An escape in flight reads what the server said back (todos 06, 813).
+    this.roomHazards.observe(block);
     this.travel.settleEscape(block, roomBefore);
     this.fleeGoto.settle(block, this.answering);
     const changed = fed.line || fed.batch;

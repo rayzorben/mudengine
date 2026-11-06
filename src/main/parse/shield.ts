@@ -27,7 +27,8 @@ function namelessHarm(block: Block, shockMessage: number | undefined): boolean {
   const g = block.groups ?? {};
   switch (block.type) {
     case 'user-takes-damage':
-      return true;
+      // A bash's cost is this character's own command, never a shield.
+      return g['paidFor'] === undefined;
     case 'mob-hits':
       return g['attacker'] === undefined;
     case 'realm-message':

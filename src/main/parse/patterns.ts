@@ -1085,8 +1085,15 @@ export const RULES: Rule[] = [
     type: 'user-takes-damage',
     pattern: /^You take (?<damage>\d+) (?:(?<kind>[\w ]+?) )?damage!$/
   },
-  // `You take 1 damage for bashing the door!` — captured live at a locked door.
-  { type: 'user-takes-damage', pattern: /^You take (?<damage>\d+) damage for (?<kind>[\w ]+?)!$/ },
+  /*
+   * `You take 1 damage for bashing the door!` — captured live at a locked door
+   * (captures/024). `paidFor`: the cost of this character's own command, which
+   * neither the room nor a damage shield dealt (`RoomDamageSeen`, `readsAsShield`).
+   */
+  {
+    type: 'user-takes-damage',
+    pattern: /^You take (?<damage>\d+) damage for (?<paidFor>[\w ]+?)!$/
+  },
   /*
    * `You are shocked for 3 damage!`: a message row's second line, said to the
    * one it hurts, naming nobody (a monster's damage shield or hit spell). The

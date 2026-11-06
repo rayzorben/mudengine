@@ -842,9 +842,12 @@ export class Barriers {
     const ownLeft = jobs.some(({ on, selfDone }) => on && !selfDone);
     if (this.hands.asking(step, DOOR_JOBS))
       return !ownLeft && this.hands.waitingAt(step, DOOR_JOBS);
-    for (const { job, on, tries, selfDone } of jobs) {
-      if (!on) continue;
-      const hand = this.hands.best(job, step, state, selfDone);
+    // Every hand with known odds, a pick before a bash, then a member with none.
+    const unread = { restBelow: this.config.health.restBelow };
+    const order = [null, unread].flatMap((unknown) => jobs.map((each) => ({ ...each, unknown })));
+    for (const { job, on, tries, selfDone, unknown } of order) {
+      // The switch is this character's own tries; a member is sent either way (the user, 2026-11-05).
+      const hand = this.hands.best(job, step, state, selfDone || !on, unknown);
       if (hand === null) continue;
       if (hand.self) return false;
       const then = (answer: HandAnswer): void => this.handAnswered(step, job, answer);

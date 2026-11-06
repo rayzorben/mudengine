@@ -3,7 +3,7 @@
  * the best odds among this character and the members standing here
  * (`handsFor`), each member asked once per way until the answer. `@disarm`,
  * `@pick` or `@bash` goes to a mudengine member and `@do …` to another
- * client, a pick only (`WalkerEvents.askHand`); the member's answer
+ * client, a pick or a bash (`WalkerEvents.askHand`); the member's answer
  * (`HandAnswer`) comes back through `Walker.handAnswered`, and silence lapses
  * as a failure once the step waits on it. Each ask ends once, answered,
  * lapsed or dropped, and withdraws itself from the session then (todo 133).
@@ -13,7 +13,7 @@
 import {
   candidatesHere,
   handsFor,
-  unknownPickers,
+  unknownHands,
   type BarrierJob,
   type HandAnswer,
   type HandAsk
@@ -26,7 +26,7 @@ import { tuning } from '../../app/tuning';
 import type { WalkClock } from './clock';
 import { wayOf, type WalkInFlight, type WalkerEvents } from './ports';
 
-/** Who goes: this character, or a member with known odds or (a pick only) none. */
+/** Who goes: this character, or a member with known odds or (a pick or a bash) none. */
 export interface PartyHand {
   name: string;
   self: boolean;
@@ -59,13 +59,16 @@ export class PartyHands {
   /**
    * The best hand at the step's way not yet asked there, or null. Following,
    * only this character: the leader's walk sends the party. `selfDone` leaves
-   * this character out (its own tries are spent or switched off).
+   * this character out (its own tries are spent or switched off); `unknown`
+   * offers a member with no figure once nobody known is left, a bash only at
+   * a health share of `restBelow` or over (`unknownHands`).
    */
   best(
     job: BarrierJob,
     step: RouteStep,
     state: CharacterState,
-    selfDone: boolean
+    selfDone: boolean,
+    unknown: { restBelow: number } | null = null
   ): PartyHand | null {
     if (step.direction === 'portal') return null;
     const leading = state.party.following === null;
@@ -77,10 +80,11 @@ export class PartyHands {
     const known = handsFor(job, step.requirement, damage, candidates).find((hand) =>
       fresh(hand.name, hand.self)
     );
-    if (known !== undefined) return known;
-    if (job !== 'pick') return null;
-    const unknown = unknownPickers(candidates).find((name) => fresh(name, false));
-    return unknown === undefined ? null : { name: unknown, self: false, odds: null };
+    if (known !== undefined || unknown === null) return known ?? null;
+    const unread = unknownHands(job, step.requirement, candidates, unknown.restBelow).find((name) =>
+      fresh(name, false)
+    );
+    return unread === undefined ? null : { name: unread, self: false, odds: null };
   }
 
   /**

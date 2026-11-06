@@ -1896,7 +1896,7 @@ describe('combat, anchored on the frame', () => {
   it('reads damage with no attacker', () => {
     expect(
       expectType('You take 1 damage for bashing the door!', 'user-takes-damage')
-    ).toMatchObject({ damage: '1', kind: 'bashing the door' });
+    ).toMatchObject({ damage: '1', paidFor: 'bashing the door' });
     expect(expectType('You take 8 fire damage!', 'user-takes-damage')).toMatchObject({
       damage: '8',
       kind: 'fire'

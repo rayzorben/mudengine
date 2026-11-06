@@ -4271,6 +4271,22 @@ describe('what a door costs to force', () => {
     expect(route.walls?.[0]).toMatchObject({ kind: 'door', switchedOff: ['strength'] });
     expect(describeBlock(route.walls![0]!)).toContain('bashing doors is switched off');
   });
+
+  /* The party's figure prices the door; the block says this character's own (2026-11-05). */
+  it("says this character's own figures where the party's priced the door", () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Door [80 picklocks/strength]' } } },
+      { m: 1, r: 2, n: 'Vault', x: { w: { m: 1, r: 1 } } }
+    ]);
+    const route = graph.route('1/1', '1/2', {
+      strength: 60,
+      pickSkill: 50,
+      own: { picklocks: 0, strength: 43 },
+      forcing: { pick: true, bash: true, search: true, levers: true, disarm: true }
+    });
+    expect(route.walls?.[0]).toMatchObject({ kind: 'door', picklocks: 0, strength: 43 });
+    expect(describeBlock(route.walls![0]!)).toContain('you have 0 picklocks and 43 strength');
+  });
 });
 
 describe('an edge the live server refused', () => {

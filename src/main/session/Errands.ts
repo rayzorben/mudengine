@@ -19,7 +19,7 @@ import { exitGates, itemsAsked, tollCharge } from '../world/navigation/exitGates
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { keyJson, minutesMs } from '../../shared/values';
-import { partyTraps, walkersThrough } from '../../shared/barrierHands';
+import { partyFigure, walkersThrough } from '../../shared/barrierHands';
 import { killShare } from '../../shared/company';
 import { partyPlan, withParty } from '../../shared/partyFight';
 import type { WalkKind } from '../../shared/walk';
@@ -1078,10 +1078,16 @@ export class Errands implements SessionModule {
             fights: this.combatOn(),
             guess: this.fightGuesser(state)
           });
+    const { movement } = this.automationConfig;
+    // Leading, the party's best at a lock (the walk sends the best hand), this
+    // character's own only behind its switch.
+    const picklocks = partyFigure(state, 'picklocks', movement.pickLocks);
+    const strength = partyFigure(state, 'strength', movement.bashDoors);
     return {
       level: state.progress.level ?? null,
-      strength: state.progress.strength ?? null,
-      pickSkill: state.progress.picklocks ?? undefined,
+      strength,
+      pickSkill: picklocks ?? undefined,
+      own: { picklocks: state.progress.picklocks, strength: state.progress.strength },
       perception: state.progress.perception,
       family: this.serverFamily,
       // Only where the source that states the timers is this server's (todo 62's open question).
@@ -1094,13 +1100,13 @@ export class Errands implements SessionModule {
           }
         : {}),
       // Leading, the party's best Traps and its size (todo 86): the walk sends the best hand.
-      trapSkill: partyTraps(state),
+      trapSkill: partyFigure(state, 'traps'),
       trapWalkers: walkersThrough(state),
       // And which of the two the walker will spend: a door planned on a skill
-      // whose switch is off is a door the walk stops at.
+      // whose switch is off is a door the walk stops at, unless a member has it.
       forcing: {
-        pick: this.automationConfig.movement.pickLocks,
-        bash: this.automationConfig.movement.bashDoors,
+        pick: movement.pickLocks || picklocks !== null,
+        bash: movement.bashDoors || strength !== null,
         search: this.automationConfig.movement.searchHidden,
         levers: this.automationConfig.movement.pullLevers,
         disarm: this.automationConfig.movement.disarmTraps

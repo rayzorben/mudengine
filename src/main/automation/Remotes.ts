@@ -878,15 +878,16 @@ export class Remotes implements SessionModule {
 
   /**
    * Leading, a member sent at a trap or a lock (todo 86): `@disarm`, `@pick`
-   * or `@bash` to one whose `@version` named this client, and only a pick as
-   * `@do pi` to anyone else, which needs them to have granted `do`. An `@do`
-   * says nothing of the roll, so a disarm or a bash never goes that way: a
-   * disarm taken as held walks the party into a live trap. The answer is
+   * or `@bash` to one whose `@version` named this client, and a pick or a
+   * bash as `@do pi` or `@do bas` to anyone else, which needs them to have
+   * granted `do`. An `@do` says nothing of the roll, so a disarm never goes
+   * that way: a disarm taken as held walks the party into a live trap, where a
+   * lock that held only stops the move (the user, 2026-11-05). The answer is
    * handed back (`handAnswered`) unless the walk withdrew the ask first.
    */
   askHand(who: string, job: BarrierJob, direction: Direction): HandAsk | false {
     const ours = this.runsThisClient(who);
-    if (!ours && job !== 'pick') return false;
+    if (!ours && job === 'disarm') return false;
     const taken = ours
       ? this.send(who, job, direction)
       : this.send(who, 'do', jobCommand(job, direction));
