@@ -6803,6 +6803,15 @@ describe('what the prompt says on other realms', () => {
   it('rests on the sentence before the flag arrives', () => {
     expect(play(['[HP=50]:', 'You are now resting.']).current.vitals.resting).toBe(true);
   });
+
+  // Todo 860: meditation ends by itself, said before the status line drops the flag.
+  it('wakes from meditation on its sentence before the flag goes', () => {
+    const meditating = ['[HP=50]:', 'You are now meditating.'];
+    expect(play(meditating).current.vitals.meditating).toBe(true);
+    const awake = play([...meditating, 'You awake from deep meditation feeling stronger!']);
+    expect(awake.current.vitals.meditating).toBe(false);
+    expect(awake.current.vitals.resting).toBe(false);
+  });
 });
 
 describe('the opening of a PvP fight', () => {

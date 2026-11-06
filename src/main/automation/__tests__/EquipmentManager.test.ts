@@ -315,6 +315,77 @@ describe('the resting set', () => {
 });
 
 /*
+ * MegaMUD's Pre/Post Meditate as a set (todo 860). A `wear` leaves meditation
+ * alone (orohost wire, Vaelor 2026-11-05), so the set goes on while the
+ * character meditates and the base kit comes back once it is awake.
+ */
+describe('the meditating set', () => {
+  const withMed = gear({
+    sets: [
+      { name: 'Default', when: 'always', mob: '', wear: ['plate boots', 'copper ring'] },
+      { name: 'Meditating', when: 'meditating', mob: '', wear: ['lightstone ring'] }
+    ]
+  });
+  const ring = { 'lightstone ring': 'Finger', 'copper ring': 'Finger' };
+  const slotOf = (name: string): string | null =>
+    ring[name as keyof typeof ring] ?? SLOTS[name] ?? null;
+  const pack = [
+    worn('plate boots', 'Feet'),
+    worn('copper ring', 'Finger'),
+    carried('lightstone ring')
+  ];
+  const as = (vitals: { resting?: boolean; meditating?: boolean }): CharacterState => {
+    const state = standing(pack);
+    return { ...state, vitals: { ...state.vitals, ...vitals } };
+  };
+
+  it('is put on while meditating', () => {
+    make(withMed, { slotOf }).onCharacter(as({ meditating: true }), false);
+    expect(sent).toEqual(['wear lightstone ring']);
+  });
+
+  it('waits while resting, where a wear stands the character up (the control)', () => {
+    make(withMed, { slotOf }).onCharacter(as({ resting: true }), false);
+    expect(sent).toEqual([]);
+  });
+
+  it('comes off before the next step while still meditating', () => {
+    const manager = make(withMed, { slotOf });
+    const wearing = standing([
+      worn('plate boots', 'Feet'),
+      worn('lightstone ring', 'Finger'),
+      carried('copper ring')
+    ]);
+    const meditating = { ...wearing, vitals: { ...wearing.vitals, meditating: true } };
+    manager.onCharacter(meditating, false);
+    expect(sent).toEqual([]);
+    manager.beforeStep(meditating);
+    expect(sent).toEqual(['wear copper ring']);
+  });
+
+  it('puts a resting set on while meditating where no meditating set is written', () => {
+    const withRest = gear({
+      sets: [
+        { name: 'Default', when: 'always', mob: '', wear: ['plate boots', 'copper ring'] },
+        { name: 'Resting', when: 'resting', mob: '', wear: ['lightstone ring'] }
+      ]
+    });
+    make(withRest, { slotOf }).onCharacter(as({ meditating: true }), false);
+    expect(sent).toEqual(['wear lightstone ring']);
+  });
+
+  it('comes off once the character is awake', () => {
+    const awake = standing([
+      worn('plate boots', 'Feet'),
+      worn('lightstone ring', 'Finger'),
+      carried('copper ring')
+    ]);
+    make(withMed, { slotOf }).onCharacter(awake, false);
+    expect(sent).toEqual(['wear copper ring']);
+  });
+});
+
+/*
  * The backstab weapon derived from the pack where no backstab set is written
  * (todo 76): the best backstab the realm rows give, worn for the opener, and
  * the hands put back by the fight after it.

@@ -896,7 +896,7 @@ export class SessionManager {
         // The words fought with, typed or chosen (todo 47).
         attackWord: (target) => this.errands.words.attack([target]).verb,
         openerWord: () => this.errands.words.opener(),
-        ...{ onTheGround, realmSpeed, combatOn }
+        ...{ onTheGround, realmSpeed, combatOn, castStartOf: (s) => spellLore.castStartOf(s) }
       },
       automation.spells,
       (name) => this.world?.spellNamed(name) ?? null,

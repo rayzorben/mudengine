@@ -760,18 +760,28 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
  * order is the precedence and `GEAR_WHENS.indexOf` is what ranks two sets that
  * both match.
  *
- * Five, because five is what the client can answer without guessing:
+ * Six, because six is what the client can answer without guessing:
  * `always` is the kit a character is in when nothing else is happening,
  * `moving` is a walk or a lap under way, `backstab` is between fights when the
  * next one opens with a backstab (MegaMUD's `BsWeapon`), `resting` is a rest
  * wanted or under way with no step about to go (MegaMUD's `PreRestCmd`, todo
- * 60), `fighting` is `fightIsRunning`. Resting outranks moving (a walk or lap
- * held for health rests) and backstab, because the walker's `beforeStep` puts
- * either set on before the next step anyway. A `wear` stands a resting
- * character up (`EquipCommand.cs:135,143`), so the resting set goes on before
- * the `rest` and nothing is worn while down.
+ * 60), `meditating` is the character meditating with no step about to go
+ * (MegaMUD's Pre/Post Meditate, todo 860), `fighting` is `fightIsRunning`.
+ * Resting outranks moving (a walk or lap held for health rests) and backstab,
+ * because the walker's `beforeStep` puts either set on before the next step
+ * anyway. A `wear` stands a resting character up (`EquipCommand.cs:135,143`),
+ * so the resting set goes on before the `rest` and nothing is worn while
+ * resting; a wear leaves meditation alone (orohost wire, 2026-11-05), so the
+ * meditating set goes on once the character is meditating.
  */
-export const GEAR_WHENS = ['always', 'moving', 'backstab', 'resting', 'fighting'] as const;
+export const GEAR_WHENS = [
+  'always',
+  'moving',
+  'backstab',
+  'resting',
+  'meditating',
+  'fighting'
+] as const;
 
 export type GearWhen = (typeof GEAR_WHENS)[number];
 
@@ -812,6 +822,8 @@ export interface GearSituation {
    * already down, and no step is about to go. A walk held for health is one.
    */
   resting: boolean;
+  /** The character is meditating and no step is about to go. */
+  meditating: boolean;
   /** Anything is swinging — `fightIsRunning`. */
   fighting: boolean;
   /** The next fight opens with a backstab (`AutoCombat.opensWithBackstab`). */
@@ -841,6 +853,8 @@ export function overlayFor(sets: readonly GearSet[], now: GearSituation): GearSe
       case 'resting':
         // Over a held walk's moving set; a fight stands the character up anyway.
         return now.resting && !now.fighting;
+      case 'meditating':
+        return now.meditating && !now.fighting;
       case 'backstab':
         return now.backstab && !now.fighting;
       case 'fighting': {

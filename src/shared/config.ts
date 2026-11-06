@@ -1856,12 +1856,14 @@ export interface SpellsConfig {
   attackFallback: string;
   /**
    * How many times the round spell (or its fallback) is cast per target —
-   * MegaMUD's `MaxCastCnt`, whose own default is **1**: open with the spell,
-   * then let the melee round carry it. **0 is no limit here**, which is what
-   * this client did before the field existed; MegaMUD reads 0 as none, and
-   * that reading is not carried because a blank field must not silently
-   * stop a caster casting. Counted on the server's confirmation, so a cast
-   * that fizzled is not one of them; a new target starts the count again.
+   * MegaMUD's `MaxCastCnt` (its `sample.ini` ships 10). **0 is no limit
+   * here**, which is what this client did before the field existed; MegaMUD
+   * reads 0 as none ("0 means zero, not unlimited", `MegaMud.chm`), and that
+   * reading is not carried because a blank field must not silently stop a
+   * caster casting. Counted on the server's confirmation, so a cast that
+   * fizzled is not one of them (the chm says the same); a landing that names
+   * no caster counts after this character's start line (`UnnamedCasts`). A
+   * new target starts the count again.
    */
   attackCasts: number;
   /**

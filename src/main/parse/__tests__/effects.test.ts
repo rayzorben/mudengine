@@ -75,6 +75,7 @@ function rig(
     match: (text) => inner.match(text),
     startOf: (spell) => inner.startOf(spell),
     stopOf: (spell) => inner.stopOf(spell),
+    castStartOf: (spell) => inner.castStartOf(spell),
     learn: (spell, kind, text, at) => {
       log.push(`learn ${kind} ${spell} "${text}"`);
       inner.learn(spell, kind, text, at);

@@ -168,14 +168,15 @@ export class EquipmentManager implements SessionModule {
   private dress(state: CharacterState, moving: boolean, stepping: boolean): void {
     if (state.phase !== 'in-game') return;
     /*
-     * Down, and no step about to go: a `wear` would stand the character up
+     * Resting, and no step about to go: a `wear` would stand the character up
      * (`EquipCommand.cs:135,143`) and the next rest tick would pay nothing
      * (`CalcRestTick`'s `BeenResting`). The resting set goes on before the
      * `rest`, ahead of it in the same band; anything else, the reach weapon's
      * return included, waits for the step or the fight that stands it up anyway.
+     * A wear leaves meditation alone (orohost wire, todo 860), so nothing waits.
      */
     const down = state.vitals.resting || state.vitals.meditating;
-    const holding = down && !stepping && !fightIsRunning(state);
+    const holding = state.vitals.resting && !stepping && !fightIsRunning(state);
     if (!holding) this.reachedBack(state);
     if (!this.acting) this.sayBackstabWeapon(state);
     if (!this.acting && !this.placing) return;
@@ -190,6 +191,7 @@ export class EquipmentManager implements SessionModule {
     const now: GearSituation = {
       moving,
       resting: !stepping && (down || this.sources.wantsRest(state)),
+      meditating: !stepping && state.vitals.meditating,
       fighting: state.inCombat || state.combat.attackers.length > 0,
       backstab: this.opensWithBackstab(sets),
       target: state.combat.target

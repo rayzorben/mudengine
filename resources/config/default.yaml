@@ -1840,7 +1840,12 @@ automation:
   # A `resting` set does what MegaMUD's PreRestCmd did: a ring that raises HP
   # regen, put on before `rest` is sent and taken off at the next step of a
   # walk. Nothing is worn while you are resting, because wearing
-  # anything stands you up.
+  # anything stands you up. While you meditate it goes on too, since
+  # wearing does not stop meditation.
+  #
+  # A `meditating` set does what MegaMUD's Pre/Post Meditate did. Wearing
+  # does not stop meditation, so it goes on once you are meditating and
+  # comes off when you wake, move or fight.
   #
   # The off-hand comes off before a two-handed weapon goes on, and the weapon
   # hand is sent before the rest, so coming back the other way frees the hand
@@ -1856,6 +1861,9 @@ automation:
   #       wear: [brown leather boots]
   #     - name: Resting
   #       when: resting
+  #       wear: [lightstone ring]
+  #     - name: Meditating
+  #       when: meditating
   #       wear: [lightstone ring]
   #     - name: Backstab
   #       when: backstab

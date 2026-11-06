@@ -716,3 +716,74 @@ describe('the next room spell in the book', () => {
     });
   });
 });
+
+/*
+ * Todo 857: soul rip's caster sees `You begin to chant in a fierce tone!`
+ * (message 3086, role 1) and then `A strange force rips into big mangy dog
+ * for 137 damage!` (message 3087, spells 211|5033), neither naming the spell
+ * nor the caster (orohost wire, `todo/archive/…857-soul-rip-caster-orohost.txt`).
+ */
+describe('casts per target for a spell whose landing names no caster', () => {
+  const SOUL_RIP = { id: 211, name: 'soul rip' } as WorldSpell;
+  const dog = { name: 'big mangy dog', entity: null, remaining: null };
+  const start = (role: string) =>
+    block('realm-message', {
+      message: '3086',
+      role,
+      ...(role === '1' ? {} : { fills: 'Fatyoshi' })
+    });
+  const landing = block('user-hits', {
+    line: 'A strange force rips into big mangy dog',
+    target: 'big mangy dog',
+    damage: '137',
+    message: '3087',
+    spells: '211|5033'
+  });
+
+  function caster(attackCasts: number): { spells: AttackSpells; notices: string[] } {
+    const notices: string[] = [];
+    const spells = new AttackSpells(
+      {
+        ...DEFAULT_CONFIG.automation.spells,
+        attack: 'soul rip',
+        autoChoose: false,
+        minMana: 0,
+        attackCasts
+      },
+      {
+        notice: (message) => notices.push(message),
+        castStartOf: (spell) => (spell === 'soul rip' ? 3086 : null)
+      },
+      (name) => (name === 'soul rip' ? SOUL_RIP : null),
+      () => ({ combat: null, magery: null, crits: 0, family: null })
+    );
+    spells.onTarget(dog.name);
+    spells.sent(cast('soul rip'));
+    spells.heard(block('combat-status', { status: 'Engaged' }), EMPTY_CHARACTER);
+    return { spells, notices };
+  }
+
+  it('stops at the cap after its own start line and one landing, and says why once', () => {
+    const { spells, notices } = caster(1);
+    spells.heard(start('1'), EMPTY_CHARACTER);
+    spells.heard(landing, EMPTY_CHARACTER);
+    expect(spells.change(EMPTY_CHARACTER, dog, 'a', 'a')?.command).toBe('a big mangy dog');
+    expect(notesOf(notices, 'automation.combat.spellCountedUnnamed')).toHaveLength(1);
+  });
+
+  it('counts nothing after another caster’s start line (the control)', () => {
+    const { spells } = caster(1);
+    spells.heard(start('1'), EMPTY_CHARACTER);
+    spells.heard(start('3'), EMPTY_CHARACTER);
+    spells.heard(landing, EMPTY_CHARACTER);
+    expect(spells.change(EMPTY_CHARACTER, dog, 'a', 'a')).toBeNull();
+  });
+
+  it('casts on with no cap however many land', () => {
+    const { spells } = caster(0);
+    spells.heard(start('1'), EMPTY_CHARACTER);
+    spells.heard(landing, EMPTY_CHARACTER);
+    spells.heard(landing, EMPTY_CHARACTER);
+    expect(spells.change(EMPTY_CHARACTER, dog, 'a', 'a')).toBeNull();
+  });
+});

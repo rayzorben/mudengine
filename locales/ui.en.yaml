@@ -5928,6 +5928,7 @@ settings:
     whenAlways: always
     whenMoving: while moving
     whenResting: while resting
+    whenMeditating: while meditating
     whenBackstab: when backstabbing
     whenFighting: while fighting
     offRoundLegend: Between rounds
@@ -7156,6 +7157,10 @@ automation:
     drainIneffective: '{spell} has no effect here; the attack spells carry this fight.'
     spellIneffectiveNoFallback: '{spell} has no effect here and no fallback spell is set; your
       regular attacks carry this fight.'
+    # Soul rip and its kind land with a line naming neither spell nor caster (todo 857).
+    spellCountedUnnamed: '{spell} lands without naming its caster, so each landing after your own
+      start line counts toward Casts Per Target. A landing from another player casting {spell} here in
+      the same round counts too.'
     # The world database rules the spell out before it is cast (`spellReaches`), not the server.
     spellNoEffectKnown: 'Not casting {spell} at {target}: the world database says it has no effect
       on it.'

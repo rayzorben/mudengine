@@ -4038,3 +4038,52 @@ describe("a monster's spell aimed at somebody", () => {
     expect(block.groups['spells']).toBeUndefined();
   });
 });
+
+// Todo 857: a spell's landing that names neither spell nor caster (orohost wire, soul rip).
+describe('a spell landing that names no caster', () => {
+  const book = MessageBook.fromRows(
+    parseMessagesCsv(
+      [
+        'number,kind,line1,line2,line3,spells',
+        '3087,other,"A strange force rips into %s for %d damage!","A strange force rips into you for %d damage!","A strange force rips into %s for %s damage!",211|5033',
+        '2043,other,"Spiritual power strikes %s for %d damage!","Spiritual power strikes you for %d damage!","Spiritual power strikes %s for %s damage!",721|5034'
+      ].join('\n')
+    )
+  );
+  const tabled = (): Classifier =>
+    new Classifier(
+      { present: () => ['big mangy dog'], mob: () => undefined } as never,
+      undefined,
+      undefined,
+      undefined,
+      (text) => book.match(text)
+    );
+
+  it('keeps the blow and adds the row and its spells', () => {
+    const block = tabled().classify(
+      line('A strange force rips into big mangy dog for 137 damage!')
+    ).block;
+    expect(block).toMatchObject({
+      type: 'user-hits',
+      groups: { message: '3087', spells: '211|5033', damage: '137' }
+    });
+    expect(block.groups['attacker']).toBeUndefined();
+  });
+
+  it("names no attacker from the template's own first word", () => {
+    const block = tabled().classify(
+      line('Spiritual power strikes big mangy dog for 40 damage!')
+    ).block;
+    expect(block.type).toBe('user-hits');
+    expect(block.groups['spells']).toBe('721|5034');
+    expect(block.groups['attacker']).toBeUndefined();
+  });
+
+  it('reads the same line as a guessed attacker without the table (the control)', () => {
+    const block = new Classifier({
+      present: () => ['big mangy dog'],
+      mob: () => undefined
+    } as never).classify(line('Spiritual power strikes big mangy dog for 40 damage!')).block;
+    expect(block.groups['attacker']).toBe('Spiritual');
+  });
+});

@@ -92,7 +92,14 @@ describe('the backstab weapon', () => {
 describe('laying the backstab weapon into the sets', () => {
   const slotOf = (name: string): string | null =>
     name.endsWith('shield') ? OFF_HAND : name === 'boots' ? 'Feet' : WEAPON_HAND;
-  const still = { moving: false, resting: false, fighting: false, backstab: false, target: null };
+  const still = {
+    moving: false,
+    resting: false,
+    meditating: false,
+    fighting: false,
+    backstab: false,
+    target: null
+  };
 
   it('puts the hands held before back in the base, for the slots it does not name', () => {
     const sets: GearSet[] = [

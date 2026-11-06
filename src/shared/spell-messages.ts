@@ -155,6 +155,13 @@ export interface SpellMessageRow {
   stop: string | null;
   /** The message record both sentences come from (`desc_msg_id`, `DescMsg`), where the file says. */
   message?: number;
+  /**
+   * The message record of the caster's own line as a cast begins
+   * (`start_msg_id`, `StartMessage`): `You begin to chant in a fierce tone!`
+   * for soul rip, printed once a round ahead of landing lines that name
+   * neither spell nor caster (`Spell.cs:1171-1203`, todo 857).
+   */
+  castStart?: number;
 }
 
 /**
@@ -178,7 +185,7 @@ export function withRealmSpellNames(
     for (const spell of realm.get(row.message) ?? []) {
       if (named.has(spellKey(spell))) continue;
       named.add(spellKey(spell));
-      joined.push({ spell, start: row.start, stop: row.stop, message: row.message });
+      joined.push({ ...row, spell });
     }
   }
   return joined;
@@ -248,6 +255,7 @@ export function parseSpellMessagesCsv(text: string): SpellMessageRow[] {
   const startAt = column('start');
   const stopAt = column('stop');
   const messageAt = column('desc_msg_id');
+  const castStartAt = column('start_msg_id');
   if (spellAt < 0 || startAt < 0 || stopAt < 0) return [];
 
   const rows: SpellMessageRow[] = [];
@@ -256,16 +264,24 @@ export function parseSpellMessagesCsv(text: string): SpellMessageRow[] {
     if (spell.length === 0) continue;
     const start = (record[startAt] ?? '').trim();
     const stop = (record[stopAt] ?? '').trim();
-    const cell = messageAt < 0 ? '' : (record[messageAt] ?? '').trim();
-    const message = cell.length > 0 ? Number(cell) : NaN;
+    const message = recordNumber(record, messageAt);
+    const castStart = recordNumber(record, castStartAt);
     rows.push({
       spell,
       start: start.length > 0 ? start : null,
       stop: stop.length > 0 ? stop : null,
-      ...(Number.isInteger(message) ? { message } : {})
+      ...(message === null ? {} : { message }),
+      ...(castStart === null ? {} : { castStart })
     });
   }
   return rows;
+}
+
+/** A message record number in `record`'s column `at`, or null where the cell is empty or absent. */
+function recordNumber(record: readonly string[], at: number): number | null {
+  const cell = at < 0 ? '' : (record[at] ?? '').trim();
+  const value = cell.length > 0 ? Number(cell) : NaN;
+  return Number.isInteger(value) && value > 0 ? value : null;
 }
 
 /**
@@ -337,11 +353,15 @@ export class SpellMessageBook {
   private readonly root = node();
   private readonly startBy = new Map<string, string>();
   private readonly stopBy = new Map<string, string>();
+  private readonly castStartBy = new Map<string, number>();
   private sentences = 0;
 
   static fromRows(rows: readonly SpellMessageRow[]): SpellMessageBook {
     const book = new SpellMessageBook();
     for (const row of rows) {
+      const key = spellKey(row.spell);
+      if (row.castStart !== undefined && !book.castStartBy.has(key))
+        book.castStartBy.set(key, row.castStart);
       if (row.start !== null) book.add(row.spell, 'start', row.start);
       if (row.stop !== null) book.add(row.spell, 'stop', row.stop);
     }
@@ -417,6 +437,11 @@ export class SpellMessageBook {
     return this.stopBy.get(spellKey(spell)) ?? null;
   }
 
+  /** The message record of the caster's line as this spell's cast begins, or null. */
+  castStartOf(spell: string): number | null {
+    return this.castStartBy.get(spellKey(spell)) ?? null;
+  }
+
   private walk(words: readonly string[]): TrieNode | null {
     let cursor: TrieNode | undefined = this.root;
     for (const word of words) {
@@ -441,6 +466,8 @@ export interface SpellLore {
   startOf(spell: string): string | null;
   /** The sentence a spell prints when it ends, from either source. */
   stopOf(spell: string): string | null;
+  /** The caster's start line's message record, from the shipped table alone. */
+  castStartOf(spell: string): number | null;
   /**
    * A sentence seen on the wire that the table lacks, bound to a spell by the
    * cast it followed or the listing that ended it. Ignored where the shipped
@@ -458,6 +485,7 @@ export const NO_SPELL_LORE: SpellLore = {
   match: () => null,
   startOf: () => null,
   stopOf: () => null,
+  castStartOf: () => null,
   learn: () => {},
   unlearn: () => {},
   effects: NO_EFFECT_LEDGER
@@ -493,6 +521,7 @@ export function spellLoreOf(
     match: (text) => merge(shipped.match(text), learned.match(text)),
     startOf: (spell) => shipped.startOf(spell) ?? learned.startOf(spell),
     stopOf: (spell) => shipped.stopOf(spell) ?? learned.stopOf(spell),
+    castStartOf: (spell) => shipped.castStartOf(spell),
     learn: (spell, kind, text, at) => {
       const known = kind === 'start' ? shipped.startOf(spell) : shipped.stopOf(spell);
       if (known !== null || shipped.match(text) !== null) return;

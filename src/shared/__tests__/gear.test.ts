@@ -439,6 +439,7 @@ describe('choosing a kit for the situation', () => {
   const still: GearSituation = {
     moving: false,
     resting: false,
+    meditating: false,
     fighting: false,
     backstab: false,
     target: null

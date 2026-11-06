@@ -153,7 +153,7 @@ export function healthStated(s: CharacterState, g: Groups): CharacterState | nul
   };
 }
 
-/** `user-rests`: resting or meditating, as the sentence said. */
+/** `user-rests`: resting, meditating or `awake` (neither), as the sentence said. */
 export function rested(s: CharacterState, state: string | undefined): CharacterState {
   return {
     ...s,

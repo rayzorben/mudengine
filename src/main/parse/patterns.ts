@@ -658,6 +658,11 @@ export const RULES: Rule[] = [
   onsetRule('confused'),
   /* `You are now resting.` — the flag the next status line will carry, said first. */
   { type: 'user-rests', pattern: /^You are now (?<state>resting|meditating)\.$/ },
+  /*
+   * Meditation ends by itself on the tick that fills mana, said before the
+   * status line drops `(Meditating)` (orohost wire, Vaelor 2026-11-05, todo 860).
+   */
+  { type: 'user-rests', pattern: /^You (?<state>awake) from deep meditation feeling stronger!$/ },
 
   /* ----------------------------------------------------------- combat */
   { type: 'combat-status', pattern: /^\*Combat (?<status>Engaged|Off)\*/ },

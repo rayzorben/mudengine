@@ -550,10 +550,14 @@ export class Classifier {
         this.asDeathSentence(
           line,
           text,
-          this.asAimedSpell(
+          this.asSpellLanding(
             line,
             text,
-            this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+            this.asAimedSpell(
+              line,
+              text,
+              this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+            )
           )
         )
       )
@@ -854,6 +858,32 @@ export class Classifier {
       spells: String(spell),
       spell: this.spellName(spell) ?? ''
     };
+    return this.build(line, block.type, groups, text, block.confidence);
+  }
+
+  /**
+   * A spell's landing read as a blow that names no caster: `A strange force
+   * rips into big mangy dog for 137 damage!` is message 3087's line, printed
+   * for soul rip with neither the spell nor the caster in it (`Spell.cs:1171`,
+   * orohost wire, todo 857). The frame stands and the row's `message` and
+   * `spells` are added, which is how the caster's casts are counted
+   * (`UnnamedCasts`). The template's own first word is no attacker:
+   * `Spiritual power strikes…` named `Spiritual` by grammar.
+   */
+  private asSpellLanding(line: StreamLine, text: string, block: Block): Block {
+    if (!this.messages || block.type !== 'user-hits' || block.groups['attacker'] === 'You')
+      return block;
+    const hit = this.messages(text);
+    if (hit === null || hit.spells.length === 0 || hit.template.startsWith('%')) return block;
+    const groups: Record<string, string> = {
+      ...block.groups,
+      message: String(hit.number),
+      spells: hit.spells.join('|')
+    };
+    if (groups['attacker'] !== undefined && hit.template.startsWith(`${groups['attacker']} `)) {
+      delete groups['attacker'];
+      delete groups['guessed'];
+    }
     return this.build(line, block.type, groups, text, block.confidence);
   }
 

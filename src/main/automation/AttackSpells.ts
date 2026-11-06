@@ -19,6 +19,7 @@ import { DrainWhenHurt } from './DrainWhenHurt';
 import { killCasting } from './killCasting';
 import { RoomSpells } from './RoomSpells';
 import { SpellHold, spellTargetRow } from './SpellHold';
+import { UnnamedCasts, type UnnamedSpell } from './UnnamedCasts';
 import { t } from '../app/i18n';
 import { castAimedAt, typedCast } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
@@ -82,6 +83,8 @@ export interface AttackSpellEvents {
   notice?: NoticeSink;
   /** The spellbook has never been read and *Auto Choose Best Spell* needs it. */
   needBook?(): void;
+  /** The message record of the caster's line as `spell`'s cast begins (`SpellLore.castStartOf`). */
+  castStartOf?(spell: string): number | null;
 }
 
 /**
@@ -172,6 +175,10 @@ export class AttackSpells {
   private readonly room: RoomSpells;
   /** The casts, the player's and this module's, a sentence naming no spell may answer (todo 131). */
   private readonly inFlight: CastsInFlight;
+  /** The casts of a spell whose landing names no caster, counted after this character's start line (857). */
+  private readonly unnamed = new UnnamedCasts();
+  /** Spells whose landing lines have been counted with no caster named, said once a connection. */
+  private readonly saidUnnamed = new Set<string>();
 
   constructor(
     private spells: SpellsConfig,
@@ -224,6 +231,7 @@ export class AttackSpells {
     this.inFlight.clear();
     this.instant.clear();
     this.saidNoEffect.clear();
+    this.saidUnnamed.clear();
     this.drain.reset();
     this.room.reset();
     this.saidChoice = null;
@@ -238,6 +246,7 @@ export class AttackSpells {
     this.hold.fightEnded();
     this.ineffective.clear();
     this.casts.clear();
+    this.unnamed.clear();
     this.room.fightEnded();
   }
 
@@ -452,7 +461,44 @@ export class AttackSpells {
     else if (block.type === 'spell-failed') this.noteFizzle(block.groups['spell'] ?? '', book);
     else if (block.type === 'spell-cast') this.noteCast(block, book);
     else if (block.type === 'user-hits') this.noteHit(block, book);
+    if (this.unnamed.heard(block, this.unnamedSpell(book))) this.countUnnamed();
     this.inFlight.heard(block);
+  }
+
+  /**
+   * The single-target spell the server repeats, as its unnamed landing lines
+   * identify it. An area spell prints one landing per monster, so its casts
+   * are not counted off them, as `noteHit` counts none of its blows.
+   */
+  private unnamedSpell(book: CharacterState['spellbook']): UnnamedSpell | null {
+    const cast = this.repeated;
+    if (cast === null || cast.area) return null;
+    const row = resolveSpell(cast.spell, book, this.realmSpell).realm;
+    const key = this.keyOf(cast.spell);
+    return {
+      key,
+      ids: row === null ? [] : [row.id],
+      castStart: this.events.castStartOf?.(key) ?? null
+    };
+  }
+
+  /**
+   * One cast counted off a landing that names nobody. Another player casting
+   * the same spell in the room in the same round prints the same words, so
+   * the count may include theirs, which is said once a connection (the user,
+   * 2026-10-18).
+   */
+  private countUnnamed(): void {
+    const cast = this.repeated;
+    if (cast === null) return;
+    this.count(cast.spell);
+    const key = this.keyOf(cast.spell);
+    if (this.saidUnnamed.has(key)) return;
+    this.saidUnnamed.add(key);
+    this.events.notice?.(
+      t('automation.combat.spellCountedUnnamed', { spell: key }),
+      'attack-spell'
+    );
   }
 
   /**

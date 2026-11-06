@@ -933,7 +933,7 @@ export type BlockType =
   | 'player-dies'
   /** `Kaylon stops to rest.` / `kneels to meditate.` — a party member's state, volunteered. */
   | 'player-rests'
-  /** `You are now resting.` — the rest the status line will confirm on its next repaint. */
+  /** `You are now resting.` / `You awake from deep meditation…`: the rest state, ahead of the status line. */
   | 'user-rests'
   /* Party membership, announced rather than asked for. */
   | 'party-invited'
