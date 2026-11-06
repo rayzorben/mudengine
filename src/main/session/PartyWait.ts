@@ -8,7 +8,7 @@
  * how long. See `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
-import { membersBelow, type CharacterState } from '../../shared/character';
+import { membersBelow, standingHere, type CharacterState } from '../../shared/character';
 import { membersStill, type HealthConfig } from '../../shared/config';
 import type { LoopProgress } from '../../shared/loops';
 import type { NoticeSink } from '../../shared/decisionSettings';
@@ -82,6 +82,23 @@ export class PartyWait {
   }
 
   /**
+   * The members the stopped party waits on by their own word (`asked`: an
+   * `@wait`, an `@held`, an aimed hold) who stand in this room: a step off
+   * drops one who cannot follow (`LeaveHarm`). A member only hurt or low can.
+   */
+  waitedForHere(state: Pick<CharacterState, 'room'>): string[] {
+    if (!this.paused) return [];
+    const here = standingHere(state);
+    const names = [...this.waiting].filter(([key]) => key.startsWith('asked:')).map(([, n]) => n);
+    return [...new Set(names)].filter((name) => here.has(name.toLowerCase()));
+  }
+
+  /** Whether the party waits on `who` for `why` now. */
+  waitsFor(who: string, why: PaceReason): boolean {
+    return this.waiting.has(`${why}:${who.toLowerCase()}`);
+  }
+
+  /**
    * Leading, the members here under `waitBelow`, and under `managed` the ones
    * this character's own floors hold for, re-read from every state (MegaMUD's
    * *Wait For Party Members*): a member under the line is a reason to wait, as
@@ -147,13 +164,16 @@ export class PartyWait {
     }
   }
 
-  /** A member asked to wait or said it is ready, or its health did (`PaceReason`). */
-  pace(who: string, ready: boolean, why: PaceReason): void {
+  /**
+   * A member asked to wait or said it is ready, or its health did
+   * (`PaceReason`); `said` is the stop's reason where the client saw the
+   * cause itself (`AimedHold`).
+   */
+  pace(who: string, ready: boolean, why: PaceReason, said = pausedSentence(why, who)): void {
     const key = `${why}:${who.toLowerCase()}`;
     if (!ready) {
       const fresh = !this.waiting.has(key);
       this.waiting.set(key, who);
-      const said = pausedSentence(why, who);
       // A word or a join added to a stop already held is said; a bar crossing back and forth is not.
       if (this.paused) {
         if (fresh && !isBarReason(why)) this.moves.notice(said, 'party-wait');
@@ -244,20 +264,33 @@ export class PartyWait {
 
   /**
    * The wait ran past its limit: walk on, and say for whom it gave up. A
-   * member `away` after a hangup is still waited for, on its own clock.
+   * member who asked to wait and was then left behind is given up whole,
+   * `away` with it (the user, 2026-11-05: Rayzor stood 24 hours for Brakkle);
+   * `PartyRejoin` still invites them back whenever they are seen. A member
+   * `away` after a hangup alone is still waited for, on its own clock, and
+   * the notice says so.
    */
   private giveUp(minutes: number): void {
     this.timer = null;
     if (!this.paused) return;
     const who = [...new Set([...this.waiting].filter(([key]) => !isAway(key)).map(([, n]) => n))];
-    this.giveUpOnTracked(isAway);
-    for (const key of [...this.waiting.keys()]) if (!isAway(key)) this.waiting.delete(key);
+    const gone = new Set(who.map((name) => name.toLowerCase()));
+    const kept = (key: string): boolean => isAway(key) && !gone.has(nameOf(key));
+    this.giveUpOnTracked(kept);
+    for (const key of [...this.waiting.keys()]) if (!kept(key)) this.waiting.delete(key);
+    const still = [...new Set(this.waiting.values())];
     if (who.length > 0)
       this.moves.notice(
-        t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
+        still.length > 0
+          ? t('session.loop.partyWaitGaveUpStillAway', {
+              minutes,
+              who: who.join(', '),
+              away: still.join(', ')
+            })
+          : t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }),
         'party-wait'
       );
-    if (this.waiting.size > 0) return;
+    if (still.length > 0) return;
     this.paused = false;
     if (this.moves.stopped()) this.moves.resume(who[0] ?? '');
   }
@@ -266,6 +299,11 @@ export class PartyWait {
 /** A wait for a member a hangup took out, which only the player's Play or `PartyRejoin` ends. */
 function isAway(key: string): boolean {
   return key.startsWith('away:');
+}
+
+/** The lower-cased name a wait's key is kept under, after its reason. */
+function nameOf(key: string): string {
+  return key.slice(key.indexOf(':') + 1);
 }
 
 function isBarReason(why: PaceReason): why is (typeof BAR_REASONS)[number] {

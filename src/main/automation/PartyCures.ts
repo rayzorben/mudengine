@@ -127,21 +127,19 @@ export class PartyCures implements SessionModule {
   private needs(state: CharacterState): CureNeed[] {
     const letter = this.parts.family() === 'greatermud';
     const here = standingHere(state);
-    const joined = new Set(joinedMembers(state).map((member) => member.name.toLowerCase()));
-    const members = state.party.members
-      .filter((member) => !member.invited)
-      .flatMap((member) => {
-        const key = member.name.toLowerCase();
-        const sheet = curesFor(member.afflictions);
-        // The listing's P and a member's `@held` are said beside the sheet; either one counts.
-        const wants = (cure: OtherCure): boolean =>
-          sheet.includes(cure) ||
-          (cure === 'poison' && letter && member.activity?.state === 'poisoned') ||
-          (cure === 'freedom' && this.held.has(key));
-        return OTHER_CURES.filter(wants)
-          .filter((cure) => cure !== 'freedom' || (joined.has(key) && here.has(key)))
-          .map((cure): CureNeed => ({ member: member.name, cure }));
-      });
+    // This character's own row is `Cures`'s: the server answers `cure <own name>` with `You don't see`.
+    const members = joinedMembers(state).flatMap((member) => {
+      const key = member.name.toLowerCase();
+      const sheet = curesFor(member.afflictions);
+      // The listing's P and a member's `@held` are said beside the sheet; either one counts.
+      const wants = (cure: OtherCure): boolean =>
+        sheet.includes(cure) ||
+        (cure === 'poison' && letter && member.activity?.state === 'poisoned') ||
+        (cure === 'freedom' && this.held.has(key));
+      return OTHER_CURES.filter(wants)
+        .filter((cure) => cure !== 'freedom' || here.has(key))
+        .map((cure): CureNeed => ({ member: member.name, cure }));
+    });
     return [...members, ...peerCareNeeds(state, this.parts.sheets?.() ?? [])];
   }
 

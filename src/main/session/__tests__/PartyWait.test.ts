@@ -236,11 +236,40 @@ describe('a leader waiting for its party', () => {
       vi.advanceTimersByTime(2 * 60_000);
       wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
       expect(moves.slice(2)).toEqual([
-        `party-wait:${t('session.loop.partyWaitGaveUp', { minutes: 2, who: 'Yang' })}`
+        `party-wait:${t('session.loop.partyWaitGaveUpStillAway', { minutes: 2, who: 'Yang', away: 'Soul' })}`
       ]);
       expect(wait.holding).toBe(true);
       wait.onCharacter(leading(1), 0, null, []);
       expect(moves.slice(3)).toEqual(['resume:Soul']);
+    });
+
+    /* Rayzor, 2026-11-04: Brakkle, held, asked to wait and was left behind; the lap stood 24 hours. */
+    it('walks on past Wait No Longer Than from a member who asked to wait and was left behind', () => {
+      wait.pace('Brakkle', false, 'asked');
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Brakkle']);
+      expect(wait.holding).toBe(true);
+      vi.advanceTimersByTime(2 * 60_000);
+      expect(moves.slice(2)).toEqual([
+        `party-wait:${t('session.loop.partyWaitGaveUp', { minutes: 2, who: 'Brakkle' })}`,
+        'resume:Brakkle'
+      ]);
+      // Still owed by `PartyRejoin`, but not stopped for again.
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Brakkle']);
+      expect(wait.holding).toBe(false);
+      expect(moves).toHaveLength(4);
+    });
+
+    it('says who is held here while the stop waits on them, and not those away', () => {
+      const here = leading(1, ['Vaelor', 'Brakkle']);
+      expect(wait.waitedForHere(here)).toEqual([]);
+      wait.pace('Brakkle', false, 'asked');
+      wait.onCharacter(here, 0, null, ['Soul']);
+      expect(wait.waitedForHere(here)).toEqual(['Brakkle']);
+      wait.pace('Brakkle', true, 'asked');
+      expect(wait.waitedForHere(here)).toEqual([]);
+      // A member only hurt can follow a step, so it is not one to stay for.
+      wait.pace('Brakkle', false, 'hurt');
+      expect(wait.waitedForHere(here)).toEqual([]);
     });
 
     /* Rayzor, 2026-10-29: something walked the lap on at 3am with Brakkle owed. */

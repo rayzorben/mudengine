@@ -8,7 +8,9 @@
  * character paid for its own bash (`paidFor`, the user, 2026-11-05: Rayzor
  * was led out of Slum Street, Western Door for it). Unknown is the
  * unsafe case, so a room the data gives no spell still counts once the server
- * has taken health there twice. Read through `RoomHazards`.
+ * has taken health there twice. A mark is cleared once the character has
+ * stood in the room `clearAfterMs` and lost no health (the user, 2026-11-05:
+ * a false mark kept Rayzor from Brakkle's room). Read through `RoomHazards`.
  * `mudengine-automation` › `parts/safety.md`.
  */
 import { tuning } from '../app/tuning';
@@ -22,6 +24,8 @@ export class RoomDamageSeen {
   private hp: number | null = null;
   private hpMax: number | null = null;
   private drops: number[] = [];
+  /** Since when this character has stood in `room` losing no health; null with none of it known. */
+  private quietSince: number | null = null;
   /** Health the server said this character paid for its own command, still to show on a status line. */
   private paid = 0;
   /** In the order seen, so the oldest goes first past `keptRooms`. */
@@ -51,15 +55,23 @@ export class RoomDamageSeen {
     // What was paid is spent on this line, a drop or not, so it excuses no later one.
     const paid = this.paid;
     this.paid = 0;
+    const at = this.now();
     if (here !== this.room) {
       this.room = here;
       this.drops = [];
+      this.quietSince = hp === null ? null : at;
       return;
     }
-    if (here === null || hp === null || before === null || hp >= before) return;
+    if (here === null || hp === null || before === null) return;
+    if (hp >= before) {
+      this.quietSince ??= at;
+      if (this.seen.has(here) && at - this.quietSince >= tuning().roomHarm.clearAfterMs)
+        this.seen.delete(here);
+      return;
+    }
+    this.quietSince = at;
     if (before - hp <= paid) return;
     // A maximum that fell (gear taken off) lowers the figure without a blow.
-    const at = this.now();
     if (
       hpMax !== maxBefore ||
       !unexplained(state, before, this.signs, at) ||
@@ -86,6 +98,7 @@ export class RoomDamageSeen {
     this.hp = null;
     this.hpMax = null;
     this.drops = [];
+    this.quietSince = null;
     this.paid = 0;
     this.seen.clear();
   }

@@ -6,7 +6,8 @@
  * `Spell.cs:970-1000`). The fight sim and `menace` both read `wardedFrom`.
  * See todo 2322-01.
  */
-import { HAZARD_ABILITY, IMMUNE_TO_POISON_ABILITY } from './abilities';
+import { IMMUNE_TO_POISON_ABILITY } from './abilities';
+import { poisons } from './spellcraft';
 import type { ItemEntity } from './entities';
 import type { WorldSpell } from './world';
 
@@ -47,5 +48,5 @@ export function wardedFrom(
 ): boolean {
   if (ward === undefined) return false;
   if (ward.negates.has(spell.id)) return true;
-  return ward.poisonImmune && (spell.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.poison);
+  return ward.poisonImmune && poisons(spell);
 }

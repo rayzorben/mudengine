@@ -6369,11 +6369,13 @@ session:
     unknownRoom: The client cannot tell which room you are in.
     unknownStopName: The world data has no room called {name}.
     pausedForRemote: '{who} asked the party to wait'
+    holdAimed: '{spell} was aimed at {who}; waiting to hear from them'
     pausedForHealth: 'Waiting for {who}, under Wait For Party Members'
     pausedForRest: 'Waiting for {who} to rest to your own settings, under Manage Party Health If Leading'
     pausedForJoin: 'Waiting for {who} to join the party'
     pausedForRejoin: 'Waiting for {who} to rejoin the party'
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
+    partyWaitGaveUpStillAway: 'Waited {minutes} min for {who} (Wait No Longer Than); still stopped for {away}, who hung up and is not back.'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.
   # The toolbar's back button: one room back the way the character came.
@@ -6522,6 +6524,8 @@ session:
       that does not hurt.'
     staying: 'Staying in {room} though {because}: {refused}.'
     noWay: no room within {steps} steps is free of it
+    waitingFor: the party waits here for {who}, who would be left behind
+    leftBehind: "Health is under Auto-Run's Below Health %, so {who} is left behind in the room."
     unanswered: The step {direction} out of the room got no answer; trying again.
     unansweredReason: the step {direction} got no answer
     reason: 'leaving the room: {spell} hurts here'

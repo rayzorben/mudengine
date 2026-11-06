@@ -62,6 +62,8 @@ import type { RemoteEvents, Remotes } from '../automation/Remotes';
 import type { RoomHazards } from './RoomHazards';
 import { LeaveHarm } from './LeaveHarm';
 import { ReturnToMember } from './ReturnToMember';
+import { AimedHold } from './AimedHold';
+import { holdsMovement } from '../../shared/spellcraft';
 import { packHolds } from '../../shared/quests';
 import { playerKey } from '../../shared/players';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
@@ -170,7 +172,7 @@ export interface TravelParts {
     CharacterTracker,
     'current' | 'pendingMoves' | 'trail' | 'wayBackFrom' | 'retraced' | 'players'
   >;
-  readonly world: Pick<WorldGraph, 'byId' | 'item'> | undefined;
+  readonly world: Pick<WorldGraph, 'byId' | 'item' | 'spellById'> | undefined;
   readonly errands: Pick<
     Errands,
     | 'planFromHere'
@@ -487,6 +489,7 @@ export class Travel implements SessionModule {
   private readonly comeBack: ComeBack;
   /** Waiting for a member the lap waits on in the room they were last seen in. */
   private readonly returnToMember: ReturnToMember;
+  private readonly aimedHold: AimedHold;
   private readonly signs: FightSigns;
   /** Auto-Rest put back on at each walk, loop, arrival and connection (todo 148). */
   private readonly autoRest: AutoRestBack;
@@ -572,6 +575,11 @@ export class Travel implements SessionModule {
         this.comeBack.askedTo(who, to, this.tracker.current, () => {}, { limit }),
       notice: (message, decision) => this.session.notice(message, decision)
     });
+    this.aimedHold = new AimedHold({
+      holds: (spell) => holdsMovement(this.world?.spellById(spell)),
+      pace: (who, waiting, said) => this.partyWait.pace(who, !waiting, 'asked', said),
+      waiting: (who) => this.partyWait.waitsFor(who, 'asked')
+    });
     this.autoRest = new AutoRestBack(session);
     this.keyBuying = new KeyBuying({
       choices: () => this.automationConfig.movement,
@@ -625,6 +633,7 @@ export class Travel implements SessionModule {
       {
         config: () => this.automationConfig,
         escaping: () => this.escaping || this.teleportAt > 0,
+        waitedForHere: (state) => this.partyWait.waitedForHere(state),
         notice: (message, decision) => this.session.notice(message, decision),
         decided: (decision) => this.session.decided(decision)
       }
@@ -652,6 +661,7 @@ export class Travel implements SessionModule {
     this.outfit.onBlock(block);
     this.fareCash.onBlock(block);
     this.partyWait.onBlock(block);
+    this.aimedHold.onBlock(block, this.tracker.current);
   }
 
   /**
@@ -1051,6 +1061,7 @@ export class Travel implements SessionModule {
    * never touches the walker.
    */
   pace(who: string, ready: boolean, left: boolean): void {
+    this.aimedHold.said(who);
     this.partyWait.pace(who, ready, 'asked');
     if (!ready && left) this.partyWait.leftParty(who);
   }
@@ -1078,6 +1089,7 @@ export class Travel implements SessionModule {
       managed ? { health, marginWhenUncapped: tuning().loop.resumeMarginWhenUncapped } : null,
       away
     );
+    this.aimedHold.onCharacter();
     this.comeBack.onCharacter(state);
     this.returnToMember.onCharacter(state, away);
   }
@@ -1085,6 +1097,7 @@ export class Travel implements SessionModule {
   /** The session is closing: nothing may walk on for a wait it held. */
   dispose(): void {
     this.partyWait.forget();
+    this.aimedHold.forget();
     this.comeBack.cancel(null);
     this.returnToMember.forget();
   }
@@ -1206,6 +1219,7 @@ export class Travel implements SessionModule {
    */
   forgetFollowers(): void {
     this.partyWait.forget();
+    this.aimedHold.forget();
     this.comeBack.cancel(null);
   }
 

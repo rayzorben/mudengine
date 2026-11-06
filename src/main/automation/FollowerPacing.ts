@@ -1,19 +1,17 @@
 /**
  * A follower telling its leader to wait, and when it can go on: `@wait` with
  * MegaMUD's reason in brackets (`WaitReason`) on the crossing into a wait, a
- * fresh one when the reason changes, and `@ok` the moment none is left. A
- * wait is the follower's own walk test (`stillFor`: under `restBelow`, until
- * `restTo`) or a condition its walk stands still for (`afflictionHolding`).
- * The server's rest flag is not one: nothing stands a rested character up, so
- * an `@ok` that waited for it went out after the bar was full (the user,
+ * fresh one when the reason changes, and `@ok` the moment none is left, or on
+ * following again when it ended out of the party. A wait is the follower's
+ * own walk test (`stillFor`) or a condition its walk stands still for
+ * (`afflictionHolding`); the server's rest flag is not one (the user,
  * 2026-10-10, Brakkle). Held, it says `@held` after the wait, and dropped
- * from the party while held (`You are no longer following <leader>.`) asks
- * that leader `@comeback` once, as MegaMUD does (todo 20261024-1900-02).
- * `mudengine-automation` › parts/remotes.md.
+ * from the party while held asks that leader `@comeback` once, as MegaMUD
+ * does (todo 20261024-1900-02). `mudengine-automation` › parts/remotes.md.
  */
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
-import { leaderOf, type CharacterState } from '../../shared/character';
+import { follows, leaderOf, type CharacterState } from '../../shared/character';
 import { stillFor, type AutomationConfig } from '../../shared/config';
 import { waitArgument, type WaitReason } from '../../shared/remotes';
 import { afflictionHolding } from '../../shared/walk';
@@ -35,6 +33,10 @@ export class FollowerPacing {
   private readonly still = { health: false, mana: false };
   /** Whether this hold has asked its leader back already: once a hold. */
   private askedBack = false;
+  /** The leader told the last `@wait`, until it hears `@ok`: a wait that ends out of the party is owed to them. */
+  private toldWait: string | null = null;
+  /** Whether that leader is owed an `@ok` the moment this character follows them again. */
+  private owedOk = false;
 
   constructor(
     private config: AutomationConfig,
@@ -48,6 +50,8 @@ export class FollowerPacing {
   reset(): void {
     this.reason = null;
     this.askedBack = false;
+    this.toldWait = null;
+    this.owedOk = false;
     this.still.health = false;
     this.still.mana = false;
   }
@@ -70,13 +74,23 @@ export class FollowerPacing {
     const was = this.reason;
     this.reason = reason;
     if (reason !== 'held') this.askedBack = false;
-    if (was === reason || !this.sending()) return;
+    if (reason !== null) this.owedOk = false;
     const leader = state.party.following;
-    if (leader === null) return;
-    if (reason === null) {
-      this.events.tell(leader, 'ok', state);
+    // Dropped while held, the hold can end before that leader invites this character back.
+    if (was !== null && reason === null && leader === null && this.toldWait !== null)
+      this.owedOk = true;
+    const told = this.toldWait;
+    if (this.owedOk && reason === null && told !== null && follows(state, told) && this.sending()) {
+      this.tellOk(told, state);
       return;
     }
+    if (was === reason || !this.sending()) return;
+    if (leader === null) return;
+    if (reason === null) {
+      this.tellOk(leader, state);
+      return;
+    }
+    this.toldWait = leader;
     this.events.tell(leader, 'wait', state, waitArgument(reason));
     if (reason === 'held') this.events.tell(leader, 'held', state);
   }
@@ -90,6 +104,12 @@ export class FollowerPacing {
     if (!this.sending()) return;
     this.askedBack = true;
     this.events.tell(leader, 'comeback', state);
+  }
+
+  private tellOk(leader: string, state: CharacterState): void {
+    this.toldWait = null;
+    this.owedOk = false;
+    this.events.tell(leader, 'ok', state);
   }
 
   private sending(): boolean {

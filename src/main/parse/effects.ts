@@ -21,7 +21,7 @@ import {
   wordsOf,
   type SpellLore
 } from '../../shared/spell-messages';
-import { confuses, frightens, holdsMovement } from '../../shared/spellcraft';
+import { confuses, frightens, holdsMovement, poisons } from '../../shared/spellcraft';
 import type { BelongingsSink } from '../../shared/belongings';
 import type { Block } from '../../shared/blocks';
 import { tuning } from '../app/tuning';
@@ -770,6 +770,7 @@ export class EffectTracker {
     if (holdsMovement(row)) conditions.push('held');
     if (confuses(row)) conditions.push('confused');
     if (frightens(row)) conditions.push('afraid');
+    if (poisons(row)) conditions.push('poisoned');
     const start = this.spellLore.startOf(name);
     const stated = start === null ? null : afflictionOnset(start);
     if (stated !== null && !conditions.includes(stated)) conditions.push(stated);
@@ -913,6 +914,8 @@ export class EffectTracker {
     // Fear refuses nothing either: the shoves come on the spell's ticks, each
     // as a room nobody asked for (todo 66).
     if (rows.some(frightens)) next = afflicted(next ?? s, 'afraid', 'yes') ?? next;
+    // Poison refuses nothing; the flag is what tells its ticks from a room that hurts.
+    if (rows.some(poisons)) next = afflicted(next ?? s, 'poisoned', 'yes') ?? next;
     return next;
   }
 

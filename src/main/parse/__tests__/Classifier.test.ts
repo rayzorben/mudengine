@@ -3993,3 +3993,48 @@ describe('a cast the realm says heals', () => {
     expect(classify('Eagle casts bless on you!')?.groups['heals']).toBeUndefined();
   });
 });
+
+/*
+ * Todo 20261104-2215-01, Rayzor's wire on OCI: message 381's room line for
+ * spell 237, read by the miss frame for its shape.
+ */
+describe("a monster's spell aimed at somebody", () => {
+  const book = MessageBook.fromRows(
+    parseMessagesCsv(
+      [
+        'number,kind,line1,line2,line3,spells',
+        '381,other,"","The %s spits thick webbing at you!","The %s spits %s at %s!",237',
+        '1026,other,"","The %s %s madly at you!","The %s %s madly at %s!",79'
+      ].join('\n')
+    )
+  );
+  const names: Record<number, string> = { 237: 'thick webbing', 79: 'lunge' };
+  const tabled = (): Classifier =>
+    new Classifier(
+      { present: () => ['Brakkle'], mob: () => undefined } as never,
+      undefined,
+      undefined,
+      undefined,
+      (text) => book.match(text),
+      undefined,
+      undefined,
+      undefined,
+      (id) => names[id]
+    );
+
+  it('keeps the miss frame and adds the spell a fill names', () => {
+    const block = tabled().classify(
+      line('The big bola spider spits thick webbing at Brakkle!')
+    ).block;
+    expect(block).toMatchObject({
+      type: 'player-misses',
+      groups: { target: 'Brakkle', spell: 'thick webbing', spells: '237', message: '381' }
+    });
+  });
+
+  it('adds nothing where the row is linked to a spell no fill names', () => {
+    const block = tabled().classify(line('The cave bear claws madly at Brakkle!')).block;
+    expect(block.type).toBe('player-misses');
+    expect(block.groups['spells']).toBeUndefined();
+  });
+});

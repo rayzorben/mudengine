@@ -6,7 +6,10 @@
  * through the command queue: back the way it came where that room does not
  * hurt, else the first step towards the nearest room that does not
  * (`Navigation.nearestRoom`). A fight is the run's (`Travel.considerEscape`),
- * a follower's leader decides, and every refusal is said and traced.
+ * a follower's leader decides, and every refusal is said and traced. A
+ * member the party waits on here is stayed with until health is under
+ * `safety.retreat.belowHealth`, unknown counting as under (the user,
+ * 2026-11-05: Rayzor's steps dropped a held Brakkle five times).
  * `mudengine-automation` › `parts/safety.md`.
  */
 import { t } from '../app/i18n';
@@ -16,7 +19,7 @@ import type { SessionModule } from '../automation/Module';
 import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
-import type { SafetyDecision } from '../../shared/automation';
+import { healthFraction, type SafetyDecision } from '../../shared/automation';
 import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
@@ -46,6 +49,8 @@ export interface LeaveHarmSession {
   config(): AutomationConfig;
   /** A run or the realm's teleport has the character. */
   escaping(): boolean;
+  /** The members the party's stop waits on who stand here (`PartyWait.waitedForHere`). */
+  waitedForHere(state: CharacterState): readonly string[];
   notice: NoticeSink;
   decided(decision: SafetyDecision): void;
 }
@@ -114,6 +119,14 @@ export class LeaveHarm implements SessionModule {
       this.refuse(here, room, because, t('session.safety.escapeFollowingReason', { leader }));
       return;
     }
+    const held = this.session.waitedForHere(state);
+    const who = held.join(', ');
+    const fraction = healthFraction(state);
+    const floor = this.session.config().safety.retreat.belowHealth;
+    if (held.length > 0 && fraction !== null && fraction >= floor) {
+      this.refuse(here, room, because, t('session.harm.waitingFor', { who }));
+      return;
+    }
     const way = this.wayOut(here, state);
     if (way === null) {
       const steps = tuning().roomHarm.searchSteps;
@@ -129,6 +142,7 @@ export class LeaveHarm implements SessionModule {
         : t('session.harm.leavingNearest', { room, because, direction, name }),
       DECISION
     );
+    if (held.length > 0) this.session.notice(t('session.harm.leftBehind', { who }), DECISION);
     this.leaving = {
       from: here,
       direction: way.direction,

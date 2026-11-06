@@ -598,11 +598,8 @@ export class SessionManager {
       // And the spell message table, for the whole-line sentences no frame
       // reads; a lookup because what has been learned changes as the session runs.
       (text) => spellLore.match(text),
-      /*
-       * And how this realm's monsters die: what its own wire taught (todo 04) **beside** the
-       * server's own table, which may name several (2026-09-14); the room settles it or
-       * nothing does (`Classifier.asDeathSentence`).
-       */
+      // And how monsters die: the wire's lore (todo 04) beside the server's table, which may
+      // name several (2026-09-14); the room settles it or nothing does (`asDeathSentence`).
       (text) => {
         const learned = lore.deathOf?.(text) ?? [];
         const shipped = sentences.deaths.mobsOf(text);
@@ -616,7 +613,8 @@ export class SessionManager {
       // And the rows a confusing spell prints on a fumble, in the realm's words.
       (row) => world?.spellsByMessage(CONFUSE_MESSAGE_ABILITY).has(row) ?? false,
       () => this.vocabulary.coins,
-      (spell) => spellHeals(world?.spellNamed(spell))
+      (spell) => spellHeals(world?.spellNamed(spell)),
+      (id) => world?.spellById(id)?.name
     );
     this.world = world;
     this.passage = new TimedPassage(world, notice);

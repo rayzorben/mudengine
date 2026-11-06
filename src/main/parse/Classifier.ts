@@ -229,6 +229,9 @@ export interface BatchBlock extends Block {
  * Stateful across lines, because multi-line blocks exist. One instance per
  * session; `reset()` between connections.
  */
+/** The frame a monster's spell at another player is read by, which `asAimedSpell` refines. */
+const AIMED_SPELL_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>(['player-misses']);
+
 /** The verdicts an emote can wear before the action table is asked. See `asAction`. */
 const EMOTE_SHAPED: ReadonlySet<BlockType> = new Set<BlockType>([
   'unknown',
@@ -408,7 +411,9 @@ export class Classifier {
      * (todo 20261018-1314-01): `Eagle casts greater healing on you!` prints no
      * amount, so only the row can say the cast was a heal.
      */
-    private readonly heals?: (spell: string) => boolean
+    private readonly heals?: (spell: string) => boolean,
+    /** The realm's name for a spell by its number, which a monster's aimed spell line prints. */
+    private readonly spellName?: (id: number) => string | undefined
   ) {}
 
   /**
@@ -545,7 +550,11 @@ export class Classifier {
         this.asDeathSentence(
           line,
           text,
-          this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+          this.asAimedSpell(
+            line,
+            text,
+            this.asAction(line, text, this.asSpellMessage(line, text, this.matchLine(line, text)))
+          )
         )
       )
     );
@@ -818,6 +827,34 @@ export class Classifier {
       text,
       tuning().parse.baseConfidence
     );
+  }
+
+  /**
+   * A monster's spell aimed at somebody, which the miss frames read by shape:
+   * `The big bola spider spits thick webbing at Brakkle!` is message 381's
+   * room line, `The %s spits %s at %s!`, for spell 237 (todo
+   * 20261104-2215-01). The frame stands, its engagement facts with it, and the
+   * row's spell is added (`spell`, `spells`, `message`) only where a fill is
+   * that spell's own name: 685 miss lines on the corpus fit a spell-linked
+   * row, mostly generic ones such as `The %s %s at you!`, and 3 name the spell.
+   */
+  private asAimedSpell(line: StreamLine, text: string, block: Block): Block {
+    if (!this.messages || !this.spellName || !AIMED_SPELL_SHAPED.has(block.type)) return block;
+    const hit = this.messages(text);
+    if (hit === null || hit.spells.length === 0) return block;
+    const fills = new Set(hit.fills.map((fill) => fill.toLowerCase()));
+    const spell = hit.spells.find((id) => {
+      const name = this.spellName?.(id);
+      return name !== undefined && fills.has(name.toLowerCase());
+    });
+    if (spell === undefined) return block;
+    const groups = {
+      ...block.groups,
+      message: String(hit.number),
+      spells: String(spell),
+      spell: this.spellName(spell) ?? ''
+    };
+    return this.build(line, block.type, groups, text, block.confidence);
   }
 
   /**

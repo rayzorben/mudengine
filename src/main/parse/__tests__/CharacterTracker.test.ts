@@ -13169,3 +13169,40 @@ describe('a location answer settles the steps sent before the ask', () => {
     }
   });
 });
+
+/*
+ * Rayzor, 2026-11-04 21:33: `The nasty serpentkin hunter spits venom in your
+ * eyes!`, `You feel dizzy and weak!`, a point a tick until `You are no longer
+ * dizzy and weak!`, and the party list printing `P` on his row. The onset is
+ * spell 238 `spits`, which carries Poison (19), and `rainbow2`, which shares
+ * the sentence (`resources/world/spell-messages.csv`:238, 1163). Unread, the
+ * ticks were taken for a room that hurts.
+ */
+describe.runIf(realm !== null)('a realm spell that poisons', () => {
+  const venomTable = () =>
+    spellLoreOf(
+      SpellMessageBook.fromRows(
+        ['spits', 'rainbow2'].map((spell) => ({
+          spell,
+          start: 'You feel dizzy and weak!',
+          stop: 'You are no longer dizzy and weak!'
+        }))
+      ),
+      new SpellMessageBook()
+    );
+  const venom = (lines: string[]) =>
+    play(lines, realm!, undefined, undefined, undefined, venomTable());
+  const LANDED = [
+    '[HP=150/151]:',
+    'The nasty serpentkin hunter spits venom in your eyes!',
+    'You feel dizzy and weak!'
+  ];
+
+  it('is stated by its landing and ended by its wear-off', () => {
+    expect(venom(LANDED).current.afflictions.poisoned).toBe('yes');
+    expect(
+      venom([...LANDED, '[HP=143/151]:', 'You are no longer dizzy and weak!']).current.afflictions
+        .poisoned
+    ).toBe('no');
+  });
+});

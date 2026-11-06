@@ -77,6 +77,12 @@ describe("curing a party member's poison (todo 80)", () => {
     expect(kinds).toEqual(['cure-party']);
   });
 
+  it("leaves this character's own P to Cures (Rayzor, 2026-11-04: `cure Rayzor`, `You don't see`)", () => {
+    const own = { ...state(member('Rayzor', 'P'), member('Brakkle', 'P')), name: 'Rayzor' };
+    make().onCharacter(own);
+    expect(sent).toEqual(['cure poison Brakkle']);
+  });
+
   it('casts nothing where the server has not told GreaterMUD', () => {
     family = null;
     make().onCharacter(state(member('Soul', 'P')));

@@ -465,6 +465,17 @@ export function frightens(spell: Pick<WorldSpell, 'abilities'> | null | undefine
 }
 
 /**
+ * Whether a spell poisons: `GMUDAbilityType.Poison` (19) takes health on every
+ * tick for the duration (`Spell.cs`, the `Poison` case), and the party list
+ * prints `P` on the target's row while it lasts. Its onset is the realm's
+ * message data (`You feel dizzy and weak!` for `spits`), so it is read off the
+ * ability row as `holdsMovement` is.
+ */
+export function poisons(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
+  return carriesAbility(spell?.abilities, HAZARD_ABILITY.poison);
+}
+
+/**
  * Who a spell may be cast on, from `Spells.Targets`.
  *
  * The realm records this in a column the database documents nowhere, so the

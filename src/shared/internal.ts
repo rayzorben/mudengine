@@ -1363,6 +1363,12 @@ const TUNING_DEFAULTS = {
     withinMs: 30000,
     /** Rooms the damage was seen in, kept for the session. */
     keptRooms: 64,
+    /**
+     * A room's mark is cleared after standing in it this long with no health
+     * lost: one `hunting.passiveTickSeconds` (30s), ten `passageTickMs` spell
+     * ticks (3s), while the Silver River hit every 1.2s.
+     */
+    clearAfterMs: 30000,
     /** How far the nearest room that does not hurt is looked for. */
     searchSteps: 10
   },

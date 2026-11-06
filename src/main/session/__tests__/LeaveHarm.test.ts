@@ -59,6 +59,7 @@ function rig(
     came?: TrailStep | null;
     nearest?: Route | null;
     walker?: LeaveHarmParts['walker'];
+    held?: readonly string[];
   } = {}
 ) {
   const sent: Intent[] = [];
@@ -89,6 +90,7 @@ function rig(
   const leave = new LeaveHarm(parts, {
     config: () => ({ ...DEFAULT_CONFIG.automation, enabled: true }),
     escaping: () => escaping.now,
+    waitedForHere: () => options.held ?? [],
     notice: (message, kind) => {
       notices.push(message);
       kinds.push(kind);
@@ -225,6 +227,34 @@ describe('leaving a room that hurts every tick', () => {
     expect(decisions).toEqual([expect.objectContaining({ acted: false, refused })]);
   });
 
+  /* Rayzor, 2026-11-04: each step out of a room read as hurting dropped a held Brakkle. */
+  it('stays with a member the party waits on here until health is under the retreat point', () => {
+    const { leave, sent, notices } = rig({ held: ['Brakkle'] });
+    const refused = t('session.harm.waitingFor', { who: 'Brakkle' });
+    // 63 of 115 is over the 30% floor.
+    leave.consider(at(RIVER, 63));
+    leave.consider(at(RIVER, 50));
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([
+      t('session.harm.staying', {
+        room: 'The Silver River',
+        because: t('session.harm.because', { spell: 'river damage' }),
+        refused
+      })
+    ]);
+    // Under it, the step goes and says who was left.
+    leave.consider(at(RIVER, 30));
+    expect(sent.map((intent) => intent.command)).toEqual(['n']);
+    expect(notices.at(-1)).toBe(t('session.harm.leftBehind', { who: 'Brakkle' }));
+  });
+
+  it('steps out with a member held here when its maximum health is unknown', () => {
+    const { leave, sent } = rig({ held: ['Brakkle'] });
+    const unknown = at(RIVER, 63);
+    leave.consider({ ...unknown, vitals: { ...unknown.vitals, hpMax: null } });
+    expect(sent.map((intent) => intent.command)).toEqual(['n']);
+  });
+
   it('says once that no way leads out of it', () => {
     const { leave, sent, notices } = rig({ came: null });
     leave.consider(at(RIVER, 63));
@@ -275,6 +305,38 @@ describe('a room whose damage the world database does not list', () => {
     }
     expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
     expect(sent.map((intent) => intent.command)).toEqual(['n']);
+  });
+
+  /* Rayzor, 2026-11-04: a poison read as the room's marked 7/745 for the session. */
+  it('clears a mark once the character stands in the room unhurt long enough', () => {
+    const current = { state: at(RIVER, 115) };
+    const room = hazards(current);
+    for (const hp of [115, 99, 79]) {
+      current.state = at(RIVER, hp);
+      room.note(current.state);
+    }
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
+    const { clearAfterMs } = tuning().roomHarm;
+    vi.advanceTimersByTime(clearAfterMs - 1);
+    room.note(current.state);
+    // Not yet: the positive control that standing alone does not clear it early.
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
+    vi.advanceTimersByTime(1);
+    room.note(current.state);
+    expect(room.hurtsHere(current.state)).toBeNull();
+  });
+
+  it('keeps a mark while the room goes on taking health', () => {
+    const current = { state: at(RIVER, 115) };
+    const room = hazards(current);
+    let hp = 115;
+    for (let i = 0; i < 40; i += 1) {
+      current.state = at(RIVER, hp);
+      room.note(current.state);
+      hp -= 2;
+      vi.advanceTimersByTime(1200);
+    }
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
   });
 
   /*

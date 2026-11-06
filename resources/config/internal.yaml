@@ -1070,6 +1070,12 @@ tuning:
     withinMs: 30000
     # Rooms the damage was seen in, kept for the session.
     keptRooms: 64
+    # A room's mark is cleared after the character stands in it this long and
+    # loses no health: one `hunting.passiveTickSeconds` (30 s) and ten spell
+    # ticks (`passageTickMs`, 3 s), while the Silver River hit every 1.2 s.
+    # Rayzor's poison ticks marked 7/745, and the mark kept him from walking
+    # back for Brakkle (2026-11-04).
+    clearAfterMs: 30000
     # How many steps away the nearest room that does not hurt is looked for.
     searchSteps: 10
 
