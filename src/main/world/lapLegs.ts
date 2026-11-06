@@ -60,6 +60,11 @@ export function lapFunctions(
   };
 }
 
+/** A room command's one-off hit as a share of `health`; null while health is unread, which `hitCost` walls. */
+export function healthShare(health: number | null): (points: number) => number | null {
+  return (points) => (health === null ? null : points / health);
+}
+
 /** One fight a plan asked about: a monster where it stands. */
 export interface FightAsked {
   monster: string;
@@ -89,32 +94,57 @@ export interface LapLegsAnswer {
   unsure: number[];
 }
 
-type LapWorld = PlanWorld & Pick<WorldGraph, 'hazardOf' | 'shop' | 'priceAt'>;
+export type LapWorld = PlanWorld & Pick<WorldGraph, 'hazardOf' | 'shop' | 'priceAt'>;
+
+/**
+ * The oracle a batch plans with off the wire: each fight from the table main
+ * sent, one it lacks answered as main's oracle answers a fight the odds book
+ * has not run, and kept to be said back; the purse prices counters.
+ */
+export function tableOracle(
+  world: Parameters<typeof affordsWith>[0],
+  purse: Purse,
+  fights: Readonly<Record<string, FightOdds>>
+): {
+  oracle: NavigationOracle;
+  /** Starts one leg: `missedHere` reads whether it asked a fight the table lacks. */
+  fresh(): void;
+  missedHere(): boolean;
+  asked(): FightAsked[];
+} {
+  const missed = new Map<string, FightAsked>();
+  let here = false;
+  return {
+    oracle: {
+      fight: (monster, room) => {
+        const key = fightKey({ monster, room });
+        const known = fights[key];
+        if (known !== undefined) return known;
+        missed.set(key, { monster, room });
+        here = true;
+        return { kind: 'unread' };
+      },
+      affords: (item, room) => affordsWith(world, purse, item, room)
+    },
+    fresh: () => {
+      here = false;
+    },
+    missedHere: () => here,
+    asked: () => [...missed.values()]
+  };
+}
 
 /** One batch of a lap's legs, planned as `SessionManager.leg(…, { lap: true })` plans each. */
 export function planLapLegs(world: LapWorld, ask: LapLegsAsk): LapLegsAnswer {
   const realm = planRealmOf(world);
   const traveller: Traveller = { ...ask.traveller, ...lapFunctions(world, ask.traveller) };
-  const missed = new Map<string, FightAsked>();
-  let missedHere = false;
-  const oracle: NavigationOracle = {
-    fight: (monster, room) => {
-      const key = fightKey({ monster, room });
-      const known = ask.fights[key];
-      if (known !== undefined) return known;
-      missed.set(key, { monster, room });
-      missedHere = true;
-      // As main's oracle answers a fight the odds book has not run.
-      return { kind: 'unread' };
-    },
-    affords: (item, room) => affordsWith(world, ask.purse, item, room)
-  };
+  const table = tableOracle(world, ask.purse, ask.fights);
   const unsure: number[] = [];
   const rooms = ask.legs.map(([from, to], index) => {
-    missedHere = false;
-    const route = leg(realm, oracle, from, to, traveller);
-    if (missedHere) unsure.push(index);
+    table.fresh();
+    const route = leg(realm, table.oracle, from, to, traveller);
+    if (table.missedHere()) unsure.push(index);
     return route.steps.flatMap((step) => [step.from, step.to]);
   });
-  return { rooms, asked: [...missed.values()], unsure };
+  return { rooms, asked: table.asked(), unsure };
 }

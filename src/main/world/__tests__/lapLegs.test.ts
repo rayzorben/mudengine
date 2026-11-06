@@ -126,7 +126,7 @@ describe('the batches a lap index plans', () => {
     fs.writeFileSync(
       echo,
       "import { parentPort } from 'node:worker_threads';\n" +
-        'parentPort.on(\'message\', (m) => parentPort.postMessage({ id: m.id, answer: { rooms: m.ask.legs.map(() => ["from the worker"]), asked: [], unsure: [] } }));\n'
+        'parentPort.on(\'message\', (m) => parentPort.postMessage({ id: m.id, kind: "lap", answer: { rooms: m.ask.legs.map(() => ["from the worker"]), asked: [], unsure: [] } }));\n'
     );
     const said: string[] = [];
     const planner = new LapPlanner(echo, (message) => said.push(message));

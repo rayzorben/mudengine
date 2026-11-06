@@ -1777,7 +1777,8 @@ tuning:
 
     # How long the reach may plan one step's way, all its tries together,
     # before that step is given up as unknown and said. The plans run on the
-    # thread that reads the sockets, and fifteen seconds of it is a dead link.
+    # route worker where the realm came from a file, beside the thread that
+    # reads the sockets; otherwise on that thread, a step a turn.
     questReachLegMs: 4000
 
     # What a room-script teleport costs over an ordinary step, so the router

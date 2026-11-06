@@ -8,19 +8,21 @@ import { t } from '../app/i18n';
 import type { QuestRunner } from '../automation/QuestRunner';
 import type { CharacterState } from '../../shared/character';
 import type {
-  LoadQuestReach,
   QuestErrand,
+  QuestMarks,
   QuestPlan,
+  QuestReachAnswer,
   QuestRunProgress,
   QuestWatched
 } from '../../shared/quests';
+import type { PlanReach } from '../world/reachLegs';
 import type { Errands } from './Errands';
 import type { WorldGraph } from '../world/WorldGraph';
 import { QuestReach } from './questReach';
 
 export interface QuestDeskParts {
   world(): Pick<WorldGraph, 'quests'> | undefined;
-  errands: Pick<Errands, 'questErrand' | 'questPlan' | 'travellerNow' | 'legWithin' | 'reachKey'>;
+  errands: Pick<Errands, 'questErrand' | 'questPlan' | 'travellerNow' | 'healthNow' | 'reachKey'>;
   runner: Pick<QuestRunner, 'start' | 'stop' | 'progress'>;
   state(): CharacterState;
   watched(): QuestWatched;
@@ -32,9 +34,10 @@ export interface QuestDesk {
   errand(block: number): QuestErrand | null;
   /**
    * Per quest the next step leaves open, the first rank up to the next reward
-   * whose way wants more levels (todo 132). See `QuestReach`.
+   * whose way wants more levels (todo 132), its rooms routed by `plan`. See
+   * `QuestReach`.
    */
-  reach: LoadQuestReach;
+  reach(marks: QuestMarks, plan: PlanReach): Promise<QuestReachAnswer | null>;
   /** The plan to reach one step of a quest from here. See `Errands.questPlan`. */
   plan(block: number, marked: number | null): Promise<QuestPlan | null>;
   /**
@@ -53,16 +56,16 @@ export interface QuestDesk {
 export function questDesk(parts: QuestDeskParts): QuestDesk {
   const reach = new QuestReach({
     world: parts.world,
-    router: parts.errands,
     state: parts.state,
     watched: parts.watched,
     traveller: (state) => parts.errands.travellerNow(state),
+    health: (state) => parts.errands.healthNow(state, false),
     notice: parts.notice,
     reachKey: (state) => parts.errands.reachKey(state)
   });
   return {
     errand: (block) => parts.errands.questErrand(block),
-    reach: (marks) => reach.ask(marks),
+    reach: (marks, plan) => reach.ask(marks, plan),
     plan: (block, marked) => parts.errands.questPlan(block, marked),
     run: async (block, marked) => {
       const quest = parts

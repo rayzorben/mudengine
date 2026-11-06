@@ -2281,10 +2281,11 @@ const TUNING_DEFAULTS = {
     /**
      * How long the reach may plan one step's way, all its tries together,
      * before that step is given up as unknown and said (`Router.budgeted`).
-     * The plans run on the thread that reads the sockets; a leg through the
-     * scatter mazes held it for over a minute on the host (2026-10-29 UTC),
-     * and fifteen seconds of it is a dead link. The worst shipped leg plans in
-     * about two seconds on a desktop.
+     * The plans run on the route worker where the realm came from a file
+     * (`reachLegs.ts`), else on main a step a turn; on the thread that
+     * reads the sockets, 21 legs at up to this each held every character for
+     * 37 s on the host (2026-11-06 UTC). The worst shipped leg plans in about
+     * two seconds on a desktop.
      */
     questReachLegMs: 4000,
     /**

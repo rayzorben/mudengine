@@ -184,7 +184,8 @@ notices:
         'The realms the client comes with could not all be copied into {serversDir}, so the next start
         tries again: {message}'
   routeWorker:
-    failed: 'Passes through here in the Loops window now takes longer to fill, and the terminal can lag while it does ({error}).'
+    failed: 'The Loops window and the Quests card now take longer to fill, and the terminal can lag while they do ({error}).'
+    wrongKind: 'the route worker answered a {answered} job for a {asked} one'
   simulator:
     workerFailed: 'Fight odds now take longer to work out, and the terminal can lag while they do
       ({error}).'

@@ -3,8 +3,8 @@
  * the portal into the Dao Lord's plane is a room command gated on level 20,
  * and the crate MerchantCaptain sends you for lies past level 40 and 60 walls.
  * Walked by the navigation engine to each step up to the next that pays
- * (`ranksToPay`), paced one route a turn. See `mudengine-world` ›
- * `parts/quests.md` (todo 132).
+ * (`ranksToPay`), planned as one batch on the route worker
+ * (`world/reachLegs.ts`). See `mudengine-world` › `parts/quests.md` (todo 132).
  */
 import { t } from '../app/i18n';
 import { nextTurn } from '../app/nextTurn';
@@ -24,16 +24,11 @@ import {
   type QuestWatched,
   type RankAhead
 } from '../../shared/quests';
-import { roomAddress, type Route, type RoomId } from '../../shared/world';
+import { roomAddress, type RoomId } from '../../shared/world';
+import { plainTraveller } from '../world/lapLegs';
+import { purseOf } from '../world/navigation/purse';
+import { levelsOnly, type PlanReach, type ReachBase } from '../world/reachLegs';
 import type { Traveller } from '../world/WorldGraph';
-
-/**
- * What the reach asks of the navigation engine: one walk at a time, held to a
- * time on the thread (`Errands.legWithin`); `spent` where it ran out.
- */
-export interface ReachRouter {
-  legWithin(from: RoomId, to: RoomId, traveller: Traveller, ms: number): Route | 'spent' | null;
-}
 
 /**
  * Where a step happens and where the realm's own scripts hand over what it
@@ -56,73 +51,7 @@ export function stepRooms(step: QuestStep): RoomId[] {
   return [...rooms];
 }
 
-/**
- * The lowest level a route's level walls ask for, or null where none stands
- * in it. On a refused route the walls are `blocks`; on a walkable one,
- * `blocks` is what a *cheaper* way needed and only `walls` binds.
- */
-function levelWall(route: Route): number | null {
-  const shut = route.blocked ? (route.blocks ?? []) : (route.walls ?? []);
-  let level: number | null = null;
-  for (const block of shut) {
-    if (block.kind !== 'level' || block.minLevel === undefined) continue;
-    level = level === null ? block.minLevel : Math.min(level, block.minLevel);
-  }
-  return level;
-}
-
-/**
- * The level the way to one room opens at, or null where no level wall stands
- * in it at this character's level. Each level wall met raises the traveller to
- * the lowest one and asks again, so a way past two walls (40, then 60) says
- * the one that opens it; `tries` bounds the climb, and `ms` all of the tries.
- */
-function openingLevel(
-  router: ReachRouter,
-  from: RoomId,
-  to: RoomId,
-  traveller: Traveller,
-  tries: number,
-  ms: number
-): number | null | 'spent' {
-  if (traveller.level === null || traveller.level === undefined) return null;
-  const by = performance.now() + ms;
-  let level = traveller.level;
-  let opened: number | null = null;
-  for (let tried = 0; tried < tries; tried += 1) {
-    const left = by - performance.now();
-    const way = left <= 0 ? 'spent' : router.legWithin(from, to, { ...traveller, level }, left);
-    if (way === 'spent') return 'spent';
-    const wall = way === null ? null : levelWall(way);
-    if (wall === null || wall <= level) return opened;
-    level = wall;
-    opened = wall;
-  }
-  return opened;
-}
-
-/**
- * The traveller with the risk of the character as they stand taken off: what
- * a lair, a run past one and a room's own spell would cost now. The reach asks
- * which level opens a way, and those prices read the bar and the sheet as they
- * are now, which the level being tried changes neither of. A fight on the way
- * never refuses a plan (`mudengine-world` › *Survival never refuses a plan*),
- * so a way through a lair is a way. They were also the dearest part of every
- * step priced: a leg through the scatter mazes held the socket thread for over
- * a minute on the host (2026-10-29 UTC).
- */
-export function levelsOnly(traveller: Traveller): Traveller {
-  const {
-    danger: _danger,
-    runDeath: _runDeath,
-    lairDamage: _lairDamage,
-    hazard: _hazard,
-    ...rest
-  } = traveller;
-  return rest;
-}
-
-/** One route still to ask, so the session can pace them a turn each. */
+/** One room still to route, and the quest step it is for. */
 export interface ReachLeg {
   quest: number;
   rank: number;
@@ -147,11 +76,8 @@ export function reachLegs(quest: Quest, span: readonly RankAhead[]): ReachLeg[] 
   );
 }
 
-/** How a run of the reach goes: its bounds, and where a leg given up is told. */
+/** How a run of the reach goes: whether it still stands, and where a leg given up is told. */
 export interface ReachPace {
-  tries: number;
-  /** The time one leg may plan, all its tries together. */
-  legMs: number;
   /** A later ask replaced this one, or the realm went. */
   superseded(): boolean;
   /** A leg whose planning ran out of time: its rank is unknown. */
@@ -159,28 +85,32 @@ export interface ReachPace {
 }
 
 /**
- * Route every leg, one per turn of the event loop, and answer each quest's
- * first rank whose way wants more levels. A step wants every one of its rooms,
+ * Route every leg's room as one batch, and answer each quest's first rank
+ * whose way wants more levels. A step wants every one of its rooms,
  * so its level is the highest they ask; steps sharing a rank are alternatives,
  * so a rank waits only where every one of them does, at the lowest. A leg that
  * runs out of time is not routed, so its rank is unknown.
  */
 export async function reachAll(
-  router: ReachRouter,
+  plan: PlanReach,
   legs: readonly ReachLeg[],
-  from: RoomId,
-  traveller: Traveller,
+  base: ReachBase,
   pace: ReachPace
 ): Promise<QuestReachAnswer | null> {
+  // A turn first, so a burst of asks (a window opening) plans only the last.
+  await nextTurn();
+  if (pace.superseded()) return null;
+  const rooms = [...new Set(legs.map((leg) => leg.room))];
+  const levels = rooms.length === 0 ? [] : await plan(base, rooms, pace.superseded);
+  if (pace.superseded()) return null;
+  const openings = new Map(rooms.map((room, index) => [room, levels[index] ?? 'spent']));
   // Keyed by block and rank: the blue and red books are one block at two ranks.
   const steps = new Map<string, { quest: number; rank: number; of: number; level: number }>();
   // A step wants every one of its rooms, so one room given up leaves it unknown.
   const unknown = new Set<string>();
   for (const leg of legs) {
-    await nextTurn();
-    if (pace.superseded()) return null;
     const key = `${leg.block}/${leg.rank}`;
-    const opened = openingLevel(router, from, leg.room, traveller, pace.tries, pace.legMs);
+    const opened = openings.get(leg.room) ?? 'spent';
     if (opened === 'spent') {
       pace.spent(leg);
       unknown.add(key);
@@ -218,10 +148,11 @@ export async function reachAll(
 /** What the reach reads: the realm, the character, what was watched, and how it travels. */
 export interface QuestReachParts {
   world(): { quests(): readonly Quest[] } | undefined;
-  router: ReachRouter;
   state(): CharacterState;
   watched(): QuestWatched;
   traveller(state: CharacterState): Traveller;
+  /** The health a room command's one-off hit is a share of (`Errands.healthNow`). */
+  health(state: CharacterState): number | null;
   /** Where the reach says the steps it gave up on. */
   notice(message: string): void;
   /** What decides whether a route reaches a room, as one string (`Errands.reachKey`). */
@@ -256,13 +187,14 @@ export class QuestReach {
 
   constructor(private readonly parts: QuestReachParts) {}
 
-  ask(marks: QuestMarks): Promise<QuestReachAnswer | null> {
-    const asking = this.answer(marks);
+  /** `plan` routes the rooms: on the route worker, from the composition root. */
+  ask(marks: QuestMarks, plan: PlanReach): Promise<QuestReachAnswer | null> {
+    const asking = this.answer(marks, plan);
     this.latest = asking;
     return asking;
   }
 
-  private async answer(marks: QuestMarks): Promise<QuestReachAnswer | null> {
+  private async answer(marks: QuestMarks, plan: PlanReach): Promise<QuestReachAnswer | null> {
     const world = this.parts.world();
     if (world === undefined) return null;
     const state = this.parts.state();
@@ -293,26 +225,23 @@ export class QuestReach {
       return kept.answer;
     }
     const spent = new Set<string>();
-    const { questReachTries, questReachLegMs } = tuning().world;
-    const answer = await reachAll(
-      this.parts.router,
-      legs,
+    const base: ReachBase = {
       from,
-      levelsOnly(this.parts.traveller(state)),
-      {
-        tries: questReachTries,
-        legMs: questReachLegMs,
-        // A later ask, or the realm put down or changed under the run.
-        superseded: () => asked !== this.asked || this.parts.world() !== world,
-        spent: (leg) =>
-          spent.add(quests.find((quest) => quest.id === leg.quest)?.name ?? `${leg.quest}`)
-      }
-    );
+      traveller: plainTraveller(levelsOnly(this.parts.traveller(state))),
+      health: this.parts.health(state),
+      purse: purseOf(state)
+    };
+    const answer = await reachAll(plan, legs, base, {
+      // A later ask, or the realm put down or changed under the run.
+      superseded: () => asked !== this.asked || this.parts.world() !== world,
+      spent: (leg) =>
+        spent.add(quests.find((quest) => quest.id === leg.quest)?.name ?? `${leg.quest}`)
+    });
     if (spent.size > 0) {
       this.parts.notice(
         t('automation.quests.reachSpent', {
           quests: [...spent].join(', '),
-          seconds: questReachLegMs / 1000
+          seconds: tuning().world.questReachLegMs / 1000
         })
       );
     }

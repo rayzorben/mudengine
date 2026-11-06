@@ -167,7 +167,13 @@ import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shar
 import { keptByParts } from '../../shared/keptByParts';
 import { counterLine, priceAt, purseOf } from '../world/navigation/purse';
 import { relocatingShare } from '../world/relocating';
-import { lapFunctions, plainTraveller, type FightAsked, type LapLegsAsk } from '../world/lapLegs';
+import {
+  healthShare,
+  lapFunctions,
+  plainTraveller,
+  type FightAsked,
+  type LapLegsAsk
+} from '../world/lapLegs';
 import {
   lairPass,
   roadPass,
@@ -567,11 +573,6 @@ export class Errands implements SessionModule {
    */
   legAs(from: RoomId, to: RoomId, traveller: Traveller, options: RouteOptions = {}): Route | null {
     return this.navigation.leg(from, to, traveller, options);
-  }
-
-  /** `legAs` held to `ms` of the thread: `spent` where it ran out (`Navigation.legWithin`). */
-  legWithin(from: RoomId, to: RoomId, traveller: Traveller, ms: number): Route | 'spent' | null {
-    return this.navigation.legWithin(from, to, traveller, ms);
   }
 
   /** The nearest room `want` accepts from where the character stands (`Navigation.nearestRoom`). */
@@ -1175,10 +1176,7 @@ export class Errands implements SessionModule {
       hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up),
       // And a room command's one-off hit as a share of the health now; null
       // while health is unread, which `hitCost` walls.
-      shareOfHealth: (points) => {
-        const health = this.healthNow(state, false);
-        return health === null ? null : points / health;
-      }
+      shareOfHealth: healthShare(this.healthNow(state, false))
     };
   }
 
@@ -1275,7 +1273,7 @@ export class Errands implements SessionModule {
    * (`roomHazard`, `lairDanger`); it does not for a one-off hit, whose wall
    * is the whole bar and a fall that can kill is not priced on a guess.
    */
-  private healthNow(state: CharacterState, maxStandsIn: boolean): number | null {
+  healthNow(state: CharacterState, maxStandsIn: boolean): number | null {
     const health = maxStandsIn ? (state.vitals.hp ?? state.vitals.hpMax) : state.vitals.hp;
     return health !== null && health > 0 ? health : null;
   }

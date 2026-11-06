@@ -228,7 +228,7 @@ import {
   type ShopPlace
 } from '../shared/world';
 import { LapIndexCache } from './world/lapIndex';
-import { LapPlanner, planningLegs } from './world/LapPlanner';
+import { LapPlanner, planningLegs, planningReach } from './world/LapPlanner';
 import { LoopDraftCache } from './world/loopDraft';
 import { pagesOf, type RoutePage, type RoutePages, type WalkPages } from '../shared/routeLegs';
 import { errorMessage, str } from '../shared/values';
@@ -2977,9 +2977,18 @@ function registerIpc(): void {
     return host?.get(session)?.manager?.questDesk.plan(block, rank) ?? null;
   });
   handle(Invoke.questReach, (_caller, session: SessionId, marks: unknown) => {
+    const manager = host?.get(session)?.manager;
+    const world = worldFor(session);
+    if (!manager || !world || lapPlanner === null) return null;
     // Parsed like the plan's mark: a rank the player said, per quest id, and
-    // nothing else reaches the routes it pays for.
-    return host?.get(session)?.manager?.questDesk.reach(asQuestMarks(marks)) ?? null;
+    // nothing else reaches the routes it pays for. Planned on the route
+    // worker: on main, one reach held every socket for 37 s (2026-11-06 UTC).
+    return manager.questDesk.reach(
+      asQuestMarks(marks),
+      planningReach(lapPlanner, realms?.fileOf(world) ?? null, world, (asked) =>
+        manager.lap.lapFight(asked)
+      )
+    );
   });
   handle(Invoke.questRun, (_caller, session: SessionId, block: unknown, marked: unknown) => {
     if (typeof block !== 'number' || !Number.isInteger(block)) {
