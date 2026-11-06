@@ -32,6 +32,7 @@ import { isCash, type Find, type RealmFinds, type Sighting } from '../../../shar
 import type { RealmShops, Shelf } from '../../../shared/shops';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
 import type { HuntingAdvice, KeptSpeed, MeasuredRate, SpotMob } from '../../../shared/hunting';
+import type { MobRule } from '../../../shared/mobRules';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
@@ -8588,7 +8589,8 @@ describe('the hunting survey prices a kill off the fight record', () => {
     goodOrc = false,
     spawns?: Map<string, LearnedSpawns>,
     opener = '',
-    kept?: KeptSpeed
+    kept?: KeptSpeed,
+    mobRules: MobRule[] = []
   ): Promise<Awaited<ReturnType<typeof client>>> {
     const { sink } = collect();
     manager = build(sink, {
@@ -8598,7 +8600,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
         enabled: false,
         onEnterRealm: [],
         rules: [],
-        combat: { ...DEFAULT_CONFIG.automation.combat, opener }
+        combat: { ...DEFAULT_CONFIG.automation.combat, opener, mobRules }
       },
       fights,
       ...(spawns === undefined
@@ -9003,6 +9005,31 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')).toBeDefined();
     expect(rows.find((spot) => spot.mobs[0]?.name === 'orc')).toBeUndefined();
     expect(advice.excluded.evil).toBe(1);
+  });
+
+  /*
+   * 2026-11-05: Konami sent Yang to the drunken gamblers under a `never` row,
+   * and auto-combat stood beside them. A monster under a stance row is never
+   * fought on a hunt.
+   */
+  it('leaves out a lair whose every monster has a stance row, and counts it', async () => {
+    const never: MobRule[] = [{ mob: 'orc', treat: 'never' }];
+    await surveyed(record().fights, [], false, false, undefined, '', undefined, never);
+    const advice = await settled();
+    const rows = [...advice.spots, ...advice.unmeasured];
+    // Positive control: the goblin, with no row, is kept.
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')).toBeDefined();
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'orc')).toBeUndefined();
+    expect(advice.excluded.leftAlone).toBe(1);
+  });
+
+  it('keeps a lair whose monster has a band row', async () => {
+    const high: MobRule[] = [{ mob: 'orc', treat: 'high' }];
+    await surveyed(record().fights, [], false, false, undefined, '', undefined, high);
+    const advice = await settled();
+    const rows = [...advice.spots, ...advice.unmeasured];
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'orc')).toBeDefined();
+    expect(advice.excluded.leftAlone).toBe(0);
   });
 
   it('leaves the rounds unknown, and says nothing measured, with no record to ask', async () => {

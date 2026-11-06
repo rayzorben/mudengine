@@ -361,6 +361,9 @@ function HuntingCard({
               })
             : '',
           advice.excluded.evil > 0 ? t('cards.hunting.evil', { count: advice.excluded.evil }) : '',
+          advice.excluded.leftAlone > 0
+            ? t('cards.hunting.leftAlone', { count: advice.excluded.leftAlone })
+            : '',
           advice.excluded.unsimulated > 0
             ? t('cards.hunting.unsimulated', { count: advice.excluded.unsimulated })
             : '',

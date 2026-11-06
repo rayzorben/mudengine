@@ -116,7 +116,8 @@ import {
 import { matchStop, type RoomMatch } from '../../shared/loops';
 import { sameItem } from '../../shared/items';
 import { afflictionsOf, weighRoom, type MenacePlayer } from '../../shared/menace';
-import { attacksOnSight, fightable, waitsToBeStruck } from '../../shared/mobs';
+import { attacksOnSight, fightable, waitsToBeStruck, type Standing } from '../../shared/mobs';
+import { huntableOf, standingKey } from '../../shared/mobRules';
 import {
   regeneration,
   swing,
@@ -311,6 +312,8 @@ interface SurveyPricing {
   measured: HuntingAssumptions['measured'];
   pay: KillPay;
   priceKey: string;
+  /** What `huntableOf` reads of the character, the same one the key holds. */
+  standing: Standing;
 }
 
 /**
@@ -2307,18 +2310,15 @@ export class Errands implements SessionModule {
       groupOfRoom.set(seen.room, key);
     }
 
-    const { player, naked, weapon, weights, casting, measured, pay, priceKey } = this.surveyPricing(
-      state,
-      world,
-      figures
-    );
+    const { player, naked, weapon, weights, casting, measured, pay, priceKey, standing } =
+      this.surveyPricing(state, world, figures);
     const live = as === this.tracker.current;
     if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
       this.huntPrices = { key: priceKey, world, groups: new Map() };
     }
     const remembered = live && this.huntPrices !== null ? this.huntPrices.groups : new Map();
     /** One group's monsters priced, and its clock: the half a move does not change. */
-    const price = (group: HuntGroup): HuntPrice | null | 'evil' => {
+    const price = (group: HuntGroup): HuntPrice | null | 'evil' | 'left-alone' => {
       const ground = groundOf(group);
       const all = GROUNDS[group.via].entities(world, ground);
       if (all.length === 0) return null;
@@ -2327,8 +2327,10 @@ export class Errands implements SessionModule {
        * name cannot rule out, is never fought (`AutoCombat` refuses it), so
        * its experience is not the spot's; a spot of nothing else is no spot.
        */
-      const entities = fightable(all);
-      if (entities.length === 0) return 'evil';
+      const allowed = fightable(all);
+      if (allowed.length === 0) return 'evil';
+      const entities = huntableOf(allowed, this.automationConfig.combat.mobRules, standing);
+      if (entities === null) return 'left-alone';
       const mobs = priceMobs(entities).map((mob, index) => {
         const drawn = spotJoiners(entities[index]!, world.joiners, player, priceMobs);
         return drawn.length === 0 ? mob : { ...mob, joiners: drawn };
@@ -2416,7 +2418,8 @@ export class Errands implements SessionModule {
       if (known === undefined) {
         const fresh = price(group);
         if (fresh === 'evil') excluded.evil += 1;
-        if (fresh === null || fresh === 'evil') continue;
+        if (fresh === 'left-alone') excluded.leftAlone += 1;
+        if (fresh === null || fresh === 'evil' || fresh === 'left-alone') continue;
         remembered.set(cached, fresh);
         known = fresh;
       }
@@ -2782,6 +2785,7 @@ export class Errands implements SessionModule {
           }) ?? null);
     const learnedExp = this.kills.allKillExp();
     const pay: KillPay = { ...killExpScale(learnedExp, world), share: killShare(state) };
+    const standing = standingOf(state);
     const priceKey = [
       this.fitness(state),
       [...learnedExp.values()].reduce((sum, exp) => sum + exp, 0),
@@ -2797,9 +2801,10 @@ export class Errands implements SessionModule {
       measured === null ? '-' : Math.round(measured.perRound),
       speed,
       this.noEffectsKey(),
-      party?.odds?.key ?? '-'
+      party?.odds?.key ?? '-',
+      standingKey(this.automationConfig.combat.mobRules, standing)
     ].join('|');
-    return { player, naked, weapon, weights, casting, measured, pay, priceKey };
+    return { player, naked, weapon, weights, casting, measured, pay, priceKey, standing };
   }
 
   /**

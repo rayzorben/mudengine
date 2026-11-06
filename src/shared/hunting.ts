@@ -1552,6 +1552,11 @@ export interface HuntExclusions {
   unsurvivable: number;
   unsimulated: number;
   evil: number;
+  /**
+   * Ruled out by a stance row (`huntableOf`): every monster there is left
+   * alone, or one is run from or hung up on, or one under `never` attacks on sight.
+   */
+  leftAlone: number;
   /** Behind a gate the next level shuts, with that level ready to train (todo 71). */
   gated: number;
 }
@@ -1563,6 +1568,7 @@ export const NO_EXCLUSIONS: Readonly<HuntExclusions> = {
   unsurvivable: 0,
   unsimulated: 0,
   evil: 0,
+  leftAlone: 0,
   gated: 0
 };
 

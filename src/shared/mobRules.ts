@@ -6,7 +6,7 @@
  * *One list per monster, not two* and *A row may say what a monster is*.
  */
 import type { RoomOccupant, Vitals } from './character';
-import { attacksOnSight, type MobAvoid, type Standing } from './mobs';
+import { attacksOnSight, type MobAvoid, type MobDisposition, type Standing } from './mobs';
 import { fraction, int, isRecord, str } from './values';
 import { mobKey } from './world';
 
@@ -273,6 +273,11 @@ export type MobStance = (typeof MOB_STANCES)[number];
 export const LEAVING_STANCES = ['escape', 'hangup'] as const satisfies readonly MobStance[];
 export type LeavingStance = (typeof LEAVING_STANCES)[number];
 
+/** Whether a treatment leaves the room rather than stand beside the monster. */
+export function isLeaving(treat: MobTreatment): treat is LeavingStance {
+  return (LEAVING_STANCES as readonly MobTreatment[]).includes(treat);
+}
+
 /**
  * What a row may say: a stance, or where it comes in the order.
  *
@@ -310,6 +315,49 @@ export function isBanded(row: MobRule): row is BandedRule {
 /** Whether a row leaves its monster unopened on: every stance. */
 export function leavesAlone(row: MobRule | undefined): boolean {
   return row !== undefined && isStance(row.treat);
+}
+
+/**
+ * What a hunt for these monsters can fight, or null where a row spoils the
+ * spot: `AutoCombat` opens on none a stance row names, the hunt's own included
+ * (2026-11-05: Yang was sent to the drunken gamblers under a `never` row and
+ * stood beside them for five minutes). A `never` or `friend` monster that waits
+ * to be struck is left out on its own. One under a leaving stance holds every
+ * monster beside it (`LEAVING_STANCES`), and a `never` one that swings, or may,
+ * is not hit back, so either spoils the whole spot.
+ */
+export function huntableOf<
+  T extends {
+    name: string;
+    disposition?: MobDisposition | null;
+    abilities?: ReadonlyArray<readonly [number, number]>;
+  }
+>(mobs: readonly T[], rules: readonly MobRule[], standing: Standing): T[] | null {
+  const kept: T[] = [];
+  for (const mob of mobs) {
+    const row = mobRuleFor(rules, mob.name);
+    if (row === undefined || !isStance(row.treat)) kept.push(mob);
+    else if (isLeaving(row.treat)) return null;
+    else if (
+      row.treat === 'never' &&
+      attacksOnSight(mob.disposition ?? null, mob.abilities, standing) !== false
+    ) {
+      return null;
+    }
+  }
+  return kept.length === 0 ? null : kept;
+}
+
+/**
+ * What `huntableOf` reads, as one string for a price cache: the stance rows,
+ * and the standing only where a `never` row makes it count, since the pack
+ * changes with every item picked up and would empty the cache each time.
+ */
+export function standingKey(rules: readonly MobRule[], standing: Standing): string {
+  const stances = rules.filter((row) => isStance(row.treat));
+  const rows = stances.map((row) => `${mobKey(row.mob)}:${row.treat}`).join(',');
+  if (!stances.some((row) => row.treat === 'never')) return rows;
+  return `${rows}|${standing.alignment ?? '-'}|${standing.pack?.join(',') ?? '-'}`;
 }
 
 /**
@@ -459,7 +507,7 @@ export function stanceHere(
   stance: MobStance
 ): string | null {
   if (rules.length === 0) return null;
-  const anyone = (LEAVING_STANCES as readonly MobStance[]).includes(stance);
+  const anyone = isLeaving(stance);
   const found = occupants.find(
     (who) => (anyone || who.kind === 'mob') && mobRuleFor(rules, who)?.treat === stance
   );

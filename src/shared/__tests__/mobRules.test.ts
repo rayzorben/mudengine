@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   attacksFirst,
   hitsBack,
+  huntableOf,
   inheritedRows,
   mergeMobRules,
   mobRuleFor,
@@ -271,5 +272,38 @@ describe('ownRow', () => {
     expect(ownRow(rules, 'orc')).toEqual({ mob: 'orc', treat: 'low' });
     expect(ownRow(rules, 'storm giant')).toBeUndefined();
     expect(mobRuleFor(rules, 'storm giant')?.treat).toBe('high');
+  });
+});
+
+describe('huntableOf', () => {
+  const LAWFUL = { alignment: 'Lawful', pack: [] } as const;
+  const rat = { name: 'giant rat', disposition: 'hostile' as const };
+  const waits = { name: 'drunken gambler', disposition: 'passive' as const };
+  const swings = { name: 'ghoul', disposition: 'hostile' as const };
+
+  it('keeps every monster no row names', () => {
+    expect(huntableOf([rat, waits], [], LAWFUL)).toEqual([rat, waits]);
+  });
+
+  it('drops a never monster that waits to be struck, and keeps the rest', () => {
+    const rules: MobRule[] = [{ mob: 'drunken gambler', treat: 'never' }];
+    expect(huntableOf([rat, waits], rules, LAWFUL)).toEqual([rat]);
+    expect(huntableOf([waits], rules, LAWFUL)).toBeNull();
+  });
+
+  it('spoils the spot for a never monster that attacks on sight, since it is not hit back', () => {
+    const rules: MobRule[] = [{ mob: 'ghoul', treat: 'never' }];
+    expect(huntableOf([rat, swings], rules, LAWFUL)).toBeNull();
+  });
+
+  it('spoils the spot for a monster under a leaving stance, which holds everything beside it', () => {
+    for (const treat of ['escape', 'hangup'] as const) {
+      expect(huntableOf([rat, waits], [{ mob: 'drunken gambler', treat }], LAWFUL)).toBeNull();
+    }
+  });
+
+  it('keeps a monster under a band row', () => {
+    const rules: MobRule[] = [{ mob: 'drunken gambler', treat: 'high' }];
+    expect(huntableOf([waits], rules, LAWFUL)).toEqual([waits]);
   });
 });

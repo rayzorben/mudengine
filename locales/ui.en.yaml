@@ -2273,6 +2273,9 @@ cards:
     unsimulated: '{count} more not yet simulated.'
     # Every monster there costs evil points to attack, so auto-combat never would.
     evil: '{count} where attacking costs evil points.'
+    # A row in the monster list rules the lair out: nothing there may be attacked,
+    # or one monster is run from or hung up on, or one under never attacks on sight.
+    leftAlone: '{count} left out by a row in your monster list.'
     # A level is ready, and the way back from the trainer is an exit for levels up to this one.
     gated: '{count} you could not get back to once the next level is trained.'
     # Todo 2322-01: lairs a level gate on the way shuts, listed greyed under the rated ones.
