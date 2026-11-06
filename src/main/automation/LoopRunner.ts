@@ -70,6 +70,7 @@ import {
 import type { CarriedLap } from '../../shared/underway';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { asRoomReference, type RoomId, type Route } from '../../shared/world';
+import { refusedLegOf, type RefusedLeg } from '../../shared/refusedLeg';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
@@ -112,6 +113,8 @@ export interface LoopEvents {
    * way out or partway round, it is off only until then (the user, 2026-10-08).
    */
   wantsCombat?(): void;
+  /** A leg the plan refused, for the capture to keep (`RefusedLeg`). */
+  legRefused?(leg: RefusedLeg): void;
 }
 
 export interface LoopPlanner {
@@ -999,33 +1002,7 @@ export class LoopRunner implements SessionModule {
       this.retryAfterLocate();
       return;
     }
-    this.failures += 1;
-    if (this.failures >= this.walk.failedLegs) {
-      this.stop(
-        t('automation.loops.giveUpReason', {
-          stopName: this.loop.stops[this.index]?.room ?? t('automation.loops.fallbackNextStop'),
-          why: why ?? t('automation.loops.fallbackWhy')
-        }),
-        'loop-fail'
-      );
-      return;
-    }
-    /*
-     * The *next* stop, not the same one. The route that just failed was
-     * planned from where the character is standing, and nothing has changed —
-     * the same plan fails the same way, measured live: a stop behind an exit
-     * the server refuses ate every restart the driver had. A loop minus
-     * one unreachable stop is still a loop; the failure counter still ends
-     * a loop whose stops are failing wholesale.
-     */
-    this.events.notice?.(
-      t('automation.loops.skippingStop', {
-        stopName: this.loop.stops[this.index]?.room ?? t('automation.loops.fallbackStop'),
-        why: why ?? t('automation.loops.fallbackWhy')
-      }),
-      'loop-fail'
-    );
-    this.step();
+    this.fail(why ?? t('automation.loops.fallbackWhy'));
   }
 
   /** Character state changed: the moment a fight ends, or a linger lapses. */
@@ -1285,6 +1262,9 @@ export class LoopRunner implements SessionModule {
         return null;
       }
       return this.fail(route);
+    }
+    if (route.blocked) {
+      this.events.legRefused?.(refusedLegOf(this.planner.hereNow(), stop.room, kind, route));
     }
     const refused = this.planner.walk(route, kind);
     if (refused !== null) {
@@ -1646,14 +1626,28 @@ export class LoopRunner implements SessionModule {
     this.timer = null;
   }
 
+  /**
+   * A stop that could not be reached: said, then the *next* stop tried. The
+   * route that failed was planned from where the character stands, and the
+   * same plan fails the same way (a stop behind an exit the server refuses ate
+   * every restart the driver had). `walk.failedLegs` in a row stop the loop,
+   * naming the room it planned from; each stop skipped before is its own line
+   * (todo 20261105-1440-01: three refused in one tick, two of them unsaid).
+   */
   private fail(why: string): string {
+    const stopName = this.loop?.stops[this.index]?.room ?? t('automation.loops.fallbackStop');
     this.failures += 1;
     if (this.failures >= this.walk.failedLegs) {
-      this.stop(why, 'loop-fail');
+      const from = this.planner.hereNow();
+      this.stop(
+        from === null
+          ? t('automation.loops.giveUpReason', { stopName, why })
+          : t('automation.loops.giveUpFrom', { stopName, from, why }),
+        'loop-fail'
+      );
       return why;
     }
-    // Try the stop after this one: a loop with one unreachable room is still
-    // a loop round the others.
+    this.events.notice?.(t('automation.loops.skippingStop', { stopName, why }), 'loop-fail');
     this.step();
     return why;
   }

@@ -300,6 +300,35 @@ describe('a way through a room spell an item stops', () => {
     );
   });
 
+  /* Todo 20261105-1440-01: Rayzor's refusal named neither the river room nor what walled the dry way. */
+  it('names the first river room and how many more, and keeps the way round for the trace', () => {
+    const dry = way('here', 'water');
+    const named: PlanRealm = {
+      ...wet,
+      route: (from, to, traveller: Traveller) => {
+        if (to !== 'water') return way(from, to);
+        const wetWay = river(traveller.keys ?? []);
+        const hazard = {
+          ...wetWay.hazards![0]!,
+          rooms: 31,
+          first: { room: '1/2343', name: 'The Silver River' }
+        };
+        return { ...wetWay, hazards: [hazard], withoutStopper: dry };
+      }
+    };
+    const walked = leg(named, odds(WON), 'here', 'water', nobody);
+    expect(walked.reason).toBe(
+      t('navigation.needsStopperAt.many', {
+        spell: 'river damage',
+        room: 'The Silver River',
+        address: '1/2343',
+        count: 30,
+        items: 'log raft'
+      })
+    );
+    expect(walked.withoutStopper).toBe(dry);
+  });
+
   it('refuses for the purse where the raft cannot be paid for, and a counter across the water', () => {
     const made = plan(wet, odds(WON, false), 'here', 'water', nobody);
     expect(made).toEqual({ kind: 'refused', refusals: [{ kind: 'purse', item: PLANNED }] });

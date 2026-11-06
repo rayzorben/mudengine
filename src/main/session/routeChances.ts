@@ -57,7 +57,8 @@ const ALTERNATIVES: Record<Alternative, true> = {
   viaItem: true,
   another: true,
   direct: true,
-  unlocks: true
+  unlocks: true,
+  withoutStopper: true
 };
 
 /** The route and every alternative it carries, each with its own chances. */

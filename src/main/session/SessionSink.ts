@@ -17,6 +17,7 @@ import type { KeyBindings } from '../../shared/keys';
 import type { Find } from '../../shared/finds';
 import type { Shelf } from '../../shared/shops';
 import type { Loop, LoopProgress } from '../../shared/loops';
+import type { RefusedLeg } from '../../shared/refusedLeg';
 import type { Discovery } from '../../shared/memory';
 import type { PlayerRegistry } from '../../shared/players';
 import type { QuestRunProgress, QuestWatched, RoomAsk } from '../../shared/quests';
@@ -149,6 +150,8 @@ export interface SessionSink {
   destination?(room: RoomId, name: string): void;
   /** Loop progress — where the loop is, for the HUD. */
   loop?(progress: LoopProgress): void;
+  /** A loop's leg the plan refused, for the capture alone (`RefusedLeg`). */
+  legRefused?(leg: RefusedLeg): void;
   /**
    * The decision trace: what automation queued, sent and decided.
    *

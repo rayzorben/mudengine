@@ -21,6 +21,7 @@
  *     {"t":121,"k":"line","s":"Bank of Godfrey","term":"newline"}
  *     {"t":900,"k":"out","s":"who"}
  *     {"t":950,"k":"notice","s":"Did not reach Large Tomb to train: …"}
+ *     {"t":990,"k":"refused-leg","from":"1/1514","stop":"7/867","kind":"walk",…}
  *
  * `raw` is the bytes *after* Telnet framing is stripped but *before* decoding,
  * so an encoding bug is reproducible from the file alone.
@@ -34,6 +35,7 @@ import { InFlight } from '../app/inFlight';
 import { errorMessage } from '../../shared/values';
 import type { ConnectionTarget, LostEnter, StreamLine } from '../../shared/types';
 import type { DecisionKind } from '../../shared/decisionSettings';
+import type { RefusedLeg } from '../../shared/refusedLeg';
 
 export interface SessionCaptureOptions {
   directory: string;
@@ -160,6 +162,11 @@ export class SessionCapture {
    */
   lostEnter(report: LostEnter): void {
     this.record({ k: 'lost-enter', ...report });
+  }
+
+  /** A loop's leg the plan refused, with what walled the way round (todo 20261105-1440-01). */
+  legRefused(leg: RefusedLeg): void {
+    this.record({ k: 'refused-leg', ...leg });
   }
 
   /**

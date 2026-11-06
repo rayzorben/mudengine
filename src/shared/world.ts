@@ -3432,6 +3432,8 @@ export interface RouteHazard {
    * where the route stops inside, `share` null. See {@link Corridor}.
    */
   corridor?: { ends: boolean; ticks?: number; then?: string };
+  /** The first room on the way that casts it, for a refusal to name where (todo 20261105-1440-01). */
+  first?: { room: RoomId; name: string };
 }
 
 /**
@@ -3593,6 +3595,13 @@ export interface Route {
    * (`RouteOptions.alternatives`): a loop's leg pays for no second search.
    */
   otherWay?: Route;
+  /**
+   * The way that crosses no room whose spell wants a stopper the pack lacks,
+   * where the plan crosses one (todo 20261105-1440-01): gates open, so its
+   * `walls` and `steps[].deadly` are what kept the plan off it. Absent where
+   * there is none, or the plan wants no stopper.
+   */
+  withoutStopper?: Route;
   /**
    * MegaMUD's name for the room this route ends in (todo 144), on the route
    * panel's plan (`Invoke.routeTo`) only: its *Stop before entering room* is

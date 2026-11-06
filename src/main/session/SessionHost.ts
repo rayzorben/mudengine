@@ -658,6 +658,7 @@ export class SessionHost {
           this.slots.get(id)?.capture?.notice(message, decision);
           this.options.notice(noticeOf(id, message, decision));
         },
+        legRefused: (leg) => this.slots.get(id)?.capture?.legRefused(leg),
         learned: (discoveries) =>
           this.options.toAll(Push.learned, { session: id, payload: discoveries }),
         finds: (finds) => this.options.toAll(Push.finds, { session: id, payload: finds }),

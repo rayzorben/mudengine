@@ -33,14 +33,13 @@ import {
   type FightOdds,
   type RoomId,
   type Route,
-  type RouteHazard,
   type RouteStep
 } from '../../../shared/world';
 import { skillOpens, type RouteOptions, type Traveller } from '../Router';
 import { routePrices } from '../../../shared/walkChoices';
 import type { ItemSource } from './sources';
 import { standingRequirement } from './exitFamily';
-import { hurts } from './stoppers';
+import { hurtsWithout } from './stoppers';
 
 /** Which stopper a way buys for a room spell, and at which counter (`PlanRealm.stopperPlace`). */
 export interface StopperPlace {
@@ -129,11 +128,6 @@ export interface Fetching {
 
 const FETCHES_ALL: Fetching = { stoppers: true };
 
-/** A room spell on a way that hurts (`hurts`) and that an item the pack lacks stops. */
-function hurtsWithout(hazard: RouteHazard): boolean {
-  return hazard.corridor === undefined && hazard.needs.length > 0 && hurts(hazard);
-}
-
 /**
  * What a walkable way's room spells that hurt want carried that the pack
  * lacks (`Route.hazards[].needs`, each spell's stoppers filtered against the
@@ -167,12 +161,24 @@ function stoppersWanted(
 function stopperWords(direct: Route): string {
   return (direct.hazards ?? [])
     .filter(hurtsWithout)
-    .map((hazard) =>
-      t('navigation.needsStopper', {
+    .map((hazard) => {
+      const items = hazard.needs.map((item) => item.name).join(', ');
+      const first = hazard.first;
+      if (first === undefined) return t('navigation.needsStopper', { spell: hazard.spell, items });
+      const more = hazard.rooms - 1;
+      const figures = {
         spell: hazard.spell,
-        items: hazard.needs.map((item) => item.name).join(', ')
-      })
-    )
+        room: first.name,
+        address: first.room,
+        count: more,
+        items
+      };
+      return more === 0
+        ? t('navigation.needsStopperAt.only', figures)
+        : more === 1
+          ? t('navigation.needsStopperAt.one', figures)
+          : t('navigation.needsStopperAt.many', figures);
+    })
     .join('; ');
 }
 
@@ -517,12 +523,15 @@ function keyedPlan(
  */
 function refusedLeg(direct: Route, reason: string): Route {
   const blocks = direct.blocked ? direct.blocks : direct.walls;
+  // The way off a stopper's rooms, for a loop leg's trace, whatever refused it.
+  const dry = direct.withoutStopper;
   return {
     steps: [],
     cost: 0,
     blocked: true,
     reason,
-    ...(blocks === undefined ? {} : { blocks })
+    ...(blocks === undefined ? {} : { blocks }),
+    ...(dry === undefined ? {} : { withoutStopper: dry })
   };
 }
 

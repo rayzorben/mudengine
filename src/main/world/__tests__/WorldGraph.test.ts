@@ -7161,11 +7161,14 @@ describe('what a room does to whoever stands in it prices the way through it', (
 
   it('says on the step what the room took, and names what would stop it', () => {
     const graph = world();
-    const route = graph.route(roomId(1, 1), roomId(1, 4), {
+    const route = graph.route(
+      roomId(1, 1),
+      roomId(1, 4),
       // A bar so large that the river is still the cheap way, so the route is
       // walked and the panel has something to explain.
-      hazard: hazardFor(graph, 100_000, [])
-    });
+      { hazard: hazardFor(graph, 100_000, []) },
+      { withoutStopper: true }
+    );
     expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
     expect(route.steps[0]?.hazard).toBeCloseTo(15 / 100_000);
     expect(route.hazards).toEqual([
@@ -7179,8 +7182,21 @@ describe('what a room does to whoever stands in it prices the way through it', (
         summons: false,
         relocates: false,
         needs: [{ id: 690, name: 'log raft' }],
-        needsSpell: []
+        needsSpell: [],
+        first: { room: roomId(1, 2), name: 'River' }
       }
+    ]);
+    // And the way that keeps off the river, for a loop leg's trace (todo 20261105-1440-01);
+    // a route nobody asked it of pays for no search.
+    expect(
+      graph.route(roomId(1, 1), roomId(1, 4), { hazard: hazardFor(graph, 100_000, []) })
+        .withoutStopper
+    ).toBeUndefined();
+    expect(route.withoutStopper?.steps.map((step) => step.name)).toEqual([
+      'Street',
+      'Street',
+      'Street',
+      'Landing'
     ]);
   });
 

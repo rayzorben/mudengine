@@ -11,6 +11,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import type { Loop } from '../../../shared/loops';
 import { noticeLog } from './noticeLog';
 import type { Route } from '../../../shared/world';
+import type { RefusedLeg } from '../../../shared/refusedLeg';
 
 const loop: Loop = { name: 'Arena', stops: [{ room: 'Arena' }, { room: 'Road' }] };
 
@@ -619,6 +620,48 @@ describe('when it cannot get there', () => {
     expect(walked).toEqual([]);
     expect(runner.progress.status).toBe('stopped');
     expect(notices.at(-1)).toContain('no route');
+  });
+
+  /*
+   * Todo 20261105-1440-01: Rayzor's loop refused three stops in one tick from
+   * the Dark Cavern, and only the last refusal was said.
+   */
+  it('says each stop it skipped, then gives up naming the room it planned from', () => {
+    const { notices, kinds, notice } = noticeLog();
+    const refusals: RefusedLeg[] = [];
+    const refusedTo = (stop: string): Route => ({
+      steps: [],
+      cost: 0,
+      blocked: true,
+      reason: `no way to ${stop}`
+    });
+    const { planner: p } = planner({
+      routeTo: (stop) => refusedTo(stop.name),
+      walk: (r) => r.reason ?? null,
+      hereNow: () => '1/1514'
+    });
+    const three: Loop = { name: 'L', stops: [{ room: 'A' }, { room: 'B' }, { room: 'C' }] };
+    const runner = new LoopRunner(p, { notice, legRefused: (leg) => refusals.push(leg) });
+    runner.start(three, state());
+    // Positive control: every leg was refused, and each refusal was kept.
+    expect(refusals.map((leg) => [leg.from, leg.stop, leg.reason])).toEqual([
+      ['1/1514', 'A', 'no way to A'],
+      ['1/1514', 'B', 'no way to B'],
+      ['1/1514', 'C', 'no way to C']
+    ]);
+    expect(notices.slice(1)).toEqual([
+      t('automation.loops.skippingStop', { stopName: 'A', why: 'no way to A' }),
+      t('automation.loops.skippingStop', { stopName: 'B', why: 'no way to B' }),
+      t('automation.loops.stopped', {
+        reason: t('automation.loops.giveUpFrom', {
+          stopName: 'C',
+          from: '1/1514',
+          why: 'no way to C'
+        })
+      })
+    ]);
+    expect(kinds.slice(1)).toEqual(['loop-fail', 'loop-fail', 'loop-fail']);
+    expect(runner.progress.status).toBe('stopped');
   });
 
   /*

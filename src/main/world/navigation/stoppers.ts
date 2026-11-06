@@ -11,6 +11,7 @@ import {
   hazardCarried,
   hazardStoppers,
   type RoomId,
+  type RouteHazard,
   type SpellHazard
 } from '../../../shared/world';
 
@@ -44,6 +45,11 @@ export interface StopperRealm {
  */
 export function hurts(hazard: Pick<SpellHazard, 'damage'>): boolean {
   return hazard.damage !== undefined && hazard.damage > 0;
+}
+
+/** A room spell on a way that hurts (`hurts`) and that an item the pack lacks stops. */
+export function hurtsWithout(hazard: RouteHazard): boolean {
+  return hazard.corridor === undefined && hazard.needs.length > 0 && hurts(hazard);
 }
 
 /**

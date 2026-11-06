@@ -16,6 +16,7 @@ import { exitGates, gateRequirement, tollCharge } from './navigation/exitGates';
 import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
 import { sweep, type SweepRooms, type SweepRules } from './navigation/sweep';
 import { passagesOn } from './navigation/passages';
+import { hurtsWithout } from './navigation/stoppers';
 import { hitWalls } from './navigation/castChain';
 import { closedPlaces } from './closedPlaces';
 import { RealmJoins } from './RealmJoins';
@@ -372,6 +373,12 @@ export interface RouteOptions {
    * offer, bounded by what it would have to beat).
    */
   within?: number;
+  /**
+   * Whether to carry the way off the rooms whose spell wants a stopper
+   * (`Route.withoutStopper`), for a loop's refused leg to be traced. Set by
+   * the loop's planner alone; nothing else pays for the search.
+   */
+  withoutStopper?: boolean;
 }
 
 /** Thrown out of a search when `budgeted`'s time is spent; caught there and nowhere else. */
@@ -1370,6 +1377,8 @@ export class Router {
   private namedRooms = new Map<string, ReadonlySet<WorldRoom>>();
   /** The rooms every way into which crosses a kept-out word, per word — `closedBehind`. */
   private closedRooms = new Map<string, ReadonlySet<RoomId>>();
+  /** The rooms casting each spell, per spell id — `castingRooms`. */
+  private casting = new Map<number, ReadonlySet<RoomId>>();
   /** A traveller's kept-out words, prepared once per list — `keepOutOf`. */
   private keepOuts = new WeakMap<object, KeepOutWords>();
   /** An exit's script phrases in matchable form, per phrase list — `keptOut`. */
@@ -1836,6 +1845,11 @@ export class Router {
       // And the fewest moves, whenever the plan takes more. See `Route.direct`.
       const direct =
         options.alternatives === true ? this.direct(from, to, goal, route, traveller, draws) : null;
+      // And what walls the ways that want no stopper, for the refusal's trace.
+      const dry =
+        options.withoutStopper === true
+          ? this.withoutStopper(from, to, goal, route, traveller, draws)
+          : null;
       // A different way with the same steps as the most direct way is offered once, as the most
       // direct way. The way round and the way with the items stay: each says why it is walked.
       const differing =
@@ -1847,6 +1861,7 @@ export class Router {
         ...(invoked === null ? {} : { viaItem: invoked }),
         ...(differing === null ? {} : { another: differing }),
         ...(direct === null ? {} : { direct }),
+        ...(dry === null ? {} : { withoutStopper: dry }),
         // A door it holds no key for, which the engine may plan a way through.
         ...(walkable.keysAhead ? { keysAhead: true as const } : {})
       };
@@ -2089,6 +2104,45 @@ export class Router {
      * What it crosses is its own (`walls`), not what a cheaper way needed.
      */
     return walled.length > 0 ? { ...other, walls: walled } : other;
+  }
+
+  /**
+   * The way that crosses no room casting a spell the route wants a stopper
+   * for (`hurtsWithout`), with the gates open as `otherWay` searches, so what
+   * kept the plan off it is on it: its walls, and its deadly steps. Every
+   * room of the realm casting such a spell is kept out of, not only this
+   * route's, or the way round is the next stretch of the same river. One more
+   * A*, asked only by a loop's leg (`RouteOptions.withoutStopper`), which the
+   * plan then refuses for the stopper.
+   */
+  private withoutStopper(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    route: Route,
+    traveller: Traveller,
+    draws: boolean
+  ): Route | null {
+    const spells = new Set((route.hazards ?? []).filter(hurtsWithout).map((hazard) => hazard.id));
+    if (spells.size === 0) return null;
+    const avoid = new Set(traveller.avoid ?? []);
+    for (const spell of spells) for (const room of this.castingRooms(spell)) avoid.add(room);
+    avoid.delete(to);
+    const round = this.search(from, to, goal, { ...traveller, avoid }, true, draws).found;
+    if (round === null) return null;
+    const other = this.buildRoute(round.cameFrom, to, round.cost, traveller, draws);
+    const walls = this.blocksAlong(round.cameFrom, to, traveller);
+    return walls.length > 0 ? { ...other, walls } : other;
+  }
+
+  /** The rooms casting a spell, kept per spell: the room table is read-only after load. */
+  private castingRooms(spell: number): ReadonlySet<RoomId> {
+    const kept = this.casting.get(spell);
+    if (kept !== undefined) return kept;
+    const rooms = new Set<RoomId>();
+    for (const [id, room] of this.rooms) if (room.spell === spell) rooms.add(id);
+    this.casting.set(spell, rooms);
+    return rooms;
   }
 
   /**
@@ -3725,6 +3779,7 @@ export class Router {
         id: spell.id,
         spell: spell.name,
         rooms: 1,
+        first: { room: step.to, name: step.name },
         /*
          * The first room's share stands for all of them, and that is exact
          * rather than a sample: the damage is a figure the realm states per

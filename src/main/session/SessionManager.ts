@@ -88,7 +88,6 @@ import type { SessionModule } from '../automation/Module';
 import type { Loop } from '../../shared/loops';
 import {
   roomAddress,
-  roomId,
   landingRooms,
   type RoomId,
   type Route,
@@ -123,6 +122,7 @@ import { remoteRegistry } from './remoteRegistry';
 import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { legPlanner, stopErrandLeg } from './legPlanner';
+import { stopLeg } from './stopLeg';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
 import { questKeep } from './questKeep';
@@ -1344,12 +1344,8 @@ export class SessionManager {
      */
     this.loops = new LoopRunner(
       {
-        routeTo: (stop, kind) => {
-          if (roomAddress(this.tracker.current.room) === null) return t('session.loop.unknownRoom');
-          const found = this.errands.findStop(stop);
-          if (typeof found === 'string') return found;
-          return this.errands.planFromHere(roomId(found.map, found.room), {}, kind);
-        },
+        routeTo: (stop, kind) =>
+          stopLeg({ tracker: this.tracker, errands: this.errands }, stop, kind),
         onLeg: (from, to) => this.errands.standsOnLeg(from, to),
         /*
          * Quietly: the loop is what is happening, and the loop narrates it.
@@ -1404,8 +1400,7 @@ export class SessionManager {
         // A rest this client asked for a millisecond ago. The lap waits a beat
         // rather than stepping into it — see `Recovery.restInFlight`, todo 14.
         restInFlight: () => this.recovery.restInFlight,
-        // Some other walk is running this character — a `safe-haven` retreat,
-        // in practice, which is the one walk that runs while the loop is held.
+        // Another walk is running this character: a `safe-haven` retreat, the only one while held.
         walking: () => this.walker.walking,
         here: (stop) => {
           const here = this.tracker.current.room;
@@ -1446,7 +1441,8 @@ export class SessionManager {
         },
         locate: () => this.claims.askWhereIAm(),
         lapBegun: (stopName) => this.statsBaseline.lapBegun(stopName),
-        wantsCombat: () => this.travel.combatOnForLap()
+        wantsCombat: () => this.travel.combatOnForLap(),
+        legRefused: (leg) => this.sink.legRefused?.(leg)
       }
     );
     /*

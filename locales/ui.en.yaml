@@ -7671,6 +7671,7 @@ automation:
     heldForErrand: 'Loop paused: going shopping. It continues from the shop.'
     walkingOnAfterErrand: Continuing from the shop.
     giveUpReason: 'could not reach {stopName}: {why}'
+    giveUpFrom: 'could not reach {stopName} from {from}: {why}'
     mended: Fixed; the loop continues.
     reasonLeftRealm: the character left the realm
     reasonLowExp: the exp rate dropped to {rate}/hr, below the {floor}/hr minimum
@@ -7694,7 +7695,6 @@ automation:
     heldOffline: Disconnected; the loop waits until you are back in the realm.
     carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'
     walkingOnAfterReconnect: Back in the realm; the loop continues from here.
-    fallbackNextStop: the next stop
     fallbackStop: a stop
     fallbackWhy: the walk failed
     resumed: Loop resumed from here.
@@ -8720,6 +8720,14 @@ navigation:
   noWayBecause: 'no way there: {why}'
   # A walkable way whose rooms cast a spell an item stops, with none carried (todo 20261021-1200-01).
   needsStopper: 'the way crosses {spell}, which hurts without {items}; collect one first'
+  # The same, naming the first room on the way that casts it (todo 20261105-1440-01).
+  needsStopperAt:
+    many: 'the way crosses {spell} at {room} ({address}) and {count} more rooms, which hurts
+      without {items}; collect one first'
+    one: 'the way crosses {spell} at {room} ({address}) and {count} more room, which hurts
+      without {items}; collect one first'
+    only: 'the way crosses {spell} at {room} ({address}), which hurts without {items}; collect
+      one first'
   oddsUnread: the fight with {monster} is still being worked out
   outOfReach: everywhere that gives {item} is out of reach
   purse: '{item} costs more than you carry'
