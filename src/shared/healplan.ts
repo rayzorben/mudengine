@@ -8,8 +8,9 @@
  * keeps somebody alive. Summed over everyone a party-wide heal reaches who
  * wants a heal now, a rain that tops two people up a little is weighed
  * against a major heal that takes one of them out of danger; a member above
- * the floor adds nothing, so one person hurt is one heal (the todo's 68%,
- * 71% and 35%: the major heal on the 35%). The cheapest option whose relief is
+ * the floor adds nothing, and one person hurt is one heal, never a rain, while
+ * a single heal reaches them (the todo's 68%, 71% and 35%: the major heal on
+ * the 35%). The cheapest option whose relief is
  * within `nearEnough` of the best is cast. See `mudengine-automation` ›
  * *A party heal is weighed against a single heal*.
  */
@@ -98,9 +99,15 @@ export function planHeal(input: HealPlanInput): HealOption | null {
     options.push({ kind: 'single', target, choice: { ...choice, chosen }, relief: value });
   }
 
-  // A rain is worth what it does for those who want a heal now.
+  /*
+   * A rain is worth what it does for those who want a heal now, and it is
+   * weighed only where it reaches two of them or no single heal reaches the
+   * one: for one bar a direct heal is the cast, even where the rain costs a
+   * mana less (Rayzor, 2026-11-06: `rain` at 5 over `mahe` at 6 on Brakkle).
+   */
   const wanted = input.targets.filter((target) => target.wanted);
-  if (input.partyWide && wanted.length > 0) {
+  const singles = options.length;
+  if (input.partyWide && (wanted.length > 1 || (wanted.length === 1 && singles === 0))) {
     for (const cast of healCasts(input, (aim) => aim === 'party').casts) {
       const value = wanted.reduce((sum, target) => sum + reliefOf(target, cast.expected, input), 0);
       options.push({ kind: 'area', cast, reaches: wanted.length, relief: value });

@@ -7619,8 +7619,8 @@ automation:
     choseArea:
       many: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): {count} are hurt,
         and one heal on the worst does no better for the mana.'
-      one: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): it does at least as
-        much as one heal for the mana.'
+      one: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): no single heal can be
+        cast on the one who is hurt.'
     reasonArea: 'heal: {count} in the party are hurt'
     noChoice: 'No heal in the spellbook fits, so {spell} is cast as configured.'
     noChoiceNoSpell: No heal in the spellbook fits, and none is configured, so nothing is cast.

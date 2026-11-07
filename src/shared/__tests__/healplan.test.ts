@@ -152,6 +152,26 @@ describe('one heal or a party heal', () => {
     expect(plan?.kind).toBe('single');
   });
 
+  /*
+   * Rayzor, 2026-11-06: at full himself with Brakkle hurt, he cast `rain` (5)
+   * over and over because it cost a mana less than `mahe` (6) and mended as
+   * much for the one bar that wanted it.
+   */
+  it('heals the one member who wants it directly even where the rain is cheaper', () => {
+    const plan = planHeal(
+      input([at(null, 100), { name: 'Brakkle', wanted: true, hp: 86, hpMax: 100 }])
+    );
+    expect(plan?.kind).toBe('single');
+    if (plan?.kind !== 'single') return;
+    expect(plan.target.name).toBe('Brakkle');
+    expect(plan.choice.chosen.spell.name).toBe('major healing');
+  });
+
+  it('casts the rain for one where no single heal reaches them', () => {
+    const plan = planHeal(input([at('Cy', 40)], { book: book('healing rain') }));
+    expect(plan?.kind).toBe('area');
+  });
+
   it('never casts what the pool cannot pay for', () => {
     const plan = planHeal(input([at(null, 45), at('Ann', 45), at('Cy', 40)], { mana: 5 }));
     expect(plan?.kind).toBe('area');

@@ -829,8 +829,8 @@ describe('choosing between one heal and a party heal', () => {
         (name) => (name === 'healing rain' ? STRONG_RAIN : (HEAL_ROWS[name] ?? null))
       );
 
-    it('casts the cheaper rain on itself while somebody has joined', () => {
-      rainy().onCharacter(party([hurt('Ann', 150)], 60));
+    it('casts the cheaper rain on itself and a member while somebody has joined', () => {
+      rainy().onCharacter(party([hurt('Ann', 60)], 60));
       drain();
       expect(sent).toEqual(['rain']);
     });
