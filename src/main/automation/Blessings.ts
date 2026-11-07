@@ -57,6 +57,7 @@ import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
 import {
+  buffNames,
   fightHere,
   NO_FIGHT_SIGNS,
   type ActiveBuff,
@@ -439,7 +440,7 @@ export class Blessings implements SessionModule {
     // meant: `You feel lucky!` is five spells, and a configured `bless` is up
     // whichever of them the server actually applied.
     const held = state.buffs.find((buff) =>
-      [buff.spell, ...(buff.candidates ?? [])].some((name) => this.same(name, entry.spell))
+      buffNames(buff).some((name) => this.same(name, entry.spell))
     );
     if (held !== undefined && !this.lapsed(held, entry, now)) return false;
 

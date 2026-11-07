@@ -20,7 +20,8 @@ import {
 } from '../world/navigation/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Block } from '../../shared/blocks';
-import { packRows, type CharacterState, type FightSigns } from '../../shared/character';
+import { buffNames, packRows, type CharacterState, type FightSigns } from '../../shared/character';
+import { hurtsEachTick } from '../../shared/spellcraft';
 import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { SessionModule } from '../automation/Module';
@@ -38,7 +39,8 @@ export interface StopperCounter {
 
 export interface RoomHazardsParts {
   world:
-    Pick<WorldGraph, 'byId' | 'hazardOf' | 'spellById' | 'item' | 'stockingPlaces'> | undefined;
+    | Pick<WorldGraph, 'byId' | 'hazardOf' | 'spellById' | 'spellNamed' | 'item' | 'stockingPlaces'>
+    | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard' | 'wardNow'>;
   /** A monster's blow the state does not show as a fight yet, for `RoomDamageSeen`. */
@@ -54,7 +56,24 @@ export class RoomHazards implements SessionModule {
     private readonly parts: RoomHazardsParts,
     now: () => number = () => Date.now()
   ) {
-    this.seen = new RoomDamageSeen(parts.signs, parts.hangUp, now);
+    this.seen = new RoomDamageSeen(
+      parts.signs,
+      parts.hangUp,
+      (state) => this.spellTakesHealth(state),
+      now
+    );
+  }
+
+  /**
+   * A spell up on the character that takes health every tick (`hurtsEachTick`),
+   * under any name its sentence could mean: its ticks are not the room's.
+   */
+  private spellTakesHealth(state: CharacterState): boolean {
+    const world = this.parts.world;
+    if (world === undefined) return false;
+    return state.buffs.some((buff) =>
+      buffNames(buff).some((name) => hurtsEachTick(world.spellNamed(name)))
+    );
   }
 
   /** Every status line, for the damage the world database does not list. */

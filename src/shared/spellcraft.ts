@@ -28,9 +28,9 @@
  * it imports nothing from here, which `module-cycle.test.ts` holds.
  */
 
-import { carriesAbility, DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
+import { abilityHurts, carriesAbility, DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
 import { CURES, type Cure, type SpellsConfig } from './config';
-import type { ActiveBuff, KnownSpell } from './character';
+import { buffNames, type ActiveBuff, type KnownSpell } from './character';
 import type { WorldSpell } from './world';
 
 /**
@@ -224,9 +224,7 @@ export function spellIsUp(
   realmSpell: (name: string) => WorldSpell | null = () => null
 ): boolean {
   return buffs.some((buff) =>
-    [buff.spell, ...(buff.candidates ?? [])].some((name) =>
-      sameSpell(name, spell, spellbook, realmSpell)
-    )
+    buffNames(buff).some((name) => sameSpell(name, spell, spellbook, realmSpell))
   );
 }
 
@@ -473,6 +471,25 @@ export function frightens(spell: Pick<WorldSpell, 'abilities'> | null | undefine
  */
 export function poisons(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
   return carriesAbility(spell?.abilities, HAZARD_ABILITY.poison);
+}
+
+/**
+ * Whether a spell up on somebody takes health on every tick: it states a
+ * duration and carries an ability that wounds (`abilityHurts`: damage, drain,
+ * poison or a negative heal).
+ * On Paradigm `rotting flesh` is damage 6 for 10 ticks: Rayzor lost 6 a tick
+ * from `You are rotting!` to `The disease dies down.` (OCI, 2026-11-07), and
+ * `spits` is poison, 1 a tick under `You feel dizzy and weak!`. Of the 162
+ * such rows none only heals: plagues, poisons, drains, drowning, burns, and
+ * `invigorate`, a heal that rolls -4 to 3.
+ */
+export function hurtsEachTick(
+  spell: Pick<WorldSpell, 'abilities' | 'duration' | 'power'> | null | undefined
+): boolean {
+  if (spell === null || spell === undefined || (spell.duration ?? 0) <= 0) return false;
+  return (spell.abilities ?? []).some(([ability, value]) =>
+    abilityHurts(ability, value, spell.power)
+  );
 }
 
 /**

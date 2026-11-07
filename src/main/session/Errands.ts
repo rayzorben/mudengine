@@ -62,6 +62,7 @@ import {
 } from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
 import {
+  buffNames,
   fightIsRunning,
   joinedMembers,
   ownAlignment,
@@ -3210,7 +3211,7 @@ export class Errands implements SessionModule {
     const up: number[] = [];
     for (const buff of state.buffs) {
       if (buff.expiresAt === undefined || buff.expiresAt <= now) continue;
-      for (const name of [buff.spell, ...(buff.candidates ?? [])]) {
+      for (const name of buffNames(buff)) {
         const id = world.spellNamed(name)?.id;
         if (id !== undefined && !up.includes(id)) up.push(id);
       }

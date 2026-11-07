@@ -68,7 +68,7 @@
  * the sheet, and the trace prints what came back.
  */
 import { HAZARD_ABILITY, PROTECTION_ABILITY } from './abilities';
-import type { ActiveBuff, CharacterState } from './character';
+import { buffNames, type ActiveBuff, type CharacterState } from './character';
 import type { RealmFamily } from './realm';
 import type { MobEntity } from './entities';
 import { wardedFrom, type SpellWard } from './spellWard';
@@ -344,7 +344,7 @@ export function protectionOf(
   const level = state.progress.level ?? 0;
   const sum = (ability: number): number =>
     state.buffs.reduce((total, buff: ActiveBuff) => {
-      const each = [buff.spell, ...(buff.candidates ?? [])].map((name) => {
+      const each = buffNames(buff).map((name) => {
         const spell = spellOf(name);
         return spell === null ? 0 : (abilityValueAt(spell, ability, level) ?? 0);
       });

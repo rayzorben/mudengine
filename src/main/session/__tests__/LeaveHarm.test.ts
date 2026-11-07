@@ -16,6 +16,7 @@ import type { SafetyDecision } from '../../../shared/automation';
 import {
   EMPTY_CHARACTER,
   NO_FIGHT_SIGNS,
+  type ActiveBuff,
   type CharacterState,
   type FightSigns,
   type RoomOccupant
@@ -359,6 +360,9 @@ describe('a room whose damage the world database does not list', () => {
         type: 'user-takes-damage',
         groups: { damage: String(damage), paidFor: 'bashing the door' }
       } as unknown as Block);
+      // The bash line is read first with the figure unmoved; the fall comes on the
+      // prompt after it (Rayzor at Gnome Village, OCI, 2026-11-07 17:01:58).
+      room.note(current.state);
       current.state = at(RIVER, hp);
       room.note(current.state);
     };
@@ -484,6 +488,75 @@ describe('a room whose damage the world database does not list', () => {
     expect(room.hurtsHere(current.state)).toBeNull();
     room.reset();
     expect(room.roomHurts(RIVER)).toBeNull();
+  });
+});
+
+/*
+ * Rayzor, 2026-11-07 20:28 on OCI: `necromancer casts rotting flesh upon you!`
+ * and `You are rotting!`, then 6 a tick until `The disease dies down.`. The
+ * ticks marked Amethyst Cave (9/1431) and the Catacombs west of it, and the
+ * lap walked out of the necromancer's room for the rest of the session.
+ */
+describe('a spell up on the character that takes health each tick', () => {
+  const CAVE = '9/1431';
+  const graph = (() => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rot-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = {
+      v: 80,
+      source: 'test',
+      rooms: 1,
+      generatedAt: 'x',
+      items: [],
+      spells: [
+        {
+          id: 143,
+          n: 'rotting flesh',
+          dur: 10,
+          ab: [
+            [1, 0],
+            [115, 90]
+          ],
+          pw: [6, 6]
+        }
+      ]
+    };
+    const room = { m: 9, r: 1431, n: 'Amethyst Cave', x: {} };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync([header, room].map((row) => JSON.stringify(row)).join('\n'))
+    );
+    const loaded = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return loaded;
+  })();
+  const rotting: ActiveBuff = { spell: 'rotting flesh', by: null, appliedAt: 0 };
+
+  it("does not count the spell's ticks as the room's", () => {
+    const current = { state: at(CAVE, 110) };
+    const room = new RoomHazards({
+      world: graph,
+      tracker: {
+        get current() {
+          return current.state;
+        }
+      },
+      errands: {} as RoomHazardsParts['errands'],
+      signs: NO_FIGHT_SIGNS,
+      hangUp: { monsterHit: () => false }
+    });
+    const feed = (hps: readonly number[], buffs: ActiveBuff[]): void => {
+      for (const hp of hps) {
+        current.state = at(CAVE, hp, { buffs });
+        room.note(current.state);
+        vi.advanceTimersByTime(3000);
+      }
+    };
+    feed([110, 104, 98, 92, 86], [rotting]);
+    expect(room.hurtsHere(current.state)).toBeNull();
+    // The positive control: the disease down, the same falls are the room's.
+    feed([80, 74], []);
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
   });
 });
 

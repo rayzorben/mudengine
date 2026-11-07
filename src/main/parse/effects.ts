@@ -6,6 +6,7 @@
  * which every condition sentence writes through.
  */
 import {
+  buffNames,
   NO_AFFLICTIONS,
   type ActiveBuff,
   type Afflictions,
@@ -401,7 +402,7 @@ export class EffectTracker {
     const dropped = s.buffs.filter((held) => !buffs.some((kept) => kept.spell === held.spell));
     let cleared = s;
     for (const buff of dropped) {
-      for (const name of this.buffNames(buff)) {
+      for (const name of buffNames(buff)) {
         for (const condition of this.conditionsOf(name)) {
           cleared = afflicted(cleared, condition, 'no') ?? cleared;
         }
@@ -534,7 +535,7 @@ export class EffectTracker {
 
     const kept: ActiveBuff[] = [];
     for (const buff of s.buffs) {
-      const names = this.buffNames(buff);
+      const names = buffNames(buff);
       const listed = names.some((name) => up.has(spellKey(name)));
       if (!listed && this.knowsStart(buff)) continue;
       const expiresAt = names
@@ -787,7 +788,7 @@ export class EffectTracker {
    */
   private namedCause(s: CharacterState, condition: keyof Afflictions): boolean {
     return s.buffs.some((buff) =>
-      this.buffNames(buff).some(
+      buffNames(buff).some(
         (name) => !isUnnamedEffect(name) && this.conditionsOf(name).includes(condition)
       )
     );
@@ -861,7 +862,7 @@ export class EffectTracker {
         const seconds = (at - buff.appliedAt) / 1000;
         if (seconds > 0) this.sources.belongings().rememberSpellDuration(buff.spell, seconds);
       }
-      const names = this.buffNames(buff);
+      const names = buffNames(buff);
       for (const pending of this.pendingStops) {
         pending.suspects = pending.suspects.filter(
           (name) => !names.some((held) => this.namesOneSpell(held, name))
@@ -920,19 +921,12 @@ export class EffectTracker {
   }
 
   private withBuff(s: CharacterState, buff: ActiveBuff): CharacterState {
-    const kept = s.buffs.filter((held) => !this.buffMatches(held, this.buffNames(buff)));
+    const kept = s.buffs.filter((held) => !this.buffMatches(held, buffNames(buff)));
     return { ...s, buffs: [...kept.slice(-KEPT_BUFFS), buff] };
   }
 
-  /** The spell and every other it might be. */
-  private buffNames(buff: ActiveBuff): string[] {
-    return [buff.spell, ...(buff.candidates ?? [])];
-  }
-
   private buffMatches(buff: ActiveBuff, names: readonly string[]): boolean {
-    return this.buffNames(buff).some((held) =>
-      names.some((name) => this.namesOneSpell(held, name))
-    );
+    return buffNames(buff).some((held) => names.some((name) => this.namesOneSpell(held, name)));
   }
 
   /**
@@ -948,7 +942,7 @@ export class EffectTracker {
   }
 
   private knowsStart(buff: ActiveBuff): boolean {
-    return this.buffNames(buff).some(
+    return buffNames(buff).some(
       (name) =>
         this.spellLore.startOf(name) !== null ||
         [...this.buffEffects.values()].some((learned) => this.namesOneSpell(learned, name))
@@ -956,7 +950,7 @@ export class EffectTracker {
   }
 
   private knowsStop(buff: ActiveBuff): boolean {
-    return this.buffNames(buff).some((name) => this.spellLore.stopOf(name) !== null);
+    return buffNames(buff).some((name) => this.spellLore.stopOf(name) !== null);
   }
 
   /** Whether this character's own listing says it can cast the spell. */

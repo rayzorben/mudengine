@@ -7,6 +7,7 @@ import {
   castsOnSelf,
   cureGates,
   holdsMovement,
+  hurtsEachTick,
   resolveSpell,
   sameSpell,
   spellCost,
@@ -424,5 +425,40 @@ describe('spellServes drains', () => {
         linked
       ).drains
     ).toBe(false);
+  });
+});
+
+// Paradigm's rows (resources/world/paradigm.jsonl.gz), Rayzor on OCI 2026-11-07.
+describe('a spell that takes health every tick', () => {
+  it('is a lasting spell that wounds: rotting flesh, spits, a drain, a negative heal', () => {
+    expect(
+      hurtsEachTick({
+        abilities: [
+          [1, 0],
+          [115, 90]
+        ],
+        duration: 10,
+        power: [6, 6]
+      })
+    ).toBe(true);
+    expect(
+      hurtsEachTick({
+        abilities: [
+          [19, 1],
+          [1, 1]
+        ],
+        duration: 10,
+        power: [-5, -5]
+      })
+    ).toBe(true);
+    expect(hurtsEachTick({ abilities: [[8, 0]], duration: 7, power: [2, 10] })).toBe(true);
+    expect(hurtsEachTick({ abilities: [[18, -2]], duration: 7 })).toBe(true);
+  });
+
+  it('is not a spell that lands once, a heal, or a row the realm does not state', () => {
+    expect(hurtsEachTick({ abilities: [[1, 0]], power: [20, 40] })).toBe(false);
+    expect(hurtsEachTick({ abilities: [[18, 0]], duration: 10, power: [5, 10] })).toBe(false);
+    expect(hurtsEachTick({ abilities: [[2, 10]], duration: 30 })).toBe(false);
+    expect(hurtsEachTick(null)).toBe(false);
   });
 });

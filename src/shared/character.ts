@@ -184,6 +184,11 @@ export interface ActiveBuff {
   candidates?: readonly string[];
 }
 
+/** The buff's spell and every other its sentence could mean (`candidates`). */
+export function buffNames(buff: Pick<ActiveBuff, 'spell' | 'candidates'>): string[] {
+  return [buff.spell, ...(buff.candidates ?? [])];
+}
+
 /**
  * One row of the `sp` / `pow` listing — a spell or power this character
  * knows, in the realm's own words. The listing is authoritative: a `sp`

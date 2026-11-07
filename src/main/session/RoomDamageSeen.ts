@@ -1,17 +1,14 @@
 /**
  * A room that hurt the character on the wire, whatever the world database says
  * (todo 20261103-0140-01): health lost `tuning.roomHarm.drops` times inside
- * `withinMs` in one room, not poisoned, not bleeding on the ground and with
- * the same maximum, is the room's damage. Not while a fight is here
- * (`fightHere`), nor inside `MOB_ENGAGED_MS` of a monster's damage line
- * (`HangUpWatch.monsterHit`), wherever that monster is now, nor what the
- * character paid for its own bash (`paidFor`, the user, 2026-11-05: Rayzor
- * was led out of Slum Street, Western Door for it). Unknown is the
- * unsafe case, so a room the data gives no spell still counts once the server
- * has taken health there twice. A mark is cleared once the character has
- * stood in the room `clearAfterMs` and lost no health (the user, 2026-11-05:
- * a false mark kept Rayzor from Brakkle's room). Read through `RoomHazards`.
- * `mudengine-automation` › `parts/safety.md`.
+ * `withinMs` in one room with the same maximum. Not while a fight is here
+ * (`fightHere`), inside `MOB_ENGAGED_MS` of a monster's damage line
+ * (`monsterHit`), poisoned, bleeding on the ground, paying for its own bash
+ * (`paidFor`) or under a spell that takes health each tick (`ticking`). A room
+ * the data gives no spell still counts, since unknown is the unsafe case. A
+ * mark clears after `clearAfterMs` standing in the room unhurt. Read through
+ * `RoomHazards`; the cases behind each rule are in `mudengine-automation` ›
+ * `parts/safety.md`.
  */
 import { tuning } from '../app/tuning';
 import type { HangUpWatch } from '../automation/HangUp';
@@ -34,6 +31,8 @@ export class RoomDamageSeen {
   constructor(
     private readonly signs: FightSigns,
     private readonly blows: Pick<HangUpWatch, 'monsterHit'>,
+    /** A spell up on the character that takes health every tick (`RoomHazards`). */
+    private readonly ticking: (state: CharacterState) => boolean,
     private readonly now: () => number = () => Date.now()
   ) {}
 
@@ -52,17 +51,20 @@ export class RoomDamageSeen {
     const maxBefore = this.hpMax;
     this.hp = hp;
     this.hpMax = hpMax;
-    // What was paid is spent on this line, a drop or not, so it excuses no later one.
-    const paid = this.paid;
-    this.paid = 0;
     const at = this.now();
     if (here !== this.room) {
       this.room = here;
       this.drops = [];
+      this.paid = 0;
       this.quietSince = hp === null ? null : at;
       return;
     }
     if (here === null || hp === null || before === null) return;
+    // What was paid is spent on the first line that moves health, a drop or not, so it
+    // excuses no later one. The bash line itself moves nothing: the server shows the
+    // fall on the prompt after it (Gnome Village, Rayzor on OCI, 2026-11-07).
+    const paid = hp === before ? 0 : this.paid;
+    if (hp !== before) this.paid = 0;
     if (hp >= before) {
       this.quietSince ??= at;
       if (this.seen.has(here) && at - this.quietSince >= tuning().roomHarm.clearAfterMs)
@@ -75,7 +77,8 @@ export class RoomDamageSeen {
     if (
       hpMax !== maxBefore ||
       !unexplained(state, before, this.signs, at) ||
-      this.blows.monsterHit(at)
+      this.blows.monsterHit(at) ||
+      this.ticking(state)
     )
       return;
     const { drops, withinMs, keptRooms } = tuning().roomHarm;
