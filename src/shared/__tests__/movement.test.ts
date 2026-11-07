@@ -28,7 +28,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('walking'), lap('running'))).toEqual({
       kind: 'loop',
       moving: true,
-      resumable: false
+      resumable: false,
+      onTrack: true
     });
   });
 
@@ -36,7 +37,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('walking'), NO_LOOP)).toEqual({
       kind: 'route',
       moving: true,
-      resumable: false
+      resumable: false,
+      onTrack: true
     });
   });
 
@@ -58,7 +60,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('stopped'), lap('stopped'))).toEqual({
       kind: 'route',
       moving: false,
-      resumable: true
+      resumable: true,
+      onTrack: false
     });
     expect(movementOf(walking('arrived'), lap('stopped'))).toMatchObject({ kind: 'route' });
   });
@@ -74,7 +77,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('stopped', false), lap('stopped'))).toEqual({
       kind: 'loop',
       moving: false,
-      resumable: true
+      resumable: true,
+      onTrack: false
     });
   });
 
@@ -84,7 +88,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('stopped', false), NO_LOOP)).toEqual({
       kind: 'route',
       moving: false,
-      resumable: false
+      resumable: false,
+      onTrack: false
     });
   });
 
@@ -97,7 +102,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('stopped'), NO_LOOP)).toEqual({
       kind: 'route',
       moving: false,
-      resumable: true
+      resumable: true,
+      onTrack: false
     });
   });
 
@@ -106,7 +112,8 @@ describe('what a character is doing about going anywhere', () => {
     expect(movementOf(walking('arrived'), NO_LOOP)).toEqual({
       kind: 'route',
       moving: false,
-      resumable: false
+      resumable: false,
+      onTrack: false
     });
   });
 });
@@ -141,5 +148,51 @@ describe('which face the Navigation card draws', () => {
     expect(navigationFace(walking('stopped'), lap('stopped'))).toBe('route');
     expect(navigationFace(IDLE_WALK, lap('stopped'))).toBe('loop');
     expect(navigationFace(IDLE_WALK, NO_LOOP)).toBeNull();
+  });
+});
+
+/*
+ * The user, 2026-11-07: Stop stays while the client owes a pick-up (a party
+ * wait, an errand before the route), and only the transport reads it, so
+ * play and stop in main decide as they did.
+ */
+describe('on track while the client owes a pick-up', () => {
+  const owed = (walk: WalkProgress): WalkProgress => ({ ...walk, pickUpOwed: true });
+
+  it('keeps a lap the party wait stopped on track, resumable as before', () => {
+    expect(movementOf(owed(walking('stopped', false)), lap('stopped'))).toEqual({
+      kind: 'loop',
+      moving: false,
+      resumable: true,
+      onTrack: true
+    });
+  });
+
+  it('keeps a route an errand went first for on track, with nothing walking', () => {
+    expect(movementOf(owed(IDLE_WALK), NO_LOOP)).toEqual({ ...NOT_MOVING, onTrack: true });
+    expect(movementOf(owed(walking('arrived', false)), NO_LOOP)).toMatchObject({
+      moving: false,
+      onTrack: true
+    });
+  });
+
+  it('is off track once nothing is owed and nothing moves', () => {
+    expect(movementOf(walking('stopped'), NO_LOOP).onTrack).toBe(false);
+    expect(movementOf(walking('arrived'), lap('stopped')).onTrack).toBe(false);
+  });
+});
+
+/* The user, 2026-11-07: a step back is a step; what it stepped off is still Play's. */
+describe('after a step back', () => {
+  it('offers back the route the step left behind', () => {
+    const back = { ...walking('arrived', false), routeBehind: true };
+    expect(movementOf(back, lap('stopped'))).toMatchObject({ kind: 'route', resumable: true });
+  });
+
+  it('shows the stopped lap through a step back with no route behind it', () => {
+    expect(movementOf(walking('arrived', false), lap('stopped'))).toMatchObject({
+      kind: 'loop',
+      resumable: true
+    });
   });
 });

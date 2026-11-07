@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Belongings, peekLives, peekRoom, peekSpellbook } from '../Belongings';
+import { asidePath, Belongings, peekLives, peekRoom, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { NOTHING_UNDERWAY } from '../../../shared/underway';
@@ -107,17 +107,49 @@ describe('what the banks told this character', () => {
     expect(elsewhere.recallBanks()).toEqual([]);
   });
 
-  /* Kept and ignored, not deleted: somebody who dials back gets it back. */
-  it('leaves the other realm file alone rather than emptying it', () => {
+  /*
+   * Set aside, not deleted: somebody who dials back gets it back. Soul and Yang
+   * (2026-11-07) had moved realm, and a record kept suspended for the old one
+   * saved nothing, the lap a relaunch takes up included.
+   */
+  it('sets the other realm record aside, writes this one, and swaps back', () => {
+    const away = 'bbs.bearfather.net:23';
     const first = new Belongings({ file, realm: REALM });
     first.rememberBanks([balance()]);
     first.close();
 
-    const elsewhere = new Belongings({ file, realm: 'bbs.bearfather.net:23' });
+    const said: string[] = [];
+    const elsewhere = new Belongings({ file, realm: away, notify: (m: string) => said.push(m) });
+    expect(elsewhere.recallBanks()).toEqual([]);
     elsewhere.rememberBanks([balance({ shop: 3, name: 'Somewhere Else', copper: 5 })]);
     elsewhere.close();
 
-    expect(new Belongings({ file, realm: REALM }).recallBanks()).toEqual([balance()]);
+    expect(read().realm).toBe(away);
+    expect(fs.existsSync(asidePath(file, REALM))).toBe(true);
+    expect(said).toHaveLength(1);
+    expect(peekLives(file, REALM)).toBeNull();
+
+    const home = new Belongings({ file, realm: REALM });
+    expect(home.recallBanks()).toEqual([balance()]);
+    home.rememberBanks([balance({ copper: 7 })]);
+    home.close();
+
+    expect(read().realm).toBe(REALM);
+    expect(fs.existsSync(asidePath(file, REALM))).toBe(false);
+    expect(new Belongings({ file, realm: away }).recallBanks()).toEqual([
+      balance({ shop: 3, name: 'Somewhere Else', copper: 5 })
+    ]);
+  });
+
+  it('moves nothing aside for a dial that writes nothing', () => {
+    const first = new Belongings({ file, realm: REALM });
+    first.rememberBanks([balance()]);
+    first.close();
+
+    new Belongings({ file, realm: 'bbs.bearfather.net:23' }).close();
+
+    expect(read().realm).toBe(REALM);
+    expect(fs.existsSync(asidePath(file, 'bbs.bearfather.net:23'))).toBe(false);
   });
 
   /*
@@ -343,6 +375,19 @@ describe('what this character knows how to cast', () => {
 
     const next = new Belongings({ file, realm: REALM });
     expect(next.recallSpellDurations()).toEqual({ bless: 120 });
+  });
+
+  /* Festus, 2026-11-01: `knockdown: 0` was written, and every read after refused the whole record. */
+  it('keeps no duration that rounds to nothing, so the record reads back', () => {
+    const said: string[] = [];
+    const book = new Belongings({ file, realm: REALM });
+    book.rememberSpellDuration('knockdown', 0.4);
+    book.rememberSpellDuration('bless', 99.6);
+    book.close();
+
+    const next = new Belongings({ file, realm: REALM, notify: (m: string) => said.push(m) });
+    expect(next.recallSpellDurations()).toEqual({ bless: 100 });
+    expect(said).toEqual([]);
   });
 
   it("ignores another realm's record, like the balances", () => {

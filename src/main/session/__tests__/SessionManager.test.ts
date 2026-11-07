@@ -105,7 +105,8 @@ function underWay(session: SessionManager): void {
   vi.spyOn(session, 'movement', 'get').mockReturnValue({
     kind: 'route',
     moving: true,
-    resumable: false
+    resumable: false,
+    onTrack: true
   });
 }
 
@@ -6316,7 +6317,12 @@ describe('picking up after a lost connection', () => {
       await manager.connect({ host: '127.0.0.1', port: otherPort, encoding: 'cp437' });
       expect(manager.loops.progress).toMatchObject({ status: 'idle', name: null });
       expect(manager.loops.carried).toBe(false);
-      expect(manager.movement).toEqual({ kind: null, moving: false, resumable: false });
+      expect(manager.movement).toEqual({
+        kind: null,
+        moving: false,
+        resumable: false,
+        onTrack: false
+      });
       expect(notices).toContain(
         t('automation.loops.stopped', { reason: t('session.loop.stoppedRealmChanged') })
       );
@@ -7066,7 +7072,7 @@ describe('what this character costs to move', () => {
       keptOut: { words: ['vortex'], round }
     };
     expect(manager.walkPlan(through)).toEqual({ refused: expect.stringContaining('vortex') });
-    expect(manager.collectThenWalk([{ id: 1, name: 'rope' }], through)).toContain('vortex');
+    expect(manager.moves.collectThenWalk([{ id: 1, name: 'rope' }], through)).toContain('vortex');
   });
 
   it('tells the router what to keep out of', () => {
@@ -8005,7 +8011,12 @@ describe('starting and stopping a movement', () => {
     });
     // And the lap is left where it was, for the play that picks it back up.
     expect(manager!.loops.progress.name).toBe('lap');
-    expect(manager!.movement).toEqual({ kind: 'route', moving: true, resumable: false });
+    expect(manager!.movement).toEqual({
+      kind: 'route',
+      moving: true,
+      resumable: false,
+      onTrack: true
+    });
   });
 
   it('refuses play while the character is already moving', async () => {
@@ -8064,7 +8075,12 @@ describe('starting and stopping a movement', () => {
     );
     manager!.stopMoving();
     expect(manager!.walker.progress).toMatchObject({ status: 'stopped', asked: false });
-    expect(manager!.movement).toEqual({ kind: 'loop', moving: false, resumable: true });
+    expect(manager!.movement).toEqual({
+      kind: 'loop',
+      moving: false,
+      resumable: true,
+      onTrack: false
+    });
     expect(manager!.startMoving(null, null)).toEqual({ started: true });
     expect(manager!.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
   });
@@ -8083,7 +8099,12 @@ describe('starting and stopping a movement', () => {
     );
     expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
     manager!.stopMoving();
-    expect(manager!.movement).toEqual({ kind: 'route', moving: false, resumable: true });
+    expect(manager!.movement).toEqual({
+      kind: 'route',
+      moving: false,
+      resumable: true,
+      onTrack: false
+    });
     expect(manager!.walker.progress.asked).toBe(true);
   });
 
@@ -8451,6 +8472,24 @@ describe('stepping back the way the character came', () => {
     // Not back to the Dunes it has just come from: one further back.
     expect(manager!.stepBack(null)).toEqual({ started: true });
     expect(manager!.walker.progress.destinationRoom).toEqual({ map: 1, room: 1 });
+  });
+
+  /* The user, 2026-11-07: after stepping back any number of rooms, Play resumes. */
+  it('keeps the stopped route for Play after a step back, and walks it on', async () => {
+    const { socket, world, wire } = await onTheShore(beach());
+    expect(manager!.walkRoute(world.route('1/1', '1/3'))).toBeNull();
+    await lands(socket, wire, 'n', 'Beach', 'north, south');
+    manager!.stopMoving();
+
+    expect(manager!.stepBack(null)).toEqual({ started: true });
+    await lands(socket, wire, 's', 'Shore', 'north');
+    expect(manager!.movement).toMatchObject({ kind: 'route', moving: false, resumable: true });
+
+    expect(manager!.startMoving(null, null)).toEqual({ started: true });
+    expect(manager!.walker.progress).toMatchObject({
+      status: 'walking',
+      destinationRoom: { map: 1, room: 3 }
+    });
   });
 
   it('refuses a back press with nothing behind the character', async () => {

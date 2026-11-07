@@ -839,7 +839,7 @@ export default function App() {
    * read moves and not otherwise.
    */
   // A boolean, so a walk's every step does not rebuild the list (todo 754).
-  const moving = movementOf(view.walk, view.loop).moving;
+  const moving = movementOf(view.walk, view.loop).onTrack;
   const paletteDeps: PaletteDeps = {
     api,
     session,

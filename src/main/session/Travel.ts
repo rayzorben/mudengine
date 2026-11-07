@@ -34,7 +34,7 @@ import {
   type CharacterState,
   type FightSigns
 } from '../../shared/character';
-import type { WalkKind } from '../../shared/walk';
+import type { WalkKind, WalkOwed } from '../../shared/walk';
 import type { WayLeftOut } from '../automation/walk/ports';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { Walker } from '../automation/Walker';
@@ -471,7 +471,15 @@ export class Travel implements SessionModule {
    * different move once the trail is at `trailSteps` and every push shifts the
    * oldest off. See `stepBack` and `CharacterTracker.retraced`.
    */
-  private steppingBack: TrailStep | null = null;
+  private steppingBack: { step: TrailStep; steps: number } | null = null;
+  /**
+   * The player's route a back press stepped off, there for Play until a route
+   * or a lap starts (the user, 2026-11-07: after stepping back, Play resumed
+   * nothing). `backSteps` is how far the back presses walked since the
+   * movement stopped: wander the player chose, so Play never asks about it.
+   */
+  private steppedOff: UnfinishedRoute | null = null;
+  private backSteps = 0;
   /**
    * Whether the party's stop holds a trip's walk where it stands (`Holds`'
    * `party` hold). Ended, a trip plans its
@@ -751,8 +759,9 @@ export class Travel implements SessionModule {
       );
       this.journey = null;
     }
-    // And the choice to cross, which was about that realm's rooms.
+    // And the choice to cross and the route stepped off, which were about that realm's rooms.
     this.crossing = null;
+    this.leaveTheBackSteps();
   }
 
   /**
@@ -766,6 +775,7 @@ export class Travel implements SessionModule {
     // supply errand is shopping on behalf of, and the choice to cross it.
     this.journey = null;
     this.errandOwes = null;
+    this.leaveTheBackSteps();
     this.fareCash.reset();
     this.crossing = null;
     /*
@@ -784,6 +794,36 @@ export class Travel implements SessionModule {
    */
   carryJourney(): void {
     this.journey = this.owed;
+  }
+
+  /** The player's own route stopped part-way; a step back stopped by a fight is not one. */
+  private get playersUnfinished(): UnfinishedRoute | null {
+    return this.walker.progress.asked ? this.walker.unfinished : null;
+  }
+
+  /** What the walk push adds to the walker's progress (`WalkPush`). */
+  get walkOwed(): WalkOwed {
+    return { pickUpOwed: this.picksUp, routeBehind: this.steppedOff !== null };
+  }
+
+  /**
+   * Whether the client stopped what the player set going and walks it on by
+   * itself: the party's wait, a held trip, a walk back or the route it owes,
+   * a route an errand, the keys or the fare goes first for, a route carried
+   * over a lost connection. The transport keeps Stop for it
+   * (`WalkProgress.pickUpOwed`); `stopMoving` ends each one.
+   */
+  get picksUp(): boolean {
+    return (
+      this.partyWait.holding ||
+      this.heldTrip ||
+      this.comeBack.active ||
+      this.comeBack.owes ||
+      this.errandOwes !== null ||
+      this.keyBuying.holding ||
+      this.fareCash.busy ||
+      this.journey !== null
+    );
   }
 
   /** The route the player asked for and is owed, walking or carried, for the character's record. */
@@ -814,7 +854,10 @@ export class Travel implements SessionModule {
    */
   walkStarted(): void {
     this.journey = null;
-    if (this.startingAsked) return;
+    if (this.startingAsked) {
+      this.leaveTheBackSteps();
+      return;
+    }
     this.walkAsked = false;
     this.walkRun = false;
     this.clearFor(null);
@@ -2788,17 +2831,24 @@ export class Travel implements SessionModule {
     if (steps > 1 && (confirmed === null || steps > confirmed)) {
       return { confirm: { kind: 'back', name, steps } };
     }
-    // One movement at a time, as a route the player asked for is: a running
-    // lap is stopped out loud and keeps its place. No supply errand — being
-    // about to travel is what makes the pack matter, and a step back is not
+    // One movement at a time: a running lap or the player's route is stopped
+    // out loud and keeps its place, for Play. No supply errand — being about
+    // to travel is what makes the pack matter, and a step back is not
     // travelling.
     if (this.loops.progress.status === 'running') {
-      this.loops.stop(t('session.loop.stoppedForRoute'));
+      this.loops.stop(t('session.back.stoppedForBack'));
     }
+    if (this.walker.walking && this.walker.progress.asked) {
+      this.walker.stop(t('session.back.stoppedForBack'));
+    }
+    // Kept before the step replaces it; a second press keeps the first's.
+    const behind = this.playersUnfinished;
     this.errandOwes = null;
-    const refused = this.walker.start(plan, state);
+    // Unasked: a step, so a stopped lap or the route behind is still what Play picks up.
+    const refused = this.walker.start(plan, state, { asked: false });
     if (refused !== null) return { refused };
-    this.steppingBack = last;
+    if (behind !== null) this.steppedOff = behind;
+    this.steppingBack = { step: last, steps };
     return { started: true };
   }
 
@@ -2814,9 +2864,16 @@ export class Travel implements SessionModule {
     const back = this.steppingBack;
     if (back === null) return;
     this.steppingBack = null;
-    settleBack(back, arrived, roomAddress(this.tracker.current.room), (step) =>
+    if (arrived) this.backSteps += back.steps;
+    settleBack(back.step, arrived, roomAddress(this.tracker.current.room), (step) =>
       this.tracker.retraced(step)
     );
+  }
+
+  /** A movement started: the route stepped off and the steps back are behind it. */
+  private leaveTheBackSteps(): void {
+    this.steppedOff = null;
+    this.backSteps = 0;
   }
 
   /**
@@ -2854,6 +2911,17 @@ export class Travel implements SessionModule {
     if (held !== null) {
       this.session.notice(t('session.walk.notResumed', { destination: held, reason }));
     }
+    this.fareCash.reset();
+    this.journey = null;
+    /*
+     * Every wait that would walk on by itself (`picksUp`). A lap the party's
+     * wait had stopped took nothing from `loops.stop` below, so a member
+     * arriving walked it on after the player's Stop.
+     */
+    this.partyWait.end();
+    this.heldTrip = false;
+    this.aimedHold.forget();
+    this.returnToMember.forget();
     // A hunt the party's wait holds outlives the lap's stop, so the stop ends it here.
     this.itemErrand.abandon(reason);
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
@@ -2947,6 +3015,7 @@ export class Travel implements SessionModule {
     // lap has just replaced.
     this.journey = null;
     this.errandOwes = null;
+    this.leaveTheBackSteps();
     this.keyBuying.drop();
     /*
      * A lap is refused at its start, once, for a stopper anyone walking it
@@ -3010,7 +3079,7 @@ export class Travel implements SessionModule {
       const plan = this.errands.planFromHere(heading, {}, kind);
       if (typeof plan !== 'string') {
         const owed = this.stepsFromStop(heading, kind);
-        const wandered = plan.steps.length - (owed ?? 0);
+        const wandered = plan.steps.length - (owed ?? 0) - this.backSteps;
         if (this.tooFar(wandered, confirmed)) {
           return {
             confirm: {
@@ -3024,6 +3093,7 @@ export class Travel implements SessionModule {
     }
     const refused = this.autoRest.around('loop', () => this.loops.resume(state, by));
     if (refused !== null) return { refused };
+    this.leaveTheBackSteps();
     const lap = this.loops.place;
     if (lap !== null) this.light.beforeLap(lap.loop, state);
     return { started: true };
@@ -3038,12 +3108,12 @@ export class Travel implements SessionModule {
    */
   private resumeRoute(
     confirmed: number | null,
-    owed: UnfinishedRoute | null = this.walker.unfinished
+    owed: UnfinishedRoute | null = this.playersUnfinished ?? this.steppedOff
   ): MovementStart {
     if (owed === null) return { refused: t('session.move.nothingToResume') };
     const plan = this.errands.planFromHere(owed.to, {}, 'walk', this.allowingFor(owed.to));
     if (typeof plan === 'string') return { refused: plan };
-    const wandered = plan.steps.length - owed.left;
+    const wandered = plan.steps.length - owed.left - this.backSteps;
     if (this.tooFar(wandered, confirmed)) {
       return { confirm: { kind: 'route', name: owed.name, steps: wandered } };
     }
@@ -3164,6 +3234,8 @@ export class Travel implements SessionModule {
     this.partyWait.end();
     this.heldTrip = false;
     this.comeBack.cancel(null);
+    // And the route stepped off: Play after a death asks afresh from the temple.
+    this.leaveTheBackSteps();
     // And an errand: the shop it was walking to is several maps away now.
     // With it goes the route it was shopping on behalf of — a death is the
     // player's cue to decide what happens next, not the client's.

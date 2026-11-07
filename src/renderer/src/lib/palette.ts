@@ -77,7 +77,7 @@ export interface PaletteDeps {
   showTabs: boolean;
   connected: boolean;
   inGame: boolean;
-  /** Whether the shown character is routing or looping (`movementOf`). */
+  /** Whether the shown character is on track, routing or looping (`Movement.onTrack`). */
   moving: boolean;
   loops: readonly HeldLoop[];
   configPath: string;

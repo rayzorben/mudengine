@@ -80,7 +80,7 @@ function moves(fake: Fake, own: Loop[] = [], shelf: Loop[] = []): RemoteMoves {
 }
 
 const fake = (over: Partial<Fake> = {}): Fake => ({
-  movement: { kind: null, moving: false, resumable: false },
+  movement: { kind: null, moving: false, resumable: false, onTrack: false },
   walk: IDLE_WALK,
   lap: NO_LOOP,
   place: null,
@@ -97,7 +97,7 @@ describe('@path', () => {
 
   it('names a lap by its path file and title, counted through the stops still owed', () => {
     const state = fake({
-      movement: { kind: 'loop', moving: true, resumable: true },
+      movement: { kind: 'loop', moving: true, resumable: true, onTrack: true },
       lap: {
         ...NO_LOOP,
         status: 'running',
@@ -116,7 +116,7 @@ describe('@path', () => {
   /* `@stop` then `@path`: the map draws nothing for a stopped lap, and the count does not care. */
   it('counts a stopped lap from its kept place', () => {
     const state = fake({
-      movement: { kind: 'loop', moving: false, resumable: true },
+      movement: { kind: 'loop', moving: false, resumable: true, onTrack: false },
       lap: { ...NO_LOOP, status: 'stopped', name: caveworm.name, remainingStops: [] },
       place: { ...lapOf(caveworm, false), index: 1 }
     });
@@ -128,7 +128,7 @@ describe('@path', () => {
 
   it('says ? where a stop owed is not placed, and uses the name where there is no file', () => {
     const state = fake({
-      movement: { kind: 'loop', moving: false, resumable: true },
+      movement: { kind: 'loop', moving: false, resumable: true, onTrack: false },
       lap: {
         ...NO_LOOP,
         status: 'stopped',
@@ -144,7 +144,7 @@ describe('@path', () => {
 
   it('writes a route as a loop stop is written, counted to where it goes', () => {
     const state = fake({
-      movement: { kind: 'route', moving: true, resumable: true },
+      movement: { kind: 'route', moving: true, resumable: true, onTrack: true },
       walk: {
         ...IDLE_WALK,
         status: 'walking',
@@ -159,7 +159,7 @@ describe('@path', () => {
 
   it('adds the trip a lap is held for', () => {
     const state = fake({
-      movement: { kind: 'loop', moving: true, resumable: true },
+      movement: { kind: 'loop', moving: true, resumable: true, onTrack: true },
       walk: {
         ...IDLE_WALK,
         status: 'walking',
@@ -199,7 +199,7 @@ describe('@loop after @path', () => {
 
   it('resumes the stopped lap it names, taking the distance as agreed', () => {
     const state = fake({
-      movement: { kind: 'loop', moving: false, resumable: true },
+      movement: { kind: 'loop', moving: false, resumable: true, onTrack: false },
       lap: { ...NO_LOOP, status: 'stopped', name: caveworm.name },
       place: lapOf(caveworm, false)
     });

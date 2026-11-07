@@ -27,7 +27,7 @@ export interface AttachView {
   readonly state: AttachSnapshot['state'];
   readonly character: AttachSnapshot['character'];
   readonly players: AttachSnapshot['players'];
-  readonly walker: { readonly progress: AttachSnapshot['walk'] };
+  readonly walkPush: { readonly progress: AttachSnapshot['walk'] };
   readonly loops: { readonly progress: AttachSnapshot['loop'] };
   readonly automation: AttachSnapshot['automation'];
   readonly appraisal: {
@@ -85,7 +85,7 @@ export async function attachSnapshot(
     state: manager?.state ?? IDLE_CONNECTION,
     character: manager?.character ?? EMPTY_CHARACTER,
     players: manager?.players ?? NO_PLAYERS,
-    walk: manager?.walker.progress ?? IDLE_WALK,
+    walk: manager?.walkPush.progress ?? IDLE_WALK,
     loop: manager?.loops.progress ?? NO_LOOP,
     automation: manager?.automation ?? EMPTY_AUTOMATION,
     verdict: manager?.appraisal.verdict ?? EMPTY_ROOM_VERDICT,

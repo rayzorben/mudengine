@@ -30,7 +30,7 @@ function loaded() {
     state: { ...IDLE_CONNECTION, phase: 'connecting' } as ConnectionState,
     character: EMPTY_CHARACTER,
     players: NO_PLAYERS,
-    walker: { progress: IDLE_WALK },
+    walkPush: { progress: IDLE_WALK },
     loops: { progress: NO_LOOP },
     automation: EMPTY_AUTOMATION,
     appraisal: { verdict: EMPTY_ROOM_VERDICT, asks: [] },

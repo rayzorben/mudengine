@@ -388,13 +388,15 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
        * One button, two words. A character is going or it is not, and a row
        * with a play *and* a stop on it spends two slots to say what one says —
        * with the dead one greyed most of the time. The picker is the card's;
-       * this presses play on whatever was last being walked.
+       * this presses play on whatever was last being walked. Stop while the
+       * character is on track (`Movement.onTrack`), so a party wait or an
+       * errand the client walks on from does not turn it into play.
        */
-      label: movement.moving ? t('toolbar.stopMoving') : t('toolbar.startMoving'),
-      icon: movement.moving ? 'stop' : 'play',
-      on: movement.moving,
-      disabled: !inRealm || (!movement.moving && !movement.resumable),
-      run: () => (movement.moving ? stopMoving() : startMoving())
+      label: movement.onTrack ? t('toolbar.stopMoving') : t('toolbar.startMoving'),
+      icon: movement.onTrack ? 'stop' : 'play',
+      on: movement.onTrack,
+      disabled: !inRealm || (!movement.onTrack && !movement.resumable),
+      run: () => (movement.onTrack ? stopMoving() : startMoving())
     },
     {
       /*

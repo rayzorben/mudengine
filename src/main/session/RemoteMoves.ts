@@ -18,14 +18,14 @@ import { matchLoopIn, splitStop, type Loop, type LoopProgress } from '../../shar
 import type { Movement, MovementKind, MovementStart } from '../../shared/movement';
 import type { MoveAnswer, PathReport } from '../../shared/remotes';
 import type { NoticeSink } from '../../shared/decisionSettings';
-import type { WalkProgress } from '../../shared/walk';
+import type { WalkerProgress } from '../../shared/walk';
 import { roomId, type RoomId, type RoomReference, type Route } from '../../shared/world';
 import { roomNamed, walkTo, type RoomFinder } from './roomWalk';
 
 /** The session's own doors a remote stop and resume go through. */
 export interface RemoteMovesSession {
   readonly movement: Movement;
-  readonly walker: { readonly progress: WalkProgress };
+  readonly walker: { readonly progress: WalkerProgress };
   readonly loops: { readonly progress: LoopProgress; readonly place: CarriedLap | null };
   stopMoving(by: string | null): void;
   startMoving(loopName: string | null, confirmed: number | null): MovementStart;
@@ -314,7 +314,7 @@ export class RemoteMoves {
 }
 
 /** A walk's destination as a loop stop is written (`Dark Cave 1/866`), which `@goto` reads back. */
-function written(walk: WalkProgress): string {
+function written(walk: WalkerProgress): string {
   const name = walk.destination ?? '?';
   const at = walk.destinationRoom;
   return at === null ? name : `${name} ${roomId(at.map, at.room)}`;

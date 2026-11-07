@@ -37,7 +37,7 @@ import type { Stash } from '../../shared/stash';
 import type { Odds } from '../../shared/survival';
 import type { SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
 import type { RoomId, Route, WorldRoom } from '../../shared/world';
-import type { WalkProgress } from '../../shared/walk';
+import type { WalkerProgress } from '../../shared/walk';
 import type { Intent, Offered } from '../automation/CommandQueue';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { SellAsk } from '../automation/SellTrip';
@@ -265,7 +265,7 @@ export interface ExtensionSessionHost {
     sell(ask: SellAsk): string | null;
     readonly current: SaleTrip | null;
   };
-  walk(): WalkProgress;
+  walk(): WalkerProgress;
   /** A command proposed to the queue, like any module's. */
   offer(intent: Intent): Offered;
   /** Settings laid over the character's own while this extension runs; null lifts them. */

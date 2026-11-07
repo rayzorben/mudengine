@@ -170,6 +170,7 @@ import { fightBook, type SessionOdds } from './OddsBook';
 import type { FightSimulator } from '../../shared/simulator';
 import { blessingsFor } from './BlessingChoice';
 import { Publisher } from './Publisher';
+import { WalkPush } from './WalkPush';
 import { Rewriter } from './Rewriter';
 import {
   DEFAULT_CONFIG,
@@ -376,6 +377,7 @@ export class SessionManager {
   readonly combat: AutoCombat;
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
+  readonly walkPush: WalkPush;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
   readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'reset' | 'dispose'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
@@ -492,6 +494,8 @@ export class SessionManager {
   private readonly questWatch: QuestWatch;
   /** Walking, looping and running away, and what a lost connection carries. See `Travel`. */
   private readonly travel: Travel;
+  /** The window's presses that are Travel's alone: Collect then walk, Walk On Without the Party. */
+  readonly moves: Pick<Travel, 'collectThenWalk' | 'walkOnWithoutParty'>;
   /** What was underway, kept in the character's record across a relaunch. See `CarryOver`. */
   private readonly carryOver: CarryOver;
   /** The timed passage the character stands in, said going in and coming out. */
@@ -771,6 +775,11 @@ export class SessionManager {
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     });
     // A route offers the command queue one verified step at a time, like everything else.
+    this.walkPush = new WalkPush(
+      () => this.walker.progress,
+      () => this.travel.walkOwed,
+      sink
+    );
     this.walker = new Walker(automation, this.queue, {
       ...{ realmSpeed, sneakRefusals, combatOn },
       ended: (arrived, reason) => {
@@ -868,7 +877,7 @@ export class SessionManager {
         // The Combat Stats' `Moving` clock: only the walker knows a route is in progress.
         this.tracker.noteMoving(progress.status === 'walking');
         this.carryOver.remember();
-        this.sink.walk?.(progress);
+        this.walkPush.walked();
       }
     });
 
@@ -1438,6 +1447,7 @@ export class SessionManager {
           this.travel.noteLap(progress);
           this.carryOver.remember();
           this.sink.loop?.(progress);
+          this.walkPush.settleSoon();
         },
         locate: () => this.claims.askWhereIAm(),
         lapBegun: (stopName) => this.statsBaseline.lapBegun(stopName),
@@ -1488,6 +1498,7 @@ export class SessionManager {
         ...reports
       }
     );
+    this.moves = this.travel;
     this.carryOver = new CarryOver(this.loops, this.travel, this.remotes, () => this.belongings);
     this.claims = new Claims(
       {
@@ -2821,6 +2832,7 @@ export class SessionManager {
     // nothing new, and a HUD re-render per line is exactly the stall the
     // architecture exists to prevent. The registry is its own (todo 730).
     this.publisher.players();
+    this.walkPush.settle();
     if (changed) {
       const state = this.acting();
       this.publishCharacter();
@@ -3144,15 +3156,6 @@ export class SessionManager {
     return this.errands.huntingAnswer(held, measure);
   }
 
-  /** Collect what the way needs, then walk it. See `Travel.collectThenWalk`. */
-  collectThenWalk(
-    items: Array<{ id: number; name: string }>,
-    route: Route,
-    run = false
-  ): string | null {
-    return this.travel.collectThenWalk(items, route, run);
-  }
-
   /** The press on the plan the panel is showing. See `Travel.walkPlan`. */
   walkPlan(route: Route, run = false): WalkStart {
     return this.travel.walkPlan(route, run);
@@ -3170,18 +3173,14 @@ export class SessionManager {
 
   /** What this character is doing about going anywhere. See `movementOf`. */
   get movement(): Movement {
-    return movementOf(this.walker.progress, this.loops.progress);
+    return movementOf(this.walkPush.progress, this.loops.progress);
   }
 
   /** The one stop, whichever of the two is running. See `Travel.stopMoving`. */
   stopMoving(by: string | null = null): void {
     this.travel.stopMoving(by);
     this.extensions.playerStopped();
-  }
-
-  /** The player walks on without the party. See `Travel.walkOnWithoutParty`. */
-  walkOnWithoutParty(): void {
-    this.travel.walkOnWithoutParty();
+    this.walkPush.settle(); // a wait Stop ended moves no walk, and may meet no line
   }
 
   /** The named loop, or whatever was stopped. See `Travel.startMoving`. */

@@ -41,9 +41,22 @@ export interface Movement {
    * acts on, but there is nothing left of it to walk.
    */
   resumable: boolean;
+  /**
+   * Still going somewhere as the player sees it, which is what the transport
+   * draws: moving, or stopped by the client with a pick-up owed
+   * (`WalkProgress.pickUpOwed`). Stop stays until the player presses it, the
+   * route arrives or the client cannot go on (the user, 2026-11-07: the button
+   * changed under every party wait and errand). Nothing in main reads it.
+   */
+  onTrack: boolean;
 }
 
-export const NOT_MOVING: Movement = { kind: null, moving: false, resumable: false };
+export const NOT_MOVING: Movement = {
+  kind: null,
+  moving: false,
+  resumable: false,
+  onTrack: false
+};
 
 /**
  * Which of the two the character is on, and whether it is going.
@@ -79,14 +92,24 @@ export const NOT_MOVING: Movement = { kind: null, moving: false, resumable: fals
  * `kind` is null only where nothing has been walked at all.
  */
 export function movementOf(walk: WalkProgress, loop: LoopProgress): Movement {
-  if (loop.status === 'running') return { kind: 'loop', moving: true, resumable: false };
-  if (walk.status === 'walking') return { kind: 'route', moving: true, resumable: false };
-  if (walk.asked && walk.status !== 'idle') {
-    return { kind: 'route', moving: false, resumable: walk.status === 'stopped' };
+  const going = (kind: MovementKind | null, resumable: boolean): Movement => ({
+    kind,
+    moving: false,
+    resumable,
+    onTrack: walk.pickUpOwed
+  });
+  if (loop.status === 'running')
+    return { kind: 'loop', moving: true, resumable: false, onTrack: true };
+  if (walk.status === 'walking') {
+    return { kind: 'route', moving: true, resumable: false, onTrack: true };
   }
-  if (loop.status === 'stopped') return { kind: 'loop', moving: false, resumable: true };
-  if (walk.status === 'idle') return NOT_MOVING;
-  return { kind: 'route', moving: false, resumable: false };
+  // A step back off a stopped route leaves the route to resume (`routeBehind`).
+  if (walk.routeBehind || (walk.asked && walk.status !== 'idle')) {
+    return going('route', walk.routeBehind || walk.status === 'stopped');
+  }
+  if (loop.status === 'stopped') return going('loop', true);
+  if (walk.status === 'idle') return going(null, false);
+  return going('route', false);
 }
 
 /**

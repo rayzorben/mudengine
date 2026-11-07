@@ -7,7 +7,7 @@
  * `mudengine-automation` › `parts/walking.md`.
  */
 import type { SneakRefusals } from '../sneakRefusals';
-import type { WalkKind, WalkProgress } from '../../../shared/walk';
+import type { WalkKind, WalkerProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
 import type { MobWaited } from '../../../shared/mobRules';
 import type { BarrierJob, HandAsk } from '../../../shared/barrierHands';
@@ -39,7 +39,7 @@ export interface WalkerEvents {
   /** Sneak refusals in a row, one count for every asker (`sneakRefusals.ts`). */
   sneakRefusals?: SneakRefusals;
   /** Progress changed, so the renderer can redraw. */
-  progress?(progress: WalkProgress): void;
+  progress?(progress: WalkerProgress): void;
   /**
    * The walk finished, one way or the other.
    *

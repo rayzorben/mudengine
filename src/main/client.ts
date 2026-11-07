@@ -2159,7 +2159,7 @@ function registerIpc(): void {
   );
   handle(
     Invoke.getWalk,
-    (_caller, session: SessionId) => host?.get(session)?.manager.walker.progress ?? IDLE_WALK
+    (_caller, session: SessionId) => host?.get(session)?.manager.walkPush.progress ?? IDLE_WALK
   );
   handle(
     Invoke.getAutomation,
@@ -2396,7 +2396,7 @@ function registerIpc(): void {
         if (id === null || name.length === 0) return t('app.route.invalidPayload');
         wanted.push({ id, name });
       }
-      return slot.manager.collectThenWalk(wanted, route, run === true);
+      return slot.manager.moves.collectThenWalk(wanted, route, run === true);
     }
   );
   /*
@@ -2530,7 +2530,7 @@ function registerIpc(): void {
     });
   });
   handle(Invoke.walkOnWithoutParty, (_caller, session: SessionId) => {
-    host?.get(session)?.manager.walkOnWithoutParty();
+    host?.get(session)?.manager.moves.walkOnWithoutParty();
   });
   /*
    * Back: one room the way the character came. `confirmed` is read exactly as

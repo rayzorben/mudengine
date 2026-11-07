@@ -1129,6 +1129,8 @@ notices:
       readError: Could not read {fileName} ({message}). Bank balances and worn slots are not saved
         until it can be read; what this session sees is still shown.
       saveError: 'Could not save {fileName}: {message}'
+      setAside: '{fileName} held the record for {other}. It is kept as {asideName}, and comes back
+        when this character plays there again; {fileName} now holds the record for {realm}.'
     problemConvertFailed: 'Could not read the world database {file}: {reason}.'
     problemEmptyConversion: The converted world database at {file} has no rooms in it.
     problemUnreadableIdentity: 'Cannot read the world database at {path}: {reason}.'
@@ -6383,6 +6385,7 @@ session:
   # The toolbar's back button: one room back the way the character came.
   back:
     alreadyThere: You are already in the room the trail came from.
+    stoppedForBack: you stepped back
     moveInFlight: A move is already on its way; try again when the room shows up.
     noRoute: no route
     noWay: 'No way back to the previous room: {reason}'

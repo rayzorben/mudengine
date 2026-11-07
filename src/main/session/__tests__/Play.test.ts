@@ -31,7 +31,8 @@ describe('play, placed first', () => {
     const { found, placed, startMoving } = session({
       kind: 'route',
       moving: true,
-      resumable: false
+      resumable: false,
+      onTrack: true
     });
     expect(await playPlaced(() => found, null, null)).toEqual({
       refused: t('session.move.alreadyMoving')
@@ -61,7 +62,10 @@ describe('play, placed first', () => {
       starting.startMoving.mock.invocationCallOrder[0]!
     );
 
-    const resuming = session({ kind: 'loop', moving: false, resumable: true }, 'lap');
+    const resuming = session(
+      { kind: 'loop', moving: false, resumable: true, onTrack: false },
+      'lap'
+    );
     expect(await playPlaced(() => resuming.found, null, null)).toEqual({ started: true });
     expect(resuming.placed).toHaveBeenCalledTimes(1);
   });
@@ -79,7 +83,10 @@ describe('play, placed first', () => {
   });
 
   it('reads a stopped lap named again as a resume, not a new lap', () => {
-    const { found } = session({ kind: 'loop', moving: false, resumable: true }, 'lap');
+    const { found } = session(
+      { kind: 'loop', moving: false, resumable: true, onTrack: false },
+      'lap'
+    );
     expect(refusesToPlay(found, 'lap')).toBeNull();
   });
 });

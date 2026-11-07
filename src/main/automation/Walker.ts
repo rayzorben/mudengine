@@ -53,7 +53,7 @@
  * the question and two answers to one question disagree the moment one is
  * edited.
  */
-import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
+import type { WalkHold, WalkKind, WalkerProgress, WalkStatus } from '../../shared/walk';
 import type { MobWaited } from '../../shared/mobRules';
 import { paceOf, pathOf, portalLeftUnseen, type UnfinishedRoute } from '../../shared/walk';
 import type { HandAnswer } from '../../shared/barrierHands';
@@ -350,7 +350,7 @@ export class Walker implements SessionModule {
     return this.status === 'walking' ? (this.route?.steps.slice(this.index) ?? []) : [];
   }
 
-  get progress(): WalkProgress {
+  get progress(): WalkerProgress {
     const step = this.route?.steps[this.index] ?? null;
     const last = this.route?.steps.at(-1) ?? null;
     const ahead = this.remaining;

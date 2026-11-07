@@ -6,7 +6,7 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { Walker } from '../Walker';
 import type { WalkerEvents } from '../walk/ports';
-import type { WalkKind, WalkProgress } from '../../../shared/walk';
+import type { WalkKind, WalkerProgress } from '../../../shared/walk';
 import {
   CONFIG as config,
   ROUTE,
@@ -202,7 +202,7 @@ describe('refusing to start', () => {
   /* Todo 129: walking with auto-combat on, running with it off, as the switch stands. */
   it('walks with auto-combat on and runs with it off, and the word follows the switch', () => {
     let on = true;
-    const seen: WalkProgress[] = [];
+    const seen: WalkerProgress[] = [];
     const walk = new Walker(config, queue, {
       notice: (m) => notices.push(m),
       progress: (p) => void seen.push(p),

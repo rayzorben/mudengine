@@ -48,7 +48,7 @@
  * somebody why their gang was being refused.
  */
 import type { LoopProgress } from '../../shared/loops';
-import type { WalkProgress } from '../../shared/walk';
+import type { WalkerProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
 import {
   follows,
@@ -314,7 +314,7 @@ export interface RemoteEvents extends StandingRemoteEvents, ChainedRemoteEvents 
    * question rather than pushed: the walker and the loop runner own their
    * progress, and this module proposes and never holds state of its own.
    */
-  progress?(): { walk: WalkProgress; loop: LoopProgress; stopped: StoppedByRemote | null };
+  progress?(): { walk: WalkerProgress; loop: LoopProgress; stopped: StoppedByRemote | null };
   /**
    * What the registry holds about somebody, for the wording of a question
    * (`ask`). Asked at the moment, as `progress` is: the registry is the

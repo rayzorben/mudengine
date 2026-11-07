@@ -8,13 +8,14 @@
  * four characters should not each have to look up; these are the opposite —
  * Rand's savings are not Probe's, and neither is the kit on Rand's back.
  *
- * **Stamped with the realm it was banked on, and ignored when that changes.**
+ * **Stamped with the realm it was banked on, and set aside when that changes.**
  * `BankBalance.shop` is the realm's own shop id, so the same number names a
- * different vault on a different realm — and the printed name that is the
- * fallback key is a place in a world that another realm need not have. The
- * file is kept and ignored rather than deleted, the rule `WorldMemory` follows
- * for the same reason: somebody who dials back gets it back, and throwing away
- * a record because a setting changed is not this client's call.
+ * different vault on a different realm, and the printed name that is the
+ * fallback key is a place in a world that another realm need not have. At the
+ * first write for another realm the other realm's file is renamed beside it
+ * (`asidePath`) and a file set aside for this realm is taken back up, so
+ * somebody who dials back gets it back (2026-11-07: Soul and Yang had moved
+ * realm, and a record left suspended saved no lap for a month).
  *
  * The realm is the **address dialled** and not the world file, which is
  * `PlayerBook`'s rule and is right here for the stronger reason: the vault is
@@ -55,6 +56,7 @@ import { errorMessage, faultWithin } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { RecordWrites } from '../app/recordWrites';
+import { slug } from './filename';
 
 interface BelongingsFile {
   version: 1;
@@ -155,6 +157,10 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   private closed = false;
   /** True once the file was found unreadable; nothing is written over it. */
   private suspended = false;
+  /** The realm whose record is in `file` and goes aside at the first write; null once it has. */
+  private displaced: string | null = null;
+  /** This realm's record set aside earlier and read from there, removed once `file` holds it. */
+  private takenFrom: string | null = null;
   /** In the background while playing, at once after `close` (`RecordWrites`). */
   private readonly writes: RecordWrites;
 
@@ -386,8 +392,10 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   rememberSpellDuration(spell: string, seconds: number): void {
     if (this.suspended) return;
     const key = spell.trim().toLowerCase();
-    if (key.length === 0 || !Number.isFinite(seconds) || seconds <= 0) return;
+    // Rounded before the test: 0.4s rounded to 0 was written, refused by
+    // `isDurationRecord` on the next read, and suspended Festus's whole record.
     const rounded = Math.round(seconds);
+    if (key.length === 0 || !Number.isFinite(rounded) || rounded <= 0) return;
     if (this.durations[key] === rounded) return;
     // The newest measurement wins outright: a duration grows with the
     // caster's level, and an average would lag it in the direction that
@@ -423,13 +431,31 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   }
 
   private load(): void {
+    const file = this.readAt(this.options.file);
+    if (file === null) return;
+    if (file.realm === this.options.realm) {
+      this.adopt(file);
+      return;
+    }
+    // A different realm's vaults are not this realm's: that file goes aside at
+    // the first write, and this realm's own comes back if it was set aside.
+    this.displaced = file.realm;
+    const aside = asidePath(this.options.file, this.options.realm);
+    const kept = this.readAt(aside);
+    if (kept === null || kept.realm !== this.options.realm) return;
+    this.takenFrom = aside;
+    this.adopt(kept);
+  }
+
+  /** The record in `file`, null when there is none or it does not read (then suspended, said). */
+  private readAt(file: string): BelongingsFile | null {
+    const fileName = path.basename(file);
     try {
-      if (!fs.existsSync(this.options.file)) return;
-      const parsed: unknown = JSON.parse(fs.readFileSync(this.options.file, 'utf8'));
+      if (!fs.existsSync(file)) return null;
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
       const fault = belongingsFault(parsed);
       if (fault !== null) {
         this.suspended = true;
-        const fileName = path.basename(this.options.file);
         const notSaved = t('notices.world.belongings.notSaved');
         // The field, so a check made stricter is seen at once (todo 18).
         this.options.notify?.(
@@ -437,32 +463,10 @@ export class Belongings implements BelongingsSink, UnderwaySink {
             ? t('notices.world.belongings.invalidFile', { fileName, notSaved })
             : t('notices.world.belongings.invalidField', { fileName, field: fault, notSaved })
         );
-        return;
+        return null;
       }
       // Read through `belongingsFault` just above.
-      const file = parsed as BelongingsFile;
-      // A different realm's vaults are not this realm's. Kept on disk, and
-      // nothing is written back over them until the character dials home.
-      if (file.realm !== this.options.realm) {
-        this.suspended = true;
-        return;
-      }
-      this.banks = file.banks;
-      this.loadout = (file.loadout ?? []).map((worn) => ({ ...worn, locked: worn.locked ?? null }));
-      this.stash = file.stash ?? [];
-      // Absent is *never read*, and stays null — not normalised to [].
-      this.spellbook = file.spellbook ?? null;
-      this.durations = file.spellDurations ?? {};
-      this.fled = file.fled ?? [];
-      this.huntRates = new Map(Object.entries(file.huntRates ?? {}));
-      // Absent is *never read*, and stays null — the spellbook's rule.
-      this.abilities = file.abilities ?? null;
-      this.identity = file.identity ?? null;
-      this.stats = file.stats ?? null;
-      this.statsBase = file.statsBase ?? null;
-      this.room = file.room ?? null;
-      this.lives = file.lives ?? null;
-      this.underway = asUnderway(file.underway);
+      return parsed as BelongingsFile;
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -471,12 +475,62 @@ export class Belongings implements BelongingsSink, UnderwaySink {
        */
       this.suspended = true;
       this.options.notify?.(
-        t('notices.world.belongings.readError', {
-          fileName: path.basename(this.options.file),
-          message: errorMessage(error)
-        })
+        t('notices.world.belongings.readError', { fileName, message: errorMessage(error) })
       );
+      return null;
     }
+  }
+
+  private adopt(file: BelongingsFile): void {
+    this.banks = file.banks;
+    this.loadout = (file.loadout ?? []).map((worn) => ({ ...worn, locked: worn.locked ?? null }));
+    this.stash = file.stash ?? [];
+    // Absent is *never read*, and stays null — not normalised to [].
+    this.spellbook = file.spellbook ?? null;
+    this.durations = file.spellDurations ?? {};
+    this.fled = file.fled ?? [];
+    this.huntRates = new Map(Object.entries(file.huntRates ?? {}));
+    // Absent is *never read*, and stays null — the spellbook's rule.
+    this.abilities = file.abilities ?? null;
+    this.identity = file.identity ?? null;
+    this.stats = file.stats ?? null;
+    this.statsBase = file.statsBase ?? null;
+    this.room = file.room ?? null;
+    this.lives = file.lives ?? null;
+    this.underway = asUnderway(file.underway);
+  }
+
+  /**
+   * The other realm's record out of the way before this realm's is written
+   * over it, said once. False when the rename failed: nothing is written, and
+   * the next change tries again.
+   */
+  private setAside(): boolean {
+    const other = this.displaced;
+    if (other === null) return true;
+    const fileName = path.basename(this.options.file);
+    const aside = asidePath(this.options.file, other);
+    try {
+      if (fs.existsSync(this.options.file)) fs.renameSync(this.options.file, aside);
+      if (this.takenFrom !== null) fs.rmSync(this.takenFrom, { force: true });
+    } catch (error) {
+      this.dirty = true;
+      this.options.notify?.(
+        t('notices.world.belongings.saveError', { fileName, message: errorMessage(error) })
+      );
+      return false;
+    }
+    this.displaced = null;
+    this.takenFrom = null;
+    this.options.notify?.(
+      t('notices.world.belongings.setAside', {
+        fileName,
+        other,
+        asideName: path.basename(aside),
+        realm: this.options.realm
+      })
+    );
+    return true;
   }
 
   private schedule(delayMs = tuning().records.belongingsWriteDelayMs): void {
@@ -500,6 +554,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   }
 
   private write(): void {
+    if (!this.setAside()) return;
     const payload: BelongingsFile = {
       version: 1,
       realm: this.options.realm,
@@ -624,10 +679,18 @@ export function peekRealm(file: string): string | null {
   return readRecord(file)?.realm ?? null;
 }
 
-/** The record for `realm`, or null for a missing, unreadable or other realm's file. */
+/** The record for `realm`, from `file` or from beside it where it was set aside, or null. */
 function peek(file: string, realm: string): BelongingsFile | null {
   const record = readRecord(file);
-  return record?.realm === realm ? record : null;
+  if (record === null || record.realm === realm) return record;
+  const aside = readRecord(asidePath(file, realm));
+  return aside?.realm === realm ? aside : null;
+}
+
+/** Where `realm`'s record waits while `file` holds another realm's: `rayzor@paramud…pvp.json`. */
+export function asidePath(file: string, realm: string): string {
+  const { dir, name, ext } = path.parse(file);
+  return path.join(dir, `${name}@${slug(realm)}${ext}`);
 }
 
 function readRecord(file: string): BelongingsFile | null {

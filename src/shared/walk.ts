@@ -136,6 +136,20 @@ export interface WalkProgress {
    * line per monster on a twenty-step journey is the chrome talking over it.
    */
   hold: WalkHold;
+  /**
+   * The client stopped the lap or route the player set going and walks it on
+   * by itself: a party wait, a walk back for a member, an errand or a key or
+   * fare before the route, a route carried over a lost connection
+   * (`Travel.picksUp`). The transport keeps Stop for it (`Movement.onTrack`,
+   * the user, 2026-11-07). The session's, not the walker's: see `WalkerProgress`.
+   */
+  pickUpOwed: boolean;
+  /**
+   * A route the player stopped and then stepped back from with the back
+   * button: the walk is the step back, and the route is still there for Play
+   * (`Travel.steppedOff`, the user, 2026-11-07). Also the session's.
+   */
+  routeBehind: boolean;
   /** Walking with auto-combat on, running with it off (todo 129), as the switch stands now. */
   pace: Pace;
   /**
@@ -352,6 +366,12 @@ export function landed(
   return room.name !== before.name || room.map !== before.map || room.number !== before.number;
 }
 
+/** What the walker itself knows: everything but what the session owes past it. */
+export type WalkerProgress = Omit<WalkProgress, 'pickUpOwed' | 'routeBehind'>;
+
+/** What the session adds to it. */
+export type WalkOwed = Pick<WalkProgress, 'pickUpOwed' | 'routeBehind'>;
+
 export const IDLE_WALK: WalkProgress = {
   status: 'idle',
   asked: true,
@@ -364,6 +384,8 @@ export const IDLE_WALK: WalkProgress = {
   ahead: [],
   reason: null,
   hold: null,
+  pickUpOwed: false,
+  routeBehind: false,
   pace: 'walking',
   stoppedShort: false,
   arrivalAt: null

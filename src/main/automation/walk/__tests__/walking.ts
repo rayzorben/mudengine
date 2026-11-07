@@ -13,7 +13,7 @@ import type { WalkerEvents } from '../ports';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../../shared/character';
 import type { Block, BlockType } from '../../../../shared/blocks';
-import type { WalkProgress } from '../../../../shared/walk';
+import type { WalkerProgress } from '../../../../shared/walk';
 import type { DecisionKind } from '../../../../shared/decisionSettings';
 import { noticeLog } from '../../__tests__/noticeLog';
 import { recordOffers } from '../../__tests__/offered';
@@ -151,7 +151,7 @@ export interface Rig {
   kindOf(message: string): DecisionKind | undefined;
   /** The decision the first intent offered for `command` was offered as. */
   decisionOf(command: string): DecisionKind | undefined;
-  progress: WalkProgress[];
+  progress: WalkerProgress[];
   ends: Array<[boolean, string | null]>;
   dispose(): void;
 }
@@ -170,7 +170,7 @@ export function rig(
 ): Rig {
   const sent: string[] = [];
   const { notices, kinds, notice, kindOf } = noticeLog();
-  const progress: WalkProgress[] = [];
+  const progress: WalkerProgress[] = [];
   const ends: Array<[boolean, string | null]> = [];
   const queue = new CommandQueue(config, { send: send ?? ((command) => sent.push(command)) });
   const { intents: offered, decisionOf } = recordOffers(queue);

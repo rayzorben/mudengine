@@ -52,6 +52,11 @@ export class KeyBuying {
     this.held = null;
   }
 
+  /** Whether a route is held for the listing or the keys, to be walked once they are in. */
+  get holding(): boolean {
+    return this.held !== null;
+  }
+
   /** Lets go of a held walk: where it was going, by name or room, or null where none was held. */
   drop(): string | null {
     const held = this.held;

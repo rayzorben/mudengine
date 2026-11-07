@@ -36,8 +36,18 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   ...over
 });
 
-const going = (kind: 'route' | 'loop'): Movement => ({ kind, moving: true, resumable: false });
-const stopped = (kind: 'route' | 'loop'): Movement => ({ kind, moving: false, resumable: true });
+const going = (kind: 'route' | 'loop'): Movement => ({
+  kind,
+  moving: true,
+  resumable: false,
+  onTrack: true
+});
+const stopped = (kind: 'route' | 'loop'): Movement => ({
+  kind,
+  moving: false,
+  resumable: true,
+  onTrack: false
+});
 
 describe('the toolbar vocabulary', () => {
   /*
@@ -148,9 +158,22 @@ describe('the toolbar vocabulary', () => {
     expect(key(NOT_MOVING).disabled).toBe(true);
     // A route that arrived is the movement the card reports on, and there is
     // still nothing left of it to walk.
-    expect(key({ kind: 'route', moving: false, resumable: false }).disabled).toBe(true);
+    expect(key({ kind: 'route', moving: false, resumable: false, onTrack: false }).disabled).toBe(
+      true
+    );
     expect(key(stopped('route')).disabled).toBe(false);
     expect(key(going('loop')).disabled).toBe(false);
+  });
+
+  /* The user, 2026-11-07: a party wait or an errand the client walks on from is still Stop. */
+  it('keeps Stop on a lap the client stopped and will walk on', () => {
+    const held = subject({ movement: { ...stopped('loop'), onTrack: true } });
+    const key = toolbarButtons(held).find((button) => button.id === 'move:toggle')!;
+    expect(key.icon).toBe('stop');
+    expect(key.disabled).toBe(false);
+    key.run();
+    expect(held.stopMoving).toHaveBeenCalledOnce();
+    expect(held.startMoving).not.toHaveBeenCalled();
   });
 });
 

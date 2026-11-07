@@ -20,7 +20,7 @@ import { wireExit, wireItem } from '../../../shared/entities';
 import type { AutomationConfig, AutomationSwitch } from '../../../shared/config';
 import type { Block } from '../../../shared/blocks';
 import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
-import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
+import { IDLE_WALK, type WalkerProgress } from '../../../shared/walk';
 import {
   ACTIONABLE_REMOTES,
   REFUSED_REPLY,
@@ -446,7 +446,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
 
   /* A loop's leg is a walk, so both run at once; the answer is the loop. */
   it('answers @status with the loop over the leg it is on, and the walk otherwise', () => {
-    const progress: { walk: WalkProgress; loop: LoopProgress; stopped: null } = {
+    const progress: { walk: WalkerProgress; loop: LoopProgress; stopped: null } = {
       walk: {
         status: 'walking',
         asked: true,

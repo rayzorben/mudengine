@@ -16,7 +16,7 @@ import {
 } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { NO_LOOP } from '../../../shared/loops';
-import { NOT_MOVING } from '../../../shared/movement';
+import { NOT_MOVING, type Movement } from '../../../shared/movement';
 import { classifyOccupant } from '../../../shared/mobs';
 import type { FledEntry } from '../../../shared/fled';
 import { IDLE_WALK } from '../../../shared/walk';
@@ -218,7 +218,10 @@ function travel(
     }),
     movement:
       overrides.movement ??
-      (() => (going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING })),
+      (() =>
+        going
+          ? { kind: 'route', moving: true, resumable: false, onTrack: true }
+          : { ...NOT_MOVING }),
     loopNamed: () => undefined,
     dropTyped: vi.fn(),
     notice: (message) => void notices.push(message),
@@ -373,7 +376,7 @@ describe('running from a fight', () => {
     } = travel(first, 'none', true, undefined, {
       settings: plain,
       movement: () =>
-        going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING }
+        going ? { kind: 'route', moving: true, resumable: false, onTrack: true } : { ...NOT_MOVING }
     });
     moving.considerEscape(first);
     expect(sent).toEqual(['n']);
@@ -1253,6 +1256,38 @@ describe('a party wait during a route', () => {
     expect(parts.walker.stop).toHaveBeenCalledWith(
       t('session.loop.pausedForRemote', { who: 'Killa' })
     );
+  });
+
+  /* The user, 2026-11-07: Stop stays through the wait, and a Stop then is the end of it. */
+  describe('what the wait owes', () => {
+    /** A route the wait stopped, as the session then reads it: stopped, and resumable. */
+    function waited() {
+      let stopped = false;
+      const movement = (): Movement =>
+        stopped
+          ? { kind: 'route', moving: false, resumable: true, onTrack: false }
+          : { kind: 'route', moving: true, resumable: false, onTrack: true };
+      const made = travel(EMPTY_CHARACTER, 'stepping', true, undefined, { movement });
+      made.travel.pace('Killa', false, false);
+      stopped = true;
+      const resumed = vi.spyOn(made.travel, 'startMoving');
+      return { ...made, resumed };
+    }
+
+    it('walks the route on when the member is ready and nobody pressed Stop', () => {
+      const { travel: moving, resumed } = waited();
+      expect(moving.picksUp).toBe(true);
+      moving.pace('Killa', true, false);
+      expect(resumed).toHaveBeenCalledWith(null, null, 'party');
+    });
+
+    it('owes nothing once the player presses Stop, and the ready walks nothing on', () => {
+      const { travel: moving, resumed } = waited();
+      moving.stopMoving();
+      expect(moving.picksUp).toBe(false);
+      moving.pace('Killa', true, false);
+      expect(resumed).not.toHaveBeenCalled();
+    });
   });
 
   it('leaves a walk nobody asked for to the errand walking it', () => {

@@ -173,7 +173,7 @@ function NavigationCard({
    * entry with nothing to choose between, a control that could only ever do
    * what the play button beside it already does.
    */
-  const canPick = !movement.moving && loops !== null && options.length > 0;
+  const canPick = !movement.onTrack && loops !== null && options.length > 0;
 
   /*
    * The two figures a lap earns, and both are only true **while it runs**: a
@@ -232,8 +232,9 @@ function NavigationCard({
    * drawn only on a bounce loop, since a plain one runs its list one way and
    * `nextStop` ignores the direction.
    */
+  // On track, not moving: a party wait or an errand the client walks on from keeps Stop.
   const controls: CardAction[] = [];
-  if (movement.moving) {
+  if (movement.onTrack) {
     controls.push({
       id: 'stop',
       label: t('cards.navigation.actions.stop'),
