@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
 
 import { t } from '../../app/i18n';
 import { setTuning, tuning } from '../../app/tuning';
 import type { Intent } from '../../automation/CommandQueue';
 import { LeaveHarm, type LeaveHarmParts } from '../LeaveHarm';
 import { RoomHazards, type RoomHazardsParts } from '../RoomHazards';
+import { WorldGraph } from '../../world/WorldGraph';
+import { wardOf } from '../../../shared/spellWard';
 import type { Block } from '../../../shared/blocks';
 import type { SafetyDecision } from '../../../shared/automation';
 import {
@@ -478,5 +484,70 @@ describe('a room whose damage the world database does not list', () => {
     expect(room.hurtsHere(current.state)).toBeNull();
     room.reset();
     expect(room.roomHurts(RIVER)).toBeNull();
+  });
+});
+
+/*
+ * Rayzor, 2026-11-06: walked out of every lava room "magma heat hurts in this
+ * room" with the phoenix feather on his neck. Magma heat (526) states 45 a
+ * tick and names no stopper; the feather negates it (`Items.NegateSpell`),
+ * and the server skips the whole cast for its wearer (`Spell.cs:970-1060`).
+ */
+describe('a room whose spell a worn item negates', () => {
+  const LAVA = '7/982';
+  const graph = (() => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-lava-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = {
+      v: 80,
+      source: 'test',
+      rooms: 1,
+      generatedAt: 'x',
+      items: [{ id: 1000, n: 'phoenix feather', worn: 8, neg: [218, 526] }],
+      spells: [{ id: 526, n: 'magma heat', hz: { d: 45 } }]
+    };
+    const room = { m: 7, r: 982, n: 'Lava Pool', sp: 526, x: {} };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync([header, room].map((row) => JSON.stringify(row)).join('\n'))
+    );
+    const loaded = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return loaded;
+  })();
+  const standing = (equipped: boolean): CharacterState => {
+    const feather = graph.buildItemEntity('phoenix feather', {
+      slot: equipped ? 'Neck' : null,
+      equipped
+    });
+    return at(LAVA, 161, {
+      inventory: { ...EMPTY_CHARACTER.inventory, items: [feather], listedAt: 1, rows: [1000] }
+    });
+  };
+  const hazards = (state: CharacterState) =>
+    new RoomHazards({
+      world: graph,
+      tracker: { current: state },
+      errands: {
+        spellsUp: () => [],
+        wardNow: (now: CharacterState) => wardOf(now.inventory.items, null)
+      } as unknown as RoomHazardsParts['errands'],
+      signs: NO_FIGHT_SIGNS,
+      hangUp: { monsterHit: () => false }
+    });
+
+  it('hurts while the feather is only carried', () => {
+    const state = standing(false);
+    expect(hazards(state).roomHurts(LAVA, state)).toBe('magma heat');
+  });
+
+  it('does not hurt, and is not left, while the feather is worn', () => {
+    const state = standing(true);
+    const room = hazards(state);
+    expect(room.roomHurts(LAVA, state)).toBeNull();
+    const { leave, sent, notices } = rig({ hurts: (r) => room.roomHurts(r, state) });
+    leave.consider(state);
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
   });
 });

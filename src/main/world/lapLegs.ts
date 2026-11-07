@@ -41,10 +41,11 @@ export function relocatingHazard(
   world: Pick<WorldGraph, 'hazardOf'> | undefined,
   level: number | null,
   keys: readonly number[] | undefined,
-  spellsUp: readonly number[] | undefined
+  spellsUp: readonly number[] | undefined,
+  ward?: Traveller['ward']
 ): NonNullable<Traveller['hazard']> {
   return (room, carrying = keys) => {
-    const stated = world?.hazardOf(room, level) ?? null;
+    const stated = world?.hazardOf(room, level, ward) ?? null;
     return stated === null ? null : relocatingShare(stated, carrying, spellsUp);
   };
 }
@@ -55,7 +56,7 @@ export function lapFunctions(
   plain: PlainTraveller
 ): Pick<Traveller, 'hazard' | 'shareOfHealth'> {
   return {
-    hazard: relocatingHazard(world, plain.level ?? null, plain.keys, plain.spellsUp),
+    hazard: relocatingHazard(world, plain.level ?? null, plain.keys, plain.spellsUp, plain.ward),
     shareOfHealth: () => 0
   };
 }

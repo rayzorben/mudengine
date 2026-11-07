@@ -130,6 +130,7 @@ import { fightWords, type FightWords } from './fightWords';
 import { HuntAnswers, identityOf, surveyedState, type SurveyHere } from './huntAnswers';
 import type { HuntingReply } from '../../shared/huntReply';
 import { EFFECT_ABILITY } from '../../shared/abilities';
+import { wardOf, type SpellWard } from '../../shared/spellWard';
 import { abilitySum } from '../../shared/light';
 import { chooseByExp } from '../../shared/statGains';
 import type { RealmFamily } from '../../shared/realm';
@@ -1071,6 +1072,7 @@ export class Errands implements SessionModule {
   ): Traveller {
     const pack = this.packContents(state);
     const up = this.spellsUp(state);
+    const ward = this.wardNow(state);
     const parts = this.runParts(state, 'lairKnown');
     // A route prices the wanderers auto-combat would fight as fights, and one
     // the odds book has not run off the realm's numbers (the user, 2026-11-03).
@@ -1154,6 +1156,8 @@ export class Errands implements SessionModule {
       // And the wards the server has stated up with a clock still running,
       // for a room spell one of them stops (todo 105).
       spellsUp: up,
+      // And the room spells a worn item negates, which cost nothing.
+      ward,
       ...pack,
       refused: this.refusedNow(),
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
@@ -1176,7 +1180,7 @@ export class Errands implements SessionModule {
        * it because `LairCosts` remembers per room; this has nothing to
        * remember, so what it depends on is hoisted instead.
        */
-      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up),
+      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up, ward),
       // And a room command's one-off hit as a share of the health now; null
       // while health is unread, which `hitCost` walls.
       shareOfHealth: healthShare(this.healthNow(state, false))
@@ -1333,12 +1337,14 @@ export class Errands implements SessionModule {
     room: WorldRoom,
     state: CharacterState,
     carrying: readonly number[],
-    up: readonly number[]
+    up: readonly number[],
+    ward: SpellWard
   ): number | null {
     if (!this.world) return null;
     // The character's own level: the realm gates some effects on it, and a
     // sandstorm that cannot catch this character is not a price it pays.
-    const stated = this.world.hazardOf(room, state.progress.level);
+    // A room spell a worn item negates does nothing to this character (`hazardOf`).
+    const stated = this.world.hazardOf(room, state.progress.level, ward);
     if (stated === null) return null;
     // Carrying what stops it is not *unknown*, it is *free*: the room costs a
     // plain step, which is what it is for that character.
@@ -3317,6 +3323,16 @@ export class Errands implements SessionModule {
     };
   }
 
+  /** What the worn gear negates, and ImmuPoison off the class and race rows (`wardOf`). */
+  wardNow(state: CharacterState): SpellWard {
+    return wardOf(state.inventory.items, this.poisonImmune());
+  }
+
+  /** ImmuPoison off the class and race rows; null while neither is read. */
+  private poisonImmune(): boolean | null {
+    return holdsAbility(this.capabilities(), IMMUNE_TO_POISON_ABILITY);
+  }
+
   /** `realmClass` without the attack, which `words` prices every attack from. */
   private classRows(): Omit<RealmClass, 'attack' | 'verb'> {
     const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
@@ -3327,7 +3343,7 @@ export class Errands implements SessionModule {
       mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
       crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits),
-      poisonImmune: holdsAbility(this.capabilities(), IMMUNE_TO_POISON_ABILITY),
+      poisonImmune: this.poisonImmune(),
       rounds: this.measuredRounds()
     };
   }

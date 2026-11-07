@@ -314,7 +314,7 @@ export class WorldGraph {
       spendsByEdge: this.spends,
       itemLandings: () => this.itemLandings(),
       leversFor: (room, direction) => this.leversFor(room, direction),
-      hazardOf: (room, level) => catalogue.hazardOf(room, level),
+      hazardOf: (room, level, ward) => catalogue.hazardOf(room, level, ward),
       spellOver: (room) => this.spellOver(room),
       item: (id) => catalogue.item(id),
       spellById: (id) => catalogue.spellById(id),
@@ -481,8 +481,8 @@ export class WorldGraph {
     return this.catalogue.spellCount;
   }
 
-  hazardOf(room: WorldRoom, level?: number | null): SpellHazard | null {
-    return this.catalogue.hazardOf(room, level);
+  hazardOf(...asked: Parameters<Catalogue['hazardOf']>): SpellHazard | null {
+    return this.catalogue.hazardOf(...asked);
   }
 
   /** Every item that takes something off a room spell at this level (`Catalogue.stoppersOf`). */

@@ -87,6 +87,7 @@ import type { RealmHeader } from './realmHeader';
 import { castBy, picksRead, NO_SUPPLY, readSupply, type WorldSupply } from './supply';
 import { fightSpellsOf } from '../../shared/summons';
 import { hitSpellsOf } from '../../shared/hitSpells';
+import { wardedFrom, type SpellWard } from '../../shared/spellWard';
 
 export class Catalogue {
   /**
@@ -1667,9 +1668,15 @@ export class Catalogue {
    * spell whose chain reaches nothing worth pricing. The last is the ordinary
    * case: two thirds of the realm's room spells are scenery.
    */
-  hazardOf(room: WorldRoom, level?: number | null): SpellHazard | null {
+  hazardOf(room: WorldRoom, level?: number | null, ward?: SpellWard): SpellHazard | null {
     if (room.spell === undefined) return null;
-    const hazard = this.spellById(room.spell)?.hazard ?? null;
+    const spell = this.spellById(room.spell);
+    // A worn item that negates the spell takes the whole cast off its wearer,
+    // the room's own tick included: `ApplyRoomCastSpell` casts it through the
+    // same `RollAndApplySpellAbilities` check (`Spell.cs:970-1060`). Rayzor's
+    // phoenix feather and the lava rooms' magma heat, 2026-11-06.
+    if (spell === null || wardedFrom(spell, ward)) return null;
+    const hazard = spell.hazard ?? null;
     /*
      * Narrowed to the character being planned for, where the realm gates an
      * effect on level and the client knows which character it is (todo 01).

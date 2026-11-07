@@ -62,6 +62,7 @@ import {
   type WorldExit,
   type WorldRoom
 } from '../../shared/world';
+import type { SpellWard } from '../../shared/spellWard';
 
 /** What the traveller can and cannot do, for edge evaluation. */
 export interface Traveller {
@@ -150,6 +151,11 @@ export interface Traveller {
    * half of `hazardAvoided` refused for a year. Absent is nobody has said.
    */
   spellsUp?: readonly number[];
+  /**
+   * What the worn gear negates (`wardOf`): a room spell in it is no hazard
+   * at all (`hazardOf`). Absent is nothing negated.
+   */
+  ward?: SpellWard;
   /** Picklocks, for a door the realm lets that skill open: leading, the party's best (`partyFigure`). */
   pickSkill?: number | null;
   /** Strength, for the same doors — the realm accepts either. Leading, the party's best. */
@@ -2230,7 +2236,7 @@ export class Router {
     const kitFor = (room: WorldRoom): number[] => {
       const held = kits.get(room);
       if (held !== undefined) return held;
-      const hazard = this.index.hazardOf(room, traveller.level);
+      const hazard = this.index.hazardOf(room, traveller.level, traveller.ward);
       const kit =
         hazard === null || hazardAvoided(hazard, traveller.keys, traveller.spellsUp)
           ? []
@@ -3665,7 +3671,7 @@ export class Router {
         ...(hazard !== null && hazard > 0 ? { hazard } : {}),
         // And the word, where the share is a discouragement and not a figure.
         ...(hazard !== null && hazard > 0 && arriving !== undefined
-          ? hazardWordOf(this.index.hazardOf(arriving, traveller.level))
+          ? hazardWordOf(this.index.hazardOf(arriving, traveller.level, traveller.ward))
           : {}),
         /*
          * **Either of them reaching the wall makes the step deadly.** It was
@@ -3765,7 +3771,7 @@ export class Router {
       const room = this.rooms.get(step.to);
       if (room?.spell === undefined) continue;
       const spell = this.index.spellById(room.spell);
-      const stated = this.index.hazardOf(room, traveller.level);
+      const stated = this.index.hazardOf(room, traveller.level, traveller.ward);
       if (spell === null || stated === null) continue;
       if (hazardAvoided(stated, traveller.keys, traveller.spellsUp)) continue;
       // What is left of it for this pack, and what would take more of it off.
@@ -3856,7 +3862,7 @@ export class Router {
       ...traveller,
       keys,
       hazard: (room, carrying = keys) => {
-        const hazard = this.index.hazardOf(room, traveller.level);
+        const hazard = this.index.hazardOf(room, traveller.level, traveller.ward);
         return hazard !== null && hazardAvoided(hazard, carrying) ? null : priced(room, carrying);
       }
     };

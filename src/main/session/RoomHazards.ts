@@ -40,7 +40,7 @@ export interface RoomHazardsParts {
   world:
     Pick<WorldGraph, 'byId' | 'hazardOf' | 'spellById' | 'item' | 'stockingPlaces'> | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
-  errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard'>;
+  errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard' | 'wardNow'>;
   /** A monster's blow the state does not show as a fight yet, for `RoomDamageSeen`. */
   signs: FightSigns;
   /** A monster's damage line lately, wherever it is now, for `RoomDamageSeen`. */
@@ -87,8 +87,8 @@ export class RoomHazards implements SessionModule {
    * character is not left in one (`LeaveHarm`).
    */
   roomHurts(room: RoomId, state: CharacterState = this.parts.tracker.current): string | null {
-    const spell = this.roomSpell(room, state);
     const { errands } = this.parts;
+    const spell = this.roomSpell(room, state, true);
     const stated =
       spell !== null &&
       hurtsUnstopped(spell.hazard, packRows(state.inventory), errands.spellsUp(state));
@@ -118,7 +118,8 @@ export class RoomHazards implements SessionModule {
       found,
       state,
       errands.packContents(state).keys,
-      errands.spellsUp(state)
+      errands.spellsUp(state),
+      errands.wardNow(state)
     );
     return share !== null && share >= tuning().world.otherWayShare ? stopper : null;
   }
@@ -143,15 +144,22 @@ export class RoomHazards implements SessionModule {
     };
   }
 
-  /** The room's own spell as `stoppersAlong` reads it, narrowed to this character's level. */
+  /**
+   * The room's own spell as `stoppersAlong` reads it, narrowed to this
+   * character's level, and gone where `warded` and the worn gear negates it
+   * (`Errands.wardNow`). `stoppersAlong` reads it unwarded: a party member
+   * may lack what the leader wears.
+   */
   private roomSpell(
     room: RoomId,
-    state: CharacterState = this.parts.tracker.current
+    state: CharacterState = this.parts.tracker.current,
+    warded = false
   ): RoomSpell | null {
     const world = this.parts.world;
     const found = world?.byId(room);
     if (world === undefined || found === undefined || found.spell === undefined) return null;
-    const hazard = world.hazardOf(found, state.progress.level);
+    const ward = warded ? this.parts.errands.wardNow(state) : undefined;
+    const hazard = world.hazardOf(found, state.progress.level, ward);
     const spell = world.spellById(found.spell);
     return hazard === null || spell === null ? null : { id: spell.id, name: spell.name, hazard };
   }

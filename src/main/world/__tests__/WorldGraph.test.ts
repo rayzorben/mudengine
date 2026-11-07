@@ -45,6 +45,7 @@ import { t } from '../../app/i18n';
 import { questLevel } from '../../../shared/quests';
 import type { QuestStep } from '../../../shared/quests';
 import type { NavigationOracle } from '../../../shared/navigation';
+import { wardOf, type SpellWard } from '../../../shared/spellWard';
 
 /** Every fight won and every counter paid: what a quest plan's way is weighed on here. */
 const WINS: NavigationOracle = {
@@ -7157,6 +7158,43 @@ describe('what a room does to whoever stands in it prices the way through it', (
     });
     expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
     expect(route.hazards).toBeUndefined();
+  });
+
+  /*
+   * Rayzor, 2026-11-06: magma heat (526) states 45 a tick and names no
+   * stopper, and the phoenix feather (1000) negates it from the item's side
+   * (`Items.NegateSpell`). Worn, the lava rooms cost nothing; carried, they do.
+   */
+  describe('a worn item that negates the room’s spell', () => {
+    const lava = () =>
+      makeWorld(
+        bothWays(3).map((room) => (room['sp'] === 753 ? { ...room, sp: 526 } : room)),
+        {
+          items: [{ id: 1000, n: 'phoenix feather', worn: 8, neg: [218, 526] }],
+          spells: [{ id: 526, n: 'magma heat', hz: { d: 45 } }]
+        },
+        30
+      );
+    const feather: SpellWard = { negates: new Set([218, 526]), poisonImmune: false };
+
+    it('takes the whole spell off its wearer', () => {
+      const graph = lava();
+      const pool = graph.get(1, 2)!;
+      expect(graph.hazardOf(pool)?.damage).toBe(45);
+      expect(graph.hazardOf(pool, null, feather)).toBeNull();
+      expect(graph.hazardOf(pool, null, wardOf([], null))).not.toBeNull();
+    });
+
+    it('walks the lava for a wearer and names no hazard on the way', () => {
+      const graph = lava();
+      const hazard = (room: WorldRoom) => {
+        const stated = graph.hazardOf(room, null, feather);
+        return stated === null ? null : (stated.damage ?? 0) / 100;
+      };
+      const route = graph.route(roomId(1, 1), roomId(1, 4), { ward: feather, hazard });
+      expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
+      expect(route.hazards).toBeUndefined();
+    });
   });
 
   it('says on the step what the room took, and names what would stop it', () => {
