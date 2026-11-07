@@ -10,6 +10,7 @@ import type { DecisionKind } from '../../../shared/decisionSettings';
 import {
   EMPTY_CHARACTER,
   NO_FIGHT_SIGNS,
+  partyMember,
   type CharacterState,
   type RoomOccupant
 } from '../../../shared/character';
@@ -561,6 +562,59 @@ describe('collecting before a walk', () => {
       { id: 1, name: 'rope', from: { step, moves: 1 } },
       { id: 2, name: 'torch' }
     ]);
+  });
+
+  /*
+   * 2026-11-06: Rayzor pressed collect-then-walk for his own raft and led
+   * Brakkle, who had none, into the Silver River. The members are asked
+   * first, then the errand fetches the leader's own once they answer.
+   */
+  it('asks the party about a way spell before fetching, and fetches once it is settled', () => {
+    const base = beside();
+    const state: CharacterState = {
+      ...base,
+      party: { ...base.party, members: [partyMember('Brakkle', { health: 1 })] }
+    };
+    const { travel: moving, parts, notices } = travel(state, 'none', true);
+    const river = { spell: 753, name: 'river damage', items: [{ id: 690, name: 'log raft' }] };
+    vi.mocked(parts.roomHazards.stoppersAlong).mockReturnValue([river]);
+    vi.mocked(parts.remotes.stoppers.settle).mockReturnValue({
+      asking: ['Brakkle'],
+      answers: new Map()
+    });
+    const route: Route = {
+      steps: [
+        {
+          from: '1/1813',
+          to: '1/1815',
+          direction: 'n',
+          command: 'n',
+          name: 'The Silver River',
+          requirement: null,
+          dark: false
+        }
+      ],
+      cost: 1,
+      blocked: false
+    };
+    const items = [{ id: 690, name: 'log raft' }];
+    expect(moving.collectThenWalk(items, route)).toBeNull();
+    expect(parts.roomHazards.stoppersAlong).toHaveBeenCalledWith(['1/1815']);
+    expect(notices).toContain(
+      t('automation.stoppers.asking', {
+        who: 'Brakkle',
+        spell: 'river damage',
+        items: 'log raft'
+      })
+    );
+    expect(parts.itemErrand.collect).not.toHaveBeenCalled();
+    // Brakkle answers that he carries one: the leader's own is fetched.
+    vi.mocked(parts.remotes.stoppers.settle).mockReturnValue({
+      asking: [],
+      answers: new Map([['Brakkle', { kind: 'has', item: 690 } as const]])
+    });
+    moving.beforeWalkTick(state);
+    expect(parts.itemErrand.collect).toHaveBeenCalledTimes(1);
   });
 });
 

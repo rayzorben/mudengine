@@ -13,6 +13,7 @@
 import { t } from '../app/i18n';
 import { partyMembers, standingHere, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
+import { REREAD_ROOM } from '../../shared/commands';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import {
@@ -22,11 +23,13 @@ import {
   type Landing,
   type RoomId
 } from '../../shared/world';
-import type { CommandQueue, Intent } from './CommandQueue';
+import { taken, type CommandQueue, type Intent } from './CommandQueue';
 import { PartyCompany } from './PartyCompany';
 import { partyListingIntent } from './PartyListing';
 
 const REGROUP: DecisionKind = 'party-regroup';
+/** One reprint of the landing at a time, however many reasons meet in the queue. */
+const LOOK_KEY = 'party:regroup:look';
 
 export interface PartyRegroupEvents {
   notice?: NoticeSink;
@@ -89,8 +92,12 @@ interface Gathering {
   invited: Set<string>;
   /** Whether a party listing has arrived since landing: before it, the roster is the old room's. */
   listed: boolean;
-  /** Whether the queue took the landing's `par` as a new intent; otherwise it is offered on each state (a waiting one joins) until a listing comes. */
+  /** Whether the queue took the landing's `par` or one already asked for joined it; otherwise it is offered on each state until a listing comes. */
   asked: boolean;
+  /** When the landing was read: a listing asked before it is about the old room. */
+  landedAt: number;
+  /** Lower-cased names whose unread line has had the room reprinted, so each asks once. */
+  looked: Set<string>;
 }
 
 export class PartyRegroup {
@@ -204,8 +211,40 @@ export class PartyRegroup {
   }
 
   onBlock(block: Block): void {
-    if (this.gathering === null) return;
-    if (block.type === 'party-roster' || block.type === 'party-alone') this.gathering.listed = true;
+    const gathering = this.gathering;
+    if (gathering === null) return;
+    if (block.type === 'party-roster' || block.type === 'party-alone') gathering.listed = true;
+    if (block.type === 'unknown') this.arrivingUnread(gathering, block.text);
+  }
+
+  /**
+   * A line that starts with a waited-for member's name and reads as nothing
+   * is most likely their arrival in a room script's own words (`Brakkle floats
+   * up through the hole which the Silver river thunders into.`, 2026-11-06),
+   * which names no room: the reprint's `Also here:` says whether they came.
+   */
+  private arrivingUnread(gathering: Gathering, text: string): void {
+    const member = gathering.members.find((name) =>
+      text.toLowerCase().startsWith(`${name.toLowerCase()} `)
+    );
+    if (member === undefined) return;
+    const key = member.toLowerCase();
+    if (gathering.looked.has(key)) return;
+    gathering.looked.add(key);
+    this.look(gathering, t('automation.party.reasonLookArrival', { member }));
+  }
+
+  /** A bare Enter: the server reprints the room, and who is standing in it with it. */
+  private look(gathering: Gathering, reason: string): void {
+    this.queue.enqueue({
+      command: REREAD_ROOM,
+      priority: 'probe',
+      coalesceKey: LOOK_KEY,
+      // Only for this wait: once it ends, the walk is moving and the Enter is a stray.
+      stillWanted: () => this.gathering === gathering,
+      reason,
+      decision: REGROUP
+    });
   }
 
   onCharacter(state: CharacterState): void {
@@ -248,14 +287,26 @@ export class PartyRegroup {
 
   private land(at: RoomId, members: string[]): void {
     this.crossing = null;
-    const gathering: Gathering = { at, members, invited: new Set(), listed: false, asked: false };
+    const gathering: Gathering = {
+      at,
+      members,
+      invited: new Set(),
+      listed: false,
+      asked: false,
+      landedAt: Date.now(),
+      looked: new Set()
+    };
     this.gathering = gathering;
     this.askForListing(gathering);
+    // The landing's block was printed before anyone followed the character up,
+    // so the room is asked for again behind the listing (the user, 2026-11-06).
+    this.look(gathering, t('automation.party.reasonLookLanding'));
   }
 
   /** `par`, without which the wait cannot see anyone rejoin; with no time limit, a refused one would hold for good. */
   private askForListing(gathering: Gathering): void {
-    gathering.asked = this.queue.enqueue(partyListingIntent(this.config, REGROUP));
+    const intent = partyListingIntent(this.config, REGROUP, gathering.landedAt);
+    gathering.asked = taken(this.queue.offer(intent));
   }
 
   /** Somewhere the portal does not lead: a scatter, or the player walking on by hand. */

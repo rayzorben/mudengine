@@ -183,6 +183,8 @@ describe('leading, when a member hangs up or quits', () => {
     remotes.onBlock(block('party-left', { player: 'Brakkle' }), state(754, ['Brakkle']));
     remotes.onBlock(block('player-disconnects', { player: 'Brakkle' }), state(754, []));
     remotes.onBlock(block('party-alone', {}), state(754, []));
+    // The listing's prompt: the `par` the leave asked for is answered.
+    queue.notePrompt();
     remotes.onCharacter(state(754, []));
     expect(remotes.away).toEqual(['Brakkle']);
     remotes.onCharacter(state(754, ['Brakkle']));

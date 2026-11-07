@@ -23,12 +23,20 @@ import type { CommandQueue, Intent } from './CommandQueue';
 /** Every ask for the party listing shares it, so asks that meet in the queue are one `par`. */
 export const PARTY_LISTING_KEY = 'probe:party';
 
-/** One `par`, under the party-change ask's key and word, so every ask for the listing is one. */
-export function partyListingIntent(config: AutomationConfig, decision: DecisionKind): Intent {
+/**
+ * One `par`, under the party-change ask's key and word, so every ask for the
+ * listing is one: sharing a send unanswered from `since` on (0: any).
+ */
+export function partyListingIntent(
+  config: AutomationConfig,
+  decision: DecisionKind,
+  since = 0
+): Intent {
   return {
     command: config.onPartyChange || 'par',
     priority: 'probe',
     coalesceKey: PARTY_LISTING_KEY,
+    sharesAnswerSince: since,
     reason: t('automation.routines.reasonPar'),
     decision
   };

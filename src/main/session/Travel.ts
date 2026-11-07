@@ -842,7 +842,7 @@ export class Travel implements SessionModule {
       return name === undefined ? [] : [{ id, name }];
     });
     if (wanted.length !== items.length) return false;
-    return this.collectThenWalk(wanted, route.blocked ? (route.unlocks ?? route) : route) === null;
+    return this.collectThenWalk(wanted, walkedWay(route)) === null;
   }
 
   /**
@@ -2218,7 +2218,31 @@ export class Travel implements SessionModule {
     const wanted = items.map((item) => planned.get(item.id) ?? item);
     return (
       this.unchosen(route) ??
-      this.switchedOnFor(() => this.itemErrand.collect(wanted, route, this.tracker.current, run))
+      this.switchedOnFor(() => {
+        /*
+         * The party first, as `walkRoute` does: Rayzor bought his own raft
+         * here and led Brakkle into the Silver River without one (2026-11-06).
+         * Once the members carry one, collect-then-walk runs again and the
+         * item errand fetches this character's own.
+         */
+        const destination = route.steps.at(-1)?.name;
+        const outfitted = this.outfitFor(
+          walkedWay(route).steps.map((step) => step.to),
+          false,
+          () => {
+            const refused = this.collectThenWalk(items, route, run);
+            if (refused === null) return;
+            this.session.notice(
+              destination === undefined
+                ? refused
+                : t('session.walk.notResumed', { destination, reason: refused })
+            );
+          }
+        );
+        if (outfitted.kind === 'refused') return outfitted.why;
+        if (outfitted.kind === 'held') return null;
+        return this.itemErrand.collect(wanted, route, this.tracker.current, run);
+      })
     );
   }
 
@@ -3136,4 +3160,9 @@ export function partyRemotes(
     walkBackFor: (who) => travel().walkBackFor(who),
     comeBack: (from, map, room, coming) => travel().walkBackTo(from, roomId(map, room), coming)
   };
+}
+
+/** The way a walk crosses: a blocked way's unlocked one, which names what it needs. */
+function walkedWay(route: Route): Route {
+  return route.blocked ? (route.unlocks ?? route) : route;
 }

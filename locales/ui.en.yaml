@@ -7907,6 +7907,8 @@ automation:
     # Todo 839: the party led through a room's own command, and waited for.
     reasonRelay: 'leading the party through "{command}"'
     reasonReinvite: 'inviting {member} back into the party'
+    reasonLookLanding: reading the room again after the move, to see who followed
+    reasonLookArrival: 'reading the room again to see whether {member} has arrived'
     regrouping: 'Waiting up to {minutes} min for the party to rejoin: {members}.'
     regroupingUntilBack: 'Waiting for the party to rejoin: {members}.'
     reinvited: '{member} is here but out of the party; inviting them back.'

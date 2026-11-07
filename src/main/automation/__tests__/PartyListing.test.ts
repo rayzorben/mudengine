@@ -38,7 +38,11 @@ describe('the party listing on a clock', () => {
       () => config(party),
       () => at
     );
-  const drain = (): void => void vi.advanceTimersByTime(500);
+  /** Half a second on, each send answered with its prompt, as the server does. */
+  const drain = (): void => {
+    vi.advanceTimersByTime(500);
+    for (const _ of sent) queue.notePrompt();
+  };
 
   beforeEach(() => {
     vi.useFakeTimers();

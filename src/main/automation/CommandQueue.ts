@@ -78,6 +78,15 @@ export interface Intent {
    * `megamind-client` to exempt every direction from its de-duplicator.
    */
   coalesceKey?: string;
+  /**
+   * Joins a send under the same key made at or after this moment that no
+   * prompt has answered yet, as well as a waiting one: one listing on the wire
+   * answers everybody who asks for it. 0 takes any; an asker that needs a
+   * listing from after a move of its own passes the move's time. Four `party`
+   * went out in one second behind a levitation, one per `Your party has been
+   * disbanded.` and one for the landing (2026-11-06).
+   */
+  sharesAnswerSince?: number;
   /** Dropped rather than sent late. */
   expiresAt?: number;
   /**
@@ -287,8 +296,8 @@ export class CommandQueue {
   private timer: NodeJS.Timeout | null = null;
   /** When the armed timer fires, so a sooner deadline can replace it. */
   private timerAt = 0;
-  /** When each outstanding command was sent, oldest first. */
-  private outstanding: number[] = [];
+  /** When each outstanding command was sent, and its coalesce key, oldest first. */
+  private outstanding: Array<{ at: number; key: string | null }> = [];
   /**
    * Why the character is not at a command prompt at all, or null.
    *
@@ -428,6 +437,14 @@ export class CommandQueue {
           existing.onSent = intent.onSent;
           existing.onFumbled = intent.onFumbled;
         }
+        return 'joined';
+      }
+      // A send unanswered past the acknowledgement timeout is written off, as `reclaimStalled` does.
+      const since = intent.sharesAnswerSince;
+      const answeredBy = this.ackDeadline();
+      const onTheWire = (sent: { at: number; key: string | null }): boolean =>
+        sent.key === intent.coalesceKey && sent.at >= answeredBy && sent.at >= (since ?? 0);
+      if (since !== undefined && this.outstanding.some(onTheWire)) {
         return 'joined';
       }
     }
@@ -696,7 +713,7 @@ export class CommandQueue {
       this.typingHeld = false;
     }
     this.inFlight += 1;
-    this.outstanding.push(now);
+    this.outstanding.push({ at: now, key: next.coalesceKey ?? null });
     this.lastSentAt = now;
     /*
      * Trimmed **on the way in**, which is what makes the bound real: the only
@@ -786,6 +803,11 @@ export class CommandQueue {
     return this.typingHeld && this.typingHeldUntil > Date.now();
   }
 
+  /** A send older than this has been answered or written off. */
+  private ackDeadline(): number {
+    return Date.now() - this.config.pacing.ackTimeoutMs;
+  }
+
   /**
    * Releases credit for commands that never produced a prompt.
    *
@@ -794,8 +816,8 @@ export class CommandQueue {
    * time one went unanswered.
    */
   private reclaimStalled(): void {
-    const deadline = Date.now() - this.config.pacing.ackTimeoutMs;
-    while (this.outstanding.length > 0 && this.outstanding[0]! < deadline) {
+    const deadline = this.ackDeadline();
+    while (this.outstanding.length > 0 && this.outstanding[0]!.at < deadline) {
       this.outstanding.shift();
       if (this.inFlight > 0) this.inFlight -= 1;
     }

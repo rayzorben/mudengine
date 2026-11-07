@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { PartyRegroup } from '../PartyRegroup';
+import { partyListingIntent } from '../PartyListing';
 import { Walker } from '../Walker';
 import { CONFIG, routeOf, stepOf } from '../walk/__tests__/walking';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
@@ -115,7 +116,7 @@ describe('leading the party through a portal', () => {
     it.onBlock(listing);
     it.onCharacter(state('17/3042', [], ['Soul']));
     drain();
-    expect(sent).toEqual([PAR, 'invite Soul']);
+    expect(sent).toEqual([PAR, '', 'invite Soul']);
     it.onCharacter(state('17/3042', ['Soul']));
     expect(it.regrouping(state('17/3042', ['Soul']))).toBe(false);
   });
@@ -173,19 +174,19 @@ describe('leading the party through a portal', () => {
     it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul', 'Yang']));
     it.onCharacter(state('3/681', [], []));
     drain();
-    expect(sent).toEqual(['.@party go vortex', PAR]);
+    expect(sent).toEqual(['.@party go vortex', PAR, '']);
     expect(it.regrouping(far)).toBe(true);
 
     // Before the listing answers, the roster is the old room's: nothing is judged.
     it.onCharacter(state('3/681', [], ['Soul']));
     drain();
-    expect(sent).toEqual(['.@party go vortex', PAR]);
+    expect(sent).toEqual(['.@party go vortex', PAR, '']);
 
     it.onBlock(listing);
     it.onCharacter(state('3/681', [], ['Soul']));
     it.onCharacter(state('3/681', [], ['Soul']));
     drain();
-    expect(sent).toEqual(['.@party go vortex', PAR, 'invite Soul']);
+    expect(sent).toEqual(['.@party go vortex', PAR, '', 'invite Soul']);
     expect(it.regrouping(far)).toBe(true);
 
     it.onCharacter(state('3/681', ['Soul', 'Yang']));
@@ -207,14 +208,56 @@ describe('leading the party through a portal', () => {
     expect(it.regrouping(far)).toBe(true);
     it.onCharacter(state('3/681', [], []));
     drain();
-    expect(sent).toEqual(['.@party go hole', PAR]);
+    expect(sent).toEqual(['.@party go hole', PAR, '']);
     it.onBlock(listing);
     it.onCharacter(state('3/681', [], ['Brakkle']));
     drain();
-    expect(sent).toEqual(['.@party go hole', PAR, 'invite Brakkle']);
+    expect(sent).toEqual(['.@party go hole', PAR, '', 'invite Brakkle']);
     expect(it.regrouping(far)).toBe(true);
     it.onCharacter(state('3/681', ['Brakkle']));
     expect(it.regrouping(far)).toBe(false);
+  });
+
+  /*
+   * Rayzor on OCI, 2026-11-06: Brakkle followed the potion of levitation up
+   * the waterfall in the room script's own words, which read as nothing, and
+   * the wait did not see him for 36 seconds.
+   */
+  it("shows the room again once for a member's arrival it cannot read", () => {
+    const it = regroup();
+    it.stepping('use potion of levitation', 'portal', '3/681', state('3/25', ['Brakkle']));
+    it.onCharacter(state('3/681', [], []));
+    it.onBlock(listing);
+    drain();
+    expect(sent).toEqual(['.@party use potion of levitation', PAR, '']);
+    const floats = (text: string): Block =>
+      ({ type: 'unknown', seq: 2, at: 0, domain: 'unknown', groups: {}, text }) as unknown as Block;
+    it.onBlock(floats('A cool breeze blows through the room.'));
+    it.onBlock(floats('Brakkle floats up through the hole which the Silver river thunders into.'));
+    it.onBlock(floats('Brakkle floats up through the hole which the Silver river thunders into.'));
+    drain();
+    expect(sent).toEqual(['.@party use potion of levitation', PAR, '', '']);
+    it.onCharacter(state('3/681', [], ['Brakkle']));
+    drain();
+    expect(sent.at(-1)).toBe('invite Brakkle');
+    it.dispose();
+  });
+
+  /* On review: a `party` asked before the move answers for the old room, so the landing asks its own. */
+  it('asks its own listing on landing past one sent before the move and still unanswered', () => {
+    const it = regroup();
+    it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul']));
+    queue.offer(partyListingIntent(config(), 'party-change'));
+    drain();
+    expect(sent).toEqual(['.@party go vortex', PAR]);
+    it.onCharacter(state('3/681', [], []));
+    drain();
+    expect(sent).toEqual(['.@party go vortex', PAR, PAR, '']);
+    // And one asked after the landing is shared.
+    queue.offer(partyListingIntent(config(), 'party-change'));
+    drain();
+    expect(sent).toEqual(['.@party go vortex', PAR, PAR, '']);
+    it.dispose();
   });
 
   it('tells a member no room has shown lately, and does not wait for them', () => {
@@ -323,7 +366,7 @@ describe('leading the party through a portal', () => {
     walk.onCharacter(now);
     it.onCharacter(now);
     vi.advanceTimersByTime(TUNING.walk.holdMs * 2);
-    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR]);
+    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, '']);
     expect(walk.progress.hold).toBe('party');
 
     it.onBlock(listing);
@@ -331,7 +374,7 @@ describe('leading the party through a portal', () => {
     walk.onCharacter(now);
     it.onCharacter(now);
     vi.advanceTimersByTime(TUNING.walk.holdMs + 50);
-    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, 'e']);
+    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, '', 'e']);
     expect(walk.progress.hold).toBeNull();
     walk.dispose();
     it.dispose();
@@ -358,12 +401,12 @@ describe('leading the party through a portal', () => {
     it.onCharacter(now);
     vi.advanceTimersByTime(TUNING.walk.holdMs * 2);
     expect(walk.progress.hold).toBe('party');
-    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR]);
+    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, '']);
 
     expect(it.release()).toBe(true);
     expect(said.at(-1)).toBe(t('automation.party.regroupReleased'));
     vi.advanceTimersByTime(TUNING.walk.holdMs + 50);
-    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, 'e']);
+    expect(sent).toEqual(['.@party go vortex', 'go vortex', PAR, '', 'e']);
     expect(walk.progress.hold).toBeNull();
     expect(it.release()).toBe(false);
     walk.dispose();
@@ -394,6 +437,7 @@ describe('the decision behind the say, the wait and the invitation (todo 119)', 
     expect(decided).toEqual([
       ['.@party go vortex', 'party-relay-portal'],
       [PAR, 'party-regroup'],
+      ['', 'party-regroup'],
       ['invite Soul', 'party-regroup']
     ]);
     expect(lines.length).toBeGreaterThan(0);

@@ -114,6 +114,32 @@ describe('coalescing', () => {
     expect(sent.filter((c) => c === 'st')).toHaveLength(1);
   });
 
+  /* 2026-11-06: four `party` behind a levitation, each offered after the last had gone. */
+  it('joins a listing on the wire until a prompt answers it, where the intent shares its answer', () => {
+    const par = { command: 'party', priority: 'probe', coalesceKey: 'probe:party' } as const;
+    expect(queue.offer({ ...par, sharesAnswerSince: 0 })).toBe('queued');
+    expect(sent).toEqual(['party']);
+    expect(queue.offer({ ...par, sharesAnswerSince: 0 })).toBe('joined');
+    // Positive control: without the flag the same ask goes out again.
+    expect(queue.offer(par)).toBe('queued');
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['party', 'party']);
+    queue.notePrompt();
+    queue.notePrompt();
+    expect(queue.offer({ ...par, sharesAnswerSince: 0 })).toBe('queued');
+    expect(sent).toEqual(['party', 'party', 'party']);
+  });
+
+  it('joins only a send made from the moment the asker names', () => {
+    const par = { command: 'party', priority: 'probe', coalesceKey: 'probe:party' } as const;
+    queue.offer({ ...par, sharesAnswerSince: 0 });
+    vi.advanceTimersByTime(100);
+    // A listing asked for after a move is not answered by one sent before it.
+    expect(queue.offer({ ...par, sharesAnswerSince: Date.now() })).toBe('queued');
+    expect(sent).toEqual(['party', 'party']);
+    expect(queue.offer({ ...par, sharesAnswerSince: Date.now() })).toBe('joined');
+  });
+
   it('does not collapse two identical commands with no coalesce key', () => {
     // The bug a text-matching de-duplicator causes: a second `n` is a different
     // move, and swallowing it strands a walk. Coalescing is by intent only.

@@ -47,7 +47,7 @@
  * longer the only one. See CLAUDE.md "Every listing is seeded by a command and
  * maintained for free".
  */
-import { PARTY_LISTING_KEY, PartyListing } from './PartyListing';
+import { PartyListing, partyListingIntent } from './PartyListing';
 import { SelfLook } from './SelfLook';
 import { BriefLook } from './BriefLook';
 import type { RoomLook } from '../../shared/roomArt';
@@ -445,14 +445,10 @@ export class Routines implements SessionModule {
    */
   onPartyChanged(): void {
     if (!this.config.enabled) return;
-    const command = this.config.onPartyChange;
-    if (command.length === 0) return;
+    if (this.config.onPartyChange.length === 0) return;
     this.queue.enqueue({
-      command,
-      priority: 'probe',
-      coalesceKey: PARTY_LISTING_KEY,
-      reason: t('automation.routines.reasonPartyChanged'),
-      decision: 'party-change'
+      ...partyListingIntent(this.config, 'party-change'),
+      reason: t('automation.routines.reasonPartyChanged')
     });
   }
 
