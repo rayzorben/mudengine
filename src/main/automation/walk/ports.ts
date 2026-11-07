@@ -140,8 +140,9 @@ export interface WalkerEvents {
    */
   lightComing?(state: CharacterState): boolean;
   /**
-   * Whether this character, leading, is waiting on the far side of a portal
-   * for its party to rejoin (`PartyRegroup`, todo 839), which owns the bound.
+   * Whether this character, leading, waits for its party: on the far side of
+   * a portal until it rejoins (`PartyRegroup`, todo 839, which owns the
+   * bound), or on a trip while the party waits for a member (`PartyWait`).
    */
   regrouping?(state: CharacterState): boolean;
   /**

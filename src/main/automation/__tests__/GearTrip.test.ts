@@ -309,7 +309,7 @@ describe('a gear trip', () => {
   it('drops the trip on a death', () => {
     const trip = make();
     trip.start(PLAN, false, current);
-    trip.abandon();
+    trip.abandon(t('automation.hostTrip.endedDied'));
     expect(trip.busy).toBe(false);
     expect(notices.at(-1)).toBe(
       t('automation.gearTrip.ended', { why: t('automation.hostTrip.endedDied') })

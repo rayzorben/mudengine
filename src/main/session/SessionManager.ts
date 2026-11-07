@@ -860,7 +860,7 @@ export class SessionManager {
       escaping: () => this.travel.escapeUnanswered || this.travel.isRetreating(),
       // A light coming for this room, which a walk waits on; asked, as this runs after the walker.
       lightComing: (state) => this.light.couldReady(state),
-      regrouping: (state) => this.remotes.regrouping(state),
+      regrouping: (state) => this.travel.waitsForParty(state),
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
       askHand: (name, job, direction) => this.remotes.askHand(name, job, direction),
       notice,
@@ -3179,9 +3179,9 @@ export class SessionManager {
     this.extensions.playerStopped();
   }
 
-  /** The player walks on without the party. See `PartyRegroup.release`. */
+  /** The player walks on without the party. See `Travel.walkOnWithoutParty`. */
   walkOnWithoutParty(): void {
-    this.remotes.releaseRegroup();
+    this.travel.walkOnWithoutParty();
   }
 
   /** The named loop, or whatever was stopped. See `Travel.startMoving`. */

@@ -307,7 +307,7 @@ describe('getting rid of outgrown gear', () => {
     const errand = trip();
     found = [outgrown('silver ring', 50_000)];
     errand.onCharacter(packed(entity('silver ring')));
-    errand.abandon();
+    errand.abandon(t('automation.outgrown.abandonedDied'));
     expect(released).toBe(1);
     expect(errand.busy).toBe(false);
   });

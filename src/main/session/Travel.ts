@@ -156,6 +156,12 @@ function encumbered(exit: { note: string | null; requirement?: unknown }): boole
  * to nobody across a lost connection. The kit's, the trainer's, a quest's and
  * the item errand's (`walkLegTo`).
  */
+/** A trip the character can be on, and how a walk back for a member gives it up, said as `why`. */
+interface Trip {
+  busy(): boolean;
+  giveUp(why: string): void;
+}
+
 export const ERRAND_LEG = {
   quiet: false,
   asked: false,
@@ -219,13 +225,16 @@ export interface TravelParts {
   readonly combat: Pick<AutoCombat, 'willFight' | 'alsoFight' | 'stopFighting'>;
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon' | 'fetch'>;
   /** The leader's question to each member about a room's spell on the way, and `@do` (todo 20261021-1200-01). */
-  readonly remotes: Pick<Remotes, 'ask' | 'away' | 'leftBehind'> & {
+  readonly remotes: Pick<
+    Remotes,
+    'ask' | 'away' | 'leftBehind' | 'regrouping' | 'releaseRegroup'
+  > & {
     stoppers: StopperOutfitParts['stoppers'];
   };
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
   readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
-  readonly hostTrips: Pick<HostTrips, 'busy' | 'abandon' | 'stop'>;
+  readonly hostTrips: Pick<HostTrips, 'busy' | 'abandon' | 'stop' | 'giveUp'>;
   readonly areaSearch: Pick<AreaSearch, 'busy' | 'abandon' | 'stop'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
@@ -464,6 +473,15 @@ export class Travel implements SessionModule {
    */
   private steppingBack: TrailStep | null = null;
   /**
+   * Whether the party's stop holds a trip's walk where it stands (`Holds`'
+   * `party` hold). Ended, a trip plans its
+   * leg again and walks on: Rayzor's shop trip left a webbed Brakkle in the
+   * Fungus Forest and stood in the Curio Shop after (OCI, 2026-11-07).
+   */
+  private heldTrip = false;
+  /** `trips`, built on first read: every module it names is built by then. */
+  private tripRows: Trip[] | null = null;
+  /**
    * Whether `pickUpAfterLoss` has said, this connection, that it is waiting
    * for the room. Once, because the entry probe is what asks, and this is only
    * ever waiting for the answer; reset at `connect` and on leaving the realm.
@@ -547,7 +565,9 @@ export class Travel implements SessionModule {
       // Nobody's asked route, so a stopped lap stays the movement play picks up (`movementOf`).
       walk: (route) => this.walker.start(route, this.tracker.current, { asked: false }),
       stopWalk: (why) => this.walker.stop(why),
-      busy: () => this.walkBackRefused(),
+      backPressOut: () => this.steppingBack !== null,
+      makeWay: (who) => this.giveUpTripsFor(who),
+      refusal: () => (this.recoverGear.busy ? t('session.comeBack.gearFirst') : null),
       pause: (why) => this.pauseMoving(why, COMEBACK),
       unfinished: () => (this.session.movement().kind === 'route' ? this.walker.unfinished : null),
       resume: (who, walked) => this.resumeMoving(who, walked),
@@ -697,6 +717,7 @@ export class Travel implements SessionModule {
    * that a carried journey waits to be placed.
    */
   reset(): void {
+    this.heldTrip = false;
     this.lastAskedToEscape = 0;
     this.landedAt = 0;
     this.ranThisFight = false;
@@ -1097,6 +1118,7 @@ export class Travel implements SessionModule {
   /** The session is closing: nothing may walk on for a wait it held. */
   dispose(): void {
     this.partyWait.forget();
+    this.heldTrip = false;
     this.aimedHold.forget();
     this.comeBack.cancel(null);
     this.returnToMember.forget();
@@ -1106,7 +1128,8 @@ export class Travel implements SessionModule {
    * Stops what is moving for the party, saying why: a running lap, or a route
    * somebody asked for (todo 20261023-1950-01: a `@wait` during a goto went
    * unheeded). False where neither was. A walk back is already the party's
-   * stop. An errand's own walk is left to the errand.
+   * stop. A trip under way is held where it stands (`heldTrip`), the lap it
+   * holds with it.
    */
   private pauseMoving(why: string, decision: DecisionKind): boolean {
     if (this.comeBack.active) {
@@ -1116,12 +1139,18 @@ export class Travel implements SessionModule {
     }
     // A stop of its own: a route a walk back owed is not what goes on after it.
     this.comeBack.forgetOwed();
+    this.heldTrip = false;
     if (
       this.walker.walking &&
       this.walker.progress.asked &&
       this.loops.progress.status !== 'running'
     ) {
       this.walker.stop(why);
+      return true;
+    }
+    if (this.errandUnderWay() && !this.escaping) {
+      this.heldTrip = true;
+      this.session.notice(why, decision);
       return true;
     }
     if (this.loops.progress.status !== 'running') return false;
@@ -1143,6 +1172,8 @@ export class Travel implements SessionModule {
    */
   private movementStopped(): boolean {
     if (this.comeBack.active) return true;
+    // A held trip stays held, whatever walk it is on, until a route the player asked for goes.
+    if (this.heldTrip && !(this.walker.walking && this.walker.progress.asked)) return true;
     const movement = this.session.movement();
     if (movement.moving) {
       this.comeBack.forgetOwed();
@@ -1152,16 +1183,43 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * Why a walk back cannot start now: a leg would replace an errand's own
-   * walk without its ending being heard, or a back press's.
+   * A walk back is starting for `who`: every trip under way is given up, each
+   * saying why, so none plans a leg over the walk back. A shop, bank or
+   * trainer trip comes back by itself once the lap goes on with the party.
    */
-  private walkBackRefused(): string | null {
-    if (this.steppingBack !== null) return t('session.comeBack.backPressed');
-    const errandWalking =
-      this.walker.walking &&
-      !this.walker.progress.asked &&
-      this.loops.progress.status !== 'running';
-    return errandWalking ? t('session.comeBack.errandWalking') : null;
+  private giveUpTripsFor(who: string): void {
+    this.heldTrip = false;
+    const why = t('session.comeBack.tripGivenUp', { who });
+    for (const trip of this.trips) if (trip.busy()) trip.giveUp(why);
+  }
+
+  /**
+   * Whether the walk stands still for the party (`Holds.holdForParty`): the
+   * trip `pauseMoving` held, never a walk back, an escape, a step out of a
+   * room that hurts, or a route the player asked for.
+   */
+  holdsWalkForParty(): boolean {
+    return (
+      this.heldTrip &&
+      this.partyWait.holding &&
+      !this.comeBack.active &&
+      !this.escaping &&
+      !this.leaveHarm.underWay &&
+      !this.walker.progress.asked
+    );
+  }
+
+  /** Leading, whether the walk waits for the party: behind a portal (`PartyRegroup`), or a held trip. */
+  waitsForParty(state: CharacterState): boolean {
+    return this.remotes.regrouping(state) || this.holdsWalkForParty();
+  }
+
+  /** The player's Walk On Without the Party: behind a portal, or on a trip the party's wait holds. */
+  walkOnWithoutParty(): void {
+    this.remotes.releaseRegroup();
+    if (!this.holdsWalkForParty()) return;
+    this.heldTrip = false;
+    this.partyWait.walkOn();
   }
 
   /**
@@ -1178,6 +1236,22 @@ export class Travel implements SessionModule {
      * presses play, having read how far.
      */
     if (this.comeBack.active) return;
+    /*
+     * A held trip walks on by itself once the hold lets go: nothing was
+     * stopped. Over during the hold, its lap is still running and walks on
+     * the same way; anything else is resumed as a stop is.
+     */
+    if (this.heldTrip) {
+      this.heldTrip = false;
+      if (this.errandUnderWay()) {
+        this.session.notice(t('session.loop.tripGoesOn'), 'party-wait');
+        return;
+      }
+      if (this.loops.progress.status === 'running') {
+        this.session.notice(t('automation.loops.resumed'), 'party-wait');
+        return;
+      }
+    }
     const owed = this.comeBack.takeOwed();
     if (owed !== null) {
       this.answerResume(who, this.resumeRoute(confirmed, owed));
@@ -1219,6 +1293,7 @@ export class Travel implements SessionModule {
    */
   forgetFollowers(): void {
     this.partyWait.forget();
+    this.heldTrip = false;
     this.aimedHold.forget();
     this.comeBack.cancel(null);
   }
@@ -1581,21 +1656,36 @@ export class Travel implements SessionModule {
   /**
    * An errand or a quest run has the character, in any phase: one waiting on
    * a listing or a level stands still and walks nowhere, and is still under
-   * way. The one list, read here and by `holdsTrips`.
+   * way. Read here, by `holdsTrips` and by `pauseMoving`.
    */
   errandUnderWay(): boolean {
-    return (
-      this.supplies.current !== null ||
-      this.trainLevel.busy ||
-      this.outgrown.busy ||
-      this.recoverGear.busy ||
-      this.hostTrips.busy ||
-      this.areaSearch.busy ||
-      this.itemErrand.running ||
-      this.questRunner.running ||
-      this.outfit.busy ||
-      this.fareCash.busy
-    );
+    return this.recoverGear.busy || this.trips.some((trip) => trip.busy());
+  }
+
+  /**
+   * Every trip but the gear recovery, with how a walk back gives it up
+   * (`giveUpTripsFor`). The recovery is never given up: walked off, the gear
+   * stays on the floor where the character died, so a walk back waits for it.
+   */
+  private get trips(): readonly Trip[] {
+    this.tripRows ??= [
+      { busy: () => this.supplies.current !== null, giveUp: (why) => this.supplies.abandon(why) },
+      {
+        busy: () => this.trainLevel.busy,
+        giveUp: (why) => this.trainLevel.abandon(t('automation.train.abandoned', { why }))
+      },
+      {
+        busy: () => this.outgrown.busy,
+        giveUp: (why) => this.outgrown.abandon(t('automation.outgrown.abandoned', { why }))
+      },
+      { busy: () => this.hostTrips.busy, giveUp: (why) => this.hostTrips.giveUp(why) },
+      { busy: () => this.areaSearch.busy, giveUp: (why) => this.areaSearch.stop(why) },
+      { busy: () => this.itemErrand.running, giveUp: (why) => this.itemErrand.abandon(why) },
+      { busy: () => this.questRunner.running, giveUp: (why) => this.questRunner.abandon(why) },
+      { busy: () => this.outfit.busy, giveUp: (why) => this.outfit.abandon(why) },
+      { busy: () => this.fareCash.busy, giveUp: (why) => this.fareCash.giveUp(why) }
+    ];
+    return this.tripRows;
   }
 
   /**
@@ -3072,6 +3162,7 @@ export class Travel implements SessionModule {
     if (this.loops.progress.status === 'running') this.loops.stop(t('session.loop.stoppedDied'));
     else this.loops.restate(t('session.loop.stoppedDied'));
     this.partyWait.end();
+    this.heldTrip = false;
     this.comeBack.cancel(null);
     // And an errand: the shop it was walking to is several maps away now.
     // With it goes the route it was shopping on behalf of — a death is the
@@ -3083,9 +3174,9 @@ export class Travel implements SessionModule {
     // And the party's outfitting: the counter and the members are elsewhere now.
     this.outfit.abandon(t('automation.stoppers.abandonedDied'));
     // And the walk to a trainer, on exactly the same terms (todo 21).
-    this.trainLevel.abandon();
+    this.trainLevel.abandon(t('automation.train.abandonedDied'));
     // And the walk to the ganghouse or a counter with outgrown gear (todo 12).
-    this.outgrown.abandon();
+    this.outgrown.abandon(t('automation.outgrown.abandonedDied'));
     // And a fetch from a stash, on the same terms (todo 05).
     this.hostTrips.abandon();
     // And a search of the area: its rooms are around the room it died in.

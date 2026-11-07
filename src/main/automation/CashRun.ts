@@ -188,8 +188,9 @@ export class CashRun implements SessionModule {
     }
   }
 
-  abandon(): void {
-    if (this.run !== null) this.end(t('automation.hostTrip.endedDied'));
+  /** A death, or a walk back for a member: the run ends, saying `why`. */
+  abandon(why: string): void {
+    if (this.run !== null) this.end(why);
   }
 
   /** The tokens the dialog offers: those carried that go from anywhere. */

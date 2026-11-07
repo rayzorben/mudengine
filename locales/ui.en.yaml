@@ -6375,6 +6375,7 @@ session:
     pausedForRest: 'Waiting for {who} to rest to your own settings, under Manage Party Health If Leading'
     pausedForJoin: 'Waiting for {who} to join the party'
     pausedForRejoin: 'Waiting for {who} to rejoin the party'
+    tripGoesOn: The party is ready; going on with the trip.
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
     partyWaitGaveUpStillAway: 'Waited {minutes} min for {who} (Wait No Longer Than); still stopped for {away}, who hung up and is not back.'
   # Play and stop. A character is routing, looping or stopped, so there is one
@@ -6397,9 +6398,9 @@ session:
     leftBehind: '{who} asked the party to wait after it had already moved on.'
     noWay: 'Cannot walk back for {who}: {reason}'
     nothingBehind: 'Not walking back for {who}: there is no confirmed move to walk back over.'
+    tripGivenUp: 'walking back for {who}'
     notNow: 'Not walking back for {who}: {reason}'
-    backPressed: the character is already going back a room
-    errandWalking: the character is on a trip to the shop or bank, and stopping it would lose the trip
+    gearFirst: the gear lost at the death is being picked up first, and walking off would leave it
     trailEnded: no confirmed move is left to walk back over
     off: 'Not walking back for {who}: Walk Back For a Member is 0.'
     started: Walking back for {who}, up to {rooms} rooms.
@@ -6731,6 +6732,7 @@ session:
         go.'
       bankSilent: '{bank} did not answer, so the fare was not withdrawn and the walk does not go.'
       notReached: 'Did not reach {bank} to withdraw for the fare: {why}'
+      givenUp: 'Not withdrawing for the fare, {why}. The route that needed it is not walked.'
     fareUnread: This way pays {fare} in fares, and your cash has not been read yet to weigh it
       against {share}%. Look at your inventory first, or open it on the route panel and say to pay
       it.
@@ -7307,6 +7309,7 @@ automation:
     reasonLevel: 'training: the experience for a level is there'
     reasonAskOwed: 'reading the experience needed, to see if a level is ready'
     abandonedDied: 'Died: the walk to the trainer is canceled. The level is still waiting.'
+    abandoned: 'The walk to the trainer is canceled, {why}. The level is still waiting.'
     becauseOwed: a level was earned and not collected
     whyStopped: the walk stopped before it arrived
     whyFetch: the key for the door on the way was not fetched
@@ -7738,6 +7741,7 @@ automation:
     whyStopped: the walk stopped before it arrived
     whyUnanswered: it is still in your inventory after the {verb}
     abandonedDied: 'Died: the walk to get rid of outgrown gear is canceled.'
+    abandoned: 'The walk to get rid of outgrown gear is canceled, {why}.'
     keptRare: 'Keeping {item}: the world data rates it rare.'
     keptQuest: 'Keeping {item}: {quest} still needs it.'
     keptRarityUnknown: 'Keeping {item}: the world data does not say how rare it is.'

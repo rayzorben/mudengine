@@ -169,6 +169,8 @@ function travel(
     },
     remotes: {
       leftBehind: vi.fn(),
+      regrouping: () => false,
+      releaseRegroup: vi.fn(),
       stoppers: {
         settle: vi.fn<TravelParts['remotes']['stoppers']['settle']>(() => ({
           asking: [],
@@ -184,7 +186,7 @@ function travel(
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },
     recoverGear: { busy: false, deciding: () => false },
-    hostTrips: { busy: false, abandon: vi.fn(), stop: vi.fn() },
+    hostTrips: { busy: false, abandon: vi.fn(), stop: vi.fn(), giveUp: vi.fn() },
     areaSearch: { busy: false, abandon: vi.fn(), stop: vi.fn() },
     hunt: { noteStopped: vi.fn(), noteLapStopped: vi.fn() },
     itemErrand: {
@@ -1258,6 +1260,92 @@ describe('a party wait during a route', () => {
     (parts.walker as { progress: unknown }).progress = { ...IDLE_WALK, asked: false };
     moving.pace('Killa', false, false);
     expect(parts.walker.stop).not.toHaveBeenCalled();
+  });
+
+  /* Rayzor, 2026-11-07: his shop trip walked on from a webbed Brakkle, and the realm dropped him. */
+  it("holds a trip's walk where it stands until the member is ready", () => {
+    const { travel: moving, parts, notices } = travel(EMPTY_CHARACTER, 'stepping');
+    (parts.walker as { progress: unknown }).progress = { ...IDLE_WALK, asked: false };
+    (parts.supplies as { current: unknown }).current = { item: 'brass lamp' };
+    expect(moving.holdsWalkForParty()).toBe(false);
+    moving.pace('Brakkle', false, false);
+    expect(moving.holdsWalkForParty()).toBe(true);
+    expect(parts.walker.stop).not.toHaveBeenCalled();
+    expect(parts.loops.stop).not.toHaveBeenCalled();
+    expect(parts.supplies.abandon).not.toHaveBeenCalled();
+    moving.pace('Brakkle', true, false);
+    expect(moving.holdsWalkForParty()).toBe(false);
+    expect(notices.at(-1)).toBe(t('session.loop.tripGoesOn'));
+  });
+
+  it('gives a trip up, saying why, to walk back for a member it left behind', () => {
+    const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'none', false);
+    (parts.supplies as { current: unknown }).current = { item: 'brass lamp' };
+    const back = { steps: [{ to: '1/1', name: 'Gate' }], blocked: false } as unknown as Route;
+    (parts.tracker as { trail: unknown }).trail = [{ from: '1/1', direction: 'n', to: '1/2' }];
+    vi.mocked(parts.errands.planFromHere).mockReturnValue(back);
+    moving.walkBackFor('Brakkle');
+    const why = t('session.comeBack.tripGivenUp', { who: 'Brakkle' });
+    expect(parts.supplies.abandon).toHaveBeenCalledWith(why);
+    // Only what is under way: the supply trip was, the host trips were not.
+    expect(parts.hostTrips.giveUp).not.toHaveBeenCalled();
+    expect(parts.walker.start).toHaveBeenCalledWith(back, EMPTY_CHARACTER, { asked: false });
+  });
+
+  /** A trip under way, its walk stepping, and Brakkle asking the party to wait. */
+  function heldTrip() {
+    const made = travel(EMPTY_CHARACTER, 'stepping');
+    (made.parts.walker as { progress: unknown }).progress = { ...IDLE_WALK, asked: false };
+    (made.parts.supplies as { current: unknown }).current = { item: 'brass lamp' };
+    made.travel.pace('Brakkle', false, false);
+    expect(made.travel.holdsWalkForParty()).toBe(true);
+    return made;
+  }
+
+  /* The incident's breaking step: the trip's walk moving was read as the player walking on. */
+  it("keeps waiting while the held trip's walk is still the walker's", () => {
+    const { travel: moving, notices } = heldTrip();
+    moving.watchParty(EMPTY_CHARACTER);
+    expect(moving.holdsWalkForParty()).toBe(true);
+    // Still the wait's to end: the member's word is what lets the trip go.
+    moving.pace('Brakkle', true, false);
+    expect(notices.at(-1)).toBe(t('session.loop.tripGoesOn'));
+  });
+
+  it('lets Walk On Without the Party release a held trip', () => {
+    const { travel: moving, parts } = heldTrip();
+    moving.walkOnWithoutParty();
+    expect(parts.remotes.releaseRegroup).toHaveBeenCalled();
+    expect(moving.holdsWalkForParty()).toBe(false);
+  });
+
+  it('never holds a route the player asked for, which the wait stops instead', () => {
+    const { travel: moving, parts } = travel(EMPTY_CHARACTER, 'stepping');
+    (parts.supplies as { current: unknown }).current = { item: 'brass lamp' };
+    moving.pace('Brakkle', false, false);
+    expect(parts.walker.stop).toHaveBeenCalled();
+    expect(moving.holdsWalkForParty()).toBe(false);
+  });
+
+  it('lets a walk back go through a trip the wait was holding', () => {
+    const { travel: moving, parts } = heldTrip();
+    const back = { steps: [{ to: '1/1', name: 'Gate' }], blocked: false } as unknown as Route;
+    (parts.tracker as { trail: unknown }).trail = [{ from: '1/1', direction: 'n', to: '1/2' }];
+    vi.mocked(parts.errands.planFromHere).mockReturnValue(back);
+    moving.walkBackFor('Brakkle');
+    expect(parts.supplies.abandon).toHaveBeenCalled();
+    expect(moving.holdsWalkForParty()).toBe(false);
+  });
+
+  it('waits for the gear lost at a death before walking back, and says so', () => {
+    const { travel: moving, parts, notices } = travel(EMPTY_CHARACTER, 'none', false);
+    (parts.recoverGear as { busy: boolean }).busy = true;
+    (parts.tracker as { trail: unknown }).trail = [{ from: '1/1', direction: 'n', to: '1/2' }];
+    moving.walkBackFor('Brakkle');
+    expect(parts.walker.start).not.toHaveBeenCalled();
+    expect(notices).toContain(
+      t('session.comeBack.notNow', { who: 'Brakkle', reason: t('session.comeBack.gearFirst') })
+    );
   });
 
   // A leg back is nobody's asked route, so the lap it stopped is still what play picks up.

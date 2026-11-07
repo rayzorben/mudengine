@@ -43,6 +43,7 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
   for (let at = 1; at < rooms; at += 1) trail.push(step(`1/${at}`, `1/${at + 1}`));
   const log: string[] = [];
   const walks: RoomId[] = [];
+  const madeWay: string[] = [];
   let moving = true;
   const flight = { out: false };
   const owed: UnfinishedRoute = { to: '9/9', name: 'Eastern Road', left: 20 };
@@ -60,7 +61,9 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
       return null;
     },
     stopWalk: (why) => void log.push(`stopWalk:${why}`),
-    busy: () => null,
+    backPressOut: () => false,
+    makeWay: (who) => void madeWay.push(who),
+    refusal: () => null,
     pause: (why) => {
       log.push(`pause:${why}`);
       const was = moving;
@@ -77,7 +80,7 @@ function port(rooms: number, over: Partial<ComeBackPort> = {}) {
     notice: (message) => void log.push(message),
     ...over
   };
-  return { fake, trail, log, walks, flight };
+  return { fake, trail, log, walks, flight, madeWay };
 }
 
 describe('how far a walk back goes', () => {
@@ -234,11 +237,47 @@ describe('a leader walking back for a member (@comeback)', () => {
     expect(log.some((line) => line.startsWith(noWay))).toBe(false);
   });
 
-  it('waits while an errand walks the character or a back press is walked', () => {
-    const { fake, log, walks } = port(3, { busy: () => 'an errand' });
+  /* Rayzor, 2026-11-07: his shop trip refused the walk back for a webbed Brakkle and left him in the Fungus Forest. */
+  it('gives up a trip before the walk back stops anything, and walks back', () => {
+    const order: string[] = [];
+    const { fake, walks } = port(3, {
+      makeWay: (who) => void order.push(`makeWay:${who}`),
+      pause: () => {
+        order.push('pause');
+        return true;
+      }
+    });
     new ComeBack(fake).asked('Killa', standing('1/3'));
+    expect(order).toEqual(['makeWay:Killa', 'pause']);
+    expect(walks).toEqual(['1/2']);
+  });
+
+  it('waits out a back press still walking, then walks back', () => {
+    const press = { out: true };
+    const { fake, log, walks } = port(3, { backPressOut: () => press.out });
+    const back = new ComeBack(fake);
+    back.asked('Killa', standing('1/3'));
     expect(walks).toEqual([]);
-    expect(log).toEqual([t('session.comeBack.notNow', { who: 'Killa', reason: 'an errand' })]);
+    back.onCharacter(standing('1/3'));
+    expect(walks).toEqual([]);
+    press.out = false;
+    back.onCharacter(standing('1/3'));
+    expect(walks).toEqual(['1/2']);
+    expect(log.some((line) => line.startsWith('Not walking back'))).toBe(false);
+  });
+
+  it('walks to the room the member was last seen in when no trail is left to walk back over', () => {
+    const { fake, log, walks } = port(1, { lastSeen: () => '7/7' });
+    new ComeBack(fake).asked('Killa', standing('1/1'));
+    expect(walks).toEqual(['7/7']);
+    expect(log).not.toContain(t('session.comeBack.nothingBehind', { who: 'Killa' }));
+  });
+
+  it('says there is nothing to walk back over when no trail is left and the member was never seen', () => {
+    const { fake, log, walks } = port(1);
+    new ComeBack(fake).asked('Killa', standing('1/1'));
+    expect(walks).toEqual([]);
+    expect(log).toEqual([t('session.comeBack.nothingBehind', { who: 'Killa' })]);
   });
 });
 

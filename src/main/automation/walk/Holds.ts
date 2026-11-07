@@ -1105,7 +1105,7 @@ export class Holds {
     return true;
   }
 
-  /** Stand still, leading, for the party: rejoining after a portal, or still fighting here. */
+  /** Stand still, leading, for the party: rejoining after a portal, waited for on a trip, or still fighting here. */
   holdForParty(state: CharacterState): boolean {
     return (
       this.holdWhile('party', this.events.regrouping?.(state) === true, state) ||

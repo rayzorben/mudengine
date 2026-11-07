@@ -40,7 +40,7 @@ export interface ManagedFloors {
 }
 
 export interface PartyWaitMoves {
-  /** Stop the running lap or the asked route, saying `why`; false where neither was moving. */
+  /** Stop the running lap or the asked route, or hold a trip's walk, saying `why`; false where none was. */
   pauseMoving(why: string): boolean;
   /** Whether what was stopped is still stopped, so walking on has something to resume. */
   stopped(): boolean;
@@ -223,6 +223,11 @@ export class PartyWait {
     return () => {
       if (held) this.played();
     };
+  }
+
+  /** The player's Walk On Without the Party, under a trip the wait holds: given up as Play gives it up. */
+  walkOn(): void {
+    if (this.paused) this.played();
   }
 
   /** The player walked on, by Play or a route of their own: every member waited for now is given up on. */

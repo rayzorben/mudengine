@@ -193,7 +193,7 @@ describe('selling at a counter for an extension', () => {
   it('is dropped by a death, and the lap goes back', () => {
     const trip = make();
     trip.sell({ room: STORE, items: ['rope'] }, carrying('rope'));
-    trip.abandon();
+    trip.abandon(t('automation.hostTrip.endedDied'));
     expect(trip.busy).toBe(false);
     expect(released).toBe(1);
   });

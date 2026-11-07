@@ -34,8 +34,12 @@ export interface ComeBackPort {
   walk(route: Route): string | null;
   /** Stop the leg back on the way, saying why. */
   stopWalk(why: string): void;
-  /** Why a walk back cannot start now (an errand's walk, a back press), or null. */
-  busy(): string | null;
+  /** Whether a back press is still walking: a leg waits for it to end, as for a move in flight. */
+  backPressOut(): boolean;
+  /** A walk back for `who` is starting: every trip under way is given up, said. */
+  makeWay(who: string): void;
+  /** Why no walk back may start now (the gear lost at a death being picked up), or null. */
+  refusal(): string | null;
   /** Stop whatever is moving, said as `why`; false where nothing was. */
   pause(why: string): boolean;
   /** The route the walker holds stopped, before a leg back replaces it. */
@@ -126,6 +130,12 @@ export class ComeBack {
       rooms
     );
     if (legs === 0) {
+      // No trail to walk back over (a reconnect): the room they were last seen in, if any.
+      const seen = this.port.lastSeen(who);
+      if (seen !== null && seen !== roomAddress(state.room)) {
+        this.askedTo(who, seen, state, () => {}, { limit: rooms });
+        return;
+      }
       this.port.notice(t('session.comeBack.nothingBehind', { who }), COMEBACK);
       return;
     }
@@ -152,7 +162,7 @@ export class ComeBack {
     if (answered === true) coming();
     if (answered !== null) return;
     const limit = lastSeen?.limit ?? null;
-    if (this.port.moveInFlight()) {
+    if (this.waitsToPlan()) {
       // The stop's last step is still out: the leg is planned from where it lands.
       const params = { who, address: to };
       const starting =
@@ -227,7 +237,9 @@ export class ComeBack {
   /**
    * What a come-back asked of this character is answered with before any
    * walk: true where it is already walking for `who` or `who` is here
-   * (invited), false where it cannot walk now (said), null to walk.
+   * (invited), false where it is walking back for somebody else or cannot
+   * walk now (said), null to walk. A trip or a back press never refuses it:
+   * the trip is given up (`makeWay`) and the back press waited out (`waitsToPlan`).
    */
   private answered(who: string, state: CharacterState): boolean | null {
     if (this.walk?.who.toLowerCase() === who.toLowerCase()) return true;
@@ -240,14 +252,21 @@ export class ComeBack {
       this.port.notice(t('session.comeBack.here', { who }), COMEBACK);
       return true;
     }
-    const busy = this.port.busy();
-    if (busy === null) return null;
-    this.port.notice(t('session.comeBack.notNow', { who, reason: busy }), COMEBACK);
+    const refused = this.port.refusal();
+    if (refused === null) return null;
+    this.port.notice(t('session.comeBack.notNow', { who, reason: refused }), COMEBACK);
     return false;
+  }
+
+  /** A move still out or a back press still walking: the leg is planned from where it lands. */
+  private waitsToPlan(): boolean {
+    return this.port.moveInFlight() || this.port.backPressOut();
   }
 
   /** Stops what moves for a walk back of `legs` legs, saying `started`. */
   private stop(who: string, legs: number, started: string): void {
+    // First: a trip left standing would plan its next leg over the walk back.
+    this.port.makeWay(who);
     const paused = this.port.pause(started);
     if (!paused) this.port.notice(started, COMEBACK);
     // A lap stopped for a member's @wait is this walk's stop too: if that wait gives up first, the walk's end goes on.
@@ -336,7 +355,7 @@ export class ComeBack {
     const walk = this.walk;
     if (walk === null) return;
     // A leg planned from the room being left walks the wrong way: wait for the move to land.
-    if (this.port.moveInFlight()) {
+    if (this.waitsToPlan()) {
       walk.due = true;
       return;
     }

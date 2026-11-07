@@ -224,7 +224,7 @@ describe('fetching from a stash', () => {
   it('is dropped by a death, and the lap goes back', () => {
     const fetch = make();
     fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault());
-    fetch.abandon();
+    fetch.abandon(t('automation.hostTrip.endedDied'));
     expect(fetch.busy).toBe(false);
     expect(released).toBe(1);
   });

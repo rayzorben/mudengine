@@ -232,7 +232,7 @@ export type WalkHold =
   | 'resting'
   /** A room too dark to read, while the light that fixes it is on its way. */
   | 'dark'
-  /** Leading, on the far side of a portal, until the party rejoins (todo 839). */
+  /** Leading, on the far side of a portal until the party rejoins (todo 839), or on a trip the party's wait holds. */
   | 'party'
   /** Leading, while a member here still fights a monster in this room (todo 20261023-1951-01). */
   | 'partyFight'

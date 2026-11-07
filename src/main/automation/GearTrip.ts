@@ -126,9 +126,9 @@ export class GearTrip implements SessionModule {
     return this.trip === null ? this.last : this.progressOf(this.trip, null);
   }
 
-  /** A death: wherever the trip was going is somewhere else now. */
-  abandon(): void {
-    if (this.trip !== null) this.end(t('automation.hostTrip.endedDied'));
+  /** A death, or a walk back for a member: the trip ends, saying `why`. */
+  abandon(why: string): void {
+    if (this.trip !== null) this.end(why);
   }
 
   /** The player's Stop. */

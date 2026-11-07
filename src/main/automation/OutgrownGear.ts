@@ -117,10 +117,10 @@ export class OutgrownGear implements SessionModule {
   }
 
   /** A death: the room it was walking to is several maps away now. */
-  abandon(): void {
+  abandon(said: string): void {
     if (this.trip === null) return;
     this.end();
-    this.events.notice?.(t('automation.outgrown.abandonedDied'), WAY);
+    this.events.notice?.(said, WAY);
   }
 
   private get switchedOn(): boolean {

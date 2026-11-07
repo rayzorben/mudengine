@@ -110,9 +110,9 @@ export class StashFetch implements SessionModule {
     return { room, items, source, stage };
   }
 
-  /** A death: the room it was walking to is somewhere else now. */
-  abandon(): void {
-    if (this.trip !== null) this.finish(t('automation.hostTrip.endedDied'));
+  /** A death, or a walk back for a member: the trip ends, saying `why`. */
+  abandon(why: string): void {
+    if (this.trip !== null) this.finish(why);
   }
 
   /** One trip; its refusal, said and traced, or null once under way. */

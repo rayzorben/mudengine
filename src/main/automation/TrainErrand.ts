@@ -269,11 +269,11 @@ export class TrainErrand implements SessionModule {
    * again the moment it stands up in the temple would be the errand walking a
    * freshly dead character across the realm.
    */
-  abandon(): void {
+  abandon(said: string): void {
     if (this.phase.kind === 'idle') return;
     this.phase = { kind: 'idle' };
     this.planner.release();
-    this.events.notice?.(t('automation.train.abandonedDied'), 'train-level');
+    this.events.notice?.(said, 'train-level');
   }
 
   /** Every state change: is a level waiting, and is this the moment to go? */

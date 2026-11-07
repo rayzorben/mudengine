@@ -80,7 +80,18 @@ export class HostTrips implements SessionModule {
 
   /** A death: wherever any was going is somewhere else now. */
   abandon(): void {
-    for (const trip of this.trips) trip.abandon();
+    this.endTrips(t('automation.hostTrip.endedDied'));
+    this.find.abandon();
+  }
+
+  /** A walk back for a member: every trip ends, saying `why`, the find as the player's Stop ends it. */
+  giveUp(why: string): void {
+    this.endTrips(why);
+    this.find.stop(why);
+  }
+
+  private endTrips(why: string): void {
+    for (const trip of [this.stash, this.sell, this.gear, this.cash]) trip.abandon(why);
   }
 
   onBlock(block: Block): void {

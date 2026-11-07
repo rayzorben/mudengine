@@ -60,6 +60,13 @@ export class FareCash {
     return this.draw !== null;
   }
 
+  /** A walk back for a member: the draw ends, said, and the way it was for with it. */
+  giveUp(why: string): void {
+    if (!this.busy) return;
+    this.reset();
+    this.parts.notice(t('session.walk.fareCash.givenUp', { why }), DECISION);
+  }
+
   /** Put down without an ending: a new walk, a death, leaving the realm. */
   reset(): void {
     this.withdrawal.cancel();
