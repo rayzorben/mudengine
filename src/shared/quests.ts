@@ -1045,7 +1045,12 @@ function rankBars(acts: readonly QuestStep[], who: QuestDoer, counter: number): 
 
 /** The first step the character would take next, or null where none is known. */
 export function questNext(quest: Quest, standing: QuestStanding): QuestStep | null {
-  return ranksAhead(quest, standing)[0]?.acts[0] ?? null;
+  return questNextRank(quest, standing)?.acts[0] ?? null;
+}
+
+/** The next rank a standing has not reached, with its steps, or null where none is ahead. */
+export function questNextRank(quest: Quest, standing: QuestStanding): RankAhead | null {
+  return ranksAhead(quest, standing)[0] ?? null;
 }
 
 /** A rank past the next one that wants more levels than the character has. */

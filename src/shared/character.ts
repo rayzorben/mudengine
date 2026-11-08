@@ -895,6 +895,16 @@ export interface Progress {
   cp: number | null;
 }
 
+/**
+ * Whether the sheet's `Stealth:` rules out `sn` and `hide`: zero or below.
+ * `SneakCommand.cs` rolls `Stealth − (players − 1 + mobs) ≥ rand(1,100)`, so
+ * neither passes, and Heavy encumbrance takes the figure below zero (Rayzor at
+ * -63, 2026-11-08). An unread sheet (null) rules out nothing.
+ */
+export function noStealth(progress: Pick<Progress, 'stealthSkill'>): boolean {
+  return progress.stealthSkill !== null && progress.stealthSkill <= 0;
+}
+
 /*
  * The alignment vocabulary lives in `./alignment` and is re-exported here.
  *

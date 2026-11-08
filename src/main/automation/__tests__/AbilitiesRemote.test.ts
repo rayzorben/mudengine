@@ -63,22 +63,24 @@ function harness(answer: Offered = 'queued', quests: readonly Quest[] | null = [
 }
 
 const ask = t('cards.quests.step.ask', { who: 'Commander Markus', word: 'letter' });
+const back = t('cards.quests.step.ask', { who: 'Chancellor Annora', word: 'return' });
+const sent = t('cards.quests.step.ask', { who: 'Chancellor Annora', word: 'messenger' });
 
 describe('@abil', () => {
-  it('asks abil once, and answers everybody waiting with the step that set the rank', () => {
+  it('asks abil once, and answers everybody waiting with the steps that set the rank and come next', () => {
     const { remote, offered, replies, tick } = harness();
     remote.ask('Rand', '/', [126]);
     remote.ask('Soul', '/', [126, 2]);
     expect(offered.map((intent) => intent.command)).toEqual(['abil']);
-    // A listing read before the send answers something else.
-    remote.onBlock(block('user-abilities', 1000), listed({ 126: 4 }, 1000));
+    // A listing applied before the send answers something else.
+    remote.onListing(listed({ 126: 4 }, 1000));
     expect(replies).toEqual([]);
     tick(2000);
     offered[0]!.onSent?.();
-    remote.onBlock(block('user-abilities', 2100), listed({ 126: 5, 2: 50 }, 2100));
+    remote.onListing(listed({ 126: 5, 2: 50 }, 2100));
     expect(replies).toEqual([
-      `/Rand {GoodQuest(126) - 5 (${ask})}`,
-      `/Soul {GoodQuest(126) - 5 (${ask}), AC(2) - 50}`
+      `/Rand {GoodQuest(126) - 5 (${ask}) -> 6 (${back})}`,
+      `/Soul {GoodQuest(126) - 5 (${ask}) -> 6 (${back}), AC(2) - 50}`
     ]);
   });
 
@@ -86,13 +88,13 @@ describe('@abil', () => {
     const one = harness();
     one.remote.ask('Rand', '/', []);
     one.offered[0]!.onSent?.();
-    one.remote.onBlock(block('user-abilities', 1000), listed({ 2: 50, 126: 5 }, 1000));
-    expect(one.replies).toEqual([`/Rand {GoodQuest(126) - 5 (${ask})}`]);
+    one.remote.onListing(listed({ 2: 50, 126: 5 }, 1000));
+    expect(one.replies).toEqual([`/Rand {GoodQuest(126) - 5 (${ask}) -> 6 (${back})}`]);
 
     const none = harness();
     none.remote.ask('Rand', '/', []);
     none.offered[0]!.onSent?.();
-    none.remote.onBlock(block('user-abilities', 1000), listed({ 2: 50 }, 1000));
+    none.remote.onListing(listed({ 2: 50 }, 1000));
     expect(none.replies).toEqual(['/Rand {none}']);
   });
 
@@ -100,13 +102,13 @@ describe('@abil', () => {
     const complete = harness();
     complete.remote.ask('Rand', '/', [126]);
     complete.offered[0]!.onSent?.();
-    complete.remote.onBlock(block('user-abilities', 1000), listed({ 2: 50 }, 1000));
-    expect(complete.replies).toEqual(['/Rand {GoodQuest(126) - 0}']);
+    complete.remote.onListing(listed({ 2: 50 }, 1000));
+    expect(complete.replies).toEqual([`/Rand {GoodQuest(126) - 0 -> 4 (${sent})}`]);
 
     const cut = harness();
     cut.remote.ask('Rand', '/', [126]);
     cut.offered[0]!.onSent?.();
-    cut.remote.onBlock(block('user-abilities', 1000), listed({ 2: 50 }, 1000, false));
+    cut.remote.onListing(listed({ 2: 50 }, 1000, false));
     expect(cut.replies).toEqual(['/Rand {GoodQuest(126) - unknown}']);
   });
 
@@ -115,9 +117,17 @@ describe('@abil', () => {
     const { remote, offered, replies } = harness('queued', [forked]);
     remote.ask('Rand', '/', [126]);
     offered[0]!.onSent?.();
-    remote.onBlock(block('user-abilities', 1000), listed({ 126: 5 }, 1000));
+    remote.onListing(listed({ 126: 5 }, 1000));
     const lyra = t('cards.quests.step.ask', { who: 'Sister Lyra', word: 'vow' });
-    expect(replies).toEqual([`/Rand {GoodQuest(126) - 5 (${ask} or ${lyra})}`]);
+    expect(replies).toEqual([`/Rand {GoodQuest(126) - 5 (${ask} or ${lyra}) -> 6 (${back})}`]);
+  });
+
+  it("says DONE for a counter at the quest's last rank", () => {
+    const { remote, offered, replies } = harness();
+    remote.ask('Rand', '/', [126]);
+    offered[0]!.onSent?.();
+    remote.onListing(listed({ 126: 6 }, 1000));
+    expect(replies).toEqual([`/Rand {GoodQuest(126) - 6 (${back}) -> (DONE)}`]);
   });
 
   it('asks nothing for a bare @abil with no world loaded, and says why', () => {
@@ -142,9 +152,9 @@ describe('@abil', () => {
 
     const unsent = harness();
     unsent.remote.ask('Rand', '/', [126]);
-    unsent.remote.onBlock(block('status-line', 999), EMPTY_CHARACTER);
+    unsent.remote.onBlock(block('status-line', 999));
     expect(unsent.notices).toEqual([]);
-    unsent.remote.onBlock(block('status-line', late), EMPTY_CHARACTER);
+    unsent.remote.onBlock(block('status-line', late));
     expect(unsent.notices).toEqual([
       t('automation.remotes.listingNeverSent', { from: 'Rand', remote: '@abil', seconds })
     ]);
@@ -152,7 +162,7 @@ describe('@abil', () => {
     const silent = harness();
     silent.remote.ask('Rand', '/', [126]);
     silent.offered[0]!.onSent?.();
-    silent.remote.onBlock(block('status-line', late), EMPTY_CHARACTER);
+    silent.remote.onBlock(block('status-line', late));
     expect(silent.notices).toEqual([
       t('automation.remotes.listingUnanswered', {
         from: 'Rand',
@@ -162,7 +172,7 @@ describe('@abil', () => {
       })
     ]);
     // Over: a listing after the deadline answers nobody.
-    silent.remote.onBlock(block('user-abilities', late), listed({ 126: 5 }, late));
+    silent.remote.onListing(listed({ 126: 5 }, late));
     expect(silent.replies).toEqual([]);
   });
 
@@ -171,7 +181,7 @@ describe('@abil', () => {
     remote.ask('Rand', '/', [126]);
     remote.reset();
     offered[0]!.onSent?.();
-    remote.onBlock(block('user-abilities', 1000), listed({ 126: 5 }, 1000));
+    remote.onListing(listed({ 126: 5 }, 1000));
     expect(replies).toEqual([]);
   });
 });

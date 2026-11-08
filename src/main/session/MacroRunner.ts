@@ -11,7 +11,7 @@
 import { aliasCommandOf } from '../../shared/aliasCommand';
 import { expandAlias } from '../../shared/aliases';
 import type { Block } from '../../shared/blocks';
-import type { CharacterState } from '../../shared/character';
+import { noStealth, type CharacterState } from '../../shared/character';
 import { asTyped } from '../../shared/clientCommands';
 import type { MovementConfig } from '../../shared/config';
 import type { KeyBindings } from '../../shared/keys';
@@ -146,8 +146,8 @@ export class MacroRunner implements SessionModule {
   private moveSneakRefused(state: CharacterState): boolean {
     return (
       this.parts.sneakBlocked(state) ||
-      state.progress.stealthSkill === 0 ||
-      this.parts.sneakRefusals.givenUp(state.progress.level)
+      noStealth(state.progress) ||
+      this.parts.sneakRefusals.givenUp(state.progress)
     );
   }
 

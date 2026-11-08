@@ -5152,6 +5152,65 @@ describe('the registry, pushed on its own', () => {
   });
 });
 
+/*
+ * `@abil` is answered off the `abil` list its own ask brought back. The answer
+ * is composed after the tracker has applied that list; composed before it,
+ * Brakkle answered nothing until a second `abil`, and then gave the first
+ * one's figures (Rayzor, 2026-11-08).
+ */
+describe('@abil answered off the list it asked for', () => {
+  const listing = (ac: number): string =>
+    [
+      'Race',
+      `AC(2)                      ${ac}`,
+      '',
+      'GrantedAbilities',
+      '',
+      '[HP=100/MA=50]:',
+      ''
+    ].join('\r\n');
+
+  it('answers with the figures of the list that followed the ask', async () => {
+    const { sink } = collect();
+    manager = build(sink, {
+      automation: {
+        ...quiet,
+        remotes: {
+          ...DEFAULT_CONFIG.automation.remotes,
+          enabled: true,
+          gangpath: false,
+          autoJoin: false,
+          gang: [],
+          party: [],
+          players: {
+            soul: {
+              allow: ['abil'],
+              deny: [],
+              allowAll: false,
+              autoInvite: false,
+              ...NO_PEER_GRANT
+            }
+          }
+        }
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const written = wire(socket);
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    // A list from before the ask, which the answer must not use.
+    socket.write(listing(50));
+    await until(() => manager!.character.abilities?.sums[2] === 50);
+
+    socket.write('Soul telepaths: @abil 2\r\n');
+    await until(() => /(^|\n)abil\r/.test(written()));
+    socket.write(listing(60));
+    await until(() => written().includes('/Soul {'));
+    expect(written()).toContain('/Soul {AC(2) - 60}');
+  });
+});
+
 describe('a follower pacing the loop', () => {
   /** A manager whose remotes answer Soul and Yang the pacing pair. */
   function pacedManager(sink: SessionSink): SessionManager {

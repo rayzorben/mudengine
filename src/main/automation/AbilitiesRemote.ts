@@ -13,7 +13,7 @@ import { abilityName } from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
 import { listedSum, type AbilitySums, type CharacterState } from '../../shared/character';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
-import { planAct, type Quest } from '../../shared/quests';
+import { planAct, questNextRank, type Quest, type QuestStep } from '../../shared/quests';
 import { formatAbilities, type ToldAbility } from '../../shared/remotes';
 import type { CommandQueue } from './CommandQueue';
 import { ListingAsk, type ListingAsker } from './ListingAsk';
@@ -60,26 +60,28 @@ export class AbilitiesRemote {
     this.listing.ask({ from, prefix, ids });
   }
 
-  /** Answers off the listing read after the send, or gives up at the deadline. */
-  onBlock(block: Block, state: CharacterState): void {
-    if (!this.listing.owed) return;
+  /**
+   * The `abil` list has just been applied: answered off it when it came after
+   * the send. Called after the tracker has read it, never from `onBlock`, which
+   * sees the state before the block: there the listing on hand was the one
+   * before the ask, and the answer waited for a second `abil` and then gave
+   * that one's figures (Rayzor asking Brakkle, 2026-11-08).
+   */
+  onListing(state: CharacterState): void {
     const sent = this.listing.sent;
     const abilities = state.abilities;
-    if (
-      sent !== null &&
-      block.type === 'user-abilities' &&
-      abilities !== null &&
-      abilities.at >= sent
-    ) {
-      const quests = this.events.quests() ?? [];
-      const { telepathMax } = tuning().remotes;
-      this.listing.answer(({ from, prefix, ids }) => {
-        const asked = ids.length > 0 ? ids : questCounters(abilities, quests);
-        const told = asked.map((id) => tell(id, abilities, quests));
-        this.events.reply(from, formatAbilities(told, telepathMax - prefix.length), prefix);
-      });
-      return;
-    }
+    if (!this.listing.owed || sent === null || abilities === null || abilities.at < sent) return;
+    const quests = this.events.quests() ?? [];
+    const { telepathMax } = tuning().remotes;
+    this.listing.answer(({ from, prefix, ids }) => {
+      const asked = ids.length > 0 ? ids : questCounters(abilities, quests);
+      const told = asked.map((id) => tell(id, abilities, quests));
+      this.events.reply(from, formatAbilities(told, telepathMax - prefix.length), prefix);
+    });
+  }
+
+  /** Gives up at the deadline when no listing has answered. */
+  onBlock(block: Block): void {
     this.listing.expire(block.at);
   }
 
@@ -88,10 +90,17 @@ export class AbilitiesRemote {
   }
 }
 
-/** One id as the listing states it, named and with the steps that set it. */
+/** One id as the listing states it, named, with the steps that set it and the next rank. */
 function tell(id: number, listing: AbilitySums, quests: readonly Quest[]): ToldAbility {
   const value = listedSum(listing, id);
-  return { id, name: abilityName(id, 'greatermud'), value, setBy: setBy(quests, id, value) };
+  const quest = quests.find((each) => each.id === id);
+  return {
+    id,
+    name: abilityName(id, 'greatermud'),
+    value,
+    setBy: setBy(quest, value),
+    next: nextOf(quest, value, id in listing.sums)
+  };
 }
 
 /** Every listed id the realm counts a quest with, in id order. */
@@ -104,16 +113,32 @@ function questCounters(listing: AbilitySums, quests: readonly Quest[]): number[]
 }
 
 /**
- * The steps of the quest counted by `id` that advance it to `value`, in the
- * quest book's words. Several where the realm writes several ways to the same
- * rank; none for rank 0, an unknown rank, or an id no quest counts.
+ * The steps of `quest` that advance its counter to `value`, in the quest
+ * book's words. Several where the realm writes several ways to the same rank;
+ * none for rank 0, an unknown rank, or an id no quest counts.
  */
-function setBy(quests: readonly Quest[], id: number, value: number | null): string[] {
-  if (value === null || value === 0) return [];
-  const quest = quests.find((each) => each.id === id);
-  if (quest === undefined) return [];
-  const words = quest.steps
-    .filter((step) => step.to === value)
-    .map((step) => actWords(planAct(step), step.block));
-  return [...new Set(words)];
+function setBy(quest: Quest | undefined, value: number | null): string[] {
+  if (quest === undefined || value === null || value === 0) return [];
+  return said(quest.steps.filter((step) => step.to === value));
+}
+
+/**
+ * The rank after `value` and the steps that reach it, by the quest book's own
+ * reckoning (`questNextRank`), or `done` past its last. `held` is whether the
+ * listing names the id: a counter granted at zero is a different standing
+ * from one never granted (`stepDone`).
+ */
+function nextOf(
+  quest: Quest | undefined,
+  value: number | null,
+  held: boolean
+): ToldAbility['next'] {
+  if (quest === undefined || value === null) return null;
+  const next = questNextRank(quest, { rank: value, held });
+  return next === null ? 'done' : { rank: next.rank, steps: said(next.acts) };
+}
+
+/** Each step as the quest book words its act, once per wording. */
+function said(steps: readonly QuestStep[]): string[] {
+  return [...new Set(steps.map((step) => actWords(planAct(step), step.block)))];
 }

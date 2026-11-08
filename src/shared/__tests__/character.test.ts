@@ -4,6 +4,7 @@ import {
   EMPTY_CHARACTER,
   joinedTheParty,
   membersBelow,
+  noStealth,
   partyMember,
   ratio,
   vitalLevel,
@@ -137,5 +138,15 @@ describe('membersBelow', () => {
     // Festus walked out; Rend was only invited; Death's health is unstated.
     expect(membersBelow(state, 0.5)).toEqual(['Soul']);
     expect(membersBelow(state, 0)).toEqual([]);
+  });
+});
+
+// Rayzor, 2026-11-08: Heavy encumbrance put the sheet's Stealth at -63.
+describe('noStealth', () => {
+  it('rules out sneaking at 0 or below, and nothing on an unread sheet', () => {
+    expect(noStealth({ stealthSkill: -63 })).toBe(true);
+    expect(noStealth({ stealthSkill: 0 })).toBe(true);
+    expect(noStealth({ stealthSkill: 1 })).toBe(false);
+    expect(noStealth({ stealthSkill: null })).toBe(false);
   });
 });

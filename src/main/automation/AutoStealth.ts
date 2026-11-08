@@ -23,7 +23,7 @@ import { SNEAK_KEY } from './walk/Sneak';
 import type { SneakGiveUp } from './sneakRefusals';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { CharacterState } from '../../shared/character';
+import { noStealth, type CharacterState } from '../../shared/character';
 import { commandOf } from '../../shared/commands';
 import type { CombatConfig, MovementConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
@@ -125,18 +125,17 @@ export class AutoStealth implements SessionModule {
      * the same exit roll as its own (`Exits.cs:225`), so a follower has to be
      * sneaking before the leader steps (the user, 2026-11-02).
      */
-    const forMove =
-      movement.sneak && this.events.sneakRefusals?.givenUp(state.progress.level) !== true;
+    const forMove = movement.sneak && this.events.sneakRefusals?.givenUp(state.progress) !== true;
     if (!forOpener && !forMove) return;
     if (state.stealth !== 'seen') return;
     if (this.events.escaping?.() === true) return;
     if (this.events.moveInFlight?.() === true) return;
     /*
      * The sheet's `Stealth:` figure is the roll for both commands
-     * (`SneakCommand.cs`, `HideCommand.cs`); zero never passes (todo 104).
+     * (`SneakCommand.cs`, `HideCommand.cs`); zero or below never passes (todo 104).
      * Said once, and an unread sheet never refuses.
      */
-    if (state.progress.stealthSkill === 0) {
+    if (noStealth(state.progress)) {
       if (!this.saidNoSkill) {
         this.saidNoSkill = true;
         const said = forOpener

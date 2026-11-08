@@ -629,6 +629,11 @@ export class Remotes implements SessionModule {
     this.regroup.release();
   }
 
+  /** An `abil` listing has been applied to `state`. See `AbilitiesRemote.onListing`. */
+  onAbilityListing(state: CharacterState): void {
+    this.abilities.onListing(state);
+  }
+
   /**
    * A classified line arrived. Chat that opens with `@` matters here, a party
    * join (`askJoined`), and the leader's door (`LeaderDoors`).
@@ -648,7 +653,7 @@ export class Remotes implements SessionModule {
     // Its own switches: a rejoin is the party's, under the master switch alone.
     this.autoJoin.onBlock(block, state);
     this.deaths.onBlock(block);
-    this.abilities.onBlock(block, state);
+    this.abilities.onBlock(block);
     if (!this.config.remotes.enabled) return;
     /*
      * The master switch holds what is sent (`askJoined`, `answer`), never
@@ -1462,15 +1467,7 @@ export class Remotes implements SessionModule {
         const count = state.inventory.items.filter((item) =>
           bareName(item.name).startsWith(wanted)
         ).length;
-        const body = formatHave(count);
-        if (body === null) {
-          this.events.notice?.(
-            t('automation.remotes.haveUncaptured', { from, item: command.argument, count }),
-            ANSWER
-          );
-          return;
-        }
-        this.reply(from, body, prefix);
+        this.reply(from, formatHave(count), prefix);
         return;
       }
       case 'stoppers': {

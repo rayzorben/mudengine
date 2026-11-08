@@ -354,10 +354,10 @@ describe('answering the questions the way MegaMUD does', () => {
 
   /* captures/215 and 217: six {no}s, then {yes: 1} for one ring; a second copy
      has never been answered on the wire, so it is refused rather than counted. */
-  it('answers @have no and yes for one, and refuses to invent a plural', () => {
+  it('answers @have no, or yes with the count carried', () => {
     expect(formatHave(0)).toBe('{no}');
     expect(formatHave(1)).toBe('{yes: 1}');
-    expect(formatHave(2)).toBeNull();
+    expect(formatHave(2)).toBe('{yes: 2}');
   });
 
   it('answers @version in the shape of {MegaMMUD 2.1}', () => {
@@ -681,13 +681,37 @@ describe('@abil', () => {
   });
 
   it('cuts a long answer to the room it has, and always closes the frame', () => {
-    const told = [126, 127, 128].map((id) => ({ id, name: 'GoodQuest', value: 5, setBy: [] }));
+    const told = [126, 127, 128].map((id) => ({
+      id,
+      name: 'GoodQuest',
+      value: 5,
+      setBy: [],
+      next: null
+    }));
     expect(formatAbilities(told, 255)).toBe(
       '{GoodQuest(126) - 5, GoodQuest(127) - 5, GoodQuest(128) - 5}'
     );
     expect(formatAbilities(told, 50)).toBe('{GoodQuest(126) - 5, GoodQuest(127) - 5 +1 more}');
-    expect(formatAbilities([{ id: 9, name: null, value: 1, setBy: [] }], 255)).toBe('{(9) - 1}');
+    expect(formatAbilities([{ id: 9, name: null, value: 1, setBy: [], next: null }], 255)).toBe(
+      '{(9) - 1}'
+    );
     expect(formatAbilities([], 255)).toBe('{none}');
+  });
+
+  // The user, 2026-11-08: the rank after this one and what reaches it, or that the quest is done.
+  it('says the next rank and its step, or DONE past the last', () => {
+    const phoenix = { id: 133, name: 'PhoenixQuest' };
+    const at8 = { ...phoenix, value: 8, setBy: ['ask morukai information'] };
+    const next = { rank: 9, steps: ['do throw egg there'] };
+    expect(formatAbilities([{ ...at8, next }], 255)).toBe(
+      '{PhoenixQuest(133) - 8 (ask morukai information) -> 9 (do throw egg there)}'
+    );
+    const at9 = { ...phoenix, value: 9, setBy: ['do throw egg there'], next: 'done' as const };
+    expect(formatAbilities([at9], 255)).toBe(
+      '{PhoenixQuest(133) - 9 (do throw egg there) -> (DONE)}'
+    );
+    const at0 = { ...phoenix, value: 0, setBy: [], next: { rank: 1, steps: [] } };
+    expect(formatAbilities([at0], 255)).toBe('{PhoenixQuest(133) - 0 -> 1}');
   });
 });
 

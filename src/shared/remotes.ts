@@ -1044,21 +1044,17 @@ export function formatWhat(items: readonly string[]): string {
 }
 
 /**
- * `{no}`, or `{yes: 1}` — the two answers on the wire, and nothing wider.
+ * `{no}`, or `{yes: N}` with the count carried.
  *
- * Six asks, six `{no}`s at first; the yes arrived on 2026-08-29
- * (`captures/217`) once a character of ours had put one copper ring in the
- * other client's hands: `@have copper ring` → `{yes: 1}`, and `@have ring`
- * for the same item → `{no}`. Two asks show exactly that much: the full name
- * answers, a word from inside it does not. What MegaMUD prints for a second
- * copy — `{yes: 2}`, a stack, a fixed `1` — nobody has seen, and this is a
- * frame another client parses, so a count above one returns null and the
- * responder says so instead of guessing.
+ * `{yes: 1}` and `{no}` are captured (2026-08-29, `captures/217`): one
+ * copper ring in the other client's hands, `@have copper ring` → `{yes: 1}`
+ * and `@have ring` → `{no}`, so the full name answers and a word from inside
+ * it does not. A count above one is answered in the same frame (the user,
+ * 2026-11-08: Brakkle held two waterskins and `@have waterskin` sent nothing),
+ * and `readRemoteReply` reads any figure in it.
  */
-export function formatHave(count: number): string | null {
-  if (count === 0) return '{no}';
-  if (count === 1) return '{yes: 1}';
-  return null;
+export function formatHave(count: number): string {
+  return count === 0 ? '{no}' : `{yes: ${count}}`;
 }
 
 /**
@@ -1125,20 +1121,31 @@ export interface ToldAbility {
   value: number | null;
   /** The quest steps that set the counter to `value`, in the quest book's words. Several when the realm writes several. */
   setBy: readonly string[];
+  /**
+   * The next rank and the steps that reach it, `done` where the quest has no
+   * rank past `value`, or null where that is not known (no quest counts the
+   * id, or the rank is unknown).
+   */
+  next: { rank: number; steps: readonly string[] } | 'done' | null;
 }
 
 /**
- * `{GoodQuest(126) - 5 (ask Commander Markus letter), Rune(130) - 0}` (the
- * user, 2026-10-31): each ability as `abil` prints it, its sum, and the step
- * that set it where a quest step did; `unknown` for a sum the listing did not
- * reach. Cut to `room` characters with `+N more`, so the frame always closes.
+ * `{GoodQuest(126) - 5 (ask Commander Markus letter) -> 6 (ask Markus box),
+ * Rune(130) - 0}` (the user, 2026-10-31 and 2026-11-08): each ability as `abil`
+ * prints it, its sum, the step that set it where a quest step did, and the
+ * next rank with its steps, or `-> (DONE)` past the quest's last rank;
+ * `unknown` for a sum the listing did not reach. Cut to `room` characters
+ * with `+N more`, so the frame always closes.
  * `{none}` for nothing to tell.
  */
 export function formatAbilities(told: readonly ToldAbility[], room: number): string {
   if (told.length === 0) return '{none}';
-  const one = ({ id, name, value, setBy }: ToldAbility): string => {
-    const head = `${name ?? ''}(${id}) - ${value ?? 'unknown'}`;
-    return setBy.length === 0 ? head : `${head} (${setBy.join(' or ')})`;
+  const rank = (at: number | string, steps: readonly string[]): string =>
+    steps.length === 0 ? `${at}` : `${at} (${steps.join(' or ')})`;
+  const one = ({ id, name, value, setBy, next }: ToldAbility): string => {
+    const head = `${name ?? ''}(${id}) - ${rank(value ?? 'unknown', setBy)}`;
+    if (next === null) return head;
+    return `${head} -> ${next === 'done' ? '(DONE)' : rank(next.rank, next.steps)}`;
   };
   const rows = told.map(one);
   const body = (count: number): string => {

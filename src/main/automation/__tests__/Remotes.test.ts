@@ -216,11 +216,9 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
   it('answers @abil off a fresh abil listing, and says a word that is not an id', () => {
     asked('@abil 126', who());
     expect(sent).toEqual(['abil']);
-    const at = Date.now();
-    const listing = { type: 'user-abilities', domain: 'status', groups: {}, text: '', at, seq: 2 };
-    peers.onBlock(
-      listing as unknown as Block,
-      who({ abilities: { sums: { 126: 5 }, complete: true, at } })
+    // The listing as `apply` leaves it, handed over after the tracker has read it.
+    peers.onAbilityListing(
+      who({ abilities: { sums: { 126: 5 }, complete: true, at: Date.now() } })
     );
     drain();
     expect(sent).toEqual(['abil', '/Rand {GoodQuest(126) - 5}']);
@@ -389,10 +387,10 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
   /*
    * Matched from the start of the bare name, as the server resolves one; the
    * two asks on the wire agree (`copper ring` yes, `ring` no, captures/217).
-   * One copy is `{yes: 1}`; a second has never been answered, so it is
-   * declined out loud rather than counted.
+   * Each copy counts: two copper rings are `{yes: 2}`, the captured frame with
+   * the count (the user, 2026-11-08).
    */
-  it('answers @have by the bare name for none or one, and declines a plural', () => {
+  it('answers @have by the bare name with the count carried', () => {
     const items = [
       wireItem('padded helm', { slot: 'Head', equipped: true }),
       wireItem('copper ring'),
@@ -405,10 +403,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     expect(sent).toEqual(['/Rand {yes: 1}']);
     sent.length = 0;
     asked('@have copper ring', who({ inventory: { ...EMPTY_CHARACTER.inventory, items } }));
-    expect(sent).toEqual([]);
-    expect(notices).toContain(
-      t('automation.remotes.haveUncaptured', { from: 'Rand', item: 'copper ring', count: 2 })
-    );
+    expect(sent).toEqual(['/Rand {yes: 2}']);
     sent.length = 0;
     asked('@have ring', who({ inventory: { ...EMPTY_CHARACTER.inventory, items } }));
     expect(sent).toEqual(['/Rand {no}']);

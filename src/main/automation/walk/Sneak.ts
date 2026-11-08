@@ -36,7 +36,7 @@
  */
 import { taken, type CommandQueue, type Intent } from '../CommandQueue';
 import type { Block, BlockType } from '../../../shared/blocks';
-import type { CharacterState } from '../../../shared/character';
+import { noStealth, type CharacterState } from '../../../shared/character';
 import { PRIORITY } from '../../../shared/automation';
 import { breaksStealth } from '../../../shared/commands';
 import type { MovementConfig } from '../../../shared/config';
@@ -123,14 +123,13 @@ export class SneakBeforeStep {
       return false;
     }
     /*
-     * **A sheet that says `Stealth: 0` is never asked to sneak** (todo 104).
-     * `SneakCommand.cs` rolls `Stealth − (players − 1 + mobs) ≥ rand(1,100)`,
-     * so a figure of zero never passes — and a Mage rerolled from a Ninja
-     * kept `movement.sneak` and spent one refused `sn` on every step of every
+     * **A sheet that says `Stealth: 0` or below is never asked to sneak**
+     * (todo 104, `noStealth`): such a figure never passes the roll, and a
+     * Mage rerolled from a Ninja kept `movement.sneak` and spent one refused `sn` on every step of every
      * lap. The figure is the sheet's own column; an unread sheet (null) never
      * refuses, and a Ninja whose figure is low is still asked every step.
      */
-    if (state.progress.stealthSkill === 0) {
+    if (noStealth(state.progress)) {
       if (!this.saidNoStealth) {
         this.saidNoStealth = true;
         this.events.notice?.(t('automation.walk.sneakNoSkill'), 'walk-sneak');
@@ -138,8 +137,8 @@ export class SneakBeforeStep {
       return false;
     }
     if (this.blocked(state)) return false;
-    // Refused too often in a row at this level: stopped until it changes.
-    if (this.refusals.givenUp(state.progress.level)) return false;
+    // Refused too often in a row at this level and Stealth: stopped until either changes.
+    if (this.refusals.givenUp(state.progress)) return false;
     const step = this.inFlight.step();
     if (step === undefined) return false;
     // Ahead of the offer: an idle queue sends inside it, and `onSent` reads this.

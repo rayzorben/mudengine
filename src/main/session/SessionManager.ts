@@ -2721,13 +2721,13 @@ export class SessionManager {
       this.deposit.onListing(this.tracker.current);
       this.chest.onListing(this.tracker.current);
       this.light.onListing();
-      // And the quest run and the item errand, which read only the listing
-      // their own ask answered.
+      // And the quest run and the item errand: each reads only the listing its ask answered.
       this.questRunner.noteListing(this.answering);
       this.itemErrand.noteListing(this.answering);
     }
 
-    // After `apply`: what a search or a counter said, written down. See `Records.noted`.
+    // After `apply`: `@abil`'s answer, and what a search or a counter said (`Records.noted`).
+    if (batch?.type === 'user-abilities') this.remotes.onAbilityListing(this.tracker.current);
     this.records.noted(block, batch);
 
     /*

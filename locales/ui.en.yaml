@@ -7075,9 +7075,9 @@ automation:
     reasonSneakMove: sneaking before the next move (Auto-Sneak on Move)
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
     noSkill: 'Not hiding or sneaking for the opener: this character has no Stealth (the stats say
-      0), so the game refuses every attempt.'
+      0 or less), so the game refuses every attempt.'
     noSkillMove: 'Not sneaking for Auto-Sneak on Move: this character has no Stealth (the stats say
-      0), so the game refuses every attempt.'
+      0 or less), so the game refuses every attempt.'
     ceiling: 'Stealth {skill} is above {ceiling}: moving rolls at most {ceiling} and sneaking at
       most 95, while hiding uses the full value, so Stealth above {ceiling} only helps while
       standing still.'
@@ -8064,8 +8064,6 @@ automation:
     abilNoQuests:
       '{from} asked @abil for every quest counter, and no world database is loaded to say
       which abilities are quests; nothing was sent back.'
-    haveUncaptured: '{from} asked @have {item}; {count} carried, but MegaMUD has only ever been seen
-      answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
     # Todo 20261103-0930-01: a @do or @party may not send a remote on to another character.
@@ -8355,11 +8353,12 @@ automation:
     reasonChancePack: checking the inventory, since the last try could have taken what the way needs
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
     sneakGaveUp: 'Not sneaking before moves: the last {count} tries failed. Trying again after a
-      level, a reconnect, or turning Auto-Sneak on Move off and on.'
+      level, a change in Stealth on the stats, a reconnect, or turning Auto-Sneak on Move off and
+      on.'
     sneakUnanswered: No answer to sn, so the step goes without knowing whether this character is
       sneaking.
-    sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the stats say 0), so
-      the game refuses every attempt. Auto-Sneak on Move is ignored for this session.'
+    sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the stats say 0 or
+      less), so the game refuses every attempt. Sneaking starts again when the stats show Stealth above 0.'
     reasonStepping: walking to {stepName}
     reasonTimeout: nothing came back after {command}
     # Todo 65: a room command's own check refused it; once more after a beat, then another way.
