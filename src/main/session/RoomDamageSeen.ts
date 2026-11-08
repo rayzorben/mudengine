@@ -3,12 +3,12 @@
  * (todo 20261103-0140-01): health lost `tuning.roomHarm.drops` times inside
  * `withinMs` in one room with the same maximum. Not while a fight is here
  * (`fightHere`), inside `MOB_ENGAGED_MS` of a monster's damage line
- * (`monsterHit`), poisoned, bleeding on the ground, paying for its own bash
- * (`paidFor`) or under a spell that takes health each tick (`ticking`). A room
- * the data gives no spell still counts, since unknown is the unsafe case. A
- * mark clears after `clearAfterMs` standing in the room unhurt. Read through
- * `RoomHazards`; the cases behind each rule are in `mudengine-automation` ›
- * `parts/safety.md`.
+ * (`monsterHit`), poisoned, bleeding on the ground, in a room where it has
+ * bashed since it came in (`bashedIn`) or under a spell that takes health each
+ * tick (`ticking`). A room the data gives no spell still counts, since unknown
+ * is the unsafe case. A mark clears after `clearAfterMs` standing in the room
+ * unhurt. Read through `RoomHazards`; the cases behind each rule are in
+ * `mudengine-automation` › `parts/safety.md`.
  */
 import { tuning } from '../app/tuning';
 import type { HangUpWatch } from '../automation/HangUp';
@@ -23,8 +23,14 @@ export class RoomDamageSeen {
   private drops: number[] = [];
   /** Since when this character has stood in `room` losing no health; null with none of it known. */
   private quietSince: number | null = null;
-  /** Health the server said this character paid for its own command, still to show on a status line. */
-  private paid = 0;
+  /**
+   * The room where the character has bashed since it came in (the user,
+   * 2026-11-07): no fall there is the room's. Kept while the room reads
+   * unplaced, dropped only in another room, and taken up by the first room
+   * placed after a bash made unplaced. Bashing a door never marks a room.
+   */
+  private bashedIn: RoomId | null = null;
+  private bashedUnplaced = false;
   /** In the order seen, so the oldest goes first past `keptRooms`. */
   private readonly seen = new Set<RoomId>();
 
@@ -36,11 +42,17 @@ export class RoomDamageSeen {
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  /** `You take 2 damage for bashing the door!`: a drop the character's own command explains. */
+  /**
+   * `Your attempts to bash through fail!` or `You take 2 damage for bashing the
+   * door!`: the character's own bash, whose cost shows on a later prompt, after
+   * a regen tick or with other falls. Nothing in this room counts until it leaves.
+   */
   observe(block: Pick<Block, 'type' | 'groups'>): void {
-    if (block.type !== 'user-takes-damage' || block.groups['paidFor'] === undefined) return;
-    const damage = Number(block.groups['damage']);
-    if (Number.isFinite(damage)) this.paid += damage;
+    const paidFor = block.type === 'user-takes-damage' && block.groups['paidFor'] !== undefined;
+    if (block.type !== 'bash-failed' && !paidFor) return;
+    this.bashedIn = this.room;
+    this.bashedUnplaced = this.room === null;
+    this.drops = [];
   }
 
   /** Every status line: a drop in health nothing in the room explains. */
@@ -55,16 +67,14 @@ export class RoomDamageSeen {
     if (here !== this.room) {
       this.room = here;
       this.drops = [];
-      this.paid = 0;
+      if (here !== null && here !== this.bashedIn) {
+        this.bashedIn = this.bashedUnplaced ? here : null;
+        this.bashedUnplaced = false;
+      }
       this.quietSince = hp === null ? null : at;
       return;
     }
     if (here === null || hp === null || before === null) return;
-    // What was paid is spent on the first line that moves health, a drop or not, so it
-    // excuses no later one. The bash line itself moves nothing: the server shows the
-    // fall on the prompt after it (Gnome Village, Rayzor on OCI, 2026-11-07).
-    const paid = hp === before ? 0 : this.paid;
-    if (hp !== before) this.paid = 0;
     if (hp >= before) {
       this.quietSince ??= at;
       if (this.seen.has(here) && at - this.quietSince >= tuning().roomHarm.clearAfterMs)
@@ -72,7 +82,7 @@ export class RoomDamageSeen {
       return;
     }
     this.quietSince = at;
-    if (before - hp <= paid) return;
+    if (here === this.bashedIn) return;
     // A maximum that fell (gear taken off) lowers the figure without a blow.
     if (
       hpMax !== maxBefore ||
@@ -102,7 +112,8 @@ export class RoomDamageSeen {
     this.hpMax = null;
     this.drops = [];
     this.quietSince = null;
-    this.paid = 0;
+    this.bashedIn = null;
+    this.bashedUnplaced = false;
     this.seen.clear();
   }
 }

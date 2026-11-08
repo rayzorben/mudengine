@@ -347,34 +347,41 @@ describe('a room whose damage the world database does not list', () => {
   });
 
   /*
-   * Rayzor, 2026-11-06 00:56 on OCI, at Slum Street, Western Door: `bas w`,
-   * `You take 2 damage for bashing the door!` twice, and the room was left as
-   * one that hurts. A bash's cost is the character's own.
+   * Bashing a door never marks a room (the user, 2026-11-07). Rayzor was walked
+   * out of Slum Street, Western Door (11-06) and Gnome Village (11-07) for
+   * `You take 2 damage for bashing the door!`: the fall shows on a later
+   * prompt, after the bash line itself and sometimes after a regen tick.
    */
-  it('does not count health the character paid for its own bash', () => {
+  it('never counts a fall in a room where the character bashed', () => {
     const current = { state: at(RIVER, 157) };
     const room = hazards(current);
-    room.note(current.state);
-    const bash = (damage: number, hp: number): void => {
-      room.observe({
-        type: 'user-takes-damage',
-        groups: { damage: String(damage), paidFor: 'bashing the door' }
-      } as unknown as Block);
-      // The bash line is read first with the figure unmoved; the fall comes on the
-      // prompt after it (Rayzor at Gnome Village, OCI, 2026-11-07 17:01:58).
-      room.note(current.state);
-      current.state = at(RIVER, hp);
-      room.note(current.state);
+    const feed = (hps: readonly number[]): void => {
+      for (const hp of hps) {
+        current.state = at(RIVER, hp);
+        room.note(current.state);
+      }
     };
-    bash(2, 155);
-    bash(1, 154);
-    bash(2, 152);
+    room.note(current.state);
+    room.observe({ type: 'bash-failed', groups: {} } as unknown as Block);
+    room.observe({
+      type: 'user-takes-damage',
+      groups: { damage: '2', paidFor: 'bashing the door' }
+    } as unknown as Block);
+    // The bash line read with the figure unmoved, a regen tick, then falls
+    // larger than the stated cost.
+    feed([157, 158, 155, 150, 146, 140]);
     expect(room.hurtsHere(current.state)).toBeNull();
-    // The positive control: the same falls with no bash line are the room's.
-    for (const hp of [150, 148]) {
-      current.state = at(RIVER, hp);
-      room.note(current.state);
-    }
+    // A redisplay the tracker cannot place for a line keeps the bash.
+    current.state = { ...at(RIVER, 140), room: { ...EMPTY_CHARACTER.room } };
+    room.note(current.state);
+    feed([135, 130, 125]);
+    expect(room.hurtsHere(current.state)).toBeNull();
+    // The positive control: a later visit with no bash, and the same falls are the room's.
+    current.state = at(HALLS, 125);
+    room.note(current.state);
+    current.state = at(RIVER, 125);
+    room.note(current.state);
+    feed([120, 115]);
     expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
   });
 
