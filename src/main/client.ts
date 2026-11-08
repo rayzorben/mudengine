@@ -61,6 +61,7 @@ import type { RealmFloor } from '../shared/floor';
 import { itemSeen } from './world/itemSeen';
 import type { RealmFinds } from '../shared/finds';
 import type { RealmShops } from '../shared/shops';
+import { asTaskId } from '../shared/tasks';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from '../shared/memory';
@@ -2193,6 +2194,13 @@ function registerIpc(): void {
       return manager.extensions.action(name, action, Array.isArray(args) ? args : []);
     }
   );
+  handle(Invoke.setTask, (_caller, session: SessionId, task: unknown, on: unknown) => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined) return t('app.profiles.noSuchCharacter');
+    const id = asTaskId(task);
+    if (id === null || typeof on !== 'boolean') return t('tasks.badCall');
+    return manager.tasks.set(id, on);
+  });
 
   /**
    * Who is walking, for pricing a route against them.

@@ -2063,6 +2063,17 @@ export const RULES: Rule[] = [
     type: 'user-search-succeeded',
     pattern: /^You found an exit (?:to the )?(?<direction>\w+)!/
   },
+  // Paradigm's treasure dig, from the user's wire (2026-11-08); see `user-digs`.
+  { type: 'user-digs', pattern: /^You use your spade and dig up the ground, to find\.\.\.$/ },
+  { type: 'user-dig-finds', pattern: /^You find an? +(?<item>.+)!$/ },
+  {
+    type: 'user-dig-collapses',
+    pattern: /^You dig too deep, and the ground beneath you begins to collapse inward\.$/
+  },
+  {
+    type: 'user-climbs-out',
+    pattern: /^You slowly climb up the rough stone wall, out of the pit\.$/
+  },
 
   /* ---------------------------------------------------------- stealth */
   {

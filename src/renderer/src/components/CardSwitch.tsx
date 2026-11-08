@@ -10,6 +10,7 @@
 import { Fragment, type ReactNode } from 'react';
 
 import AutomationCard from './AutomationCard';
+import AutomationsCard from './AutomationsCard';
 import BanksCard from './BanksCard';
 import type { CardChrome } from './BentoCard';
 import CombatCard from './CombatCard';
@@ -583,6 +584,8 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
       return <AutomationCard {...chrome} automation={view.automation} />;
     case 'extension':
       return <ExtensionCard {...chrome} session={ctx.session} views={view.automation.extensions} />;
+    case 'automations':
+      return <AutomationsCard {...chrome} session={ctx.session} tasks={view.automation.tasks} />;
     case 'stream':
       return <StreamCard {...chrome} lines={view.lines} quiet={ctx.quiet} />;
     default: {

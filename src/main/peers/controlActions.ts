@@ -15,7 +15,8 @@ import type { ControlAction, ControlAnswer, ControlSwitch } from '../../shared/p
 import { DIRECTION_COMMAND } from '../../shared/world';
 import { t } from '../app/i18n';
 import { refusedChain, type ChainedRemoteEvents } from '../automation/ChainedRemote';
-import type { CommandQueue, QueueRefusal } from '../automation/CommandQueue';
+import { taken, type CommandQueue } from '../automation/CommandQueue';
+import { whyNotQueued } from '../automation/queueRefusals';
 
 /** The character as an action reaches it. */
 export interface ControlledSession {
@@ -34,26 +35,6 @@ export interface ControlledSession {
 const DONE: ControlAnswer = { r: 'done' };
 const refused = (why: string): ControlAnswer => ({ r: 'refused', why });
 
-/** Why the queue sent nothing, one sentence per refusal. */
-function notQueued(refusal: QueueRefusal): string {
-  switch (refusal) {
-    case 'held':
-      return t('peers.control.queue.held');
-    case 'offline':
-      return t('peers.control.queue.offline');
-    case 'switched-off':
-      return t('peers.control.queue.switchedOff');
-    case 'expired':
-      return t('peers.control.queue.expired');
-    case 'unavailable':
-      return t('peers.control.queue.unavailable');
-    default: {
-      const never: never = refusal;
-      return never;
-    }
-  }
-}
-
 /** A command proposed as though `by` typed it into this character's terminal. */
 function typed(session: ControlledSession, command: string, by: string): ControlAnswer {
   const offered = session.queue.offer({
@@ -62,7 +43,7 @@ function typed(session: ControlledSession, command: string, by: string): Control
     reason: t('peers.control.reason', { from: by }),
     decision: 'remote-control'
   });
-  return offered === 'queued' || offered === 'joined' ? DONE : refused(notQueued(offered));
+  return taken(offered) ? DONE : refused(whyNotQueued(offered));
 }
 
 function played(answer: MovementStart | null): ControlAnswer {

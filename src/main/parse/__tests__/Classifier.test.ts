@@ -2101,6 +2101,20 @@ describe('the cheap eight', () => {
     expectType('You may not go through this exit!', 'direction-failed');
   });
 
+  it("reads Paradigm's treasure dig, off the user's wire (2026-11-08)", () => {
+    expectType('You use your spade and dig up the ground, to find...', 'user-digs');
+    // Two spaces on the wire between the article and the item.
+    expect(expectType('You find a  treasure chest!', 'user-dig-finds')['item']).toBe(
+      'treasure chest'
+    );
+    expectType(
+      'You dig too deep, and the ground beneath you begins to collapse inward.',
+      'user-dig-collapses'
+    );
+    expectType('You slowly climb up the rough stone wall, out of the pit.', 'user-climbs-out');
+    expectType('You find yourself... elsewhere.', 'unknown');
+  });
+
   /*
    * Measured live 2026-08-27 by teleporting to rooms of known light value:
    * −100 and −150 print `dimly lit`, −175 `barely visible`, −999 this. It

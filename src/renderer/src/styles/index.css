@@ -18051,3 +18051,35 @@ tr:hover .row-action.worn,
   flex: none;
   padding: 0 2px;
 }
+
+/* ===================================================== automations card */
+/* A row per task: its name, the chip saying where it stands, its switch, then its figures. */
+.task-row {
+  display: grid;
+  gap: 4px;
+}
+.task-row + .task-row {
+  border-top: var(--rule) solid var(--ink-line);
+  padding-top: var(--gap);
+}
+.task-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.task-name {
+  color: var(--text-hi);
+  font-weight: 600;
+  margin-right: auto;
+}
+.task-about,
+.task-detail {
+  margin: 0;
+}
+.task-about {
+  color: var(--text-lo);
+}
+.task-detail {
+  color: var(--pending);
+}

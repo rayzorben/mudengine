@@ -174,6 +174,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/LeaderDoors.ts',
       // A player searching here whom the room did not list.
       'src/main/automation/UnlistedSearcher.ts',
+      // The treasure dig's answer, the pit and the climb out of it.
+      'src/main/automation/TreasureDig.ts',
       // A use with none left (the cash run).
       'src/main/automation/CashRun.ts',
       // A charged item's uses left, a use with none, and the new day (todo 44).

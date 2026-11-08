@@ -26,6 +26,7 @@ import { AutoDeposit } from '../automation/AutoDeposit';
 import { ChestOpening } from '../automation/ChestOpening';
 import { AutoDrop } from '../automation/AutoDrop';
 import { AutoSearch } from '../automation/AutoSearch';
+import { Tasks } from '../automation/Tasks';
 import { AutoLoot } from '../automation/AutoLoot';
 import { DeathSummons } from '../automation/DeathSummons';
 import { FloorAfterKill } from '../automation/FloorAfterKill';
@@ -164,6 +165,7 @@ import { STATUS_LINE } from '../parse/patterns';
 import { answeringAfter } from '../parse/echo';
 import { TerminalFeed } from './TerminalFeed';
 import { Paint } from './Paint';
+import { PlayerSteering } from './PlayerSteering';
 import { Appraisal } from './Appraisal';
 import { editorInput } from './editorInput';
 import { fightBook, type SessionOdds } from './OddsBook';
@@ -313,24 +315,11 @@ export class SessionManager {
   private outbound = '';
   /** The command the last status line echoed, which the lines after it answer. */
   private answering: string | null = null;
-  /**
-   * A direction the **player** typed, waiting for the room that answers it.
-   *
-   * A walk or a loop stands down when the player takes the wheel, and taking
-   * the wheel is *moving the character*, not typing. It used to be any command
-   * at all: `st` mid-lap ended the loop with `Manually stopped`, which is a
-   * client stopping the thing it was asked to do because somebody looked at
-   * their own stat sheet. And a direction into a wall is not taking the wheel
-   * either — the character is exactly where the route left it — so the typed
-   * move is held here until a room says it landed.
-   *
-   * `where` is the room the character was standing in when it was typed, so
-   * the arrival is recognised by the room *changing* rather than by counting
-   * on any one block; `at` is what `tuning.session.playerMoveWindowMs` writes
-   * it off against, so a refusal nothing classified cannot leave this armed
-   * against a walk step three rooms later.
-   */
-  private playerMove: { where: string | null; at: number } | null = null;
+  /** A direction the player typed, until a room says it landed. See `PlayerSteering`. */
+  private readonly steering = new PlayerSteering(() => {
+    for (const each of [this.walker, this.loops, this.supplies]) each.notePlayerMoved();
+    this.questRunner.notePlayerMoved(); // The errands are walks automation chose.
+  });
   /**
    * The phase last seen, so *leaving the realm* is read as the transition it
    * is rather than as a state to be checked for on every line. See
@@ -387,6 +376,8 @@ export class SessionManager {
   private configured: Parameters<SessionManager['configure']>;
   /** Each installed extension's session (todo 84). See `SessionExtensions`. */
   readonly extensions: SessionExtensions;
+  /** The Automations card's tasks: the treasure dig. */
+  readonly tasks: Tasks;
   private readonly login: LoginAutomator;
   private readonly learner: LoginLearner;
   private readonly recovery: Recovery;
@@ -1554,7 +1545,10 @@ export class SessionManager {
         ...{ queue: this.queue, times: this.walker.times },
         ...{ rules: this.rules, client: this.client, attendance: this.attendance }
       },
-      { config: () => this.automationConfig, extensions: () => this.extensions },
+      {
+        ...{ config: () => this.automationConfig, extensions: () => this.extensions },
+        tasks: () => this.tasks
+      },
       sink
     );
     this.grounded = new Grounded(this.publisher, sink);
@@ -1602,6 +1596,14 @@ export class SessionManager {
       notice,
       changed: () => this.publisher.publishAutomation(),
       deps: deps.extensions
+    });
+    this.tasks = new Tasks(automation.enabled, this.queue, {
+      ...{ stateNow: () => this.tracker.current, signs, moveInFlight, notice },
+      combatOn: () => this.combat.switchedOn,
+      wantsRest: (state) => this.recovery.restInFlight || this.recovery.wouldRest(state),
+      busy: () => this.errandHeld() || this.walker.walking,
+      changed: () => this.publisher.publishAutomation(),
+      switchedOnFor: (start) => this.travel.switchedOnFor(start)
     });
     const safetyParts = {
       tracker: this.tracker,
@@ -1695,6 +1697,7 @@ export class SessionManager {
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
       { module: this.extensions, configure: () => this.extensions.configure(this.configured[0]) },
+      { module: this.tasks, configure: (a) => this.tasks.configure(a.enabled) },
       { module: this.invoke, configure: (a) => this.invoke.configure(a.spells, a.enabled) },
       { module: this.charges },
       { module: this.appraisal },
@@ -1999,7 +2002,7 @@ export class SessionManager {
     this.learner.reset();
     this.realmMenu.reset();
     this.outbound = '';
-    this.playerMove = null;
+    this.steering.cancel();
     this.phaseWas = 'unknown';
     this.realmWord.forget();
     this.endedBy = null;
@@ -2124,7 +2127,7 @@ export class SessionManager {
          * not, and neither is decidable from the word.
          */
         if (this.tracker.observeCommand(command)) {
-          this.playerMove = { where: this.whereWeStand(), at: Date.now() };
+          this.steering.arm(this.tracker.current.room);
         }
         this.login.observeCommand(command);
         this.safety.noteRealmChoice(command);
@@ -2205,51 +2208,6 @@ export class SessionManager {
   }
 
   /**
-   * Where the character is standing, in whatever terms are available.
-   *
-   * The resolved room where the realm data has placed one, and the room's own
-   * name where it has not — a corridor of namesakes resolves by id and an
-   * unplaced room still changes name, and this is only ever compared against
-   * itself. Null in a room nothing has described, which is a comparison that
-   * says nothing and is treated as saying nothing.
-   */
-  private whereWeStand(room = this.tracker.current.room): string | null {
-    return roomAddress(room) ?? room.name;
-  }
-
-  /**
-   * The player's own direction landed, so the walk and the loop stand down.
-   *
-   * The stop belongs to the *arrival* rather than to the keystroke: a typed
-   * `n` that the server refuses moves nobody, and a lap ended by a wall is a
-   * lap ended by nothing. What says it landed is the room changing — every
-   * other outcome of a direction leaves the character where it was.
-   *
-   * Written off after `tuning.session.playerMoveWindowMs`. Not every failure
-   * is a `direction-failed` this can hear (a refused command is *said out
-   * loud*, and a realm this client has never met may word a wall differently),
-   * and an arm left standing would eventually be answered by a walk step's own
-   * arrival and blame the player for stopping it.
-   */
-  private notePlayerSteering(state: CharacterState): void {
-    const armed = this.playerMove;
-    if (armed === null) return;
-    if (Date.now() - armed.at > tuning().session.playerMoveWindowMs) {
-      this.playerMove = null;
-      return;
-    }
-    const here = this.whereWeStand(state.room);
-    if (here === null || here === armed.where) return;
-    this.playerMove = null;
-    this.walker.notePlayerMoved();
-    this.loops.notePlayerMoved();
-    // And the errand, which is a walk automation chose: the player steering is
-    // the one thing it may never argue with.
-    this.supplies.notePlayerMoved();
-    this.questRunner.notePlayerMoved();
-  }
-
-  /**
    * Watches the one phase change that means a character has gone.
    *
    * `in-game` to anything else, on a connection that is still up, is the menu:
@@ -2295,7 +2253,7 @@ export class SessionManager {
     this.sink.notice(t('session.realm.left'));
     this.dropTyped();
     this.queue.clear();
-    this.playerMove = null;
+    this.steering.cancel();
     this.travel.leftTheRealm();
 
     // The loop before the walker: stopping a walk calls `ended`, and a loop
@@ -2609,7 +2567,7 @@ export class SessionManager {
      * while somebody steers, which is the direction this whole change moves
      * in; being wrong the other way ends a lap for a wall.
      */
-    if (block.type === 'direction-failed') this.playerMove = null;
+    if (block.type === 'direction-failed') this.steering.cancel();
 
     /*
      * A death is a teleport, so everything that was on its way somewhere stops.
@@ -2672,7 +2630,9 @@ export class SessionManager {
     for (const read of reads) this.routines.onBlock(read);
     this.extensions.onBlock(block);
     this.charges.onBlock(block); // First: the cash run and the use read the count it takes.
-    for (const each of [this.hostTrips, this.areaSearch, this.errands]) each.onBlock(block);
+    for (const each of [this.hostTrips, this.areaSearch, this.errands, this.tasks]) {
+      each.onBlock(block);
+    }
     this.corpse.onBlock(block);
     /*
      * Before `tracker.apply`, deliberately: a wear-off is about to take the
@@ -2841,7 +2801,7 @@ export class SessionManager {
       this.noteRealmPhase(state);
       // A walk or loop the player steered out from under stands down now, so the
       // walker says "you moved the character yourself", not a wrong-room stop.
-      this.notePlayerSteering(state);
+      this.steering.note(state);
       this.restAway.noteRoom();
       this.roomHazards.note(state);
       this.marks.onCharacter(state);
@@ -2860,6 +2820,7 @@ export class SessionManager {
        */
       if (this.grounded.standsDown(state)) return;
       this.errands.onCharacter(state, block);
+      this.tasks.onCharacter(state);
       this.statlineReport.noteStatline(state);
       /*
        * Under a timed spell the way in put on the character — the dive into

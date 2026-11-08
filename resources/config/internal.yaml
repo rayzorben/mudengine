@@ -1042,6 +1042,21 @@ tuning:
   chest:
     expiresMs: 10000
 
+  # The treasure dig (`TreasureDig`), switched on from the Automations card.
+  # A dig, climb or `i` with no answer after `answerMs` is read as unanswered
+  # and the inventory decides. After the dig line the roll waits out text
+  # block 3372's `adddelay 4` (four seconds) and the server's command tick, so
+  # the next dig waits `delayMs` unless the roll or the room reprint comes
+  # first. A `climb out` a monster refused is tried again after
+  # `climbRetryMs`; `refusals` refused digs in a row, with a spade in the
+  # inventory, stop the run.
+  dig:
+    answerMs: 6000
+    delayMs: 4500
+    climbRetryMs: 4000
+    expiresMs: 5000
+    refusals: 2
+
   # Sitting down — `Recovery`.
   rest:
     # Generous, unlike an attack's: what this reacts to is a number that moves

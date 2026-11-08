@@ -1329,6 +1329,23 @@ const TUNING_DEFAULTS = {
   chest: {
     expiresMs: 10_000
   },
+  /** The treasure dig (`TreasureDig`), switched on from the Automations card. */
+  dig: {
+    /** A dig, climb or `i` with no answer by now is read as unanswered and the inventory decides. */
+    answerMs: 6000,
+    /**
+     * After the dig line, the roll waits out text block 3372's `adddelay 4`
+     * (four seconds, GreaterMUD's `TextBlockPart`); the half second over is the
+     * server's command tick. A roll that prints nothing is over by then.
+     */
+    delayMs: 4500,
+    /** A `climb out` refused by a monster here is tried again after this. */
+    climbRetryMs: 4000,
+    /** A dig still queued after this is dropped and proposed again. */
+    expiresMs: 5000,
+    /** Digs in a row the server refused, with a spade in the inventory, before the run stops. */
+    refusals: 2
+  },
   /** Sitting down — `Recovery`. */
   rest: {
     /**

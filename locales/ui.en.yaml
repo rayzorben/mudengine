@@ -1905,6 +1905,7 @@ help:
     builder: The map to draw a loop on, a room at a time.
     combat: The fight in progress, and how the monster is holding up.
     extension: An installed extension's own page.
+    automations: Automations you switch on and off for this character, such as digging for treasure.
     gang: This character's gang, and who in it may send @ commands.
     gear: The best gear for each slot, what the cash on hand buys now, and a trip to buy it.
     hunting: Where to hunt from here, priced for this character, best first.
@@ -2184,6 +2185,9 @@ rewrites:
     invited: invited
     resting: resting
     meditating: meditating
+# The Automations card's switch, refused at the boundary.
+tasks:
+  badCall: That is not an automation this client has.
 # Extensions found in the home's extensions folder at startup (todo 84).
 extensions:
   loaded: '{title} is installed and running.'
@@ -2208,6 +2212,35 @@ cards:
   extension:
     title: Extension
     none: No extension with a card is installed.
+  # The automations switched on and off by hand (`AutomationsCard`).
+  automations:
+    title: Automations
+    on: 'On'
+    off: 'Off'
+    switchOn: Switch this automation on
+    switchOff: Switch this automation off
+    unknown: unknown
+    dig:
+      name: Dig for treasure
+      about: Waits for auto-combat to clear the room, digs the disturbed ground, waits out the dig's
+        delay, climbs out of a pit, and stops when the last spade is gone.
+      spades: Spades
+      dug: Digs
+      falls: Pits
+      finds: Found
+      noFinds: nothing yet
+      status:
+        off: 'off'
+        counting: counting spades
+        digging: digging
+        fighting: fighting
+        unfought: monster here
+        resting: resting
+        climbing: climbing out
+        unswitched: waiting
+        noGround: no disturbed ground
+        done: no spades
+        refused: refused
   alerts:
     badge:
       critical: '{count} critical'
@@ -7717,6 +7750,23 @@ automation:
     reasonConfirm: 'banking: checking the balance'
     reasonCount: 'banking: checking cash on hand before spending it'
     reasonDeposit: 'banking: depositing {surplus} copper of your cash, keeping {keep}'
+  # The treasure dig (`TreasureDig`), switched on from the Automations card.
+  # {dug} is a count of digs the server answered; {item} is what a dig found,
+  # as the server named it; {line} is the server's line refusing the dig.
+  dig:
+    reason: 'treasure dig'
+    switchedOn: Digging for treasure until the spades are gone. Counting the spades first.
+    switchedOff: 'Stopped digging for treasure after {dug} digs.'
+    stoppedByReset: 'Stopped digging for treasure: the connection was reset or the character left the realm.'
+    found: 'The dig turned up {item}.'
+    noSpades: 'No spades left, so the treasure dig is done after {dug} digs.'
+    refused: 'Stopped digging for treasure: the dig was refused with a spade in your inventory ({line}).'
+    noAnswer: no answer came
+    masterOff: Automation is off, so nothing is sent.
+    combatOff: Auto-combat is off, so nothing will clear the room.
+    unfought: 'Auto-combat is not attacking {monsters}, so the dig waits.'
+    noGround: '{room} has no disturbed ground to dig.'
+    notQueued: 'Not sent: {reason}.'
   # What came out of a chest: `ChestOpening`. {chest} is the item's name as
   # the inventory listed it; {copper} is a copper figure.
   chest:
@@ -7949,6 +7999,13 @@ automation:
     helpDoorCannot: 'Not helping {leader} with the {barrier} {direction}: picklocks and strength are both short of it.'
   queue:
     fumbledResend: The game ignored "{command}"; sending it again.
+    # Why a proposal sent nothing, said by the peer controls and the Automations card.
+    refused:
+      held: the stat screen is open, so nothing is sent
+      offline: the character is not connected
+      switchedOff: automation is off
+      expired: it waited too long to be sent
+      unavailable: this realm has no such command
   search:
     reason: 'search: looking for what this room did not show'
   potion:
@@ -8460,12 +8517,6 @@ peers:
     releasedStopped: '{name} stopped your remote control.'
     releasedUnshared: '{name} no longer gives this character remote control.'
     releasedLeft: '{name} logged off, so remote control ended.'
-    queue:
-      held: the stat screen is open, so nothing is sent
-      offline: the character is not connected
-      switchedOff: automation is off
-      expired: it waited too long to be sent
-      unavailable: this realm has no such command
     what:
       line: '"{text}"'
       move: 'the move {dir}'

@@ -231,6 +231,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     listExtensions: () => invoke(Invoke.listExtensions),
     extensionAction: (session, name, action, args) =>
       invoke(Invoke.extensionAction, session, name, action, args),
+    setTask: (session, task, on) => invoke(Invoke.setTask, session, task, on),
 
     listSessions: () => invoke(Invoke.listSessions),
     listProfiles: () => invoke(Invoke.listProfiles),

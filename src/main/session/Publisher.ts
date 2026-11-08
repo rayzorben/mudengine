@@ -17,6 +17,7 @@ import type { CommandQueue } from '../automation/CommandQueue';
 import type { RuleEngine } from '../automation/RuleEngine';
 import { roundTimingAt, type WalkTimesRead } from '../automation/walk/WalkTimes';
 import type { TelnetClient } from '../net/TelnetClient';
+import type { Tasks } from '../automation/Tasks';
 import type { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Appraisal } from './Appraisal';
@@ -53,6 +54,8 @@ export interface PublisherSession {
   config(): AutomationConfig;
   /** The extensions running: each card's view and the settings they lay. */
   extensions(): Pick<SessionExtensions, 'views' | 'laid'>;
+  /** The Automations card's tasks. */
+  tasks(): Pick<Tasks, 'views'>;
 }
 
 /** The members of the session's sink this calls, and no more. */
@@ -216,6 +219,7 @@ export class Publisher {
       engagements: [...this.engageLog].reverse(),
       extensions: this.session.extensions().views(),
       laid: [...this.session.extensions().laid],
+      tasks: this.session.tasks().views(),
       away: this.attendance.away,
       held: this.switches.snapshot,
       rounds: roundTimingAt(this.times, Date.now())

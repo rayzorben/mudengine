@@ -826,6 +826,21 @@ export type BlockType =
   | 'room-command-refused'
   | 'user-search-failed'
   | 'user-search-succeeded'
+  /*
+   * Paradigm's treasure dig (text block 3372, the Lagoon's disturbed ground):
+   * the dig's own line, then what it found, a fall into a Dark Pit (spell
+   * 5095), or nothing at all. The user's wire, 2026-11-08. `Nothing.` is
+   * message 1431, shared with other text blocks, and is read by `TreasureDig`
+   * off the line after a dig rather than as a type of its own.
+   */
+  /** `You use your spade and dig up the ground, to find...` */
+  | 'user-digs'
+  /** `You find a  treasure chest!` (two spaces on the wire). */
+  | 'user-dig-finds'
+  /** `You dig too deep, and the ground beneath you begins to collapse inward.` */
+  | 'user-dig-collapses'
+  /** `You slowly climb up the rough stone wall, out of the pit.` (message 2063) */
+  | 'user-climbs-out'
   // presence
   | 'player-enters'
   /** `look <player>`'s first line: `[ Name Last ] (Gang)`, the gang optional. */
@@ -1152,6 +1167,10 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'room-command-refused': 'failure',
   'user-search-failed': 'failure',
   'user-search-succeeded': 'failure',
+  'user-digs': 'items',
+  'user-dig-finds': 'items',
+  'user-dig-collapses': 'movement',
+  'user-climbs-out': 'movement',
 
   'player-enters': 'presence',
   'player-look': 'presence',

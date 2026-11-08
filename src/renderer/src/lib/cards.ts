@@ -191,6 +191,8 @@ export const CARDS = [
   { id: 'stats', label: t('cards.stats.title') },
   // An extension's own page (todo 84): offered only where one is installed.
   { id: 'extension', label: t('cards.extension.title') },
+  // The automations switched on and off by hand, the treasure dig first. Put away by default.
+  { id: 'automations', label: t('cards.automations.title') },
   // The diagnostics half. Toggled as a group by the rail shortcut, and each one
   // can still be put away on its own — "all cards" means all of them.
   { id: 'session', label: t('cards.session.title') },

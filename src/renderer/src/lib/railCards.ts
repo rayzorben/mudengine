@@ -84,6 +84,8 @@ const PREFERRED: Record<CardId, GridBox> = {
   // at 260px (`npm run smoke`, 2026-10-03).
   quests: { x: 0, y: 150, w: 29, h: 27 },
   extension: { x: 0, y: 177, w: 29, h: 31 },
+  // One task: a heading row, a sentence, a note and a four-row readout.
+  automations: { x: 29, y: 183, w: 20, h: 14 },
   // A map with a list under it and controls under that. It ships as a float.
   builder: { x: 0, y: 208, w: 29, h: 33 },
   session: { x: 0, y: 241, w: 29, h: 13 },

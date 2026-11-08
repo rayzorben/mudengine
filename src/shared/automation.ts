@@ -14,6 +14,7 @@ import type { CharacterState } from './character';
 import type { LaidSetting } from './extensions';
 import type { RoundTiming } from './roundTiming';
 import type { RuleFiring } from './rules';
+import { NO_TASKS, type TaskView } from './tasks';
 
 /**
  * Priority bands. Higher wins.
@@ -197,6 +198,8 @@ export interface AutomationSnapshot {
   extensions: Record<string, unknown>;
   /** The settings extensions have in force over the character's own (todo 118). */
   laid: LaidSetting[];
+  /** The Automations card's tasks, each with its switch and where it stands. */
+  tasks: TaskView[];
   /** Nobody has pressed a key for `automation.afk.afterMinutes` (`Attendance`, todo 79). */
   away: boolean;
   /** The switches the session holds, as the toolbar draws them (`SessionSwitches`). */
@@ -215,6 +218,7 @@ export const EMPTY_AUTOMATION: AutomationSnapshot = {
   engagements: [],
   extensions: {},
   laid: [],
+  tasks: [...NO_TASKS],
   held: HELD_DEFAULTS,
   rounds: null
 };

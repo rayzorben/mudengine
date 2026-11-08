@@ -70,7 +70,8 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'hunting',
   'gear',
   'reference',
-  'extension'
+  'extension',
+  'automations'
 ];
 
 /**

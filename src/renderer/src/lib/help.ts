@@ -78,6 +78,8 @@ function cardSentence(id: CardId): string {
       return t('help.cards.stats');
     case 'extension':
       return t('help.cards.extension');
+    case 'automations':
+      return t('help.cards.automations');
     case 'session':
       return t('help.cards.session');
     case 'link':

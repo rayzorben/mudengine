@@ -111,6 +111,7 @@ const api: WireApi = {
   listExtensions: () => ipcRenderer.invoke(Invoke.listExtensions),
   extensionAction: (session, name, action, args) =>
     ipcRenderer.invoke(Invoke.extensionAction, session, name, action, args),
+  setTask: (session, task, on) => ipcRenderer.invoke(Invoke.setTask, session, task, on),
 
   listSessions: () => ipcRenderer.invoke(Invoke.listSessions),
   listProfiles: () => ipcRenderer.invoke(Invoke.listProfiles),

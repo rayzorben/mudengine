@@ -50,6 +50,7 @@ import type {
   RoomAsk
 } from './quests';
 import type { AreaSearchPreview } from './areaSearch';
+import type { TaskId } from './tasks';
 import type { MobFindPreview } from './mobFind';
 import type { NearPlace, PlaceKind } from './places';
 import type { CashRunAsk, CashRunToken } from './cashRun';
@@ -886,6 +887,8 @@ export const Invoke = {
   listExtensions: 'extensions:list',
   /** One of an extension card's buttons: its answer, or why there is none. */
   extensionAction: 'extensions:action',
+  /** An Automations card switch: why it did not switch, or null. */
+  setTask: 'tasks:set',
 
   // -- sessions and windows
   /** Every loaded session, for a window that has just mounted. */
@@ -1563,6 +1566,8 @@ export interface IpcApi {
     action: string,
     args: readonly unknown[]
   ): Promise<{ value: unknown } | { refusal: string }>;
+  /** Switches one of the Automations card's tasks; why it did not switch, or null. */
+  setTask(session: SessionId, task: TaskId, on: boolean): Promise<string | null>;
 
   listSessions(): Promise<SessionSummary[]>;
   listProfiles(): Promise<ProfileSummary[]>;
