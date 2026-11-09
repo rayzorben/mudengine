@@ -4308,16 +4308,16 @@ cards:
         picked up where it is found, up to the maximum.
       doneOnFound: Once only
       doneOnFoundTooltip: Take the item off this list once you carry its maximum.
-      # The item panel's one choice: neither, keep it stocked, or drop it whenever carried.
-      handlingLabel: Automatically
-      handlingOff: 'Off'
-      handlingOffTooltip: Neither picked up nor dropped for you.
-      handlingCollect: Auto-collect
-      handlingCollectTooltip: Picked up when found, and with buy on bought below the minimum, up
-        to the maximum.
-      handlingDrop: Auto-drop
-      handlingDropTooltip: Dropped whenever you carry it and are not fighting or resting, unless
-        a quest still needs it. Turns Auto-Drop Junk on.
+      # The item panel's three switches; none pressed leaves the item alone.
+      automaticLabel: Automatically
+      autoCollect: Auto-collect
+      autoCollectTooltip: Picked up from the floor when found, up to the maximum.
+      autoBuy: Auto-buy
+      autoBuyTooltip: Bought at a shop when you have fewer than the minimum, up to the maximum.
+        Also picks it up when found.
+      autoDrop: Auto-drop
+      autoDropTooltip: Dropped whenever you carry it and are not fighting or resting, unless a
+        quest still needs it. Turns Auto-Drop Junk on, and Auto-collect and Auto-buy off.
       collectOnly: picked up only
       collectOnlyTooltip: Never bought. Picked up from the floor when one is here and you have
         fewer than the maximum.
@@ -6249,8 +6249,10 @@ settings:
       enabledHint: The game's lines for this are held back until it has finished printing them, and
         this design is drawn in their place. When off, the game's own lines are shown.
       templateLabel: Template
-      templateHint: Text with tags in braces, one line here per line in the console. Click a value,
-        a color or a control on the left to insert it at the cursor.
+      templateHint: Text with tags in braces, one line here per line in the console. Type a brace
+        to pick a tag from a list, or click a value, a color or a control on the left to insert it
+        at the cursor.
+      completion: Tags
       done: Done
       typed: what you type
       typedNote: The text after the row is what you type into it. A color left open at the end of

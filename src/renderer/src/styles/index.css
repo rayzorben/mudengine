@@ -14646,9 +14646,11 @@ tr:hover .row-action.worn,
  * A flex line rather than an inline one, so where the mark sits is `align-items`
  * rather than a `vertical-align` interacting with a line box; and a `min-height`
  * in `em` so it tracks the type rather than being a pixel somebody chose. The
- * smoke run measures both halves.
+ * smoke run measures both halves. The rewrite template's field is a div, so
+ * its words are a label of their own.
  */
-.settings-field > span {
+.settings-field > span,
+.rewrite-template-field > label {
   align-items: center;
   color: var(--text-lo);
   display: flex;
@@ -16689,31 +16691,79 @@ tr:hover .row-action.worn,
   gap: 3px;
 }
 
-/* The template, in the console's face: what is typed here is drawn there. */
-.rewrite-template {
+/*
+ * The template, in the console's face: what is typed here is drawn there.
+ *
+ * The frame scrolls and the textarea grows to its text, because a textarea's
+ * own scroll width leaves out its right padding: measured on Electron's
+ * Chromium 130, a 771px line scrolled to 779px (the left padding only) with
+ * the right padding at 8px or 48px, and the last characters sat under the
+ * scrollbar. Grown inside a frame, the same line scrolls to 829px, its right
+ * padding included, so there is room past the end of every line.
+ */
+.rewrite-template-frame {
   background: var(--ink-raised);
   border: 1px solid var(--ink-line);
   border-radius: var(--r-control);
-  color: var(--text-hi);
+  display: grid;
   flex: 0 0 auto;
-  font-family: var(--font-terminal, var(--font-dos));
-  font-size: inherit;
-  line-height: 1.4;
   min-height: 12em;
   overflow: auto;
-  padding: 6px 8px;
   resize: vertical;
-  white-space: pre;
 }
 
-/* The prompt row is one line, so its box asks for less. */
-.rewrite-template[rows='3'] {
+/* The prompt row's template is one line, so a shorter frame. */
+.rewrite-template-frame[data-short='true'] {
   min-height: 4.5em;
 }
 
-.rewrite-template:focus {
+.rewrite-template-frame:focus-within {
   border-color: var(--accent);
+}
+
+.rewrite-template {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-hi);
+  field-sizing: content;
+  font-family: var(--font-terminal, var(--font-dos));
+  font-size: inherit;
+  height: auto;
+  /* Its text's width, not the frame's: a stretched grid item never grows past it. */
+  justify-self: start;
+  line-height: 1.4;
+  min-width: 100%;
+  overflow: hidden;
+  padding: 6px 4ch 6px 8px;
+  resize: none;
+  white-space: pre;
+}
+
+.rewrite-template:focus {
   outline: none;
+}
+
+/* The completion list is placed at the caret by `TagCompletion`, not under the field. */
+.rewrite-template-field {
+  position: relative;
+}
+
+.spell-options.tag-options {
+  right: auto;
+  max-width: 100%;
+}
+
+/* A record's own fields, under its name and indented by a step. */
+.rewrite-record-head {
+  display: flex;
+  gap: 8px;
+  padding: 2px 6px;
+  color: var(--text-lo);
+}
+
+.rewrite-record > .rewrite-field-row {
+  padding-left: 1.5ch;
 }
 
 .rewrite-preview .rewrite-glyph {
@@ -17729,11 +17779,27 @@ tr:hover .row-action.worn,
   margin: 0;
 }
 
-/* The item panel's Off, Auto-collect and Auto-drop, one row of picks. */
+/* The item panel's Auto-collect, Auto-buy and Auto-drop, one row of switches. */
 .supply-control > [role='group'] {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/*
+ * The panel is a readout whose rows line up on the text's baseline, and the
+ * base `input`, `button` and `select` are toolbar-height controls: drawn at
+ * that height, each row stood taller than its label and the labels slid off
+ * their values. Here every control is one line of text tall.
+ */
+.supply-control :is(input, select, button) {
+  height: auto;
+  line-height: inherit;
+  padding-block: 0;
+}
+
+.supply-control .chip.pick {
+  padding-inline: 6px;
 }
 
 .supply-control select {

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import { useListNavigation } from '../hooks/useListNavigation';
+import { rankNames } from '../lib/rankNames';
 
 /**
  * A free-text field with a themed list of known names under it.
@@ -40,29 +41,6 @@ export interface NameComboProps {
  */
 const MOST = 60;
 
-/**
- * The names worth offering for what has been typed, best first.
- *
- * A prefix outranks a match anywhere — typing `heal` means `healing potion`
- * before `greater healing draught` — which is the rule the spell picker and
- * the Reference card's search both follow.
- */
-function matches(options: readonly string[], value: string): string[] {
-  const needle = value.trim().toLowerCase();
-  if (needle.length === 0) return options.slice(0, MOST);
-  const ranked: Array<{ name: string; rank: number }> = [];
-  for (const name of options) {
-    const lower = name.toLowerCase();
-    const rank = lower.startsWith(needle) ? 0 : lower.includes(needle) ? 1 : -1;
-    if (rank < 0) continue;
-    ranked.push({ name, rank });
-  }
-  return ranked
-    .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
-    .slice(0, MOST)
-    .map((hit) => hit.name);
-}
-
 export default function NameCombo({
   name,
   value,
@@ -76,7 +54,7 @@ export default function NameCombo({
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const shownOptions = useMemo(() => matches(options, value), [options, value]);
+  const shownOptions = useMemo(() => rankNames(options, value, MOST), [options, value]);
   const shown = open && !disabled && shownOptions.length > 0;
 
   const navigation = useListNavigation<string>({

@@ -7374,6 +7374,45 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       await evaluate(`!!document.querySelector('.reference-popover .reference-detail')`),
       'drawn by the same component the Reference card uses'
     );
+    /*
+     * The panel's three switches (user, 2026-11-09): Auto-collect and Auto-buy
+     * together draw the figures and the shop, each on its label's line.
+     * Pictured, because the rows sliding off their labels is what a reader
+     * sees first and a text check does not. Switched off again after.
+     */
+    const press = (which) =>
+      evaluate(`(() => {
+        const button = document.querySelector('.reference-popover [data-automation="${which}"]');
+        button?.click();
+        return !!button;
+      })()`);
+    check(
+      (await evaluate(
+        `document.querySelector('.reference-popover [data-automation="collect"]')?.getAttribute('aria-pressed') ?? 'missing'`
+      )) === 'false',
+      'the item panel offers Auto-collect, off for an item not kept'
+    );
+    await press('collect');
+    await shown('.reference-popover .supply-count');
+    check(await press('buy'), 'and Auto-buy beside it');
+    await waitFor(
+      async () =>
+        (await evaluate(`document.querySelectorAll('.reference-popover .supply-count').length`)) ===
+        2
+    );
+    const drift = await evaluate(`(() => {
+      const labels = [...document.querySelectorAll('.reference-popover .reference-detail > dt')];
+      return Math.max(0, ...labels.slice(0, 3).map((label) => {
+        const value = label.nextElementSibling;
+        return value ? Math.abs(label.getBoundingClientRect().top - value.getBoundingClientRect().top) : 99;
+      }));
+    })()`);
+    check(drift <= 4, 'and each switch row sits on its label', `${drift}px`);
+    await capture('smoke-item-panel.png', 'the item panel with Auto-collect and Auto-buy on');
+    await press('collect');
+    await waitFor(
+      async () => !(await evaluate(`!!document.querySelector('.reference-popover .supply-count')`))
+    );
     check(
       !(await evaluate(`!!document.querySelector('.reference-card')`)) ||
         (await evaluate(`document.querySelectorAll('.reference-card').length`)) ===
@@ -12403,6 +12442,139 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       return true;
     })()
   `);
+  /*
+   * The rewrite editor (user, 2026-11-09): a record's fields are rows of their
+   * own in the sidebar, a brace offers the tags that answer to what follows
+   * it, Tab takes one and Escape closes the list before the editor, and a
+   * line has room past its last character instead of ending under the
+   * scrollbar.
+   */
+  check(await showSection('rewrites'), 'its Rewrites section is reachable');
+  {
+    const editPack = await evaluate(`
+      (() => {
+        const row = [...document.querySelectorAll('.rewrite-list li')].find(
+          (li) => li.querySelector('.hint')?.textContent.trim() === ${JSON.stringify(copy('settings.rewrites.entities.inventory'))}
+        );
+        const edit = row?.querySelector('button');
+        edit?.click();
+        return !!edit;
+      })()
+    `);
+    check(editPack, 'the inventory design can be opened');
+    await shown('.rewrite-editor .rewrite-template');
+    check(
+      await evaluate(
+        `[...document.querySelectorAll('.rewrite-sidebar .rewrite-record .rewrite-field-row code')].some((code) => code.textContent === '{item.action.autoDrop}')`
+      ),
+      'and the item actions are rows in its sidebar'
+    );
+    const original = await evaluate(
+      `document.querySelector('.rewrite-editor .rewrite-template').value`
+    );
+    await evaluate(`
+      (() => {
+        const area = document.querySelector('.rewrite-editor .rewrite-template');
+        area.focus();
+        area.setSelectionRange(area.value.length, area.value.length);
+        return true;
+      })()
+    `);
+    await cdp('Input.insertText', { text: '\n{item.action.au' });
+    await shown('.rewrite-editor .tag-options');
+    const offered = await evaluate(
+      `[...document.querySelectorAll('.rewrite-editor .tag-options li code')].map((code) => code.textContent).join(' ')`
+    );
+    check(
+      offered.startsWith('{item.action.autoDrop}'),
+      'typing a brace offers the tags that answer to it',
+      offered.slice(0, 120)
+    );
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9
+    });
+    await waitFor(async () =>
+      (
+        await evaluate(`document.querySelector('.rewrite-editor .rewrite-template').value`)
+      ).endsWith('{item.action.autoDrop}')
+    );
+    check(
+      (
+        await evaluate(`document.querySelector('.rewrite-editor .rewrite-template').value`)
+      ).endsWith('\n{item.action.autoDrop}'),
+      'and Tab puts the whole tag in place of what was typed'
+    );
+    await cdp('Input.insertText', { text: ' {bri' });
+    await shown('.rewrite-editor .tag-options');
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await waitFor(
+      async () => !(await evaluate(`!!document.querySelector('.rewrite-editor .tag-options')`))
+    );
+    check(
+      !(await evaluate(`!!document.querySelector('.rewrite-editor .tag-options')`)) &&
+        (await evaluate(`!!document.querySelector('.rewrite-editor')`)),
+      'and Escape closes the list and leaves the editor open'
+    );
+    /*
+     * The room past the longest line: the frame scrolls as far as the line's
+     * width plus the textarea's right padding, which a textarea scrolling
+     * itself leaves out.
+     */
+    const room = JSON.parse(
+      await evaluate(`
+        (() => {
+          const area = document.querySelector('.rewrite-editor .rewrite-template');
+          if (!area) return JSON.stringify({ past: -1, padding: 0, missing: true });
+          const frame = area.parentElement;
+          const style = getComputedStyle(area);
+          const context = document.createElement('canvas').getContext('2d');
+          context.font = style.font;
+          const longest = Math.max(...area.value.split('\\n').map((line) => context.measureText(line).width));
+          const end = longest + parseFloat(style.paddingLeft);
+          return JSON.stringify({ past: Math.round(frame.scrollWidth - end), padding: parseFloat(style.paddingRight) });
+        })()
+      `)
+    );
+    check(
+      room.past >= room.padding - 2,
+      'and a long line has room past its last character',
+      JSON.stringify(room)
+    );
+    await capture('smoke-rewrite-editor.png', 'the rewrite editor with a tag completed');
+    await evaluate(`
+      (() => {
+        const area = document.querySelector('.rewrite-editor .rewrite-template');
+        if (!area) return false;
+        const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+        set.call(area, ${JSON.stringify(original)});
+        area.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await evaluate(`document.querySelector('.rewrite-editor-done')?.click() ?? true`);
+    await waitFor(async () => !(await evaluate(`!!document.querySelector('.rewrite-editor')`)));
+  }
+
   /*
    * The loops a character walks, in the Movement section.
    *

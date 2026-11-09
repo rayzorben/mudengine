@@ -195,40 +195,47 @@ function CountField({
   );
 }
 
-/** What the client does with an item: nothing, keep it stocked, or drop it whenever carried. */
-const HANDLINGS = ['off', 'collect', 'drop'] as const;
-type Handling = (typeof HANDLINGS)[number];
+/**
+ * What the client does with an item unasked, each a switch of its own.
+ *
+ * Auto-collect picks it up when found, up to the maximum; Auto-buy also buys
+ * it below the minimum, and a bought row is collected too, so it turns
+ * collecting on. Auto-drop sheds it whenever carried, so it turns both off:
+ * an item on both lists would be picked up by one and dropped by the other.
+ */
+const AUTOMATIONS = ['collect', 'buy', 'drop'] as const;
+type Automation = (typeof AUTOMATIONS)[number];
 
-/** Each choice's word and tooltip, looked up when drawn so the dictionary is loaded. */
-const HANDLING_WORDS: Record<Handling, () => { word: string; tooltip: string }> = {
-  off: () => ({
-    word: t('cards.self.supplies.handlingOff'),
-    tooltip: t('cards.self.supplies.handlingOffTooltip')
-  }),
+/** Each switch's word and tooltip, looked up when drawn so the dictionary is loaded. */
+const AUTOMATION_WORDS: Record<Automation, () => { word: string; tooltip: string }> = {
   collect: () => ({
-    word: t('cards.self.supplies.handlingCollect'),
-    tooltip: t('cards.self.supplies.handlingCollectTooltip')
+    word: t('cards.self.supplies.autoCollect'),
+    tooltip: t('cards.self.supplies.autoCollectTooltip')
+  }),
+  buy: () => ({
+    word: t('cards.self.supplies.autoBuy'),
+    tooltip: t('cards.self.supplies.autoBuyTooltip')
   }),
   drop: () => ({
-    word: t('cards.self.supplies.handlingDrop'),
-    tooltip: t('cards.self.supplies.handlingDropTooltip')
+    word: t('cards.self.supplies.autoDrop'),
+    tooltip: t('cards.self.supplies.autoDropTooltip')
   })
 };
 
-/** A row made by choosing Auto-collect: picked up where found, one at a time, never bought. */
-function collectedRow(name: string): SupplyItem {
-  return { name, min: 0, max: 1, shop: '', at: null, buy: false, doneOnFound: false };
+/** A row as a switch first makes it: one kept, and one bought below when buying (`BOUGHT_ROW`). */
+function newRow(name: string, buy: boolean): SupplyItem {
+  const kept = { name, max: 1, shop: '', at: null };
+  return buy ? { ...kept, min: 1, ...BOUGHT_ROW } : { ...kept, min: 0, buy, doneOnFound: false };
 }
 
 /**
  * The controls for one item, on the realm's answer about it.
  *
- * One choice first, because an item on both the supplies list and the
- * auto-drop list is picked up by one and dropped by the other. The figures
- * and the shop are drawn only under Auto-collect, where they mean something.
- * `shops` and `places` are the realm's (where the item is sold), and a row
- * that names a shop the realm does not list for the item keeps its choice in
- * the select, so a hand-written file is drawn as written rather than blanked.
+ * The three switches first; the figures and the shop are drawn only once a
+ * switch makes them mean something. `shops` and `places` are the realm's
+ * (where the item is sold), and a row that names a shop the realm does not
+ * list for the item keeps its choice in the select, so a hand-written file is
+ * drawn as written rather than blanked.
  */
 export function SupplyControl({
   name,
@@ -244,46 +251,59 @@ export function SupplyControl({
   const row = supplyFor(supplies.items, name);
   const dropped = dropListNames(supplies.dropped, name);
   // The drop list wins a hand-edited file that names both: it is what `AutoDrop` does.
-  const handling: Handling = dropped ? 'drop' : row !== null ? 'collect' : 'off';
+  const on: Record<Automation, boolean> = {
+    collect: !dropped && row !== null,
+    buy: !dropped && row !== null && row.buy,
+    drop: dropped
+  };
   const write = (patch: Partial<SupplyItem>): void =>
-    supplies.edit(name, (current) => ({
-      ...(current ?? { name, min: 0, max: 0, shop: '', at: null, ...BOUGHT_ROW }),
-      ...patch
-    }));
-  const choose = (next: Handling): void => {
-    if (next === handling) return;
-    if (dropped) supplies.autoDrop(name, false);
-    switch (next) {
-      case 'off':
-        if (row !== null) supplies.edit(name, () => null);
-        return;
+    supplies.edit(name, (current) => ({ ...(current ?? newRow(name, false)), ...patch }));
+  const toggle = (which: Automation): void => {
+    switch (which) {
       case 'collect':
-        supplies.edit(name, (current) => current ?? collectedRow(name));
+        if (on.collect) {
+          supplies.edit(name, () => null);
+          return;
+        }
+        if (dropped) supplies.autoDrop(name, false);
+        supplies.edit(name, (current) => current ?? newRow(name, false));
+        return;
+      case 'buy':
+        if (on.buy) {
+          write({ buy: false });
+          return;
+        }
+        if (dropped) supplies.autoDrop(name, false);
+        supplies.edit(name, (current) =>
+          current === null
+            ? newRow(name, true)
+            : { ...current, buy: true, min: Math.max(1, current.min) }
+        );
         return;
       case 'drop':
-        // Main takes it off the supplies list in the same write.
-        supplies.autoDrop(name, true);
+        // On, main takes it off the supplies list in the same write.
+        supplies.autoDrop(name, !dropped);
         return;
       default: {
-        const never: never = next;
-        throw new Error(`no handling ${String(never)}`);
+        const never: never = which;
+        throw new Error(`no automation ${String(never)}`);
       }
     }
   };
   return (
     <>
-      <dt>{t('cards.self.supplies.handlingLabel')}</dt>
+      <dt>{t('cards.self.supplies.automaticLabel')}</dt>
       <dd className="supply-control">
-        <span aria-label={t('cards.self.supplies.handlingLabel')} role="group">
-          {HANDLINGS.map((each) => {
-            const { word, tooltip } = HANDLING_WORDS[each]();
+        <span aria-label={t('cards.self.supplies.automaticLabel')} role="group">
+          {AUTOMATIONS.map((each) => {
+            const { word, tooltip } = AUTOMATION_WORDS[each]();
             return (
               <button
-                aria-pressed={handling === each}
+                aria-pressed={on[each]}
                 className="chip pick"
-                data-handling={each}
+                data-automation={each}
                 key={each}
-                onClick={() => choose(each)}
+                onClick={() => toggle(each)}
                 onMouseDown={keepFocus}
                 title={tooltip}
                 type="button"
@@ -294,14 +314,14 @@ export function SupplyControl({
           })}
         </span>
       </dd>
-      {handling === 'collect' && row !== null && (
+      {on.collect && row !== null && (
         <CollectRows name={name} places={places} row={row} shops={shops} write={write} />
       )}
     </>
   );
 }
 
-/** Auto-collect's figures and shop: how many to keep, and whether and where it is bought. */
+/** The figures Auto-collect and Auto-buy keep to, and where Auto-buy buys. */
 function CollectRows({
   name,
   shops,
@@ -348,45 +368,42 @@ function CollectRows({
           <span>{t('cards.self.supplies.doneOnFound')}</span>
         </label>
       </dd>
-      <dt>{t('cards.self.supplies.buyFromLabel')}</dt>
-      <dd className="supply-control">
-        <label title={t('cards.self.supplies.buyTooltip')}>
-          <input
-            checked={row.buy}
-            name={`supply-buy-${name}`}
-            onChange={(event) => write({ buy: event.target.checked })}
-            type="checkbox"
-          />
-          <span>{t('cards.self.supplies.buy')}</span>
-        </label>
-        {!row.buy ? null : choices.length === 0 && !known && current === '|' ? (
-          <span className="inert">{t('cards.self.supplies.soldNowhere')}</span>
-        ) : (
-          <select
-            aria-label={t('cards.self.supplies.buyFromLabel')}
-            onChange={(event) => {
-              const chosen = choices.find((choice) => choice.key === event.target.value);
-              write(
-                chosen === undefined ? { shop: '', at: null } : { shop: chosen.shop, at: chosen.at }
-              );
-            }}
-            // No shop named is the nearest one, the empty option.
-            value={!known && current === '|' ? '' : current}
-          >
-            <option value="">{t('cards.self.supplies.noShop')}</option>
-            {!known && current !== '|' && (
-              <option value={current}>
-                {row.at === null ? row.shop : `${row.shop} (${row.at.map}/${row.at.room})`}
-              </option>
+      {row.buy && (
+        <>
+          <dt>{t('cards.self.supplies.buyFromLabel')}</dt>
+          <dd className="supply-control">
+            {choices.length === 0 && !known && current === '|' ? (
+              <span className="inert">{t('cards.self.supplies.soldNowhere')}</span>
+            ) : (
+              <select
+                aria-label={t('cards.self.supplies.buyFromLabel')}
+                onChange={(event) => {
+                  const chosen = choices.find((choice) => choice.key === event.target.value);
+                  write(
+                    chosen === undefined
+                      ? { shop: '', at: null }
+                      : { shop: chosen.shop, at: chosen.at }
+                  );
+                }}
+                // No shop named is the nearest one, the empty option.
+                value={!known && current === '|' ? '' : current}
+              >
+                <option value="">{t('cards.self.supplies.noShop')}</option>
+                {!known && current !== '|' && (
+                  <option value={current}>
+                    {row.at === null ? row.shop : `${row.shop} (${row.at.map}/${row.at.room})`}
+                  </option>
+                )}
+                {choices.map((choice) => (
+                  <option key={choice.key} value={choice.key}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
             )}
-            {choices.map((choice) => (
-              <option key={choice.key} value={choice.key}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-        )}
-      </dd>
+          </dd>
+        </>
+      )}
     </>
   );
 }

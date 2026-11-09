@@ -19,6 +19,19 @@ import {
 
 import Icon from './Icon';
 import Popup from './Popup';
+import TagCompletion from './TagCompletion';
+import { useTagCompletion } from '../hooks/useTagCompletion';
+import {
+  closerTag,
+  colourTag,
+  CONTROL,
+  recordPrefix,
+  repeatTag,
+  rowPrefix,
+  selfPrefix,
+  styleTag,
+  tagOf
+} from '../lib/templateTags';
 import { CheckField, SelectField, TextField } from './FormField';
 import { MARK_GLYPH } from './marks';
 import { keepFocus } from '../lib/focus';
@@ -118,6 +131,7 @@ export default function RewriteEditor({
 }: RewriteEditorProps): React.JSX.Element {
   const frame = useRef<HTMLDivElement>(null);
   const area = useRef<HTMLTextAreaElement>(null);
+  const field = useRef<HTMLDivElement>(null);
   const caret = useRef<number | null>(null);
 
   // The template is the whole point of opening this, so it takes the caret.
@@ -152,6 +166,25 @@ export default function RewriteEditor({
     },
     [onChange, value]
   );
+
+  // A completed tag over what was typed of it, the caret after it as an insertion's.
+  const replace = useCallback(
+    (from: number, to: number, text: string): void => {
+      caret.current = from + text.length;
+      onChange({
+        ...value,
+        template: value.template.slice(0, from) + text + value.template.slice(to)
+      });
+    },
+    [onChange, value]
+  );
+  const completion = useTagCompletion({
+    entity: value.entity,
+    template: value.template,
+    area,
+    field,
+    replace
+  });
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
@@ -243,19 +276,45 @@ export default function RewriteEditor({
         <div className="rewrite-editor-body">
           <Sidebar entity={value.entity} insert={insert} palette={palette} />
           <div className="rewrite-main settings-form">
-            <label className="settings-field settings-field-wide rewrite-template-field">
-              <span>{t('settings.rewrites.editor.templateLabel')}</span>
-              <textarea
-                aria-describedby={`${stem}-template-hint`}
-                className="rewrite-template"
-                onChange={(event) => onChange({ ...value, template: event.target.value })}
-                ref={area}
-                rows={spec.oneLine ? 3 : 8}
-                spellCheck={false}
-                value={value.template}
-                wrap="off"
-              />
-            </label>
+            {/* A div and not a label around the field: the completion's listbox sits in it. */}
+            <div className="settings-field settings-field-wide rewrite-template-field" ref={field}>
+              <label htmlFor={`${stem}-template`}>
+                {t('settings.rewrites.editor.templateLabel')}
+              </label>
+              {/*
+                The frame scrolls and the textarea grows to its text
+                (`field-sizing: content`): a textarea's own scroll width leaves
+                out its right padding, so the last characters sat under the
+                scrollbar with no room after them.
+              */}
+              <div
+                className="rewrite-template-frame"
+                data-short={spec.oneLine ? 'true' : undefined}
+                onScroll={completion.onScroll}
+              >
+                <textarea
+                  aria-autocomplete="list"
+                  aria-expanded={completion.at !== null}
+                  aria-describedby={`${stem}-template-hint`}
+                  className="rewrite-template"
+                  id={`${stem}-template`}
+                  onBlur={completion.onBlur}
+                  onChange={(event) => {
+                    onChange({ ...value, template: event.target.value });
+                    completion.track();
+                  }}
+                  onClick={completion.track}
+                  onKeyDown={completion.onKeyDown}
+                  onKeyUp={completion.track}
+                  onSelect={completion.track}
+                  ref={area}
+                  spellCheck={false}
+                  value={value.template}
+                  wrap="off"
+                />
+              </div>
+              <TagCompletion completion={completion} />
+            </div>
             <p className="settings-note" id={`${stem}-template-hint`}>
               {t('settings.rewrites.editor.templateHint')}
             </p>
@@ -302,9 +361,6 @@ export default function RewriteEditor({
 
 type Insert = (piece: Insertion | ((selected: string) => Insertion)) => void;
 
-/** A field's tag, at the caret: `{weight}`, or `{me.hp}` under a record. */
-const tagOf = (prefix: string, key: string): string => `{${prefix}${key}}`;
-
 function Sidebar({
   entity,
   insert,
@@ -315,7 +371,6 @@ function Sidebar({
   palette: TerminalPalette;
 }): React.JSX.Element {
   const spec = ENTITY_SPECS[entity];
-  const selfPrefix = spec.self === 'top' ? '' : 'me.';
   const lists = spec.fields.filter((field) => field.kind === 'list' && field.row !== undefined);
   return (
     <aside className="rewrite-sidebar">
@@ -342,18 +397,13 @@ function Sidebar({
         <Category key={field.key} label={t(`rewrites.rows.${field.key}`)}>
           <RepeatRow field={field} insert={insert} />
           {(field.fields ?? []).map((inner) => (
-            <FieldRow
-              field={inner}
-              insert={insert}
-              key={inner.key}
-              prefix={`${field.row ?? ''}.`}
-            />
+            <FieldRow field={inner} insert={insert} key={inner.key} prefix={rowPrefix(field)} />
           ))}
         </Category>
       ))}
       <Category label={t('settings.rewrites.editor.sidebar.character')} open={spec.self === 'top'}>
         {CHARACTER_FIELDS.map((field) => (
-          <FieldRow field={field} insert={insert} key={field.key} prefix={selfPrefix} />
+          <FieldRow field={field} insert={insert} key={field.key} prefix={selfPrefix(entity)} />
         ))}
       </Category>
       {lists.length > 0 && (
@@ -371,7 +421,7 @@ function Sidebar({
 
 /** The `{for}` that opens a list, with the row named: what every figure under it is addressed by. */
 function RepeatRow({ field, insert }: { field: FieldSpec; insert: Insert }): React.JSX.Element {
-  const open = `{for ${field.row ?? ''} in ${field.key}}`;
+  const open = repeatTag(field);
   return (
     <button
       className="rewrite-tag"
@@ -409,9 +459,10 @@ function Category({
 }
 
 /**
- * One figure: a press puts its tag at the caret, and a list or record has a
- * second press opening its own fields beside it. The sentence about it is
- * the row's hint, from the dictionary by the figure's name.
+ * One figure: a press puts its tag at the caret, a list has a second press
+ * opening its own fields beside it, and a record lists its fields under it.
+ * The sentence about it is the row's hint, from the dictionary by the
+ * figure's name.
  */
 function FieldRow({
   field,
@@ -426,6 +477,29 @@ function FieldRow({
   const tag = tagOf(prefix, field.key);
   const description = t(`rewrites.fields.${field.key}`);
   const dismiss = useCallback(() => setOpen(null), []);
+  /*
+   * A record draws nothing alone, so its own fields are rows under it rather
+   * than a chevron's popout: `{item.action.drop}` behind a press on
+   * `{item.action}` was a control nobody could find (user, 2026-11-09).
+   */
+  if (field.kind === 'record') {
+    return (
+      <div className="rewrite-record">
+        <div className="rewrite-record-head">
+          <code>{tag}</code>
+          <span className="hint">{description}</span>
+        </div>
+        {(field.fields ?? []).map((inner) => (
+          <FieldRow
+            field={inner}
+            insert={insert}
+            key={inner.key}
+            prefix={recordPrefix(prefix, field)}
+          />
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="rewrite-field-row">
       <button
@@ -467,7 +541,7 @@ function FieldRow({
               className="entry"
               onClick={() => {
                 dismiss();
-                const open = `{for ${field.row ?? ''} in ${prefix}${field.key}}`;
+                const open = repeatTag(field, prefix);
                 insert((selected) => ({
                   text: `${open}\n${selected}\n{/for}`,
                   caret: `${open}\n`.length + selected.length
@@ -479,7 +553,7 @@ function FieldRow({
               <Icon name="loop" />
               <span>
                 {t('settings.rewrites.editor.sidebar.repeat')}{' '}
-                <code>{`{for ${field.row ?? ''} in ${prefix}${field.key}}`}</code>
+                <code>{repeatTag(field, prefix)}</code>
               </span>
             </button>
           )}
@@ -490,10 +564,7 @@ function FieldRow({
              * since a bound row *is* a record: the prefix is the only thing
              * that differs, and it is the list's own singular (`FieldSpec.row`).
              */
-            const innerTag = tagOf(
-              field.kind === 'list' ? `${field.row ?? ''}.` : `${prefix}${field.key}.`,
-              inner.key
-            );
+            const innerTag = tagOf(rowPrefix(field), inner.key);
             return (
               <button
                 className="entry"
@@ -525,19 +596,18 @@ function Colours({
   palette: TerminalPalette;
 }): React.JSX.Element {
   const [ground, setGround] = useState(false);
-  const prefix = ground ? 'bg:' : '';
   return (
     <Category label={t('settings.rewrites.editor.sidebar.colours')}>
       <div className="rewrite-swatches" role="group">
         {ANSI_COLOURS.map((colour) => (
           <button
-            aria-label={`{${prefix}${colour}}`}
+            aria-label={colourTag(colour, ground)}
             className="rewrite-swatch"
             key={colour}
-            onClick={() => insert({ text: `{${prefix}${colour}}` })}
+            onClick={() => insert({ text: colourTag(colour, ground) })}
             onMouseDown={keepFocus}
             style={{ background: palette[colour] }}
-            title={`{${prefix}${colour}}`}
+            title={colourTag(colour, ground)}
             type="button"
           />
         ))}
@@ -556,7 +626,7 @@ function Colours({
       >
         <input
           aria-label={t('settings.rewrites.editor.sidebar.pickColour')}
-          onChange={(event) => insert({ text: `{${prefix}${event.target.value}}` })}
+          onChange={(event) => insert({ text: colourTag(event.target.value, ground) })}
           type="color"
         />
         <span className="hint">{t('settings.rewrites.editor.sidebar.pickColour')}</span>
@@ -565,24 +635,24 @@ function Colours({
         <button
           className="rewrite-tag"
           key={tag}
-          onClick={() => insert({ text: `{${tag}}` })}
+          onClick={() => insert({ text: styleTag(tag) })}
           onMouseDown={keepFocus}
           type="button"
         >
-          <code>{`{${tag}}`}</code>
+          <code>{styleTag(tag)}</code>
         </button>
       ))}
       <span className="settings-label">{t('settings.rewrites.editor.sidebar.closers')}</span>
       <div className="rewrite-tag-row" title={t('settings.rewrites.editor.sidebar.closersHint')}>
-        {STYLE_CLOSERS.map((name) => `/${name}`).map((tag) => (
+        {STYLE_CLOSERS.map(closerTag).map((tag) => (
           <button
             className="rewrite-tag"
             key={tag}
-            onClick={() => insert({ text: `{${tag}}` })}
+            onClick={() => insert({ text: tag })}
             onMouseDown={keepFocus}
             type="button"
           >
-            <code>{`{${tag}}`}</code>
+            <code>{tag}</code>
           </button>
         ))}
       </div>
@@ -601,71 +671,79 @@ function Controls({ insert }: { insert: Insert }): React.JSX.Element {
     <Category label={t('settings.rewrites.editor.sidebar.controls')}>
       <button
         className="rewrite-tag"
-        onClick={() => wrap('{if }', '{/if}', '{if '.length)}
+        onClick={() => wrap(`${CONTROL.if}}`, CONTROL.endIf, CONTROL.if.length)}
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.ifHint')}
         type="button"
       >
-        <code>{'{if …}…{/if}'}</code>
+        <code>{`${CONTROL.if}…}…${CONTROL.endIf}`}</code>
       </button>
       <button
         className="rewrite-tag"
-        onClick={() => insert({ text: '{else if }', caret: '{else if '.length })}
+        onClick={() => insert({ text: `${CONTROL.elseIf}}`, caret: CONTROL.elseIf.length })}
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.ifHint')}
         type="button"
       >
-        <code>{'{else if …}'}</code>
+        <code>{`${CONTROL.elseIf}…}`}</code>
       </button>
       <button
         className="rewrite-tag"
-        onClick={() => insert({ text: '{else}' })}
+        onClick={() => insert({ text: CONTROL.else })}
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.ifHint')}
         type="button"
       >
-        <code>{'{else}'}</code>
+        <code>{CONTROL.else}</code>
       </button>
       <button
         className="rewrite-tag"
-        onClick={() => wrap('{for }\n', '\n{/for}', '{for '.length)}
+        onClick={() => wrap(`${CONTROL.for}}\n`, `\n${CONTROL.endFor}`, CONTROL.for.length)}
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.forHint')}
         type="button"
       >
-        <code>{'{for …}…{/for}'}</code>
+        <code>{`${CONTROL.for}…}…${CONTROL.endFor}`}</code>
       </button>
       <button
         className="rewrite-tag"
         onClick={() =>
           insert({
-            text: '{group items matching "^token of " as tokens}\n',
-            caret: '{group items matching "^'.length
+            text: `${CONTROL.group}items matching "^token of " as tokens}\n`,
+            caret: `${CONTROL.group}items matching "^`.length
           })
         }
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.groupHint')}
         type="button"
       >
-        <code>{'{group …}'}</code>
+        <code>{`${CONTROL.group}…}`}</code>
       </button>
       <button
         className="rewrite-tag"
-        onClick={() => wrap('{table}\n', '\n{/table}', '{table}\n'.length)}
+        onClick={() =>
+          wrap(`${CONTROL.table}\n`, `\n${CONTROL.endTable}`, `${CONTROL.table}\n`.length)
+        }
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.tableHint')}
         type="button"
       >
-        <code>{'{table}…{/table}'}</code>
+        <code>{`${CONTROL.table}…${CONTROL.endTable}`}</code>
       </button>
       <button
         className="rewrite-tag"
-        onClick={() => wrap('{table header}\n', '\n{/table}', '{table header}\n'.length)}
+        onClick={() =>
+          wrap(
+            `${CONTROL.tableHeader}\n`,
+            `\n${CONTROL.endTable}`,
+            `${CONTROL.tableHeader}\n`.length
+          )
+        }
         onMouseDown={keepFocus}
         title={t('settings.rewrites.editor.sidebar.tableHint')}
         type="button"
       >
-        <code>{'{table header}…{/table}'}</code>
+        <code>{`${CONTROL.tableHeader}…${CONTROL.endTable}`}</code>
       </button>
       <p className="settings-note">{t('settings.rewrites.editor.sidebar.filtersHint')}</p>
     </Category>
