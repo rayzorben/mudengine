@@ -109,12 +109,20 @@ function standing(room: WorldRoom | null, printed: Direction[]): CharacterState 
 
 function drawn(block: Block, state: CharacterState): string | null {
   const rewriter = new Rewriter();
-  rewriter.configure({
-    ...DEFAULT_CONFIG.ui.rewrites,
-    designs: [
-      { name: '', entity: 'room', enabled: true, template: '{room.exitsWithHidden}|{room.hidden}' }
-    ]
-  });
+  rewriter.configure(
+    {
+      ...DEFAULT_CONFIG.ui.rewrites,
+      designs: [
+        {
+          name: '',
+          entity: 'room',
+          enabled: true,
+          template: '{room.exitsWithHidden}|{room.hidden}'
+        }
+      ]
+    },
+    []
+  );
   const chunk = rewriter.render(block, { state, world: WORLD, wearer: UNKNOWN_WEARER });
   return chunk === null ? null : stripAnsi(chunk.text).trimEnd();
 }
@@ -180,17 +188,20 @@ describe('a scroll on the shelf', () => {
   });
   const draw = (block: BatchBlock, state: CharacterState): string[] => {
     const rewriter = new Rewriter();
-    rewriter.configure({
-      ...DEFAULT_CONFIG.ui.rewrites,
-      designs: [
-        {
-          name: '',
-          entity: 'shop',
-          enabled: true,
-          template: '{for item in items}{item}|{item.learned}|{item.usable}\n{/for}'
-        }
-      ]
-    });
+    rewriter.configure(
+      {
+        ...DEFAULT_CONFIG.ui.rewrites,
+        designs: [
+          {
+            name: '',
+            entity: 'shop',
+            enabled: true,
+            template: '{for item in items}{item}|{item.learned}|{item.usable}\n{/for}'
+          }
+        ]
+      },
+      []
+    );
     const chunk = rewriter.render(block, { state, world: WORLD, wearer: UNKNOWN_WEARER });
     return chunk === null ? [] : stripAnsi(chunk.text).trimEnd().split(/\r?\n/);
   };
@@ -236,17 +247,20 @@ describe('the floor', () => {
 
   function floor(type: 'room-items' | 'room-hidden-items', items: string): string | null {
     const rewriter = new Rewriter();
-    rewriter.configure({
-      ...DEFAULT_CONFIG.ui.rewrites,
-      designs: [
-        {
-          name: '',
-          entity: 'floor',
-          enabled: true,
-          template: '{if searched}S {/if}{cash}|{for item in items}{item.use}{item};{/for}'
-        }
-      ]
-    });
+    rewriter.configure(
+      {
+        ...DEFAULT_CONFIG.ui.rewrites,
+        designs: [
+          {
+            name: '',
+            entity: 'floor',
+            enabled: true,
+            template: '{if searched}S {/if}{cash}|{for item in items}{item.use}{item};{/for}'
+          }
+        ]
+      },
+      []
+    );
     const block: Block = {
       seq: 1,
       at: AT,
@@ -291,17 +305,20 @@ describe('a party listing with nobody in it', () => {
   });
   const draw = (block: BatchBlock): string | null => {
     const rewriter = new Rewriter();
-    rewriter.configure({
-      ...DEFAULT_CONFIG.ui.rewrites,
-      designs: [
-        {
-          name: '',
-          entity: 'party',
-          enabled: true,
-          template: 'Party\n{for member in members}{member.name}\n{/for}'
-        }
-      ]
-    });
+    rewriter.configure(
+      {
+        ...DEFAULT_CONFIG.ui.rewrites,
+        designs: [
+          {
+            name: '',
+            entity: 'party',
+            enabled: true,
+            template: 'Party\n{for member in members}{member.name}\n{/for}'
+          }
+        ]
+      },
+      []
+    );
     const chunk = rewriter.render(block, {
       state: EMPTY_CHARACTER,
       world: WORLD,

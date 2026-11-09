@@ -94,12 +94,12 @@ describe('a scroll closes a panel only when it moved the panel', () => {
   /*
    * The terminal and the chrome are two surfaces. A `scroll` listener has to
    * be captured at the window to hear a scrolling element at all, so every
-   * scroller in the client arrives at the same handler — and the loudest is
-   * the console, which scrolls to the bottom on every line the game prints.
-   * Dismissing on all of them took the realm's answer about a clicked item
-   * away the instant anything arrived, which in a MUD is immediately.
+   * scroller in the client arrives at the same handler: the rail when a card
+   * mounts, the Talk log when somebody speaks, and under xterm 5 the console
+   * on every line the game printed. Dismissing on all of them took the
+   * realm's answer about a clicked item away the instant anything arrived.
    */
-  it('leaves a panel opened from a card alone when the console scrolls', () => {
+  it('leaves a panel opened from a card alone when another surface scrolls', () => {
     // Two trees, as the two surfaces are on screen: the pack's row lives under
     // the rail, and the word the game just printed under the terminal.
     const sandals = node();
@@ -116,15 +116,6 @@ describe('a scroll closes a panel only when it moved the panel', () => {
     const sandals = node();
     const pack = node(sandals);
     expect(scrollMovesAnchor(pack, sandals)).toBe(true);
-  });
-
-  it('closes a panel opened from a word in the console when the console scrolls', () => {
-    // `within` is `.xterm-screen`, which sits inside `.xterm-viewport` — the
-    // element that actually moves. The mount is the viewport's *parent*, and
-    // would have answered no to the one scroll that does move the word.
-    const screen = node();
-    const viewport = node(screen);
-    expect(scrollMovesAnchor(viewport, screen)).toBe(true);
   });
 
   it('does not close it when a card elsewhere scrolls', () => {

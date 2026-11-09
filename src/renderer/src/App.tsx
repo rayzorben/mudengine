@@ -243,14 +243,13 @@ export default function App() {
 
   const { density, preference, cycle } = useDensity(config.ui.density);
   /*
-   * The shown character's theme, when its file states one; the options file's
-   * otherwise. A palette pick still outranks either until the file changes,
-   * which is `useOverridablePreference`'s rule and is unchanged here.
+   * The shown character's theme, when its file states one, else the options file's; a palette
+   * pick outranks either until the file changes (`useOverridablePreference`).
    */
   const characterTheme = profiles.find((profile) => profile.id === session)?.theme;
 
   /** Each character's own resolved settings, off its profile. */
-  const { remotesFor, suppliesFor, profileNameFor, switchesFor, restToFor } =
+  const { remotesFor, suppliesFor, dropFor, profileNameFor, switchesFor, restToFor } =
     useProfileReaders(profiles);
   /**
    * What this character's percentages are percentages *of*, and its picklocks
@@ -1004,6 +1003,7 @@ export default function App() {
     remotesFor,
     switchesFor,
     suppliesFor,
+    dropFor,
     profileNameFor,
     ask,
     forget,

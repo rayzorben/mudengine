@@ -22,6 +22,7 @@ import type {
   MarkChange,
   StreamChunk,
   TerminalActionName,
+  AutoDropPress,
   TerminalSize
 } from '@shared/types';
 import type { RoomReference } from '@shared/world';
@@ -148,6 +149,8 @@ export interface TerminalViewProps {
    * pressed and nothing else.
    */
   onAct?(action: TerminalActionName): void;
+  /** A rewrite's `{item.action.autoDrop}` pressed: the item, on or off the auto-drop list. */
+  onAutoDrop?(press: AutoDropPress): void;
   /** A line's gear clicked: the settings behind the decision it reports (todo 119). */
   onSetting?(decision: DecisionKind): void;
   /**
@@ -209,6 +212,7 @@ export default function TerminalView({
   onSelectSlot,
   onChooseRoom,
   onAct,
+  onAutoDrop,
   onSetting,
   recent,
   reportSize = true,
@@ -292,6 +296,7 @@ export default function TerminalView({
     onSelectSlot,
     onChooseRoom,
     onAct,
+    onAutoDrop,
     onSetting,
     onEdge
   });
@@ -307,6 +312,7 @@ export default function TerminalView({
     onSelectSlot,
     onChooseRoom,
     onAct,
+    onAutoDrop,
     onSetting,
     onEdge
   };
@@ -446,10 +452,7 @@ export default function TerminalView({
       theme: initial.current.palette,
       // The game view draws the console over its map, see-through (todo 140): a
       // palette with a transparent background, which xterm draws only when allowed.
-      allowTransparency: true,
-      // Server output is never rewrapped by us; the game formats to a fixed
-      // width and rewrapping would corrupt ASCII maps and box art.
-      windowsMode: false
+      allowTransparency: true
     });
 
     const fit = new FitAddon();
@@ -463,7 +466,8 @@ export default function TerminalView({
     const marks = drawMarks(term, {
       glyph: (icon) => MARK_GLYPH[icon],
       send: (command) => handlers.current.onInput?.(`${command}\r`),
-      act: (action) => handlers.current.onAct?.(action)
+      act: (action) => handlers.current.onAct?.(action),
+      autoDrop: (press) => handlers.current.onAutoDrop?.(press)
     });
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
@@ -703,7 +707,9 @@ export default function TerminalView({
      * lands the next frame). So a scroll in the two frames after a fit is the
      * fit's, and a following console is put back on its last line. A wheel in
      * those frames is undone with it. A scroll the console makes on purpose
-     * (a page refilled, the reader's place shown) ends the window.
+     * (a page refilled, the reader's place shown) ends the window. xterm 6
+     * sets the scroll range without a scroll event, so this may no longer be
+     * needed; not yet measured on 6 (2026-11-09).
      */
     /** The frame that ends the window after a fit, while one is open. */
     let fitFrame: number | null = null;
@@ -954,19 +960,8 @@ export default function TerminalView({
       handlers.current.onEdge?.(now);
     };
 
+    // xterm 6 raises `onScroll` for the reader's wheel, drag and keys as well as for output.
     const scrollListener = term.onScroll(syncPin);
-
-    /**
-     * The DOM listener is not redundant. `onScroll` covers the buffer scrolling
-     * because output arrived, but xterm's viewport suppresses that event for
-     * scrolls the *user* initiates — wheel, scrollbar drag, keyboard — to avoid
-     * feeding its own DOM scroll handler back into itself. Listening only to
-     * `onScroll` therefore means the pin never releases: writes keep yanking
-     * the view back down, and the jump-to-latest affordance never appears at
-     * all, because from React's point of view the viewport is always pinned.
-     */
-    const viewport = mount.querySelector('.xterm-viewport');
-    viewport?.addEventListener('scroll', syncPin, { passive: true });
 
     /**
      * The one thing that writes to this console, for as long as it lives.
@@ -1131,7 +1126,6 @@ export default function TerminalView({
       if (enterTimer !== null) clearTimeout(enterTimer);
       links.dispose();
       observer.disconnect();
-      viewport?.removeEventListener('scroll', syncPin);
       scrollListener.dispose();
       selectionListener.dispose();
       mount.removeEventListener('mousedown', startSelecting);
@@ -1427,11 +1421,9 @@ function linkUnderPointer(
  * terminal has been laid out, the caller's fallback stands in: the pointer's
  * own position, which is where the click was whatever the buffer says.
  *
- * `.xterm-screen` is what travels with the box, not `mount`. It sits *inside*
- * `.xterm-viewport`, which is the element that actually scrolls when output
- * arrives, so a panel anchored here can ask "did that scroll move me" and get
- * the right answer — where the mount, being the viewport's parent, would say
- * no to the one scroll that does move it.
+ * `.xterm-screen` is what travels with the box, not `mount`. xterm 6 scrolls
+ * the console by redrawing it and fires no DOM scroll, so a panel anchored
+ * here stays until Escape, a click elsewhere or a resize.
  */
 function cellAnchor(
   term: Terminal,

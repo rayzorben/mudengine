@@ -33,7 +33,12 @@ function console80() {
     asked.push({ options, line: options.marker.line, disposed: () => gone });
     return decoration;
   });
-  const marks = drawMarks(term, { glyph: () => '', send: () => {}, act: () => {} });
+  const marks = drawMarks(term, {
+    glyph: () => '',
+    send: () => {},
+    act: () => {},
+    autoDrop: () => {}
+  });
   const live = () => asked.filter((entry) => !entry.disposed());
   return { term, marks, asked, live };
 }
@@ -152,7 +157,12 @@ describe('the room a name line was printed for', () => {
 
   it('is gone with the change that takes it off, and with the line once it scrolls out', async () => {
     const term = new Terminal({ cols: 80, rows: 4, scrollback: 2, allowProposedApi: true });
-    const marks = drawMarks(term, { glyph: () => '', send: () => {}, act: () => {} });
+    const marks = drawMarks(term, {
+      glyph: () => '',
+      send: () => {},
+      act: () => {},
+      autoDrop: () => {}
+    });
     await parsed(
       term,
       `${lineIdOf('k1.1')}Darkwood Forest\r\n${lineIdOf('k1.2')}Darkwood Forest\r\n`

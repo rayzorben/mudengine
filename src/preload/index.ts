@@ -102,6 +102,7 @@ const api: WireApi = {
   setThreshold: (session, which, value) =>
     ipcRenderer.invoke(Invoke.setThreshold, session, which, value),
   setSupplies: (session, items) => ipcRenderer.invoke(Invoke.setSupplies, session, items),
+  setAutoDrop: (session, item, on) => ipcRenderer.invoke(Invoke.setAutoDrop, session, item, on),
   addLoop: (scope, owner, loop) => ipcRenderer.invoke(Invoke.addLoop, scope, owner, loop),
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),
   loopJoin: (session, loop) => ipcRenderer.invoke(Invoke.loopJoin, session, loop),

@@ -13,6 +13,7 @@ import type { IDecoration, IMarker, Terminal } from '@xterm/xterm';
 import { LINE_OSC, lineIdAt } from '@shared/stamps';
 import { GLYPH_CELLS } from '@shared/template';
 import type {
+  AutoDropPress,
   InlineGlyph,
   LineId,
   MarkChange,
@@ -31,6 +32,8 @@ import type { RoomReference } from '@shared/world';
 export interface MarkPress {
   send(command: string): void;
   act(action: TerminalActionName): void;
+  /** A setting, not a command: the item on or off the auto-drop list (`InlineGlyph.autoDrop`). */
+  autoDrop(press: AutoDropPress): void;
 }
 
 /** What draws a mark: each glyph as markup (`components/marks.ts`), and what a press does. */
@@ -170,7 +173,8 @@ function decorate(
  * A glyph inside a line the client drew: over the two blank cells the drawing
  * left for it. With commands it is a button, the equip gate beside a carried
  * item, sent down the path a keystroke takes; without, a statement with its
- * label for a tooltip.
+ * label for a tooltip. An auto-drop glyph is a button that asks main to
+ * write the list instead.
  */
 function inlineGlyph(
   term: Terminal,
@@ -186,8 +190,9 @@ function inlineGlyph(
     element.title = glyph.label;
     element.setAttribute('aria-label', glyph.label);
     element.innerHTML = dress.glyph(glyph.icon);
-    const commands = glyph.commands;
-    if (commands === undefined || commands.length === 0) {
+    const commands = glyph.commands ?? [];
+    const autoDrop = glyph.autoDrop;
+    if (commands.length === 0 && autoDrop === undefined) {
       element.setAttribute('role', 'img');
       return;
     }
@@ -197,6 +202,7 @@ function inlineGlyph(
     element.tabIndex = -1;
     element.addEventListener('mousedown', (event) => event.preventDefault());
     element.addEventListener('click', () => {
+      if (autoDrop !== undefined) dress.autoDrop(autoDrop);
       for (const command of commands) dress.send(command);
     });
   });

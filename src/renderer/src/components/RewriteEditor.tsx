@@ -811,7 +811,8 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
           items: SAMPLE_PACK.map((item) => ({
             item,
             verdict: equipVerdict(item, SAMPLE_WEARER, t),
-            effects: sampleEffects(item)
+            effects: sampleEffects(item),
+            autoDrop: false
           })),
           keys: ['bone key'],
           /*

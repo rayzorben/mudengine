@@ -1541,6 +1541,7 @@ function profileSummaries(): ProfileSummary[] {
     restBelow: profile.config.automation.health.restBelow,
     runBelow: profile.config.automation.safety.retreat.belowHealth,
     supplies: profile.config.automation.supplies,
+    drop: { items: profile.config.automation.drop.items },
     keys: profile.config.keys
   }));
 }
@@ -3737,6 +3738,27 @@ function registerIpc(): void {
     if (parsed === null) return t('app.supplies.invalidList');
     const result = editor().setSupplies(session, parsed);
     return result.ok ? null : result.error;
+  });
+
+  /* One item on or off this character's auto-drop list, from the item panel or the pack rewrite. */
+  handle(Invoke.setAutoDrop, (_caller, session: unknown, item: unknown, on: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    if (typeof item !== 'string' || item.trim().length === 0 || typeof on !== 'boolean') {
+      pushNotice({ session, message: t('app.drop.invalidItem') });
+      return t('app.drop.invalidItem');
+    }
+    const result = editor().setAutoDrop(session, item, on, configFor(session).automation);
+    // Said in the console as well, since a press on a rewrite has nowhere else to show it.
+    if (!result.ok) {
+      pushNotice({ session, message: t('app.drop.notSaved', { item, error: result.error }) });
+      return result.error;
+    }
+    pushNotice({
+      session,
+      message: on ? t('app.drop.listed', { item }) : t('app.drop.unlisted', { item })
+    });
+    if (result.switchedOn) pushNotice({ session, message: t('app.drop.switchedOn') });
+    return null;
   });
 
   /*

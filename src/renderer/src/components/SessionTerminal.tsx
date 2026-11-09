@@ -18,7 +18,7 @@ import type { DecisionKind } from '@shared/decisionSettings';
 import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
 import type { WalkProgress } from '@shared/walk';
-import type { LostEnter, TerminalActionName, TerminalSize } from '@shared/types';
+import type { AutoDropPress, LostEnter, TerminalActionName, TerminalSize } from '@shared/types';
 import type { RoomReference } from '@shared/world';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
@@ -366,6 +366,11 @@ function SessionTerminal({
     (action: TerminalActionName) => void api.terminalAct(session, action),
     [api, session]
   );
+  // A rewrite's auto-drop glyph writes this terminal's character's list, for the same reason.
+  const autoDrop = useCallback(
+    (press: AutoDropPress) => void api.setAutoDrop(session, press.item, press.on),
+    [api, session]
+  );
   // A gear opens this terminal's character's settings, for the same reason.
   const setting = useCallback(
     (decision: DecisionKind) => onSetting?.(session, decision),
@@ -410,6 +415,7 @@ function SessionTerminal({
         onSelectSlot={selectSlot}
         onChooseRoom={onChooseRoom}
         onAct={act}
+        onAutoDrop={autoDrop}
         onSetting={setting}
         recent={recent}
         onReady={handleReady}

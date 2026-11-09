@@ -56,9 +56,9 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import { type DropConfig } from '../../shared/packConfig';
+import { dropListNames } from '../../shared/dropList';
 import { bareName } from '../../shared/items';
 import type { QuestKeep } from '../../shared/questKeep';
-import { nameAnswersTo } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
@@ -125,7 +125,7 @@ export class AutoDrop implements SessionModule {
       // Worn, wielded or lit stays exactly where it is.
       if (item.equipped) continue;
       const carried = bareName(item.name);
-      const named = this.config.items.some((name) => nameAnswersTo(carried, bareName(name)));
+      const named = dropListNames(this.config.items, carried);
       /*
        * The realm's own explicit zero, and never its silence.
        *

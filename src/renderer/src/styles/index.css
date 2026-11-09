@@ -7770,16 +7770,29 @@ button.gear-fold:hover:not(:disabled) {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
+/*
+ * xterm 6 draws the console's scrollbar itself and colours it from a <style>
+ * it writes inside the console, so `::-webkit-scrollbar-thumb` never reaches
+ * it. One class more than xterm's selectors gives it the same thumb.
+ */
+::-webkit-scrollbar-thumb,
+.terminal-cell .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {
   background: color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: var(--r-pill);
 }
 
-::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover,
+.terminal-cell .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider:hover,
+.terminal-cell .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider.xterm-active {
   background: color-mix(in srgb, var(--text-lo) 55%, transparent);
   background-clip: content-box;
+}
+
+/* xterm sizes the slider inline; the border is inside that size, as the native thumb's is. */
+.terminal-cell .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {
+  box-sizing: border-box;
 }
 
 /* ================================================================ tab rail */
@@ -17714,6 +17727,13 @@ tr:hover .row-action.worn,
 
 .supply-control label > input[type='checkbox'] {
   margin: 0;
+}
+
+/* The item panel's Off, Auto-collect and Auto-drop, one row of picks. */
+.supply-control > [role='group'] {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .supply-control select {

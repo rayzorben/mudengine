@@ -1070,6 +1070,27 @@ async function gone(selector) {
 }
 
 /**
+ * A real wheel over the middle of `selector`, `times` notches of `deltaY`.
+ *
+ * Assigning `scrollTop` moves nothing a reader can: xterm 6 scrolls the console
+ * by redrawing and listens to the wheel, not to the element's scroll, and a
+ * card's feed is scrolled on the compositor with its event delivered at the
+ * next rendering update. The wheel is the gesture a reader makes.
+ */
+async function wheelAt(selector, deltaY, times = 1) {
+  const at = await evaluate(`
+    (() => {
+      const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return Math.round(r.left + r.width / 2) + ',' + Math.round(r.top + r.height / 2);
+    })()
+  `);
+  const [x, y] = at.split(',').map(Number);
+  for (let i = 0; i < times; i += 1) {
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY });
+  }
+}
+
+/**
  * Puts the route panel away by its own close, so nothing below reads a panel
  * a check left standing; its scrim takes the next real press anywhere in the
  * window. Escape cannot be trusted for it: once a walk is asked for, the
@@ -5628,30 +5649,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      * the feed grew -- before the absence is asserted, so this is never a sleep
      * hoping nothing happened.
      *
-     * A real wheel rather than assigning `scrollTop`, for the reason the
-     * console's own jump-to-latest check gives one wheel further down: a
-     * scripted write moves the box on the main thread and queues its event
-     * behind nothing, which is the one ordering the card is *not* at risk
-     * from. A wheel is scrolled on the compositor and its event is delivered
-     * at the next rendering update, so this drives the gesture a reader makes
-     * rather than the one a harness finds convenient.
+     * A real wheel rather than assigning `scrollTop` (`wheelAt`): a scripted
+     * write moves the box on the main thread and queues its event behind
+     * nothing, which is the one ordering the card is *not* at risk from.
      */
-    const at = await evaluate(`
-      (() => {
-        const r = document.querySelector('.conversation-log').getBoundingClientRect();
-        return Math.round(r.left + r.width / 2) + ',' + Math.round(r.top + r.height / 2);
-      })()
-    `);
-    const [logX, logY] = at.split(',').map(Number);
-    for (let i = 0; i < 12; i += 1) {
-      await cdp('Input.dispatchMouseEvent', {
-        type: 'mouseWheel',
-        x: logX,
-        y: logY,
-        deltaX: 0,
-        deltaY: -240
-      });
-    }
+    await wheelAt('.conversation-log', -240, 12);
     await waitFor(async () => (await evaluate(geometry))?.edge === false);
     const held = await evaluate(geometry);
     await evaluate(`(window.mudengine.input('${SESSION}', 'gos onemore\\r'), true)`);
@@ -5696,15 +5698,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      * again, which is invisible until somebody has been reading one for a
      * minute. Waited for, not slept through.
      */
-    for (let i = 0; i < 12; i += 1) {
-      await cdp('Input.dispatchMouseEvent', {
-        type: 'mouseWheel',
-        x: logX,
-        y: logY,
-        deltaX: 0,
-        deltaY: -240
-      });
-    }
+    await wheelAt('.conversation-log', -240, 12);
     await waitFor(async () => (await evaluate(geometry))?.edge === false);
     await waitFor(async () => (await evaluate(geometry))?.edge === true, 1200, 50);
     check(
@@ -7423,8 +7417,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * on any captured scroll, and a scroll listener has to be captured at the
    * window to hear a scrolling element at all — so every scroller in the
    * client arrived at that handler, the loudest of them being a pinned
-   * terminal, which scrolls to the bottom on each write and fires a real DOM
-   * event doing it. In a MUD that is a panel nobody can read.
+   * terminal under xterm 5, which scrolled to the bottom on each write and
+   * fired a real DOM event doing it (xterm 6 redraws and fires none). In a MUD
+   * that is a panel nobody can read.
    *
    * Driven from the socket rather than from a synthetic event, because the
    * whole claim is about what real output does. The positive control is at the
@@ -7454,40 +7449,25 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await evaluate(`(document.querySelector('.jump-latest')?.click(), true)`);
     await gone('.jump-latest');
 
-    // Counted at the window in capture, which is where the app listens and the
-    // only place a scrolling element reports at all.
-    await evaluate(`
-      (() => {
-        window.__scrolls = 0;
-        window.__countScroll = () => { window.__scrolls += 1; };
-        window.addEventListener('scroll', window.__countScroll, true);
-        return true;
-      })()
-    `);
-    const heightBefore = await evaluate(
-      `document.querySelector('.xterm-viewport')?.scrollHeight ?? -1`
+    // The trigger, observed: the game's eight lines framed, and a frame drawn after them.
+    const torchlit = await hostSays(
+      () =>
+        liveSockets[0]?.write(
+          Buffer.from(
+            Array.from(
+              { length: 8 },
+              (_, i) => `\x1b[0;37mThe torchlight flickers. (two-surface ${i})\x1b[0m\r\n`
+            ).join(''),
+            'latin1'
+          )
+        ),
+      /two-surface 7/
     );
-    liveSockets[0]?.write(
-      Buffer.from(
-        Array.from(
-          { length: 8 },
-          (_, i) => `\x1b[0;37mThe torchlight flickers. (two-surface ${i})\x1b[0m\r\n`
-        ).join(''),
-        'latin1'
-      )
-    );
-    const scrolls = await readUntil(
-      () => evaluate(`window.__scrolls`),
-      (scrolls) => scrolls > 0
-    );
+    await painted();
     check(
-      scrolls > 0,
-      'output from the game scrolls the console, which is what used to close it',
-      // Whether the lines even painted, apart from whether anything scrolled:
-      // a viewport that never grew never had a reason to.
-      `scrolls=${scrolls} sockets=${liveSockets.length} viewport=${heightBefore}->${await evaluate(
-        `document.querySelector('.xterm-viewport')?.scrollHeight ?? -1`
-      )}`
+      torchlit?.some((line) => /two-surface 7/.test(String(line.plain ?? ''))) === true,
+      'the game prints eight lines, the output that used to close it',
+      `sockets=${liveSockets.length}`
     );
     check(
       await evaluate(`!!document.querySelector('.reference-popover')`),
@@ -7517,7 +7497,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       !(await evaluate(`!!document.querySelector('.reference-popover')`)),
       'and scrolling that does put the answer away, because the name moved'
     );
-    await evaluate(`(window.removeEventListener('scroll', window.__countScroll, true), true)`);
   }
 
   /*
@@ -17255,21 +17234,36 @@ if (logFiles[0]) {
       `window.mudengine.backscrollPage('${SESSION}', 3).then((p) => /history line 10399/.test(p.text))`
     )
   );
-  // Up to the top of what the live console holds, as a wheel would.
-  await evaluate(`
-    (() => {
-      const viewport = document.querySelector('${LAYER} > .terminal-cell .xterm-viewport');
-      viewport.scrollTop = 0;
-      viewport.dispatchEvent(new Event('scroll'));
-      return true;
-    })()
-  `);
+  // Up to the top of what the live console holds, by its scrollbar: xterm 6.1
+  // moves about three lines a wheel notch whatever the delta (measured
+  // 2026-11-09: 200 notches left it on line 9,412 of 10,000). One notch leaves
+  // the live edge and shows the bar; the thumb is then dragged past its track.
+  const SLIDER = `${LAYER} > .terminal-cell .xterm-scrollbar.xterm-vertical > .xterm-slider`;
+  await wheelAt(`${LAYER} > .terminal-cell .xterm-screen`, -240);
+  // This console's own bar, shown by the notch: a hidden bar lets the press through.
+  await shown(`${LAYER} > .terminal-cell .xterm-scrollbar.xterm-vertical.xterm-visible`);
+  const thumb = await boxOf(SLIDER);
+  // y=1 is the window's first pixel row, above the top of any console's track.
+  await drag(thumb, thumb && { x: thumb.x, y: 1 });
   await waitFor(async () =>
     evaluate(`!!document.querySelector('${LAYER} > .read-back[data-shown="true"]')`)
   );
   check(
     await evaluate(`!!document.querySelector('${LAYER} > .read-back[data-shown="true"]')`),
-    'past the top of the live console, the copy of the backscroll opens'
+    'past the top of the live console, the copy of the backscroll opens',
+    await evaluate(`
+      (() => {
+        const r = document.querySelector('${LAYER} > .terminal-cell .xterm-screen')?.getBoundingClientRect();
+        const under = r && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return JSON.stringify({
+          under: under ? under.className : null,
+          jump: !!document.querySelector('${LAYER} > .terminal-cell > .jump-latest'),
+          atThumb: document.elementFromPoint(${thumb?.x ?? 0}, ${thumb?.y ?? 0})?.className ?? null,
+          readBack: !!document.querySelector('${LAYER} > .read-back'),
+          thumb: ${JSON.stringify(thumb)}
+        });
+      })()
+    `)
   );
   await evaluate(`(document.querySelector('${LAYER} > .read-back .jump-latest')?.click(), true)`);
   await waitFor(async () => !(await evaluate(`!!document.querySelector('${LAYER} > .read-back')`)));
@@ -17356,25 +17350,8 @@ check((await focusPath()) === 'terminal', 'the terminal still holds focus', awai
 
 // Scrolling away from the live edge offers the jump affordance; using it has to
 // land focus back in the terminal rather than leaving it on the button.
-// A real wheel event rather than assigning `scrollTop`: xterm only publishes a
-// scroll when its own viewport handler runs, so a synthetic property write
-// moves the element without the terminal ever noticing.
-const box = await evaluate(`
-  (() => {
-    const r = document.querySelector('.xterm-screen').getBoundingClientRect();
-    return Math.round(r.left + r.width / 2) + ',' + Math.round(r.top + r.height / 2);
-  })()
-`);
-const [wheelX, wheelY] = box.split(',').map(Number);
-for (let i = 0; i < 12; i += 1) {
-  await cdp('Input.dispatchMouseEvent', {
-    type: 'mouseWheel',
-    x: wheelX,
-    y: wheelY,
-    deltaX: 0,
-    deltaY: -240
-  });
-}
+// A real wheel (`wheelAt` says why).
+await wheelAt('.xterm-screen', -240, 12);
 const jumpShown = await readUntil(
   () => evaluate(`!!document.querySelector('.jump-latest')`),
   (jumpShown) => jumpShown

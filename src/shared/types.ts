@@ -222,7 +222,10 @@ export const MARK_ICONS = [
   'kit',
   /* what can be done with a thing, beside the equip gate above */
   'drop',
-  'kept'
+  'kept',
+  /* the auto-drop list, off and on (`{item.action.autoDrop}`) */
+  'auto-drop',
+  'auto-dropped'
 ] as const;
 export type MarkIcon = (typeof MARK_ICONS)[number];
 
@@ -237,6 +240,18 @@ export interface InlineGlyph {
   icon: MarkIcon;
   label: string;
   commands?: string[];
+  /**
+   * A button that puts the thing on the auto-drop list or takes it off, for
+   * main to write (`Invoke.setAutoDrop`). A setting, so it never goes down
+   * the keystroke's path; absent on every glyph that sends `commands`.
+   */
+  autoDrop?: AutoDropPress;
+}
+
+/** What an auto-drop glyph's press asks for: this item, put on the list or taken off. */
+export interface AutoDropPress {
+  item: string;
+  on: boolean;
 }
 
 export interface TerminalMark {

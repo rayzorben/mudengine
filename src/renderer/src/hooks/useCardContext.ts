@@ -274,6 +274,7 @@ export interface AddressedActions {
   setGangRemotes(remotes: RemoteName[]): void;
   setGangpath(on: boolean): void;
   setSupplies(items: SupplyItem[]): void;
+  setAutoDrop(item: string, on: boolean): void;
   send(line: string): void;
   macro(line: string): void;
   dropMacro(): void;
@@ -320,6 +321,7 @@ export type CardApi = Pick<
   | 'setGangRemotes'
   | 'setRemoteGangpath'
   | 'setSupplies'
+  | 'setAutoDrop'
   | 'supplyCounters'
   | 'input'
   | 'macro'
@@ -375,6 +377,7 @@ export interface CardContextInputs
   remotesFor(id: SessionId): RemotesConfig;
   switchesFor(id: SessionId): ConfigSwitches;
   suppliesFor(id: SessionId): SupplyItem[];
+  dropFor(id: SessionId): string[];
   profileNameFor(id: SessionId): string;
   /** The Loops modal, which is the shown character's. */
   openLoops(): void;
@@ -393,7 +396,7 @@ export interface CardContextInputs
 
 export interface CardContexts {
   contextFor(sid: SessionId, v: SessionView, chrome: CardChrome): CardContext;
-  /** One character's supplies list and its write, one object for as long as the list is. */
+  /** One character's supplies and drop lists with their writes, held while the lists are. */
   suppliesBundle(sid: SessionId): SupplyList;
   /** One character's kept typing, for the game view's talk panel. */
   keptFor(sid: SessionId): KeptWork;
@@ -416,6 +419,7 @@ export function useCardContext({
   remotesFor,
   switchesFor,
   suppliesFor,
+  dropFor,
   profileNameFor,
   ask,
   forget,
@@ -528,6 +532,8 @@ export function useCardContext({
         setGangpath: (on) => void api.setRemoteGangpath(sid, on),
         setSupplies: (items) =>
           void api.setSupplies(sid, items).then((refused) => sayRefusal(sid)(refused)),
+        // Main says both the change and a refusal in the console (`Invoke.setAutoDrop`).
+        setAutoDrop: (item, on) => void api.setAutoDrop(sid, item, on),
         // `api.input`, as typing it would: main assembles it into a command there,
         // so the tracker sees it, a walk stops, the capture records it and a
         // password is redacted. Addressed at `sid`, the card's own character.
@@ -566,6 +572,7 @@ export function useCardContext({
       SessionId,
       {
         items: SupplyItem[];
+        dropped: string[];
         save: AddressedActions['setSupplies'];
         bundle: SupplyList;
         /** The last list written, until the next list arrives. */
@@ -576,11 +583,22 @@ export function useCardContext({
   const suppliesBundle = useCallback(
     (sid: SessionId): SupplyList => {
       const items = suppliesFor(sid);
-      const save = boundFor(sid).setSupplies;
+      const dropped = dropFor(sid);
+      const { setSupplies: save, setAutoDrop } = boundFor(sid);
       const cached = suppliesCache.current.get(sid);
-      if (cached && cached.items === items && cached.save === save) return cached.bundle;
+      if (cached && cached.items === items && cached.dropped === dropped && cached.save === save) {
+        return cached.bundle;
+      }
       const bundle: SupplyList = {
         items,
+        dropped,
+        // Main takes the row off supplies in the same write; a later edit here
+        // must not put it back from the list this window last wrote.
+        autoDrop: (name, on) => {
+          const entry = suppliesCache.current.get(sid);
+          if (on && entry?.written) entry.written = withSupply(entry.written, name, null);
+          setAutoDrop(name, on);
+        },
         // The newest list and not this bundle's: a count field closed after a
         // row was removed holds the bundle from before the removal, and Max
         // committed before Min's write comes back would put the old Min back.
@@ -604,10 +622,10 @@ export function useCardContext({
         },
         counters: () => api.supplyCounters(sid)
       };
-      suppliesCache.current.set(sid, { items, save, bundle, written: null });
+      suppliesCache.current.set(sid, { items, dropped, save, bundle, written: null });
       return bundle;
     },
-    [api, boundFor, sayRefusal, suppliesFor]
+    [api, boundFor, dropFor, sayRefusal, suppliesFor]
   );
 
   /**

@@ -206,7 +206,7 @@ const CARRIED_FIELDS: readonly FieldSpec[] = [
   text('reason'),
   number('price'),
   number('charges'),
-  record('action', [glyph('toggleEquip'), glyph('drop')]),
+  record('action', [glyph('toggleEquip'), glyph('drop'), glyph('autoDrop')]),
   ...REALM_ITEM_FIELDS
 ];
 
@@ -549,6 +549,8 @@ export interface InventoryRow {
    * neither of which a pure renderer has.
    */
   effects: ReadEffects;
+  /** Whether the auto-drop list names it (`dropListNames`), read by main beside the verdict. */
+  autoDrop: boolean;
 }
 
 export interface InventoryFacts {
@@ -753,7 +755,8 @@ export function characterScope(figures: StatlineFigures, bands: VitalBands, t: U
  * What can be done with a thing, as glyphs the console draws over the line.
  *
  * A record rather than one figure (todo 14): `{action.toggleEquip}` is the
- * equip gate that was `{action}`, and `{action.drop}` puts the thing down.
+ * equip gate that was `{action}`, `{action.drop}` puts the thing down, and
+ * `{action.autoDrop}` puts it on the auto-drop list or takes it off.
  * They are a family because the question *what can I do with this* has more
  * than one answer, and a template that could only ask for the first had no
  * way to say so.
@@ -764,8 +767,10 @@ export function characterScope(figures: StatlineFigures, bands: VitalBands, t: U
  * `TerminalMark.actions` states — never a button that sends a command the
  * server will refuse out loud in the room — applies to both.
  */
-function actionsOf(item: ItemEntity, verdict: EquipVerdict, t: UiLookup): Row {
+function actionsOf(row: InventoryRow, t: UiLookup): Row {
+  const { item, verdict } = row;
   const toggle = actionGlyph(verdict);
+  const kept: Value = { text: '', glyph: { icon: 'kept', label: t('rewrites.item.notDroppable') } };
   return {
     toggleEquip:
       toggle === null
@@ -773,7 +778,7 @@ function actionsOf(item: ItemEntity, verdict: EquipVerdict, t: UiLookup): Row {
         : { text: '', glyph: toggle, colour: verdict.state === 'blocked' ? 'yellow' : null },
     drop:
       item.notDroppable === true
-        ? { text: '', glyph: { icon: 'kept', label: t('rewrites.item.notDroppable') } }
+        ? kept
         : {
             text: '',
             glyph: {
@@ -781,6 +786,24 @@ function actionsOf(item: ItemEntity, verdict: EquipVerdict, t: UiLookup): Row {
               label: t('rewrites.item.drop', { itemName: item.name }),
               commands: [`drop ${item.name}`]
             }
+          },
+    // A setting rather than a command: the press asks main to write the list.
+    autoDrop:
+      item.notDroppable === true
+        ? kept
+        : {
+            text: '',
+            glyph: row.autoDrop
+              ? {
+                  icon: 'auto-dropped',
+                  label: t('rewrites.item.autoDropped', { itemName: item.name }),
+                  autoDrop: { item: item.name, on: false }
+                }
+              : {
+                  icon: 'auto-drop',
+                  label: t('rewrites.item.autoDrop', { itemName: item.name }),
+                  autoDrop: { item: item.name, on: true }
+                }
           }
   };
 }
@@ -881,7 +904,7 @@ export function carriedRow(row: InventoryRow, t: UiLookup): Row {
     reason: verdict.state === 'blocked' ? verdict.label : '',
     price: fact(item.price),
     charges: fact(item.charges),
-    action: actionsOf(item, verdict, t),
+    action: actionsOf(row, t),
     ...realmFields(item, slot, row.effects)
   };
 }

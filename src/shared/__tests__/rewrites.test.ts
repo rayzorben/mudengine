@@ -185,7 +185,8 @@ describe('the pack', () => {
   ].map((entity) => ({
     item: entity,
     effects: NO_EFFECTS,
-    verdict: equipVerdict(entity, wearer, t)
+    verdict: equipVerdict(entity, wearer, t),
+    autoDrop: false
   }));
 
   const facts: RewriteFacts = {
@@ -226,7 +227,8 @@ describe('the pack', () => {
             {
               item: { ...wireItem('bound amulet'), notDroppable: true },
               effects: NO_EFFECTS,
-              verdict: equipVerdict(wireItem('bound amulet'), wearer, t)
+              verdict: equipVerdict(wireItem('bound amulet'), wearer, t),
+              autoDrop: false
             }
           ]
         }
@@ -236,6 +238,42 @@ describe('the pack', () => {
     );
     expect(kept[0]?.glyphs[0]?.icon).toBe('kept');
     expect(kept[0]?.glyphs[0]?.commands).toBeUndefined();
+  });
+
+  /*
+   * Auto-drop is a setting, so its glyph carries no command: the press asks
+   * main to write the list, on when the list does not name it and off when it
+   * does. A thing the realm will not let go of draws the statement.
+   */
+  it('offers auto-drop as a press on the list, never as a command', () => {
+    const row = (name: string, autoDrop: boolean, notDroppable = false) => ({
+      item: { ...wireItem(name), ...(notDroppable ? { notDroppable: true as const } : {}) },
+      effects: NO_EFFECTS,
+      verdict: equipVerdict(wireItem(name), wearer, t),
+      autoDrop
+    });
+    const drawn = renderRewrite(
+      design('inventory', '{for item in items}{item.action.autoDrop}{item.name}\n{/for}'),
+      {
+        ...facts,
+        pack: {
+          ...facts.pack,
+          items: [row('rusty dagger', false), row('torch', true), row('bound amulet', false, true)]
+        }
+      },
+      BANDS,
+      t
+    );
+    const glyphs = drawn.slice(0, 3).map((line) => line.glyphs[0] ?? null);
+    expect(glyphs.map((glyph) => glyph?.icon ?? null)).toEqual([
+      'auto-drop',
+      'auto-dropped',
+      'kept'
+    ]);
+    expect(glyphs[0]?.autoDrop).toEqual({ item: 'rusty dagger', on: true });
+    expect(glyphs[1]?.autoDrop).toEqual({ item: 'torch', on: false });
+    expect(glyphs[2]?.autoDrop).toBeUndefined();
+    expect(glyphs.every((glyph) => glyph?.commands === undefined)).toBe(true);
   });
 
   /* What the realm says a thing does, read once (`readEffects`) and walked
@@ -261,7 +299,8 @@ describe('the pack', () => {
                 { table: 'item', family: 'other' },
                 t
               ),
-              verdict: equipVerdict(wireItem('shimmering longsword'), wearer, t)
+              verdict: equipVerdict(wireItem('shimmering longsword'), wearer, t),
+              autoDrop: false
             }
           ]
         }
@@ -374,21 +413,25 @@ describe('the pack', () => {
           {
             item: wireItem('visored greathelm'),
             verdict: equipVerdict(wireItem('visored greathelm'), wearer, t),
+            autoDrop: false,
             effects: NO_EFFECTS
           },
           {
             item: wireItem('token of Silvermere'),
             verdict: equipVerdict(wireItem('token of Silvermere'), wearer, t),
+            autoDrop: false,
             effects: NO_EFFECTS
           },
           {
             item: wireItem('throwing hammers'),
             verdict: equipVerdict(wireItem('throwing hammers'), wearer, t),
+            autoDrop: false,
             effects: NO_EFFECTS
           },
           {
             item: wireItem('token of Rhudaur'),
             verdict: equipVerdict(wireItem('token of Rhudaur'), wearer, t),
+            autoDrop: false,
             effects: NO_EFFECTS
           }
         ]
@@ -695,7 +738,8 @@ describe('the bytes the console is fed', () => {
             {
               item: wireItem('torch'),
               effects: NO_EFFECTS,
-              verdict: equipVerdict(wireItem('torch'), UNKNOWN_WEARER, t)
+              verdict: equipVerdict(wireItem('torch'), UNKNOWN_WEARER, t),
+              autoDrop: false
             }
           ],
           keys: [],

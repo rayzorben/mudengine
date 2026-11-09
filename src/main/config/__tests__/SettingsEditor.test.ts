@@ -2731,3 +2731,44 @@ describe('the supplies list', () => {
     expect(editor.setSupplies('nobody-at-all', []).ok).toBe(false);
   });
 });
+
+describe('the auto-drop list', () => {
+  const blockOf = (id: string, key: string): Record<string, unknown> | undefined =>
+    (read(id)['automation'] as Record<string, unknown> | undefined)?.[key] as
+      Record<string, unknown> | undefined;
+  const torch = {
+    name: 'torch',
+    min: 2,
+    max: 4,
+    shop: '',
+    at: null,
+    buy: true,
+    doneOnFound: false
+  };
+  const current = (items: string[], enabled: boolean) => ({
+    drop: { ...DEFAULT_CONFIG.automation.drop, items, enabled },
+    supplies: { ...DEFAULT_CONFIG.automation.supplies, items: [torch] }
+  });
+
+  it('lists the item, takes it off the supplies and turns Auto-drop on, in one write', () => {
+    editor.saveProfile('vaelor', draft());
+    const result = editor.setAutoDrop('vaelor', 'torch', true, current(['rusty'], false));
+    expect(result).toMatchObject({ ok: true, switchedOn: true });
+    expect(blockOf('vaelor', 'drop')).toMatchObject({ enabled: true, items: ['rusty', 'torch'] });
+    expect(blockOf('vaelor', 'supplies')?.['items']).toEqual([]);
+  });
+
+  it('takes it off without touching the switch or the supplies', () => {
+    editor.saveProfile('vaelor', draft());
+    const before = { ...blockOf('vaelor', 'drop') };
+    const supplies = blockOf('vaelor', 'supplies')?.['items'];
+    const result = editor.setAutoDrop('vaelor', 'torch', false, current(['torch', 'rusty'], true));
+    expect(result).toMatchObject({ ok: true, switchedOn: false });
+    expect(blockOf('vaelor', 'drop')).toEqual({ ...before, items: ['rusty'] });
+    expect(blockOf('vaelor', 'supplies')?.['items']).toEqual(supplies);
+  });
+
+  it('refuses a character that does not exist', () => {
+    expect(editor.setAutoDrop('nobody-at-all', 'torch', true, current([], true)).ok).toBe(false);
+  });
+});

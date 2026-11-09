@@ -523,7 +523,9 @@ ui:
     #               per carried thing: {item} {item.name} {item.count}
     #               {item.slot} {item.equipped} {item.worn} {item.wearable}
     #               {item.reason} {item.price} {item.charges}, what can be done
-    #               with it ({item.action.toggleEquip} {item.action.drop}) and
+    #               with it ({item.action.toggleEquip} {item.action.drop}
+    #               {item.action.autoDrop}, which puts it on the auto-drop
+    #               list or takes it off) and
     #               the realm's {item.weight} {item.ac} {item.dr} {item.min}
     #               {item.max} {item.damage} {item.stats} {item.kind}
     #               {item.realmSlot} {item.speed} {item.strength}

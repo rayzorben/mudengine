@@ -135,9 +135,8 @@ export function clampPanel(
  * a `PopoverAnchor`.
  *
  * `within` is the element **inside** the scroller, not the scroller itself.
- * For the console that is `.xterm-screen`, which sits within `.xterm-viewport`
- * — the thing that actually moves when output arrives — so the containment
- * test below reads the same way for both kinds of anchor.
+ * For the console that is `.xterm-screen`, so the containment test below reads
+ * the same way for both kinds of anchor.
  */
 export type PopoverAnchor = HTMLElement | { box: Box; within: HTMLElement };
 
@@ -190,10 +189,9 @@ export function anchorNode(anchor: PopoverAnchor | { x: number; y: number }): En
  * **The terminal and the chrome are two surfaces, and a scroll in one is not
  * news in the other.** A `scroll` listener has to be captured at the window to
  * hear scrolling elements at all — scroll does not bubble — so *every*
- * scroller in the client reports here: the rail when a card mounts, the Talk
- * log when somebody speaks, and the console on every line the game prints,
- * because a pinned terminal scrolls to the bottom on each write and xterm's
- * viewport fires a real DOM event doing it. Dismissing on all of them meant
+ * scroller in the client reports here: the rail when a card mounts and the Talk
+ * log when somebody speaks. (xterm 6 scrolls the console by redrawing it and
+ * fires no DOM scroll.) Dismissing on all of them meant
  * the realm's answer about a clicked item vanished the instant anything
  * arrived — which, in a MUD, is immediately.
  *

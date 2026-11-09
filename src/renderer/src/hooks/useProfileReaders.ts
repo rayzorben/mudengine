@@ -1,6 +1,6 @@
 /**
  * One character's own resolved settings, read off its profile summary: its
- * remotes, its supplies, its tab name, its automation switches and the
+ * remotes, its supplies and auto-drop list, its tab name, its automation switches and the
  * ceiling it rests to. Per character, never off the options file's global
  * block, since a pinned float and the tab rail report on characters nobody
  * is looking at.
@@ -20,11 +20,13 @@ import type { ProfileSummary, SessionId } from '@shared/ipc';
 
 /** A character whose file names no supplies. One list, so a card's props hold still. */
 const NO_SUPPLIES: SupplyItem[] = [];
+/** A character whose file names nothing to drop, for the same reason. */
+const NO_DROPS: string[] = [];
 
 export function useProfileReaders(
   profiles: readonly Pick<
     ProfileSummary,
-    'id' | 'name' | 'remotes' | 'supplies' | 'switches' | 'restTo'
+    'id' | 'name' | 'remotes' | 'supplies' | 'drop' | 'switches' | 'restTo'
   >[]
 ) {
   /**
@@ -53,6 +55,12 @@ export function useProfileReaders(
   const suppliesFor = useCallback(
     (id: SessionId): SupplyItem[] =>
       profiles.find((profile) => profile.id === id)?.supplies.items ?? NO_SUPPLIES,
+    [profiles]
+  );
+  /** This character's auto-drop list, resolved, read the same way and for the same reason. */
+  const dropFor = useCallback(
+    (id: SessionId): string[] =>
+      profiles.find((profile) => profile.id === id)?.drop.items ?? NO_DROPS,
     [profiles]
   );
   const profileNameFor = useCallback(
@@ -97,5 +105,5 @@ export function useProfileReaders(
     [profiles]
   );
 
-  return { remotesFor, suppliesFor, profileNameFor, switchesFor, restToFor };
+  return { remotesFor, suppliesFor, dropFor, profileNameFor, switchesFor, restToFor };
 }

@@ -111,6 +111,16 @@ export const MARK_GLYPH: Record<MarkIcon, string> = {
   drop: svg('<path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/>'),
   kept: svg(
     '<path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/><path d="m3.5 3.5 17 17"/>'
+  ),
+  /*
+   * The auto-drop list: the drop arrow inside a loop, since it happens every
+   * time the thing is carried. Tinted while the list names it.
+   */
+  'auto-drop': svg(
+    '<circle cx="12" cy="11" r="8"/><path d="M12 6.5v8"/><path d="m9 11.5 3 3 3-3"/><path d="M8 20h8"/>'
+  ),
+  'auto-dropped': svg(
+    '<circle cx="12" cy="11" r="8" fill="currentColor" fill-opacity="0.35"/><path d="M12 6.5v8"/><path d="m9 11.5 3 3 3-3"/><path d="M8 20h8"/>'
   )
 };
 

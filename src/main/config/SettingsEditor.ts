@@ -28,7 +28,9 @@ import {
   type ConfigSwitch,
   type LoginStep
 } from '../../shared/config';
-import { type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
+import { type DropConfig, type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
+import { withDropped } from '../../shared/dropList';
+import { supplyFor, withSupply } from '../../shared/supplies';
 import { type RetreatConfig } from '../../shared/safety';
 import { asServiceAddress } from '../../shared/serviceAddress';
 import { fileSlug, isLoopFileName } from '../../shared/files';
@@ -649,6 +651,36 @@ export class SettingsEditor {
     const missing = this.missing(id);
     if (missing !== null) return missing;
     return this.files.edit(file, { mutate: (document) => writeSupplyItems(document, items) });
+  }
+
+  /**
+   * One item on or off this character's auto-drop list, in one write.
+   *
+   * `current` is the block in effect, since the list a character drops may be
+   * the global one, and the new list is written into the character's file.
+   * On also takes the item off the supplies list, which would pick it up
+   * again, and turns Auto-drop on, so the click does what it says. Returns
+   * whether the switch was turned on, for the caller to say so.
+   */
+  setAutoDrop(
+    id: string,
+    item: string,
+    on: boolean,
+    current: { drop: DropConfig; supplies: SuppliesConfig }
+  ): EditResult & { switchedOn: boolean } {
+    const file = this.profilePath(id);
+    const missing = this.missing(id);
+    if (missing !== null) return { ...missing, switchedOn: false };
+    const supplied = on && supplyFor(current.supplies.items, item) !== null;
+    const switchedOn = on && !current.drop.enabled;
+    const result = this.files.edit(file, {
+      mutate: (document) => {
+        document.setIn([...DROP, 'items'], withDropped(current.drop.items, item, on));
+        if (supplied) writeSupplyItems(document, withSupply(current.supplies.items, item, null));
+        if (switchedOn) document.setIn([...DROP, 'enabled'], true);
+      }
+    });
+    return { ...result, switchedOn: result.ok && switchedOn };
   }
 
   /**
@@ -1579,6 +1611,8 @@ function inheritedLoops(
 
 /** Where the supplies block sits in a file. */
 const SUPPLIES = ['automation', 'supplies'] as const;
+/** Where the auto-drop block sits in a file. */
+const DROP = ['automation', 'drop'] as const;
 
 /**
  * The supplies block's switch and figures, patched against what the file

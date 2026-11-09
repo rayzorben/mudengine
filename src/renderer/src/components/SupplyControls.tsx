@@ -9,7 +9,9 @@
  * the gang list's shape: the surface shows the list and a min changed on one
  * row is one write, not a race between two. A change is applied to the newest
  * list the window holds, since a field closed mid-edit commits after the list
- * it was drawn from has moved on.
+ * it was drawn from has moved on. On the item panel the controls sit under a
+ * choice of Off, Auto-collect and Auto-drop; Auto-drop writes one item to
+ * `automation.drop.items` (`Invoke.setAutoDrop`).
  *
  * The number fields commit on blur, Enter and close rather than on every
  * keystroke. A keystroke is a write to a YAML file somebody may be reading,
@@ -17,8 +19,8 @@
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
-import Icon from './Icon';
 import { BOUGHT_ROW, type SupplyItem } from '@shared/packConfig';
+import { dropListNames } from '@shared/dropList';
 import { stockCeiling, supplyFor, type SupplyCounters } from '@shared/supplies';
 import type { ShopPlace } from '@shared/world';
 import { keepFocus } from '../lib/focus';
@@ -35,6 +37,10 @@ export interface SupplyList {
   edit(name: string, change: (current: SupplyItem | null) => SupplyItem | null): void;
   /** Where each row would be bought from where the character stands (todo 49). */
   counters(): Promise<SupplyCounters>;
+  /** `automation.drop.items`, as the item panel's Auto-drop choice reads it (`dropListNames`). */
+  dropped: readonly string[];
+  /** Puts `name` on the auto-drop list or takes it off (`Invoke.setAutoDrop`). */
+  autoDrop(name: string, on: boolean): void;
 }
 
 /** One place a shop of this name is, as the select offers it. */
@@ -189,10 +195,38 @@ function CountField({
   );
 }
 
+/** What the client does with an item: nothing, keep it stocked, or drop it whenever carried. */
+const HANDLINGS = ['off', 'collect', 'drop'] as const;
+type Handling = (typeof HANDLINGS)[number];
+
+/** Each choice's word and tooltip, looked up when drawn so the dictionary is loaded. */
+const HANDLING_WORDS: Record<Handling, () => { word: string; tooltip: string }> = {
+  off: () => ({
+    word: t('cards.self.supplies.handlingOff'),
+    tooltip: t('cards.self.supplies.handlingOffTooltip')
+  }),
+  collect: () => ({
+    word: t('cards.self.supplies.handlingCollect'),
+    tooltip: t('cards.self.supplies.handlingCollectTooltip')
+  }),
+  drop: () => ({
+    word: t('cards.self.supplies.handlingDrop'),
+    tooltip: t('cards.self.supplies.handlingDropTooltip')
+  })
+};
+
+/** A row made by choosing Auto-collect: picked up where found, one at a time, never bought. */
+function collectedRow(name: string): SupplyItem {
+  return { name, min: 0, max: 1, shop: '', at: null, buy: false, doneOnFound: false };
+}
+
 /**
  * The controls for one item, on the realm's answer about it.
  *
- * `shops` and `places` are the realm's — where the item is sold — and a row
+ * One choice first, because an item on both the supplies list and the
+ * auto-drop list is picked up by one and dropped by the other. The figures
+ * and the shop are drawn only under Auto-collect, where they mean something.
+ * `shops` and `places` are the realm's (where the item is sold), and a row
  * that names a shop the realm does not list for the item keeps its choice in
  * the select, so a hand-written file is drawn as written rather than blanked.
  */
@@ -208,67 +242,124 @@ export function SupplyControl({
   supplies: SupplyList;
 }) {
   const row = supplyFor(supplies.items, name);
-  const choices = shopChoices(shops, places);
-  const current = choiceKey(row);
-  const known = choices.some((choice) => choice.key === current);
+  const dropped = dropListNames(supplies.dropped, name);
+  // The drop list wins a hand-edited file that names both: it is what `AutoDrop` does.
+  const handling: Handling = dropped ? 'drop' : row !== null ? 'collect' : 'off';
   const write = (patch: Partial<SupplyItem>): void =>
     supplies.edit(name, (current) => ({
       ...(current ?? { name, min: 0, max: 0, shop: '', at: null, ...BOUGHT_ROW }),
       ...patch
     }));
+  const choose = (next: Handling): void => {
+    if (next === handling) return;
+    if (dropped) supplies.autoDrop(name, false);
+    switch (next) {
+      case 'off':
+        if (row !== null) supplies.edit(name, () => null);
+        return;
+      case 'collect':
+        supplies.edit(name, (current) => current ?? collectedRow(name));
+        return;
+      case 'drop':
+        // Main takes it off the supplies list in the same write.
+        supplies.autoDrop(name, true);
+        return;
+      default: {
+        const never: never = next;
+        throw new Error(`no handling ${String(never)}`);
+      }
+    }
+  };
+  return (
+    <>
+      <dt>{t('cards.self.supplies.handlingLabel')}</dt>
+      <dd className="supply-control">
+        <span aria-label={t('cards.self.supplies.handlingLabel')} role="group">
+          {HANDLINGS.map((each) => {
+            const { word, tooltip } = HANDLING_WORDS[each]();
+            return (
+              <button
+                aria-pressed={handling === each}
+                className="chip pick"
+                data-handling={each}
+                key={each}
+                onClick={() => choose(each)}
+                onMouseDown={keepFocus}
+                title={tooltip}
+                type="button"
+              >
+                {word}
+              </button>
+            );
+          })}
+        </span>
+      </dd>
+      {handling === 'collect' && row !== null && (
+        <CollectRows name={name} places={places} row={row} shops={shops} write={write} />
+      )}
+    </>
+  );
+}
+
+/** Auto-collect's figures and shop: how many to keep, and whether and where it is bought. */
+function CollectRows({
+  name,
+  shops,
+  places,
+  row,
+  write
+}: {
+  name: string;
+  shops: readonly string[];
+  places: Record<string, ShopPlace>;
+  row: SupplyItem;
+  write(patch: Partial<SupplyItem>): void;
+}) {
+  const choices = shopChoices(shops, places);
+  const current = choiceKey(row);
+  const known = choices.some((choice) => choice.key === current);
   return (
     <>
       <dt>{t('cards.self.supplies.keepLabel')}</dt>
       <dd className="supply-control">
         {/* A row collected only where it is found has no minimum (todo 20261024-1810-01). */}
-        {(row?.buy ?? true) && (
+        {row.buy && (
           <CountField
             label={t('cards.self.supplies.min')}
             name={`supply-min-${name}`}
             onCommit={(min) => write({ min })}
-            value={row?.min ?? 0}
+            value={row.min}
           />
         )}
         <CountField
-          shown={(max) => stockCeiling({ min: row?.min ?? 0, max })}
+          shown={(max) => stockCeiling({ min: row.min, max })}
           label={t('cards.self.supplies.max')}
           name={`supply-max-${name}`}
           onCommit={(max) => write({ max })}
-          value={row?.max ?? 0}
+          value={row.max}
         />
-        <label title={t('cards.self.supplies.buyTooltip')}>
-          <input
-            checked={row?.buy ?? true}
-            name={`supply-buy-${name}`}
-            onChange={(event) => write({ buy: event.target.checked })}
-            type="checkbox"
-          />
-          <span>{t('cards.self.supplies.buy')}</span>
-        </label>
         <label title={t('cards.self.supplies.doneOnFoundTooltip')}>
           <input
-            checked={row?.doneOnFound ?? false}
+            checked={row.doneOnFound}
             name={`supply-done-${name}`}
             onChange={(event) => write({ doneOnFound: event.target.checked })}
             type="checkbox"
           />
           <span>{t('cards.self.supplies.doneOnFound')}</span>
         </label>
-        {row !== null && (
-          <button
-            className="row-action"
-            onClick={() => supplies.edit(name, () => null)}
-            onMouseDown={keepFocus}
-            title={t('cards.self.supplies.removeTooltip', { item: name })}
-            type="button"
-          >
-            <Icon name="trash" />
-          </button>
-        )}
       </dd>
       <dt>{t('cards.self.supplies.buyFromLabel')}</dt>
       <dd className="supply-control">
-        {choices.length === 0 && !known && row === null ? (
+        <label title={t('cards.self.supplies.buyTooltip')}>
+          <input
+            checked={row.buy}
+            name={`supply-buy-${name}`}
+            onChange={(event) => write({ buy: event.target.checked })}
+            type="checkbox"
+          />
+          <span>{t('cards.self.supplies.buy')}</span>
+        </label>
+        {!row.buy ? null : choices.length === 0 && !known && current === '|' ? (
           <span className="inert">{t('cards.self.supplies.soldNowhere')}</span>
         ) : (
           <select
@@ -279,10 +370,11 @@ export function SupplyControl({
                 chosen === undefined ? { shop: '', at: null } : { shop: chosen.shop, at: chosen.at }
               );
             }}
-            value={known ? current : row === null || current === '' ? '' : current}
+            // No shop named is the nearest one, the empty option.
+            value={!known && current === '|' ? '' : current}
           >
             <option value="">{t('cards.self.supplies.noShop')}</option>
-            {!known && row !== null && current !== '' && (
+            {!known && current !== '|' && (
               <option value={current}>
                 {row.at === null ? row.shop : `${row.shop} (${row.at.map}/${row.at.room})`}
               </option>

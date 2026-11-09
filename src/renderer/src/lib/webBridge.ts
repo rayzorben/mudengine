@@ -222,6 +222,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
       invoke(Invoke.setAutomationSwitch, session, name, on),
     setThreshold: (session, which, value) => invoke(Invoke.setThreshold, session, which, value),
     setSupplies: (session, items) => invoke(Invoke.setSupplies, session, items),
+    setAutoDrop: (session, item, on) => invoke(Invoke.setAutoDrop, session, item, on),
     addLoop: (scope, owner, loop) => invoke(Invoke.addLoop, scope, owner, loop),
     runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),
     loopJoin: (session, loop) => invoke(Invoke.loopJoin, session, loop),

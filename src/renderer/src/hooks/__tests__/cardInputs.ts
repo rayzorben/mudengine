@@ -30,6 +30,7 @@ export function cardInputs(
     remotesFor: () => ({}) as ReturnType<CardContextInputs['remotesFor']>,
     switchesFor: () => ({}) as ReturnType<CardContextInputs['switchesFor']>,
     suppliesFor: () => [],
+    dropFor: () => [],
     profileNameFor: () => '',
     ask: noop,
     forget: noop,

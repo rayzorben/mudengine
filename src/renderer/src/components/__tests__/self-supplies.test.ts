@@ -51,7 +51,9 @@ function supplyList(): { list: SupplyList; changes: (SupplyItem | null)[] } {
   const list: SupplyList = {
     items: [torch],
     edit: (name, change) => changes.push(change(name === torch.name ? torch : null)),
-    counters: () => new Promise(() => undefined)
+    counters: () => new Promise(() => undefined),
+    dropped: [],
+    autoDrop: () => undefined
   };
   return { list, changes };
 }

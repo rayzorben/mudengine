@@ -23,6 +23,7 @@ import { wireItem, type ItemEntity } from '../../shared/entities';
 import { equipVerdict, type Wearer } from '../../shared/gear';
 import { canUse } from '../../shared/canUse';
 import { readEffects } from '../../shared/abilities';
+import { dropListNames } from '../../shared/dropList';
 import { scrollLesson, taughtBy, type Learner, type ScrollLesson } from '../../shared/learning';
 import type { WorldSpell } from '../../shared/world';
 import {
@@ -153,9 +154,16 @@ function int(value: string | undefined): number | null {
 
 export class Rewriter {
   private config: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites;
+  /**
+   * The character's own `automation.drop.items`, for each carried row's
+   * `{item.action.autoDrop}`: the list the item panel reads and its press
+   * writes, never an extension's layer over it.
+   */
+  private dropList: readonly string[] = [];
 
-  configure(config: RewritesUiConfig): void {
+  configure(config: RewritesUiConfig, dropList: readonly string[]): void {
     this.config = config;
+    this.dropList = dropList;
   }
 
   /** The design that draws this entity: the first enabled one, or null. */
@@ -261,7 +269,8 @@ export class Rewriter {
           return {
             item,
             verdict: equipVerdict(item, context.wearer, t),
-            effects: this.effectsOf(item, context)
+            effects: this.effectsOf(item, context),
+            autoDrop: dropListNames(this.dropList, item.name)
           };
         });
         const coins: Partial<Record<Denomination, number>> = {};

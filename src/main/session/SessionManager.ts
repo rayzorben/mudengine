@@ -2354,7 +2354,7 @@ export class SessionManager {
     // Every extension's settings over the character's own, while they are laid.
     const automation = this.extensions.over(own);
     this.automationConfig = automation;
-    this.rewriter.configure(rewrites);
+    this.rewriter.configure(rewrites, own.drop.items);
     this.promptDesign.noteDesign();
     this.errands.forgetPreferred();
     this.queue.configure(automation);

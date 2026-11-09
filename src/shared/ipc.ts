@@ -443,6 +443,8 @@ export interface ProfileSummary {
    * every character the same one.
    */
   supplies: SuppliesConfig;
+  /** `automation.drop.items`, resolved, for the item panel's Auto-drop choice; read the same way. */
+  drop: Pick<DropConfig, 'items'>;
 }
 
 /**
@@ -1056,6 +1058,13 @@ export const Invoke = {
    * row is one write rather than a race between two.
    */
   setSupplies: 'settings:supplies',
+  /**
+   * One item on or off this character's auto-drop list (`automation.drop.items`),
+   * from the item panel or the pack rewrite's `{item.action.autoDrop}`. On also
+   * takes it off the supplies list, which would pick it up again, and turns the
+   * toolbar's Auto-drop on, said in the console.
+   */
+  setAutoDrop: 'settings:auto-drop',
   deleteServer: 'settings:delete-server',
   /**
    * Files one loop in one scope's directory, from the Loops modal.
@@ -1648,6 +1657,8 @@ export interface IpcApi {
   ): Promise<string | null>;
   /** Writes this character's whole supplies list. See `Invoke.setSupplies`. */
   setSupplies(session: SessionId, items: SupplyItem[]): Promise<string | null>;
+  /** Puts one item on this character's auto-drop list or takes it off. See `Invoke.setAutoDrop`. */
+  setAutoDrop(session: SessionId, item: string, on: boolean): Promise<string | null>;
   /** Sets Run or Rest, a fraction of health, in a character's own file; the refusal or null. */
   setThreshold(session: SessionId, which: HudThreshold, value: number): Promise<string | null>;
   /**

@@ -15,6 +15,13 @@
 app:
   supplies:
     invalidList: The supplies list could not be read, so nothing was saved.
+  # One item on or off the auto-drop list, from the item panel or the pack rewrite.
+  drop:
+    invalidItem: That item name could not be read, so nothing was saved.
+    listed: '{item} is on the auto-drop list and is dropped whenever you carry it.'
+    unlisted: '{item} is off the auto-drop list.'
+    switchedOn: Auto-Drop Junk was off, so it is now on.
+    notSaved: "{item}'s auto-drop was not saved: {error}"
   automation:
     unknownSwitch: Unrecognized automation switch.
     noSession: 'Not switched: this character is not open.'
@@ -2056,6 +2063,8 @@ rewrites:
   item:
     drop: Drop {itemName}
     notDroppable: The game will not let you drop this
+    autoDrop: Auto-drop {itemName} whenever you carry it
+    autoDropped: '{itemName} is auto-dropped; click to keep it'
   fields:
     items: The rows of the list, one per item.
     itemCount: How many rows the list has.
@@ -2072,6 +2081,8 @@ rewrites:
     action: What you can do with it, as controls two cells wide.
     toggleEquip: The Inventory card's own control; a click equips or removes it.
     drop: Drops it; crossed out where the game will not let you drop it.
+    autoDrop: Puts it on the auto-drop list or takes it off; crossed out where the game will not
+      let you drop it.
     weight: The item's weight, from the world data.
     ac: Armour class, from the world data.
     dr: Damage reduction, from the world data.
@@ -4295,8 +4306,18 @@ cards:
       buy: buy
       buyTooltip: Buy it at a shop when you have fewer than the minimum. With buy off, it is only
         picked up where it is found, up to the maximum.
-      doneOnFound: Auto-collect
+      doneOnFound: Once only
       doneOnFoundTooltip: Take the item off this list once you carry its maximum.
+      # The item panel's one choice: neither, keep it stocked, or drop it whenever carried.
+      handlingLabel: Automatically
+      handlingOff: 'Off'
+      handlingOffTooltip: Neither picked up nor dropped for you.
+      handlingCollect: Auto-collect
+      handlingCollectTooltip: Picked up when found, and with buy on bought below the minimum, up
+        to the maximum.
+      handlingDrop: Auto-drop
+      handlingDropTooltip: Dropped whenever you carry it and are not fighting or resting, unless
+        a quest still needs it. Turns Auto-Drop Junk on.
       collectOnly: picked up only
       collectOnlyTooltip: Never bought. Picked up from the floor when one is here and you have
         fewer than the maximum.
