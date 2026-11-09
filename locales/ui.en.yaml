@@ -8754,9 +8754,18 @@ web:
 # The client's files, listed in the window, where the host has no file manager.
 browser:
   title: The client's files
-  pickTitle: Choose a world database
-  pickScope: From the client's own files under {root}, on the machine the client runs on, not this
-    one. Put the database there first.
+  pickTitle:
+    realm: Choose a world database
+    layout: Load a card layout
+    character: Import a character
+  pickScope: The client's own files under {root}, on the machine the client runs on. Upload sends a
+    file from this computer there.
+  upload:
+    button: Upload
+    hint: Send a file from this computer to the client and use it
+    sending: Sending {name}…
+    tooLarge: '{name} is larger than the client takes.'
+    failed: 'Could not send {name}: {message}'
   up: Up
   copyPath: Copy path
   close: Close

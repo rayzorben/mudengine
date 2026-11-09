@@ -27,7 +27,6 @@
  * socket refused before any channel is served. Cleartext unless something
  * terminates TLS in front, and the banner says so every start.
  */
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -40,7 +39,9 @@ import { fileUnderHome } from './chosen';
 import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Host';
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
+import { claimFileIn } from './web/claim';
 import { Downloads } from './web/downloads';
+import { storeUpload } from './web/uploads';
 import { WebLog } from './web/log';
 import { TabSessions, type Tab } from './web/tabs';
 import { Send } from '../../shared/ipc';
@@ -150,25 +151,6 @@ function banner(
     );
   }
   return lines.join('\n');
-}
-
-/**
- * `dir/name`, or `stem-2.ext`, `stem-3.ext`… when that is taken. Created empty
- * here (`wx`), so two saves at once cannot be handed the same name.
- */
-async function claimFileIn(dir: string, name: string): Promise<string> {
-  const dot = name.indexOf('.');
-  const stem = dot === -1 ? name : name.slice(0, dot);
-  const extension = dot === -1 ? '' : name.slice(dot);
-  for (let n = 1; ; n += 1) {
-    const file = path.join(dir, n === 1 ? name : `${stem}-${n}${extension}`);
-    try {
-      await fs.promises.writeFile(file, '', { flag: 'wx' });
-      return file;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    }
-  }
 }
 
 export function createWebHost(layout: Layout): Host {
@@ -337,7 +319,9 @@ export function createWebHost(layout: Layout): Host {
         onSocket: (connection, remote) => tabs.connect(connection, remote),
         log: say,
         extensionFile: (name, relative) => hooks.extensionFile(name, relative),
-        download: (token) => downloads.take(token)
+        download: (token) => downloads.take(token),
+        // A file from the viewer's machine; under the home, so `chosenPath` takes it.
+        upload: (name, body, most) => storeUpload(hooks.home.state('uploads'), name, body, most)
       });
       server.listen(port, bind).then(
         (bound) => {
@@ -372,7 +356,6 @@ export function createWebHost(layout: Layout): Host {
      */
     chooseSaveFile: async (_caller, choice) => {
       if (exportsDir === null) return null;
-      await fs.promises.mkdir(exportsDir, { recursive: true });
       return claimFileIn(exportsDir, choice.defaultName);
     },
     /*

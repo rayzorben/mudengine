@@ -8,6 +8,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import { AccessTokens, COOKIE } from '../web/access';
 import { Downloads } from '../web/downloads';
+import { storeUpload } from '../web/uploads';
 import { createWebServer, loginPage, withConnectSrc, type WebServer } from '../web/server';
 import type { WebSocketConnection } from '../../../node/sockets';
 
@@ -55,7 +56,8 @@ beforeAll(async () => {
     // One extension, `planner`, whose page is the renderer's own index for the test.
     extensionFile: (name, relative) =>
       name === 'planner' && relative === 'index.html' ? path.join(dir, 'index.html') : null,
-    download: (token) => downloads.take(token)
+    download: (token) => downloads.take(token),
+    upload: (name, body) => storeUpload(path.join(dir, 'uploads'), name, body, 64)
   });
   ({ port } = await server.listen(0, '127.0.0.1'));
 });
@@ -299,6 +301,41 @@ describe('with a session', () => {
     expect(await first.text()).toBe('the trace');
     expect((await get(link, { Cookie: cookie })).status).toBe(404);
     expect((await get('/download/abc123/index.html', { Cookie: cookie })).status).toBe(404);
+  });
+
+  it('stores an upload under the home, behind the password and from this origin only', async () => {
+    const send = (headers: Record<string, string>, body = '{"cards":[]}'): Promise<Response> =>
+      fetch(`${base()}/upload`, { method: 'POST', headers, body });
+    const named = { 'x-mudengine-upload': encodeURIComponent('../my layout.json') };
+    expect((await send(named)).status).toBe(401);
+    const cookie = await signIn();
+    const stored = await send({ ...named, Cookie: cookie, Origin: base() });
+    expect(stored.status).toBe(201);
+    const { file } = (await stored.json()) as { file: string };
+    // The directory part of the viewer's name is dropped, and the file lands in `uploads/`.
+    expect(file).toBe(path.join(dir, 'uploads', 'my layout.json'));
+    expect(fs.readFileSync(file, 'utf8')).toBe('{"cards":[]}');
+    // A second upload of the same name never overwrites the first.
+    const again = (await (await send({ ...named, Cookie: cookie })).json()) as { file: string };
+    expect(again.file).toBe(path.join(dir, 'uploads', 'my layout-2.json'));
+    expect((await send({ ...named, Cookie: cookie, Origin: 'http://evil.example' })).status).toBe(
+      403
+    );
+    expect((await send({ Cookie: cookie })).status).toBe(403);
+    expect((await get('/upload', { Cookie: cookie })).status).toBe(405);
+  });
+
+  it('refuses an upload past the cap and keeps no part of it', async () => {
+    const cookie = await signIn();
+    const big = 'x'.repeat(65);
+    const response = await fetch(`${base()}/upload`, {
+      method: 'POST',
+      headers: { 'x-mudengine-upload': 'big.mdb', Cookie: cookie },
+      body: big
+    }).catch(() => null);
+    // Torn down mid-body or answered 413; either way nothing is kept.
+    if (response !== null) expect(response.status).toBe(413);
+    expect(fs.existsSync(path.join(dir, 'uploads', 'big.mdb'))).toBe(false);
   });
 
   it('refuses a socket opened from another origin', async () => {

@@ -52,6 +52,7 @@ export type IconName =
   | 'more'
   | 'trash'
   | 'download'
+  | 'upload'
   | 'paste'
   | 'edit'
   | 'plus'
@@ -349,6 +350,13 @@ const ICONS: Record<IconName, ReactNode> = {
   download: (
     <>
       <path d="M12 4.5v10M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2" />
+    </>
+  ),
+  // An arrow up out of a tray: sending a file from this machine.
+  upload: (
+    <>
+      <path d="M12 15V5M7.5 9.5 12 5l4.5 4.5" />
       <path d="M5 16.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2" />
     </>
   ),

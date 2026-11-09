@@ -1421,11 +1421,11 @@ export default function App() {
 
       {/*
         The client's files, listed in the window, where the host has no file
-        manager to open them in — and the realm picker in web mode, which
-        chooses from the client's disk rather than the viewer's.
+        manager to open them in — and every file picker in web mode, which
+        chooses from the client's disk or uploads from the viewer's.
       */}
       {browsing !== null && (
-        <HomeBrowser onClose={closeBrowser} onPick={browsing.pick} start={browsing.start} />
+        <HomeBrowser onClose={closeBrowser} pick={browsing.pick} start={browsing.start} />
       )}
       {helpOpen && <HelpScreen onClose={closeHelp} />}
       {/*

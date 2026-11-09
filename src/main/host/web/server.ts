@@ -32,14 +32,15 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import type { Duplex } from 'node:stream';
+import type { Duplex, Readable } from 'node:stream';
 
-import { RPC_PATH } from '../../../shared/rpc';
+import { RPC_PATH, UPLOAD_NAME_HEADER, UPLOAD_PATH } from '../../../shared/rpc';
 import { t } from '../../app/i18n';
 import { isWithin } from '../../app/browse';
 import { tuning } from '../../app/tuning';
 import { AccessTokens, basicPassword, COOKIE, cookieToken, passwordMatches } from './access';
 import { readCapped } from '../../../node/body';
+import type { StoredUpload } from './uploads';
 import { acceptUpgrade, isWebSocketUpgrade, type WebSocketConnection } from '../../../node/sockets';
 
 export interface WebServerOptions {
@@ -57,6 +58,8 @@ export interface WebServerOptions {
   extensionFile?(name: string, relative: string): string | null;
   /** The file a tab was handed to download, given once (`downloads.ts`). */
   download?(token: string): string | null;
+  /** A file sent from the viewer's machine, stored under the home (`uploads.ts`). */
+  upload?(name: string, body: Readable, most: number): Promise<StoredUpload>;
 }
 
 /** An extension's card page: `/ext/<name>/<path>`. */
@@ -244,6 +247,22 @@ export function createWebServer(options: WebServerOptions): WebServer {
     await new Promise((resolve) => setTimeout(resolve, tuning().web.loginDelayMs));
   };
 
+  /**
+   * The `Origin` a request names when it is not this host, else null. A
+   * request with no origin (a script, a probe) is judged on its credentials.
+   */
+  const foreignOrigin = (request: http.IncomingMessage): string | null => {
+    const origin = request.headers['origin'];
+    if (typeof origin !== 'string') return null;
+    let originHost = '';
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      // An origin that is not a URL is not this host.
+    }
+    return originHost === String(request.headers['host'] ?? '') ? null : origin;
+  };
+
   const reply = (
     response: http.ServerResponse,
     status: number,
@@ -425,6 +444,10 @@ export function createWebServer(options: WebServerOptions): WebServer {
       page(request, response, 401, false);
       return;
     }
+    if (pathname === UPLOAD_PATH) {
+      await receiveUpload(request, response);
+      return;
+    }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       reply(response, 405, { Allow: 'GET, HEAD', 'Content-Type': CONTENT_TYPES['.txt']! }, 'GET');
       return;
@@ -484,6 +507,78 @@ export function createWebServer(options: WebServerOptions): WebServer {
     });
   };
 
+  /**
+   * A file sent from the viewer's machine (`uploads.ts`). POST only, from
+   * this host's own page: the cookie is `SameSite=Strict`, but a browser
+   * resends Basic credentials to any site that asks, so the origin is
+   * checked here as on the socket. The name rides in a header, which also
+   * makes a cross-site form unable to send it without a preflight.
+   */
+  const receiveUpload = async (
+    request: http.IncomingMessage,
+    response: http.ServerResponse
+  ): Promise<void> => {
+    const text = { 'Content-Type': CONTENT_TYPES['.txt']!, 'Cache-Control': 'no-store' };
+    if (request.method !== 'POST') {
+      reply(response, 405, { ...text, Allow: 'POST' }, 'POST');
+      return;
+    }
+    const foreign = foreignOrigin(request);
+    const rawName = request.headers[UPLOAD_NAME_HEADER];
+    if (options.upload === undefined || foreign !== null || typeof rawName !== 'string') {
+      if (foreign !== null) {
+        options.log(`web: refused an upload from ${remoteOf(request)}: origin ${foreign}.`);
+      }
+      reply(response, 403, text, 'forbidden');
+      request.resume();
+      return;
+    }
+    let name: string;
+    try {
+      name = decodeURIComponent(rawName);
+    } catch {
+      reply(response, 400, text, 'bad name');
+      request.resume();
+      return;
+    }
+    // Refused before a byte is read when the browser said how much is coming.
+    // Every file-in point shares the upload, so it takes the largest of their caps.
+    const { maxImportBytes, maxLayoutBytes } = tuning().transfer;
+    const most = Math.max(maxImportBytes, maxLayoutBytes);
+    const declared = Number(request.headers['content-length'] ?? NaN);
+    if (Number.isFinite(declared) && declared > most) {
+      reply(response, 413, text, 'too large');
+      request.resume();
+      return;
+    }
+    const stored = await options.upload(name, request, most);
+    switch (stored.kind) {
+      case 'stored':
+        reply(
+          response,
+          201,
+          { 'Content-Type': CONTENT_TYPES['.json']!, 'Cache-Control': 'no-store' },
+          JSON.stringify({ file: stored.file })
+        );
+        return;
+      case 'too-large':
+        if (!response.destroyed) reply(response, 413, text, 'too large');
+        return;
+      case 'bad-name':
+        reply(response, 400, text, 'bad name');
+        request.resume();
+        return;
+      case 'failed':
+        options.log(`web: an upload from ${remoteOf(request)} failed: ${stored.reason}`);
+        if (!response.destroyed) reply(response, 500, text, 'error');
+        return;
+      default: {
+        const never: never = stored;
+        return never;
+      }
+    }
+  };
+
   /** A refused upgrade: one status line, and the socket goes. */
   const refuse = (socket: Duplex, status: string): void => {
     socket.write(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -512,21 +607,13 @@ export function createWebServer(options: WebServerOptions): WebServer {
       refuse(socket, '401 Unauthorized');
       return;
     }
-    const origin = request.headers['origin'];
-    if (typeof origin === 'string') {
-      let originHost = '';
-      try {
-        originHost = new URL(origin).host;
-      } catch {
-        // An origin that is not a URL is not this host.
-      }
-      if (originHost !== String(request.headers['host'] ?? '')) {
-        options.log(
-          `web: refused a socket from ${remoteOf(request)}: origin ${origin} is not this host.`
-        );
-        refuse(socket, '403 Forbidden');
-        return;
-      }
+    const foreign = foreignOrigin(request);
+    if (foreign !== null) {
+      options.log(
+        `web: refused a socket from ${remoteOf(request)}: origin ${foreign} is not this host.`
+      );
+      refuse(socket, '403 Forbidden');
+      return;
     }
     const connection = acceptUpgrade(request, socket, head, {
       maxMessageBytes: tuning().web.maxMessageBytes,

@@ -14,9 +14,9 @@
  * - **the clipboard** — `navigator.clipboard`, which a browser tab may use
  *   on a user gesture and which the desktop avoids for reasons that do not
  *   apply here (`Invoke.copyText`'s note);
- * - **the realm picker** — the window's own, over `Invoke.browseHome`
- *   (`lib/pickers.ts`), because the disk is the client's and not the
- *   viewer's;
+ * - **a file picker** (a realm, a card layout, a character import): the
+ *   window's own, over `Invoke.browseHome` (`lib/pickers.ts`), because the
+ *   disk is the client's, with an upload from the viewer's machine beside it;
  * - **a saved file** — the debug report and a character export are written
  *   on the client's disk as on the desktop, then fetched into the browser's
  *   downloads over the link main hands back (`Host.deliver`);
@@ -41,7 +41,7 @@ import {
 } from '@shared/ipc';
 import { trimArgs, type RpcOutbound } from '@shared/rpc';
 import { t } from './i18n';
-import { hasHomePicker, pickFromHome } from './pickers';
+import { hasHomePicker, pickFromHome, type PickKind } from './pickers';
 import { openWebLink } from './webLink';
 
 type Listener = (payload: unknown) => void;
@@ -68,15 +68,15 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
 
   /*
    * The window's own picker over the client's disk (`lib/pickers.ts`), never
-   * a channel: main in web mode has no dialog to put up, and a
-   * `<input type="file">` would browse the wrong machine.
+   * a channel: main in web mode has no dialog to put up. The picker lists
+   * the client's home and offers an upload from the viewer's machine.
    */
-  const pickOnTheClient = (): Promise<string | null> => {
+  const pickOnTheClient = (kind: PickKind): Promise<string | null> => {
     if (!hasHomePicker()) {
       notice(t('web.picker.unavailable'));
       return Promise.resolve(null);
     }
-    return pickFromHome();
+    return pickFromHome(kind);
   };
 
   /** A file main wrote and offered, saved into the browser's downloads. */
@@ -203,7 +203,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     controlStop: (session) => invoke(Invoke.controlStop, session),
     savePortrait: (session) => delivered(Invoke.savePortrait, session),
     saveCardLayout: (name, text) => delivered(Invoke.saveCardLayout, name, text),
-    chooseCardLayoutFile: () => pickOnTheClient(),
+    chooseCardLayoutFile: () => pickOnTheClient('layout'),
     readCardLayout: (file) => invoke(Invoke.readCardLayout, file),
     roomArt: (session) => invoke(Invoke.roomArt, session),
     treatMonster: (session, mob, treat) => invoke(Invoke.treatMonster, session, mob, treat),
@@ -301,9 +301,9 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     saveServer: (previousName, draft) => invoke(Invoke.saveServer, previousName, draft),
     deleteServer: (name) => invoke(Invoke.deleteServer, name),
     settingsSnapshot: () => invoke(Invoke.settingsSnapshot),
-    chooseRealm: () => pickOnTheClient(),
+    chooseRealm: () => pickOnTheClient('realm'),
     exportCharacter: (id, password) => delivered(Invoke.exportCharacter, id, password),
-    chooseCharacterFile: () => pickOnTheClient(),
+    chooseCharacterFile: () => pickOnTheClient('character'),
     importCharacter: (file) => invoke(Invoke.importCharacter, file),
     searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),
     mobNames: (session) => invoke(Invoke.mobNames, session),

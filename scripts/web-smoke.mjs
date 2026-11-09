@@ -762,11 +762,59 @@ check(
   (await first.evaluate(`!!document.querySelector('.settings')`)) === true,
   'and leaves the settings screen it was opened from'
 );
+
 // The hand-back lands a frame after the picker is gone; a key sent before it
 // lands on the body and does nothing, which is a race a hand never wins.
 check(
   (await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.settings')`))) === true,
   'with the caret handed back to it'
+);
+/*
+ * The player sits at another machine than the client's, so every picker
+ * offers an upload from it (user, 2026-11-09). A card layout is sent through
+ * the real file input and read back by the channel the Load reads with.
+ */
+await first.evaluate(
+  `(window.__picked = undefined, window.mudengine.chooseCardLayoutFile().then((file) => { window.__picked = { file }; }), true)`
+);
+check(
+  (await waitFor(() =>
+    first.evaluate(`!!document.querySelector('.home-browser [data-upload]')`)
+  )) === true,
+  'a card layout picker offers an upload from this computer'
+);
+await first.evaluate(`
+  (() => {
+    const input = document.querySelector('.home-browser-file');
+    const sent = new DataTransfer();
+    const text = JSON.stringify({ kind: 'mudengine.card-layout', cards: [] });
+    sent.items.add(new File([text], 'smoke layout.json', { type: 'application/json' }));
+    input.files = sent.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()
+`);
+const uploaded = await waitFor(() =>
+  first.evaluate(`window.__picked ? JSON.stringify(window.__picked) : null`)
+);
+const uploadedFile = uploaded ? JSON.parse(uploaded).file : null;
+check(
+  typeof uploadedFile === 'string' &&
+    /[\\/]uploads[\\/]smoke layout(-\d+)?\.json$/.test(uploadedFile),
+  'and the upload lands in uploads/ under the home and answers the picker',
+  String(uploaded)
+);
+const readBack = await first.evaluate(
+  `window.mudengine.readCardLayout(${JSON.stringify(uploadedFile)}).then((r) => r.kind)`
+);
+check(readBack === 'read', 'which the Load then reads as picked', String(readBack));
+check(
+  (await waitFor(() => first.evaluate(`!document.querySelector('.home-browser')`))) === true,
+  'and the picker closes'
+);
+check(
+  (await waitFor(() => first.evaluate(`!!document.activeElement?.closest('.settings')`))) === true,
+  'with the caret handed back to the settings screen again'
 );
 await first.press('Escape', 'Escape', 27);
 check(

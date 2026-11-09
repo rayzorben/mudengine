@@ -7,13 +7,13 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-import { registerHomePicker } from '../lib/pickers';
+import { registerHomePicker, type PickKind } from '../lib/pickers';
 import type { Revealed } from '@shared/ipc';
 
 export interface HomeBrowsing {
   start: string | null;
-  /** The realm picker's promise, waiting on a file; null for a plain listing. */
-  pick: ((file: string | null) => void) | null;
+  /** A picker's promise, waiting on a file, and what it is choosing; null for a plain listing. */
+  pick: { kind: PickKind; resolve: (file: string | null) => void } | null;
   /** The dialog control holding the caret when the browser was asked for, if any. */
   opener: HTMLElement | null;
 }
@@ -30,7 +30,7 @@ export interface HomeBrowserState {
  * Two things open it. Revealing a path — the options file, the characters
  * folder, the logs — answers `listed` from a host that has no file manager
  * to open on the machine the files are on, and the listing is what the
- * window shows instead of nothing. And the realm picker in web mode: the
+ * window shows instead of nothing. And every file picker in web mode: the
  * bridge asks the window for one (`lib/pickers.ts`) because the disk being
  * chosen from is the client's, and `pick` is the promise it is waiting on.
  *
@@ -45,15 +45,12 @@ export function useHomeBrowser(returnFocus: () => void): HomeBrowserState {
    * picker, and a caret sent past it into the game left that screen deaf to
    * its own Escape (2026-09-07). `mudengine-ui` § Focus lives in the terminal.
    */
-  const openBrowser = useCallback(
-    (start: string | null, pick: ((file: string | null) => void) | null) => {
-      const active = document.activeElement;
-      const opener =
-        active instanceof HTMLElement && active.closest('[role="dialog"]') !== null ? active : null;
-      setBrowsing({ start, pick, opener });
-    },
-    []
-  );
+  const openBrowser = useCallback((start: string | null, pick: HomeBrowsing['pick']) => {
+    const active = document.activeElement;
+    const opener =
+      active instanceof HTMLElement && active.closest('[role="dialog"]') !== null ? active : null;
+    setBrowsing({ start, pick, opener });
+  }, []);
 
   const close = useCallback(() => {
     const opener = browsing?.opener ?? null;
@@ -72,7 +69,7 @@ export function useHomeBrowser(returnFocus: () => void): HomeBrowserState {
   );
 
   useEffect(() => {
-    registerHomePicker(() => new Promise((resolve) => openBrowser(null, resolve)));
+    registerHomePicker((kind) => new Promise((resolve) => openBrowser(null, { kind, resolve })));
     return () => registerHomePicker(null);
   }, [openBrowser]);
 

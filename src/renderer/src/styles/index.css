@@ -17911,6 +17911,17 @@ tr:hover .row-action.worn,
   padding: 8px 12px 0;
 }
 
+/* An upload on its way, or why it was refused: the line under the scope. */
+.home-browser-upload {
+  color: var(--text-lo);
+  font-size: calc(var(--font-ui) - 1px);
+  padding: 6px 12px 0;
+}
+
+.home-browser-upload[data-state='refused'] {
+  color: var(--danger);
+}
+
 .home-browser-row {
   align-items: center;
   background: transparent;

@@ -27,6 +27,13 @@ import { Push } from './ipc';
 /** Where the socket is upgraded, under whatever origin the client is served from. */
 export const RPC_PATH = '/ws';
 
+/**
+ * Where a tab POSTs a file from the viewer's machine, and the header naming
+ * it (URI-encoded). The answer is `{ file }`, the path stored under the home.
+ */
+export const UPLOAD_PATH = '/upload';
+export const UPLOAD_NAME_HEADER = 'x-mudengine-upload';
+
 /** A tab gave a socket up as dead; the client keeps the tab for it to come back. */
 export const GAVE_UP = 4000;
 /** The page is going away; the client lets the tab go at once. */

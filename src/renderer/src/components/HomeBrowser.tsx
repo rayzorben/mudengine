@@ -1,19 +1,29 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent
+} from 'react';
 
 import type { DirectoryEntry, HomeListing } from '@shared/ipc';
 import Icon from './Icon';
 import { writeClipboard } from '../lib/clipboard';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import type { PickKind } from '../lib/pickers';
+import { uploadToClient } from '../lib/upload';
 
 export interface HomeBrowserProps {
   /** Where to open: a path under the client's home, or null for its root. */
   start: string | null;
   /**
-   * When choosing a file: called with the path, or null when dismissed. Null
-   * when merely showing where something is.
+   * When choosing a file: what is being chosen, and the hand-back called
+   * with the path, or null when dismissed. Null when merely showing where
+   * something is.
    */
-  onPick: ((file: string | null) => void) | null;
+  pick: { kind: PickKind; resolve(file: string | null): void } | null;
   onClose(): void;
 }
 
@@ -21,6 +31,22 @@ export interface HomeBrowserProps {
 function join(dir: string, name: string): string {
   if (dir.endsWith('/') || dir.endsWith('\\')) return `${dir}${name}`;
   return `${dir}${dir.includes('\\') ? '\\' : '/'}${name}`;
+}
+
+/** The dialog's title for what is being chosen. */
+function pickTitle(kind: PickKind): string {
+  switch (kind) {
+    case 'realm':
+      return t('browser.pickTitle.realm');
+    case 'layout':
+      return t('browser.pickTitle.layout');
+    case 'character':
+      return t('browser.pickTitle.character');
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
 }
 
 /** Bytes as a person reads them. Integers only; a size is not a measurement. */
@@ -37,8 +63,9 @@ function formatSize(size: number | null): string {
  * The desktop client reveals a path by opening the operating system's file
  * manager. A browser tab cannot — the files are on the machine the client
  * runs on, not the one the tab is on — so this is what *Show the options
- * file* and its siblings open there, and what the realm picker draws when
- * a database is chosen (`lib/pickers.ts`). Names and sizes only, never
+ * file* and its siblings open there, and what every file picker draws
+ * (`lib/pickers.ts`), with an upload from the viewer's own machine beside
+ * the listing (`lib/upload.ts`). Names and sizes only, never
  * contents: the listing comes from `Invoke.browseHome`, whose header says
  * why, and the row of the file that was asked about is marked.
  *
@@ -46,11 +73,17 @@ function formatSize(size: number | null): string {
  * the same rules: Escape puts it away, a click on the scrim puts it away,
  * and every control keeps the caret where it was.
  */
-export default function HomeBrowser({ start, onPick, onClose }: HomeBrowserProps) {
+export default function HomeBrowser({ start, pick, onClose }: HomeBrowserProps) {
   const api = window.mudengine;
   const [listing, setListing] = useState<HomeListing | null>(null);
   const [loading, setLoading] = useState(true);
+  /** An upload on its way, by file name, or why the last one was refused. */
+  const [upload, setUpload] = useState<
+    { kind: 'sending'; name: string } | { kind: 'refused'; error: string } | null
+  >(null);
   const frame = useRef<HTMLDivElement | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const onPick = pick?.resolve ?? null;
 
   const browse = useCallback(
     (target: string | null) => {
@@ -94,6 +127,43 @@ export default function HomeBrowser({ start, onPick, onClose }: HomeBrowserProps
     [browse, listing, onPick, onClose]
   );
 
+  /*
+   * The viewer's own file, sent to the client and handed back as the path it
+   * was stored at, as if picked from the listing. A dismiss while it is on
+   * its way has already answered the picker and closed this dialog, so a
+   * late answer touches nothing: its `onClose` would close whatever dialog
+   * is open by then.
+   */
+  const sending = useRef(false);
+  const gone = useRef(false);
+  useEffect(
+    () => () => {
+      gone.current = true;
+    },
+    []
+  );
+  const onUploadChosen = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = '';
+      if (file === null || onPick === null || sending.current) return;
+      sending.current = true;
+      setUpload({ kind: 'sending', name: file.name });
+      void uploadToClient(file).then((answer) => {
+        sending.current = false;
+        if (gone.current) return;
+        if (answer.kind === 'refused') {
+          setUpload(answer);
+          return;
+        }
+        setUpload(null);
+        onPick(answer.file);
+        onClose();
+      });
+    },
+    [onPick, onClose]
+  );
+
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape') return;
     event.stopPropagation();
@@ -105,13 +175,14 @@ export default function HomeBrowser({ start, onPick, onClose }: HomeBrowserProps
     void writeClipboard(listing.selected ? join(listing.dir, listing.selected) : listing.dir);
   }, [listing]);
 
-  const picking = onPick !== null;
+  const picking = pick !== null;
+  const title = pick === null ? t('browser.title') : pickTitle(pick.kind);
   const shown = listing?.dir ?? start ?? '';
 
   return (
     <div className="palette-scrim home-browser-scrim" onMouseDown={dismiss} role="presentation">
       <div
-        aria-label={picking ? t('browser.pickTitle') : t('browser.title')}
+        aria-label={title}
         aria-modal="true"
         className="surface palette home-browser"
         onKeyDown={onKeyDown}
@@ -121,10 +192,22 @@ export default function HomeBrowser({ start, onPick, onClose }: HomeBrowserProps
         tabIndex={-1}
       >
         <header className="home-browser-head">
-          <span className="home-browser-title">
-            {picking ? t('browser.pickTitle') : t('browser.title')}
-          </span>
+          <span className="home-browser-title">{title}</span>
           <span className="home-browser-actions">
+            {picking && (
+              <button
+                className="quiet"
+                data-upload="true"
+                disabled={upload?.kind === 'sending'}
+                onClick={() => fileInput.current?.click()}
+                onMouseDown={keepFocus}
+                title={t('browser.upload.hint')}
+                type="button"
+              >
+                <Icon name="upload" />
+                {t('browser.upload.button')}
+              </button>
+            )}
             <button
               className="quiet"
               disabled={!listing || listing.parent === null}
@@ -169,6 +252,27 @@ export default function HomeBrowser({ start, onPick, onClose }: HomeBrowserProps
         */}
         {picking && listing !== null && (
           <div className="home-browser-scope">{t('browser.pickScope', { root: listing.root })}</div>
+        )}
+        {picking && (
+          <input
+            className="home-browser-file"
+            hidden
+            onChange={onUploadChosen}
+            ref={fileInput}
+            tabIndex={-1}
+            type="file"
+          />
+        )}
+        {upload !== null && (
+          <div
+            className="home-browser-upload"
+            data-state={upload.kind}
+            role={upload.kind === 'refused' ? 'alert' : 'status'}
+          >
+            {upload.kind === 'sending'
+              ? t('browser.upload.sending', { name: upload.name })
+              : upload.error}
+          </div>
         )}
 
         {loading && listing === null ? (
