@@ -140,6 +140,48 @@ describe('shedding named junk', () => {
     expect(sent).toEqual(['drop rusty sword', 'drop rusty sword']);
   });
 
+  /* festus, 2026-11-10: `2 platinum plate boots` listed, one `drop` sent, one left forever. */
+  it('drops every unworn copy in one command and leaves the worn one', () => {
+    const auto = make();
+    auto.onCharacter(
+      carrying([
+        item('rusty sword', { equipped: true, slot: 'Weapon Hand' }),
+        item('rusty sword'),
+        item('rusty sword')
+      ])
+    );
+    drain();
+    expect(sent).toEqual(['drop 2 rusty sword']);
+  });
+
+  it('asks again when the count changes while the name is still listed', () => {
+    const auto = make();
+    auto.onCharacter(carrying([item('rusty sword'), item('rusty sword')]));
+    drain();
+    // The server dropped one of the two: what is left is a fresh decision.
+    auto.onCharacter(carrying([item('rusty sword')]));
+    drain();
+    // Refused, so the count stands: no second ask.
+    auto.onCharacter(carrying([item('rusty sword')]));
+    drain();
+    expect(sent).toEqual(['drop 2 rusty sword', 'drop rusty sword']);
+  });
+
+  it('takes back a waiting drop whose count the pack no longer holds', () => {
+    const auto = make();
+    queue.noteTyping(true);
+    auto.onCharacter(carrying([item('rusty sword'), item('rusty sword')]));
+    drain();
+    expect(queue.queued((intent) => intent.command === 'drop 2 rusty sword')).toBe(true);
+    // One worn while the drop waited: only the one in the pack goes.
+    auto.onCharacter(
+      carrying([item('rusty sword', { equipped: true, slot: 'Weapon Hand' }), item('rusty sword')])
+    );
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual(['drop rusty sword']);
+  });
+
   it('holds during combat and while resting', () => {
     const auto = make();
     auto.onCharacter({ ...carrying([item('rusty sword')]), inCombat: true });

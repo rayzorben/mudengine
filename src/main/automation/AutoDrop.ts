@@ -41,11 +41,14 @@
  *   grade drops nothing: unknown is not encumbered, and a drop is not a
  *   thing to do on a guess.
  *
- * **One ask per item, released by the pack.** A `drop` the server refused
- * would otherwise be re-proposed on every listing — the failure that forced
- * `AutoLoot`'s once-per-room memory. Here the memory is released when the
- * name leaves the pack, so junk picked up again is junk dropped again; a
- * second copy under one name waits for the listing to say the first is gone.
+ * **Every copy in one `drop`, asked once per count.** A pack holding two
+ * gets `drop 2 <name>`, which the server takes from the unworn copies
+ * (`You dropped 2 crimson scale gauntlets.`, festus, 2026-11-10). A `drop`
+ * the server refused would otherwise be re-proposed on every listing, the
+ * failure that forced `AutoLoot`'s once-per-room memory, so the ask is
+ * remembered with the count it was made at and released when the pack's
+ * count of that name changes. A `drop` still queued under the old count is
+ * taken back then, since the queue keeps a waiting command's text.
  *
  * Proposes to `CommandQueue` in the `probe` band; nothing here touches a
  * socket.
@@ -69,8 +72,8 @@ export interface AutoDropEvents {
 }
 
 export class AutoDrop implements SessionModule {
-  /** Names already asked to drop, lower case, until the pack stops listing them. */
-  private asked = new Set<string>();
+  /** Names already asked to drop, lower case, with the unworn count asked for. */
+  private asked = new Map<string, number>();
   /** Names kept for a quest and said so, released the same way. */
   private kept = new Set<string>();
 
@@ -98,9 +101,15 @@ export class AutoDrop implements SessionModule {
     // any gate: a name no longer listed is free to be asked about again the
     // next time it is picked up, whether or not this is currently allowed to
     // act at all.
-    for (const names of [this.asked, this.kept]) {
-      for (const key of names) {
-        if (!state.inventory.items.some((item) => bareName(item.name) === key)) names.delete(key);
+    const spares = unwornCounts(state);
+    for (const [key, count] of this.asked) {
+      if ((spares.get(key) ?? 0) === count) continue;
+      this.asked.delete(key);
+      this.queue.cancel((intent) => intent.coalesceKey === dropKey(key));
+    }
+    for (const key of this.kept) {
+      if (!state.inventory.items.some((item) => bareName(item.name) === key)) {
+        this.kept.delete(key);
       }
     }
 
@@ -150,12 +159,13 @@ export class AutoDrop implements SessionModule {
         this.keep(carried, reason, t('automation.quests.stillNeeds', { quest, item: item.name }));
         continue;
       }
-      this.asked.add(carried);
+      // Never absent: `item` is unworn, so `unwornCounts` counted it.
+      const count = spares.get(carried) ?? 1;
+      this.asked.set(carried, count);
       this.queue.enqueue({
-        command: `drop ${item.name}`,
+        command: count > 1 ? `drop ${count} ${item.name}` : `drop ${item.name}`,
         priority: 'probe',
-        // One key per item name: a listing repeating is one decision, not two.
-        coalesceKey: `drop:${carried}`,
+        coalesceKey: dropKey(carried),
         expiresAt: Date.now() + tuning().drop.expiresMs,
         reason,
         decision: named ? 'drop-junk' : 'drop-worthless'
@@ -177,4 +187,24 @@ export class AutoDrop implements SessionModule {
       refused: sentence
     });
   }
+}
+
+/** One key per item name: a listing repeating is one decision, not two. */
+function dropKey(name: string): string {
+  return `drop:${name}`;
+}
+
+/**
+ * How many unworn copies of each bare name the pack holds. A listing's
+ * `2 crimson scale gauntlets` is two entries, and a worn copy is listed on its
+ * own, so this is a count of entries.
+ */
+function unwornCounts(state: CharacterState): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of state.inventory.items) {
+    if (item.equipped) continue;
+    const key = bareName(item.name);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
 }
