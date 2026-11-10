@@ -2496,6 +2496,14 @@ export interface BatchRule {
    */
   tailsLookLikeRooms?: boolean;
   /**
+   * The rows follow each other with nothing between, so the batch ends at
+   * the first line no qualifier reads, and that line may open the next one.
+   * `rm`'s rows on MajorMUD Plus: GreaterMUD prints others under the same
+   * `Location:`, and a batch open until the prompt kept the `abil` answer
+   * behind it from opening.
+   */
+  contiguous?: true;
+  /**
    * The line that ends the listing, where the server prints one: the batch
    * closes on it instead of waiting for the prompt, so a line arriving between
    * the two is not taken into the last field. `i` ends at its load line, and a
@@ -2820,6 +2828,51 @@ export const BATCH_RULES: BatchRule[] = [
     shape: 'object',
     maxLines: 40,
     qualifiers: [/^Location:\s+(?<map>\d{1,3}),(?<room>\d{1,6})/]
+  },
+  {
+    /*
+     * `rm` on MajorMUD Plus (omniversebbs.com), from Yang's wire, 2026-11-04
+     * to 2026-11-10 (OCI `logs/2026-11-10_02-01-15_yang.log`):
+     *
+     *     Location:      1,297
+     *     Illumination: 50 (Regular Light)   Ambient: 0  You: +50  Others: +0
+     *     Spawn:         1/1
+     *     Spawn Grp:    5  (lvl 1-4)
+     *       guardsman, Sheriff Lionheart, elite guardsman
+     *     Type:          Shop [S]
+     *     Flags:         Safe, Patrollable, PermNpcAlive
+     *     Shop:          8
+     *     Trap:          None
+     *
+     * A dark room adds `  Only your light holds back the dark.` under the
+     * light, a lair prints `Spawns:        giant rat (#1)` for the group, a
+     * long group ends `  ...(showing first 24)`, and an empty one prints
+     * `  (none present)`. `Location:` is still read alone by `user-profile`;
+     * GreaterMUD's `rm` prints other rows, which match nothing here, so its
+     * listing ends at the first of them with no rows and no block.
+     */
+    type: 'room-survey',
+    header: /^Location:\s+(?<map>\d{1,3}),(?<room>\d{1,6})\s*$/,
+    shape: 'array',
+    maxLines: 20,
+    last: /^Trap:/,
+    contiguous: true,
+    qualifiers: [
+      // Read as rows of the listing and stating nothing the survey keeps.
+      /^ {2}Only your light holds back the dark\.$/,
+      /^ {2}\(none present\)$/,
+      /^Illumination:\s+(?<seen>-?\d+) \((?<phrase>[^)]+)\)\s+Ambient:\s+(?<ambient>-?\d+)\s+You:\s+(?<own>[+-]?\d+)\s+Others:\s+(?<others>[+-]?\d+)\s*$/,
+      /^Spawn:\s+(?<present>\d+)\/(?<max>\d+)\s*$/,
+      /^Spawn Grp:\s+(?<group>\d+)(?:\s+\(lvl (?<low>\d+)-(?<high>\d+)\))?\s*$/,
+      // The group's names, seven to a line and indented; the dark note, the cut and `(none present)` are not.
+      /^ {2}(?!Only your light holds back the dark\.$|\.\.\.\(|\()(?<members>\S.*?)\s*$/,
+      /^ {2}\.\.\.\(showing first (?<shown>\d+)\)\s*$/,
+      /^Spawns:\s+(?<lair>.+?)\s*$/,
+      /^Type:\s+(?<type>\S.*?) \[(?<glyph>.)\]\s*$/,
+      /^Flags:\s+(?<flags>.+?)\s*$/,
+      /^Shop:\s+(?<shop>\d+|None)\s*$/,
+      /^Trap:\s+(?<trap>.+?)\s*$/
+    ]
   },
   {
     /*

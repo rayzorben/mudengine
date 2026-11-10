@@ -1226,12 +1226,18 @@ export class Classifier {
     ) {
       this.batch = null;
     }
+    // A listing whose rows are contiguous ends at the first line that is not one of them,
+    // and that line may open the next listing.
+    let ended: BatchBlock | undefined;
+    if (open?.contiguous === true && !open.qualifiers.some((qualifier) => qualifier.test(text))) {
+      ended = this.finishBatch();
+    }
     if (!this.batch) {
       const rule = BATCH_RULES.find((candidate) => candidate.header.test(text));
-      if (!rule) return undefined;
+      if (!rule) return ended;
       // A record already whole on its header line was read by the single-line
       // rule; there is nothing to join.
-      if (rule.wraps === 'record' && rule.qualifiers.some((q) => q.test(text))) return undefined;
+      if (rule.wraps === 'record' && rule.qualifiers.some((q) => q.test(text))) return ended;
       /*
        * The header's own captures are kept.
        *
@@ -1257,7 +1263,7 @@ export class Classifier {
         terminator: line.terminator,
         head
       };
-      return undefined;
+      return ended;
     }
 
     this.batch.lines.push(text);
@@ -1313,7 +1319,13 @@ export class Classifier {
         lines.length >= cap || STATUS_LINE_START.test(text) || (rule.last?.test(text) ?? false);
       if (!done) return undefined;
     }
+    return this.finishBatch();
+  }
 
+  /** The open listing, read into its block and closed; undefined where it read nothing. */
+  private finishBatch(): BatchBlock | undefined {
+    if (!this.batch) return undefined;
+    const { rule, lines } = this.batch;
     const rows: Array<Record<string, string>> = [];
     const merged: Record<string, string> = {};
 

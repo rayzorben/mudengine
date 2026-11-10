@@ -11,6 +11,7 @@
  */
 import type { Appearance } from './appearance';
 import type { Sight } from './light';
+import type { RoomSurvey } from './survey';
 import type { Alignment } from './alignment';
 import type { Loadout } from './gear';
 import type { Stash } from './stash';
@@ -1639,6 +1640,13 @@ export interface CharacterState {
    */
   peeked: { direction: Direction | null; room: Room; at: number } | null;
   /**
+   * The last `rm` answer the server printed beyond its coordinates
+   * (`src/shared/survey.ts`). Kept with the room it describes and read through
+   * `surveyHere`: a step away hides it, and walking back in shows it again
+   * with its age, since `Spawn:` may have changed since.
+   */
+  survey: RoomSurvey | null;
+  /**
    * What the character sees by, worked out from the race, the kit and the
    * pack — `src/shared/light.ts`. Null until the realm has named the race or
    * a listing has read the pack, because a sight worked out from nothing is a
@@ -1808,6 +1816,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   mortallyWounded: false,
   lastDeath: null,
   peeked: null,
+  survey: null,
   sight: null,
   attributeSpans: null,
   inCombat: false,

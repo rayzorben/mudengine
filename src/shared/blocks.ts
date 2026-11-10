@@ -923,6 +923,8 @@ export type BlockType =
   | 'player-found-hiding'
   /** `The room is barely visible` / `dimly lit` — whether the occupants can be seen at all. */
   | 'room-light'
+  /** `rm`'s rows under `Location:` on MajorMUD Plus: light, spawn, type, flags, shop, trap (`survey.ts`). */
+  | 'room-survey'
   /**
    * `You are blind.` — the server declining to print a room at all.
    *
@@ -1188,6 +1190,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'mob-leaves-room': 'presence',
   'mob-dies': 'combat',
   'room-light': 'room',
+  'room-survey': 'room',
   'room-unseen': 'room',
   'player-looks': 'presence',
   'player-searches': 'presence',

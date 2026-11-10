@@ -43,6 +43,7 @@ import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world
 import { mobKey, nameAnswersTo, roomId, withoutArticle } from '../../shared/world';
 import { deathNamed, type Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
+import { surveyed } from './survey';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import type { RealmFamily } from '../../shared/realm';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
@@ -1521,14 +1522,13 @@ export class CharacterTracker {
         this.room.items(g['items']);
         return null;
 
+      case 'room-survey':
+        return surveyed(s, g, rows ?? [], block.at);
+
       /*
-       * The same sentence answering a `search`, and a different floor.
-       *
-       * It goes onto the **published** room rather than into the draft, which
-       * is not a nicety: a search's answer arrives long after `Obvious exits:`
-       * completed the room, so the draft it would land in has already been
-       * discarded and everything written to it is thrown away. That is where
-       * every find went until now — parsed, and read by nothing.
+       * The same sentence answering a `search`, and a different floor. It goes
+       * onto the **published** room: the answer arrives after `Obvious exits:`
+       * completed the room, so the draft has already been discarded.
        *
        * `items` is left alone. What a search turns up stays concealed (a bare
        * Enter afterwards reprints the room with no `You notice` line), so

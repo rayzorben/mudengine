@@ -21,6 +21,7 @@ import type { RoomNickname } from '@shared/roomNicknames';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText } from './LairList';
+import SurveyFace, { surveyCopyText } from './SurveyFace';
 import RoomSpellRows, { hazardAtLevel, roomSpellCopyLines } from './RoomSpellRows';
 import { roomId, type RoomCommand, type SpellHazard, type WorldShop } from '@shared/world';
 import { type Discovery } from '@shared/memory';
@@ -30,6 +31,7 @@ import { standingOf, type CharacterState } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import type { RoomAsk } from '@shared/quests';
 import { askLine } from '@shared/asking';
+import { surveyHere } from '@shared/survey';
 import { gatesWords } from '@shared/gateWords';
 import { countedLabel } from '@shared/items';
 import type { Wearer } from '@shared/gear';
@@ -178,6 +180,7 @@ function RoomCard({
    */
   const shop = room.shop ?? null;
   const lair = room.lair ?? null;
+  const survey = surveyHere(character);
   const answers = room.commands ?? [];
   // The room's spell as it applies at this character's level (todo 01, 72).
   const spellHazard = hazardAtLevel(room.spell, character.progress.level);
@@ -354,7 +357,12 @@ function RoomCard({
          * smoke check for it failed and the data path was fine, which is
          * exactly the shape of a click-path bug.
          */
-        hasShop || lair !== null || answers.length > 0 || here.length > 0 || finds.length > 0
+        hasShop ||
+        lair !== null ||
+        survey !== null ||
+        answers.length > 0 ||
+        here.length > 0 ||
+        finds.length > 0
           ? [
               { id: 'room', label: t('cards.room.title'), content: face, copyText },
               ...(hasShop
@@ -408,6 +416,17 @@ function RoomCard({
                         <LairList inspect={inspect} lair={lair} standing={standingOf(character)} />
                       ),
                       copyText: () => lairCopyText(lair)
+                    }
+                  ]
+                : []),
+              // What the server's `rm` printed about this room, after what the realm data says spawns here.
+              ...(survey !== null
+                ? [
+                    {
+                      id: 'survey',
+                      label: t('cards.room.tabs.survey'),
+                      content: <SurveyFace inspect={inspect} survey={survey} />,
+                      copyText: () => surveyCopyText(survey)
                     }
                   ]
                 : []),

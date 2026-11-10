@@ -3834,6 +3834,23 @@ cards:
     # Todo 87: RM_PROTECTED in the official realm's room data.
     safe: safe room
     safeTitle: The realm data marks this room protected; nobody can attack here
+    # The rows `rm` prints on MajorMUD Plus, labelled in the server's words where they are words.
+    survey:
+      flags: Flags
+      group: Spawn group
+      groupLevels: '{id} (level {low} to {high})'
+      asked: Asked
+      lair: Spawns
+      light: Illumination
+      lightFigure: '{seen} ({phrase}), ambient {ambient}, you {own}, others {others}'
+      location: Location
+      none: None
+      number: '(#{id})'
+      shop: Shop
+      shown: (first {shown} shown)
+      spawn: Spawn
+      trap: Trap
+      type: Type
     occupant:
       alignCostChip: −10 align
       alignCostUncertainChip: −10 align?
@@ -3929,6 +3946,7 @@ cards:
       finds: Finds
       found: Found
       lair: Lair
+      survey: RM
     title: Room
   roomPeek:
     ariaLabel: What the world data says about {roomName}
