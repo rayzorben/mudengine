@@ -12572,7 +12572,9 @@ describe('the status line pro reports', () => {
     const { statline, vitals, progress, inventory } = tracker.current;
     expect(statline).toEqual({
       reported: '[HP=%h/%H,MA=%m/%M,Exp=%x,Need=%X,Wealth=%c%r]:',
-      exact: true
+      exact: true,
+      exp: 1386670,
+      expBehind: null
     });
     expect(vitals).toMatchObject({
       hp: 150,
@@ -12588,6 +12590,64 @@ describe('the status line pro reports', () => {
     expect(tracker.takeStatlineRequest()).toBe(false);
   });
 
+  /*
+   * Soul on themajorbbs (MajorMUD Plus), 2026-11-10, off the wire: the quest
+   * reward reached `exp` and never the prompt's `%x`, so each prompt put the
+   * experience back 750,000 and the client asked whether Soul was still the
+   * same character.
+   */
+  describe('a prompt whose Exp= is behind what exp states', () => {
+    const BEFORE = '[HP=142/178,MA=6/36,Exp=1711951,Need=361744,Wealth=2821300]:';
+    const AFTER = '[HP=166/178,MA=22/36,Exp=1713069,Need=360626,Wealth=2821300]:';
+    const STATED = 'Exp: 2463069 Level: 15 Exp needed for next level: 0 (2073695) [118%]';
+
+    it('keeps the figure exp stated, and corrects each prompt after it by the difference', () => {
+      const tracker = play([
+        BEFORE,
+        '<For clensing the altar, you gain 750,000 experience points!>',
+        AFTER,
+        STATED,
+        AFTER
+      ]);
+      expect(tracker.current.statline).toMatchObject({ exp: 1713069, expBehind: 750000 });
+      expect(tracker.current.progress).toMatchObject({ exp: 2463069, expNeeded: 0 });
+    });
+
+    it('keeps the difference through a kill and a second statement', () => {
+      const tracker = play([
+        AFTER,
+        STATED,
+        'You gain 800 experience.',
+        'Exp: 2463869 Level: 15 Exp needed for next level: 0 (2073695) [118%]',
+        '[HP=166/178,MA=22/36,Exp=1713869,Need=359826,Wealth=2821300]:'
+      ]);
+      expect(tracker.current.statline.expBehind).toBe(750000);
+      expect(tracker.current.progress.exp).toBe(2463869);
+    });
+
+    it('finds no difference where the prompt and exp agree', () => {
+      const tracker = play([
+        '[HP=154/178,MA=34/36,Exp=1710899,Need=362796,Wealth=2821300]:',
+        'Exp: 1710899 Level: 15 Exp needed for next level: 362796 (2073695) [82%]',
+        '[HP=154/178,MA=34/36,Exp=1710899,Need=362796,Wealth=2821300]:'
+      ]);
+      expect(tracker.current.statline.expBehind).toBe(0);
+      expect(tracker.current.progress).toMatchObject({ exp: 1710899, expNeeded: 362796 });
+    });
+
+    it('checks nothing against a prompt that carries no Exp=', () => {
+      const tracker = play(['[HP=142/MA=6]:', STATED, '[HP=142/MA=6]:']);
+      expect(tracker.current.statline).toMatchObject({ exp: null, expBehind: null });
+      expect(tracker.current.progress.exp).toBe(2463069);
+    });
+
+    it('leaves the prompt unchecked again on entering the realm after leaving it', () => {
+      const tracker = play([AFTER, STATED, AFTER, 'Please select a character:', AFTER]);
+      expect(tracker.current.statline).toMatchObject({ exp: 1713069, expBehind: null });
+      expect(tracker.current.progress.exp).toBe(1713069);
+    });
+  });
+
   it('forgets what pro said at the character menu, as the card does', () => {
     const tracker = play([
       '[HP=156/156,MA=11/28,Exp=1386670,Need=14402,Wealth=0 ]:',
@@ -12596,12 +12656,12 @@ describe('the status line pro reports', () => {
       'Please select a character:',
       '[HP=40/40,MA=7/8,Exp=0,Need=2500,Wealth=0 ]:'
     ]);
-    expect(tracker.current.statline).toEqual({ reported: null, exact: null });
+    expect(tracker.current.statline).toMatchObject({ reported: null, exact: null });
   });
 
   it('reads the same figures by the tolerant pattern before pro has said', () => {
     const tracker = play(['[HP=40/40,MA=7/8,Exp=0,Need=2500,Wealth=0]:']);
-    expect(tracker.current.statline).toEqual({ reported: null, exact: null });
+    expect(tracker.current.statline).toMatchObject({ reported: null, exact: null });
     expect(tracker.current.vitals).toMatchObject({ hp: 40, hpMax: 40, mana: 7, manaMax: 8 });
     expect(tracker.current.progress.expNeeded).toBe(2500);
     expect(tracker.takeStatlineRequest()).toBe(false);
@@ -12624,7 +12684,7 @@ describe('the status line pro reports', () => {
 
   it('reads full by the tolerant pattern, with nothing for a prompt to agree with', () => {
     const tracker = play(['Statusline:          full', '[HP=134/MA=24]:']);
-    expect(tracker.current.statline).toEqual({ reported: 'full', exact: null });
+    expect(tracker.current.statline).toMatchObject({ reported: 'full', exact: null });
     expect(tracker.current.vitals.hp).toBe(134);
   });
 

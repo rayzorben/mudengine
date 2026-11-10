@@ -7,7 +7,8 @@
  * and `mudengine-automation` › `parts/login.md`.
  */
 import { t } from '../app/i18n';
-import type { CharacterState } from '../../shared/character';
+import type { CharacterState, StatusLineFacts } from '../../shared/character';
+import { withCommas } from '../../shared/remotes';
 import { isFullStatline, statlineMatcher } from '../../shared/statline';
 
 /** What the session that built this answers for it. */
@@ -17,16 +18,21 @@ export interface StatlineReportSession {
 
 export class StatlineReport {
   /** What `noteStatline` last said about the prompt's shape, so each change is said once. */
-  private statlineSaid: { reported: string | null; exact: boolean | null } = {
+  private statlineSaid: Pick<StatusLineFacts, 'reported' | 'exact' | 'expBehind'> = {
     reported: null,
-    exact: null
+    exact: null,
+    expBehind: null
   };
+
+  /** Whether the last thing said about the prompt's `Exp=` was that it differs. */
+  private expBehindSaid = false;
 
   constructor(private readonly session: StatlineReportSession) {}
 
   /** On connect, and only there, as it always was: each report is said again for the new connection. */
   reset(): void {
-    this.statlineSaid = { reported: null, exact: null };
+    this.statlineSaid = { reported: null, exact: null, expBehind: null };
+    this.expBehindSaid = false;
   }
 
   /**
@@ -53,6 +59,15 @@ export class StatlineReport {
       this.session.notice(t('session.statline.verified'));
     } else if (now.exact === false && said.exact !== false) {
       this.session.notice(t('session.statline.mismatch'));
+    }
+    // The prompt's `Exp=` is short of what `exp` states, or has caught up.
+    // Null is a prompt nothing has checked, on entering the realm: nothing is said.
+    if (now.expBehind !== null && now.expBehind !== said.expBehind) {
+      if (now.expBehind !== 0) {
+        const behind = withCommas(Math.abs(now.expBehind));
+        this.session.notice(t('session.statline.expBehind', { behind }));
+      } else if (this.expBehindSaid) this.session.notice(t('session.statline.expAgrees'));
+      this.expBehindSaid = now.expBehind !== 0;
     }
     this.statlineSaid = now;
   }

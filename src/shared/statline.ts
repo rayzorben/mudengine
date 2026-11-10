@@ -227,6 +227,21 @@ export function figuresOf(state: CharacterState): StatlineFigures {
 }
 
 /**
+ * A prompt's reading with its `Exp=` and `Need=` corrected by what `exp` found
+ * the prompt behind by (`StatusLineFacts.expBehind`). `Need=` stays unclamped,
+ * as `%X` prints it.
+ */
+export function expCorrected(read: StatlineReading, expBehind: number | null): StatlineReading {
+  const behind = expBehind ?? 0;
+  if (behind === 0) return read;
+  return {
+    ...read,
+    exp: read.exp === null ? null : read.exp + behind,
+    need: read.need === null ? null : read.need - behind
+  };
+}
+
+/**
  * The state's figures with a prompt's reading laid over them: every figure
  * the prompt states wins, and `state` is the prompt's even when null, because
  * an idle prompt is a statement and not an absence.

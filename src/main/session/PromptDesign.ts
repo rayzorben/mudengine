@@ -9,7 +9,8 @@
 import { t } from '../app/i18n';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { Rewriter } from './Rewriter';
-import { figuresOf, STATLINE_MAX_CELLS, withReading } from '../../shared/statline';
+import { promptExpBehind } from '../../shared/character';
+import { expCorrected, figuresOf, STATLINE_MAX_CELLS, withReading } from '../../shared/statline';
 import { toAnsi } from '../../shared/template';
 
 /** The prompt's reader and the last state, and the player's design for the row. */
@@ -73,7 +74,10 @@ export class PromptDesign {
     const from = plain.length - plain.trimStart().length;
     const prompt = this.tracker.readPrompt(plain.slice(from));
     if (!prompt) return null;
-    const drawn = this.rewriter.prompt(withReading(figuresOf(this.tracker.current), prompt.read));
+    const state = this.tracker.current;
+    // Corrected as the tracker corrects it, so the line drawn agrees with the cards.
+    const read = expCorrected(prompt.read, promptExpBehind(state));
+    const drawn = this.rewriter.prompt(withReading(figuresOf(state), read));
     if (!drawn) return null;
     if (drawn.cells > STATLINE_MAX_CELLS) {
       if (!this.designTooWideSaid) {

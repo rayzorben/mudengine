@@ -17,7 +17,7 @@
  *
  * Dependency-free like the rest of `shared/`: main compares, the renderer draws.
  */
-import type { CharacterState } from './character';
+import { promptExpUnchecked, type CharacterState } from './character';
 
 /** What was noticed. One per signal, so the prompt can say all of them. */
 export const RESET_SIGNALS = ['race', 'class', 'level', 'experience'] as const;
@@ -47,7 +47,9 @@ export function identityOf(state: CharacterState, at: number): CharacterIdentity
     race: state.race,
     className: state.className,
     level: state.progress.level,
-    exp: state.progress.exp,
+    // A prompt's `Exp=` that `exp` or the sheet has not checked is unknown:
+    // it can be a quest reward short of the character's (`StatusLineFacts`).
+    exp: promptExpUnchecked(state.statline) ? null : state.progress.exp,
     at
   };
   const said =
@@ -106,6 +108,26 @@ export function resetSignals(
   }
 
   return signals;
+}
+
+/**
+ * The identity to keep: `now`, with each fact it does not know left as
+ * remembered, so a login's first prompt, which states experience at most,
+ * leaves the race, class and level the record holds until the lines that
+ * state them arrive.
+ */
+export function carriedForward(
+  remembered: CharacterIdentity | null,
+  now: CharacterIdentity
+): CharacterIdentity {
+  if (remembered === null) return now;
+  return {
+    race: now.race ?? remembered.race,
+    className: now.className ?? remembered.className,
+    level: now.level ?? remembered.level,
+    exp: now.exp ?? remembered.exp,
+    at: now.at
+  };
 }
 
 /**

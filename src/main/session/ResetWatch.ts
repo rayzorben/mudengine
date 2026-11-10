@@ -12,7 +12,7 @@ import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
 import type { CharacterState } from '../../shared/character';
 import type { CharacterRecord } from '../../shared/belongings';
-import { identityOf, resetSignals } from '../../shared/reset';
+import { carriedForward, identityOf, resetSignals } from '../../shared/reset';
 import type { SessionSink } from './SessionSink';
 
 export interface ResetWatchParts {
@@ -38,8 +38,8 @@ export class ResetWatch implements SessionModule {
     const record = this.parts.record();
     const remembered = record.recallIdentity();
     // Moved on whatever happens next, so this asks once and the record stays
-    // current for the session after it.
-    record.rememberIdentity(now);
+    // current for the session after it. A fact not known yet stays as kept.
+    record.rememberIdentity(carriedForward(remembered, now));
     if (remembered === null || this.asked) return;
 
     const signals = resetSignals(remembered, now, tuning().session.resetExpDropShare);

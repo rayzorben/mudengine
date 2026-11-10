@@ -1527,10 +1527,36 @@ export function balanceOf(
  * while there is no matcher — `full`, or a template the client cannot build
  * from — because the tolerant pattern is then the reader and there is nothing
  * for a prompt to agree with.
+ *
+ * `exp` is the `Exp=` figure the last prompt printed, as printed, and null on
+ * a prompt that carries none. `expBehind` is how far that figure is behind
+ * what `exp` or the stat sheet stated, and null until one of them has been
+ * read beside a prompt carrying `Exp=`: the prompt's figure is unchecked
+ * until then (`promptExpUnchecked`).
  */
 export interface StatusLineFacts {
   reported: string | null;
   exact: boolean | null;
+  exp: number | null;
+  expBehind: number | null;
+}
+
+/**
+ * What the prompt's `Exp=` was last found behind by, for the prompt arriving
+ * now. Null on entering the realm: what the last stay measured is not carried
+ * into this one, and the next `exp` measures it afresh.
+ */
+export function promptExpBehind(state: CharacterState): number | null {
+  return state.phase === 'in-game' ? state.statline.expBehind : null;
+}
+
+/**
+ * Whether the experience figure rests on a prompt nothing has checked.
+ * MajorMUD Plus leaves a quest reward out of the prompt's `%x`, so a prompt's
+ * figure can be far under the character's until `exp` or `st` states it.
+ */
+export function promptExpUnchecked(statline: StatusLineFacts): boolean {
+  return statline.exp !== null && statline.expBehind === null;
 }
 
 /**
@@ -1830,7 +1856,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   spellbook: null,
   abilities: null,
   stated: null,
-  statline: { reported: null, exact: null },
+  statline: { reported: null, exact: null, exp: null, expBehind: null },
   lastStatusAt: null,
   updatedAt: null
 };
@@ -2072,6 +2098,7 @@ export function placedOn(resolvedBy: Room['resolvedBy']): PlacedOn {
       return 'own';
     case 'movement':
     case 'neighbour':
+    case 'chain':
       return 'before';
     case 'dead-reckoning':
       return 'guess';
@@ -2098,7 +2125,6 @@ export function placedOn(resolvedBy: Room['resolvedBy']): PlacedOn {
  * `Recovery.fightIsHere` asks the narrower question resting needs: it falls
  * back to "is anybody standing here" to explain a flag with nothing behind
  * it, and for a walk a monster standing in the room is not by itself a reason
-    case 'chain':
  * to stop. Both rest on the same measurement: the flag outlives an escape by a
  * median 3,493ms and a confirmed move clears `attackers` and `target`, so a
  * character that got away reads as fighting for about three seconds and then

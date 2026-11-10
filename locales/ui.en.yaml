@@ -6778,6 +6778,9 @@ session:
     verified: The prompt matches the status line the game reported.
     mismatch: The prompt no longer matches the status line the game reported. Reading it by the
       usual pattern and sending pro again.
+    expBehind: The prompt's Exp= is {behind} away from what the exp command prints, as it is after a
+      quest reward. Exp and exp needed are corrected by that much from here on.
+    expAgrees: The prompt's Exp= matches what the exp command prints again.
     tooWide: The status line you designed is {cells} cells wide and the line holds {max}, so the
       game's own line is shown instead. Shorten it in the Status Line section of settings.
   walk:

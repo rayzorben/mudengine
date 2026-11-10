@@ -13,9 +13,11 @@ import {
   AFFLICTIONS_ENDED,
   NO_COMBAT,
   poolNamed,
+  promptExpBehind,
   type Affliction,
   type Afflictions,
   type CharacterState,
+  type StatusLineFacts,
   type KnownSpell
 } from '../../shared/character';
 import {
@@ -27,7 +29,12 @@ import {
   type ExperienceLevel,
   type ExperienceTable
 } from '../../shared/experience';
-import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/statline';
+import {
+  expCorrected,
+  readingOf,
+  statlineMatcher,
+  type StatlineReading
+} from '../../shared/statline';
 import type { BelongingsSink } from '../../shared/belongings';
 import { listsSpell, taughtBy, withSpell } from '../../shared/learning';
 import { bareName } from '../../shared/items';
@@ -289,16 +296,33 @@ export function experienceStated(s: CharacterState, g: Groups): CharacterState {
     level !== null && required !== null
       ? [{ level: level + 1, experience: required, source: 'realm' }]
       : [];
+  const exp = figure(g['exp']);
   return {
     ...s,
+    statline: promptExpChecked(s, exp),
     progress: {
       ...s.progress,
-      exp: figure(g['exp']),
+      exp,
       level,
       expNeeded: figure(g['needed']),
       expTable: withRealmExperience(s.progress.expTable, stated)
     }
   };
+}
+
+/**
+ * The prompt's `Exp=` checked against the figure `exp` or the stat sheet just
+ * stated. On MajorMUD Plus a quest reward (`<For clensing the altar, you gain
+ * 750,000 experience points!>`) reaches `exp` and `st` and never the prompt's
+ * `%x`, which stays that much behind (Soul, themajorbbs, 2026-11-10). Every
+ * writer keeps `progress.exp - expBehind` equal to what the prompt would print
+ * now, so the difference is exact whatever was read last. Unchanged while no
+ * prompt has carried `Exp=`.
+ */
+function promptExpChecked(s: CharacterState, stated: number | null): StatusLineFacts {
+  if (stated === null || s.statline.exp === null || s.progress.exp === null) return s.statline;
+  const behind = stated - (s.progress.exp - (s.statline.expBehind ?? 0));
+  return behind === s.statline.expBehind ? s.statline : { ...s.statline, expBehind: behind };
 }
 
 /** `user-experience-table`: the rows the realm stated, or null for a table of none. */
@@ -350,6 +374,7 @@ export function statSheet(s: CharacterState, g: Groups): CharacterState {
   const exp = figure(g['exp']) ?? s.progress.exp;
   return {
     ...s,
+    statline: promptExpChecked(s, figure(g['exp'])),
     name: g['first'] ?? s.name,
     fullName: g['first'] ? [g['first'], g['last'] ?? ''].join(' ').trim() : s.fullName,
     race: g['race'] ?? s.race,
@@ -770,13 +795,21 @@ export class StatusLine {
     const key = prompt.exact === true ? undefined : block.groups['manaType'];
     const manaType = s.vitals.manaType ?? poolNamed(key);
     const agreed = prompt.exact === true;
+    const exact = this.statlineMatcher === null ? s.statline.exact : agreed;
+    // What `exp` or the sheet last found the prompt's `Exp=` short by
+    // (`promptExpChecked`): the prompt's figures are that much out. Unchecked
+    // again on entering the realm, where the next `exp` measures it afresh.
+    const expBehind = promptExpBehind(s);
+    const corrected = expCorrected(read, expBehind);
     return {
       ...s,
       phase: 'in-game',
       statline:
-        this.statlineMatcher === null || s.statline.exact === agreed
+        s.statline.exact === exact &&
+        s.statline.exp === read.exp &&
+        s.statline.expBehind === expBehind
           ? s.statline
-          : { ...s.statline, exact: agreed },
+          : { ...s.statline, exact, exp: read.exp, expBehind },
       /*
        * Nobody arrives in the realm sneaking.
        *
@@ -811,11 +844,11 @@ export class StatusLine {
       },
       progress: {
         ...s.progress,
-        exp: read.exp ?? s.progress.exp,
+        exp: corrected.exp ?? s.progress.exp,
         // `%X` is an unclamped subtraction and goes negative once the next
         // level is affordable; what is *owed* is then nothing, as `exp`
         // reports it. The raw figure still gates the table row.
-        expNeeded: read.need === null ? s.progress.expNeeded : Math.max(0, read.need),
+        expNeeded: corrected.need === null ? s.progress.expNeeded : Math.max(0, corrected.need),
         expTable: this.tableWithPrompt(s, read),
         // The first status line is when the session's clock starts: it is
         // the moment the realm is provably on the other end.
@@ -831,7 +864,7 @@ export class StatusLine {
     if (reported.length === 0 || s.statline.reported === reported) return null;
     this.statlineMatcher = statlineMatcher(reported);
     this.statlineAsked = false;
-    return { ...s, statline: { reported, exact: null } };
+    return { ...s, statline: { ...s.statline, reported, exact: null } };
   }
 
   /**

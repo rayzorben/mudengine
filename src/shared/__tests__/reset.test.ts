@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../character';
-import { comparable, identityOf, resetSignals, type CharacterIdentity } from '../reset';
+import {
+  carriedForward,
+  comparable,
+  identityOf,
+  resetSignals,
+  type CharacterIdentity
+} from '../reset';
 
 const NOW = 1_757_000_000_000;
 
@@ -77,5 +83,50 @@ describe('what says a character was reset', () => {
     expect(resetSignals(who(), who({ at: NOW + 1000, exp: 1_200_000, level: 35 }), 0.3)).toEqual(
       []
     );
+  });
+});
+
+/*
+ * Soul, 2026-11-10: the prompt's `Exp=` was a quest reward short of what `exp`
+ * stated, and read as the character's it was a 30% drop.
+ */
+describe('experience a prompt printed and nothing has checked', () => {
+  const read = (expBehind: number | null): CharacterState => ({
+    ...EMPTY_CHARACTER,
+    progress: { ...EMPTY_CHARACTER.progress, level: 15, exp: 1_713_069 + (expBehind ?? 0) },
+    statline: { ...EMPTY_CHARACTER.statline, exp: 1_713_069, expBehind }
+  });
+
+  it('is unknown until exp or the sheet has stated the figure', () => {
+    expect(identityOf(read(null), NOW)).toMatchObject({ level: 15, exp: null });
+  });
+
+  it('is the corrected figure once one has', () => {
+    expect(identityOf(read(750_000), NOW)?.exp).toBe(2_463_069);
+    expect(identityOf(read(0), NOW)?.exp).toBe(1_713_069);
+  });
+
+  it('is the figure as it stands where the prompt carries no Exp=', () => {
+    const state: CharacterState = {
+      ...EMPTY_CHARACTER,
+      progress: { ...EMPTY_CHARACTER.progress, exp: 34_603 }
+    };
+    expect(identityOf(state, NOW)?.exp).toBe(34_603);
+  });
+});
+
+describe('the identity kept from one look to the next', () => {
+  it('keeps what was remembered for each fact not known yet', () => {
+    const now = who({ race: null, className: null, level: null, exp: null, at: NOW + 1 });
+    expect(carriedForward(who(), now)).toEqual(who({ at: NOW + 1 }));
+  });
+
+  it('takes every fact that is known', () => {
+    const now = who({ className: 'Thief', exp: 5, at: NOW + 1 });
+    expect(carriedForward(who(), now)).toEqual(now);
+  });
+
+  it('is the character as it stands when nothing was remembered', () => {
+    expect(carriedForward(null, who())).toEqual(who());
   });
 });
