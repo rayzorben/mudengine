@@ -6430,6 +6430,7 @@ session:
     locateHeld: Nothing was asked about where you are, because a screen other than the command
       prompt is open.
     locateOffline: Nothing was asked about where you are, because there is no connection.
+    locateNotInRealm: Nothing was asked about where you are, because this character is not in the realm.
     locateSwitchedOff: Nothing was asked about where you are, because automation is off.
     locateExpired: Nothing was asked about where you are, because the request expired before it
       could be sent.
@@ -8048,6 +8049,7 @@ automation:
       held: the stat screen is open, so nothing is sent
       offline: the character is not connected
       switchedOff: automation is off
+      notInRealm: the character is not in the realm
       expired: it waited too long to be sent
       unavailable: this realm has no such command
   search:

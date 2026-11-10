@@ -141,6 +141,8 @@ function notAsked(refusal: QueueRefusal): string {
       return t('session.loop.locateHeld');
     case 'offline':
       return t('session.loop.locateOffline');
+    case 'not-in-realm':
+      return t('session.loop.locateNotInRealm');
     case 'switched-off':
       return t('session.loop.locateSwitchedOff');
     case 'expired':

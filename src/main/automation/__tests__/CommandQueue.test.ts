@@ -481,6 +481,35 @@ describe('a closed socket', () => {
   });
 });
 
+/*
+ * Rayzor on Paradigm, 2026-11-10: a walk back for Brakkle sent `sn` behind the
+ * username, the server read it as the password, and the password went out at
+ * the next username prompt.
+ */
+describe('a character not in the realm', () => {
+  it('takes the login answer and the typed line, and nothing automated until a status line', () => {
+    let inRealm = false;
+    sent = [];
+    const gated = new CommandQueue(base, {
+      send: (command) => sent.push(command),
+      inRealm: () => inRealm
+    });
+    // Positive control: the gate is open to the login's own band.
+    expect(gated.offer({ command: 'rayzor', priority: 'user' })).toBe('queued');
+    expect(gated.offer({ command: 'sn', priority: 'movement' })).toBe('not-in-realm');
+    expect(gated.offer({ command: '', priority: 'idle', keepsLink: true })).toBe('not-in-realm');
+    gated.notePrompt();
+    vi.advanceTimersByTime(5000);
+    expect(sent).toEqual(['rayzor']);
+    inRealm = true;
+    expect(gated.offer({ command: 'sn', priority: 'movement' })).toBe('queued');
+    gated.notePrompt();
+    vi.advanceTimersByTime(5000);
+    expect(sent).toEqual(['rayzor', 'sn']);
+    gated.dispose();
+  });
+});
+
 describe('snapshot', () => {
   it('reports depth and what is waiting, for the decision trace', () => {
     queue.enqueue({ command: 'a', priority: 'probe', reason: 'entering the realm' });

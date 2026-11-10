@@ -11,6 +11,8 @@ export function whyNotQueued(refusal: QueueRefusal): string {
       return t('automation.queue.refused.held');
     case 'offline':
       return t('automation.queue.refused.offline');
+    case 'not-in-realm':
+      return t('automation.queue.refused.notInRealm');
     case 'switched-off':
       return t('automation.queue.refused.switchedOff');
     case 'expired':

@@ -40,11 +40,13 @@ export { PRIORITY, type Priority, type QueueSnapshot };
 
 /**
  * Why `offer` took nothing, gate by gate in the order it asks: a screen that
- * is not a command prompt, no socket, automation switched off, a deadline
- * already past, a word the realm does not have. A proposer that must say why
- * nothing went out reads this rather than guessing (todo 767).
+ * is not a command prompt, no socket, a character not in the realm, automation
+ * switched off, a deadline already past, a word the realm does not have. A
+ * proposer that must say why nothing went out reads this rather than guessing
+ * (todo 767).
  */
-export type QueueRefusal = 'held' | 'offline' | 'switched-off' | 'expired' | 'unavailable';
+export type QueueRefusal =
+  'held' | 'offline' | 'not-in-realm' | 'switched-off' | 'expired' | 'unavailable';
 
 /** What became of an intent offered: queued, folded into the same intent already waiting, or refused. */
 export type Offered = 'queued' | 'joined' | QueueRefusal;
@@ -255,6 +257,18 @@ export interface QueueEvents {
    * this client sent.
    */
   connected?(): boolean;
+  /**
+   * Whether the character is in the realm (a status line has been seen on this
+   * connection). False refuses everything but `user`: the login's answers and
+   * the player's own line.
+   *
+   * Before the realm every line sent answers a login prompt. Rayzor's walk
+   * back for Brakkle started from the room remembered from the last session
+   * and sent `sn` behind the username (2026-11-10, Paradigm): the server read
+   * it as the password, refused the login, and the real password went out at
+   * the username prompt that followed, where the server echoes it.
+   */
+  inRealm?(): boolean;
 }
 
 export class CommandQueue {
@@ -395,6 +409,7 @@ export class CommandQueue {
     // is listening.
     if (this.held !== null) return 'held';
     if (this.events.connected?.() === false) return 'offline';
+    if (intent.priority !== 'user' && this.events.inRealm?.() === false) return 'not-in-realm';
     if (!this.config.enabled && intent.priority !== 'user' && intent.keepsLink !== true) {
       return 'switched-off';
     }

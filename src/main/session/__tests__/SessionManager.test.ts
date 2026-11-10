@@ -6707,6 +6707,24 @@ describe('a command this realm has no word for', () => {
   });
 
   /*
+   * Rayzor on Paradigm, 2026-11-10: a walk's `sn` went out behind the username
+   * and the server read it as the password.
+   */
+  it('takes nothing automated at a login prompt, and takes it after the status line', async () => {
+    const { sink } = collect();
+    manager = build(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('Please enter your password: ');
+    await until(() => manager!.character.phase === 'authenticating');
+    expect(manager.queue.offer({ command: 'sn', priority: 'movement' })).toBe('not-in-realm');
+
+    socket.write('\r\n[HP=134/MA=24]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    expect(manager.queue.offer({ command: 'sn', priority: 'movement' })).toBe('queued');
+  });
+
+  /*
    * Not a person's own typing. The queue never sees it, and the echo is what
    * says which of the two the fumbled command was.
    */
@@ -6809,13 +6827,20 @@ describe('a corridor the server refused', () => {
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
+    // In the realm: before a status line the queue takes no step.
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
     socket.write('Health: 100/100 [100%]\r\n');
     socket.write('Location:            1,1\r\nStone Hallway\r\nObvious exits: south\r\n');
     await until(() => manager!.character.room.number === 1);
 
     const route = world.route('1/1', '1/2');
     expect(route.steps).toHaveLength(1);
+    const written: string[] = [];
+    socket.on('data', (chunk: Buffer) => written.push(chunk.toString('utf8')));
     expect(manager!.walker.start(route, manager!.character)).toBeNull();
+    // The step is on the wire before the server refuses it.
+    await until(() => written.join('').split('\r\n').includes(route.steps[0]!.command));
 
     socket.write('There is no exit in that direction!\r\n');
     /*
@@ -7425,9 +7450,11 @@ describe('SessionManager dead link', () => {
     silentFor(60);
     manager = build(sink);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    await client();
+    const socket = await client();
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
 
-    // The arbiter takes a card's ask while the socket is up…
+    // The arbiter takes a card's ask while the socket is up and the character is in the realm…
     expect(manager.ask('rm')).toBe(true);
     manager.send('who\r\n');
     await until(() => drops.length > 0);

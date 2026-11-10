@@ -715,10 +715,9 @@ export class SessionManager {
           ...(intent.reason === undefined ? {} : { reason: intent.reason })
         });
         this.client.send(`${command}\r\n`);
-        // A command is on the wire, so an answer is owed and the dead-link
-        // clock starts. Beside the idle clock rather than inside it: that one
-        // counts what this client has sent, this one counts what the far end
-        // has failed to say back.
+        // A command is on the wire, so an answer is owed and the dead-link clock
+        // starts. Beside the idle clock: that one counts what this client sent,
+        // this one what the far end has failed to say back.
         this.link.noteSent();
         // A character the client is already driving is not an idle one. Wired
         // here rather than at each proposer because this is the one funnel
@@ -731,7 +730,8 @@ export class SessionManager {
       // player pressed Enter, and the shadow buffer empties as the server's does.
       clearTypedLine: () => this.send('\r'),
       unavailable: (command) => this.vocabulary.wordUnavailable(command),
-      connected: () => this.client.connected
+      connected: () => this.client.connected,
+      inRealm: () => this.tracker.current.phase === 'in-game'
     });
 
     const onTheGround = (): boolean => this.grounded.down;

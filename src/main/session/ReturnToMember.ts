@@ -53,6 +53,8 @@ export class ReturnToMember {
     for (const [key, room] of [...this.done]) {
       if (!owed.has(key) || room === here) this.done.delete(key);
     }
+    // Before the realm the room is the one remembered from the last session: no walk is spent on it.
+    if (state.phase !== 'in-game') return;
     if (here === null || state.party.following !== null || this.port.fighting(state)) return;
     const rooms = this.port.rooms();
     if (rooms <= 0 || !this.port.holding() || this.port.moving()) return;

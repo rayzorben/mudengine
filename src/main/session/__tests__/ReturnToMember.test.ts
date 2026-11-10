@@ -57,6 +57,15 @@ function rig(over: Partial<ReturnToMemberPort> = {}) {
 }
 
 describe('waiting for a member in the room they were last seen in', () => {
+  it('walks nowhere before the realm, and walks once the status line has come', () => {
+    // Rayzor, 2026-11-10: the walk's `sn` answered Paradigm's password prompt.
+    const { back, walkTo } = rig();
+    back.onCharacter(at(NEXT_DOOR, [], { phase: 'authenticating' }), ['Brakkle']);
+    expect(walkTo).not.toHaveBeenCalled();
+    back.onCharacter(at(NEXT_DOOR), ['Brakkle']);
+    expect(walkTo.mock.calls).toEqual([['Brakkle', BEHIND, ROOMS]]);
+  });
+
   it('walks there once while the party waits, within Walk Back For a Member, and again only after standing in it', () => {
     const { back, walkTo } = rig();
     back.onCharacter(at(NEXT_DOOR), ['Brakkle']);
