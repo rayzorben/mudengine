@@ -5,7 +5,7 @@
  * the room reader puts it (`ladderInput`), less the printed exits.
  */
 import { narrowByName, type NameInput, type ResolveGraph } from '../world/resolve';
-import { roomId, type RoomId, type WorldRoom } from '../../shared/world';
+import { roomId, roomNameKey, type RoomId, type WorldRoom } from '../../shared/world';
 import { isPortalClaim, type Expectation, type Expectations } from './expectations';
 
 /** What the ladder is asked for the claim a room block answers, less its exits. */
@@ -43,7 +43,7 @@ export function promisedRoom(
 
 /** Whether the realm gives `room` the name a block printed. */
 function calls(room: WorldRoom, name: string): boolean {
-  return room.name.trim().toLowerCase() === name.trim().toLowerCase();
+  return roomNameKey(room.name) === roomNameKey(name);
 }
 
 /**

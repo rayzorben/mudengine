@@ -534,6 +534,7 @@ export interface Room {
     | 'coordinates'
     | 'movement'
     | 'neighbour'
+    | 'chain'
     | 'unique-name'
     | 'exit-signature'
     | 'dead-reckoning'
@@ -2097,6 +2098,7 @@ export function placedOn(resolvedBy: Room['resolvedBy']): PlacedOn {
  * `Recovery.fightIsHere` asks the narrower question resting needs: it falls
  * back to "is anybody standing here" to explain a flag with nothing behind
  * it, and for a walk a monster standing in the room is not by itself a reason
+    case 'chain':
  * to stop. Both rest on the same measurement: the flag outlives an escape by a
  * median 3,493ms and a confirmed move clears `attackers` and `target`, so a
  * character that got away reads as fighting for about three seconds and then

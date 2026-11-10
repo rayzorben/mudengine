@@ -28,7 +28,7 @@
  * ask*: it was searching 55,806 rooms for something that had to be next door.
  */
 import type { Direction, RoomId, WorldRoom } from '../../shared/world';
-import { commandRooms, roomId } from '../../shared/world';
+import { commandRooms, landingRooms, roomId, roomNameKey } from '../../shared/world';
 import type { WorldGraph } from './WorldGraph';
 
 /** The three lookups resolution makes: a name, an address, a placed room. */
@@ -57,6 +57,31 @@ export interface ResolveInput {
    * from there is directions from a room the character is not in.
    */
   among?: readonly RoomId[];
+  /**
+   * The rooms the block before this one could be, when it placed none. Read
+   * only with no `previous`: a placed room answers better than a set.
+   */
+  chain?: ChainInput;
+}
+
+/**
+ * Where an unplaced character could have been standing, carried from one room
+ * block to the next (`parse/roomChain.ts`).
+ *
+ * Only the rooms a candidate's exit leads to can be the next room, so each
+ * block rules candidates out. The measured shares are in `mudengine-wire` ›
+ * `parts/room.md` › *An unplaced room is narrowed by the rooms after it*.
+ */
+export interface ChainInput {
+  rooms: readonly RoomId[];
+  /**
+   * Where the cast exits the last step may have walked put the character
+   * (`Resolution.drawn`). Such an exit prints two room blocks and the second
+   * arrives with no move queued, so it is looked for here.
+   */
+  drawn: readonly RoomId[];
+  /** Nothing moved and the block prints what the last one printed: a reprint. */
+  stayed: boolean;
 }
 
 /** What the name line knows: everything but the printed exits. */
@@ -64,7 +89,7 @@ export type NameInput = Omit<ResolveInput, 'exits'>;
 
 /** The rooms a block can still be, and the rung that left them. */
 export interface Narrowed {
-  method: 'scattered' | 'movement' | 'neighbour' | 'name';
+  method: 'scattered' | 'movement' | 'neighbour' | 'chain' | 'name';
   rooms: WorldRoom[];
 }
 
@@ -72,6 +97,7 @@ export type ResolveMethod =
   | 'coordinates'
   | 'movement'
   | 'neighbour'
+  | 'chain'
   | 'unique-name'
   | 'exit-signature'
   | 'dead-reckoning'
@@ -118,6 +144,13 @@ export interface Resolution {
    * still leaves several candidates is a guess and says so.
    */
   confidence: number;
+  /**
+   * A chain's step that may have walked a cast exit: the rooms its spell can
+   * land in. The block read is then the room the exit table names, which the
+   * character only passes through, so `room` is null and the next block is
+   * looked for among these.
+   */
+  drawn?: readonly RoomId[];
 }
 
 const NONE: Resolution = { room: null, method: 'none', candidates: [], confidence: 0 };
@@ -131,7 +164,7 @@ const NONE: Resolution = { room: null, method: 'none', candidates: [], confidenc
  * `Text: go vortex` (todo 139). `cannotBe` (`parse/room.ts`) is the looser
  * one-sided test a move guard asks.
  */
-function fitsExits(printed: readonly Direction[], room: WorldRoom): boolean {
+export function fitsExits(printed: readonly Direction[], room: WorldRoom): boolean {
   const said = new Set<string>(printed);
   const printable = room.exits.filter((exit) => exit.requirement?.kind !== 'text');
   const can = new Set<string>(printable.map((exit) => exit.direction));
@@ -148,7 +181,7 @@ function fitsExits(printed: readonly Direction[], room: WorldRoom): boolean {
  * the console's buttons and the room the tracker places read one ladder.
  */
 export function narrowByName(graph: ResolveGraph, input: NameInput): Narrowed {
-  const wanted = input.name.trim().toLowerCase();
+  const wanted = roomNameKey(input.name);
   const named = (): Narrowed => ({ method: 'name', rooms: graph.findByName(input.name) });
 
   /*
@@ -187,7 +220,7 @@ export function narrowByName(graph: ResolveGraph, input: NameInput): Narrowed {
    */
   if (input.previous && input.moved) {
     const from = graph.byId(input.previous);
-    const exit = from?.exits.find((candidate) => candidate.direction === input.moved);
+    const exit = from ? exitToward(from, input.moved) : undefined;
     /*
      * **The exit table's own room, including for an exit whose cast moves
      * you.** Such an exit answers with two room blocks and this rung reads
@@ -229,11 +262,90 @@ export function narrowByName(graph: ResolveGraph, input: NameInput): Narrowed {
     if (near.length > 0) return { method: 'neighbour', rooms: near };
   }
 
+  /*
+   * No room to step from, but a set of rooms the last block could be. The
+   * rooms this block can be are the ones that set reaches, and none of them
+   * carrying the printed name means the realm and the server disagree about
+   * the way walked, so the realm answers from the name alone.
+   */
+  if (!input.previous && input.chain) {
+    const reached = chainReach(graph, input.chain, input.moved ?? null).filter(
+      (room) => roomNameKey(room.name) === wanted
+    );
+    if (reached.length > 0) return { method: 'chain', rooms: reached };
+  }
+
   return named();
 }
 
+/**
+ * The rooms a chain's set reaches: through the direction walked, itself on a
+ * reprint, and one step any way (or a cast exit's landing) when something
+ * moved the character that no queued direction explains. A text exit is not
+ * walked by a direction. A cast exit whose spell runs a script can put the
+ * character anywhere, so a set holding one reaches nothing and the chain ends.
+ */
+function chainReach(graph: ResolveGraph, chain: ChainInput, moved: Direction | null): WorldRoom[] {
+  const found = new Map<RoomId, WorldRoom>();
+  const reach = (room: WorldRoom | undefined): void => {
+    if (room) found.set(roomId(room.map, room.room), room);
+  };
+  for (const id of chain.rooms) {
+    const room = graph.byId(id);
+    if (!room) continue;
+    if (moved) {
+      const exit = walkedExit(room, moved);
+      if (exit?.requirement?.spellEffect === 'script') return [];
+      if (exit) reach(graph.get(exit.map, exit.room));
+    } else if (chain.stayed) {
+      reach(room);
+    } else {
+      for (const near of around(graph, room)) reach(near);
+    }
+  }
+  if (!moved && !chain.stayed) for (const id of chain.drawn) reach(graph.byId(id));
+  return [...found.values()];
+}
+
+/** The exit `room` has towards `moved`. */
+function exitToward(room: WorldRoom, moved: Direction): WorldRoom['exits'][number] | undefined {
+  return room.exits.find((exit) => exit.direction === moved);
+}
+
+/**
+ * The exit a typed direction walks out of a chain's room. Never a text exit:
+ * a placed room claims one by its direction when its words are typed
+ * (`directionOfTypedExit`), and an unplaced room claims none, so a chain's
+ * direction is one the player or the route typed.
+ */
+function walkedExit(room: WorldRoom, moved: Direction): WorldRoom['exits'][number] | undefined {
+  const exit = exitToward(room, moved);
+  return exit?.requirement?.kind === 'text' ? undefined : exit;
+}
+
+/** Where the cast exits leading `moved` out of `from` into one of `into` land. */
+function drawnThrough(
+  graph: ResolveGraph,
+  from: readonly RoomId[],
+  moved: Direction,
+  into: readonly WorldRoom[]
+): RoomId[] {
+  const reached = new Set<RoomId>(into.map((room) => roomId(room.map, room.room)));
+  const drawn = new Set<RoomId>();
+  for (const id of from) {
+    const room = graph.byId(id);
+    const exit = room ? walkedExit(room, moved) : undefined;
+    const landing = exit?.requirement?.landing;
+    if (!exit || !landing || !reached.has(roomId(exit.map, exit.room))) continue;
+    for (const landed of landingRooms(landing)) drawn.add(landed);
+  }
+  return [...drawn];
+}
+
 export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolution {
-  const { method, rooms } = narrowByName(graph, input);
+  const narrowed = narrowByName(graph, input);
+  const { method } = narrowed;
+  let { rooms } = narrowed;
   const printed = (room: WorldRoom): boolean => fitsExits(input.exits, room);
 
   switch (method) {
@@ -268,6 +380,32 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
       }
       const left = bySignature.length > 1 ? bySignature : rooms;
       return { room: null, method, candidates: left, confidence: 1 / left.length };
+    }
+    case 'chain': {
+      /*
+       * The printed exits are asked of every room, a single one included: a
+       * chain rests on each block before it, so a room the exits do not fit
+       * ends it. The name ladder below then starts again from the realm.
+       */
+      const bySignature = rooms.filter(printed);
+      if (bySignature.length === 0) {
+        rooms = graph.findByName(input.name);
+        break;
+      }
+      const drawn =
+        input.chain && input.moved
+          ? drawnThrough(graph, input.chain.rooms, input.moved, bySignature)
+          : [];
+      if (bySignature.length === 1 && drawn.length === 0) {
+        return { room: bySignature[0]!, method, candidates: bySignature, confidence: 0.85 };
+      }
+      return {
+        room: null,
+        method,
+        candidates: bySignature,
+        confidence: 1 / (bySignature.length + drawn.length),
+        ...(drawn.length > 0 ? { drawn } : {})
+      };
     }
     case 'name':
       break;
@@ -321,7 +459,12 @@ function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[
   const origin = graph.byId(from);
   if (!origin) return [];
 
-  const wanted = name.trim().toLowerCase();
+  const wanted = roomNameKey(name);
+  return around(graph, origin).filter((room) => roomNameKey(room.name) === wanted);
+}
+
+/** `origin` and every room one exit or one room command from it, each once. */
+function around(graph: ResolveGraph, origin: WorldRoom): WorldRoom[] {
   const seen = new Set<RoomId>();
   const found: WorldRoom[] = [];
   const consider = (room: WorldRoom | undefined): void => {
@@ -329,7 +472,7 @@ function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[
     const id = roomId(room.map, room.room);
     if (seen.has(id)) return;
     seen.add(id);
-    if (room.name.trim().toLowerCase() === wanted) found.push(room);
+    found.push(room);
   };
 
   consider(origin);
@@ -376,7 +519,7 @@ function neighbours(graph: ResolveGraph, from: RoomId, name: string): WorldRoom[
  */
 export function resolveByDeadReckoning(graph: ResolveGraph, input: DeadReckonInput): Resolution {
   const from = graph.byId(input.previous);
-  const exit = from?.exits.find((candidate) => candidate.direction === input.moved);
+  const exit = from ? exitToward(from, input.moved) : undefined;
   if (!exit) return { ...NONE, candidates: [] };
 
   const destination = graph.get(exit.map, exit.room);

@@ -46,6 +46,7 @@ import { floorEntries, list } from './inventory';
 import { leavesRoom } from './departs';
 import { moverName } from './movers';
 import { ladderInput, promisedRoom, spendsPromise } from './nameLine';
+import { RoomChain } from './roomChain';
 import { confirmedBy } from './lastRoom';
 
 /** What the wire observed about one thing, beside its name (`WorldGraph.buildItemEntity`). */
@@ -399,6 +400,8 @@ export class RoomTracker {
   /** The queue the commands sent wait on: consumed in the order the server answers, never queued, here. */
   private readonly expect: RoomClaims;
   private readonly onDiscovery: ((discovery: Discovery) => void) | undefined;
+  /** Where an unplaced character could be, from one block to the next. */
+  private readonly chain = new RoomChain();
 
   constructor(private readonly sources: RoomSources) {
     this.world = sources.world;
@@ -869,10 +872,14 @@ export class RoomTracker {
        * *second* of the two blocks such an exit prints and the first one
        * was the room the table names.
        */
+      const printed = exits.map((exit) => exit.direction as Direction);
+      const chain = this.chain.from(s.room, room.name, printed, !movedSomehow && !shoved);
       const located = resolveRoom(this.world, {
         ...ladderInput(room.name, previous, answered),
-        exits: exits.map((exit) => exit.direction as Direction)
+        ...(chain ? { chain } : {}),
+        exits: printed
       });
+      this.chain.keep(room, printed, located);
 
       // What it considered, and which one it took. Bounded: a name shared
       // by thirty rooms is interesting as a count, not as a list.

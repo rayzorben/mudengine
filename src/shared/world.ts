@@ -3031,6 +3031,11 @@ export function leverRooms(
 /** `map/room`, the key used everywhere. */
 export type RoomId = string;
 
+/** A room name as two sources of it are compared: the realm's and the one a block printed. */
+export function roomNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export function roomId(map: number, room: number): RoomId {
   return `${map}/${room}`;
 }
