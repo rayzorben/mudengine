@@ -41,7 +41,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { FightLog } from '../src/main/session/FightLog.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { commandOf } from '../src/shared/commands.ts';
@@ -245,11 +245,10 @@ class Driver {
     /** Set once the realm has said this character is not an operator. */
     this.noSys = false;
     this.world = library.load(profile.database).graph;
-    this.fights = new FightLog(
-      path.join(path.dirname(configPath()), 'fights', profile.id),
-      { notice: (message) => log(role, 'fights', message) }
-    );
-    this.session = new SessionManager(
+    this.fights = new FightLog(path.join(path.dirname(configPath()), 'fights', profile.id), {
+      notice: (message) => log(role, 'fights', message)
+    });
+    this.session = probeSession(
       {
         data: () => {},
         line: (line) => this.onLine(line),
@@ -1128,7 +1127,7 @@ async function main() {
     `soaking for ${Math.round(SOAK_MS / 60000)} minutes; sys ${SYS ? 'on' : 'off'}`
   );
   if (!(await leader.connect())) {
-    log('leader', 'phase', 'never reached the realm');
+    log('leader', 'phase', neverReachedRealm());
     return;
   }
   await wait(2500);
@@ -1214,7 +1213,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 main().then(
-  () => finish(0),
+  () => finish(process.exitCode ?? 0),
   (error) => {
     log('run', 'phase', `crashed: ${error?.stack ?? error}`);
     void finish(1);

@@ -38,28 +38,33 @@ export class LocalEcho {
   private matched = 0;
   /** The cursor is where the realm will echo the next key: set by a prompt, cleared by Enter or unasked output. */
   private atInput = false;
-  /** What the realm holds of the line being typed, or null once something this did not type may have changed it. */
-  private line: string | null = '';
+  /**
+   * The keys typed since the line was last known or last became unknown: the
+   * end of what the realm holds, so an erase over one of them is safe to draw.
+   * After a redraw it was null and refused every erase, whose echo then read
+   * as unasked output and stopped the drawing (Rayzor, 2026-11-07).
+   */
+  private line = '';
 
   /** A key or run the player produced and is about to send: what to draw now, or `''`. */
   typed(data: string, now: number): string {
     if (ENTER.test(data)) {
       this.atInput = false;
-      this.line = data.endsWith('\r') || data.endsWith('\n') ? '' : null;
+      this.line = '';
       return '';
     }
     if (PRINTABLE.test(data)) {
-      if (this.line !== null) this.line += data;
+      this.line += data;
       return this.atInput ? this.guess(data, ERASE, now) : '';
     }
     if (data === '\x7f' || data === '\b') {
       const line = this.line;
-      if (line === null || line.length === 0) return '';
+      if (line.length === 0) return '';
       this.line = line.slice(0, -1);
       return this.atInput ? this.guess(ERASE, line.slice(-1), now) : '';
     }
     // A paste, an arrow, a control key: sent as typed, drawn by the realm alone.
-    this.line = null;
+    this.line = '';
     return '';
   }
 
@@ -106,13 +111,13 @@ export class LocalEcho {
     this.guesses = [];
     this.matched = 0;
     this.atInput = false;
-    this.line = null;
+    this.line = '';
   }
 
   /** A key sent without being drawn: the line is no longer known, and nothing more is drawn until it is. Guesses on screen still wait for their echo. */
   forget(): void {
     this.atInput = false;
-    this.line = null;
+    this.line = '';
   }
 
   private guess(echo: string, undo: string, at: number): string {
@@ -130,7 +135,7 @@ export class LocalEcho {
     this.guesses = [];
     this.matched = 0;
     this.atInput = false;
-    this.line = null;
+    this.line = '';
     return undo;
   }
 }

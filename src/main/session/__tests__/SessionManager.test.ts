@@ -3030,95 +3030,6 @@ function haven(): WorldGraph {
 }
 
 /*
- * The counters the realm's own gates are written on, asked when a plan first
- * crosses one. A room script names its landing per branch — `9/1291`'s `go
- * portal` names `9/1424` on `checkability 133 5` and no room at all below it —
- * so a character the gate refuses lands somewhere the plan never named. The
- * router refuses such an edge once the counters are read; this is the ask that
- * gets them, and it is off the **plan** rather than the way in, because a
- * complete listing settles every counter and takes the quest book's own nodes
- * away from the player.
- */
-describe('asking for the quest counters', () => {
-  /** Two rooms joined by a corridor, and two joined by a gated portal. */
-  function gatedWorld(): WorldGraph {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-gated-'));
-    const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
-      { m: 1, r: 1, n: 'Shore', x: { e: { m: 1, r: 2 } } },
-      {
-        m: 1,
-        r: 2,
-        n: 'Pool Edge',
-        x: { w: { m: 1, r: 1 } },
-        cmd: [{ say: ['go portal'], to: '2/1', gates: [{ kind: 'ability', id: 133, atLeast: 5 }] }]
-      },
-      { m: 2, r: 1, n: 'Far Cavern', x: {} }
-    ];
-    fs.writeFileSync(
-      file,
-      zlib.gzipSync(
-        [
-          JSON.stringify({ v: 1, source: 'test', rooms: 3, generatedAt: 'x' }),
-          ...rooms.map((room) => JSON.stringify(room))
-        ].join('\n') + '\n'
-      )
-    );
-    const world = WorldGraph.load(file);
-    fs.rmSync(dir, { recursive: true, force: true });
-    return world;
-  }
-
-  const walking: AutomationConfig = {
-    ...DEFAULT_CONFIG.automation,
-    enabled: true,
-    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false }
-  };
-
-  /** In the realm at the Shore, with the world loaded. */
-  async function ashore(world: WorldGraph): Promise<{ socket: net.Socket; wire: () => string }> {
-    const { sink } = collect();
-    manager = build(sink, { world, automation: walking });
-    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
-    const socket = await client();
-    const chunks: Buffer[] = [];
-    socket.on('data', (chunk) => chunks.push(chunk));
-    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
-    socket.write('Location:            1,1\r\nShore\r\nObvious exits: east\r\n');
-    await until(() => manager!.character.room.number === 1);
-    return { socket, wire: () => Buffer.concat(chunks).toString('latin1') };
-  }
-
-  /*
-   * The queue rather than the wire: the entry batch is ahead of it and this
-   * host prints one prompt, so what the arbiter has *accepted* is the claim
-   * here — that the plan raised the question. Which command reaches the socket
-   * when is `CommandQueue`'s, and it is asserted where the pacing is.
-   */
-  const asked = (): boolean =>
-    manager!.automation.queue.pending.some((intent) => intent.command === 'abil');
-
-  it('asks when a plan crosses a gate written on one', async () => {
-    const world = gatedWorld();
-    await ashore(world);
-    expect(asked()).toBe(false);
-
-    expect(manager!.walkRoute(world.route('1/1', '2/1'))).toBeNull();
-    expect(asked()).toBe(true);
-  });
-
-  /* A way with nothing on it the counters could answer asks nothing. */
-  it('asks nothing for a plain corridor', async () => {
-    const world = gatedWorld();
-    await ashore(world);
-
-    expect(manager!.walkRoute(world.route('1/1', '1/2'))).toBeNull();
-    await settled(100);
-    expect(asked()).toBe(false);
-  });
-});
-
-/*
  * The plan to a step is priced from where the character stands, and a later
  * ask supersedes one still pricing.
  *
@@ -5175,6 +5086,8 @@ describe('@abil answered off the list it asked for', () => {
     manager = build(sink, {
       automation: {
         ...quiet,
+        // The session's own abil would be on the wire before the one this asks for.
+        asks: { ...quiet.asks, abilities: false },
         remotes: {
           ...DEFAULT_CONFIG.automation.remotes,
           enabled: true,

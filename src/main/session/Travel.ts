@@ -186,7 +186,6 @@ export interface TravelParts {
     | 'routeBetween'
     | 'travellerNow'
     | 'lapTraveller'
-    | 'askCountersFor'
     | 'findStop'
     | 'shun'
     | 'boughtTo'
@@ -2658,8 +2657,6 @@ export class Travel implements SessionModule {
       return fare;
     }
     this.fareCash.reset();
-    // The counters, if this way turns on one nobody has read yet.
-    this.errands.askCountersFor(route);
     /*
      * **One movement at a time.** A character is routing, looping or stopped
      * (`src/shared/movement.ts`), and a route asked for while a lap runs used
@@ -2916,9 +2913,10 @@ export class Travel implements SessionModule {
     /*
      * Every wait that would walk on by itself (`picksUp`). A lap the party's
      * wait had stopped took nothing from `loops.stop` below, so a member
-     * arriving walked it on after the player's Stop.
+     * arriving walked it on after the player's Stop. A member away is let
+     * go with it, so a route walked by hand after is not stopped for them.
      */
-    this.partyWait.end();
+    this.partyWait.stopByPerson();
     this.heldTrip = false;
     this.aimedHold.forget();
     this.returnToMember.forget();

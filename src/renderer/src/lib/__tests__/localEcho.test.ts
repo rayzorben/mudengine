@@ -117,6 +117,23 @@ describe('Enter', () => {
     expect(c.echo.typed('w', 0)).toBe('w');
   });
 
+  it('draws an erase over a key typed since a redraw, and goes on drawing after it', () => {
+    const c = atPrompt();
+    c.echo.reset();
+    c.arrive(`${REPAINT}${PROMPT}`, true);
+    // Positive control: nothing typed since the redraw, so the realm's line is unknown and the erase is its own.
+    expect(c.echo.typed('\x7f', 0)).toBe('');
+    c.arrive('\b \b');
+    c.arrive(`${REPAINT}${PROMPT}`, true);
+    for (const key of ['g', 'b', 'x', '\x7f', ' ']) c.type(key);
+    c.arrive('gbx\b \b ');
+    // Still drawing past the erase: the `h` is on the row before its echo, and once after it.
+    c.type('h');
+    expect(row(c.screen())).toBe('[HP=608/608,MA=98/100]:gb h');
+    c.arrive('h');
+    expect(row(c.screen())).toBe('[HP=608/608,MA=98/100]:gb h');
+  });
+
   it('leaves an erase undrawn when the realm holds nothing to erase', () => {
     const c = atPrompt();
     c.type('\r');
@@ -142,9 +159,8 @@ describe('the echo round trip and the switch', () => {
     const echo = new LocalEcho();
     echo.arrived(PROMPT, true);
     expect(echo.typed('l', 0)).toBe('l');
+    // Sent while off, as the hook sends it: forgotten, never typed, and the drawn `l` still waits for its echo.
     echo.forget();
-    // Sent while off: not drawn, and the drawn `l` still waits for its echo.
-    expect(echo.typed('o', 0)).toBe('');
     expect(echo.arrived('lo', false)).toBe('o');
     // The line is unknown now, so an erase is left to the realm even at the next prompt.
     echo.arrived(`\r\n${PROMPT}`, true);

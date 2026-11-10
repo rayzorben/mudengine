@@ -6202,9 +6202,11 @@ settings:
     who: Ask who Every, min
     whoHint: When a player arrives who is not on the who list, asks who at most once in this many
       minutes. 0 never asks.
-    abilities: Ask abil When Needed
-    abilitiesHint: Asks abil once a session, when a route crosses a way the realm opens only past a
-      quest count.
+    abilities: Ask abil Each Session
+    abilitiesHint: Asks abil once each session, so the client knows which quests are done.
+    abilitiesEvery: Ask abil Every, min
+    abilitiesEveryHint: Asks abil again once the last answer is this many minutes old, never during
+      a fight. 0 never asks again.
     spellbook: Ask the Spell List
     spellbookHint: Asks spells or powers once the prompt shows which, and again when a spell is
       learned.
@@ -6454,6 +6456,7 @@ session:
     pausedForRejoin: 'Waiting for {who} to rejoin the party'
     tripGoesOn: The party is ready; going on with the trip.
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
+    partyWaitLetGo: 'No longer waiting for {who} to rejoin the party; they are still invited back when seen.'
     partyWaitGaveUpStillAway: 'Waited {minutes} min for {who} (Wait No Longer Than); still stopped for {away}, who hung up and is not back.'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.
@@ -8048,8 +8051,8 @@ automation:
     refused:
       held: the stat screen is open, so nothing is sent
       offline: the character is not connected
-      switchedOff: automation is off
       notInRealm: the character is not in the realm
+      switchedOff: automation is off
       expired: it waited too long to be sent
       unavailable: this realm has no such command
   search:
@@ -8263,7 +8266,7 @@ automation:
     reasonEnterRealm: entering the realm, or automation switched on
     reasonUnread: 'no answer yet from entering the realm'
     reasonIdle: idle
-    reasonAged: checked again after a few minutes
+    reasonAged: asked again because the last answer is old
     reasonPartyChanged: the party changed
     reasonPar: Par Frequency
     reasonLookAtPlayer: Looking at someone this character has not seen before

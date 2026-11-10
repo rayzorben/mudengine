@@ -17,7 +17,7 @@
 import path from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { worldLeg } from '../src/main/session/navigation.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { HOST, PORT, configPath, localProfileNamed, skip, target } from './lib/local-realm.mjs';
@@ -43,7 +43,7 @@ const world = library.load(profile.database).graph;
 const runs = [];
 let current = null;
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -110,7 +110,7 @@ async function main() {
   const deadline = Date.now() + 45000;
   while (Date.now() < deadline && me().phase !== 'in-game') await wait(250);
   if (me().phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }

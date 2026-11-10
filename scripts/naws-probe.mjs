@@ -21,7 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { normalizeConfig } from '../src/shared/config.ts';
 import { HOST as LOCAL_HOST, PORT as LOCAL_PORT, localProfile } from './lib/local-realm.mjs';
 
@@ -103,7 +103,7 @@ function openSession({ cols, rows }, login, automation) {
   const telnet = [];
   const notices = [];
 
-  const session = new SessionManager(
+  const session = probeSession(
     {
       data: (chunk) => raw.push(chunk.text),
       line: (line) => lines.push(line),
@@ -262,7 +262,7 @@ async function phaseC(config) {
   }
   if (realmAt === -1) {
     close(probe);
-    return { skipped: 'never reached the realm within 45s', notices: probe.notices };
+    return { skipped: neverReachedRealm(), notices: probe.notices };
   }
 
   await wait(3000);
@@ -352,7 +352,7 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => process.exit(process.exitCode ?? 0),
   (error) => {
     console.error(error);
     process.exit(1);

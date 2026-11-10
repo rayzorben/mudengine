@@ -13,7 +13,7 @@
  *
  *   node --import tsx scripts/pacing-probe.mjs
  */
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 
 /**
@@ -42,7 +42,7 @@ if (characters.length === 0) skip(`no character on ${HOST}:${PORT} with credenti
 function open(profile) {
   const raw = [];
   const state = { text: () => raw.join('') };
-  const session = new SessionManager(
+  const session = probeSession(
     {
       data: (chunk) => raw.push(chunk.text),
       line: () => {},
@@ -105,10 +105,10 @@ async function main() {
   const a = open(first);
   await a.session.connect(target());
   if (!(await reachRealm(a))) {
-    console.log('   could not reach the realm; nothing to measure.');
+    console.log(`   ${neverReachedRealm()}`);
     a.session.disconnect();
     a.session.dispose();
-    process.exit(0);
+    process.exit(1);
   }
   await wait(2000);
   let alone = 0;

@@ -10,7 +10,7 @@
  *
  *   node --import tsx scripts/talk-probe.mjs
  */
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -26,7 +26,7 @@ if (characters.length < 2) {
 
 function open(profile) {
   const blocks = [];
-  const session = new SessionManager(
+  const session = probeSession(
     {
       data: () => {},
       line: () => {},
@@ -68,12 +68,12 @@ async function main() {
 
   for (const probe of [a, b]) {
     if (!(await reachRealm(probe))) {
-      console.log(`   ${probe.name} could not reach the realm; nothing to listen for.`);
+      console.log(`   ${neverReachedRealm(`${probe.name} `)}`);
       a.session.disconnect();
       a.session.dispose();
       b.session.disconnect();
       b.session.dispose();
-      process.exit(0);
+      process.exit(1);
     }
   }
   await wait(2500);

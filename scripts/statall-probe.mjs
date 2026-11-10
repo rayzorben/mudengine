@@ -37,7 +37,7 @@
 import path from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { accuracy, dodge, regeneration, swingsPerRound } from '../src/shared/prowess.ts';
 import { prowessSheetOf, wieldedWeapon } from '../src/shared/verdict.ts';
@@ -89,7 +89,7 @@ console.log(`  realm: ${loaded.source} — ${world.mobCount} monsters\n`);
 const runs = [];
 let current = null;
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -174,7 +174,7 @@ async function main() {
     if (session.character.phase === 'in-game') break;
   }
   if (session.character.phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }

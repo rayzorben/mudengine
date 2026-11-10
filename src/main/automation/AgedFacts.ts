@@ -1,5 +1,5 @@
 /**
- * What `i`, `st` and `exp` last said, asked again once it is old (`automation.asks`, todo 118).
+ * What `i`, `st`, `exp` and `abil` last said, asked again once it is old (`automation.asks`, todo 118).
  *
  * The broadcasts keep a listing current only as far as the client reads them
  * right: rayzor's pack held a destroyed torch as lit for 18 minutes
@@ -46,6 +46,8 @@ function refreshEvery(fact: StaleFact, asks: AsksConfig): number {
       return askEveryMs(asks.statsMinutes);
     case 'experience':
       return askEveryMs(asks.expMinutes);
+    case 'abilities':
+      return asks.abilities ? askEveryMs(asks.abilitiesMinutes) : Infinity;
     case 'chart':
       return Infinity;
     default: {

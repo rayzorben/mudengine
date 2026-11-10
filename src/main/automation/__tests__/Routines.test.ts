@@ -8,6 +8,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { SET_STATLINE } from '../../../shared/statline';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import type { DecisionKind } from '../../../shared/decisionSettings';
+import { domainOf, type Block } from '../../../shared/blocks';
 
 /** Nothing sends: what matters here is what was *queued* and in which band. */
 function make(
@@ -48,6 +49,8 @@ function make(
 }
 
 const inRealm: CharacterState = { ...EMPTY_CHARACTER, phase: 'in-game' };
+/** The asks with `abil` off, for a test that counts every other command sent. */
+const QUIET = { ...DEFAULT_CONFIG.automation.asks, abilities: false };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -412,63 +415,91 @@ describe('arming the idle clock', () => {
 });
 
 /*
- * The counters the realm's own gates are written on. `abil` is the only place
- * on the wire a quest counter is ever stated, and `9/1291`'s `go portal` is
- * `checkability 133 5`: unasked, every such gate is priced as a guess and a
- * character below the rank is put somewhere the plan never named.
+ * `abil` is the only place the realm states a quest's rank, so each session
+ * owes one on entering the realm and another once the answer is old (the user,
+ * 2026-11-10).
  */
 describe('reading the quest counters', () => {
-  const commandsIn = (queue: CommandQueue): string[] =>
-    queue.snapshot.pending.map((intent) => intent.command);
-
-  /*
-   * Not on the way in: a complete listing settles *every* counter, so it takes
-   * the quest book's own nodes away from the player. The caller is a plan that
-   * crosses a gate written on one (`Errands.askCountersFor`).
-   */
-  it('asks nothing until something needs the counters', () => {
-    const { routines, queue } = make();
-    routines.onCharacter(inRealm);
-    expect(commandsIn(queue)).not.toContain('abil');
+  const PERIOD = DEFAULT_CONFIG.automation.asks.abilitiesMinutes * 60_000;
+  const abils = (queue: CommandQueue): number =>
+    queue.snapshot.pending.filter((intent) => intent.command === 'abil').length;
+  const listing = (): Block => ({
+    seq: 1,
+    at: Date.now(),
+    type: 'user-abilities',
+    domain: domainOf('user-abilities'),
+    groups: {},
+    text: '',
+    terminator: 'newline',
+    confidence: 1
   });
+  /** A listing read, and the answered ask off the queue. */
+  const answer = (routines: Routines, queue: CommandQueue): void => {
+    routines.onBlock(listing());
+    queue.cancel((intent) => intent.command === 'abil');
+  };
 
-  it('asks once when asked to, and never again', () => {
+  it('asks abil once on entering the realm, whatever an earlier session remembered', () => {
     const { routines, queue } = make();
-    routines.askAbilities(inRealm);
-    expect(commandsIn(queue).filter((command) => command === 'abil')).toHaveLength(1);
-    routines.askAbilities(inRealm);
-    routines.askAbilities(inRealm);
-    expect(commandsIn(queue).filter((command) => command === 'abil')).toHaveLength(1);
-  });
-
-  /* The listing is the fact; which command produced it is not. */
-  it('asks nothing when a listing has already answered', () => {
-    const { routines, queue } = make();
-    routines.askAbilities({
+    const remembered: CharacterState = {
       ...inRealm,
-      abilities: { sums: { 133: 4 }, complete: true, at: Date.now() }
-    });
-    expect(commandsIn(queue)).not.toContain('abil');
+      abilities: { sums: { 200: 6 }, complete: true, at: 1 }
+    };
+    routines.onCharacter(remembered);
+    routines.onCharacter(remembered);
+    expect(abils(queue)).toBe(1);
+  });
+
+  it('asks nothing on entering when the player has already typed abil', () => {
+    const { routines, queue } = make();
+    routines.onBlock(listing());
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(0);
   });
 
   it('asks nothing while the routines are switched off', () => {
     const { routines, queue } = make({ enabled: false });
-    routines.askAbilities(inRealm);
-    expect(commandsIn(queue)).not.toContain('abil');
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(0);
+  });
+
+  it('asks again once the answer is as old as the period, out of a fight', () => {
+    const { routines, queue } = make();
+    routines.onCharacter(inRealm);
+    answer(routines, queue);
+    vi.advanceTimersByTime(PERIOD - 1);
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(0);
+
+    vi.advanceTimersByTime(1);
+    routines.onCharacter({ ...inRealm, inCombat: true });
+    expect(abils(queue)).toBe(0);
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(1);
+  });
+
+  it('never asks again with the period at 0', () => {
+    const { routines, queue } = make({
+      asks: { ...DEFAULT_CONFIG.automation.asks, abilitiesMinutes: 0 }
+    });
+    routines.onCharacter(inRealm);
+    answer(routines, queue);
+    vi.advanceTimersByTime(PERIOD * 4);
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(0);
   });
 
   /* A new connection is a new session's counters. */
   it('asks again after a reset, and not before one', () => {
     const { routines, queue } = make();
-    routines.askAbilities(inRealm);
-    // Off the queue, so a second ask is a second ask rather than a coalesce.
-    queue.cancel((intent) => intent.command === 'abil');
-    routines.askAbilities(inRealm);
-    expect(commandsIn(queue)).not.toContain('abil');
+    routines.onCharacter(inRealm);
+    answer(routines, queue);
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(0);
 
     routines.reset();
-    routines.askAbilities(inRealm);
-    expect(commandsIn(queue)).toContain('abil');
+    routines.onCharacter(inRealm);
+    expect(abils(queue)).toBe(1);
   });
 });
 
@@ -906,7 +937,12 @@ describe('on the ground', () => {
   it('drains neither the roster nor the looks on the idle tick, but keeps the link', () => {
     const ground = { down: false };
     const { routines, queue } = make(
-      { idle: { enabled: true, afterSeconds: 5, command: '' }, onEnterRealm: [], talk },
+      {
+        idle: { enabled: true, afterSeconds: 5, command: '' },
+        onEnterRealm: [],
+        talk,
+        asks: QUIET
+      },
       ground
     );
     routines.onCharacter(inRealm);
@@ -948,7 +984,8 @@ describe('asking again for what entering the realm never read', () => {
       ...DEFAULT_CONFIG.automation,
       enabled: true,
       idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm
+      onEnterRealm,
+      asks: QUIET
     };
     const sent: string[] = [];
     const queue = new CommandQueue(
@@ -988,7 +1025,12 @@ describe('asking again for what entering the realm never read', () => {
 
   it('sends the entry batch once automation is switched on, when it entered with it off', () => {
     const { routines, sent } = sending(['st', 'i']);
-    const off = { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: ['st', 'i'] };
+    const off = {
+      ...DEFAULT_CONFIG.automation,
+      enabled: false,
+      onEnterRealm: ['st', 'i'],
+      asks: QUIET
+    };
     routines.configure(off);
     routines.onCharacter(inRealm);
     vi.advanceTimersByTime(500);
@@ -1027,7 +1069,7 @@ describe('asking i, st and exp again once they are old', () => {
       enabled: true,
       idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
       onEnterRealm: [],
-      asks
+      asks: { ...asks, abilities: false }
     };
     const sent: string[] = [];
     const queue = new CommandQueue(
@@ -1134,10 +1176,10 @@ describe('what the client asks on its own, by setting', () => {
     expect(commandsIn(off.queue)).not.toContain('who');
   });
 
-  it('asks abil only with Ask abil When Needed on', () => {
+  it('asks abil only with Ask abil Each Session on', () => {
     const on = make(asks({}));
     const off = make(asks({ abilities: false }));
-    for (const { routines } of [on, off]) routines.askAbilities(inRealm);
+    for (const { routines } of [on, off]) routines.onCharacter(inRealm);
     expect(commandsIn(on.queue)).toContain('abil');
     expect(commandsIn(off.queue)).not.toContain('abil');
   });
@@ -1185,7 +1227,8 @@ describe('asking again, bounded', () => {
       ...DEFAULT_CONFIG.automation,
       enabled: true,
       idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: ['st']
+      onEnterRealm: ['st'],
+      asks: QUIET
     };
     const sent: string[] = [];
     const notices: string[] = [];

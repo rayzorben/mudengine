@@ -1,7 +1,7 @@
 /**
  * What the client asks the realm on its own (`automation.asks`, todo 118), one
  * fieldset for the character form and the options page: how often `i`, `st`,
- * `exp` and `who` are asked again, and the switches for `abil`, the spell
+ * `exp`, `who` and `abil` are asked again, and the switches for `abil`, the spell
  * list, `st` when a buff ends, `stat a` and a look at a charged item. Said in
  * the open: a fact never asked stays unknown on the cards.
  */
@@ -18,7 +18,8 @@ export interface AsksFieldsetProps {
   namePrefix: string;
 }
 
-type Period = 'inventoryMinutes' | 'statsMinutes' | 'expMinutes' | 'whoMinutes';
+type Period =
+  'inventoryMinutes' | 'statsMinutes' | 'expMinutes' | 'whoMinutes' | 'abilitiesMinutes';
 type Switch = 'abilities' | 'spellbook' | 'statsOnBuffEnding' | 'statAll' | 'itemUses';
 
 function periods(): ReadonlyArray<ChoiceRow<Period>> {
@@ -50,6 +51,13 @@ function periods(): ReadonlyArray<ChoiceRow<Period>> {
       setting: 'automation.asks.whoMinutes',
       label: t('settings.asks.who'),
       hint: t('settings.asks.whoHint')
+    },
+    {
+      field: 'abilitiesMinutes',
+      name: 'asks-abilities-every',
+      setting: 'automation.asks.abilitiesMinutes',
+      label: t('settings.asks.abilitiesEvery'),
+      hint: t('settings.asks.abilitiesEveryHint')
     }
   ];
 }

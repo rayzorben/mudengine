@@ -102,7 +102,6 @@ function travel(
       routeBetween: vi.fn(() => t('session.loop.noRealmData')),
       travellerNow: vi.fn<TravelParts['errands']['travellerNow']>(() => ({})),
       lapTraveller: vi.fn<TravelParts['errands']['lapTraveller']>(() => ({})),
-      askCountersFor: vi.fn(),
       findStop: vi.fn(() => 'unplaced'),
       shun: vi.fn(),
       boughtTo: vi.fn(() => null),

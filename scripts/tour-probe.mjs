@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfile, skip, target } from './lib/local-realm.mjs';
 import { creditEveryBatch, isBatch } from './lib/batches.mjs';
@@ -51,7 +51,7 @@ const blocksBySeq = new Map();
 const batches = [];
 let provokedBy = '(connect)';
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -132,7 +132,7 @@ async function main() {
     if (session.character.phase === 'in-game') break;
   }
   if (session.character.phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }
@@ -232,7 +232,7 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => process.exit(process.exitCode ?? 0),
   (error) => {
     console.error(error);
     process.exit(1);

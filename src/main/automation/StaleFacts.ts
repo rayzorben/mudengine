@@ -28,13 +28,15 @@ export class StaleFacts {
   /** Offers what is still owed; a send pays it off. */
   ask(): void {
     for (const [fact, { reason, decision }] of this.owed) {
-      this.queue.offer({
+      const offered = this.queue.offer({
         ...REFRESH[fact],
         priority: 'probe',
         reason,
         decision,
         onSent: () => this.owed.delete(fact)
       });
+      // A word this realm does not have is not owed: the refusal is said where it is made.
+      if (offered === 'unavailable') this.owed.delete(fact);
     }
   }
 

@@ -21,7 +21,7 @@
  */
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { worldLeg } from '../src/main/session/navigation.ts';
 import { HOST, PORT, localProfile, skip, target } from './lib/local-realm.mjs';
@@ -39,7 +39,7 @@ const world = WorldGraph.load(path.resolve('resources/world/paradigm.jsonl.gz'))
 console.log(`\ndark-probe -> ${HOST}:${PORT}\n`);
 
 const notices = [];
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: () => {},
@@ -98,7 +98,7 @@ async function main() {
   const deadline = Date.now() + 45_000;
   while (Date.now() < deadline && session.character.phase !== 'in-game') await wait(250);
   if (session.character.phase !== 'in-game') {
-    console.log('   could not reach the realm.\n');
+    console.log(`   ${neverReachedRealm()}\n`);
     process.exit(1);
   }
   await wait(3000);

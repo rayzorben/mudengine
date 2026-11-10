@@ -307,6 +307,13 @@ const writeProfiles = () => {
        */
       '  health:',
       '    restBelow: 0.2',
+      /*
+       * No `abil` of the session's own (asked on entry since 2026-11-10). The
+       * quest book's checks mark steps by hand before any listing, and then
+       * send `abil` themselves to see the realm's count take over.
+       */
+      '  asks:',
+      '    abilities: false',
       ''
     ].join('\n'),
     'utf8'

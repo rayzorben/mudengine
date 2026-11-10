@@ -641,7 +641,8 @@ export const DECISION_SETTINGS = {
   'aged-facts': [
     'automation.asks.inventoryMinutes',
     'automation.asks.statsMinutes',
-    'automation.asks.expMinutes'
+    'automation.asks.expMinutes',
+    'automation.asks.abilitiesMinutes'
   ],
   'stat-all': ['automation.asks.statAll'],
   'look-at-self': ['art.enabled'],

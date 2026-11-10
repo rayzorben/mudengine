@@ -49,7 +49,9 @@ export type StaleFact =
    */
   | 'chart'
   /** `i` — what is carried, and the purse `Wealth:` states. */
-  | 'pack';
+  | 'pack'
+  /** `abil` — the ability sums, the only place the realm states a quest's rank. */
+  | 'abilities';
 
 /**
  * The command that says each fact again, and the intent it coalesces onto.
@@ -64,7 +66,8 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
   sheet: { command: 'st', coalesceKey: 'probe:st' },
   experience: { command: 'exp', coalesceKey: 'probe:exp' },
   chart: { command: '? exp', coalesceKey: 'probe:? exp' },
-  pack: { command: 'i', coalesceKey: 'probe:i' }
+  pack: { command: 'i', coalesceKey: 'probe:i' },
+  abilities: { command: 'abil', coalesceKey: 'probe:abil' }
 };
 
 /**
@@ -126,13 +129,21 @@ export const READ: Record<StaleFact, BlockType> = {
   sheet: 'player-status',
   experience: 'user-experience',
   chart: 'user-experience-table',
-  pack: 'user-inventory'
+  pack: 'user-inventory',
+  abilities: 'user-abilities'
 };
 
 /** The facts a block of this type answers. */
 export function readBy(type: BlockType): StaleFact[] {
   return (Object.keys(READ) as StaleFact[]).filter((fact) => READ[fact] === type);
 }
+
+/**
+ * What each session owes one ask of on entering the realm, whatever an earlier
+ * session remembered (the user, 2026-11-10). No sentence states a quest's rank
+ * moving, so nothing in `STALE_AFTER` reaches `abilities`: this and its age do.
+ */
+export const OWED_ON_ENTRY: readonly StaleFact[] = ['abilities'];
 
 /** What entering the realm must read, or the client plays the session on unknowns. */
 export const REQUIRED: readonly StaleFact[] = ['sheet', 'pack'];

@@ -181,6 +181,11 @@ export class PartyWait {
         if (why !== 'away' && this.timer === null) this.arm();
         return;
       }
+      // Already away with nothing under way, and the player now walks a route of their own: they chose to go.
+      if (why === 'away' && !fresh && this.moves.walkingAsked()) {
+        this.letGo([key]);
+        return;
+      }
       if (!this.moves.pauseMoving(said)) return;
       this.paused = true;
       if (why !== 'away') this.arm();
@@ -234,6 +239,26 @@ export class PartyWait {
   private played(): void {
     this.giveUpOnTracked();
     this.end();
+  }
+
+  /**
+   * A person's Stop (the user, 2026-11-10: Rayzor stopped, ran off by hand,
+   * and the run was stopped and walked back for Brakkle): the stop is over,
+   * and a member away is waited for only while a lap or route is under way,
+   * so each is let go, and a notice says so. `PartyRejoin` still invites them when met. A
+   * member hurt is still waited for after Play.
+   */
+  stopByPerson(): void {
+    this.letGo([...this.waiting.keys()].filter(isAway));
+    this.end();
+  }
+
+  /** The members away under `keys` are no longer waited for, in one notice, until they are back or owed again. */
+  private letGo(keys: readonly string[]): void {
+    const who = keys.flatMap((key) => this.waiting.get(key) ?? []);
+    this.giveUpOnTracked((key) => !keys.includes(key));
+    if (who.length > 0)
+      this.moves.notice(t('session.loop.partyWaitLetGo', { who: who.join(', ') }), 'party-wait');
   }
 
   /** The stop is no longer this wait's to end (a death stopped the lap too). */

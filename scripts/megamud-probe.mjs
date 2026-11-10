@@ -56,7 +56,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { worldLeg } from '../src/main/session/navigation.ts';
 import {
@@ -179,7 +179,7 @@ let current = null;
 let online = [];
 
 let lastTelepath = null;
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -281,7 +281,7 @@ async function main() {
     if (session.character.phase === 'in-game') break;
   }
   if (session.character.phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }
@@ -374,7 +374,7 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => process.exit(process.exitCode ?? 0),
   (error) => {
     console.error(error);
     process.exit(1);

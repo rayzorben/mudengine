@@ -15,9 +15,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { domainOf } from '../blocks';
-import { REFRESH, STALE_AFTER, staleAfter, type StaleFact } from '../staleness';
+import { OWED_ON_ENTRY, REFRESH, STALE_AFTER, staleAfter, type StaleFact } from '../staleness';
 
-const FACTS: readonly StaleFact[] = ['sheet', 'experience', 'chart', 'pack'];
+const FACTS: readonly StaleFact[] = ['sheet', 'experience', 'chart', 'pack', 'abilities'];
 
 describe('what a sentence made stale', () => {
   it('names a command for every fact in the union', () => {
@@ -38,8 +38,12 @@ describe('what a sentence made stale', () => {
     }
   });
 
-  it('makes something stale for every fact, so no command is unreachable', () => {
-    const named = new Set(Object.values(STALE_AFTER).flatMap((facts) => [...(facts ?? [])]));
+  /* `abil` has no sentence: each session owes it on entering instead. */
+  it('makes every fact stale by a sentence or owes it on entry, so no command is unreachable', () => {
+    const named = new Set([
+      ...Object.values(STALE_AFTER).flatMap((facts) => [...(facts ?? [])]),
+      ...OWED_ON_ENTRY
+    ]);
     expect([...named].sort()).toEqual([...FACTS].sort());
   });
 

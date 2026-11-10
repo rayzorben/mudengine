@@ -43,7 +43,7 @@
  *   npm run probe:rest -- --cast swan
  *   npm run probe:rest -- --wear
  */
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { OFF_HAND, READIED, sameItem, WEAPON_HAND } from '../src/shared/items.ts';
 import { HOST, PORT, localProfile, skip, target } from './lib/local-realm.mjs';
 
@@ -131,7 +131,7 @@ if (!profile) skip(`no character on ${HOST}:${PORT} with credentials.`);
 console.log(`\nrest-probe -> ${HOST}:${PORT}\n`);
 
 const lines = [];
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => lines.push(line.plain.replace(/\s+$/, '')),
@@ -220,7 +220,7 @@ async function main() {
     if (session.character.phase === 'in-game') break;
   }
   if (session.character.phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }
@@ -341,7 +341,7 @@ async function main() {
 }
 
 main().then(
-  () => (process.exitCode = 0),
+  () => (process.exitCode ??= 0),
   (error) => {
     console.error(error);
     process.exitCode = 1;

@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { FightLog } from '../src/main/session/FightLog.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { commandOf } from '../src/shared/commands.ts';
@@ -62,10 +62,9 @@ const library = new RealmLibrary({
   notify: (message) => log('realm', message)
 });
 const world = library.load(profile.database).graph;
-const fights = new FightLog(
-  path.join(path.dirname(configPath()), 'fights', profile.id),
-  { notice: (message) => log('fights', message) }
-);
+const fights = new FightLog(path.join(path.dirname(configPath()), 'fights', profile.id), {
+  notice: (message) => log('fights', message)
+});
 
 const blocksBySeq = new Map();
 /**
@@ -96,7 +95,7 @@ let linesSeen = 0;
 /** Whether a line matching `pattern` arrived after the `mark`th line. */
 const sawSince = (mark, pattern) =>
   recent.slice(Math.max(0, recent.length - (linesSeen - mark))).some((t) => pattern.test(t));
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -401,7 +400,7 @@ async function main() {
   const deadline = Date.now() + 45_000;
   while (Date.now() < deadline && me().phase !== 'in-game') await wait(250);
   if (me().phase !== 'in-game') {
-    log('phase', 'never reached the realm');
+    log('phase', neverReachedRealm());
     session.dispose();
     return;
   }
@@ -736,7 +735,7 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => process.exit(process.exitCode ?? 0),
   (error) => {
     log('phase', `crashed: ${error?.stack ?? error}`);
     process.exit(1);

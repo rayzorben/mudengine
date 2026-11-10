@@ -543,18 +543,20 @@ function Composer({ picker, send, macro, queued, drop, kept }: ComposerProps) {
   if (!send) return null;
 
   const say = (): void => {
+    /*
+     * An empty box sends a bare Return, as the console does (user,
+     * 2026-11-09): the server rereads the room. It skips the aliases and the
+     * channel, and stays out of the history.
+     */
+    if (draft.trim().length === 0) {
+      send('');
+      setTyping((was) => ({ ...was, draft: '', at: -1 }));
+      return;
+    }
     if (picker === null) {
       /*
        * The line as it was typed, spacing and all — main trims before it
        * interprets anything (`SessionManager.send`), so nothing here has to.
-       *
-       * An empty box is the one thing not sent, and deliberately: main reads a
-       * bare Return as a reread of the room, and Down past the newest line is
-       * how a recall is abandoned. Those two together would make *put the box
-       * back* into *nudge the server*.
-       */
-      if (draft.trim().length === 0) return;
-      /*
        * Main reads the line: an alias it expands (todo 74), several commands
        * (`;`, `2d,6s`) it sends one a prompt (todo 04), a line it runs itself
        * (todo 83), and anything else it sends as typed. Only here: a

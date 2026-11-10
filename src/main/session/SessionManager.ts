@@ -253,22 +253,11 @@ export interface SessionDeps {
   readonly marks?: LineMarks;
   /** The realm's sentences for an effect landing and ending, shipped and learned; none in tests. */
   readonly spellLore?: SpellLore;
-  /**
-   * Where what a `search` turns up in this realm is written down.
-   *
-   * Keyed like `memory`'s shared half: what a room hides is the realm's, not
-   * this character's. Defaulting to a realm nothing is written down for,
-   * which is what the tests want.
-   */
+  /** What a `search` turns up, keyed like `memory`'s shared half (a room's hiding is the realm's); none in tests. */
   readonly finds?: RealmFinds;
   /** Where each counter's `list` is written down, keyed like `finds`. */
   readonly shops?: RealmShops;
-  /**
-   * The server's own words for an emote and for a monster dying, shipped
-   * (`resources/world/actions.csv`, `death-messages.csv`) and shared by
-   * every session. Defaulting to none, which reads exactly as the frames
-   * alone did.
-   */
+  /** The server's words for an emote and a monster dying (`actions.csv`, `death-messages.csv`), shared; none in tests. */
   readonly sentences?: ShippedSentences;
   /** The realm's own words (`Profile.locate`, `.coins`), read through so a reload lands. */
   readonly words?: VocabularyParts['words'];
@@ -278,6 +267,8 @@ export interface SessionDeps {
   readonly simulator?: FightSimulator;
   /** Fresh sheets other players share with this character (`Peers.sheetsFor`); none where absent. */
   readonly peerSheets?: () => readonly SharedSheet[];
+  /** A probe's session only (`scripts/lib/probe-session.mjs`): the login enters the realm with automation off. */
+  readonly entersRealmWithAutomationOff?: true;
 }
 
 /** A module on the session's list, and the slice of a reload it reads, where it reads one. */
@@ -379,6 +370,8 @@ export class SessionManager {
   /** The Automations card's tasks: the treasure dig. */
   readonly tasks: Tasks;
   private readonly login: LoginAutomator;
+  /** `SessionDeps.entersRealmWithAutomationOff`, which no player can set. */
+  private readonly probeEntry: boolean;
   private readonly learner: LoginLearner;
   private readonly recovery: Recovery;
   private readonly loot: AutoLoot;
@@ -516,6 +509,7 @@ export class SessionManager {
       marks = new MarkBook({ lines: DEFAULT_CONFIG.terminal.scrollback })
     } = deps;
     const notice: SessionSink['notice'] = (message, decision) => sink.notice(message, decision);
+    this.probeEntry = deps.entersRealmWithAutomationOff === true;
     this.tracker = new CharacterTracker(
       world,
       lore,
@@ -540,7 +534,6 @@ export class SessionManager {
         family: () => this.vocabulary.family,
         watched: () => this.questWatch.watched,
         odds: () => this.odds,
-        askAbilities: (state) => this.routines.askAbilities(state),
         backstabWeapon: () => this.gear.backstabWeapon(this.tracker.current),
         roomCoded: (code) => sink.roomCoded?.(code) ?? null,
         notice
@@ -1631,7 +1624,7 @@ export class SessionManager {
       login,
       this.queue,
       { notice, promptOwed: () => this.link.owePrompt(), prompted: () => this.link.notePrompt() },
-      automation.enabled,
+      automation.enabled || this.probeEntry,
       this.learner
     );
     /*
@@ -2366,7 +2359,7 @@ export class SessionManager {
     );
     for (const { configure } of this.modules) configure?.(automation);
     this.loops.configure(automation.health, automation.movement, automation.walk);
-    this.login.configure(login, automation.enabled);
+    this.login.configure(login, automation.enabled || this.probeEntry);
     this.learner.configure(login);
     this.publisher.useSecret(login.password);
   }

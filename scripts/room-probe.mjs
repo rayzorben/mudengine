@@ -15,7 +15,7 @@
  */
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfile, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
@@ -37,7 +37,7 @@ const rows = [];
 const corpus = [];
 let last = null;
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -110,6 +110,11 @@ async function main() {
     await wait(250);
     if (session.character.phase === 'in-game') break;
   }
+  if (session.character.phase !== 'in-game') {
+    console.log(`  ${neverReachedRealm()}\n`);
+    session.dispose();
+    return;
+  }
   await wait(2500);
 
   // The script. Each line is chosen to isolate one thing.
@@ -163,7 +168,7 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => process.exit(process.exitCode ?? 0),
   (error) => {
     console.error(error);
     process.exit(1);

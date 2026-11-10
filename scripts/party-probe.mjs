@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
@@ -53,7 +53,7 @@ console.log(`\nparty-probe -> ${HOST}:${PORT}\n`);
 function open(profile) {
   const seen = [];
   const state = { profile, seen, provokedBy: '(connect)', session: null, character: null };
-  state.session = new SessionManager(
+  state.session = probeSession(
     {
       data: () => {},
       line: (line) => {
@@ -109,7 +109,7 @@ async function main() {
   await two.session.connect(target());
 
   if (!(await reachRealm(one)) || !(await reachRealm(two))) {
-    console.log('  one of them never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm('one of them ')}\n`);
     one.session.dispose();
     two.session.dispose();
     return;
@@ -278,7 +278,7 @@ async function main() {
 }
 
 main().then(
-  () => process.exit(0),
+  () => process.exit(process.exitCode ?? 0),
   (error) => {
     console.error(error);
     process.exit(1);

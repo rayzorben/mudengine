@@ -37,7 +37,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { FightLog } from '../src/main/session/FightLog.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { worldLeg } from '../src/main/session/navigation.ts';
@@ -95,10 +95,9 @@ const loaded = library.load(profile.database);
 const world = loaded.graph;
 const realmSource = loaded.problem ? `${loaded.source} (${loaded.problem})` : loaded.source;
 
-const fights = new FightLog(
-  path.join(path.dirname(configPath()), 'fights', profile.id),
-  { notice: (message) => console.log(`   [fights] ${message}`) }
-);
+const fights = new FightLog(path.join(path.dirname(configPath()), 'fights', profile.id), {
+  notice: (message) => console.log(`   [fights] ${message}`)
+});
 
 console.log(`\ncombat-probe -> ${HOST}:${PORT}`);
 console.log(`  character: ${profile.id}`);
@@ -119,7 +118,7 @@ const occupants = new Map();
 const sent = [];
 let phaseNote = '(connect)';
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -255,7 +254,7 @@ async function main() {
     if (session.character.phase === 'in-game') break;
   }
   if (session.character.phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }
@@ -443,7 +442,7 @@ async function main() {
  * it. A probe whose findings are cut off is worse than one that fails.
  */
 main().then(
-  () => (process.exitCode = 0),
+  () => (process.exitCode ??= 0),
   (error) => {
     console.error(error);
     process.exitCode = 1;

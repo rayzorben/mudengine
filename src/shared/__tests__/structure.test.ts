@@ -81,7 +81,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // condensed (todo 20261031-1156-01).
   // Lowered by the typing hold's emergency comment, condensed as the room damage's fight signs came.
   // Lowered by the loop's stop leg, out to `stopLeg.ts` as the refused leg's trace came (todo 20261105-1440-01).
-  'src/main/session/SessionManager.ts': 3196,
+  // Lowered by two deps comments, condensed as the probes' realm entry came (todo 20261105-1600-01).
+  'src/main/session/SessionManager.ts': 3189,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

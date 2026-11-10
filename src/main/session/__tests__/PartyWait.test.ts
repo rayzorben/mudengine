@@ -308,6 +308,45 @@ describe('a leader waiting for its party', () => {
       expect(moves).toEqual([AWAY]);
     });
 
+    /* The user, 2026-11-10: Rayzor stopped, ran 7 steps by hand, and the run was stopped and walked back for Brakkle. */
+    it("lets a member away go at the player's Stop, and leaves a route walked after alone", () => {
+      const AWAY = `pause:${t('session.loop.pausedForRejoin', { who: 'Soul' })}`;
+      const LET_GO = `party-wait:${t('session.loop.partyWaitLetGo', { who: 'Soul' })}`;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(wait.holding).toBe(true);
+      wait.stopByPerson();
+      expect(wait.holding).toBe(false);
+      routeAsked = true;
+      running = true;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(running).toBe(true);
+      expect(moves).toEqual([AWAY, LET_GO]);
+      // Back and away again while the route walks: that is a new wait.
+      wait.onCharacter(leading(1, ['Vaelor', 'Soul']), 0, null, []);
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves).toEqual([AWAY, LET_GO, AWAY]);
+    });
+
+    it('lets a member already away go when the player walks a route with nothing stopped', () => {
+      const LET_GO = `party-wait:${t('session.loop.partyWaitLetGo', { who: 'Soul' })}`;
+      running = false;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves).toEqual([]);
+      routeAsked = true;
+      running = true;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(running).toBe(true);
+      expect(moves).toEqual([LET_GO]);
+    });
+
+    it('still stops a route the player walks when a member hangs up on the way', () => {
+      const AWAY = `pause:${t('session.loop.pausedForRejoin', { who: 'Soul' })}`;
+      routeAsked = true;
+      wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
+      expect(moves).toEqual([AWAY]);
+    });
+
     it("still gives up a member's @wait that comes after a long wait for one who hung up", () => {
       wait.onCharacter(leading(1, ['Vaelor']), 0, null, ['Soul']);
       vi.advanceTimersByTime(10 * 60_000);

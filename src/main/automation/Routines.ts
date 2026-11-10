@@ -59,6 +59,7 @@ import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
 import {
   isStaleSentence,
+  OWED_ON_ENTRY,
   readBy,
   REFRESH,
   staleAfter,
@@ -163,8 +164,6 @@ export class Routines implements SessionModule {
    * has said `KAI=` or `MA=` (the prompt, the stat sheet, or a listing).
    */
   private askedBook: 'spells' | 'powers' | null = null;
-  /** Whether the one `abil` of this session has gone out. See `askAbilities`. */
-  private askedAbilities = false;
   /** When the stat sheet was last asked for to settle a buff ending; null is never. */
   private sheetAskedAt: number | null = null;
   /** The wrong-book correction has run, so it can only run once. */
@@ -174,12 +173,14 @@ export class Routines implements SessionModule {
   private readonly partyListing: PartyListing;
   /** What a sentence made stale, asked until a send carries it. */
   private readonly stale: StaleFacts;
-  /** What `i`, `st` or `exp` answered a while ago. */
+  /** What `i`, `st`, `exp` or `abil` answered a while ago. */
   private readonly aged = new AgedFacts();
   /** A player searching here whom the room did not list. See `UnlistedSearcher`. */
   private readonly searcher: UnlistedSearcher;
   /** `stat a` once per basis, out of a fight (todo 45). See `StatAllAsk`. */
   private readonly statAll: StatAllAsk;
+  /** Whether this session's own asks (`OWED_ON_ENTRY`) have been owed. */
+  private entryOwed = false;
   /** `l <name>` once on the way in, for the portrait (todo 20261019-0931-01). See `SelfLook`. */
   private readonly selfLook: SelfLook;
   /** `l` once in a room shown without its description, for its picture. See `BriefLook`. */
@@ -223,7 +224,6 @@ export class Routines implements SessionModule {
     this.rosterUnknown = false;
     this.rosterAskedAt = 0;
     this.askedBook = null;
-    this.askedAbilities = false;
     this.bookCorrected = false;
     this.lastSent = Date.now();
     this.inRealm = false;
@@ -232,6 +232,7 @@ export class Routines implements SessionModule {
     this.aged.reset();
     this.searcher.reset();
     this.statAll.reset();
+    this.entryOwed = false;
     this.selfLook.reset();
     this.briefLook.reset();
     this.stopIdle();
@@ -373,6 +374,7 @@ export class Routines implements SessionModule {
     this.askRoster();
     this.askUnread();
     if (this.config.enabled) {
+      this.oweOnEntry();
       // An old listing waits for the fight to end; what is already owed does not.
       const aged = fightIsRunning(state) ? [] : this.aged.due(Date.now(), this.config.asks);
       if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'), 'aged-facts');
@@ -557,56 +559,29 @@ export class Routines implements SessionModule {
    * The record of the character was thrown away at the player's word
    * (`SessionManager.forgetCharacter`), and with it the book and the quest
    * counters this session had already read: each is null again, so each is
-   * owed one more listing. The book is asked now, as on entry; the counters
-   * wait for whatever needs them, as they always do.
+   * owed one more listing. The book is asked now, as on entry, and the counters
+   * on the next status line.
    */
   characterForgotten(state: CharacterState): void {
     this.askedBook = null;
-    this.askedAbilities = false;
+    this.entryOwed = false;
+    this.read.delete('abilities');
     this.askSpellbook(state);
   }
 
   /**
-   * The quest counters, once per session, when something needs them.
-   *
-   * `abil` is the only place on the wire a quest counter is ever stated
-   * (`AbilitySums`), and the realm gates scripted ways through on exactly
-   * those numbers: `9/1291`'s `go portal` is `checkability 133 5`, and a
-   * character below that rank is put somewhere the plan never named rather
-   * than refused. Unasked, `CharacterState.abilities` stays null for the whole
-   * session and every such gate is priced as a guess — which is what walked a
-   * character into the Caves of Chaos on 2026-09-15.
-   *
-   * **Asked when the question is live, not on the way in** (`askBook`'s shape,
-   * and `Errands.askCountersFor` is the caller): a plan that crosses
-   * one of those gates. A listing is not free of consequence even though the
-   * command is — a *complete* one enumerates, so it settles **every** counter,
-   * and the quest book stops offering its nodes as controls the moment one
-   * arrives. Spending that on a character who never goes near a gated way
-   * would be the client answering a question nobody asked.
-   *
-   * **No family gate here.** `Abilities` is in `GREATERMUD_ONLY`, so once a
-   * realm has said it is MajorMUD the arbiter refuses the word before it is
-   * tried and says so once; a gate here would only ask the same question
-   * twice.
+   * `abil` once each session (the user, 2026-11-10): Festus kept an opaline
+   * crystal for a quest he had finished, because no listing had been read.
+   * Owed whatever an earlier session remembered; the player's own `abil` on
+   * the way in answers it. `StaleFacts` offers it until it is sent and
+   * `AgedFacts` asks again once the answer is old.
    */
-  askAbilities(state: CharacterState): void {
-    if (!this.config.enabled || !this.config.asks.abilities) return;
-    if (this.askedAbilities) return;
-    /*
-     * Somebody has already answered it — the player's own `abil`, or the
-     * listing that arrived while this was still deciding. The listing is the
-     * fact; which command produced it is not.
-     */
-    this.askedAbilities = true;
-    if (state.abilities !== null) return;
-    this.queue.enqueue({
-      command: 'abil',
-      priority: 'probe',
-      coalesceKey: 'probe:abil',
-      reason: t('automation.routines.reasonAbilities'),
-      decision: 'ask-abilities'
-    });
+  private oweOnEntry(): void {
+    if (this.entryOwed || !this.config.asks.abilities) return;
+    this.entryOwed = true;
+    const owed = OWED_ON_ENTRY.filter((fact) => !this.read.has(fact));
+    if (owed.length === 0) return;
+    this.stale.owe(owed, t('automation.routines.reasonAbilities'), 'ask-abilities');
   }
 
   private askSpellbook(state: CharacterState): void {

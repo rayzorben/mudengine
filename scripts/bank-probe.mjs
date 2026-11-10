@@ -39,7 +39,7 @@
  */
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { HOST, PORT, localProfile, localProfileNamed, skip, target } from './lib/local-realm.mjs';
 
 const args = process.argv.slice(2);
@@ -64,7 +64,7 @@ const runs = [];
 let current = null;
 let character = null;
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -119,7 +119,7 @@ async function main() {
     if (session.character.phase === 'in-game') break;
   }
   if (session.character.phase !== 'in-game') {
-    console.log('  never reached the realm; nothing to measure.\n');
+    console.log(`  ${neverReachedRealm()}\n`);
     session.dispose();
     return;
   }

@@ -734,9 +734,13 @@ automation:
     # settles. At most one who in this many minutes; the arrivals inside it
     # are answered by the same listing. 0 never asks.
     whoMinutes: 1
-    # abil once a session, when a route crosses a way the realm opens only past
-    # a quest count. Off, such a way is planned on a guess.
+    # abil once each session: it is the only place the realm states how far
+    # through a quest a character is. Off, a quest's items are kept and a way
+    # a quest opens is planned on a guess.
     abilities: true
+    # Minutes that answer may get before abil is asked again, never during a
+    # fight. 720 is twice a day. 0 never asks again.
+    abilitiesMinutes: 720
     # spells or powers once the prompt shows which, and again when a spell is
     # learned. Off, Auto Choose Best Spell has no book to choose from.
     spellbook: true

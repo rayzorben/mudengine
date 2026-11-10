@@ -9,7 +9,9 @@ import { filesUnder, repoPath } from '../../../shared/__tests__/sources';
  * The probes under `scripts/` are `.mjs` that nothing typechecks, so a
  * reordered or inserted parameter broke them silently until one ran against
  * the realm; this is their one guard (`mudengine-session` › *A session is
- * handed its ports by name*).
+ * handed its ports by name*). A probe builds one through `probeSession`
+ * (`scripts/lib/probe-session.mjs`), which passes its deps on, so a call to it
+ * is a site too.
  *
  * Read as source text through the compiler, which parses `.mjs` as JavaScript.
  */
@@ -22,19 +24,24 @@ interface Site {
   readonly depsLiteral: boolean;
 }
 
-/** Every `new SessionManager(...)` under a directory, where it is and what it passes. */
+/** Whether a node builds a session: `new SessionManager(...)`, or a probe's `probeSession(...)`. */
+const buildsSession = (node: ts.Node): node is ts.NewExpression | ts.CallExpression =>
+  (ts.isNewExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'SessionManager') ||
+  (ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'probeSession');
+
+/** Every session built under a directory, where it is and what it passes. */
 const sitesUnder = (dir: string): Site[] =>
   filesUnder(dir, CODE).flatMap((file) => {
     const text = fs.readFileSync(file, 'utf8');
-    if (!text.includes('SessionManager')) return [];
+    if (!text.includes('SessionManager') && !text.includes('probeSession')) return [];
     const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
     const found: Site[] = [];
     const visit = (node: ts.Node): void => {
-      if (
-        ts.isNewExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === 'SessionManager'
-      ) {
+      if (buildsSession(node)) {
         const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
         const deps = node.arguments?.[1];
         found.push({
@@ -77,5 +84,23 @@ describe('every session is built from a sink and one deps object', () => {
       .filter((site) => site.at.startsWith('scripts/') && !site.depsLiteral)
       .map((site) => `${site.at}: deps is not an object literal`);
     expect(bare, bare.join('\n')).toEqual([]);
+  });
+});
+
+/*
+ * With automation off the login stops at the realm's menu, so a player is never
+ * left in the realm unattended (`98af3b22`). A probe is watched, and its login
+ * goes on in (todo 20261105-1600-01); the switch must stay out of a player's reach.
+ */
+describe('only a probe enters the realm with automation off', () => {
+  const SWITCH = 'entersRealmWithAutomationOff';
+  const shipped = new Set(['__tests__']);
+  const naming = [...filesUnder('src', CODE, shipped), ...filesUnder('scripts', CODE, shipped)]
+    .filter((file) => fs.readFileSync(file, 'utf8').includes(SWITCH))
+    .map(repoPath)
+    .sort();
+
+  it('is named only where it is declared and where the probes turn it on', () => {
+    expect(naming).toEqual(['scripts/lib/probe-session.mjs', 'src/main/session/SessionManager.ts']);
   });
 });

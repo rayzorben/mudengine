@@ -22,7 +22,7 @@
  */
 import path from 'node:path';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 import { ACTIONABLE_REMOTES } from '../src/shared/remotes.ts';
@@ -66,7 +66,7 @@ function open(profile) {
     rules: []
   };
   const state = { profile, automation, lines: [], sent: [], notices: [], session: null };
-  state.session = new SessionManager(
+  state.session = probeSession(
     {
       data: () => {},
       line: (line) => {
@@ -177,7 +177,7 @@ async function main() {
   await answerer.session.connect(target());
 
   if (!(await reachRealm(asker)) || !(await reachRealm(answerer))) {
-    console.log('   one of them never reached the realm; nothing to measure.\n');
+    console.log(`   ${neverReachedRealm('one of them ')}\n`);
     asker.session.dispose();
     answerer.session.dispose();
     process.exit(1);

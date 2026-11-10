@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { SessionManager } from '../src/main/session/SessionManager.ts';
+import { neverReachedRealm, probeSession } from './lib/probe-session.mjs';
 import { wayOf } from '../src/main/automation/walk/ports.ts';
 import { worldLeg } from '../src/main/session/navigation.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
@@ -95,7 +95,7 @@ const seen = {
   engagedAt: null
 };
 
-const session = new SessionManager(
+const session = probeSession(
   {
     data: () => {},
     line: (line) => {
@@ -175,7 +175,7 @@ async function run() {
   const deadline = Date.now() + 45000;
   while (Date.now() < deadline && session.character.phase !== 'in-game') await wait(250);
   if (session.character.phase !== 'in-game') {
-    log('harness', 'never reached the realm; nothing to measure.');
+    log('harness', neverReachedRealm());
     return false;
   }
   await wait(3000);

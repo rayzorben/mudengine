@@ -15,7 +15,7 @@ import {
   type PlannedFetch
 } from '../../shared/navigation';
 import { Navigation } from './navigation';
-import { exitGates, itemsAsked, tollCharge } from '../world/navigation/exitGates';
+import { itemsAsked, tollCharge } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { keyJson, minutesMs } from '../../shared/values';
@@ -203,7 +203,6 @@ import {
   type BuyingPlace,
   type CashPlace,
   type FightOdds,
-  type Requirement,
   type RoomId,
   type RoomReference,
   type Route,
@@ -405,8 +404,6 @@ export interface ErrandsSession {
   odds(): OddsPeeker;
   /** What hunting each spot paid this character (`Belongings`, todo 70). */
   rates(): ReadonlyMap<string, MeasuredRate>;
-  /** The one `abil` of the session (`Routines.askAbilities`). */
-  askAbilities(state: CharacterState): void;
   /** The carried weapon the gear sets wear for a backstab, or null (`EquipmentManager.backstabWeapon`). */
   backstabWeapon(): CarriedItem | null;
   /** The room a MegaMUD code names on this realm (`RoomNicknames`), or null. */
@@ -860,7 +857,6 @@ export class Errands implements SessionModule {
       this.navigation.leg(roomId(here.map, here.number), to, traveller, options) ??
       t('session.loop.noRealmData');
     if (typeof plan !== 'string') {
-      this.askCountersFor(plan);
       this.sayRanFrom(plan);
     }
     return plan;
@@ -1017,44 +1013,6 @@ export class Errands implements SessionModule {
   }
 
   /**
-   * One `abil`, the first time a plan crosses a gate the counters would answer.
-   *
-   * The realm writes a room script's landing per branch — `9/1291`'s `go
-   * portal` names `9/1424` on `checkability 133 5` and no room at all on the
-   * two branches below it — so a character the gate refuses is put somewhere
-   * the plan never named. `edgePenalty` refuses such an edge outright once the
-   * counters are read, and reads *nobody has said* as the old price; this is
-   * what turns the second into the first.
-   *
-   * **A gate, whichever of the realm's two shapes wrote it.** `exitGates`
-   * reads the exit table's `Ability: 204 w/value 1 to 999` and a script's
-   * verbs into the one ability gate, so this reads both one way. An
-   * `AbilityExit` does not misplace the character — the server simply refuses
-   * the step — but it stops the walk exactly as dead, nine exits' worth, and
-   * the listing is what turns a 286-step plan into a refusal with a reason.
-   *
-   * **Asked off the plan rather than on the way in**, though it is one command
-   * in the cheapest band. A *complete* listing enumerates, so it settles every
-   * counter at once and the quest book stops offering its nodes as the
-   * player's own marks — right where the realm has spoken, and an answer
-   * nobody asked for where it has not. A plan that crosses such a gate is the
-   * moment the client genuinely needs the number.
-   *
-   * One-shot inside `Routines`, so every plan after the first costs nothing,
-   * and it is the plan that is read rather than the route walked: a leg, a
-   * resume and the panel's own press all come through here.
-   */
-  askCountersFor(route: Route): void {
-    const state = this.tracker.current;
-    if (state.abilities !== null) return;
-    const asksCounters = (requirement: Requirement | null): boolean =>
-      requirement !== null &&
-      (exitGates(requirement) ?? []).some((gate) => gate.kind === 'ability');
-    if (!route.steps.some((step) => asksCounters(step.requirement))) return;
-    this.session.askAbilities(state);
-  }
-
-  /**
    * What this character costs to move, as the router prices it.
    *
    * One statement, read by every route this session plans — the loop's leg,
@@ -1150,7 +1108,7 @@ export class Errands implements SessionModule {
       alignment: ownAlignment(state),
       /*
        * And the quest counters, for a scripted way through gated on one. Null
-       * until `abil` has answered (`Routines.askAbilities`), which the router
+       * until `abil` has answered (`Routines.oweOnEntry`), which the router
        * reads as *nobody has said* and never as the gate passing.
        */
       counters: state.abilities,
