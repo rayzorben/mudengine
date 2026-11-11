@@ -6002,6 +6002,41 @@ describe('picking up after a lost connection', () => {
     expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
   });
 
+  /*
+   * Yang, 2026-11-11: stock MajorMUD has no `rm`, the relogin room could not
+   * be placed, and the lap waited thirteen hours for a room nothing walked to.
+   */
+  it('steps through an exit to be placed where the realm cannot say where the character is', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: automation() });
+    await manager.connect(dial());
+    const first = await client();
+    await placed(first);
+    expect(
+      manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character)
+    ).toBeNull();
+    first.destroy();
+    await until(() => manager!.loops.progress.hold === 'offline');
+
+    await manager.connect(dial());
+    const second = await client(1);
+    const sent = wire(second);
+    second.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    manager.send('rm\r');
+    second.write('You say "rm"\r\n');
+    await until(() => notices.includes(t('session.loop.locateUnavailable', { command: 'rm' })));
+    second.write(
+      'Sewer Tunnel, Intersection\r\nObvious exits: north, south, east\r\n[HP=100/MA=50]:' +
+        PROMPT_REPAINT
+    );
+    await until(() => notices.includes(t('session.loop.placingStep', { direction: 'n' })));
+    // The prompts that answer what entering the realm asked free the queue.
+    second.write(('[HP=100/MA=50]:' + PROMPT_REPAINT).repeat(3));
+    await until(() => /(^|\n)n\r\n/.test(sent()));
+    expect(manager.loops.progress.hold).toBe('offline');
+  });
+
   /* The last room outlives the socket, but it is where the character was, not where the server put it. */
   it('does not walk on from a remembered room, only from one the server placed', async () => {
     let room: KeptRoom | null = null;

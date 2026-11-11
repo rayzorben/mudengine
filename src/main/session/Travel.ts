@@ -268,6 +268,8 @@ export interface TravelSession {
    * goes now (`Safety.takesOver`): no second run on the same line.
    */
   hangUpTakesOver(state: CharacterState): boolean;
+  /** A step out of an unplaced room, where the realm has no locate word (`PlacingStep`). */
+  stepToBePlaced(): void;
   /** The monsters this character ran from, and the list as it stands after a run (`Belongings`). */
   fled(): readonly FledEntry[];
   keepFled(entries: readonly FledEntry[]): void;
@@ -1380,6 +1382,8 @@ export class Travel implements SessionModule {
         this.saidWaitingToBePlaced = true;
         this.session.notice(t('session.reconnect.waitingToBePlaced'));
       }
+      // Stock MajorMUD has no `rm`: only a room walked into places it.
+      if (walksOn) this.session.stepToBePlaced();
       return;
     }
     if (journey !== null) {

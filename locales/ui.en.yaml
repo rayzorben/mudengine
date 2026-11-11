@@ -6425,6 +6425,12 @@ session:
     locateReason: the loop lost its place
     locateUnavailable: This realm has no "{command}" command, so it was said out loud instead of
       answered. The client will work out where it is from the rooms it walks into instead.
+    # A lost character on a realm with no locate word steps through an exit (2026-11-11).
+    placingReason: the character is lost and this realm cannot say where it is
+    placingStep: Lost, and this realm has no command that says where you are, so stepping {direction}
+      to see which room this is.
+    placingGaveUp: Still lost after {steps} steps. Walk to a room the client knows and the loop or
+      route goes on from there.
     # The Room card's locate button, pressed where the realm has no word (todo 811).
     locateNone: Nothing was asked, because this realm has no command that says where you are. Its
       Locate Command setting is None, or the game refused the command it had.

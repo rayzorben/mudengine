@@ -779,12 +779,11 @@ describe('losing its place', () => {
   });
 
   /*
-   * Todo 764, pinned: on MajorMUD the realm has no locate word, so the ask
-   * sends nothing (`Claims.askWhereIAm` answers null) and each one is a wait
-   * of `locateWaitMs` for a room block to place the character — dead
-   * reckoning's fallback, which costs no command. One wait per ask, the whole
-   * budget, then the lap stops and says why. The test above is the control:
-   * a room placing it mid-wait plans at once.
+   * Todo 764: each ask is a wait of `locateWaitMs` for a room block to place
+   * the character. On a realm with no locate word the ask is a step
+   * (`PlacingStep`, 2026-11-11, tested there); here the ask is a stub. One
+   * wait per ask, the whole budget, then the lap stops and says why. The
+   * test above is the control: a room placing it mid-wait plans at once.
    */
   it('waits locateWaitMs per ask where the realm has no word, then stops out loud', () => {
     const { locateWaitMs: wait, maxLocates } = DEFAULT_INTERNAL.tuning.loop;

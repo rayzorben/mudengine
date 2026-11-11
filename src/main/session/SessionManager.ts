@@ -109,6 +109,7 @@ import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { Errands, type RealmClass } from './Errands';
 import { Claims } from './Claims';
 import { Locating } from './Locating';
+import { PlacingStep } from './PlacingStep';
 import { Marks } from './Marks';
 import { RealmWordWatch } from './RealmWordWatch';
 import { MarkBook, type LineMarks } from './MarkBook';
@@ -474,6 +475,8 @@ export class SessionManager {
   private readonly claims: Claims;
   /** Placed before a Goto or a Loop plans, where the realm can say. See `Locating`. */
   readonly locating: Locating;
+  /** A step out of an unplaced room where the realm cannot say. See `PlacingStep`. */
+  private readonly placing: PlacingStep;
   /** What this character has been seen to do about each quest this sitting. See `QuestWatch`. */
   private readonly questWatch: QuestWatch;
   /** Walking, looping and running away, and what a lost connection carries. See `Travel`. */
@@ -1433,7 +1436,7 @@ export class SessionManager {
           this.sink.loop?.(progress);
           this.walkPush.settleSoon();
         },
-        locate: () => this.claims.askWhereIAm(),
+        locate: () => this.placing.locate(),
         lapBegun: (stopName) => this.statsBaseline.lapBegun(stopName),
         wantsCombat: () => this.travel.combatOnForLap(),
         legRefused: (leg) => this.sink.legRefused?.(leg)
@@ -1478,22 +1481,18 @@ export class SessionManager {
         keepFled: (entries) => this.belongings.rememberFled(entries),
         driven: () => this.extensions.driving,
         hangUpTakesOver: (state) => this.safety.takesOver(state),
+        stepToBePlaced: () => this.placing.step(),
         ...{ switchAutomation: switchNow, switches: this.switches },
         ...reports
       }
     );
     this.moves = this.travel;
     this.carryOver = new CarryOver(this.loops, this.travel, this.remotes, () => this.belongings);
-    this.claims = new Claims(
-      {
-        tracker: this.tracker,
-        queue: this.queue,
-        combat: this.combat,
-        vocabulary: this.vocabulary
-      },
-      { notice }
-    );
+    const asks = { tracker: this.tracker, queue: this.queue, vocabulary: this.vocabulary };
+    this.claims = new Claims({ ...asks, combat: this.combat }, { notice });
     this.locating = new Locating({ tracker: this.tracker, claims: this.claims }, sink);
+    const floors = { recovery: this.recovery, health: () => this.automationConfig.health };
+    this.placing = new PlacingStep({ ...asks, ...floors, claims: this.claims }, notice);
 
     // Rules propose; the queue disposes. Nothing here reaches the socket.
     this.rules = new RuleEngine(this.queue, { notice, onTheGround });
@@ -1699,7 +1698,7 @@ export class SessionManager {
       { module: this.hangUp },
       { module: this.rowOverrides, configure: (a) => this.rowOverrides.configure(a) },
       ...[{ module: this.safety }, { module: this.fleeGoto }, { module: this.roomHazards }],
-      { module: this.locating },
+      ...[{ module: this.locating }, { module: this.placing }],
       { module: this.macros },
       { module: this.travel },
       { module: this.errands }
@@ -3162,7 +3161,7 @@ export class SessionManager {
     this.publisher.character();
     this.publisher.publishAsks();
     this.resetWatch.watch();
-    this.locating.onCharacter(this.tracker.current);
+    for (const it of [this.locating, this.placing]) it.onCharacter(this.tracker.current);
   }
 
   /**
