@@ -803,6 +803,56 @@ describe('answering the login', () => {
     // in the sequence blocked on the timeout.
     expect(Date.now() - started).toBeLessThan(3000);
   });
+
+  /*
+   * Omniverse's Major BBS (Yang, 2026-11-11): none of these prompts is a type
+   * the classifier knows, so only their ending in quiet says they are
+   * prompts. Read as typed prompts alone, the username, password and pager
+   * `Q` filled a window of 3 and the menu's `m` waited out the timeout, by
+   * which time logon notices had redrawn the menu under it.
+   */
+  it('answers a BBS prompt the classifier does not type without waiting out the timeout', async () => {
+    const { sink } = collect();
+    manager = build(sink, {
+      automation: {
+        ...DEFAULT_CONFIG.automation,
+        pacing: { window: 3, minGapMs: 50, ackTimeoutMs: 5000 }
+      },
+      login: {
+        enabled: true,
+        learn: false,
+        username: 'yang',
+        password: 'secret',
+        steps: [
+          { when: 'Otherwise type "new"', send: '{user}' },
+          { when: 'Enter your password', send: '{password}' },
+          { when: '(N)onstop, (Q)uit, or (C)ontinue?', send: 'Q', repeat: true },
+          { when: 'Please make your selection', send: 'm' }
+        ]
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: string[] = [];
+    socket.on('data', (chunk) => {
+      for (const answer of chunk.toString('latin1').split('\r\n')) {
+        if (answer.length > 0) received.push(answer);
+      }
+    });
+    const prompts = [
+      'Otherwise type "new": ',
+      'Enter your password:',
+      '(N)onstop, (Q)uit, or (C)ontinue?',
+      'Please make your selection: '
+    ];
+    const started = Date.now();
+    for (const [index, prompt] of prompts.entries()) {
+      socket.write(prompt);
+      await until(() => received.length > index, 6000);
+    }
+    expect(received).toEqual(['yang', 'secret', 'Q', 'm']);
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
 });
 
 /*

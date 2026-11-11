@@ -102,7 +102,7 @@ import { actsOf, applyAct, readLine, type LineAct, type LineRead } from '../pars
 import { LineTokenizer, plainText } from '../net/LineTokenizer';
 import { DialCancelled, TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
-import { isPrompt, type Block } from '../../shared/blocks';
+import { acknowledges, type Block } from '../../shared/blocks';
 import { type CharacterState, type FightSigns, type SessionPhase } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
@@ -2745,9 +2745,9 @@ export class SessionManager {
      * window never closed, and fifteen went out between two prompts.
      * `GMUDInGameState.Process` queues fifteen and then says *Why don't you
      * slow down for a few seconds?*, which is exactly what the transcript
-     * shows. See `isPrompt`.
+     * shows. See `acknowledges`: on the way in a BBS prompt counts too.
      */
-    if (isPrompt(block.type)) this.queue.notePrompt();
+    if (acknowledges(block, this.tracker.current.phase === 'in-game')) this.queue.notePrompt();
     /*
      * Which command the next answer is about: the realm's own echo
      * (`answeringAfter`). Read here because the refusal is a fact about the

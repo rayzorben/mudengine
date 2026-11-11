@@ -1250,3 +1250,22 @@ export function deathNamed(block: Block): string | null {
 export function isPrompt(type: BlockType): boolean {
   return PROMPTS.has(type);
 }
+
+/** A prompt the classifier typed, or a line that ended because the server went quiet. */
+export function endsAsPrompt(block: Pick<Block, 'type' | 'terminator'>): boolean {
+  return block.terminator === 'flush' || isPrompt(block.type);
+}
+
+/**
+ * Whether this block tells the command queue the last command is answered.
+ * In the realm only a prompt does, since a line can pause mid-sentence. On
+ * the way in, no rule types a BBS's prompts (`Enter your password:`,
+ * `Please make your selection:`), so a line the server stopped on answers
+ * too. When only typed prompts counted, Omniverse's username, password and
+ * pager `Q` filled the window and its menu answer waited out
+ * `pacing.ackTimeoutMs` (3s), by which time logon notices had redrawn the
+ * menu (Yang, 2026-11-11).
+ */
+export function acknowledges(block: Pick<Block, 'type' | 'terminator'>, inRealm: boolean): boolean {
+  return inRealm ? isPrompt(block.type) : endsAsPrompt(block);
+}

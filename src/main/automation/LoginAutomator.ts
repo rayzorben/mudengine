@@ -47,7 +47,7 @@ import { t } from '../app/i18n';
 import { commandOf } from '../../shared/commands';
 import { credentialsNamed, fillLogin, stepMatches, type Credential } from '../../shared/login';
 import { NO_LEARNED_WAY, type LearnedWayIn } from '../../shared/loginLearning';
-import { isPrompt, type Block } from '../../shared/blocks';
+import { endsAsPrompt, type Block } from '../../shared/blocks';
 import type { LoginConfig, LoginStep } from '../../shared/config';
 import type { SessionModule } from './Module';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
@@ -61,10 +61,6 @@ export interface LoginEvents {
   /** A prompt or the statline arrived, which pays what the way in owes. */
   prompted?(): void;
 }
-
-/** The line ended because the server stopped talking, or is a prompt the classifier typed. */
-const endsAsPrompt = (block: Block): boolean =>
-  block.terminator === 'flush' || isPrompt(block.type);
 
 /**
  * Why a *lost* socket must not be dialled again.
