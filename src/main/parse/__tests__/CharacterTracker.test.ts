@@ -3421,6 +3421,14 @@ describe('the party this character travels with', () => {
     expect(tracker.current.party.following).toBe('Vaelor');
   });
 
+  // yang's wire on the Omniverse BBS, 2026-11-12: `join` is answered with no full stop.
+  it('knows who it follows from the join answer, full stop or not', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=115/KAI=11]:');
+    feed('You are now following Nito');
+    expect(tracker.current.party.following).toBe('Nito');
+  });
+
   /*
    * `follow` aimed at somebody already being followed answers with the same
    * fact and the word `already` in it. Unread, the client concluded it was

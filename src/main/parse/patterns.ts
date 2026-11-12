@@ -1594,9 +1594,14 @@ export const RULES: Rule[] = [
    * statement of the state.
    */
   { type: 'party-following', pattern: /^You are (?:already )?following (?<leader>\w+)\.$/ },
+  /*
+   * `join` is answered `You are now following Nito` with no full stop on the
+   * Omniverse BBS and The Major BBS (yang's and soul's wires, 2026-11-12);
+   * capture 112 has one. Unread, yang's client did not know it followed Nito.
+   */
   {
     type: 'party-joined',
-    pattern: /^(?:(?<player>\w+) started to follow you|You are now following (?<leader>\w+))\.$/
+    pattern: /^(?:(?<player>\w+) started to follow you\.|You are now following (?<leader>\w+)\.?)$/
   },
   {
     type: 'party-left',
