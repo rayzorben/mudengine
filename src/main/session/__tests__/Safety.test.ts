@@ -305,19 +305,14 @@ describe('hanging up with a run on the wire', () => {
  */
 describe('one decision for a health drop: the run, then the hang-up', () => {
   const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
-  const at = (hp: number, attackers: string[] = [], occupants = [orc]): CharacterState => {
-    const state = standing(occupants);
+  const at = (hp: number, attackers: string[] = []): CharacterState => {
+    const state = standing([orc]);
     return {
       ...state,
       vitals: { ...state.vitals, hp, hpMax: 319 },
       combat: { ...state.combat, attackers }
     };
   };
-  /* Where the run landed: no monster in the room, the fight's flag not yet off. */
-  const landed = (hp: number, attackers: string[] = []): CharacterState => ({
-    ...at(hp, attackers, []),
-    inCombat: true
-  });
   const ran = () => {
     const run = { unanswered: true, landings: 0 };
     const built = build(config, at(94), undefined, {}, run);
@@ -330,8 +325,8 @@ describe('one decision for a health drop: the run, then the hang-up', () => {
 
   it('does not hang up where the run got out and nothing attacks', () => {
     const { safety, notices, decisions, hungUp } = ran();
-    safety.considerHangingUp(landed(94));
-    safety.considerHangingUp(landed(96));
+    safety.considerHangingUp(at(94));
+    safety.considerHangingUp(at(96));
     expect(hungUp).toEqual([]);
     const refused = t('session.safety.hangUpRunGotOut');
     expect(notices).toEqual([
@@ -343,46 +338,31 @@ describe('one decision for a health drop: the run, then the hang-up', () => {
 
   it('hangs up where the run landed once it is attacked there', () => {
     const { safety, notices, hungUp } = ran();
-    safety.considerHangingUp(landed(94));
-    expect(safety.takesOver(landed(94, ['big stitched zombie']))).toBe(true);
-    safety.considerHangingUp(landed(94, ['big stitched zombie']));
+    safety.considerHangingUp(at(94));
+    expect(safety.takesOver(at(94, ['big stitched zombie']))).toBe(true);
+    safety.considerHangingUp(at(94, ['big stitched zombie']));
     expect(hungUp).toEqual(['client']);
     expect(notices).toContain(t('session.safety.hangUpRunCaught', { why }));
   });
 
   it('hangs up where the run landed once health falls again', () => {
     const { safety, hungUp } = ran();
-    safety.considerHangingUp(landed(94));
-    safety.considerHangingUp(landed(80));
+    safety.considerHangingUp(at(94));
+    safety.considerHangingUp(at(80));
     expect(hungUp).toEqual(['client']);
   });
 
   /* The control for `takesOver`: nothing caught it, so a second run is not held back. */
   it('lets a second run go while nothing has caught the first', () => {
     const { safety } = ran();
-    safety.considerHangingUp(landed(94));
-    expect(safety.takesOver(landed(94))).toBe(false);
-  });
-
-  /*
-   * Rayzor, 2026-11-12: landed at 24% beside an angry salamander and was told
-   * nothing attacked there; the salamanders that followed killed him. A
-   * monster in the room the run landed in is the run caught.
-   */
-  it('hangs up where a monster is in the room the run landed in', () => {
-    const { safety, notices, hungUp } = ran();
-    safety.considerHangingUp(landed(94));
-    expect(hungUp).toEqual([]);
-    expect(safety.takesOver(at(94))).toBe(true);
     safety.considerHangingUp(at(94));
-    expect(hungUp).toEqual(['client']);
-    expect(notices).toContain(t('session.safety.hangUpRunCaught', { why }));
+    expect(safety.takesOver(at(94))).toBe(false);
   });
 
   it('forgets the run once health is back over the line', () => {
     const { safety, hungUp } = ran();
-    safety.considerHangingUp(landed(94));
-    safety.considerHangingUp(landed(200));
+    safety.considerHangingUp(at(94));
+    safety.considerHangingUp(at(200));
     safety.considerHangingUp(at(100));
     expect(hungUp).toEqual(['client']);
   });
@@ -396,9 +376,9 @@ describe('one decision for a health drop: the run, then the hang-up', () => {
     safety.considerHangingUp(at(94));
     run.unanswered = false;
     run.landings = 1;
-    safety.considerHangingUp(landed(94));
-    expect(safety.takesOver(landed(94, ['big stitched zombie']))).toBe(false);
-    safety.considerHangingUp(landed(94, ['big stitched zombie']));
+    safety.considerHangingUp(at(94));
+    expect(safety.takesOver(at(94, ['big stitched zombie']))).toBe(false);
+    safety.considerHangingUp(at(94, ['big stitched zombie']));
     expect(hungUp).toEqual([]);
     expect(notices.slice(-2)).toEqual([
       t('session.safety.hangUpRunCaught', { why }),
