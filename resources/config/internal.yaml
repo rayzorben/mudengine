@@ -627,16 +627,15 @@ tuning:
 
     # What may wait unsent to the gateway before the socket is closed, and
     # the shortest frame that is compressed, in bytes.
-    maxBufferedBytes: 1048576
+    maxBufferedBytes: 8388608
     deflateMinBytes: 512
 
     # Other players' characters heard of at once; past it the one heard of
     # longest ago goes.
     mostSharers: 256
 
-    # Remote control: the terminal text kept for a controller who opens it,
-    # in characters, and how long an action waits for the sharer's answer.
-    controlBacklogChars: 24000
+    # How long a call to a character controlled from here waits for its
+    # client's answer.
     controlAnswerMs: 30000
 
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.

@@ -3417,9 +3417,9 @@ cards:
       shareHint: Sends this character's health, mana, conditions, spells, level, experience and
         room to this player while you are both logged in to this realm, through the sharing server.
       control: Allow Remote Control
-      controlHint: Lets this player watch this character's terminal and send it a line, a move,
-        rest, stop, play, and the automation and auto-combat switches. Turning it off ends it at
-        once.
+      controlHint: Lets this player play this character from their own client, every card and the
+        console as though it were theirs. The account, connecting and who it shares with stay
+        yours. Turning it off ends it at once.
       receive: Show Their Share
       receiveHint: Shows what this player shares with this character, once you confirm their key
         below.
@@ -8504,34 +8504,18 @@ share:
   cancel: Cancel
   confirm: 'Share with {player}'
   control: Allow Remote Control
-  controlHint: '{player} can watch the terminal of {character} and send it a line, a move, rest,
-    stop, play, and the automation and auto-combat switches. Your settings, loops, account and
-    shares stay out of reach.'
-  controlWarning: 'A line {player} sends is sent as though you typed it, any command the realm
-    takes included, except a command that logs the character off or deletes it (x, exit, quit,
-    suicide, reroll and their short forms), which is refused. You can stop them at any time from
-    the banner over the console.'
+  controlHint: '{player} can play {character} from their own client as though it were theirs:
+    the console, every card, routes and loops, and its switches, thresholds, supplies and
+    auto-drop. Connecting, disconnecting, the account and its password, who {character} shares
+    with and your other characters stay out of reach.'
+  controlWarning: 'What {player} types is sent as though you typed it, any command the realm takes
+    included, except a command that logs the character off or deletes it (x, exit, quit, suicide,
+    reroll and their short forms), which is refused. You can stop them at any time from the banner
+    over the console.'
 
-# Remote control of a character another player shares with this one, over
-# this character's console, and the banner its sharer sees.
+# The banner a sharer sees over the console while another player controls
+# the character.
 remote:
-  aria: 'Remote control of {name}'
-  title: 'Remote control: {name}'
-  close: Close remote control
-  line: Line to send
-  linePlaceholder: 'A line for {name}'
-  send: Send
-  rest: Rest
-  stop: Stop
-  play: Play
-  combatOn: Auto-Combat On
-  combatOff: Auto-Combat Off
-  automationOn: Automation On
-  automationOff: Automation Off
-  walkOn: Walk It
-  confirm: '{name} is {steps} steps further than when it stopped.'
-  refused: 'Refused: {why}'
-  failed: 'Remote control: {message}'
   controlledAria: Remote control of this character
   controlledBy: '{name} is controlling this character by remote control.'
   stopControl: Stop
@@ -8547,11 +8531,13 @@ peers:
   link:
     newerKind: the sharing server sent a kind of message from a newer build, and it was ignored
     unread: the sharing server sent something this build does not read, and it was ignored
-  # Remote control: another player watching a shared character's terminal
-  # and sending it a line, a move, rest, stop, play or a switch.
+  # Remote control: another player playing a shared character from their own
+  # client, every card and the console as though it were theirs.
+  relay:
+    refused: "That is left to the character's own player, so it is not done by remote control."
+    notControlling: This character is no longer controlled from here.
+    tooLarge: The answer was too large to send by remote control.
   control:
-    reason: '{from} by remote control'
-    sent: '{from} sent {what} by remote control.'
     started: '{from} is controlling this character by remote control. Stop ends it.'
     ended: "{from}'s remote control of this character ended."
     stopped: 'Remote control by {names} stopped. They cannot take it again until you turn Allow Remote Control off and on.'
@@ -8559,34 +8545,18 @@ peers:
     refused: '{from} sent an action by remote control, and it was refused: {why}'
     action: remote control
     because: 'an action from {from}'
-    notGiven: 'this character gives them no remote control'
-    notHere: 'that character is not shared from here now'
-    unknownAction: 'their client sent "{name}", an action this client does not have'
-    newerAction: 'their client is newer and sent an action this one does not read'
-    malformed: 'the action could not be read'
-    badLine: 'a line is one line of at most {max} printable characters'
     leaves: '"{text}" logs the character off or deletes it, so it is not sent by remote control'
     badName: That is not a character name.
     notSharing: Sharing is off for this character, or the realm has not named it yet.
     notOffered: '{name} does not give this character remote control.'
     otherControls: 'Another of your characters is controlling {name}.'
-    notControlling: This character is not controlling anybody.
     noLink: The sharing server is out of reach.
     noAnswer: No answer came from the other client.
-    unreadAnswer: The other client answered in a way this one does not read.
     closed: Remote control was closed.
+    lostControl: 'The sharing server is out of reach, so remote control of {name} ended.'
     releasedStopped: '{name} stopped your remote control.'
     releasedUnshared: '{name} no longer gives this character remote control.'
     releasedLeft: '{name} logged off, so remote control ended.'
-    what:
-      line: '"{text}"'
-      move: 'the move {dir}'
-      rest: rest
-      stop: Stop
-      play: 'Play on {loop}'
-      playStopped: Play
-      switchOn: '{name} on'
-      switchOff: '{name} off'
 
 # A character is down to its last few lives with automation on, and the client
 # asks before logging it in.

@@ -60,10 +60,12 @@ export const GATEWAY_LIMITS: GatewayLimits = {
   mostSockets: 5000,
   mostSocketsPerAddress: 16,
   maxMessageBytes: PEER_MAX_MESSAGE_BYTES,
-  maxBufferedBytes: 1_048_576,
+  // Two of a controlled character's largest answers (`RELAY_MOST_MESSAGE_CHARS`), relayed.
+  maxBufferedBytes: 8_388_608,
   deflateMinBytes: 512,
-  bytesPerSecond: 4096,
-  burstBytes: 131_072,
+  // A controlled character's whole window: about 25 KB/s patched in a busy evening, and its attach at once.
+  bytesPerSecond: 98_304,
+  burstBytes: 8_388_608,
   mostClaims: 8,
   pingEveryMs: 30_000,
   maxBodyBytes: 4096,

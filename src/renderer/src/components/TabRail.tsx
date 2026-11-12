@@ -1,4 +1,4 @@
-import { Fragment, memo, type CSSProperties } from 'react';
+import { Fragment, memo, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
 import AppMark from './AppMark';
@@ -8,8 +8,6 @@ import Icon from './Icon';
 import NewCharacterButton from './NewCharacterButton';
 import RemoteTabs, { type RemoteTabsApi } from './RemoteTabs';
 import { useRemoteCharacters } from '../hooks/useRemoteCharacters';
-import { remoteAside } from '../lib/remoteAside';
-import { showsRemote } from '../lib/remoteCharacters';
 import type { SharesApi } from '../lib/shares';
 import { reordered } from '../lib/reorder';
 
@@ -427,7 +425,7 @@ function activity(view: RailView | undefined): string | null {
  * state dot and a vitals bar. See docs/ui-design.md §3.8.
  */
 function TabRail({
-  sessions,
+  sessions: roster,
   views,
   active,
   side,
@@ -458,12 +456,10 @@ function TabRail({
    * to the across-the-top shape it never asked for.
    */
   const stacked = side !== 'top';
-  const { remotes, controlling, aside } = useRemoteCharacters(api, sessions);
-  // Pressing a character's own tab shows its own console, a remote one it controls set aside.
-  const select = (session: SessionId): void => {
-    if (showsRemote(controlling, session, aside)) remoteAside.set(session, true);
-    onSelect(session);
-  };
+  // This install's own characters are dragged and dialled; those controlled from here sit apart.
+  const sessions = useMemo(() => roster.filter((entry) => entry.remote === null), [roster]);
+  const opened = useMemo(() => roster.filter((entry) => entry.remote !== null), [roster]);
+  const sharers = useRemoteCharacters(api, sessions);
   /*
    * The rail is the player's arrangement of their characters, exactly as the
    * card rail is their arrangement of what they watch — so it is dragged, and
@@ -585,8 +581,7 @@ function TabRail({
           const mark = attention(view, thresholds.hp, restToFor(session.id));
           const doing = activity(view);
           const room = view?.character.room.name ?? null;
-          // Not while its pane shows the remote character it controls: that one's tab is active.
-          const isActive = session.id === active && !showsRemote(controlling, session.id, aside);
+          const isActive = session.id === active;
           const phase = view?.state.phase ?? 'idle';
           // Only a close is waited for. A dial with no answer yet, or a
           // reconnect's wait, takes a press as *dial now* (todo 22).
@@ -631,14 +626,14 @@ function TabRail({
                 // identifying a tab has to key on the id.
                 data-session={session.id}
                 data-phase={phase}
-                onClick={() => select(session.id)}
+                onClick={() => onSelect(session.id)}
                 // The caret goes to the terminal of the character being shown, not
                 // to the tab that was clicked.
                 onMouseDown={keepFocus}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    select(session.id);
+                    onSelect(session.id);
                   }
                 }}
                 role="tab"
@@ -868,11 +863,13 @@ function TabRail({
         <RemoteTabs
           active={active}
           api={api}
-          aside={aside}
           hp={thresholds.hp}
+          onClose={onClose}
           onSelect={onSelect}
-          remotes={remotes}
+          opened={opened}
+          sharers={sharers}
           stacked={stacked}
+          views={views}
         />
       </div>
     </div>

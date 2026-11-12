@@ -710,76 +710,8 @@ button.quest-banner-stop {
   top: auto;
 }
 
-.remote-console {
-  background: var(--glass-fill-near);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--ink-line));
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  inset: 0;
-  padding: 6px;
-  position: absolute;
-  z-index: 3;
-}
-
-.remote-console-head {
-  align-items: center;
-  color: var(--text-lo);
-  display: flex;
-  font-size: var(--font-micro);
-  gap: 8px;
-}
-
-.remote-console-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.remote-console-screen {
-  background: var(--ink-slate);
-  flex: 1 1 0;
-  min-height: 0;
-  position: relative;
-}
-
-.remote-console-line {
-  display: flex;
-  gap: 6px;
-}
-
-.remote-console-line > input {
-  flex: 1 1 auto;
-  font-family: var(--font-mono);
-  min-width: 0;
-}
-
-.remote-console-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.remote-console-actions > button {
-  font-family: var(--font-mono);
-  font-size: var(--font-micro);
-}
-
 .shared-control {
   flex: 0 0 auto;
-}
-
-/*
- * Set aside while its pane shows its own character (`remoteAside`): still
- * mounted and drawing, so the backlog is never asked for again, but out of
- * sight, out of the focus order and out of the pointer's way. Hidden rather
- * than `display: none`, which would leave the console nothing to measure.
- */
-.remote-console[data-aside] {
-  pointer-events: none;
-  visibility: hidden;
 }
 
 button.quest-banner-dismiss {
@@ -8404,6 +8336,26 @@ button.gear-fold:hover:not(:disabled) {
 .tab-rail .remote-tabs-refused {
   flex: 0 0 auto;
   margin: 2px 10px 0 18px;
+}
+
+/*
+ * Down to its circle column: the section's icon stands in the column, and the
+ * words beside it and any refusal show only once the rail is brought out, as
+ * a tab's name does.
+ */
+.workspace[data-tabs-hide] > .tab-rail[data-side='left'] .remote-tabs-head {
+  padding-left: var(--column-inset);
+}
+
+.workspace[data-tabs-hide] > .tab-rail[data-side='right'] .remote-tabs-head {
+  flex-direction: row-reverse;
+  padding-right: var(--column-inset);
+}
+
+.workspace[data-tabs-hide]
+  > .tab-rail:not(:hover, :focus-within, [data-held], :has([aria-expanded='true']))
+  :is(.remote-tabs-head > span, .remote-tabs-refused) {
+  visibility: hidden;
 }
 
 /*

@@ -397,14 +397,8 @@ function SessionTerminal({
     >
       {/* Over this pane rather than docked: `mudengine-ui` › quests, *the run is a banner*. */}
       <QuestRunBanner onSettled={focusConsole} onStop={stopRun} run={run} walk={walk} />
-      {/* Another player controlling this character, or this one controlling theirs (todo 20261031-1156-01). */}
-      <PeerControl
-        api={api}
-        fontStack={fontStack}
-        palette={palette}
-        session={session}
-        settings={settings}
-      />
+      {/* Another player controlling this character (todo 20261031-1156-01). */}
+      <PeerControl api={api} session={session} />
       <TerminalView
         fontStack={fontStack}
         index={index}

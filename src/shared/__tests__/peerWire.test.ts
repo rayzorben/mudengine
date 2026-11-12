@@ -11,6 +11,7 @@ import {
   MOST_SHARE_NAMES,
   PEER_DOWN_KINDS,
   PEER_UP_KINDS,
+  RELAY_PART_CHARS,
   type PeerDown,
   type PeerUp
 } from '../peerWire';
@@ -29,10 +30,8 @@ const ups: PeerUp[] = [
   { k: 'patch', peer, set: { level: 13 }, deep: {}, drop: [] },
   { k: 'leave', peer },
   { k: 'watch', peer, from: soul, key, on: true },
-  { k: 'act', peer, from: soul, key, id: 7, action: { v: 1, a: 'move', dir: 'n' } },
-  { k: 'text', peer, text: 'You are in the plaza.\r\n', to: null },
-  { k: 'text', peer, text: 'backlog', to: { name: 'Soul', key } },
-  { k: 'acted', peer, to: { name: 'Soul', key }, id: 7, answer: { r: 'done' } },
+  { k: 'call', peer, from: soul, key, part: { n: 7, text: '{"k":"invoke"}', more: false } },
+  { k: 'feed', peer, to: { name: 'Soul', key }, part: { n: 1, text: '{"k":"push"', more: true } },
   { k: 'release', peer, to: { name: 'Soul', key } }
 ];
 
@@ -56,9 +55,8 @@ const downs: PeerDown[] = [
   },
   { k: 'gone', from: peer, key, why: 'left' },
   { k: 'controllers', peer, to: [{ name: 'Soul', key }] },
-  { k: 'act', peer, by: { name: 'Soul', key }, id: 7, action: { v: 1, a: 'rest' } },
-  { k: 'text', from: peer, key, text: 'You are in the plaza.' },
-  { k: 'acted', from: peer, key, id: 7, answer: { r: 'refused', why: 'not now' } },
+  { k: 'call', peer, by: { name: 'Soul', key }, part: { n: 7, text: '', more: false } },
+  { k: 'feed', from: peer, key, part: { n: 2, text: 'x', more: false } },
   { k: 'released', from: peer, key, why: 'stopped' }
 ];
 
@@ -121,12 +119,14 @@ describe('the peer wire', () => {
       key,
       why: 'stopped'
     });
-    // An action or answer is relayed unread, so a field another build adds crosses whole.
-    const act = { k: 'act', peer, from: soul, key, id: 1, action: { v: 2, a: 'dance' } };
-    expect(asPeerUp(act)).toEqual(act);
-    expect(asPeerUp({ ...act, id: -1 })).toBeNull();
-    expect(asPeerUp({ ...act, action: { text: 'x'.repeat(5000) } })).toBeNull();
-    expect(asPeerUp({ k: 'text', peer, text: '', to: null })).toBeNull();
+    // A part is relayed unread, but its frame is bounded: a number, a slice no longer than a part, more or not.
+    const call = { k: 'call', peer, from: soul, key, part: { n: 1, text: 'x', more: false } };
+    expect(asPeerUp(call)).toEqual(call);
+    expect(asPeerUp({ ...call, part: { n: -1, text: 'x', more: false } })).toBeNull();
+    expect(
+      asPeerUp({ ...call, part: { n: 1, text: 'x'.repeat(RELAY_PART_CHARS + 1), more: false } })
+    ).toBeNull();
+    expect(asPeerUp({ ...call, part: { n: 1, text: 'x' } })).toBeNull();
   });
 
   it('tells a kind another build added from a frame that does not read', () => {

@@ -1,25 +1,22 @@
 /**
  * The sharer's half of remote control (todo 20261031-1156-01): who is
- * controlling each of this install's characters, their actions run or
- * refused, and the terminal text sent to them. Every frame is checked
- * against the character's own row for that player, the level at `control`
- * and the key pinned, whatever the gateway let through, so lowering a share
- * ends control on the next frame. Stop ends every controller of the
- * character until its player turns Allow remote control off and on again.
- * Each action, each refusal and each start and end is said in the
- * character's console; a refusal is written to its safety trace as well.
+ * controlling each of this install's characters. Each controller the gateway
+ * names is checked against the character's own row for that player, the
+ * level at `control` and the key pinned, whatever the gateway let through, so
+ * lowering a share ends control on the next frame; one allowed is given a
+ * window here (`RelayDesk`), and a call reaches the character only through
+ * it. Stop ends every controller of the character until its player turns
+ * Allow remote control off and on again. Each start and end is said in the
+ * character's console.
  */
-import type { SafetyDecision } from '../../shared/automation';
 import type { SessionId } from '../../shared/ipc';
 import type { PeerGrant } from '../../shared/peerGrant';
-import { asControlAction, type ControlAction, type ControlAnswer } from '../../shared/peerControl';
 import { peerKeyText, type PeerKey } from '../../shared/peers';
-import { PEER_MOST_TEXT, sameListener, type Listener } from '../../shared/peerWire';
+import { sameListener, type Listener } from '../../shared/peerWire';
 import { playerKey } from '../../shared/players';
-import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import type { ControlledFrame, PeerLink } from './PeerLink';
-import { TextTail } from './TextTail';
+import type { RelayDesk } from './RelayDesk';
 
 /** A character this install claims, as control reads it. */
 export interface ControlledCharacter {
@@ -34,15 +31,11 @@ export interface ControlDeskDeps {
   characterOf(peer: PeerKey): ControlledCharacter | null;
   /** The session `id` while it is claimed, or null. */
   characterAt(id: SessionId): ControlledCharacter | null;
-  run(id: SessionId, action: ControlAction, by: string): Promise<ControlAnswer>;
-  link: Pick<PeerLink, 'text' | 'answer' | 'release'>;
+  link: Pick<PeerLink, 'release'>;
+  relay: Pick<RelayDesk, 'open' | 'close' | 'closeAll' | 'heard'>;
   notice(id: SessionId, message: string): void;
-  refused(id: SessionId, decision: SafetyDecision): void;
   /** Who controls a character changed, for its window. */
   changed(): void;
-  /** The terminal text kept for a controller who starts watching. */
-  backlogChars(): number;
-  now(): number;
 }
 
 interface Desk {
@@ -50,39 +43,6 @@ interface Desk {
   controllers: Listener[];
   /** Names stopped by the player, by `playerKey`, until the row leaves `control`. */
   stopped: Set<string>;
-  backlog: TextTail;
-}
-
-/** The text in frames the gateway takes. */
-function* pieces(text: string): Generator<string> {
-  for (let at = 0; at < text.length; at += PEER_MOST_TEXT)
-    yield text.slice(at, at + PEER_MOST_TEXT);
-}
-
-/** What an action did, as the character's player reads it. */
-function described(action: ControlAction): string {
-  switch (action.a) {
-    case 'line':
-      return t('peers.control.what.line', { text: action.text });
-    case 'move':
-      return t('peers.control.what.move', { dir: action.dir });
-    case 'rest':
-      return t('peers.control.what.rest');
-    case 'stop':
-      return t('peers.control.what.stop');
-    case 'play':
-      return action.loop === null
-        ? t('peers.control.what.playStopped')
-        : t('peers.control.what.play', { loop: action.loop });
-    case 'switch':
-      return action.on
-        ? t('peers.control.what.switchOn', { name: action.name })
-        : t('peers.control.what.switchOff', { name: action.name });
-    default: {
-      const never: never = action;
-      return never;
-    }
-  }
 }
 
 export class ControlDesk {
@@ -96,23 +56,21 @@ export class ControlDesk {
       case 'controllers':
         this.controllers(character, frame.peer, frame.to);
         return;
-      case 'act':
-        void this.act(character, frame.peer, frame.by, frame.id, frame.action);
+      case 'call': {
+        // A call from anyone this character's row no longer allows goes nowhere.
+        const desk = character === null ? undefined : this.desks.get(character.id);
+        if (character === null || desk === undefined) return;
+        const controlling = desk.controllers.some((each) => sameListener(each, frame.by));
+        if (controlling && this.allows(character, desk, frame.by)) {
+          this.deps.relay.heard(frame.peer, frame.by, frame.part);
+        }
         return;
+      }
       default: {
         const never: never = frame;
         return never;
       }
     }
-  }
-
-  /** What the character's terminal painted: kept, and sent while someone controls it. */
-  painted(id: SessionId, text: string): void {
-    const desk = this.desks.get(id);
-    if (desk === undefined || text.length === 0) return;
-    desk.backlog.append(text);
-    if (desk.controllers.length === 0) return;
-    for (const piece of pieces(text)) this.deps.link.text(desk.peer, piece, null);
   }
 
   /** The players controlling `id` now. */
@@ -127,7 +85,7 @@ export class ControlDesk {
     const names = desk.controllers.map((each) => each.name);
     for (const controller of desk.controllers) {
       desk.stopped.add(playerKey(controller.name));
-      this.deps.link.release(desk.peer, controller);
+      this.end(desk, controller);
     }
     desk.controllers = [];
     this.deps.notice(id, t('peers.control.stopped', { names: names.join(', ') }));
@@ -141,7 +99,9 @@ export class ControlDesk {
    */
   regrant(ids: readonly SessionId[]): void {
     for (const id of [...this.desks.keys()]) {
-      if (!ids.includes(id)) this.desks.delete(id);
+      if (ids.includes(id)) continue;
+      this.desks.delete(id);
+      this.deps.relay.closeAll(id);
     }
     for (const id of ids) {
       const character = this.deps.characterAt(id);
@@ -152,7 +112,7 @@ export class ControlDesk {
       }
       const kept = desk.controllers.filter((each) => this.allows(character, desk, each));
       for (const gone of desk.controllers.filter((each) => !kept.includes(each))) {
-        this.deps.link.release(desk.peer, gone);
+        this.end(desk, gone);
         this.deps.notice(id, t('peers.control.ended', { from: gone.name }));
       }
       if (kept.length !== desk.controllers.length) this.deps.changed();
@@ -167,14 +127,21 @@ export class ControlDesk {
       this.deps.notice(id, t('peers.control.lost'));
       desk.controllers = [];
     }
+    this.deps.relay.closeAll(null);
     this.deps.changed();
+  }
+
+  /** `controller`'s control of the character `desk` is for ends, at the gateway and here. */
+  private end(desk: Desk, controller: Listener): void {
+    this.deps.link.release(desk.peer, controller);
+    this.deps.relay.close(desk.peer, controller);
   }
 
   private deskOf(character: ControlledCharacter): Desk {
     const held = this.desks.get(character.id);
     if (held !== undefined && peerKeyText(held.peer) === peerKeyText(character.peer)) return held;
-    const backlog = new TextTail(this.deps.backlogChars);
-    const desk: Desk = { peer: character.peer, controllers: [], stopped: new Set(), backlog };
+    if (held !== undefined) this.deps.relay.closeAll(character.id);
+    const desk: Desk = { peer: character.peer, controllers: [], stopped: new Set() };
     this.desks.set(character.id, desk);
     return desk;
   }
@@ -207,66 +174,16 @@ export class ControlDesk {
     for (const arrived of allowed.filter(
       (each) => !desk.controllers.some((was) => sameListener(was, each))
     )) {
+      this.deps.relay.open(character.id, peer, arrived);
       this.deps.notice(character.id, t('peers.control.started', { from: arrived.name }));
-      for (const piece of pieces(desk.backlog.text())) this.deps.link.text(peer, piece, arrived);
     }
     for (const gone of desk.controllers.filter(
       (was) => !allowed.some((each) => sameListener(was, each))
     )) {
+      this.deps.relay.close(peer, gone);
       this.deps.notice(character.id, t('peers.control.ended', { from: gone.name }));
     }
     desk.controllers = allowed;
     this.deps.changed();
-  }
-
-  private async act(
-    character: ControlledCharacter | null,
-    peer: PeerKey,
-    by: Listener,
-    id: number,
-    raw: Record<string, unknown>
-  ): Promise<void> {
-    const answer = (reply: ControlAnswer): void =>
-      this.deps.link.answer(peer, by, id, { ...reply });
-    if (character === null) return answer({ r: 'refused', why: t('peers.control.notHere') });
-    const desk = this.deskOf(character);
-    const controlling = desk.controllers.some((each) => sameListener(each, by));
-    if (!controlling || !this.allows(character, desk, by)) {
-      return answer(this.refuse(character.id, by.name, t('peers.control.notGiven')));
-    }
-    const read = asControlAction(raw);
-    if (!read.ok) {
-      const why =
-        read.why === 'unknown'
-          ? t('peers.control.unknownAction', { name: read.name })
-          : read.why === 'version'
-            ? t('peers.control.newerAction')
-            : t('peers.control.malformed');
-      return answer(this.refuse(character.id, by.name, why));
-    }
-    this.deps.notice(
-      character.id,
-      t('peers.control.sent', { from: by.name, what: described(read.action) })
-    );
-    try {
-      const reply = await this.deps.run(character.id, read.action, by.name);
-      if (reply.r === 'refused') this.refuse(character.id, by.name, reply.why);
-      answer(reply);
-    } catch (error) {
-      answer(this.refuse(character.id, by.name, errorMessage(error)));
-    }
-  }
-
-  /** Said in the console and the safety trace; the answer the controller is sent. */
-  private refuse(id: SessionId, from: string, why: string): ControlAnswer {
-    this.deps.notice(id, t('peers.control.refused', { from, why }));
-    this.deps.refused(id, {
-      at: this.deps.now(),
-      action: t('peers.control.action'),
-      because: t('peers.control.because', { from }),
-      acted: false,
-      refused: why
-    });
-    return { r: 'refused', why };
   }
 }

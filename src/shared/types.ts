@@ -113,6 +113,14 @@ export function asConnectionTarget(value: unknown): ConnectionTarget | null {
 }
 
 export type ConnectionPhase = 'idle' | 'connecting' | 'connected' | 'closing' | 'closed' | 'error';
+export const CONNECTION_PHASES: readonly ConnectionPhase[] = [
+  'idle',
+  'connecting',
+  'connected',
+  'closing',
+  'closed',
+  'error'
+];
 
 /**
  * Whether a Connect waits for this phase to end. Only a close does: a dial

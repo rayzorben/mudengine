@@ -712,20 +712,18 @@ const TUNING_DEFAULTS = {
     mostBits: 28,
     /** How often the gateway's socket is pinged; one that has not answered the last is dropped. */
     pingEveryMs: 30_000,
-    /** What may wait unsent to the gateway before the socket is closed: sixteen whole sheets. */
-    maxBufferedBytes: 1_048_576,
+    /**
+     * What may wait unsent to the gateway before the socket is closed: a
+     * controlled character's largest answer (`RELAY_MOST_MESSAGE_CHARS`) twice.
+     */
+    maxBufferedBytes: 8_388_608,
     /** Frames shorter than this go uncompressed; a change to a sheet is about 140 B. */
     deflateMinBytes: 512,
     /** Other players' characters heard of at once; past it the one heard of longest ago goes. */
     mostSharers: 256,
     /**
-     * Remote control's terminal text kept on each side, for a controller who
-     * opens it: the console's 300 lines at 80 columns (`view.consoleLiveLines`).
-     */
-    controlBacklogChars: 24_000,
-    /**
-     * How long an action waits for the sharer's answer: the 20 s a half-typed
-     * line may hold the sharer's queue, and the way there and back.
+     * How long a call to a controlled character waits for its client's
+     * answer: a route or a survey worked out there, and the way there and back.
      */
     controlAnswerMs: 30_000
   },

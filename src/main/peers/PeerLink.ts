@@ -9,8 +9,8 @@
  * empty change every `freshEveryMs` so a receiver can tell a quiet sharer
  * from a lost one. What the gateway relays from other sharers goes to
  * `heard`; a loss of the socket is `lost`, so nothing stays at its last value.
- * Remote control's frames go out through `watch`, `sendAction`, `text`, `answer` and
- * `release`, and come in to `controlled` (as the sharer) and `controlling`.
+ * Remote control's frames go out through `watch`, `call`, `feed` and `release`,
+ * and come in to `controlled` (as the sharer) and `controlling`.
  */
 import { createHmac } from 'node:crypto';
 
@@ -30,6 +30,7 @@ import {
   type PeerUp,
   type Listener,
   type RefusedWhy,
+  type RelayPart,
   type ShareEntry
 } from '../../shared/peerWire';
 import { errorMessage, sameJson } from '../../shared/values';
@@ -45,9 +46,9 @@ export interface Claimant {
 }
 
 /** The control frames a sharer is sent. */
-export type ControlledFrame = Extract<PeerDown, { k: 'controllers' | 'act' }>;
+export type ControlledFrame = Extract<PeerDown, { k: 'controllers' | 'call' }>;
 /** The control frames a controller is sent. */
-export type ControllingFrame = Extract<PeerDown, { k: 'text' | 'acted' | 'released' }>;
+export type ControllingFrame = Extract<PeerDown, { k: 'feed' | 'released' }>;
 
 /** A character another install shares, by its claim and key. */
 export interface Watched {
@@ -204,25 +205,18 @@ export class PeerLink {
     if (watched !== null) this.send({ k: 'watch', peer, ...watched, on: true });
   }
 
-  /** An action `peer` sends the character it watches; false when no link carries it now. */
-  sendAction(peer: PeerKey, id: number, action: Record<string, unknown>): boolean {
+  /** One part of a call `peer` makes to the character it watches; false when no link carries it now. */
+  call(peer: PeerKey, part: RelayPart): boolean {
     const held = this.held.get(peerKeyText(peer));
     if (held?.claimed !== true || held.watching === null) return false;
-    this.send({ k: 'act', peer, ...held.watching, id, action });
+    this.send({ k: 'call', peer, ...held.watching, part });
     return true;
   }
 
-  /** `peer`'s terminal text, to every controller or to `to` alone. */
-  text(peer: PeerKey, text: string, to: Listener | null): void {
+  /** One part of `peer`'s answer or push, to the controller `to`. */
+  feed(peer: PeerKey, to: Listener, part: RelayPart): void {
     if (this.held.get(peerKeyText(peer))?.claimed === true)
-      this.send({ k: 'text', peer, text, to });
-  }
-
-  /** `peer`'s answer to one controller's action. */
-  answer(peer: PeerKey, to: Listener, id: number, answer: Record<string, unknown>): void {
-    if (this.held.get(peerKeyText(peer))?.claimed === true) {
-      this.send({ k: 'acted', peer, to, id, answer });
-    }
+      this.send({ k: 'feed', peer, to, part });
   }
 
   /** `peer`'s player ends `to`'s control. */
@@ -428,11 +422,10 @@ export class PeerLink {
         this.deps.heard(frame);
         return;
       case 'controllers':
-      case 'act':
+      case 'call':
         this.deps.controlled(frame);
         return;
-      case 'text':
-      case 'acted':
+      case 'feed':
       case 'released':
         this.deps.controlling(frame);
         return;

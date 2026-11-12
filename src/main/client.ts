@@ -128,7 +128,8 @@ import { pngOfDataUrl } from './art/pngOfDataUrl';
 import { handlePortraitFiles } from './art/portraitFiles';
 import { wireArt, type Art } from './art/wiring';
 import { wirePeers, type Peers } from './peers/wiring';
-import { runControl, type ControlledSession } from './peers/controlActions';
+import { screenLine } from './peers/screenLine';
+import { relayTransport, type HandlerTable } from './peers/relayTransport';
 import { handleControlChannels } from './peers/controlChannels';
 import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
 import { NO_PORTRAIT } from '../shared/portrait';
@@ -276,6 +277,8 @@ import {
  * host has been handed over.
  */
 let platform: Host;
+/** Every handler by channel, for a call a controller relays (`RelayDesk`). */
+let handlers: HandlerTable;
 
 /**
  * Where everything the client owns lives. Decided once, before anything reads.
@@ -1257,6 +1260,8 @@ function typedFromItsTab(caller: Caller, session: SessionId): SessionSlot | null
   const slot = host?.get(session);
   if (!slot) return null;
   if (workspace?.viewsWithTab(session, [caller.windowId], railOf).length === 1) return slot;
+  // A player controlling it types from its own window there (`RelayDesk`).
+  if (peers?.isRelayWindow(caller.windowId, session) === true) return slot;
   refuseTyped(caller, t('app.input.notThisWindow', { name: nameOfCharacter(session) }));
   return null;
 }
@@ -1567,10 +1572,14 @@ function summariesFor(windowId: number): SessionSummary[] {
    * directory happened to sort.
    */
   const summaries = new Map(all.map((entry) => [entry.id, entry] as const));
+  // Characters controlled from here sit on the main rail, after this install's own.
+  const remote =
+    windowId === (platform.mainWindowId() ?? windowId) ? (peers?.remoteSummaries() ?? []) : [];
   return workspace
     .sessionsFor(windowId)
     .map((id) => summaries.get(id))
-    .filter((entry): entry is SessionSummary => entry !== undefined);
+    .filter((entry): entry is SessionSummary => entry !== undefined)
+    .concat(remote);
 }
 
 /**
@@ -1787,19 +1796,6 @@ function setSwitch(session: SessionId, name: AutomationSwitch, on: boolean): str
   return result.ok ? null : result.error;
 }
 
-/** The character a remote control action runs on, as `runControl` reaches it. */
-function controlledAt(id: SessionId): ControlledSession | null {
-  const manager = host?.get(id)?.manager;
-  if (manager === undefined) return null;
-  return {
-    ...{ queue: manager.queue, reports: manager.reports },
-    lineMax: tuning().queue.cardCommandMaxChars,
-    stopMoving: (by) => manager.stopMoving(by),
-    play: (loop, confirmed) => playPlaced(() => host?.get(id)?.manager, loop, confirmed),
-    setSwitch: (name, on) => setSwitch(id, name, on)
-  };
-}
-
 /** The sharing gateway's client: off until `peers.enabled` and a share (todo 20261031-1156-01). */
 function createPeers(): Peers {
   return wirePeers({
@@ -1817,14 +1813,17 @@ function createPeers(): Peers {
     publish: (id, view) => windows.toAll(Push.shares, { session: id, payload: view }),
     say: (id, message) => pushNotice({ session: id, message }),
     announce: (message) => announce('peers', message, 'log'),
-    runControl: (id, action, by) => {
-      const session = controlledAt(id);
-      return session === null
-        ? Promise.resolve({ r: 'refused', why: t('app.session.notConnected') })
-        : runControl(session, action, by);
+    handlers,
+    windows,
+    screen: (id, line, by) => {
+      const manager = host?.get(id)?.manager;
+      return manager === undefined
+        ? t('app.session.notConnected')
+        : screenLine(line, by, manager.reports);
     },
     refused: (id, decision) => host?.get(id)?.manager.reports.decided(decision),
-    controlText: (id, piece) => windows.toAll(Push.controlText, { session: id, payload: piece })
+    nameOf: nameOfCharacter,
+    rostersChanged: publishRosters
   });
 }
 
@@ -1910,7 +1909,6 @@ function createHost(): SessionHost {
       art?.rooms.observe(id, state);
       peers?.observe(id, state);
     },
-    consoleSeen: (id, text) => peers?.painted(id, text),
     // Before the index is read it is taken to have the room, so no look is spent on one it has.
     roomArtShipped: (realm, map, room) =>
       art !== null && (!art.shipped.ready || art.shipped.drawingOf(realm, map, room) !== null),
@@ -3927,7 +3925,13 @@ export function startClient(
   host: Host,
   built: { simulatorWorker: string; artWorker: string; lapWorker: string }
 ): void {
-  platform = host;
+  const relayed = relayTransport(host.transport, () => peers?.relay ?? null);
+  handlers = relayed.handlers;
+  // Every handler goes through the relay: both hosts are closures, so the proxy reaches each as itself.
+  platform = new Proxy(host, {
+    get: (target, key, receiver) =>
+      key === 'transport' ? relayed.transport : Reflect.get(target, key, receiver)
+  });
   simulatorWorker = built.simulatorWorker;
   artWorker = built.artWorker;
   lapPlanner = new LapPlanner(built.lapWorker, (message) => announce('routes', message));

@@ -19,6 +19,7 @@ import {
   MOST_SHARE_KEYS,
   type Listener,
   type RefusedWhy,
+  type RelayPart,
   type ShareEntry,
   type SheetPatch
 } from '../shared/peerWire';
@@ -152,32 +153,20 @@ export class PeerRouter {
     return claim === null ? 'not-claimed' : this.controls.watch(claim, from, key, on);
   }
 
-  act(
+  call(
     line: InstallLine,
     peer: PeerKey,
     from: PeerKey,
     key: string,
-    id: number,
-    action: Record<string, unknown>
+    part: RelayPart
   ): RefusedWhy | null {
     const claim = this.ownedClaim(line, peer);
-    return claim === null ? 'not-claimed' : this.controls.act(claim, from, key, id, action);
+    return claim === null ? 'not-claimed' : this.controls.call(claim, from, key, part);
   }
 
-  text(line: InstallLine, peer: PeerKey, text: string, to: Listener | null): RefusedWhy | null {
+  feed(line: InstallLine, peer: PeerKey, to: Listener, part: RelayPart): RefusedWhy | null {
     const claim = this.ownedClaim(line, peer);
-    return claim === null ? 'not-claimed' : this.controls.text(claim, text, to);
-  }
-
-  acted(
-    line: InstallLine,
-    peer: PeerKey,
-    to: Listener,
-    id: number,
-    answer: Record<string, unknown>
-  ): RefusedWhy | null {
-    const claim = this.ownedClaim(line, peer);
-    return claim === null ? 'not-claimed' : this.controls.acted(claim, to, id, answer);
+    return claim === null ? 'not-claimed' : this.controls.feed(claim, to, part);
   }
 
   release(line: InstallLine, peer: PeerKey, to: Listener): RefusedWhy | null {

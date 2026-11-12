@@ -3,13 +3,13 @@
  * watches a sharing claim only while that sharer's list gives its name
  * `control` under its key; the router asks again on every change to the
  * list or the claims, and a watch the list no longer allows is released. A
- * watcher's actions go to the sharer, and the sharer's terminal text and
- * answers to its watchers, all relayed without being read. The sharer is
+ * watcher's calls go to the sharer, and the sharer's answers and pushes to
+ * the watcher each is for, all relayed without being read (`peerRelay.ts`). The sharer is
  * told who is watching (`controllers`), and is the one that runs or refuses
- * each action, against its own grant as well.
+ * each call, against its own grant as well.
  */
 import { peerKeyText, type PeerKey } from '../shared/peers';
-import type { Listener, RefusedWhy, ReleasedWhy } from '../shared/peerWire';
+import type { Listener, RefusedWhy, RelayPart, ReleasedWhy } from '../shared/peerWire';
 import { claimId, type Claim } from './claims';
 
 /** What the routes ask the router. */
@@ -54,38 +54,23 @@ export class ControlRoutes {
     return null;
   }
 
-  /** An action from a watcher, to the sharer it watches. */
-  act(
-    controller: Claim,
-    from: PeerKey,
-    key: string,
-    id: number,
-    action: Record<string, unknown>
-  ): RefusedWhy | null {
+  /** A watcher's call, to the sharer it watches. */
+  call(controller: Claim, from: PeerKey, key: string, part: RelayPart): RefusedWhy | null {
     const sharerId = claimId(peerKeyText(from), key);
     const sharer = this.claims.claimOf(sharerId);
     const controllerId = claimId(controller.name, controller.key);
     if (sharer === undefined || this.watchers.get(sharerId)?.has(controllerId) !== true) {
       return 'not-shared';
     }
-    sharer.line.send({ k: 'act', peer: sharer.peer, by: listenerOf(controller), id, action });
+    sharer.line.send({ k: 'call', peer: sharer.peer, by: listenerOf(controller), part });
     return null;
   }
 
-  /** The sharer's terminal text, to every watcher or to `to` alone. */
-  text(sharer: Claim, text: string, to: Listener | null): null {
+  /** The sharer's answer or push, to the one watcher it is for. */
+  feed(sharer: Claim, to: Listener, part: RelayPart): null {
     const { peer: from, key } = sharer;
     for (const watcher of this.watchersOf(sharer, to)) {
-      watcher.line.send({ k: 'text', from, key, text });
-    }
-    return null;
-  }
-
-  /** The sharer's answer to one watcher's action. */
-  acted(sharer: Claim, to: Listener, id: number, answer: Record<string, unknown>): null {
-    const { peer: from, key } = sharer;
-    for (const watcher of this.watchersOf(sharer, to)) {
-      watcher.line.send({ k: 'acted', from, key, id, answer });
+      watcher.line.send({ k: 'feed', from, key, part });
     }
     return null;
   }
@@ -125,13 +110,9 @@ export class ControlRoutes {
     this.watching.delete(id);
   }
 
-  private *watchersOf(sharer: Claim, to: Listener | null): Generator<Claim> {
+  private *watchersOf(sharer: Claim, to: Listener): Generator<Claim> {
     const watchers = this.watchers.get(claimId(sharer.name, sharer.key));
     if (watchers === undefined) return;
-    if (to === null) {
-      yield* watchers.values();
-      return;
-    }
     const one = watchers.get(
       claimId(peerKeyText({ realm: sharer.peer.realm, name: to.name }), to.key)
     );

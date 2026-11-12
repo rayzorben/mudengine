@@ -134,23 +134,46 @@ export const sameListener = (a: Listener, b: Listener): boolean =>
 export type SheetPatch = Pick<RpcPatch, 'set' | 'deep' | 'drop'>;
 
 /**
- * The longest run of terminal text one frame carries. The game sends 338 B/s
- * on average and 8.8 KB in its busiest second (the todo's
- * `terminal-bytes.mjs`); a backlog goes in frames of this size.
+ * A relayed message is cut into parts of at most this many characters: JSON
+ * escapes a terminal's control bytes six-fold at worst, and a part's frame
+ * stays under `PEER_MAX_MESSAGE_BYTES`.
  */
-export const PEER_MOST_TEXT = 16_384;
+export const RELAY_PART_CHARS = 8_192;
 
-/** The largest action or answer one frame carries: a line typed and a name or two. */
-const MOST_CONTROL_BYTES = 4096;
-
-/** Which action a controller sent, so the sharer's answer finds it. */
-const MOST_ACTION_ID = 2 ** 31;
+/** Message numbers wrap here. */
+export const MOST_PART_NUMBER = 2 ** 31;
 
 /**
- * Install to gateway. The control frames (`peerControl.ts`): a controller's
- * `watch` and `act` name the sharer by its claim and key; a sharer's `text`,
- * `acted` and `release` name the controller as a `Listener`. The gateway
- * relays `action` and `answer` without reading them.
+ * One frame's share of a relayed message (`peerRelay.ts`): the message's
+ * number, a slice of its text, and whether more follow. The gateway relays
+ * parts without reading them.
+ */
+export interface RelayPart {
+  readonly n: number;
+  readonly text: string;
+  readonly more: boolean;
+}
+
+/** A part off the wire, or null. */
+export function asRelayPart(value: unknown): RelayPart | null {
+  if (!isRecord(value)) return null;
+  const { n, text, more } = value;
+  return typeof n === 'number' &&
+    Number.isInteger(n) &&
+    n >= 0 &&
+    n < MOST_PART_NUMBER &&
+    typeof text === 'string' &&
+    text.length <= RELAY_PART_CHARS &&
+    typeof more === 'boolean'
+    ? { n, text, more }
+    : null;
+}
+
+/**
+ * Install to gateway. The control frames (`peerRelay.ts`): a controller's
+ * `watch` and `call` name the sharer by its claim and key; a sharer's `feed`
+ * and `release` name the controller as a `Listener`. The gateway relays each
+ * part without reading it.
  */
 export type PeerUp =
   | { k: 'hello'; token: string; time: number; nonce: string; sig: string }
@@ -161,17 +184,10 @@ export type PeerUp =
   | ({ k: 'patch'; peer: PeerKey } & SheetPatch)
   | { k: 'leave'; peer: PeerKey }
   | { k: 'watch'; peer: PeerKey; from: PeerKey; key: string; on: boolean }
-  | {
-      k: 'act';
-      peer: PeerKey;
-      from: PeerKey;
-      key: string;
-      id: number;
-      action: Record<string, unknown>;
-    }
-  /** Terminal text to every controller, or to `to` alone (the backlog a new one is sent). */
-  | { k: 'text'; peer: PeerKey; text: string; to: Listener | null }
-  | { k: 'acted'; peer: PeerKey; to: Listener; id: number; answer: Record<string, unknown> }
+  /** A controller's call to the character it controls. */
+  | { k: 'call'; peer: PeerKey; from: PeerKey; key: string; part: RelayPart }
+  /** A sharer's answer or push, to one controller. */
+  | { k: 'feed'; peer: PeerKey; to: Listener; part: RelayPart }
   | { k: 'release'; peer: PeerKey; to: Listener };
 
 /** Every kind of install frame, so a kind another build added is told from a frame that does not read. */
@@ -184,9 +200,8 @@ export const PEER_UP_KINDS: readonly PeerUp['k'][] = [
   'patch',
   'leave',
   'watch',
-  'act',
-  'text',
-  'acted',
+  'call',
+  'feed',
   'release'
 ];
 
@@ -259,9 +274,8 @@ export type PeerDown =
   | { k: 'gone'; from: PeerKey; key: string; why: GoneWhy }
   /** Who is watching `peer`'s terminal and may send it actions. */
   | { k: 'controllers'; peer: PeerKey; to: Listener[] }
-  | { k: 'act'; peer: PeerKey; by: Listener; id: number; action: Record<string, unknown> }
-  | { k: 'text'; from: PeerKey; key: string; text: string }
-  | { k: 'acted'; from: PeerKey; key: string; id: number; answer: Record<string, unknown> }
+  | { k: 'call'; peer: PeerKey; by: Listener; part: RelayPart }
+  | { k: 'feed'; from: PeerKey; key: string; part: RelayPart }
   | { k: 'released'; from: PeerKey; key: string; why: ReleasedWhy };
 
 /** Every kind of gateway frame (`isUnknownKind`). */
@@ -278,9 +292,8 @@ export const PEER_DOWN_KINDS: readonly PeerDown['k'][] = [
   'patch',
   'gone',
   'controllers',
-  'act',
-  'text',
-  'acted',
+  'call',
+  'feed',
   'released'
 ];
 
@@ -316,18 +329,6 @@ function shareEntries(value: unknown): ShareEntry[] | null {
   return value.map(asShareEntry).filter((each): each is ShareEntry => each !== null);
 }
 
-const isActionId = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < MOST_ACTION_ID;
-
-/** An action or an answer, relayed unread: a record, bounded. */
-function controlBody(value: unknown): Record<string, unknown> | null {
-  if (!isRecord(value)) return null;
-  return JSON.stringify(value).length <= MOST_CONTROL_BYTES ? value : null;
-}
-
-const isText = (value: unknown): value is string =>
-  typeof value === 'string' && value.length > 0 && value.length <= PEER_MOST_TEXT;
-
 /** The control frames an install sends, each read whole or not at all. */
 function asControlUp(
   k: unknown,
@@ -336,7 +337,7 @@ function asControlUp(
 ): PeerUp | null {
   switch (k) {
     case 'watch':
-    case 'act': {
+    case 'call': {
       const from = asPeerKey(value['from']);
       const key = value['key'];
       if (from === null || !isPublicKey(key)) return null;
@@ -344,25 +345,16 @@ function asControlUp(
         const on = value['on'];
         return typeof on === 'boolean' ? { k, peer, from, key, on } : null;
       }
-      const action = controlBody(value['action']);
-      const id = value['id'];
-      return action !== null && isActionId(id) ? { k, peer, from, key, id, action } : null;
+      const part = asRelayPart(value['part']);
+      return part === null ? null : { k, peer, from, key, part };
     }
-    case 'text': {
-      const text = value['text'];
-      const named = value['to'] ?? null;
-      const to = named === null ? null : asListener(named);
-      if (!isText(text) || (named !== null && to === null)) return null;
-      return { k, peer, text, to };
-    }
-    case 'acted':
+    case 'feed':
     case 'release': {
       const to = asListener(value['to']);
       if (to === null) return null;
       if (k === 'release') return { k, peer, to };
-      const answer = controlBody(value['answer']);
-      const id = value['id'];
-      return answer !== null && isActionId(id) ? { k, peer, to, id, answer } : null;
+      const part = asRelayPart(value['part']);
+      return part === null ? null : { k, peer, to, part };
     }
     default:
       return null;
@@ -419,7 +411,7 @@ export function asPeerDown(value: unknown): PeerDown | null {
     const why = memberOf(value['why'], REFUSED_WHYS);
     return why === null ? null : { k, why };
   }
-  if (k === 'controllers' || k === 'act') {
+  if (k === 'controllers' || k === 'call') {
     const peer = asPeerKey(value['peer']);
     if (peer === null) return null;
     if (k === 'controllers') {
@@ -427,9 +419,8 @@ export function asPeerDown(value: unknown): PeerDown | null {
       return to === null ? null : { k, peer, to };
     }
     const by = asListener(value['by']);
-    const action = controlBody(value['action']);
-    const id = value['id'];
-    return by !== null && action !== null && isActionId(id) ? { k, peer, by, id, action } : null;
+    const part = asRelayPart(value['part']);
+    return by !== null && part !== null ? { k, peer, by, part } : null;
   }
   if (k === 'challenge' || k === 'claimed' || k === 'unclaimed' || k === 'audience') {
     const peer = asPeerKey(value['peer']);
@@ -473,14 +464,9 @@ export function asPeerDown(value: unknown): PeerDown | null {
       const why = memberOf(value['why'], GONE_WHYS);
       return why === null ? null : { k, from, key, why };
     }
-    case 'text': {
-      const text = value['text'];
-      return isText(text) ? { k, from, key, text } : null;
-    }
-    case 'acted': {
-      const answer = controlBody(value['answer']);
-      const id = value['id'];
-      return answer !== null && isActionId(id) ? { k, from, key, id, answer } : null;
+    case 'feed': {
+      const part = asRelayPart(value['part']);
+      return part === null ? null : { k, from, key, part };
     }
     case 'released': {
       const why = memberOf(value['why'], RELEASED_WHYS);

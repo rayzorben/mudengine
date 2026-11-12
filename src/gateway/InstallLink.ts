@@ -175,12 +175,10 @@ export class InstallLink implements InstallLine {
         return router.leave(this, frame.peer);
       case 'watch':
         return router.watch(this, frame.peer, frame.from, frame.key, frame.on);
-      case 'act':
-        return router.act(this, frame.peer, frame.from, frame.key, frame.id, frame.action);
-      case 'text':
-        return router.text(this, frame.peer, frame.text, frame.to);
-      case 'acted':
-        return router.acted(this, frame.peer, frame.to, frame.id, frame.answer);
+      case 'call':
+        return router.call(this, frame.peer, frame.from, frame.key, frame.part);
+      case 'feed':
+        return router.feed(this, frame.peer, frame.to, frame.part);
       case 'release':
         return router.release(this, frame.peer, frame.to);
       default: {

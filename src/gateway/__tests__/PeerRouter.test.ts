@@ -249,7 +249,7 @@ describe('the router', () => {
 
 const control = (name: string, keys: string[]): ShareEntry => ({ name, share: 'control', keys });
 const SOUL = { name: 'Soul', key: KEY_S };
-const MOVE = { v: 1, a: 'move', dir: 'n' };
+const PART = { n: 1, text: '{"k":"invoke"}', more: false };
 
 /** Brakkle sharing with Soul at `level`, both claimed, every frame so far taken. */
 function sharing(level: 'state' | 'control'): ReturnType<typeof setUp> {
@@ -286,16 +286,14 @@ describe('remote control through the router', () => {
     expect(atState.receiver.take()).toEqual([
       { k: 'released', from: brakkle, key: KEY_B, why: 'unshared' }
     ]);
-    expect(atState.router.act(atState.receiver, soul, brakkle, KEY_B, 1, MOVE)).toBe('not-shared');
+    expect(atState.router.call(atState.receiver, soul, brakkle, KEY_B, PART)).toBe('not-shared');
     expect(atState.sharer.heard).toEqual([]);
 
     const atControl = sharing('control');
     atControl.router.watch(atControl.receiver, soul, brakkle, KEY_B, true);
     atControl.sharer.take();
-    expect(atControl.router.act(atControl.receiver, soul, brakkle, KEY_B, 1, MOVE)).toBeNull();
-    expect(atControl.sharer.take()).toEqual([
-      { k: 'act', peer: brakkle, by: SOUL, id: 1, action: MOVE }
-    ]);
+    expect(atControl.router.call(atControl.receiver, soul, brakkle, KEY_B, PART)).toBeNull();
+    expect(atControl.sharer.take()).toEqual([{ k: 'call', peer: brakkle, by: SOUL, part: PART }]);
   });
 
   it('refuses a watch under a key the grant did not pin', () => {
@@ -310,25 +308,19 @@ describe('remote control through the router', () => {
       key: KEY_B,
       why: 'unshared'
     });
-    expect(router.act(stranger, soul, brakkle, KEY_B, 1, MOVE)).toBe('not-shared');
-    expect(sharer.kinds()).not.toContain('act');
+    expect(router.call(stranger, soul, brakkle, KEY_B, PART)).toBe('not-shared');
+    expect(sharer.kinds()).not.toContain('call');
   });
 
-  it('relays text to every watcher or one, and an answer only to a watcher', () => {
+  it('relays a feed only to the watcher it is for', () => {
     const { router, sharer, receiver } = sharing('control');
     const other = new Line();
     router.claim(other, rayzor, KEY_X);
     router.watch(receiver, soul, brakkle, KEY_B, true);
-    expect(router.text(sharer, brakkle, 'You are in the plaza.', null)).toBeNull();
-    expect(router.text(sharer, brakkle, 'backlog', SOUL)).toBeNull();
-    expect(router.acted(sharer, brakkle, SOUL, 1, { r: 'done' })).toBeNull();
-    expect(receiver.take()).toEqual([
-      { k: 'text', from: brakkle, key: KEY_B, text: 'You are in the plaza.' },
-      { k: 'text', from: brakkle, key: KEY_B, text: 'backlog' },
-      { k: 'acted', from: brakkle, key: KEY_B, id: 1, answer: { r: 'done' } }
-    ]);
-    router.acted(sharer, brakkle, { name: 'Rayzor', key: KEY_X }, 2, { r: 'done' });
-    expect(other.kinds()).not.toContain('acted');
+    expect(router.feed(sharer, brakkle, SOUL, PART)).toBeNull();
+    expect(receiver.take()).toEqual([{ k: 'feed', from: brakkle, key: KEY_B, part: PART }]);
+    router.feed(sharer, brakkle, { name: 'Rayzor', key: KEY_X }, PART);
+    expect(other.kinds()).not.toContain('feed');
   });
 
   it('ends a watch when the sharer stops it, lowers the share, or leaves', () => {
@@ -340,7 +332,7 @@ describe('remote control through the router', () => {
       { k: 'released', from: brakkle, key: KEY_B, why: 'stopped' }
     ]);
     expect(stop.sharer.take()).toEqual([{ k: 'controllers', peer: brakkle, to: [] }]);
-    expect(stop.router.act(stop.receiver, soul, brakkle, KEY_B, 1, MOVE)).toBe('not-shared');
+    expect(stop.router.call(stop.receiver, soul, brakkle, KEY_B, PART)).toBe('not-shared');
 
     const lowered = sharing('control');
     lowered.router.watch(lowered.receiver, soul, brakkle, KEY_B, true);
@@ -351,7 +343,7 @@ describe('remote control through the router', () => {
       key: KEY_B,
       why: 'unshared'
     });
-    expect(lowered.router.act(lowered.receiver, soul, brakkle, KEY_B, 1, MOVE)).toBe('not-shared');
+    expect(lowered.router.call(lowered.receiver, soul, brakkle, KEY_B, PART)).toBe('not-shared');
 
     const left = sharing('control');
     left.router.watch(left.receiver, soul, brakkle, KEY_B, true);
