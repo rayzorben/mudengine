@@ -807,12 +807,9 @@ export function countersNow(
  * What stops this character taking a quest's next step, as the realm states it.
  *
  * Four kinds, and they are what the realm gates on that the client holds a
- * matching fact for. **Alignment is deliberately not one**: the gate is a
- * number and the only standing the client has is the `who` roster's *word*,
- * and the `alignment` gate has already written down that a realm is free to put the
- * line anywhere — so placing the word on the realm's axis would be the guess
- * this project refuses. The card's own side chips are where that question is
- * asked, by the player, who knows.
+ * matching fact for. Alignment is not one: the router walls a way on the
+ * roster word's band (`bandWithin`), but a character's standing moves, so the
+ * book keeps the quest and the card's side chips ask the player.
  *
  * `level` is *not yet* and the other three are *not ever*, and the card words
  * the two apart.

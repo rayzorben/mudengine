@@ -15,7 +15,7 @@
  * button main then refuses.
  */
 import { abilityValues, carriesAbility, MAGICAL_ABILITY, MAX_LEVEL_ABILITY } from './abilities';
-import { alignmentBand, type Alignment } from './alignment';
+import { bandWithin, type Alignment } from './alignment';
 import type { CarriedItem } from './character';
 import { wornCopy, type ItemEntity, type ItemUseRules } from './entities';
 import type { UiLookup } from './i18n';
@@ -413,25 +413,25 @@ export function classesAllowed(item: Pick<EquipRestrictions, 'classes' | 'abilit
  * has it; `-50` and `40` otherwise.
  */
 const ALIGNMENT_GATES: Readonly<
-  Record<number, (values: readonly number[]) => (low: number, high: number) => boolean>
+  Record<number, (values: readonly number[]) => (word: Alignment) => boolean>
 > = {
   // Good: refused above the threshold.
   97: (values) => {
     const most = Math.min(0, ...values.filter((value) => value !== 0));
     const threshold = most === 0 ? -50 : most;
-    return (low) => low >= threshold;
+    return (word) => bandWithin(word, undefined, threshold) === false;
   },
   // Evil: refused below the threshold.
   98: (values) => {
     const most = Math.max(0, ...values.filter((value) => value !== 0));
     const threshold = most === 0 ? 40 : most;
-    return (_low, high) => high <= threshold;
+    return (word) => bandWithin(word, threshold) === false;
   },
   // NotGood, NotEvil, Neutral, NotNeutral.
-  110: () => (_low, high) => high <= -50,
-  111: () => (low) => low >= 40,
-  112: () => (low, high) => high <= -50 || low >= 40,
-  113: () => (low, high) => low >= -50 && high <= 40
+  110: () => (word) => bandWithin(word, -50) === false,
+  111: () => (word) => bandWithin(word, undefined, 40) === false,
+  112: () => (word) => bandWithin(word, -50, 40) === false,
+  113: () => (word) => bandWithin(word, -50, 40) === true
 };
 
 /** Whether any row is an alignment gate `alignmentRefuses` reads. */
@@ -443,23 +443,19 @@ export function alignmentGated(abilities: ReadonlyArray<readonly [number, number
  * Whether an alignment gate on the item refuses every character of this word.
  *
  * The word is a band of points, so a gate refuses only where it refuses the
- * whole band (`alignmentBand`'s open interval); a band a threshold runs through
- * is unknown, and unknown never refuses. A spell's gates are the same rows
- * (`learning.ts`).
+ * whole band (`bandWithin`); a band a threshold runs through is unknown, and
+ * unknown never refuses. A spell's gates are the same rows (`learning.ts`).
  */
 export function alignmentRefuses(
   abilities: ReadonlyArray<readonly [number, number]>,
   alignment: Alignment
 ): boolean {
-  const band = alignmentBand(alignment);
-  if (band === null) return false;
-  const [low, high] = band;
   const values = new Map<number, number[]>();
   for (const [id, value] of abilities) {
     if (ALIGNMENT_GATES[id] === undefined) continue;
     values.set(id, [...(values.get(id) ?? []), value]);
   }
-  return [...values].some(([id, stated]) => ALIGNMENT_GATES[id]!(stated)(low, high));
+  return [...values].some(([id, stated]) => ALIGNMENT_GATES[id]!(stated)(alignment));
 }
 
 /**

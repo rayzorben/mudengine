@@ -8,7 +8,7 @@
  * `fail` and a need come from a fact that was read, or from what stands in a
  * room the character is not in, which only being there answers.
  */
-import { alignmentRank, asAlignment, type Alignment } from './alignment';
+import { alignmentRank, asAlignment, bandWithin, type Alignment } from './alignment';
 
 /** What `testskill` reads (`TextBlockPart.cs:1155`); `wisdom` is willpower. */
 export const TB_STATS = [
@@ -301,7 +301,13 @@ export function judge(gate: Gate, facts: GateFacts): Verdict {
     }
     case 'alignment': {
       const evil = facts.evil;
-      if (evil === null || evil === undefined) return 'unknown';
+      if (evil === null || evil === undefined) {
+        // No realm states evil points; the roster's word is a band of them.
+        const word = facts.alignment;
+        const within =
+          word === null || word === undefined ? null : bandWithin(word, gate.atLeast, gate.atMost);
+        return within === null ? 'unknown' : within ? 'pass' : 'fail';
+      }
       if (gate.atLeast !== undefined && evil < gate.atLeast) return 'fail';
       if (gate.atMost !== undefined && evil > gate.atMost) return 'fail';
       return 'pass';

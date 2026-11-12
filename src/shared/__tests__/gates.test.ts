@@ -189,6 +189,22 @@ describe('the one judge', () => {
     expect(rollPercent('intellect', null, 30)).toBeNull();
   });
 
+  it("judges an evil-points window off the roster word's band when no points are stated", () => {
+    // Jorah's transport at MajorMUD 1/2327 (`TBInfo` 364): `evilaligned -50`, `goodaligned 29`.
+    const jorah: Gate = { kind: 'alignment', atLeast: -50, atMost: 29 };
+    expect(judge(jorah, { alignment: 'Lawful' })).toBe('fail');
+    expect(judge(jorah, { alignment: 'Outlaw' })).toBe('fail');
+    // Neutral runs from -50 to 30, and the window stops at 29.
+    expect(judge(jorah, { alignment: 'Neutral' })).toBe('unknown');
+    expect(judge({ kind: 'alignment', atLeast: -50, atMost: 39 }, { alignment: 'Neutral' })).toBe(
+      'pass'
+    );
+    expect(judge({ kind: 'alignment', atMost: 39 }, { alignment: 'Seedy' })).toBe('unknown');
+    expect(judge(jorah, { alignment: null })).toBe('unknown');
+    // Stated points outrank the word.
+    expect(judge(jorah, { alignment: 'Lawful', evil: 0 })).toBe('pass');
+  });
+
   it('carries a key it holds before the pack is listed', () => {
     expect(judge({ kind: 'carry', item: 1 }, { keys: [1] })).toBe('pass');
   });

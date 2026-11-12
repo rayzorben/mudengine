@@ -172,3 +172,21 @@ const ALIGNMENT_RANGE: Partial<Record<Alignment, [number, number]>> = {
 export function alignmentBand(word: Alignment): readonly [number, number] | null {
   return ALIGNMENT_RANGE[word] ?? null;
 }
+
+/**
+ * Whether every character of this word has evil points inside a script's
+ * window (`evilaligned`/`goodaligned`, both ends kept): true where the band's
+ * open interval lies inside it, false where it lies wholly outside, null where
+ * an end runs through the band or the word has none. Jorah's transport
+ * (`-50..29`) refuses every Lawful character, which is Saint's band.
+ */
+export function bandWithin(word: Alignment, atLeast?: number, atMost?: number): boolean | null {
+  const band = alignmentBand(word);
+  if (band === null) return null;
+  const [low, high] = band;
+  if ((atLeast !== undefined && high <= atLeast) || (atMost !== undefined && low >= atMost))
+    return false;
+  if ((atLeast === undefined || low >= atLeast) && (atMost === undefined || high <= atMost))
+    return true;
+  return null;
+}

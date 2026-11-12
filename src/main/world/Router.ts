@@ -27,6 +27,7 @@ import type { Alignment } from '../../shared/alignment';
 import type { RealmFamily } from '../../shared/realm';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
+import { gateWords } from '../../shared/gateWords';
 import { disarmOdds, trapHurt } from '../../shared/walk';
 import { routePrices, type RoutePrices } from '../../shared/walkChoices';
 import { DEFAULT_SUPPLIES } from '../../shared/packConfig';
@@ -786,18 +787,26 @@ type WallKind = 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'item' | 'ab
  * Which gates wall a way, by the block that names them: a fact about the
  * character that a route can state. What only standing there settles (what
  * lies or stands in the room, a roll, a spell wearing off), carrying something
- * to drop, evil points nobody reads and a ninth life are offered at the unread
- * price: *a scripted way through is priced, never pruned* (realm format 38).
+ * to drop and a ninth life are offered at the unread price: *a scripted way
+ * through is priced, never pruned* (realm format 38). An evil-points window
+ * walls where the roster word's whole band lies outside it (`bandWithin`).
  */
 const WALLS: Partial<Record<GateKind, WallKind>> = {
   level: 'level',
   class: 'class',
   race: 'race',
   standing: 'alignment',
+  alignment: 'alignment',
   carry: 'item',
   ability: 'ability',
   copper: 'toll'
 };
+
+/** A script's evil-points window in words (`alignment -50 to 29`), for a way it walls. */
+function evilWindow(requirement: Requirement): string | undefined {
+  const gate = exitGates(requirement)?.find((each) => each.kind === 'alignment');
+  return gate === undefined ? undefined : gateWords(gate, t);
+}
 
 /** A gated way for this character: open, unread, or walled by a gate and what would open it. */
 type Way =
@@ -3505,7 +3514,7 @@ export class Router {
           const admits =
             blocked.kind === 'alignment'
               ? requirement.minAlignment === undefined
-                ? undefined
+                ? evilWindow(requirement)
                 : `${requirement.minAlignment} to ${requirement.maxAlignment ?? requirement.minAlignment}`
               : allowed !== undefined
                 ? allowed.map((id) => String(named(id))).join(', ')
