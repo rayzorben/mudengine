@@ -8051,6 +8051,7 @@ automation:
     apart: 'This exit sends {members} each to a room of their own and out of the party; not waiting for them.'
     # Todo 01: an invitation nobody has answered, followed up with @join.
     askingInvited: '{member} has not joined yet; sending @join until they join or the party list stops showing them invited.'
+    invitedElsewhere: '{leader} has invited this character to follow them; not sending @join to {members} until this character follows somebody or somebody joins it.'
     # Todo 03: a door the leader is failing to bash.
     reasonPickForLeader: 'picking the {barrier} {direction} for {leader}'
     reasonBashForLeader: 'bashing the {barrier} {direction} for {leader}'

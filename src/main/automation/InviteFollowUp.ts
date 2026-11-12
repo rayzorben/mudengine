@@ -6,12 +6,14 @@
  * `tuning.remotes.inviteAgainMs` later; a repeat `@join` waits for that
  * listing's answer. It ends when the listing shows them joined or no longer
  * invited. The one sender of `@join` to an invitee, the regroup's included.
+ * Nothing is sent while another player's invitation to this character stands:
+ * the listing reads the same, and that party's members refuse `@join`.
  * See `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
-import type { CharacterState, PartyMember } from '../../shared/character';
+import { inAParty, type CharacterState, type PartyMember } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { CommandQueue } from './CommandQueue';
@@ -39,6 +41,12 @@ export class InviteFollowUp {
   private listed = false;
   /** Whether this unit's own `par` went: its answer is the wait, so no clock is checked on it. */
   private owed = false;
+  /**
+   * Who last invited this character, until it follows somebody or somebody
+   * follows it; the hold on `@join` is said once per inviter and invitees.
+   */
+  private invitedBy: string | null = null;
+  private heldFor: string | null = null;
 
   constructor(
     private config: AutomationConfig,
@@ -56,6 +64,9 @@ export class InviteFollowUp {
     if (block.type === 'party-roster' || block.type === 'party-alone') {
       this.before = state.party.members;
     }
+    // `leader` is somebody inviting this character; `player` is this character inviting somebody.
+    const leader = block.type === 'party-invited' ? block.groups['leader'] : undefined;
+    if (leader !== undefined) this.invitedBy = leader;
   }
 
   onCharacter(state: CharacterState): void {
@@ -63,8 +74,13 @@ export class InviteFollowUp {
       this.config.enabled && state.party.following === null
         ? state.party.members.filter((member) => member.invited).map((member) => member.name)
         : [];
-    if (invited.length === 0) {
+    if (state.party.following !== null || inAParty(state)) {
+      this.invitedBy = null;
+      this.heldFor = null;
+    }
+    if (invited.length === 0 || this.invitedBy !== null) {
       this.end();
+      if (invited.length > 0) this.sayHeld(invited);
       return;
     }
     if (this.before !== null && state.party.members !== this.before) {
@@ -98,10 +114,21 @@ export class InviteFollowUp {
 
   reset(): void {
     this.end();
+    this.invitedBy = null;
+    this.heldFor = null;
   }
 
   dispose(): void {
     this.end();
+  }
+
+  private sayHeld(invited: readonly string[]): void {
+    const leader = this.invitedBy;
+    const members = invited.join(', ');
+    const held = `${leader}:${members}`.toLowerCase();
+    if (leader === null || this.heldFor === held) return;
+    this.heldFor = held;
+    this.events.notice?.(t('automation.party.invitedElsewhere', { leader, members }), FOLLOW_UP);
   }
 
   private end(): void {

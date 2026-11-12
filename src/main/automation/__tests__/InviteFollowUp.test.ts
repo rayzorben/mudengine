@@ -172,4 +172,53 @@ describe('following up an invitation', () => {
     vi.advanceTimersByTime(AGAIN * 3);
     expect(sent).toEqual([]);
   });
+
+  /** `Capra has invited you to follow him.` */
+  const invitedBy = (leader: string): Block =>
+    ({
+      type: 'party-invited',
+      seq: 2,
+      at: 0,
+      domain: 'presence',
+      groups: { leader }
+    }) as unknown as Block;
+
+  /*
+   * The user's log, 2026-11-12: Capra invited Yang and led Nito, Yang's own
+   * listing printed both [Invited], and both answered Yang's @join as not allowed.
+   */
+  it("sends no @join while another player's invitation to this character stands", () => {
+    const notices: string[] = [];
+    const it = new InviteFollowUp(config(), queue, {
+      askJoin: (member) => asked.push(member),
+      notice: (text) => notices.push(text)
+    });
+    followUps.push(it);
+    it.onBlock(invitedBy('Capra'), state([]));
+    it.onCharacter(state(['Capra', 'Nito']));
+    it.onCharacter(state(['Capra', 'Nito']));
+    vi.advanceTimersByTime(AGAIN * 3);
+    expect(asked).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain('Capra');
+    // A new invitee under the same hold is said too.
+    it.onCharacter(state(['Capra', 'Nito', 'Soul']));
+    expect(notices).toHaveLength(2);
+    expect(asked).toEqual([]);
+
+    // Following Capra ends the invitation; somebody joining this character later is its own party.
+    it.onCharacter(state(['Nito'], [], 'Capra'));
+    it.onCharacter(state(['Nito']));
+    expect(asked).toEqual(['Nito']);
+  });
+
+  it('asks its invitees again once somebody has joined this character', () => {
+    const it = followUp();
+    it.onBlock(invitedBy('Capra'), state([]));
+    it.onCharacter(state(['Nito']));
+    expect(asked).toEqual([]);
+    it.onCharacter(state(['Nito'], ['Soul']));
+    expect(asked).toEqual(['Nito']);
+  });
 });
