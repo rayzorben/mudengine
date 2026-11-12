@@ -15,6 +15,7 @@ import { afflictedWords } from '../lib/afflictions';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { ago, PlayerName } from '../lib/players';
+import { figure, roomOf } from '../lib/sharedSheet';
 import type { PopoverAnchor } from '../lib/popover';
 import { AFFLICTION_NAMES } from '@shared/character';
 import type { PeerSheet, SharedSheet } from '@shared/peers';
@@ -27,11 +28,6 @@ export interface SharedCharactersProps {
   /** Why the last open was refused, or null. */
   refused: string | null;
 }
-
-const figure = (value: number | null | undefined): string =>
-  value === null || value === undefined
-    ? t('cards.players.shared.unknown')
-    : value.toLocaleString();
 
 /** The pool's own word, as the statline prints it. */
 function poolOf(sheet: PeerSheet): string | null {
@@ -52,16 +48,6 @@ function conditionsOf(sheet: PeerSheet): { words: string[]; unknown: boolean } {
     words: afflictedWords(afflictions),
     unknown: AFFLICTION_NAMES.some((name) => afflictions[name] === 'unknown')
   };
-}
-
-/** The room the sharer's client placed it in; where it could not tell, every room it kept. */
-function roomOf(sheet: PeerSheet): string {
-  const room = sheet.room;
-  if (room?.name) return room.name;
-  if (room === null || room.candidates.length === 0) return t('cards.players.shared.roomUnknown');
-  return t('cards.players.shared.roomOneOf', {
-    rooms: room.candidates.map((each) => each.name).join(', ')
-  });
 }
 
 function SharedCharacters({ sheets, onSelect, onControl, refused }: SharedCharactersProps) {

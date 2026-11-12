@@ -4,11 +4,14 @@
  * console while it controls a character shared with it. Both come from
  * main's `ShareView`, so a window that opens or reloads shows what is so now.
  */
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 
 import ControlledBanner from './ControlledBanner';
 import RemoteConsole, { type RemoteConsoleApi } from './RemoteConsole';
-import { useShares, type SharesApi } from '../hooks/useShares';
+import { useRemoteAside } from '../hooks/useRemoteCharacters';
+import { useShares } from '../hooks/useShares';
+import { remoteAside } from '../lib/remoteAside';
+import type { SharesApi } from '../lib/shares';
 import type { TerminalConfig } from '@shared/config';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { TerminalPalette } from '@shared/themes';
@@ -25,6 +28,12 @@ export interface PeerControlProps {
 
 function PeerControl({ api, session, settings, fontStack, palette }: PeerControlProps) {
   const { controlledBy, controlling } = useShares(api, session);
+  // Set aside by this character's own tab; a control opened anew, by any way in, is shown, and one ended forgotten.
+  const aside = useRemoteAside().has(session);
+  const watching = controlling === null ? null : `${controlling.name}:${controlling.key}`;
+  useEffect(() => {
+    remoteAside.set(session, false);
+  }, [session, watching]);
   const stop = useCallback(() => {
     void api.controlStop(session);
   }, [api, session]);
@@ -34,9 +43,10 @@ function PeerControl({ api, session, settings, fontStack, palette }: PeerControl
       {controlling !== null && (
         <RemoteConsole
           api={api}
+          aside={aside}
           fontStack={fontStack}
           // Its own mount per character watched, so the backlog is asked for each time.
-          key={`${session}:${controlling.name}:${controlling.key}`}
+          key={`${session}:${watching}`}
           name={controlling.name}
           palette={palette}
           session={session}

@@ -1,30 +1,29 @@
 /**
  * A character as a circle, its picture from `useCharacterPicture`. Drawn on the hidden tab rail's strip and at the
- * head of every tab on a side rail.
+ * head of every tab on a side rail. `PictureBadge` is the circle alone, for a character this install does not play.
  */
 import { memo } from 'react';
 
 import type { IpcApi, SessionId } from '@shared/ipc';
+import type { PortraitView } from '@shared/portrait';
 import { useCharacterPicture } from '../hooks/useCharacterPicture';
 import { useItemArt } from '../hooks/useItemArt';
 import { usePortrait } from '../hooks/usePortrait';
 
 export type PortraitApi = Pick<IpcApi, 'portrait' | 'onPortrait'>;
 
-function CharacterBadge({
-  api,
-  session,
-  name,
-  race,
-  className
-}: {
-  api: PortraitApi;
-  session: SessionId;
+interface Pictured {
   name: string;
   race: string | null;
   className: string | null;
-}) {
-  const portrait = usePortrait(api, session);
+}
+
+export const PictureBadge = memo(function PictureBadge({
+  portrait,
+  name,
+  race,
+  className
+}: Pictured & { portrait: PortraitView }) {
   const { src, failed, drawn, initial } = useCharacterPicture(
     useItemArt(),
     portrait,
@@ -40,6 +39,14 @@ function CharacterBadge({
       {src === null ? initial : <img alt="" onError={failed} src={src} />}
     </span>
   );
+});
+
+function CharacterBadge({
+  api,
+  session,
+  ...pictured
+}: Pictured & { api: PortraitApi; session: SessionId }) {
+  return <PictureBadge portrait={usePortrait(api, session)} {...pictured} />;
 }
 
 export default memo(CharacterBadge);

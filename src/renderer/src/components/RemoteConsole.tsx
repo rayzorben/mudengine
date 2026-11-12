@@ -39,12 +39,22 @@ export interface RemoteConsoleProps {
   settings: TerminalConfig;
   fontStack: string;
   palette: TerminalPalette;
+  /** The pane shows its own character's console: this one stays open and drawing, out of sight. */
+  aside: boolean;
 }
 
 const NO_INPUT = (): void => {};
 const NO_RESULT = (): void => {};
 
-function RemoteConsole({ api, session, name, settings, fontStack, palette }: RemoteConsoleProps) {
+function RemoteConsole({
+  api,
+  session,
+  name,
+  settings,
+  fontStack,
+  palette,
+  aside
+}: RemoteConsoleProps) {
   // Null once the console is gone, so a backlog or an answer that comes later draws nothing.
   const handle = useRef<TerminalHandle | null>(null);
   const seq = useRef(0);
@@ -129,7 +139,12 @@ function RemoteConsole({ api, session, name, settings, fontStack, palette }: Rem
   );
 
   return (
-    <section aria-label={t('remote.aria', { name })} className="remote-console">
+    <section
+      aria-hidden={aside ? true : undefined}
+      aria-label={t('remote.aria', { name })}
+      className="remote-console"
+      data-aside={aside ? 'true' : undefined}
+    >
       <div className="remote-console-head">
         <Icon name="terminal" size={14} />
         <span className="remote-console-title">{t('remote.title', { name })}</span>

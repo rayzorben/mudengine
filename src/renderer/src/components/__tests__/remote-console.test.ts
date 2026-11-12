@@ -99,7 +99,8 @@ function draw(api: RemoteConsoleApi, name: string): void {
       name,
       settings: DEFAULT_CONFIG.terminal,
       fontStack: 'monospace',
-      palette: THEMES[DEFAULT_THEME].terminal
+      palette: THEMES[DEFAULT_THEME].terminal,
+      aside: false
     })
   );
 }

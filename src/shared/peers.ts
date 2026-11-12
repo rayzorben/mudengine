@@ -66,6 +66,22 @@ export interface PeerSheet {
   readonly leader: string | null;
 }
 
+/** A sheet that says nothing: every figure unknown, for a character controlled whose sheet is not fresh. */
+export const UNKNOWN_PEER_SHEET: PeerSheet = {
+  v: PEER_SHEET_VERSION,
+  className: null,
+  vitals: null,
+  afflictions: null,
+  buffs: null,
+  inCombat: null,
+  stealth: null,
+  level: null,
+  exp: null,
+  expNeeded: null,
+  room: null,
+  leader: null
+};
+
 export interface PeerRoom {
   readonly map: number | null;
   readonly number: number | null;

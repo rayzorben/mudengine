@@ -771,6 +771,17 @@ button.quest-banner-stop {
   flex: 0 0 auto;
 }
 
+/*
+ * Set aside while its pane shows its own character (`remoteAside`): still
+ * mounted and drawing, so the backlog is never asked for again, but out of
+ * sight, out of the focus order and out of the pointer's way. Hidden rather
+ * than `display: none`, which would leave the console nothing to measure.
+ */
+.remote-console[data-aside] {
+  pointer-events: none;
+  visibility: hidden;
+}
+
 button.quest-banner-dismiss {
   flex: 0 0 auto;
   height: 22px;
@@ -8352,6 +8363,47 @@ button.gear-fold:hover:not(:disabled) {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * Remote characters (`RemoteTabs`): below this install's own, behind a
+ * heading and a seam, so nobody mistakes another player's character for one
+ * of theirs. No grip, since they are not reordered, and the tab's padding for
+ * it stays, so the names line up down both lists.
+ */
+.tab-rail .remote-tabs-head {
+  align-items: center;
+  border-top: 1px solid var(--ink-line);
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  gap: 6px;
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+  padding: 6px 10px 2px 18px;
+  text-transform: uppercase;
+}
+
+/* Across the top there is no room for the word: the seam and the icon say it. */
+.tab-rail[data-side='top'] .remote-tabs-head {
+  border-left: 1px solid var(--ink-line);
+  border-top: 0;
+  margin: 0 0 0 6px;
+  padding: 0 4px 0 10px;
+}
+
+.tab.remote-tab[data-control='false'] {
+  cursor: default;
+}
+
+.tab.remote-tab[data-control='false']:hover {
+  background: transparent;
+}
+
+.tab-rail .remote-tabs-refused {
+  flex: 0 0 auto;
+  margin: 2px 10px 0 18px;
 }
 
 /*

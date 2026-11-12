@@ -1725,6 +1725,13 @@ toolbar:
   stepBack: Step Back One Room
   searchArea: Search the Area…
 tabs:
+  # Characters other players share with yours, listed below your own on the
+  # rail (todo 20261031-1156-01).
+  shared:
+    via: 'through {name}'
+    openTooltip: 'Remote control {name} through {via}'
+    noControlTooltip: '{name} shares health and room but not remote control'
+    closeAria: 'End remote control of {name}'
   head:
     newCharacterAria: New character
     newCharacterTooltip: New character…

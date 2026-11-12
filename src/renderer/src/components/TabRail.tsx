@@ -3,11 +3,17 @@ import { createPortal } from 'react-dom';
 
 import AppMark from './AppMark';
 import CharacterBadge, { type PortraitApi } from './CharacterBadge';
+import HpTrack from './HpTrack';
 import Icon from './Icon';
 import NewCharacterButton from './NewCharacterButton';
+import RemoteTabs, { type RemoteTabsApi } from './RemoteTabs';
+import { useRemoteCharacters } from '../hooks/useRemoteCharacters';
+import { remoteAside } from '../lib/remoteAside';
+import { showsRemote } from '../lib/remoteCharacters';
+import type { SharesApi } from '../lib/shares';
 import { reordered } from '../lib/reorder';
 
-import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
+import { vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
 import type { ProfileSummary, SessionId, SessionSummary } from '@shared/ipc';
 import {
@@ -56,8 +62,8 @@ export interface TabRailProps {
   views: Record<SessionId, RailView>;
   active: SessionId;
   side: RailSide;
-  /** Where the circles' portraits come from. */
-  api: PortraitApi;
+  /** Where the circles' portraits come from, and the characters shared with these (`RemoteTabs`). */
+  api: PortraitApi & SharesApi & RemoteTabsApi;
   /** Lead the head with the client's mark (`ui.showLogo`), above the circles. */
   showLogo: boolean;
   thresholds: VitalsUiConfig;
@@ -452,6 +458,12 @@ function TabRail({
    * to the across-the-top shape it never asked for.
    */
   const stacked = side !== 'top';
+  const { remotes, controlling, aside } = useRemoteCharacters(api, sessions);
+  // Pressing a character's own tab shows its own console, a remote one it controls set aside.
+  const select = (session: SessionId): void => {
+    if (showsRemote(controlling, session, aside)) remoteAside.set(session, true);
+    onSelect(session);
+  };
   /*
    * The rail is the player's arrangement of their characters, exactly as the
    * card rail is their arrangement of what they watch — so it is dragged, and
@@ -570,12 +582,11 @@ function TabRail({
         {sessions.map((session, at) => {
           const view = views[session.id];
           const vitals = view?.character.vitals;
-          const hp = ratio(vitals?.hp ?? null, vitals?.hpMax ?? null);
-          const hpLevel = vitalLevel(vitals?.hp ?? null, vitals?.hpMax ?? null, thresholds.hp);
           const mark = attention(view, thresholds.hp, restToFor(session.id));
           const doing = activity(view);
           const room = view?.character.room.name ?? null;
-          const isActive = session.id === active;
+          // Not while its pane shows the remote character it controls: that one's tab is active.
+          const isActive = session.id === active && !showsRemote(controlling, session.id, aside);
           const phase = view?.state.phase ?? 'idle';
           // Only a close is waited for. A dial with no answer yet, or a
           // reconnect's wait, takes a press as *dial now* (todo 22).
@@ -620,14 +631,14 @@ function TabRail({
                 // identifying a tab has to key on the id.
                 data-session={session.id}
                 data-phase={phase}
-                onClick={() => onSelect(session.id)}
+                onClick={() => select(session.id)}
                 // The caret goes to the terminal of the character being shown, not
                 // to the tab that was clicked.
                 onMouseDown={keepFocus}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    onSelect(session.id);
+                    select(session.id);
                   }
                 }}
                 role="tab"
@@ -791,25 +802,12 @@ function TabRail({
                     </button>
                   )}
 
-                  {/*
-                A null fraction renders as an empty track rather than a full or
-                a zero bar. An unknown maximum is absence, and a bar painted
-                red for want of a number that has not arrived is the lie that
-                makes a player run from a fight they were winning.
-              */}
-                  <span className="hp" data-level={hpLevel}>
-                    <span className="track">
-                      <span className="fill" style={{ width: hp === null ? 0 : `${hp * 100}%` }} />
-                    </span>
-                    {stacked && (
-                      <span className="figures">
-                        {vitals?.hp ?? '—'}
-                        {vitals?.hpMax === null || vitals?.hpMax === undefined
-                          ? ''
-                          : `/${vitals.hpMax}`}
-                      </span>
-                    )}
-                  </span>
+                  <HpTrack
+                    figures={stacked}
+                    hp={vitals?.hp ?? null}
+                    hpMax={vitals?.hpMax ?? null}
+                    thresholds={thresholds.hp}
+                  />
 
                   {/*
                 The character's own settings, one press instead of a menu.
@@ -867,6 +865,15 @@ function TabRail({
         })}
         {/* The gap past the last tab: dropping below the rail means the end. */}
         {dropAt === sessions.length && slot}
+        <RemoteTabs
+          active={active}
+          api={api}
+          aside={aside}
+          hp={thresholds.hp}
+          onSelect={onSelect}
+          remotes={remotes}
+          stacked={stacked}
+        />
       </div>
     </div>
   );

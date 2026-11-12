@@ -3,7 +3,7 @@
  * every field unknown but the ones a test names.
  */
 import { AFFLICTION_NAMES, type Afflictions } from '../character';
-import { PEER_SHEET_VERSION, type PeerSheet, type SharedSheet } from '../peers';
+import { UNKNOWN_PEER_SHEET, type PeerSheet, type SharedSheet } from '../peers';
 
 const REALM = 'orohost:2427';
 
@@ -17,21 +17,7 @@ export function sharedSheet(
     key,
     heardAt,
     control,
-    sheet: {
-      v: PEER_SHEET_VERSION,
-      className: null,
-      vitals: null,
-      afflictions: null,
-      buffs: null,
-      inCombat: null,
-      stealth: null,
-      level: null,
-      exp: null,
-      expNeeded: null,
-      room: null,
-      leader: null,
-      ...sheet
-    }
+    sheet: { ...UNKNOWN_PEER_SHEET, ...sheet }
   };
 }
 
