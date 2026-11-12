@@ -133,8 +133,14 @@ export class LineTokenizer {
  * second alternative then catches the two-character escapes (`ESC c`, `ESC 7`)
  * and any malformed introducer, so a stray ESC can never leak into text a
  * parser rule is matched against.
+ *
+ * The bell is the third, because it prints nothing either. The Omniverse BBS
+ * rings it after `Yang drops to the ground!`, its menus and many prompts (OCI
+ * `logs/2026-11-12_17-37-00_yang.mudcap.jsonl`, t=778029). Counted as text, a
+ * rule anchored at `$` missed the line, so a character going down was never
+ * read as down, and a prompt ending in a bell never framed as a finished one.
  */
-export const ANSI_SEQUENCE = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]/;
+export const ANSI_SEQUENCE = /\x1B\[[0-9;?]*[\x40-\x7E]|\x1B[\x30-\x7E]|\x07/;
 const ANSI = new RegExp(ANSI_SEQUENCE.source, 'g');
 // Compiled once, like `ANSI`: `plainText` runs on every line the server prints.
 const LINE_END = /\r?\n$/;

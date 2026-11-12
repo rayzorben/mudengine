@@ -129,6 +129,12 @@ describe('stripAnsi', () => {
     expect(stripAnsi('a\x1bcb')).toBe('ab');
   });
 
+  it('removes the bell, so a prompt ending in one ends at its colon', () => {
+    // Omniverse BBS: `[HP=70/KAI=6]:\x07`, and `\x07By the way, ...` at login.
+    expect(stripAnsi('\x07By the way')).toBe('By the way');
+    expect(stripAnsi('[HP=70/KAI=6]:\x07')).toBe('[HP=70/KAI=6]:');
+  });
+
   it('leaves CP437-derived text alone', () => {
     expect(stripAnsi('░█▒ Obvious exits: north')).toBe('░█▒ Obvious exits: north');
   });
@@ -180,6 +186,17 @@ describe('plainText', () => {
         terminator: 'newline'
       })
     ).toBe('Obvious exits: north, south');
+  });
+
+  it('drops the bell, so a line ending in one still reads as its sentence', () => {
+    // The Omniverse BBS's wire, OCI `logs/2026-11-12_17-37-00_yang.mudcap.jsonl`.
+    expect(
+      plainText({
+        text: '\x1b[0;37m\x1b[41mYang drops to the ground!\x07\x1b[40m\r\n',
+        terminator: 'newline'
+      })
+    ).toBe('Yang drops to the ground!');
+    expect(plainText({ text: '[HP=70/KAI=6]:\x07', terminator: 'flush' })).toBe('[HP=70/KAI=6]:');
   });
 
   it('leaves interior whitespace alone, because columns are meaningful', () => {
