@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  backstabBlow,
   backstabWeapon,
   backstabWorth,
   derivedBackstabWeapon,
@@ -140,39 +139,13 @@ describe('laying the backstab weapon into the sets', () => {
   });
 });
 
-describe('one backstab blow', () => {
+describe('the derived backstab weapon', () => {
   const dagger: CarriedItem = {
     ...wireItem('dagger'),
     kind: 'weapon',
     weapon: { min: 1, max: 4, speed: 1000, kind: 2 }
   };
-  const figures = { level: 10, stealth: 50 };
   const none = (): boolean => false;
-
-  it('is the mean of CalcBSDamage’s low and high ends for a class that hides', () => {
-    // (2·10 + 5 + 2·1) · 110/100 and (2·10 + 5 + 2·4) · 110/100.
-    expect(backstabBlow(figures, dagger, [dagger])).toBeCloseTo((29.7 + 36.3) / 2);
-    // An empty hand is 1–5, as the server reads fists.
-    expect(backstabBlow(figures, null, [])).toBeCloseTo((29.7 + 38.5) / 2);
-  });
-
-  it('adds the backstab rows of the weapon and of what else is worn', () => {
-    const ring: CarriedItem = {
-      ...wireItem('shadow ring'),
-      equipped: true,
-      slot: 'Finger',
-      abilities: [
-        [117, 10],
-        [118, 10]
-      ]
-    };
-    expect(backstabBlow(figures, dagger, [dagger, ring])).toBeCloseTo(33 + 11);
-  });
-
-  it('is unknown while the level or Stealth is unread', () => {
-    expect(backstabBlow({ level: null, stealth: 50 }, dagger, [])).toBeNull();
-    expect(backstabBlow({ level: 10, stealth: null }, dagger, [])).toBeNull();
-  });
 
   it('is derived only where the player wrote no backstab set', () => {
     const written: GearSet[] = [{ name: 'Stab', when: 'backstab', mob: '', wear: ['knife'] }];

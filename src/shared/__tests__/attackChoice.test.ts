@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BACKSTAB_VERB, chooseAttack, chooseOpener } from '../attackChoice';
+import { chooseAttack } from '../attackChoice';
 import type { AttackOption } from '../attackOptions';
 
 const option = (verb: string, value: number | null): AttackOption => ({
@@ -38,25 +38,5 @@ describe('chooseAttack', () => {
       why: 'unpriced',
       perRound: null
     });
-  });
-});
-
-describe('chooseOpener', () => {
-  it('keeps a typed opener', () => {
-    expect(chooseOpener('ju', { hides: false, backstabs: false })).toBe('ju');
-  });
-
-  it('backstabs where the class hides and the hand is not known to refuse', () => {
-    expect(chooseOpener('', { hides: true, backstabs: true })).toBe(BACKSTAB_VERB);
-    expect(chooseOpener('', { hides: true, backstabs: null })).toBe(BACKSTAB_VERB);
-  });
-
-  it('opens with nothing where hiding is unknown or refused, or the hand cannot backstab', () => {
-    expect(chooseOpener('', { hides: null, backstabs: true })).toBe('');
-    expect(chooseOpener('', { hides: false, backstabs: true })).toBe('');
-    expect(chooseOpener('', { hides: true, backstabs: false })).toBe('');
-    // A blow worth less than a plain round opens with the round; a typed word still wins.
-    expect(chooseOpener('', { hides: true, backstabs: true, outdone: true })).toBe('');
-    expect(chooseOpener('bs', { hides: true, backstabs: true, outdone: true })).toBe('bs');
   });
 });

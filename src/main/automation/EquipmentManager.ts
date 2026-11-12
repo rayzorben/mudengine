@@ -371,7 +371,7 @@ export class EquipmentManager implements SessionModule {
   /**
    * The carried weapon the sets wear for a backstab, or null: none with the
    * sets off, a backstab set written, or the pack unlisted. The one answer
-   * the opener choice reads too (`FightWordParts.backstabWeapon`).
+   * the survey's backstab credit reads too (`Errands`).
    */
   backstabWeapon(state: CharacterState): CarriedItem | null {
     return this.acting ? this.derive(state) : null;

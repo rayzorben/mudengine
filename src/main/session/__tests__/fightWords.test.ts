@@ -5,7 +5,7 @@ import {
   CLASS_STEALTH_ABILITY,
   type Capabilities
 } from '../../../shared/abilities';
-import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { ProwessTarget } from '../../../shared/prowess';
 import { fightWords, type FightWordParts } from '../fightWords';
 
@@ -69,7 +69,6 @@ function words(
       rows: () => ({ combat: 5, magery: null, crits: 10, family: 'greatermud' }),
       capabilities: () => MYSTIC_BASHER,
       targetOf: (name) => (name === 'tortured spirit' ? SPIRIT : null),
-      backstabWeapon: () => null,
       ...overrides
     })
   };
@@ -101,7 +100,7 @@ describe('the words a fight is fought with', () => {
       perRound: null
     });
     expect(typed.opener()).toBe('ju');
-    expect(typed.untyped()).toMatchObject({ attack: { verb: 'aa', why: 'best' }, opener: '' });
+    expect(typed.untyped()).toMatchObject({ attack: { verb: 'aa', why: 'best' } });
   });
 
   it('prices before armour once per state, and again for the next state', () => {
@@ -113,57 +112,16 @@ describe('the words a fight is fought with', () => {
     expect(chosen.attack()).toEqual(first);
   });
 
-  it('opens with a backstab only for a class row that hides', () => {
+  // The user, 2026-11-12: Yang backstabbed while sneaking with no opener set.
+  it('opens with no backstab where none is typed, even for a class row that hides', () => {
     const hider: Capabilities = {
       abilities: [...(MYSTIC_BASHER.abilities ?? []), [CLASS_STEALTH_ABILITY, 1]]
     };
-    expect(words({ attack: '', opener: '' }).words.opener()).toBe('');
-    expect(words({ attack: '', opener: '' }, { capabilities: () => hider }).words.opener()).toBe(
-      'bs'
-    );
-  });
-
-  describe('the backstab opener against a plain round', () => {
-    const hider: Capabilities = {
-      abilities: [...(MYSTIC_BASHER.abilities ?? []), [CLASS_STEALTH_ABILITY, 1]]
-    };
-    const knife = (min: number, max: number): CarriedItem =>
-      ({
-        name: 'knife',
-        equipped: false,
-        kind: 'weapon',
-        weapon: { min, max, speed: 1000, kind: 2 }
-      }) as never;
-    const sneak = (level: number): CharacterState => ({
-      ...SOUL,
-      progress: { ...SOUL.progress, level, stealthSkill: 40 }
-    });
-    const opener = (state: CharacterState, weapon: CarriedItem | null): string => {
-      const made = words(
-        { attack: '', opener: '' },
-        { capabilities: () => hider, backstabWeapon: () => weapon }
-      );
-      made.state.current = state;
-      return made.words.opener();
-    };
-
-    it('opens with the weapon worn for the backstab where the hand cannot', () => {
-      const club = {
-        ...SOUL,
-        inventory: {
-          ...SOUL.inventory,
-          items: [{ ...SOUL.inventory.items[0], weapon: { min: 2, max: 11, speed: 1300, kind: 0 } }]
-        }
-      } as CharacterState;
-      expect(opener({ ...club, progress: sneak(14).progress }, null)).toBe('');
-      expect(opener({ ...club, progress: sneak(14).progress }, knife(6, 16))).toBe('bs');
-    });
-
-    it('opens with the plain round where one blow is worth less', () => {
-      // Soul's best round before armour is a bash of about 51; a 10–30 knife's blow is about 75.
-      expect(opener(sneak(14), knife(10, 30))).toBe('bs');
-      // A 1–2 knife's blow is about 40.
-      expect(opener(sneak(14), knife(1, 2))).toBe('');
-    });
+    const sneaking = { ...SOUL, progress: { ...SOUL.progress, stealthSkill: 40 } };
+    const blank = words({ attack: '', opener: '' }, { capabilities: () => hider });
+    blank.state.current = sneaking;
+    expect(blank.words.opener()).toBe('');
+    expect(blank.words.untyped()).not.toHaveProperty('opener');
+    expect(words({ attack: '', opener: ' bs ' }).words.opener()).toBe('bs');
   });
 });

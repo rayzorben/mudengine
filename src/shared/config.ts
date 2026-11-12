@@ -667,8 +667,8 @@ export interface CombatConfig {
    */
   attack: string;
   /**
-   * Sent instead of `attack` for the first blow only. Blank chooses `bs`
-   * where the class hides and the hand backstabs, else none (`chooseOpener`).
+   * Sent instead of `attack` for the first blow only. Blank is none: a
+   * backstab goes out only where the player typed one (the user, 2026-11-12).
    *
    * The opener a class gets one of per fight: `bs` for a thief, `ju` for a
    * mystic. Separate from `attack` because it is *not* repeatable — spending

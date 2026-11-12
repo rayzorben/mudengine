@@ -7,7 +7,7 @@
  */
 import { BACKSTAB_ABILITY, carriesAbility } from './abilities';
 import type { CarriedItem } from './character';
-import { baseSet, equipBlock, restrictionsOf, WEAPON_KEY, type GearSet, type Wearer } from './gear';
+import { baseSet, equipBlock, restrictionsOf, type GearSet, type Wearer } from './gear';
 import { sameItem } from './items';
 import { abilitySum } from './light';
 
@@ -84,41 +84,6 @@ export function derivedBackstabWeapon(
 ): CarriedItem | null {
   if (sets.some((set) => set.when === 'backstab')) return null;
   return backstabWeapon(items, wearer, refused);
-}
-
-/** An empty hand's range, as `BackstabCombatRound.Min` and `Max` read it. */
-const FISTS = { min: 1, max: 5 };
-
-/**
- * One backstab's mean damage before the monster's defences, with `weapon` in
- * hand (null for an empty hand): `Player.CalcBSDamage` (`Player.cs:5497`) for
- * a class with the stealth row, the only class a backstab is chosen for. The
- * backstab rows are the weapon's and the rest of what is worn
- * (`Player.BSMinDmg`). The character's own damage rows are left out, as a
- * plain round's price leaves them out. Null while the level or Stealth is
- * unread, or for a weapon with no stated range.
- */
-export function backstabBlow(
-  figures: { level: number | null; stealth: number | null },
-  weapon: CarriedItem | null,
-  items: readonly CarriedItem[]
-): number | null {
-  const { level, stealth } = figures;
-  if (level === null || stealth === null) return null;
-  const range = weapon === null ? FISTS : weapon.weapon;
-  if (range === undefined) return null;
-  const worn = items.filter(
-    (item) => item.equipped && (item.slot ?? '').toLowerCase() !== WEAPON_KEY
-  );
-  const rows = (id: number): number =>
-    [...worn, ...(weapon === null ? [] : [weapon])].reduce((sum, item) => sum + total(item, id), 0);
-  const blow = (damage: number, row: number): number =>
-    ((level + 100) * (2 * level + Math.floor(stealth / 10) + 2 * damage + row)) / 100;
-  return (
-    (blow(range.min, rows(BACKSTAB_ABILITY.minDamage)) +
-      blow(range.max, rows(BACKSTAB_ABILITY.maxDamage))) /
-    2
-  );
 }
 
 /**

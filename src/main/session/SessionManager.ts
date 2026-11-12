@@ -889,9 +889,8 @@ export class SessionManager {
         // The class row's `ClassStealth` (a Thief also has `Stealth`, todo 28); null never refuses.
         canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY),
         menacePlayer: (state) => this.errands.menacePlayer(state),
-        // The words fought with, typed or chosen (todo 47).
+        // The attack fought with, typed or chosen (todo 47).
         attackWord: (target) => this.errands.words.attack([target]).verb,
-        openerWord: () => this.errands.words.opener(),
         ...{ onTheGround, realmSpeed, combatOn, castStartOf: (s) => spellLore.castStartOf(s) }
       },
       automation.spells,
@@ -962,7 +961,6 @@ export class SessionManager {
       escaping: () => this.travel.isRetreating(),
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
       openerRefused: () => this.combat.openerRefused(),
-      opener: () => this.errands.words.opener(),
       // Whether resting and hiding undo each other, off the realm's class row (Paradigm grants
       // `ShadowHome` to seven classes, MajorMUD none); the family gates GreaterMUD's behaviour.
       restsHidden: () =>
@@ -1897,7 +1895,7 @@ export class SessionManager {
     return this.errands.realmClass();
   }
 
-  /** The attack and opener fought with, typed or chosen (todo 47). See `FightWords`. */
+  /** The attack fought with, typed or chosen (todo 47), and the opener as typed. See `FightWords`. */
   get fightWords(): Errands['words'] {
     return this.errands.words;
   }

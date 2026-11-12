@@ -17,7 +17,7 @@ type AttacksForm = Pick<
 export interface AttacksFieldsetProps {
   form: AttacksForm;
   patch(change: Partial<AttacksForm>): void;
-  /** The attack and opener chosen for this character, for the placeholders. */
+  /** The attack chosen for this character, for its placeholder. */
   chosen: ChosenWords | null;
 }
 

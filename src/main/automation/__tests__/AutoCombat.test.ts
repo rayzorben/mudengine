@@ -1425,29 +1425,27 @@ describe('a verb the realm refuses', () => {
     expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'kick', plain: 'a' })]);
   });
 
-  /* Todo 47: a blank attack and opener are the ones chosen per monster. */
-  it('fights with the chosen attack and opener, and the plain one where the chosen is refused', () => {
+  /* Todo 47: a blank attack is the one chosen per monster; a blank opener is none (2026-11-12). */
+  it('fights with the chosen attack after a typed opener, and the plain one where the chosen is refused', () => {
     const asked: string[] = [];
-    const auto = new AutoCombat(combat({ attack: '', opener: '' }), true, queue, {
+    const auto = new AutoCombat(combat({ attack: '', opener: 'ju' }), true, queue, {
       notice: (m) => notices.push(m),
       attackWord: (target) => {
         asked.push(target);
         return 'pu';
       },
-      openerWord: () => opener,
       onTheGround: () => down,
       combatOn: () => true,
       realmSpeed: () => speed
     });
-    let opener = 'ju';
     const rat = state({
       room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] }
     });
     auto.onCharacter(rat);
     drain();
     expect(sent).toEqual(['ju giant rat']);
-    // No opener chosen: the chosen attack opens, and its refusal is the attack's.
-    opener = '';
+    // A blank opener: the chosen attack opens, and its refusal is the attack's.
+    auto.configure(combat({ attack: '', opener: '' }), true);
     auto.reset();
     auto.onCharacter(rat);
     drain();
@@ -1456,7 +1454,7 @@ describe('a verb the realm refuses', () => {
     auto.onBlock(block('attack-refused', { skill: 'punching' }));
     drain();
     expect(sent).toEqual(['ju giant rat', 'pu giant rat', 'a giant rat']);
-    expect(kinds).toEqual(['opener-chosen', 'attack-target', 'attack-target']);
+    expect(kinds).toEqual(['opener', 'attack-target', 'attack-target']);
     expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'punch', plain: 'a' })]);
   });
 

@@ -2315,8 +2315,8 @@ automation:
     attack: ''
 
     # Sent instead of `attack` for the first blow of a fight, and only the
-    # first: spending it is the point of having it. Blank sends `bs` for a class
-    # that can hide, with a weapon it can backstab with, and nothing otherwise.
+    # first: spending it is the point of having it. Blank sends none. Type `bs`
+    # here for a character that should backstab when it is hidden or sneaking.
     opener: ''
 
     # Get back into the shadows between fights, so `bs` lands again.

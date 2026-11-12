@@ -5083,11 +5083,9 @@ settings:
     riskyOddsLabel: Risky Above %
     riskyOddsHint: Above this and up to the safe line reads as risky (yellow); this or less is
       deadly (red).
-    openerHint: Sent only for the first attack of a fight. Blank sends bs for a class that can hide.
+    openerHint: Sent only for the first attack of a fight, such as bs. Blank sends none.
     openerLabel: Opening Attack
-    openerPlaceholder: bs for a class that can hide
-    openerChosen: '{verb}, as it can hide'
-    openerChosenNone: None for this character
+    openerPlaceholder: None
     hideForOpener: Hide Between Fights
     hideForOpenerHint: Sends hide when this character is in an empty room, or sneak during a loop or
       route, so your opening backstab works again. Only used when the opener is bs.

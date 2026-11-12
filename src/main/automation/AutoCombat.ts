@@ -188,12 +188,11 @@ export interface AutoCombatEvents extends AttackSpellEvents {
    */
   menacePlayer?(state: CharacterState): MenacePlayer;
   /**
-   * The attack word against `target` and the opener, typed or, where blank,
-   * chosen from the class rows (`FightWords`, todo 47). Absent, the typed
-   * words stand, a blank attack being the plain one.
+   * The attack word against `target`, typed or, where blank, chosen from the
+   * class rows (`FightWords`, todo 47). Absent, the typed word stands, a
+   * blank attack being the plain one. The opener is always the typed one.
    */
   attackWord?(target: string): string;
-  openerWord?(): string;
   /**
    * A round of a fight this character is in has come round (todo 00).
    *
@@ -2395,13 +2394,7 @@ export class AutoCombat implements SessionModule {
       command: `${verb} ${target}`,
       action: { kind: 'melee' },
       reason: t('automation.combat.reason', { why: because }),
-      // A blank opener setting is a backstab chosen for the character (`openerWord`).
-      decision:
-        opener === null
-          ? decision
-          : this.config.opener.trim().length === 0
-            ? 'opener-chosen'
-            : 'opener'
+      decision: opener === null ? decision : 'opener'
     };
     const refused = this.refusedLast;
     if (
@@ -2635,9 +2628,9 @@ export class AutoCombat implements SessionModule {
     return word.length > 0 ? word : PLAIN_ATTACK_VERB;
   }
 
-  /** The opener typed or chosen (`openerWord`); blank for none. */
+  /** The opener typed; blank for none. */
   private openerWord(): string {
-    return (this.events.openerWord?.() ?? this.config.opener).trim();
+    return this.config.opener.trim();
   }
 
   /**

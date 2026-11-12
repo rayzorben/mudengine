@@ -106,7 +106,6 @@ export const DECISION_SETTINGS = {
     since: '2026-10-13'
   },
   opener: ['automation.combat.opener', 'automation.combat.mobRules'],
-  'opener-chosen': ['automation.combat.opener'],
   'attack-verb': ['automation.combat.attack'],
   'spell-opener': ['automation.spells.attack', 'automation.spells.autoChoose'],
   'attack-spell': [

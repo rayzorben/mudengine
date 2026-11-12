@@ -413,7 +413,7 @@ export interface ErrandsSession {
 
 export class Errands implements SessionModule {
   private readonly world: ErrandsWorld | undefined;
-  /** The attack and opener fought with, typed or chosen (todo 47). */
+  /** The attack fought with, typed or chosen (todo 47), and the opener as typed. */
   readonly words: FightWords;
   private readonly tracker: ErrandsParts['tracker'];
   private readonly combatOn: ErrandsParts['combatOn'];
@@ -547,8 +547,7 @@ export class Errands implements SessionModule {
         const mob = this.world?.buildMobEntity(name, { at: null });
         // A name the world database cannot place is no armour anybody knows: its round is unknown.
         return mob === undefined || mob.source === 'wire' ? null : prowessTargetOf(mob);
-      },
-      backstabWeapon: () => session.backstabWeapon()
+      }
     });
     this.navigation = new Navigation({
       world: () => this.world,

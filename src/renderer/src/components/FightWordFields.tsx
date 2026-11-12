@@ -1,8 +1,9 @@
 /**
  * Attack Command and Opening Attack, one pair for the character form and the
- * options page. Blank chooses each (todo 47); with the character in the realm
- * the placeholders say what blank chooses and why (`world:attack`), and
+ * options page. A blank attack is chosen (todo 47); with the character in the
+ * realm its placeholder says what blank chooses and why (`world:attack`), and
  * otherwise what blank does. The options page has no character, so no choice.
+ * A blank opener is none.
  */
 import type { ChosenWords } from '@shared/attackChoice';
 import { TextField } from './FormField';
@@ -25,13 +26,6 @@ function attackPlaceholder(chosen: ChosenWords | null): string {
   return perRound === null
     ? t('settings.combat.attackChosenUnpriced', { verb })
     : t('settings.combat.attackChosen', { verb, perRound: Math.round(perRound) });
-}
-
-function openerPlaceholder(chosen: ChosenWords | null): string {
-  if (chosen === null) return t('settings.combat.openerPlaceholder');
-  return chosen.opener === ''
-    ? t('settings.combat.openerChosenNone')
-    : t('settings.combat.openerChosen', { verb: chosen.opener });
 }
 
 export default function FightWordFields({
@@ -60,7 +54,7 @@ export default function FightWordFields({
         name={`${prefix}opener`}
         setting="automation.combat.opener"
         onChange={onOpener}
-        placeholder={openerPlaceholder(chosen)}
+        placeholder={t('settings.combat.openerPlaceholder')}
         spellCheck={false}
         value={opener}
       />
