@@ -13,7 +13,7 @@ import type { KeptLives } from '../../shared/belongings';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import type { LowLivesAsk } from '../../shared/ipc';
 import { atLivesFloor, type LowLivesAnswer } from '../../shared/lives';
-import type { ConnectionTarget } from '../../shared/types';
+import { sameTarget, type ConnectionTarget } from '../../shared/types';
 
 /** What an answer dials, and whether automation's master switch goes off first. */
 export interface LowLivesDial {
@@ -36,6 +36,13 @@ export interface LowLivesEvents {
 export class LowLivesHold {
   /** The open question and where the held dial was going, or null while none is open. */
   private question: { target: ConnectionTarget; ask: LowLivesAsk } | null = null;
+  /**
+   * Where the player answered "log in", until a socket opens or they hang up.
+   * The answer's dial goes on the reconnect ladder when it gets no answer
+   * (`Reconnect.start`), and asking again before each rung put the same
+   * question back 5s after it was answered.
+   */
+  private granted: ConnectionTarget | null = null;
 
   constructor(private readonly events: LowLivesEvents) {}
 
@@ -52,6 +59,7 @@ export class LowLivesHold {
    */
   holds(target: ConnectionTarget): boolean {
     this.question = null;
+    if (this.granted !== null && sameTarget(this.granted, target)) return false;
     if (!this.events.automationOn()) return false;
     const kept = this.events.livesAt(target);
     const floor = this.events.floor();
@@ -61,6 +69,11 @@ export class LowLivesHold {
     this.events.notice(t('session.lowLives.held', { lives: kept.count, floor }), 'low-lives');
     this.events.ask(ask);
     return true;
+  }
+
+  /** A socket opened, or the player hung up: the next dial is asked about again. */
+  release(): void {
+    this.granted = null;
   }
 
   /**
@@ -75,6 +88,7 @@ export class LowLivesHold {
       case 'switch-off':
         return { target, switchOff: true };
       case 'log-in':
+        this.granted = target;
         return { target, switchOff: false };
       case 'stay':
         this.events.notice(t('session.lowLives.stayed'), 'low-lives');

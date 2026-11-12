@@ -5876,9 +5876,10 @@ settings:
       for you from the next login while Log In Automatically is on. An answer whose prompt stops
       appearing is forgotten after three logins.
     learnLoginLabel: Learn the Login
-    autoReconnectHint: Only after a lost connection. Pressing Disconnect, hanging up on low health,
-      or leaving the realm yourself all stop it. Waits 0s, 5s, 10s, then 15s.
-    autoReconnectLabel: Reconnect if the Connection Drops
+    autoReconnectHint: Dials again after a lost connection, or a dial that got no answer, until the
+      realm answers. Pressing Disconnect, hanging up on low health, or leaving the realm yourself all
+      stop it. Waits 0s after a drop or 5s after a dial with no answer, then 10s, then 15s.
+    autoReconnectLabel: Reconnect Until Back In
     reconnectTriesLabel: Max Re-dials
     reconnectTriesHint: Failed dials in a row before reconnecting stops and says so. 0 never stops.
     copyFromHint: Everything except the name and password. A starting point, not a link to later
@@ -6692,16 +6693,16 @@ session:
     hangingUpClean: 'Hanging up: {why}.'
     # Todo 21: the run goes first and the hang-up decides on where it lands.
     hangUpAfterRun: 'Not hanging up yet: {why}. Running first; hanging up if the run fails, or if
-      you are attacked or hurt again where it lands.'
+      a monster is in the room where it lands or you lose health there.'
     hangUpNotBut: 'Not hanging up: {why}, but {refused}.'
-    hangUpRunGotOut: the run got out and nothing is attacking here
+    hangUpRunGotOut: the run got out and no monster is here
     hangUpNoMonster: no monster is here and nothing is attacking
     hangUpRoomUnseen: the room has not been seen since connecting and nothing is attacking
     # Todo 79: low health waits while somebody is at the keyboard.
     hangUpAttended: you are at the keyboard
     hangUpRunCaught:
-      'The run did not get you clear: {why}, and you were attacked or hurt again where
-      it landed.'
+      'The run did not get you clear: {why}, and a monster is in the room where it landed or
+      you lost health there.'
     # Todo 79: naked, nothing to lose but the share of health the realm charges.
     hangingUpNakedCharged: "Hanging up: {why}. {realm}'s realm menu charges {percent}% of maximum
       health and health is at {health}; there is no gear to lose."
@@ -7792,6 +7793,7 @@ automation:
     heldAfterEscape: Ran away; the loop waits here until the fight is over and health is back.
     heldAfterPvp: 'Ran from a player; the loop waits here {minutes} min for the PvP timer and for health to come back.'
     walkingOnAfterEscape: Recovered after running; the loop continues.
+    heldForManaAfterEscape: 'Mana at {percent} after running; the loop waits here until it is back to {target}.'
     heldOffline: Disconnected; the loop waits until you are back in the realm.
     carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'
     walkingOnAfterReconnect: Back in the realm; the loop continues from here.

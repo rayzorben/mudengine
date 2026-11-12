@@ -572,6 +572,29 @@ describe('a Connect while a dial waits on the socket', () => {
     expect(host!.get('thorn')!.reconnect.pending).toBe(false);
   });
 
+  // 2026-11-12: Connect on Start into the realm's nightly cleanup dialled once.
+  it('keeps dialling when the first dial is refused, until the realm answers', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      reconnect: { ...DEFAULT_INTERNAL.tuning.reconnect, stepMs: 50, maxDelayMs: 100 }
+    });
+    autoReconnect = true;
+    vi.spyOn(net, 'createConnection').mockImplementation(() => {
+      const refused = new DeadSocket();
+      queueMicrotask(() => refused.emit('error', new Error('connect ECONNREFUSED')));
+      return refused as unknown as net.Socket;
+    });
+
+    const state = await host!.connect('thorn', target());
+    expect(state.phase).toBe('error');
+    expect(host!.get('thorn')!.reconnect.pending).toBe(true);
+
+    vi.restoreAllMocks();
+    await until(() => host!.get('thorn')!.manager.state.phase === 'connected');
+    expect(accepted).toHaveLength(1);
+    expect(host!.get('thorn')!.reconnect.pending).toBe(false);
+  });
+
   it('dials now during a reconnect, and the reconnect stops', async () => {
     autoReconnect = true;
     await host!.connect('thorn', target());
@@ -677,6 +700,33 @@ describe('a character low on lives', () => {
     expect(await held.answerLowLives('thorn', 'log-in')).toBe(true);
     await until(() => accepted.length === 1);
     expect(flips).toEqual([]);
+  });
+
+  // 2026-11-12: the answer's dial goes on the ladder, and each rung asked again.
+  it('does not ask again while the answer is still dialling into an outage', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      reconnect: { ...DEFAULT_INTERNAL.tuning.reconnect, stepMs: 50, maxDelayMs: 100 }
+    });
+    autoReconnect = true;
+    const held = holding();
+    await held.connect('thorn', target());
+    vi.spyOn(net, 'createConnection').mockImplementation(() => {
+      const refused = new DeadSocket();
+      queueMicrotask(() => refused.emit('error', new Error('connect ECONNREFUSED')));
+      return refused as unknown as net.Socket;
+    });
+    expect(await held.answerLowLives('thorn', 'log-in')).toBe(true);
+    // Positive control: rungs went out behind the refused answer.
+    await until(() => vi.mocked(net.createConnection).mock.calls.length >= 3);
+    expect(asks()).toHaveLength(1);
+
+    vi.restoreAllMocks();
+    setTuning(DEFAULT_INTERNAL.tuning);
+    await until(() => held.get('thorn')?.manager.state.phase === 'connected');
+    // Connected, the answer is spent: the next drop is asked about again.
+    accepted[0]!.destroy();
+    await until(() => asks().length === 2);
   });
 
   it('stays offline, and dials nothing for an answer nobody asked for', async () => {

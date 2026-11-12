@@ -634,7 +634,11 @@ export class SessionHost {
           this.options.publishRoster();
           // And a socket that has just been established is the measured moment
           // this process stops answering SIGTERM. See `keepSignalsWorking`.
-          if (state.phase === 'connected') this.options.onConnected?.();
+          if (state.phase === 'connected') {
+            this.options.onConnected?.();
+            // A low-lives "log in" covered the dial; a later drop is asked about again.
+            lowLives.release();
+          }
           // Where a lost connection would be dialled back to, and whether it
           // had lasted long enough to count as settled.
           reconnect.observe(state);
@@ -747,7 +751,8 @@ export class SessionHost {
      * A Connect at the realm a reconnect is dialling back is that reconnect
      * dialling now, and a failure goes back on the ladder (todo 22). Any other
      * dial supersedes the scheduled one: left armed, the timer would fire into
-     * the connection the player just made and tear it down.
+     * the connection the player just made and tear it down. Either way a dial
+     * that never connects is dialled again (`Reconnect.start`).
      */
     const ladder = slot.reconnect.redials(target);
     if (!ladder) slot.reconnect.cancel();
@@ -757,7 +762,7 @@ export class SessionHost {
       slot.reconnect.cancel();
       return slot.manager.state;
     }
-    return ladder ? slot.reconnect.now() : this.dial(slot, target);
+    return ladder ? slot.reconnect.now() : slot.reconnect.start(target);
   }
 
   /** `@relog`'s hang-up has closed the socket: dial back as Connect does, low lives asked first. */
@@ -804,8 +809,8 @@ export class SessionHost {
       this.options.notice({ session: id, message: t('session.lowLives.notSwitchedOff') });
       return false;
     }
-    slot.reconnect.cancel();
-    await this.dial(slot, asked.target);
+    // A dial somebody asked for: one into an outage stays on the ladder.
+    await slot.reconnect.start(asked.target);
     return true;
   }
 
@@ -969,6 +974,7 @@ export class SessionHost {
     const slot = this.slots.get(id);
     if (!slot) return null;
     slot.reconnect.cancel();
+    slot.lowLives.release();
     return slot.manager.disconnect();
   }
 

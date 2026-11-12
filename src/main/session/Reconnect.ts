@@ -16,7 +16,8 @@
  *   only thing that tells them apart is that this client asked for them.
  *   `SessionManager` makes that call and this is told about the remainder;
  *   reading the phase, or worse the notice's wording, would be the same
- *   decision taken from something that is not a protocol.
+ *   decision taken from something that is not a protocol. A dial that never
+ *   connects is a loss too (`start`).
  * - **And a loss the player caused is not one.** Typing your way out to the
  *   menu and then logging off the BBS closes the socket from the far end,
  *   which is indistinguishable from a dead link at the socket layer and
@@ -33,7 +34,8 @@
  *   `settledMs` starts it over.
  *
  * The waits are `min(maxDelayMs, attempts * stepMs)`, which with the shipped
- * numbers is immediate, then 5s, 10s, and 15s for as long as it takes. Every
+ * numbers is immediate, then 5s, 10s, and 15s for as long as it takes; after a
+ * dial that never connected the first wait is 5s. Every
  * one of them is a key under `tuning.reconnect`, because a wait that suits one
  * link is wrong for another and that must not be a release.
  */
@@ -62,7 +64,8 @@ export interface ReconnectEvents {
    */
   changed(): void;
   /**
-   * Whether this character wants a lost connection dialled back.
+   * Whether this character wants a lost connection, or a dial that never
+   * connected, dialled again.
    *
    * A callback rather than a field, following `tuning()` and `configFor`: a
    * profile is watched, so switching this off has to reach a session that is
@@ -105,6 +108,9 @@ function standDownNotice(why: StandDown): string {
       return t('session.reconnect.loginRefused');
   }
 }
+
+/** A rung of a running ladder, or a dial somebody asked for (`start`). */
+type DialKind = 'rung' | 'asked';
 
 export class Reconnect {
   private timer: NodeJS.Timeout | null = null;
@@ -268,7 +274,26 @@ export class Reconnect {
     if (target === null) return Promise.reject(new Error('Reconnect.now with nothing to dial'));
     this.clearTimer();
     this.epoch += 1;
-    return this.attempt(target);
+    return this.attempt(target, 'rung');
+  }
+
+  /**
+   * A dial somebody asked for: Connect, Connect on Start, `@relog`, the answer
+   * to the low-lives question.
+   *
+   * One that never connects is the first rung of a ladder, the same as a
+   * dropped socket. On 2026-11-12 the client was redeployed while
+   * themajorbbs.com was down for its nightly cleanup, and Connect on Start's
+   * one dial got no answer: nothing went back on the ladder, so Soul stayed
+   * offline all day.
+   */
+  start(target: ConnectionTarget): Promise<ConnectionState> {
+    this.clearTimer();
+    this.epoch += 1;
+    this.target = target;
+    this.flaps = 0;
+    this.attempts = 0;
+    return this.attempt(target, 'asked');
   }
 
   /** Deterministic cleanup: the timer is owned, so it is released here. */
@@ -344,6 +369,7 @@ export class Reconnect {
      */
     if (this.phase !== 'closed' && this.phase !== 'error') {
       this.attempts = 0;
+      this.publish();
       return;
     }
     if (this.events.held(target)) {
@@ -352,13 +378,18 @@ export class Reconnect {
       return;
     }
 
-    void this.attempt(target);
+    void this.attempt(target, 'rung');
   }
 
-  /** One dial on the ladder: a failure schedules the next rung, unless something superseded it. */
-  private attempt(target: ConnectionTarget): Promise<ConnectionState> {
+  /**
+   * One dial: a failure schedules the next rung, unless something superseded it.
+   *
+   * An `asked` dial is not marked `dialling`, so the rail shows a plain dial
+   * until it fails, and one that threw is reported by whoever asked for it.
+   */
+  private attempt(target: ConnectionTarget, kind: DialKind): Promise<ConnectionState> {
     const mine = this.epoch;
-    this.dialling = true;
+    this.dialling = kind === 'rung';
     this.publish();
     const dialled = this.events.dial(target);
     void dialled.then(
@@ -375,11 +406,21 @@ export class Reconnect {
           this.publish();
           return;
         }
+        if (kind === 'asked') {
+          if (!this.events.enabled()) return;
+          // The dial was the first failure, so the next one waits `stepMs`.
+          this.attempts = 1;
+        }
         this.schedule();
       },
       (error: unknown) => {
         if (mine !== this.epoch) return;
         this.dialling = false;
+        if (kind === 'asked') {
+          // Handed to the caller with the same rejection, and reported there.
+          this.publish();
+          return;
+        }
         // Never swallowed: a dial that threw rather than reporting a refusal is
         // a fault in the client, and the retry that follows would otherwise
         // hide it for as long as the outage lasts.

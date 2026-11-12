@@ -29,7 +29,7 @@ import type { RealmMenu } from './RealmMenu';
 import type { RoomHazards } from './RoomHazards';
 import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
-import type { CharacterState } from '../../shared/character';
+import { monstersHere, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { nakedAfterDeath } from '../../shared/gearLocks';
@@ -703,10 +703,18 @@ function whyStalker(state: CharacterState, name: string): string {
     : t('session.safety.whyStalker', { mob: name });
 }
 
-/** Attacked where the run landed, or hurt since: the run did not get away. */
+/**
+ * Attacked where the run landed, hurt since, or a monster in the room: the run
+ * did not get away. A monster that follows walks in a moment after the room
+ * prints, and one already standing there is the next fight; Rayzor landed
+ * beside an angry salamander at 24%, was told nothing attacked there, and the
+ * salamanders that followed killed him two runs later (2026-11-12).
+ */
 function caughtAfter(landedHp: number, state: CharacterState): boolean {
   const hp = state.vitals.hp;
-  return state.combat.attackers.length > 0 || hp === null || hp < landedHp;
+  return (
+    state.combat.attackers.length > 0 || hp === null || hp < landedHp || monstersHere(state)
+  );
 }
 
 /**

@@ -427,3 +427,82 @@ describe('something else taking the connection over', () => {
     expect(dials).toHaveLength(0);
   });
 });
+
+/* 2026-11-12: a redeploy landed in the realm's nightly cleanup, Connect on
+   Start's one dial got no answer, and the character stayed offline. */
+describe('a dial somebody asked for', () => {
+  /** A dial that resolved as `answer`, published to the ladder as the host does. */
+  async function asked(reconnect: Reconnect): Promise<ConnectionState> {
+    const result = await reconnect.start(TARGET);
+    reconnect.observe(result);
+    return result;
+  }
+
+  it('dials again after 5s, 10s and 15s when it never connects', async () => {
+    const reconnect = build();
+    await asked(reconnect);
+    expect(dials).toHaveLength(1);
+    expect(reconnect.pending).toBe(true);
+
+    for (const wait of [5_000, 10_000, 15_000]) {
+      const before = dials.length;
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(dials).toHaveLength(before);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(dials).toHaveLength(before + 1);
+    }
+  });
+
+  it('arms nothing once it connects', async () => {
+    answer = state({ phase: 'connected', connectedAt: Date.now() });
+    const reconnect = build();
+    await asked(reconnect);
+    expect(reconnect.pending).toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dials).toHaveLength(1);
+  });
+
+  it('dials once when the character does not reconnect', async () => {
+    enabled = false;
+    const reconnect = build();
+    await asked(reconnect);
+    expect(reconnect.pending).toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dials).toHaveLength(1);
+    expect(notices).toHaveLength(0);
+  });
+
+  it('counts itself against the attempt cap', async () => {
+    maxTries = 2;
+    const reconnect = build();
+    await asked(reconnect);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dials).toHaveLength(2);
+    expect(notices).toContain(t('session.reconnect.gaveUp'));
+  });
+
+  it('is called off by Disconnect while its first answer is owed', async () => {
+    let answerDial: (value: ConnectionState) => void = () => undefined;
+    const reconnect = new Reconnect({
+      enabled: () => true,
+      maxTries: () => 0,
+      held: () => false,
+      dial: (target) => {
+        dials.push(target);
+        return new Promise((resolve) => {
+          answerDial = resolve;
+        });
+      },
+      changed: () => undefined,
+      notice: (message) => notices.push(message)
+    });
+    const dialled = reconnect.start(TARGET);
+    reconnect.cancel();
+    answerDial(state({ phase: 'error' }));
+    await dialled;
+    // Positive control: the answer arrived and was read.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dials).toHaveLength(1);
+    expect(reconnect.pending).toBe(false);
+  });
+});

@@ -108,8 +108,9 @@ server: Paradigm Game 1 PVE
 # Dial this character when the client starts.
 autoConnect: false
 
-# Dial it again when a connection is LOST -- a link that dropped, a server that
-# went away. On by default, and not the same question as the one above: that one
+# Dial it again when a connection is LOST (a link that dropped, a server that
+# went away) or when a dial you asked for got no answer, until the realm
+# answers. On by default, and not the same question as the one above: that one
 # opens a connection you did not ask for, this one puts back the one you had.
 # A character left standing in the realm while its client sits at a closed
 # socket is a character being killed while nobody is watching.
@@ -117,9 +118,10 @@ autoConnect: false
 # It never fires for a disconnect you asked for -- pressing Disconnect, hanging
 # up on low health, dialling a second realm, quitting -- and never once you have
 # typed your way out to the menu, because dialling back would put you in the
-# realm you just left, with your password. The waits are 0s, 5s, 10s and then
-# 15s, for as many tries as `reconnectTries` below allows; `tuning.reconnect`
-# in internal.yaml is where the waits live.
+# realm you just left, with your password. The waits are 0s after a drop or 5s
+# after a dial with no answer, then 10s and then 15s, for as many tries as
+# `reconnectTries` below allows; `tuning.reconnect` in internal.yaml is where
+# the waits live.
 autoReconnect: true
 
 # Failed dials in a row before reconnecting stops and says so (MegaMUD's Max.

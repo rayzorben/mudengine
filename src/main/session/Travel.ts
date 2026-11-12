@@ -47,6 +47,7 @@ import type { Block } from '../../shared/blocks';
 import type { AutomationConfig, ConfigSwitch, HeldSwitchPort } from '../../shared/config';
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { mobListed, rowName, stanceHere } from '../../shared/mobRules';
+import { manaRunFloor } from '../../shared/safety';
 import { splitStop, type Loop, type LoopProgress, type ResumedBy } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
@@ -2094,7 +2095,7 @@ export class Travel implements SessionModule {
      * walk, and the runner waits for that walk to finish (`walking()`) before
      * it plans anything of its own.
      */
-    this.loops.noteEscaped(holdUntil);
+    this.loops.noteEscaped(holdUntil, manaRunFloor(this.automationConfig.safety.retreat));
     /*
      * And the same for a route the player asked for, which now survives the
      * fight it ran from (`Holds.holdForFight`) and would otherwise plan its
