@@ -126,6 +126,16 @@ export interface RetreatConfig {
 }
 
 /**
+ * The mana share under which this character runs, or 0 for never: `belowMana`
+ * while the retreat is on. After such a run the lap waits for mana as well as
+ * health (`resumeAfterManaRun`), or it walks into the next fight still under
+ * it and runs again on the first cast.
+ */
+export function manaRunFloor(retreat: RetreatConfig): number {
+  return retreat.enabled ? retreat.belowMana : 0;
+}
+
+/**
  * The last-ditch escape below `retreat` (todo 813): the realm's own teleport,
  * sent mid-fight in the emergency band, written out **literally** because each
  * realm implementation spells it differently — GreaterMUD `sys go 1 297`,

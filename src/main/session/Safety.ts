@@ -33,7 +33,7 @@ import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { nakedAfterDeath } from '../../shared/gearLocks';
-import { stanceHere } from '../../shared/mobRules';
+import { rowPeaceFor, stanceHere, type MobRule } from '../../shared/mobRules';
 import type { ConnectionEnd } from '../../shared/types';
 
 const HANG_UP: DecisionKind = 'hang-up';
@@ -575,14 +575,14 @@ export class Safety implements SessionModule {
 
   /**
    * Whether the hang-up stays off because the run it waited on got out:
-   * nothing attacks where it landed and health has not fallen since. Said
-   * once. Attacked there, or hurt again, the run did not get away, and the
-   * hang-up goes.
+   * nothing attacks where it landed, no monster is in the room and health has
+   * not fallen since. Said once. Otherwise the run did not get away, and the
+   * hang-up goes (`caughtAfter`).
    */
   private theRunGotOut(state: CharacterState, why: string): boolean {
     const out = this.gotOut;
     if (out === null) return false;
-    if (!caughtAfter(out.hp, state)) {
+    if (!caughtAfter(out.hp, state, this.automationConfig.combat.mobRules)) {
       if (!out.said) {
         out.said = true;
         this.sayNotHangingUp(why, t('session.safety.hangUpRunGotOut'));
@@ -595,15 +595,16 @@ export class Safety implements SessionModule {
   }
 
   /**
-   * The run the hang-up waited on got out and is caught again (attacked, or
-   * hurt since it landed), and the hang-up would go now, or it has gone: a
+   * The run the hang-up waited on got out and is caught again (attacked, hurt
+   * since it landed, or a monster in the room), and the hang-up would go now, or it has gone: a
    * second run does not go on the same line (`Travel.considerEscape`).
    */
   takesOver(state: CharacterState): boolean {
     // Hung up: nothing runs on the lines still arriving while the link closes.
     if (this.publisher.state.phase === 'closing') return true;
     const out = this.gotOut;
-    if (out === null || !caughtAfter(out.hp, state)) return false;
+    if (out === null || !caughtAfter(out.hp, state, this.automationConfig.combat.mobRules))
+      return false;
     if (!this.mayAct(state) || !this.automationConfig.safety.hangUp.enabled) return false;
     // Low health waits for a player at the keyboard, so the run is not held for it (todo 79).
     if (!this.attendance.away) return false;
@@ -703,10 +704,20 @@ function whyStalker(state: CharacterState, name: string): string {
     : t('session.safety.whyStalker', { mob: name });
 }
 
-/** Attacked where the run landed, or hurt since: the run did not get away. */
-function caughtAfter(landedHp: number, state: CharacterState): boolean {
+/**
+ * Attacked where the run landed, hurt since, or a monster in the room that no
+ * `friend` or *Not Hostile* row excuses: the run did not get away. A monster
+ * that follows walks in a moment after the room prints, and one already
+ * standing there is the next fight; Rayzor landed beside an angry salamander
+ * at 24%, was told nothing attacked there, and the salamanders that followed
+ * killed him two runs later (2026-11-12). An unplaced name counts.
+ */
+function caughtAfter(landedHp: number, state: CharacterState, rules: readonly MobRule[]): boolean {
   const hp = state.vitals.hp;
-  return state.combat.attackers.length > 0 || hp === null || hp < landedHp;
+  const monster = state.room.occupants.some(
+    (who) => who.kind !== 'player' && rowPeaceFor(rules, who) === null
+  );
+  return state.combat.attackers.length > 0 || hp === null || hp < landedHp || monster;
 }
 
 /**

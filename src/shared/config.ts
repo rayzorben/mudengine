@@ -4236,6 +4236,23 @@ export function resumeAtMana(health: HealthConfig, marginWhenUncapped: number): 
 }
 
 /**
+ * The mana a lap held after a run walks on at, while mana is under the run's
+ * floor, or 0 where nothing runs for mana: `restToMana` where it is over the
+ * floor, else the floor and the margin. At the floor itself the next fight's
+ * first cast runs again; Rayzor ran six times in a minute that way, at full
+ * health, and died in the monsters each run dragged along (2026-11-12).
+ */
+export function resumeAfterManaRun(
+  runBelowMana: number,
+  health: HealthConfig,
+  marginWhenUncapped: number
+): number {
+  if (runBelowMana <= 0) return 0;
+  const to = health.restToMana > runBelowMana ? health.restToMana : 0;
+  return resumeAt(runBelowMana, to, marginWhenUncapped);
+}
+
+/**
  * Whether a journey stays held for a vital (todo 825): under `below` to stop,
  * and once `held`, under `resume` to stay stopped. An unknown figure or
  * maximum never holds, and lets a held journey go.

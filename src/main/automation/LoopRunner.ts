@@ -55,6 +55,7 @@ import { fightIsRunning, monstersHere, type CharacterState } from '../../shared/
 import {
   DEFAULT_CONFIG,
   stillFor,
+  resumeAfterManaRun,
   resumeAtHealth,
   type HealthConfig,
   type MovementConfig,
@@ -72,6 +73,7 @@ import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { asRoomReference, type RoomId, type Route } from '../../shared/world';
 import { refusedLegOf, type RefusedLeg } from '../../shared/refusedLeg';
 import { tuning } from '../app/tuning';
+import { manaFraction, percentText } from '../../shared/automation';
 import type { SessionModule } from './Module';
 
 /**
@@ -317,6 +319,10 @@ export class LoopRunner implements SessionModule {
    * none. Each later blow pushes it on (`notePvpWindow`).
    */
   private escapedUntil = 0;
+  /** The mana share the run went under, 0 for never (`manaRunFloor`). */
+  private escapeManaFloor = 0;
+  /** Whether this hold's wait for mana has been said; once per run. */
+  private manaWaitSaid = false;
   /**
    * Holding because the pack ran short and `Supplies` is walking the
    * character to a shop; see `noteErrand`. Its own flag for the reason
@@ -892,12 +898,14 @@ export class LoopRunner implements SessionModule {
    * while a loop is marching and allows it while one is held, so those two
    * seconds used to be the whole window the character had to sit down in.
    */
-  noteEscaped(until = 0): void {
+  noteEscaped(until = 0, runBelowMana = 0): void {
     if (this.status !== 'running') return;
     if (this.escaped) return this.notePvpWindow(until);
     this.escaped = true;
     this.escapedAt = this.now();
     this.escapedUntil = until;
+    this.escapeManaFloor = runBelowMana;
+    this.manaWaitSaid = false;
     this.waiting = true;
     /*
      * The dwell is left exactly as it was, which is what `hurt` does too: a
@@ -1126,6 +1134,7 @@ export class LoopRunner implements SessionModule {
        */
       if (this.now() < this.escapedUntil) return;
       if (fraction !== null && fraction < this.resumeAt()) return;
+      if (this.shortOfManaAfterRun(state)) return;
       if (this.planner.walking()) return;
       this.escaped = false;
       this.events.notice?.(t('automation.loops.walkingOnAfterEscape'));
@@ -1494,6 +1503,33 @@ export class LoopRunner implements SessionModule {
    */
   private resumeAt(): number {
     return resumeAtHealth(this.health, tuning().loop.resumeMarginWhenUncapped);
+  }
+
+  /**
+   * Whether mana is still under the line a lap walks on at after a run, while
+   * mana is under the run's floor: the next fight's first cast would run
+   * again. Let go on health alone, Rayzor ran six times in a minute at full
+   * health, with `restBelowMana` at 0 resting nothing in between
+   * (2026-11-12). Standing here, mana comes back on the tick. Unknown lets go.
+   */
+  private shortOfManaAfterRun(state: CharacterState): boolean {
+    const line = resumeAfterManaRun(
+      this.escapeManaFloor,
+      this.health,
+      tuning().loop.resumeMarginWhenUncapped
+    );
+    const share = manaFraction(state);
+    if (line <= 0 || share === null || share >= line) return false;
+    if (!this.manaWaitSaid) {
+      this.manaWaitSaid = true;
+      this.events.notice?.(
+        t('automation.loops.heldForManaAfterEscape', {
+          percent: percentText(share),
+          target: percentText(line)
+        })
+      );
+    }
+    return true;
   }
 
   /**

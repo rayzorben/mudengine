@@ -42,11 +42,17 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import { anotherLoop, refusesToPlay, type PlayReading } from './Play';
-import { healthFraction, percentText, type SafetyDecision } from '../../shared/automation';
+import {
+  healthFraction,
+  manaFraction,
+  percentText,
+  type SafetyDecision
+} from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { AutomationConfig, ConfigSwitch, HeldSwitchPort } from '../../shared/config';
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { mobListed, rowName, stanceHere } from '../../shared/mobRules';
+import { manaRunFloor } from '../../shared/safety';
 import { splitStop, type Loop, type LoopProgress, type ResumedBy } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
@@ -1526,16 +1532,15 @@ export class Travel implements SessionModule {
      * health bar says. A null maximum — a class with no pool, or a sheet not
      * yet read — is never a low one, the rule every threshold here follows.
      */
-    const { mana, manaMax } = state.vitals;
-    const manaFraction = mana !== null && manaMax !== null && manaMax > 0 ? mana / manaMax : null;
-    const drained =
-      safety.belowMana > 0 && manaFraction !== null && manaFraction <= safety.belowMana;
+    const manaShare = manaFraction(state);
+    const manaFloor = manaRunFloor(safety);
+    const drained = manaFloor > 0 && manaShare !== null && manaShare <= manaFloor;
     if (!hurt && !outnumbered && !drained && dread === null) return;
 
     const why = hurt
       ? t('session.safety.whyHealth', { percent: percentText(fraction ?? 0) })
       : drained
-        ? t('session.safety.whyMana', { percent: percentText(manaFraction) })
+        ? t('session.safety.whyMana', { percent: percentText(manaShare ?? 0) })
         : outnumbered || dread === null
           ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
           : t('session.safety.whyDreaded', { mob: dread });
@@ -2094,7 +2099,7 @@ export class Travel implements SessionModule {
      * walk, and the runner waits for that walk to finish (`walking()`) before
      * it plans anything of its own.
      */
-    this.loops.noteEscaped(holdUntil);
+    this.loops.noteEscaped(holdUntil, manaRunFloor(this.automationConfig.safety.retreat));
     /*
      * And the same for a route the player asked for, which now survives the
      * fight it ran from (`Holds.holdForFight`) and would otherwise plan its

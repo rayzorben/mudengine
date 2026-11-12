@@ -149,6 +149,22 @@ describe('whether hanging up would be penalised', () => {
     expect(watch.assess(state(), T0 + 60_000).clean).toBe(false);
   });
 
+  /*
+   * Rayzor, 2026-11-12: `The tall salamander skewers Brakkle for 6 damage!`
+   * read through the catch-all frame names Brakkle as the target and the
+   * salamander as the attacker. A monster hitting a party member is no PvP.
+   * The control above is the same block with `You` as the attacker.
+   */
+  it('does not count a monster hitting a player as this character hitting one', () => {
+    const watch = new HangUpWatch();
+    watch.observe(
+      block('user-hits', { attacker: 'tall salamander', target: 'Brakkle' }),
+      state({ online: [who('Brakkle')] })
+    );
+    watch.observe(block('user-hits', { target: 'Brakkle' }), state({ online: [who('Brakkle')] }));
+    expect(watch.assess(state(), T0 + 1000).clean).toBe(true);
+  });
+
   it('names who it was, because five minutes of refusing needs a reason', () => {
     const watch = new HangUpWatch();
     watch.observe(

@@ -1008,6 +1008,48 @@ describe('holding after an escape', () => {
     expect(walked).toEqual(['Arena', 'Road']);
   });
 
+  /*
+   * Rayzor, 2026-11-12: the run went under 35% mana at full health, the lap
+   * walked on at health alone, and the first cast of the next fight ran
+   * again, six times in a minute. With `restToMana` over the floor the lap
+   * waits for it; under it, for the floor and the margin.
+   */
+  it('waits for mana after a run for mana', () => {
+    const { planner: p, walked } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    const drained = (mana: number): CharacterState =>
+      state({ vitals: { ...EMPTY_CHARACTER.vitals, hp: 100, hpMax: 100, mana, manaMax: 100 } });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelowMana: 0, restToMana: 0.55 });
+    runner.start(loop, drained(100));
+    runner.onWalkEnded(true, null, drained(30));
+    runner.noteEscaped(0, 0.35);
+    vi.advanceTimersByTime(30_000);
+    runner.onCharacter(drained(40));
+    runner.onCharacter(drained(50));
+    expect(runner.progress.hold).toBe('retreated');
+    expect(walked).toEqual(['Arena']);
+    const said = t('automation.loops.heldForManaAfterEscape', { percent: '40%', target: '55%' });
+    expect(notices.filter((m) => m === said)).toHaveLength(1);
+    runner.onCharacter(drained(55));
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
+  /* The control: where nothing runs for mana, the same mana walks on at health alone. */
+  it('does not wait for mana where nothing runs for mana', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    const drained = state({
+      vitals: { ...EMPTY_CHARACTER.vitals, hp: 100, hpMax: 100, mana: 30, manaMax: 100 }
+    });
+    runner.start(loop, drained);
+    runner.onWalkEnded(true, null, drained);
+    runner.noteEscaped();
+    vi.advanceTimersByTime(30_000);
+    runner.onCharacter(drained);
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
   /* A `safe-haven` escape walks the character home while the loop is held. That
      walk is not the lap's: it is neither an arrival at the stop nor the stop
      failing, and nothing of the loop's own may be planned across it. */

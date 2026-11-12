@@ -2293,7 +2293,8 @@ describe('the run goes before the hang-up', () => {
     expect(notices.some(composes(['session.safety.hangingUpUnchargedSetting']))).toBe(false);
   });
 
-  it('hangs up rather than run again when it is attacked where the run landed', async () => {
+  /* Rayzor, 2026-11-12: a monster in the room the run landed in is the run caught. */
+  it('hangs up rather than run again when a monster is where the run landed', async () => {
     const { sink, notices } = collect();
     manager = build(sink, { automation: both() });
     underWay(manager);
@@ -2305,13 +2306,10 @@ describe('the run goes before the hang-up', () => {
 
     socket.write('Dirt Path\r\nAlso here: big stitched zombie.\r\n');
     socket.write('Obvious exits: southwest, north\r\n[HP=94]:\r\n');
-    await until(() => manager!.character.room.name === 'Dirt Path');
-    socket.write('The big stitched zombie claws you for 20 damage!\r\n[HP=74]:\r\n');
 
     await until(() => notices.some(composes(['session.safety.hangingUpUnchargedSetting'])));
-    // Caught by the blow, before the status line that says how much it took.
+    // Caught by the zombie standing there, before it lands a blow.
     expect(notices).toContain(t('session.safety.hangUpRunCaught', { why }));
-    await settled(74);
     expect(sent()).not.toMatch(/\b(sw|n)\r\n/);
     expect(notices.some(composes(RUNNING, { direction: 'sw' }))).toBe(false);
   });

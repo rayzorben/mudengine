@@ -141,6 +141,12 @@ export function healthFraction(state: CharacterState): number | null {
     : null;
 }
 
+/** `healthFraction` for mana: a class with no pool, or a sheet not yet read, is `null`. */
+export function manaFraction(state: CharacterState): number | null {
+  const { mana, manaMax } = state.vitals;
+  return mana !== null && manaMax !== null && manaMax > 0 ? mana / manaMax : null;
+}
+
 /** The rounded percentage a safety notice reports, e.g. `43%`. */
 export function percentText(fraction: number): string {
   return `${Math.round(fraction * 100)}%`;

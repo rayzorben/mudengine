@@ -172,7 +172,16 @@ export class HangUpWatch implements SessionModule {
         }
         // This character hit somebody. Hitting a player starts it too — the
         // server penalises the aggressor exactly as it penalises the victim.
-        if (target !== undefined && kindOf(state, target) === 'player') {
+        // Only `You` is this character: the catch-all blow frame also reads a
+        // monster's blow on a party member, `The tall salamander skewers
+        // Brakkle for 6 damage!`, and that opened the window and refused
+        // Rayzor's hang-up at 30% health (2026-11-12).
+        if (
+          attacker !== undefined &&
+          /^you$/i.test(attacker) &&
+          target !== undefined &&
+          kindOf(state, target) === 'player'
+        ) {
           this.lastPvpAt = block.at;
           this.lastPvpWith = target ?? null;
         }
