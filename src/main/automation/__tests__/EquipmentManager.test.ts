@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EquipmentManager, type EquipmentSources } from '../EquipmentManager';
 import { CommandQueue } from './../CommandQueue';
 import type { DecisionKind } from '../../../shared/decisionSettings';
-import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
+import {
+  EMPTY_CHARACTER,
+  NO_FIGHT_SIGNS,
+  type CarriedItem,
+  type CharacterState
+} from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig, type GearConfig } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
 import { OFF_HAND, WEAPON_HAND } from '../../../shared/items';
@@ -83,6 +88,7 @@ const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   wantsRest: () => false,
   wearer: () => UNKNOWN_WEARER,
   refusesBackstabWith: () => false,
+  signs: NO_FIGHT_SIGNS,
   ...over
 });
 
@@ -246,6 +252,114 @@ describe('the backstab set', () => {
     expect(sent).toEqual([]);
     manager.onCharacter(fighting('big sandworm', [...stabbing, carried('lifestealer')]), false);
     expect(sent).toEqual(['wear lifestealer']);
+  });
+});
+
+/*
+ * `festus`, 2026-11-12 (the log's 04:06 UTC on the 13th): a `wear` with a
+ * target breaks combat (`EquipCommand.cs:120-123`, `*Combat Off*`), clearing
+ * the flag and the target with the fachan still here and auto-combat about to
+ * open on it again. With the flag deciding, the walking boots went back on and
+ * forty `wear`s went out in three seconds.
+ */
+describe('the fight a wear breaks', () => {
+  const occupants = (...names: string[]): Partial<CharacterState> => ({
+    room: {
+      ...structuredClone(EMPTY_CHARACTER).room,
+      occupants: names.map((name) =>
+        classifyOccupant(name, { players: new Set<string>(), mob: () => undefined })
+      )
+    }
+  });
+  const swinging = (target: string, items: CarriedItem[], ...here: string[]): CharacterState =>
+    standing(items, {
+      ...occupants(...here),
+      inCombat: true,
+      combat: { ...structuredClone(EMPTY_CHARACTER).combat, target }
+    });
+  const boots: GearSet[] = [
+    { name: 'Moving', when: 'moving', mob: '', wear: ['brown leather boots'] },
+    { name: 'Fighting', when: 'fighting', mob: '', wear: ['plate boots'] }
+  ];
+  let quarry: boolean;
+  const signs = { quarry: () => quarry, monsterSwung: () => false };
+  beforeEach(() => {
+    quarry = true;
+  });
+
+  it('keeps the fighting set on through the Off its own wear causes', () => {
+    const manager = make(gear({ sets: boots }), { signs });
+    const walking = [worn('brown leather boots', 'Feet'), carried('plate boots')];
+    manager.onCharacter(swinging('angry fachan', walking, 'angry fachan'), true);
+    expect(sent).toEqual(['wear plate boots']);
+    // `*Combat Off*`: flag and target gone, the fachan still the quarry.
+    const off = [worn('plate boots', 'Feet'), carried('brown leather boots')];
+    manager.onCharacter(standing(off, occupants('angry fachan')), true);
+    manager.onCharacter(swinging('angry fachan', off, 'angry fachan'), true);
+    expect(sent).toEqual(['wear plate boots']);
+    // The fachan dead and nothing left to fight: the walking boots go back on.
+    quarry = false;
+    manager.onCharacter(standing(off), true);
+    expect(sent).toEqual(['wear plate boots', 'wear brown leather boots']);
+  });
+
+  it('keeps a set naming the monster on after its own wear clears the target', () => {
+    const manager = make(gear(), { signs });
+    const pack = [worn('lifestealer', WEAPON_HAND), worn('plate boots', 'Feet')];
+    manager.onCharacter(
+      swinging('nasty sandworm', [...pack, carried('nexus spear')], 'nasty sandworm'),
+      false
+    );
+    expect(sent).toEqual(['wear nexus spear']);
+    const off = [
+      worn('nexus spear', WEAPON_HAND),
+      worn('plate boots', 'Feet'),
+      carried('lifestealer')
+    ];
+    manager.onCharacter(standing(off, occupants('nasty sandworm')), false);
+    expect(sent).toEqual(['wear nexus spear']);
+    // Dead, and another monster the quarry: the set naming the sandworm comes off.
+    manager.onCharacter(standing(off, occupants('big sandworm')), false);
+    expect(sent).toEqual(['wear nexus spear', 'wear lifestealer']);
+  });
+
+  it('takes a set naming the monster off when another swings with nothing targeted', () => {
+    const manager = make(gear(), { signs });
+    const pack = [worn('lifestealer', WEAPON_HAND), worn('plate boots', 'Feet')];
+    manager.onCharacter(
+      swinging('nasty sandworm', [...pack, carried('nexus spear')], 'nasty sandworm'),
+      false
+    );
+    expect(sent).toEqual(['wear nexus spear']);
+    // The sandworm dead, and the next monster swinging before anything is targeted.
+    const off = [
+      worn('nexus spear', WEAPON_HAND),
+      worn('plate boots', 'Feet'),
+      carried('lifestealer')
+    ];
+    const attacked = standing(off, { ...occupants('big sandworm'), inCombat: true });
+    manager.onCharacter(attacked, false);
+    expect(sent).toEqual(['wear nexus spear', 'wear lifestealer']);
+  });
+
+  it('leaves the backstab set on before the fight opens, with the monster the quarry', () => {
+    const sets: GearSet[] = [
+      ...boots,
+      { name: 'Backstab', when: 'backstab', mob: '', wear: ['nexus spear'] }
+    ];
+    const manager = make(gear({ sets }), { signs, opensWithBackstab: () => true });
+    const sneaking = [worn('brown leather boots', 'Feet'), worn('nexus spear', WEAPON_HAND)];
+    manager.onCharacter(
+      standing([...sneaking, carried('plate boots')], occupants('angry fachan')),
+      true
+    );
+    expect(sent).toEqual([]);
+    // The positive control: the same manager dresses for the fight once it opens.
+    manager.onCharacter(
+      swinging('angry fachan', [...sneaking, carried('plate boots')], 'angry fachan'),
+      true
+    );
+    expect(sent).toEqual(['wear plate boots']);
   });
 });
 

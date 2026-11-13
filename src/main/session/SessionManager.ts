@@ -1316,7 +1316,8 @@ export class SessionManager {
         yieldSwap: () => this.invoke.yieldHand(),
         wantsRest: (state) => this.recovery.wouldRest(state) && this.mayRest(),
         wearer: () => this.errands.wearer(),
-        refusesBackstabWith: (weapon) => this.combat.refusesBackstabWith(weapon)
+        refusesBackstabWith: (weapon) => this.combat.refusesBackstabWith(weapon),
+        signs
       },
       { notice }
     );
@@ -2921,8 +2922,7 @@ export class SessionManager {
         // has just withdrawn to a shop.
         if (this.supplies.current === null) this.deposit.onCharacter(state);
       }
-      // And the kit, outside the escape guard: a swap queues behind an escape in a
-      // lower band and is asked again where it lands; it never crosses a move of ours.
+      // The kit, outside the escape guard: a swap waits behind an escape and never crosses a move.
       if (this.tracker.pendingMoves === 0) {
         this.gear.onCharacter(
           state,

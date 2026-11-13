@@ -820,11 +820,11 @@ export interface GearSituation {
   resting: boolean;
   /** The character is meditating and no step is about to go. */
   meditating: boolean;
-  /** Anything is swinging — `fightIsRunning`. */
+  /** `fightIsRunning`, held through the `*Combat Off*` a `wear` causes (`EquipmentManager.fightOn`). */
   fighting: boolean;
   /** The next fight opens with a backstab (`AutoCombat.opensWithBackstab`). */
   backstab: boolean;
-  /** The monster being fought, or null. */
+  /** The monster being fought, or the one fought last while it is still here; else null. */
   target: string | null;
 }
 

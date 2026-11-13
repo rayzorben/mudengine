@@ -18,10 +18,17 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Priority } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
-import { fightIsRunning, type CarriedItem, type CharacterState } from '../../shared/character';
+import {
+  fightSigned,
+  fightIsRunning,
+  type CarriedItem,
+  type CharacterState,
+  type FightSigns
+} from '../../shared/character';
 import type { GearConfig } from '../../shared/config';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { mobKey } from '../../shared/world';
+import { mobListed } from '../../shared/mobRules';
 import { backstabWorth, derivedBackstabWeapon, withBackstabWeapon } from '../../shared/backstab';
 import {
   heldWeapon,
@@ -63,6 +70,8 @@ export interface EquipmentSources extends PlaceGearSources {
   wearer(): Wearer;
   /** Whether the server refused a backstab with this weapon this session (`AutoCombat`). */
   refusesBackstabWith(weapon: string): boolean;
+  /** A fight the state stopped showing (`fightHere`), such as the one a `wear` broke. */
+  readonly signs: FightSigns;
 }
 
 export interface EquipmentEvents {
@@ -96,6 +105,8 @@ export class EquipmentManager implements SessionModule {
     target: string;
     fought: boolean;
   } | null = null;
+  /** The fight under way and its monster, kept across the `*Combat Off*` a `wear` causes. */
+  private fight: { target: string | null } | null = null;
   /** The armour the room calls for (todo 69). */
   private readonly place: PlaceGear;
   /** What the place layer last asked for, so its notice is said once a change. */
@@ -136,6 +147,7 @@ export class EquipmentManager implements SessionModule {
     this.invokedAt = 0;
     this.roundsSince = 0;
     this.reached = null;
+    this.fight = null;
     this.place.reset();
     this.placeSaid = '';
     this.hands.reset();
@@ -188,13 +200,14 @@ export class EquipmentManager implements SessionModule {
     if (state.inventory.listedAt === null) return;
 
     const sets = this.acting ? this.setsFor(state) : [];
+    const fight = this.fightOn(state);
     const now: GearSituation = {
       moving,
       resting: !stepping && (down || this.sources.wantsRest(state)),
       meditating: !stepping && state.vitals.meditating,
-      fighting: state.inCombat || state.combat.attackers.length > 0,
+      fighting: fight !== null,
       backstab: this.opensWithBackstab(sets),
-      target: state.combat.target
+      target: fight?.target ?? null
     };
     const set = overlayFor(sets, now);
     const layer = this.placing
@@ -233,6 +246,26 @@ export class EquipmentManager implements SessionModule {
       this.sources.handsOf(item)
     );
     this.send(plan, bandFor(now, set), set, this.kindOf(set));
+  }
+
+  /**
+   * The fight under way and its monster, or null. A `wear` with a target
+   * breaks combat (`EquipCommand.cs:120-123`), so once a fight has run, the
+   * signs hold it through that `*Combat Off*`; before one has, they do not,
+   * or the backstab set would come off ahead of the `bs`. See `parts/gear.md`.
+   */
+  private fightOn(state: CharacterState): { target: string | null } | null {
+    const last = this.fight;
+    const running = fightIsRunning(state);
+    if (!running && (last === null || !fightSigned(state, this.sources.signs, this.now()))) {
+      this.fight = null;
+      return null;
+    }
+    // The monster fought last, while the room still lists it.
+    const kept = last?.target ?? null;
+    const stays = kept !== null && mobListed(state.room.occupants, kept) !== undefined;
+    this.fight = { target: state.combat.target ?? (stays ? kept : null) };
+    return this.fight;
   }
 
   /** The row behind a dressing: the place's armour, the pack's backstab weapon, or a written set. */
@@ -290,10 +323,7 @@ export class EquipmentManager implements SessionModule {
       if (!reached.fought) this.reached = { ...reached, fought: true };
       return;
     }
-    const here = state.room.occupants.some(
-      (who) => who.kind === 'mob' && mobKey(who.name) === reached.target
-    );
-    if (!reached.fought && here) return;
+    if (!reached.fought && mobListed(state.room.occupants, reached.target) !== undefined) return;
     this.reached = null;
     if (reached.was === null || !this.enabled) return;
     if (this.wieldInHand(state, reached.was, 'probe', SWAP)) {
