@@ -26,6 +26,7 @@ import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { countThreats } from '../RuleEngine';
+import { askWhere } from './Landings';
 import type { WalkClock } from './clock';
 import { isLeverPull, type IntentFilter, type WalkerEvents, type WalkInFlight } from './ports';
 
@@ -92,6 +93,7 @@ export type HoldsEvents = Pick<
   | 'waitingOn'
   | 'replan'
   | 'routeBetween'
+  | 'locate'
 >;
 
 export class Holds {
@@ -224,6 +226,11 @@ export class Holds {
    * yet planned from where it landed; once answered, when it was.
    */
   private otherMove: { landedAt: number | null } | null = null;
+  /**
+   * The `since` of the wait (`placed`) whose `rm` has gone, or null. One per
+   * wait: `rm` prints coordinates outright, so a second ask answers nothing new.
+   */
+  private locatedFor: number | null = null;
 
   constructor(
     private config: AutomationConfig,
@@ -319,11 +326,18 @@ export class Holds {
   }
 
   /**
-   * Where the character stands, or null with the walk stopped or asked again:
-   * a room several namesakes could be stops it, and one the client cannot
-   * place is waited on for `walk.stepTimeoutMs` from `since`, then stops it
-   * for `lost`. Shared by the two holds that plan from wherever another move
-   * left the character (`resumeFromFight`, `holdForOtherMove`).
+   * Where the character stands, or null with the walk stopped or asked again.
+   * Shared by the two holds that plan from wherever another move left the
+   * character (`resumeFromFight`, `holdForOtherMove`).
+   *
+   * A room the client cannot place asks the realm's locate word once, as a
+   * landing does (`Landings`). Without it the walk waited out the clock and
+   * stopped in a GreaterMUD Jungle trail that the player's own `rm` placed at
+   * 13/206 a second later (2026-11-12). The answer is waited on for
+   * `walk.stepTimeoutMs` from `since`, then the walk stops for `lost`, or as
+   * ambiguous where several namesakes are still candidates. Where nothing was
+   * asked (no locate word, or the queue refused it) an ambiguous room stops
+   * at once, since waiting does not make several rooms into one.
    */
   private placed(
     state: CharacterState,
@@ -332,10 +346,20 @@ export class Holds {
     reask: () => void
   ): RoomId | null {
     const here = roomAddress(state.room);
-    if (here !== null) return here;
-    if (state.room.ambiguous > 1) this.walk.stop(t('automation.walk.reasonAmbiguous'));
-    else if (Date.now() - since >= this.config.walk.stepTimeoutMs) this.walk.stop(lost);
-    else reask();
+    if (here !== null) {
+      this.locatedFor = null;
+      return here;
+    }
+    const ambiguous = state.room.ambiguous > 1;
+    const asked = this.locatedFor === since;
+    if (!asked && askWhere(this.events, this.walk.quiet(), t('automation.walk.unplacedAsking'))) {
+      this.locatedFor = since;
+      reask();
+    } else if (ambiguous && !asked) {
+      this.walk.stop(t('automation.walk.reasonAmbiguous'));
+    } else if (Date.now() - since >= this.config.walk.stepTimeoutMs) {
+      this.walk.stop(ambiguous ? t('automation.walk.reasonAmbiguous') : lost);
+    } else reask();
     return null;
   }
 
@@ -387,6 +411,7 @@ export class Holds {
     // asking again, from here, with that already taken into account.
     this.escaped = false;
     this.otherMove = null;
+    this.locatedFor = null;
     this.waitedFor = null;
     this.holdWhenHurt = holdWhenHurt;
     this.resumeAfterFight = resumeAfterFight;
@@ -406,6 +431,7 @@ export class Holds {
     this.floorHeld = false;
     this.escaped = false;
     this.otherMove = null;
+    this.locatedFor = null;
     this.holdWhenHurt = true;
     this.resumeAfterFight = true;
     // One more of the same group: `begin` writes it unconditionally, but
@@ -690,8 +716,10 @@ export class Holds {
    *
    * Both are bounded by `walk.stepTimeoutMs` from the moment the fight
    * cleared, because a route reporting `3/21` that will never move again is
-   * the lie stopping exists to avoid. An **ambiguous** room is not waited for
-   * at all: more time does not make 293 rooms called Sewer Tunnel into one.
+   * the lie stopping exists to avoid. Either kind of room the client cannot
+   * place asks the realm's locate word once first (`placed`); where the realm
+   * has none, an **ambiguous** room is not waited for at all: more time does
+   * not make 293 rooms called Sewer Tunnel into one.
    */
   resumeFromFight(state: CharacterState): void {
     this.fightHeldSince = null;

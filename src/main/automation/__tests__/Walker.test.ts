@@ -6584,6 +6584,7 @@ describe('a step that hands the character to a draw', () => {
       pendingMoves: () => inFlight,
       locate: () => {
         asks += 1;
+        return true;
       },
       replan: () => ({
         steps: [

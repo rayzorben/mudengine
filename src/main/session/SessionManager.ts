@@ -812,7 +812,7 @@ export class SessionManager {
       fetchAgain: (items, to, kind) => this.travel.fetchAgain(items, to, kind),
       moveOnly,
       // Where a draw put the character, when the room cannot say (`WalkerEvents.locate`).
-      locate: () => this.claims.askWhereIAm(),
+      locate: () => 'asked' in this.claims.askWhereIAm(),
       /*
        * What the realm says opens a step the server refused, and where it is
        * pulled. Answered here for `replan`'s reason: it is an index over every

@@ -99,7 +99,7 @@ describe('the order Walker asks the holds in', () => {
       })
     );
     let asked = 0;
-    const { walker } = walkerOn({ locate: () => (asked += 1), willFight: () => true });
+    const { walker } = walkerOn({ locate: () => (asked += 1) > 0, willFight: () => true });
     walker.start(drawn, at(1, 1));
     walker.onCharacter(at(null, null, { inCombat: true }));
 
@@ -313,6 +313,76 @@ describe('Holds, put down', () => {
     expect(holds.answerFight()).toBe(true);
     holds.resumeFromFight(at(1, 1));
     expect(walk.carried).toBe(1);
+  });
+
+  // Mutant: the fight's end waits out the clock without asking where it is.
+  it('asks where a fight ended once, and carries on from the answer', () => {
+    const walk = walkOf();
+    const stops: string[] = [];
+    walk.stop = (reason: string) => void stops.push(reason);
+    let asked = 0;
+    const holds = new Holds(
+      CONFIG,
+      { willFight: () => true, locate: () => (asked += 1) > 0 },
+      walk,
+      clock
+    );
+    expect(holds.answerFight()).toBe(true);
+    holds.resumeFromFight(at(null, null));
+    holds.resumeFromFight(at(null, null));
+    expect(asked).toBe(1);
+    expect(stops).toEqual([]);
+
+    holds.resumeFromFight(at(1, 1));
+    expect(walk.carried).toBe(1);
+  });
+
+  // Mutant: an ambiguous room stops before the locate word is asked.
+  it('asks before it stops on a room several namesakes could be', () => {
+    const walk = walkOf();
+    const stops: string[] = [];
+    walk.stop = (reason: string) => void stops.push(reason);
+    let asked = 0;
+    const holds = new Holds(
+      CONFIG,
+      { willFight: () => true, locate: () => (asked += 1) > 0 },
+      walk,
+      clock
+    );
+    const namesakes = at(null, null);
+    namesakes.room.ambiguous = 3;
+    expect(holds.answerFight()).toBe(true);
+    holds.resumeFromFight(namesakes);
+    expect(asked).toBe(1);
+    expect(stops).toEqual([]);
+
+    vi.advanceTimersByTime(CONFIG.walk.stepTimeoutMs);
+    holds.resumeFromFight(namesakes);
+    expect(stops).toEqual([t('automation.walk.reasonAmbiguous')]);
+  });
+
+  // Mutant: a refused locate word read as asked, so an ambiguous room waits.
+  it('stops on an ambiguous room at once where the locate word is refused', () => {
+    const walk = { ...walkOf(), quiet: () => false };
+    const stops: string[] = [];
+    const notices: string[] = [];
+    walk.stop = (reason: string) => void stops.push(reason);
+    let tried = 0;
+    // As the session answers for a realm with no locate word: tried, nothing sent.
+    const locate = (): boolean => (tried += 1) < 0;
+    const holds = new Holds(
+      CONFIG,
+      { willFight: () => true, locate, notice: (m) => notices.push(m) },
+      walk,
+      clock
+    );
+    const namesakes = at(null, null);
+    namesakes.room.ambiguous = 3;
+    expect(holds.answerFight()).toBe(true);
+    holds.resumeFromFight(namesakes);
+    expect(tried).toBe(1);
+    expect(stops).toEqual([t('automation.walk.reasonAmbiguous')]);
+    expect(notices).not.toContain(t('automation.walk.unplacedAsking'));
   });
 });
 

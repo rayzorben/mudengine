@@ -45,6 +45,7 @@ describe('a landing the client cannot place', () => {
       stateNow: () => at(1, 1),
       locate: () => {
         asks += 1;
+        return true;
       },
       replan: (to) => {
         replans.push(to);
@@ -89,6 +90,7 @@ describe('a landing the client cannot place', () => {
       stateNow: () => at(1, 1),
       locate: () => {
         asks += 1;
+        return true;
       }
     });
     walker.start(routeOf(stepOf(1, 2, 'e')), at(1, 1));
@@ -109,6 +111,7 @@ describe('a portal the client cannot place', () => {
       stateNow: () => at(1, 1),
       locate: () => {
         asks += 1;
+        return true;
       },
       replan: (to) => {
         replans.push(to);

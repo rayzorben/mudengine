@@ -8326,6 +8326,8 @@ automation:
       name and exits; asking the game where it is.'
     landingUnplaced: '"{command}" put you somewhere that cannot be identified from the room name
       and exits; asking the game where it is.'
+    unplacedAsking: This room cannot be identified from its name and exits; asking the game
+      where it is before walking on.
     landedElsewhere: '"{command}" put you in {roomName}, not {stepName} where the world database
       says it leads; planning again from here.'
     trapHolding: The way into {stepName} has a trap of up to {damage} damage; resting here to

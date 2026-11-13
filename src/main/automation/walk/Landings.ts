@@ -24,6 +24,21 @@ export function landsUnpromised(step: RouteStep): boolean {
   return step.scatter !== undefined || scriptGated(step);
 }
 
+/**
+ * Whether the realm's locate word went out; `notice` is said only when it did.
+ * The one ask, shared with the waits after a fight or another mover's step
+ * (`Holds.placed`); each caller keeps its own once-per-wait marker.
+ */
+export function askWhere(
+  events: Pick<WalkerEvents, 'locate' | 'notice'>,
+  quiet: boolean,
+  notice: string
+): boolean {
+  if (events.locate?.() !== true) return false;
+  if (!quiet) events.notice?.(notice);
+  return true;
+}
+
 /** Whether the step is answered by the room a script or spell puts the character in. */
 function movesByScript(step: RouteStep): boolean {
   return step.direction === 'portal' || landsUnpromised(step);
@@ -54,18 +69,15 @@ export class Landings {
    */
   ask(state: CharacterState): boolean {
     const step = this.walk.step();
-    if (step === undefined || this.events.locate === undefined) return false;
+    if (step === undefined) return false;
     if (!movesByScript(step) || roomAddress(state.room) !== null) return false;
     if (this.askedAt !== null) return true;
+    const notice =
+      step.scatter !== undefined
+        ? t('automation.walk.scatteredUnplaced', { spellName: step.scatter.landing.name })
+        : t('automation.walk.landingUnplaced', { command: step.command });
+    if (!askWhere(this.events, this.walk.quiet(), notice)) return false;
     this.askedAt = Date.now();
-    this.events.locate();
-    if (!this.walk.quiet()) {
-      this.events.notice?.(
-        step.scatter !== undefined
-          ? t('automation.walk.scatteredUnplaced', { spellName: step.scatter.landing.name })
-          : t('automation.walk.landingUnplaced', { command: step.command })
-      );
-    }
     return true;
   }
 

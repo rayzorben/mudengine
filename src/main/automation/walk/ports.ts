@@ -61,9 +61,12 @@ export interface WalkerEvents {
   stepping?(command: string, direction: Direction | 'portal', to: RoomId, landing?: Landing): void;
   /**
    * Nobody knows where the character is, and the step that lost it was a
-   * draw, a portal or a chance (`Landings`). The landing can be other than
+   * draw, a portal or a chance (`Landings`), or a fight or another mover's
+   * step ended there (`Holds.placed`). The landing can be other than
    * the world database says: orohost's `dig grave` lands in one of 44 rooms
-   * named Musty Grottos, not the one spell 5078 names.
+   * named Musty Grottos, not the one spell 5078 names. True when the ask
+   * went out; false where the realm has no locate word or the queue refused
+   * it, so the walk stops as it would without asking.
    *
    * `LoopEvents.locate`'s twin and for the same reason — the realm answers
    * `rm` with exact coordinates — but it is armed by a much narrower fact.
@@ -73,7 +76,7 @@ export interface WalkerEvents {
    * together settle nothing, and the ladder is right to refuse. One command
    * turns a walk that would have stopped *ambiguous* into one that carries on.
    */
-  locate?(): void;
+  locate?(): boolean;
   /**
    * What the character has to see by, when the next step goes somewhere dark.
    *
