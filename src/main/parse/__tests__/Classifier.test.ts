@@ -838,6 +838,32 @@ describe('looksLikeRoomName', () => {
     expect(looksLikeRoomName('a')).toBe(false);
     expect(looksLikeRoomName('X'.repeat(80))).toBe(false);
   });
+
+  // Mutant: the realm's own spelling not asked when the case fails.
+  it('reads a name the realm spells without title case, and only that spelling', () => {
+    // Paradigm's 13/206, as the festus log printed it (2026-11-12).
+    const realm = new Set(['Jungle trail', 'Up']);
+    const spelledAsRoom = (text: string): boolean => realm.has(text);
+    const none = undefined;
+    const classifier = new Classifier(
+      NAMES,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      none,
+      spelledAsRoom
+    );
+    expect(looksLikeRoomName('Jungle trail')).toBe(false);
+    expect(classifier.classify(line('Jungle trail')).block.type).toBe('room-name');
+    // Positive control: a line the realm does not spell so is still not a name.
+    expect(classifier.classify(line('Jungle path')).block.type).not.toBe('room-name');
+    // And a realm room too short to tell from a stray word stays out (Paradigm has an `Up`).
+    expect(classifier.classify(line('Up')).block.type).not.toBe('room-name');
+  });
 });
 
 describe('batch blocks', () => {

@@ -131,6 +131,12 @@ function titleCased(text: string): boolean {
   return true;
 }
 
+/** Whether a line is as long as a room name can be; asked of a realm spelling too. */
+function fitsNameLength(text: string): boolean {
+  const { roomNameMinChars, roomNameMaxChars } = tuning().parse;
+  return text.length >= roomNameMinChars && text.length <= roomNameMaxChars;
+}
+
 /**
  * Whether a line that matched the room-name shape is plausibly a room name.
  *
@@ -146,8 +152,7 @@ function titleCased(text: string): boolean {
  * up, so the client stops knowing where it is standing.
  */
 export function looksLikeRoomName(text: string): boolean {
-  const { roomNameMinChars, roomNameMaxChars } = tuning().parse;
-  if (text.length < roomNameMinChars || text.length > roomNameMaxChars) return false;
+  if (!fitsNameLength(text)) return false;
   // Sentence punctuation a title never carries.
   if (SENTENCE_MARKS.test(text)) return false;
   /*
@@ -413,7 +418,15 @@ export class Classifier {
      */
     private readonly heals?: (spell: string) => boolean,
     /** The realm's name for a spell by its number, which a monster's aimed spell line prints. */
-    private readonly spellName?: (id: number) => string | undefined
+    private readonly spellName?: (id: number) => string | undefined,
+    /**
+     * Whether the realm has a room spelled exactly as this line, for the names
+     * `looksLikeRoomName` turns away for their case: Paradigm's 13/206 prints
+     * `Jungle trail`, and read as no name the walk lost the room on every visit
+     * (festus log, 2026-11-12). Exact spelling, so prose never qualifies by
+     * sharing a namesake's letters.
+     */
+    private readonly spelledAsRoom?: (text: string) => boolean
   ) {}
 
   /**
@@ -644,7 +657,13 @@ export class Classifier {
     for (const rule of rules) {
       const match = rule.pattern.exec(text);
       if (!match) continue;
-      if (rule.type === 'room-name' && !looksLikeRoomName(text)) continue;
+      if (
+        rule.type === 'room-name' &&
+        !looksLikeRoomName(text) &&
+        !(fitsNameLength(text) && this.spelledAsRoom?.(text) === true)
+      ) {
+        continue;
+      }
       if (this.inDescription && rule.outsideDescription) continue;
       /*
        * Not a room while a listing is being read. A gang name wrapped onto its

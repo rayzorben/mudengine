@@ -586,8 +586,7 @@ export class SessionManager {
         mob: (name) => world?.mob(name),
         self: () => this.tracker.current.name
       },
-      // And the spell message table, for the whole-line sentences no frame
-      // reads; a lookup because what has been learned changes as the session runs.
+      // The spell message table, a lookup because what is learned changes as the session runs.
       (text) => spellLore.match(text),
       // And how monsters die: the wire's lore (todo 04) beside the server's table, which may
       // name several (2026-09-14); the room settles it or nothing does (`asDeathSentence`).
@@ -605,7 +604,8 @@ export class SessionManager {
       (row) => world?.spellsByMessage(CONFUSE_MESSAGE_ABILITY).has(row) ?? false,
       () => this.vocabulary.coins,
       (spell) => spellHeals(world?.spellNamed(spell)),
-      (id) => world?.spellById(id)?.name
+      (id) => world?.spellById(id)?.name,
+      (text) => world?.findByName(text).some((room) => room.name.trim() === text.trim()) ?? false
     );
     this.world = world;
     this.passage = new TimedPassage(world, notice);
