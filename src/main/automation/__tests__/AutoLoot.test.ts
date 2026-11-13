@@ -322,6 +322,47 @@ describe('named items', () => {
     expect(sent).toEqual(['get phoenix']);
   });
 
+  // The mummy's crypt (2026-09-06): one `get` for the pile, by its count.
+  it('takes a listed pile in one get', () => {
+    make(loot({ items: ['bone key'] })).onBlock(
+      block('room-items', { items: '66 bone key' }),
+      state()
+    );
+    drain();
+    expect(sent).toEqual(['get 66 bone key']);
+  });
+
+  // An errand's door wants one key, so it takes one off the pile.
+  it("takes one of a pile for an errand's name", () => {
+    const auto = make(loot());
+    auto.alsoTake('bone key');
+    auto.onBlock(block('room-items', { items: '66 bone key' }), state());
+    drain();
+    expect(sent).toEqual(['get bone key']);
+  });
+
+  // `You took 80 spade.` frees the name, so a pile listed again is asked for again.
+  it('asks for a pile again once the last one is taken', () => {
+    const auto = make(loot({ items: ['spade'] }));
+    auto.onBlock(block('room-hidden-items', { items: '80 spade' }), state());
+    drain();
+    auto.onBlock(block('player-gets', { count: '80', item: 'spade' }), state());
+    auto.onBlock(block('room-hidden-items', { items: '3 spade' }), state());
+    drain();
+    expect(sent).toEqual(['get 80 spade', 'get 3 spade']);
+  });
+
+  // `GetCommand` refuses the whole count past the free weight, so it is cut to what fits.
+  it('cuts the count to what the free weight carries', () => {
+    const base = state();
+    withRealm(loot({ items: ['iron anvil'] })).onBlock(
+      block('room-items', { items: '5 iron anvil' }),
+      { ...base, inventory: { ...base.inventory, encumbrance: 100, encumbranceMax: 2_000 } }
+    );
+    drain();
+    expect(sent).toEqual(['get 2 iron anvil']);
+  });
+
   it('leaves everything unnamed on the floor', () => {
     make(loot({ items: ['phoenix'] })).onBlock(
       block('room-items', { items: 'a rusty key' }),
@@ -429,6 +470,24 @@ describe('a supply found on the floor', () => {
     );
     drain();
     expect(sent).toEqual(['get black star key']);
+  });
+
+  /*
+   * Ray's spades (2026-11-12): set to 99, one carried, 80 found. One bare
+   * `get spade` took one and the walk moved on; the count takes the pile.
+   */
+  it('takes the whole pile a search turned up while it is short of the ceiling', () => {
+    const auto = make(loot(), true, stocking([supply('spade', 0, 99)]));
+    auto.onBlock(block('room-hidden-items', { items: '80 spade' }), carrying('spade', 1));
+    drain();
+    expect(sent).toEqual(['get 80 spade']);
+  });
+
+  it('asks for no more of a pile than the ceiling has room for', () => {
+    const auto = make(loot(), true, stocking([supply('torch', 3, 6)]));
+    auto.onBlock(block('room-items', { items: '5 torch' }), carrying('torch', 4));
+    drain();
+    expect(sent).toEqual(['get 2 torch']);
   });
 
   it('takes nothing off a list that is switched off', () => {

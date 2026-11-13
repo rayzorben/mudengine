@@ -74,6 +74,7 @@ import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { encumbranceAtLeast, type EncumbranceGate, type LootConfig } from '../../shared/config';
 import { type SuppliesConfig } from '../../shared/packConfig';
 import { carriedCount, stockCeiling } from '../../shared/supplies';
+import { countThatFits } from '../../shared/carrying';
 import { coinNamed, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
@@ -507,17 +508,17 @@ export class AutoLoot implements SessionModule {
          * (reported 2026-09-06), and `2 rope and grapple, 2 mine pass` is in
          * captures/119 — so a configured `bone key` matched nothing here,
          * `worthTaking` asked the realm about an item called "66 bone key" and
-         * was told nothing, and `get 66 bone key` is not a command. One `get`
-         * per name takes one of the pile, which is the same bend as taking the
-         * only one there.
+         * was told nothing. The count goes in front of the name instead
+         * (`get 66 bone key`), so one `get` takes the pile: see `pile`.
          */
-        const { name: bare } = countedName(item);
-        const named =
-          this.config.items.find((name) => bare.toLowerCase().startsWith(name.toLowerCase())) ??
-          // And what an errand wants for as long as it runs (todo 07): the
-          // same instruction, said by a door rather than by the list, and kept
-          // in the session rather than in the player's file.
-          [...this.wanted].find((name) => bare.toLowerCase().startsWith(name.toLowerCase()));
+        const { count: lying, name: bare } = countedName(item);
+        const answers = (name: string): boolean =>
+          bare.toLowerCase().startsWith(name.toLowerCase());
+        const listed = this.config.items.find(answers);
+        // And what an errand wants for as long as it runs (todo 07): the
+        // same instruction, said by a door rather than by the list, and kept
+        // in the session rather than in the player's file. A door wants one.
+        const named = listed ?? [...this.wanted].find(answers);
         const entity = this.realmItem(bare);
         const worth = this.worthTaking(entity);
         if (named !== undefined) {
@@ -525,7 +526,12 @@ export class AutoLoot implements SessionModule {
           // overrides it is the weight ceiling — which exists precisely to
           // stop an unattended character looting itself to a standstill.
           if (worth !== 'too heavy') {
-            this.take(named, t('automation.loot.reasonListed', { item }), 'loot-listed');
+            this.take(
+              this.pile(listed === undefined ? 1 : lying, named, entity, state),
+              t('automation.loot.reasonListed', { item }),
+              'loot-listed',
+              named
+            );
           }
           continue;
         }
@@ -533,22 +539,27 @@ export class AutoLoot implements SessionModule {
          * And a supply the pack is under the ceiling of, which is the same
          * instruction stated in the other list — a `black star key` at min 2,
          * max 2 is sold nowhere and can only ever be found. Under the ceiling
-         * and never past it: the count is re-read from the pack on every
-         * proposal, and `attempted` is cleared by the pack confirming the last
-         * one, so a floor holding three keys is taken one at a time until the
-         * pack says two.
+         * and never past it: the `get` asks for what is short of the
+         * ceiling, or the whole pile when that is less, so at 1 of 99 a pile
+         * of 80 spades is one `get 80 spade` and at 1 of 2 a bare `get` for one.
          */
         const stocking = this.stockingUp(bare, state);
         if (stocking !== null) {
           if (worth !== 'too heavy') {
             this.take(
-              stocking.name,
+              this.pile(
+                Math.min(lying, stocking.max - stocking.have),
+                stocking.name,
+                entity,
+                state
+              ),
               t('automation.loot.reasonStocking', {
                 item,
                 have: stocking.have,
                 max: stocking.max
               }),
-              'loot-stocking'
+              'loot-stocking',
+              stocking.name
             );
           }
           continue;
@@ -701,6 +712,25 @@ export class AutoLoot implements SessionModule {
   private wordFor(coin: string): string {
     const named = coinNamed(coin);
     return named === undefined ? coin.toLowerCase() : this.coinWord(named);
+  }
+
+  /**
+   * What `get` names to take `wanted` of a floor item in one command: the
+   * count in front of the name past one, the bare name for one.
+   *
+   * `ItemContainer.GetItemStacks` reads a leading count and takes that many
+   * from a stack holding at least it, open or hidden, while the bare name
+   * takes one (GreaterMUD source; no capture yet holds a counted item `get`).
+   * The server refuses the whole count past the free weight (`You cannot
+   * carry that much!`), so the count is cut to what fits; an unread pack or
+   * an unweighed item cuts nothing. `countThatFits` stops one short of the
+   * maximum, as `BuyCommand` does, so a pile that fits exactly leaves one.
+   */
+  private pile(wanted: number, name: string, entity: ItemEntity, state: CharacterState): string {
+    const { encumbrance, encumbranceMax } = state.inventory;
+    const fits = countThatFits(encumbrance, encumbranceMax, entity.encumbrance ?? null);
+    const count = Math.max(1, Math.min(wanted, fits ?? wanted));
+    return count > 1 ? `${count} ${name}` : name;
   }
 
   private take(name: string, reason: string, decision: DecisionKind, asked = name): void {
