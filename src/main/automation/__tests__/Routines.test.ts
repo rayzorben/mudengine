@@ -817,33 +817,93 @@ describe('looking at the people in the room', () => {
   });
 
   it('forgets a look owed to somebody who has left', () => {
-    const { routines, queue } = looking();
+    const ground = { down: true };
+    const { routines, queue } = make(
+      { talk: { ...DEFAULT_CONFIG.automation.talk, lookAtPlayers: true } },
+      ground
+    );
+    // Down, both names wait.
     routines.onPlayersHere(['Durnan', 'Roadkill']);
-    // One goes now; the second is owed and waiting on the floor between looks.
-    expect(looks(queue)).toHaveLength(1);
+    expect(looks(queue)).toEqual([]);
 
     routines.onPlayersHere(['Durnan']);
-    vi.advanceTimersByTime(60_000);
+    ground.down = false;
     routines.onPlayersHere(['Durnan']);
-    // Roadkill left before the floor passed, so the look owed to them is gone
+    // Roadkill left while the looks waited, so the look owed to them is gone
     // rather than spent on somebody who is not here.
-    expect(looks(queue).join(' ')).not.toContain('roadkill');
+    expect(looks(queue)).toEqual(['look durnan']);
   });
 
-  it('keeps a floor between two looks, and spends them one at a time', () => {
+  it('drops a queued look held behind a fight when its person leaves', () => {
+    const config: AutomationConfig = {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      talk: { ...DEFAULT_CONFIG.automation.talk, lookAtPlayers: true },
+      pacing: { ...DEFAULT_CONFIG.automation.pacing, window: 1 }
+    };
+    const sent: string[] = [];
+    const queue = new CommandQueue(config, { send: (command) => sent.push(command) });
+    const routines = new Routines(config, queue, {
+      notice: () => {},
+      onTheGround: () => false
+    });
+    queue.enqueue({ command: 'aa orc', priority: 'combat' });
+    queue.enqueue({ command: 'aa orc', priority: 'combat', coalesceKey: 'round' });
+    routines.onPlayersHere(['Durnan', 'Roadkill']);
+    expect(looks(queue)).toEqual(['look durnan', 'look roadkill']);
+
+    routines.onPlayersHere(['Durnan']);
+    for (let round = 0; round < 3; round += 1) {
+      queue.notePrompt();
+      vi.advanceTimersByTime(5_000);
+    }
+    expect(sent).toContain('look durnan');
+    expect(sent).not.toContain('look roadkill');
+  });
+
+  it('looks at everybody in the room at once', () => {
     const { routines, queue } = looking();
     routines.onPlayersHere(['Durnan', 'Roadkill', 'Air']);
-    expect(looks(queue)).toHaveLength(1);
+    expect(looks(queue)).toEqual(['look durnan', 'look roadkill', 'look air']);
+  });
 
-    vi.advanceTimersByTime(4_000);
-    routines.onPlayersHere(['Durnan', 'Roadkill', 'Air']);
-    expect(looks(queue)).toHaveLength(2);
+  /*
+   * festus, 2026-11-13: Yojimbo was in Town Gates, Inner Bailey, the walk's
+   * `e` was already queued, and the look went out behind it to
+   * `You do not see yojimbo here!` in the next room.
+   */
+  it('sends the look ahead of a walk step queued before it', () => {
+    const config: AutomationConfig = {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      talk: { ...DEFAULT_CONFIG.automation.talk, lookAtPlayers: true },
+      pacing: { ...DEFAULT_CONFIG.automation.pacing, window: 1 }
+    };
+    const sent: string[] = [];
+    const queue = new CommandQueue(config, { send: (command) => sent.push(command) });
+    const routines = new Routines(config, queue, {
+      notice: () => {},
+      onTheGround: () => false
+    });
+    queue.enqueue({ command: 'prev', priority: 'probe' });
+    queue.enqueue({ command: 'e', priority: 'movement' });
+    routines.onPlayersHere(['Yojimbo']);
+    expect(sent).toEqual(['prev']);
+
+    queue.notePrompt();
+    vi.advanceTimersByTime(5_000);
+    expect(sent[1]).toBe('look yojimbo');
+    queue.notePrompt();
+    vi.advanceTimersByTime(5_000);
+    expect(sent.slice(0, 3)).toEqual(['prev', 'look yojimbo', 'e']);
   });
 
   it('does not look at the same person twice, even after they come back', () => {
     const { routines, queue } = looking();
     routines.onPlayersHere(['Durnan']);
-    // Past the floor, inside the shelf life, so the first look is still queued.
+    // Inside the shelf life, so the first look is still queued.
     vi.advanceTimersByTime(5_000);
     routines.onPlayersHere([]);
     routines.onPlayersHere(['Durnan']);

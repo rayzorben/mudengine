@@ -29,6 +29,11 @@ export const PRIORITY = {
   /** Anything the person at the keyboard asked for, including login answers. */
   user: 60,
   /**
+   * Looking at a player standing in this room. Above walking, so the look is
+   * answered in the room the player was seen in rather than in the next one.
+   */
+  look: 55,
+  /**
    * Walking a planned route. Below the player, who may be steering; above the
    * housekeeping probe, because the walk is the current task and the probe is a
    * one-off that can wait a step.

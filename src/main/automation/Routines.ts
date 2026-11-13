@@ -138,8 +138,9 @@ export class Routines implements SessionModule {
    * People seen in the room whose kit this character has not looked at.
    *
    * A queue rather than a flag, unlike `rosterUnknown`: one `who` answers every
-   * unlisted arrival at once, but a look answers about exactly one person, so
-   * how many there are is precisely what decides how many commands to spend.
+   * unlisted arrival at once, but a look answers about exactly one person.
+   * It holds names only while they cannot be sent: on the ground, or with
+   * automation off.
    *
    * Names already looked at stay out of it for the session — what somebody is
    * wearing changes rarely, and re-looking would spend a command and announce
@@ -148,14 +149,10 @@ export class Routines implements SessionModule {
   private toLookAt: string[] = [];
   private lookedAt = new Set<string>();
   /**
-   * When the last look went out, so two arrivals in one second are two looks a
-   * floor apart rather than two commands at once.
-   *
-   * `0` rather than `Date.now()`, for `rosterAskedAt`'s reason: the first
-   * person this character meets should be looked at, and starting the clock at
-   * construction would silence exactly the moment there is most to learn.
+   * The players the room last listed, which a queued look asks again at the
+   * send: one held behind a fight goes only if its person is still here.
    */
-  private lookedAtAt = 0;
+  private playersHere: ReadonlySet<string> = new Set();
   /**
    * Which listing the spellbook ask sent this session, or null while it has
    * not — a one-shot latch beside `entryAsked`, and separate from it
@@ -220,7 +217,7 @@ export class Routines implements SessionModule {
     this.unreadAsks = 0;
     this.toLookAt = [];
     this.lookedAt.clear();
-    this.lookedAtAt = 0;
+    this.playersHere = new Set();
     this.rosterUnknown = false;
     this.rosterAskedAt = 0;
     this.askedBook = null;
@@ -753,17 +750,18 @@ export class Routines implements SessionModule {
   /**
    * A player is standing in this character's room.
    *
-   * Queued rather than looked at now, and on the idle tick rather than on
-   * arrival, for the reason the roster catch-up is: a room that fills up would
-   * otherwise fire a command per person, into a fight if one is running. The
-   * look is a *spent command* and a *visible* one — the server tells the person
-   * they were looked at — so it goes out only while nothing else is happening.
+   * Each person not yet looked at is looked at as soon as the room shows them,
+   * ahead of the walk's next step (the `look` band): a walk takes a step a
+   * second, so a look queued behind the step is answered in the next room
+   * with `You do not see yojimbo here!` (festus, 2026-11-13). The queue's
+   * window paces a room of several.
    */
   onPlayersHere(names: readonly string[]): void {
     if (!this.config.talk.lookAtPlayers) return;
     const here = new Set(
       names.map((name) => name.trim().toLowerCase()).filter((key) => key.length > 0)
     );
+    this.playersHere = here;
 
     /*
      * **Dropped first, and this is the bug.** The queue was a list of
@@ -791,38 +789,33 @@ export class Routines implements SessionModule {
      * The idle tick was the wrong clock here for the reason it was wrong for
      * the roster catch-up (see the header): a character that fights and walks
      * all evening never goes quiet, so the answer arrived after the person had
-     * gone. `lookAt` owns the floor between two looks, so this is the *first*
-     * of its two drains and the idle tick is still the second — quiet is a good
-     * moment to spend a command, it is just not the only one.
+     * gone. The idle tick is still the second drain, for names held while the
+     * character was down or automation was off.
      */
     this.lookAt();
   }
 
   /**
-   * Sends one look, if one is owed and the floor between them has passed.
-   *
-   * One at a time, not the whole queue: each is a command from the same budget
-   * a fight is fought with, and a room of six people would otherwise spend six
-   * at once on something nobody asked for urgently. The `idle` band is
-   * unchanged — a look is visible to everybody standing there, so it still
-   * yields to anything else the character is doing.
+   * Queues a look at everybody owed one, unless the character is down or
+   * automation is off, when the names wait.
    */
   private lookAt(): void {
     if (!this.config.enabled || !this.config.talk.lookAtPlayers) return;
     // Down, the names wait for the character to be up (todo 760).
     if (this.events.onTheGround()) return;
-    if (Date.now() - this.lookedAtAt < tuning().queue.lookAskMs) return;
-
     // Marked spent before the send, like the roster flag, so a look still held
     // behind a fight is not asked for twice.
-    const next = this.toLookAt.shift();
-    if (next === undefined) return;
+    for (const next of this.toLookAt) this.queueLook(next);
+    this.toLookAt = [];
+  }
+
+  private queueLook(next: string): void {
     this.lookedAt.add(next);
-    this.lookedAtAt = Date.now();
     this.queue.enqueue({
       command: `look ${next}`,
-      priority: 'idle',
-      coalesceKey: `idle:look:${next}`,
+      priority: 'look',
+      coalesceKey: `look:${next}`,
+      stillWanted: () => this.config.talk.lookAtPlayers && this.playersHere.has(next),
       /*
        * Worthless if it arrives late, for exactly the reason this todo was
        * written: the answer is about somebody standing in this room, and by

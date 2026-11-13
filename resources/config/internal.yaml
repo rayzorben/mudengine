@@ -421,12 +421,9 @@ tuning:
     # here unnormalised cannot spin a timer hot.
     minIdleTickMs: 100
 
-    # The floor between two looks at other players, and how long one is worth
-    # sending. A room that fills up should not spend six commands at once on
-    # something nobody asked for urgently -- and the answer is about somebody
-    # standing in THIS room, so a look held behind a fight for a minute arrives
-    # at a person who has walked out.
-    lookAskMs: 4000
+    # How long a look at another player is worth sending. The answer is about
+    # somebody standing in THIS room, so a look held behind a fight for a
+    # minute arrives at a person who has walked out.
     lookExpiresMs: 20000
 
     # Decision-trace entries kept; it answers "why did it do that?".

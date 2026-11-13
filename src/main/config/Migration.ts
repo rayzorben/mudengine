@@ -8774,8 +8774,7 @@ function theTuningBlockGainedKeys(
     addKey('session', 'locateResolveMs', DEFAULT_INTERNAL.tuning.session.locateResolveMs);
     /* And how long its ask is worth sending, once a literal in `Claims` (todo 762). */
     addKey('session', 'locateExpiresMs', DEFAULT_INTERNAL.tuning.session.locateExpiresMs);
-    /* The look queue's floor and its shelf life (2026-09-07, todo 10). */
-    addKey('queue', 'lookAskMs', DEFAULT_INTERNAL.tuning.queue.lookAskMs);
+    /* The look queue's shelf life (2026-09-07, todo 10). */
     addKey('queue', 'lookExpiresMs', DEFAULT_INTERNAL.tuning.queue.lookExpiresMs);
     /* What a room's own spell costs, and when the router looks for another way
        (2026-09-09, todo 01), and how much shorter the way with the right items
@@ -9021,6 +9020,8 @@ function theTuningBlockGainedKeys(
     dropKey('view', 'mapRadiusMax');
     // Retired 2026-10-23: the route panel offers the most direct way whenever the plan is longer.
     dropKey('world', 'directLonger');
+    // Retired 2026-11-13: every look owed goes at once, ahead of the next step.
+    dropKey('queue', 'lookAskMs');
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);

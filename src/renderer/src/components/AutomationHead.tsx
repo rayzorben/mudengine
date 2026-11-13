@@ -18,6 +18,7 @@ const PRIORITY_TONE: Readonly<Record<Priority, VizTone>> = {
   emergency: 'bad',
   combat: 'warn',
   user: 'ok',
+  look: 'c',
   movement: 'accent',
   probe: 'd',
   idle: 'quiet'

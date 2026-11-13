@@ -466,22 +466,13 @@ const TUNING_DEFAULTS = {
      */
     minIdleTickMs: 100,
     /**
-     * The floor between two looks at other players.
-     *
-     * A room that fills up should not spend six commands at once on something
-     * nobody asked for urgently, and the budget it spends from is the one a
-     * fight is fought with. Short enough that a room of three is read within
-     * the time somebody stands in it.
-     */
-    lookAskMs: 4_000,
-    /**
      * How long a queued look is worth sending.
      *
      * The answer is about somebody standing in *this room*, so a look held
      * behind a fight for a minute arrives at a person who has walked out —
-     * which is the failure reported 2026-09-07, from the other side. Longer
-     * than `lookAskMs` by enough that a look queued behind one round still
-     * goes; shorter than anybody stays put.
+     * which is the failure reported 2026-09-07, from the other side. Long
+     * enough that a look queued behind a few rounds still goes; shorter than
+     * anybody stays put.
      */
     lookExpiresMs: 20_000,
     /** Decision-trace entries kept; it answers "why did it do that?". */
