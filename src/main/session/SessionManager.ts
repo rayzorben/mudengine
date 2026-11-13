@@ -1136,13 +1136,11 @@ export class SessionManager {
       this.queue,
       {
         ...legPlanner(() => legs()),
-        /*
-         * `abil` is GreaterMUD's alone, and the family is told by the banner
-         * or by the listing having answered at all: a realm that has printed
-         * its counters once prints them.
-         */
+        // A listing once printed says the realm prints counters, unless the
+        // queue refuses `abil` there (stock MajorMUD, Yang, 2026-11-13).
         printsCounters: () =>
-          this.vocabulary.family === 'greatermud' || this.tracker.current.abilities !== null,
+          !this.vocabulary.lacks('abil') &&
+          (this.vocabulary.family === 'greatermud' || this.tracker.current.abilities !== null),
         stopWalking: (reason) => stopErrandLeg(legs(), reason),
         busy: () => this.travel.escaping,
         release: () => this.loops.noteErrandOver(),

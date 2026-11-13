@@ -243,15 +243,30 @@ export class Vocabulary {
    */
   wordUnavailable(command: string): boolean {
     const name = commandOf(command);
-    if (name === null) return false;
-    if (this.unavailable.has(name)) return true;
-    // A realm set to have no locate word is asked nothing by automation, the
-    // entry list's `rm` included; the player's own typing is not gated (811).
-    if (name === 'Room' && locateCommand(this.words().locate) === null) return true;
-    if (this.serverFamily !== 'majormud' || !GREATERMUD_ONLY.has(name)) return false;
+    if (name === null || !this.lacks(command)) return false;
+    if (this.unavailable.has(name) || this.locateOff(name)) return true;
     this.unavailable.add(name);
     this.sayUnavailable(name, command);
     return true;
+  }
+
+  /**
+   * `wordUnavailable`'s answer without retiring the word or saying so, for a
+   * reader deciding what it can rely on before it sends anything.
+   */
+  lacks(command: string): boolean {
+    const name = commandOf(command);
+    if (name === null) return false;
+    if (this.unavailable.has(name) || this.locateOff(name)) return true;
+    return this.serverFamily === 'majormud' && GREATERMUD_ONLY.has(name);
+  }
+
+  /**
+   * A realm set to have no locate word is asked nothing by automation, the
+   * entry list's `rm` included; the player's own typing is not gated (811).
+   */
+  private locateOff(name: CommandName): boolean {
+    return name === 'Room' && locateCommand(this.words().locate) === null;
   }
 
   /**

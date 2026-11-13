@@ -185,3 +185,35 @@ describe('the realm’s word for where am I', () => {
     });
   });
 });
+
+/*
+ * The quest run asks `lacks` before reading a counter (Yang, 2026-11-13):
+ * the same answer the queue gives, with nothing retired and nothing said.
+ */
+describe('a word the server lineage lacks', () => {
+  beforeEach(() => setTuning(DEFAULT_INTERNAL.tuning));
+  afterEach(() => {
+    for (const queue of queues.splice(0)) queue.dispose();
+  });
+
+  it('says a MajorMUD server lacks `abil` without retiring it or saying so', () => {
+    const { vocabulary, notice } = rig('rm');
+    expect(vocabulary.lacks('abil')).toBe(false);
+    vocabulary.noteFamily({
+      seq: 1,
+      at: 0,
+      type: 'prompt-menu',
+      domain: 'session',
+      groups: { realm: 'MAJORMUD' },
+      text: '',
+      terminator: 'newline',
+      confidence: 1
+    });
+    notice.mockClear();
+    expect(vocabulary.lacks('abil')).toBe(true);
+    expect(vocabulary.lacks('st')).toBe(false);
+    expect(notice).not.toHaveBeenCalled();
+    expect(vocabulary.wordUnavailable('abil')).toBe(true);
+    expect(notice).toHaveBeenCalledTimes(1);
+  });
+});
