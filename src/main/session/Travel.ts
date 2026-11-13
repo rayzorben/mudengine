@@ -1581,11 +1581,20 @@ export class Travel implements SessionModule {
 
   /**
    * Why the client moves this character nowhere on its own, or null where it
-   * may: no run, teleport or step out to rest (`RestAway`, `FleeGoto`).
+   * may: no run or step out to rest (`RestAway`; `FleeGoto` reads `teleportStayingReason`).
    */
   stayingReason(state: CharacterState): string | null {
     const held = this.inPlace(state);
     return held === null ? null : reasonFor(held);
+  }
+
+  /**
+   * `stayingReason` for the realm's teleport, which a follower sends too (the
+   * user, 2026-11-12): one left at low health dies there (yang, Omniverse).
+   */
+  teleportStayingReason(state: CharacterState): string | null {
+    const held = this.inPlace(state);
+    return held === null || held.kind === 'following' ? null : reasonFor(held);
   }
 
   private inPlace(state: CharacterState): InPlace | null {

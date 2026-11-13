@@ -58,7 +58,7 @@ function rig(config: AutomationConfig = settings()) {
     teleportRefused: vi.fn(),
     teleportLanded: vi.fn(),
     staying: null as string | null,
-    stayingReason(): string | null {
+    teleportStayingReason(): string | null {
       return this.staying;
     }
   };
@@ -180,9 +180,9 @@ describe('FleeGoto', () => {
   });
 
   /* The user, 2026-10-03: no run of any sort while nothing takes the character anywhere. */
-  it('sends nothing for a follower or a character going nowhere, and says why once', () => {
+  it('sends nothing for a character going nowhere, and says why once', () => {
     const { flee, tracker, sent, travel, notice } = rig();
-    travel.staying = t('session.safety.escapeFollowingReason', { leader: 'Headcase' });
+    travel.staying = t('session.safety.escapeStayingReason');
     flee.consider(tracker.current);
     flee.consider(tracker.current);
     expect(sent).toEqual([]);

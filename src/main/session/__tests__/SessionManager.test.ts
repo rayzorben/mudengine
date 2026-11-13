@@ -3817,6 +3817,32 @@ describe('which way out', () => {
     );
   });
 
+  /*
+   * yang on the Omniverse BBS, 2026-11-12: following Nito, with no route of
+   * its own, at 17% under a 25% floor, refused and dead five seconds later.
+   * A follower teleports (the user, 2026-11-12); it still does not run.
+   */
+  it('teleports a follower that nothing else takes anywhere', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { world: haven(), automation: teleporting() });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('You are now following Nito\r\n');
+    await until(() => manager!.character.party.following === 'Nito');
+    socket.write('Location:            1,3\r\nRat Lair\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 3);
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+
+    socket.write('[HP=15]:\r\n');
+    await until(() => /sys go 1 297\r\n/.test(seen()));
+    expect(notices.some(composes('session.safety.teleporting', { command: 'sys go 1 297' }))).toBe(
+      true
+    );
+  });
+
   it('teleports from nobody lying on the ground', async () => {
     const { sink, notices } = collect();
     manager = build(sink, { world: haven(), automation: teleporting() });
