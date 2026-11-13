@@ -1098,7 +1098,8 @@ button.quest-banner-dismiss {
  * sized by the fill, and with `auto` the pane's flex layout measured five
  * hundred lines of Talk to learn a height it was never going to use.
  */
-.card > .body.paned > .scroller {
+.card > .body.paned > .scroller,
+.quest-split > .scroller {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
@@ -4756,12 +4757,13 @@ kbd {
 /* ========================================================== the quest book */
 
 /*
- * The track of the opened quest, under the table it was opened from.
+ * The track of the opened quest, beside the book it was opened from, or under
+ * it on a narrow card.
  *
- * Under rather than beside: a quest is read *while* deciding whether to do it,
- * so the list it was chosen from stays on screen. A seam above it, because two
- * scrolling regions in one body otherwise read as one list that changed shape
- * half way down.
+ * Beside the book from `.quest-split`'s two-column width, under it below
+ * that: a quest is read *while* deciding whether to do it, so the list it was
+ * chosen from stays on screen. A seam between them, because two scrolling
+ * regions in one body otherwise read as one list that changed shape.
  */
 .quest-track {
   border-top: var(--rule) solid var(--ink-line);
@@ -5475,6 +5477,73 @@ button.quest-plan-back {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/*
+ * The book and the opened quest's track, the paned body's moving part. The
+ * outer box is the size container, since a query cannot style the box it
+ * measures; the inner one lays the two out. Stacked by default, as the
+ * paned body stacks a scroller: the book fills and the track takes its cap.
+ */
+.quest-panes {
+  container-type: inline-size;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.quest-split {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+/* Stacked, the book is above and needs no hint pointing at it. */
+.quest-pick {
+  display: none;
+}
+
+/*
+ * Side by side from 600px. The left column's floor is one tile at its 240px
+ * minimum (`.quest-book .tile-grid`) plus the 10px `--scrollbar-w`. At 600px
+ * 2fr is 235px, so the floor holds and the right column is 338px; a step keeps
+ * 299px past the padding, the rule and the 26px node gutter. Plan it and Run
+ * it measured 165px together on the card (2026-11-13 screenshot), which
+ * leaves the act about 135px; it wraps inside
+ * its own line (`.quest-step-head > p`) and the buttons stay beside it. Each
+ * side scrolls on its own at full height.
+ */
+@container (min-width: 600px) {
+  .quest-split {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(250px, 2fr) minmax(0, 3fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* No quests, or none the find kept: the book's empty line takes the width. */
+  .quest-split > .quest-book:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .quest-split > .quest-track {
+    border-left: var(--rule) solid var(--ink-line);
+    border-top: 0;
+    margin-top: 0;
+    max-height: none;
+    padding-left: 12px;
+    padding-top: 0;
+  }
+
+  .quest-pick {
+    border-left: var(--rule) solid var(--ink-line);
+    display: block;
+    margin: 0;
+    padding-left: 12px;
+  }
 }
 
 .quest-shelf-head {

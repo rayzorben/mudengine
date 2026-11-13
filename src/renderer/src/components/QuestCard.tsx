@@ -1010,8 +1010,8 @@ function QuestCard({
         const book = questCopyText(
           shelves.map((shelf) => ({ label: shelf.group?.label ?? '', rows: shelf.rows }))
         );
-        // What is on screen: the book, and the track under it when one is
-        // open — or the plan standing in the track's place.
+        // What is on screen: the book, and the track when one is open — or
+        // the plan standing in the track's place.
         if (opened === null) return book;
         if (planFor !== null && plan !== null) return `${book}\n\n${questPlanText(opened, plan)}`;
         return `${book}\n\n${questStepsText(opened)}`;
@@ -1020,92 +1020,103 @@ function QuestCard({
       title={t('cards.quests.title')}
     >
       <QuestBookHead filter={filter} groups={GROUPS} rows={filter.kept} />
-      <div aria-label={t('cards.quests.caption')} className="scroller quest-book">
-        {rows.length === 0 ? (
-          <div className="empty">{t('cards.quests.none')}</div>
-        ) : filter.kept.length === 0 ? (
-          <div className="empty">{t('table.noMatches')}</div>
-        ) : (
-          shelves.map((shelf) => (
-            <section
-              aria-label={shelf.group?.label}
-              className="quest-shelf"
-              data-group={shelf.group?.id}
-              key={shelf.group?.id ?? ''}
-            >
-              {shelf.group !== null && (
-                <h3 className="quest-shelf-head" title={shelf.group.title}>
-                  {shelf.group.label}
-                  <span className="table-group-count">{shelf.rows.length}</span>
-                </h3>
-              )}
-              <ul className="tile-grid">
-                {shelf.rows.map((row) => (
-                  <QuestTile
-                    ahead={row.ahead}
-                    bars={row.bars}
-                    done={row.progress.done}
-                    group={row.group}
-                    hidden={row.hidden}
-                    id={row.quest.id}
-                    key={row.quest.id}
-                    level={characterLevel ?? null}
-                    name={row.quest.name}
-                    next={row.next}
-                    observed={row.progress.observed}
-                    onHide={toggleHidden}
-                    onName={onName}
-                    onOpen={toggleOpen}
-                    onPlan={loadPlan ? planStep : null}
-                    onRun={runStep}
-                    open={open === row.quest.id}
-                    pays={row.pays}
-                    // Only the tile whose step is running redraws as it moves.
-                    run={
-                      run !== null && run !== undefined && run.block === row.next?.block
-                        ? run
-                        : null
-                    }
-                    side={row.side}
-                    total={row.progress.total}
-                    watched={row.progress.watched}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))
-        )}
+      <div className="quest-panes">
+        <div className="quest-split">
+          <div aria-label={t('cards.quests.caption')} className="scroller quest-book">
+            {rows.length === 0 ? (
+              <div className="empty">{t('cards.quests.none')}</div>
+            ) : filter.kept.length === 0 ? (
+              <div className="empty">{t('table.noMatches')}</div>
+            ) : (
+              shelves.map((shelf) => (
+                <section
+                  aria-label={shelf.group?.label}
+                  className="quest-shelf"
+                  data-group={shelf.group?.id}
+                  key={shelf.group?.id ?? ''}
+                >
+                  {shelf.group !== null && (
+                    <h3 className="quest-shelf-head" title={shelf.group.title}>
+                      {shelf.group.label}
+                      <span className="table-group-count">{shelf.rows.length}</span>
+                    </h3>
+                  )}
+                  <ul className="tile-grid">
+                    {shelf.rows.map((row) => (
+                      <QuestTile
+                        ahead={row.ahead}
+                        bars={row.bars}
+                        done={row.progress.done}
+                        group={row.group}
+                        hidden={row.hidden}
+                        id={row.quest.id}
+                        key={row.quest.id}
+                        level={characterLevel ?? null}
+                        name={row.quest.name}
+                        next={row.next}
+                        observed={row.progress.observed}
+                        onHide={toggleHidden}
+                        onName={onName}
+                        onOpen={toggleOpen}
+                        onPlan={loadPlan ? planStep : null}
+                        onRun={runStep}
+                        open={open === row.quest.id}
+                        pays={row.pays}
+                        // Only the tile whose step is running redraws as it moves.
+                        run={
+                          run !== null && run !== undefined && run.block === row.next?.block
+                            ? run
+                            : null
+                        }
+                        side={row.side}
+                        total={row.progress.total}
+                        watched={row.progress.watched}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ))
+            )}
+          </div>
+          {opened === null ? (
+            filter.kept.length === 0 ? null : (
+              <p className="empty quest-pick">{t('cards.quests.pick')}</p>
+            )
+          ) : (
+            <Track
+              carrying={carrying ?? null}
+              characterClass={characterClass}
+              loadErrand={loadErrand}
+              onGoTo={onGoTo}
+              onName={onName}
+              onPlan={loadPlan ? setPlanBlock : null}
+              onPlanBack={closePlan}
+              onRank={(rank) => ranks.set(String(opened.id), rank)}
+              onRun={
+                runPlan ? (block) => runPlan(block, ranks.get(String(opened.id)) ?? null) : null
+              }
+              onStopRun={stopRun ?? null}
+              plan={plan}
+              planFailed={planFailed}
+              planFor={planFor}
+              planLoading={planLoading}
+              run={run ?? null}
+              progress={openedProgress ?? progressOf(opened)}
+              quest={opened}
+            />
+          )}
+        </div>
       </div>
-      {opened === null ? null : (
-        <Track
-          carrying={carrying ?? null}
-          characterClass={characterClass}
-          loadErrand={loadErrand}
-          onGoTo={onGoTo}
-          onName={onName}
-          onPlan={loadPlan ? setPlanBlock : null}
-          onPlanBack={closePlan}
-          onRank={(rank) => ranks.set(String(opened.id), rank)}
-          onRun={runPlan ? (block) => runPlan(block, ranks.get(String(opened.id)) ?? null) : null}
-          onStopRun={stopRun ?? null}
-          plan={plan}
-          planFailed={planFailed}
-          planFor={planFor}
-          planLoading={planLoading}
-          run={run ?? null}
-          progress={openedProgress ?? progressOf(opened)}
-          quest={opened}
-        />
-      )}
     </BentoCard>
   );
 }
 
 /**
- * The chain of one quest, opened out under the table it was chosen from.
+ * The chain of one quest, opened out beside the book it was chosen from
+ * (under it on a narrow card).
  *
- * Under rather than in a flyout: a quest is read *while* deciding whether to do
- * it, so the list it was chosen from has to stay on screen — the same reason
+ * Beside rather than in a flyout: a quest is read *while* deciding whether to
+ * do it, so the list it was chosen from has to stay on screen — the same reason
  * the Player flyout is beside its listing rather than a face of it.
  */
 function Track({

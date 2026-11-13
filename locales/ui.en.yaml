@@ -2679,6 +2679,8 @@ cards:
     hideOne: Hide {name}
     none: This realm has no quests the client can read. A realm converted before quests were
       supported shows none until it is converted again.
+    # Beside the book while no quest is opened; a narrow card stacks and hides it.
+    pick: Pick a quest to see its steps.
     # The plan to one step: the steps still to do to reach it, from where the
     # character stands — steps, never rooms. `by.*` is how each item is got,
     # split around the realm names that are controls; `snag.*` is what the
@@ -6434,7 +6436,8 @@ session:
       answered. The client will work out where it is from the rooms it walks into instead.
     # A lost character on a realm with no locate word steps through an exit (2026-11-11).
     placingReason: the character is lost and this realm cannot say where it is
-    placingStep: Lost, and this realm has no command that says where you are, so stepping {direction}
+    placingStep:
+      Lost, and this realm has no command that says where you are, so stepping {direction}
       to see which room this is.
     placingGaveUp: Still lost after {steps} steps. Walk to a room the client knows and the loop or
       route goes on from there.
