@@ -19,6 +19,7 @@ import type {
   WorldSpell
 } from '../../shared/world';
 import type { SpellWard } from '../../shared/spellWard';
+import type { GateFacts } from '../../shared/gates';
 
 /**
  * A room-script teleport the router may walk — `dive pool`, `go vortex`.
@@ -49,8 +50,8 @@ export interface RoomIndex {
   itemLandings(): ReadonlyArray<PortalExit>;
   /** Every lever that opens this step, wherever it is (todo 837). */
   leversFor(room: RoomId, direction: string): readonly RemoteLever[];
-  /** What a room's own spell does to whoever stands in it, for this level and what is worn. */
-  hazardOf(room: WorldRoom, level?: number | null, ward?: SpellWard): SpellHazard | null;
+  /** What a room's own spell does to whoever stands in it, for this character and what is worn. */
+  hazardOf(room: WorldRoom, who?: GateFacts | null, ward?: SpellWard): SpellHazard | null;
   /** The passage a room is under (`WorldGraph.spellOver`), for a walk that stops inside one. */
   spellOver(room: RoomId): Corridor | null;
   item(id: number): WorldItem | undefined;

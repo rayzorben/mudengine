@@ -96,7 +96,7 @@ export function roomBrief(
    * damage` and `inn rest` are the same column, and the realm states which is
    * which. What stops it is named here, where the item and spell tables are.
    */
-  const hazard = graph.hazardOf(room, level);
+  const hazard = graph.hazardOf(room, { level });
   if (hazard !== null) {
     brief.hazard = hazard;
     const stoppers = namedStoppers(graph, hazard);

@@ -9,6 +9,7 @@ import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from './
 import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
 import { MIN_LEVEL_ABILITY } from '../../shared/abilities';
+import type { Gate } from '../../shared/gates';
 import type { Quest } from '../../shared/quests';
 import {
   blocksInReach,
@@ -166,8 +167,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 78 | **An item used in a room can land by chance.** `landingsOfItems` reads the first stated `teleport` of an item's chain, so the obsidian talisman, whose spell runs `roomitem 802` then `random 1092` (65% a draw of spell 434 over 1/2417–2430, 10% the talisman taken), had no landing, and five labyrinth dead ends and the rooms behind them were unreached with every gate open. A use with no stated landing is read through `scriptLandings` as a room command, `use <item>` behind carrying it, in each room holding every item its run wants lying there (`itemWays.ts`). Todo 20261025-0750-01 |
  * | 79 | **Whose blows meet `Prev`, and what a worn item takes off its wearer.** `sideOf` read a monster as evil only off a disposition, so a stationary NeutralEvil or LawfulEvil one (`passive`) met no `Prev` and the sheet's `AC vs Evil` never reached its roll. `BuiltMob.ev` folds `isEvilAlignment` over the name's rows as `ep` folds the cost. And `Items.NegateSpell-0..9` was never read, so the large silvery cross's drain life and the gazes a sunstone wristband stops were charged in full; `BuiltItem.neg` carries them for `spellWard.ts`. Todo 20261027-2322-01 |
  * | 80 | **How many of a limited row may be up at once.** A lair slot takes a row on its own clock only while fewer than `GameLimit` of it are alive across the realm (`RegenSlot.cs:69`), but the limit was not carried, so the Hunting card filled every slot of Paradigm's Webbed Lair with its crowned spider (2,600 health, limit 1, 15 hours) and left the lair out as deadly while Festus hunted its horned spiders there at 3.1M an hour. `BuiltMob.gl` and `BuiltMobRow.gl` carry it where `rt` is written, folded as `rt` is (`gameLimit`). 622 of pmud.zip's limited rows allow one, the rest up to 100; gmud.zip has no `GameLimit` column and carries none |
+ * | 81 | **A room spell's gates on who you are stay on its ways in.** `spellHazard.ts` followed every gate at full weight and kept only level, `failitem` and the spell checks, so the Arlysian Temple's altar (`nomonsters:evilaligned 40:cast 1135`, 75 a tick) read as hurting a good Festus with Pastor Lander standing there, and the session walked him out. Each way now carries the alignment, class, race, ability, lives and room gates ahead of it (`HazardReach.gates`, a fifth tuple element), and `hazardFor` drops a way a gate is read as failing. The White Forest (`white forest noise`, 110 rooms) no longer burns or moves a Good or Saint character. Todo 20261113-1105-01 |
  */
-export const REALM_FORMAT = 80;
+export const REALM_FORMAT = 81;
 
 /**
  * The slowest room-spell way the file keeps (format 77), in ticks expected:
@@ -593,17 +595,18 @@ export interface BuiltSpellHazard {
   u?: 1;
   /**
    * Each effect's ways in, where any is narrower than *everybody* — format
-   * 76: `[min, max, failitems?, wards?]`, `null` for an unbounded level. An
-   * effect absent here reaches everybody. See `HazardReach`.
+   * 81: `[min, max, failitems?, wards?, gates?]`, `null` for an unbounded
+   * level. An effect absent here reaches everybody. See `HazardReach`.
    */
   r?: { d?: BuiltReachWay[]; tp?: BuiltReachWay[]; sm?: BuiltReachWay[]; u?: BuiltReachWay[] };
 }
 
-/** One way in to a hazard's effect on disk: the level band, the items whose carrier it fails on, the spells whose being up fails it. */
+/** One way in to a hazard's effect on disk: the level band, the items whose carrier it fails on, the spells whose being up fails it, the gates on who and what is in the room. */
 export type BuiltReachWay =
   | [number | null, number | null]
   | [number | null, number | null, number[]]
-  | [number | null, number | null, number[], number[]];
+  | [number | null, number | null, number[], number[]]
+  | [number | null, number | null, number[], number[], Gate[]];
 
 /**
  * One row's fighting profile on disk — format 20 — in the compact shape the

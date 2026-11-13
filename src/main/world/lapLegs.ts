@@ -8,6 +8,7 @@
  * unrun and said back (`asked`), and `planningLegs` plans those legs again.
  * See `mudengine-world` › *The lap index is planned on the route worker*.
  */
+import type { GateFacts } from '../../shared/gates';
 import type { FightOdds, RoomId } from '../../shared/world';
 import { relocatingShare } from './relocating';
 import type { NavigationOracle } from '../../shared/navigation';
@@ -39,13 +40,13 @@ export function plainTraveller(traveller: Traveller): PlainTraveller {
  */
 export function relocatingHazard(
   world: Pick<WorldGraph, 'hazardOf'> | undefined,
-  level: number | null,
+  who: GateFacts,
   keys: readonly number[] | undefined,
   spellsUp: readonly number[] | undefined,
   ward?: Traveller['ward']
 ): NonNullable<Traveller['hazard']> {
   return (room, carrying = keys) => {
-    const stated = world?.hazardOf(room, level, ward) ?? null;
+    const stated = world?.hazardOf(room, who, ward) ?? null;
     return stated === null ? null : relocatingShare(stated, carrying, spellsUp);
   };
 }
@@ -56,7 +57,7 @@ export function lapFunctions(
   plain: PlainTraveller
 ): Pick<Traveller, 'hazard' | 'shareOfHealth'> {
   return {
-    hazard: relocatingHazard(world, plain.level ?? null, plain.keys, plain.spellsUp, plain.ward),
+    hazard: relocatingHazard(world, plain, plain.keys, plain.spellsUp, plain.ward),
     shareOfHealth: () => 0
   };
 }

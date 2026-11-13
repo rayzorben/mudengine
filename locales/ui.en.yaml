@@ -3986,7 +3986,8 @@ cards:
     # orohost), and on the way in for an instant spell; no capture states it yet.
     labelTitle: The game casts this on everyone standing here, again and again while they stay.
     moves: it moves you somewhere else
-    notAtYourLevel: not at your level
+    # Everything it does is gated on level, alignment, class or a monster here, and this character fails it.
+    notToYou: does nothing to you
     passage: Passage
     passageValue: '{spellName} for {roomCount} rooms'
     stoppedBy: Stopped by

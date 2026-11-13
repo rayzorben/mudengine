@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hazardAtLevel, hazardWords, roomSpellCopyLines, stoppersShown } from '../RoomSpellRows';
+import { hazardFacing, hazardWords, roomSpellCopyLines, stoppersShown } from '../RoomSpellRows';
 import { healthShareWords } from '../../lib/healthShare';
 import type { WorldSpell } from '@shared/world';
 import { t } from '../../lib/i18n';
@@ -24,7 +24,7 @@ const desert: WorldSpell = {
 
 describe('the Room card says what the room casts', () => {
   it('says every effect, so a room that hurts and moves says both', () => {
-    const words = hazardWords(hazardAtLevel(desert, 10)!).map((word) => word.text);
+    const words = hazardWords(hazardFacing(desert, { level: 10 })!).map((word) => word.text);
     expect(words).toEqual([
       t('cards.roomSpell.damage', { damage: 13 }),
       t('cards.roomSpell.moves'),
@@ -33,10 +33,10 @@ describe('the Room card says what the room casts', () => {
   });
 
   it('drops an effect the realm gates away from this level, and keeps it when the level is unknown', () => {
-    expect(hazardWords(hazardAtLevel(desert, 21)!).map((word) => word.text)).not.toContain(
-      t('cards.roomSpell.moves')
-    );
-    expect(hazardWords(hazardAtLevel(desert, null)!).map((word) => word.text)).toContain(
+    expect(
+      hazardWords(hazardFacing(desert, { level: 21 })!).map((word) => word.text)
+    ).not.toContain(t('cards.roomSpell.moves'));
+    expect(hazardWords(hazardFacing(desert, { level: null })!).map((word) => word.text)).toContain(
       t('cards.roomSpell.moves')
     );
   });
@@ -47,13 +47,32 @@ describe('the Room card says what the room casts', () => {
       name: 'sandstorm',
       hazard: { relocates: true, reach: { relocates: [{ band: { max: 19 } }] } }
     };
-    expect(hazardWords(hazardAtLevel(gated, 21)!).map((word) => word.text)).toEqual([
-      t('cards.roomSpell.notAtYourLevel')
+    expect(hazardWords(hazardFacing(gated, { level: 21 })!).map((word) => word.text)).toEqual([
+      t('cards.roomSpell.notToYou')
     ]);
   });
 
+  // The Arlysian Temple's altar: `nomonsters:evilaligned 40:cast 1135` (gmud.zip block 9444).
+  it('says the altar does nothing to a good character, or to anybody while a monster is here', () => {
+    const altar: WorldSpell = {
+      id: 1147,
+      name: 'church check',
+      hazard: {
+        damage: 75,
+        reach: {
+          damage: [{ gates: [{ kind: 'empty-room' }, { kind: 'alignment', atLeast: 40 }] }]
+        }
+      }
+    };
+    const said = (who: Parameters<typeof hazardFacing>[1]) =>
+      hazardWords(hazardFacing(altar, who)!).map((word) => word.text);
+    expect(said({ alignment: 'Good' })).toEqual([t('cards.roomSpell.notToYou')]);
+    expect(said({ alignment: null, monstersHere: true })).toEqual([t('cards.roomSpell.notToYou')]);
+    expect(said({ alignment: null })).toEqual([t('cards.roomSpell.damage', { damage: 75 })]);
+  });
+
   it('has no hazard for a spell the realm states none for', () => {
-    expect(hazardAtLevel({ id: 484, name: 'inn rest' }, 10)).toBeUndefined();
+    expect(hazardFacing({ id: 484, name: 'inn rest' }, { level: 10 })).toBeUndefined();
     const copied = roomSpellCopyLines({
       spell: { id: 484, name: 'inn rest' },
       hazard: undefined,
@@ -64,7 +83,7 @@ describe('the Room card says what the room casts', () => {
   });
 
   it('says the damage as a share of the maximum health, and only where the maximum is known', () => {
-    const hazard = hazardAtLevel(desert, 10)!;
+    const hazard = hazardFacing(desert, { level: 10 })!;
     expect(hazardWords(hazard, 130)[0]?.title).toBe(healthShareWords(0.1));
     expect(hazardWords(hazard, 2000)[0]?.title).toBe(healthShareWords(13 / 2000));
     expect(hazardWords(hazard, null)[0]?.title).toBeUndefined();

@@ -169,7 +169,7 @@ export class Wards implements SessionModule {
     if (!hurts) return;
     const found = this.sources.hazardAt(here);
     if (found === null) return;
-    const atLevel = hazardFor(found.hazard, state.progress.level);
+    const atLevel = hazardFor(found.hazard, { level: state.progress.level });
     for (const id of hazardStoppers(atLevel, 'wards')) this.until.delete(id);
     this.keep(here, state, 'combat');
   }
@@ -189,7 +189,7 @@ export class Wards implements SessionModule {
     if (found === null) return;
     const { spell: cast } = found;
     // Only a ward that takes something off at this character's level is worth a use.
-    const hazard = hazardFor(found.hazard, state.progress.level);
+    const hazard = hazardFor(found.hazard, { level: state.progress.level });
     const spells = hazardStoppers(hazard, 'wards');
     if (spells.length === 0) return;
     // Carrying what stops it outright — the wristband — wants no ward at all.

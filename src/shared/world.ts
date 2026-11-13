@@ -10,7 +10,7 @@
  */
 import type { ItemRarity } from './rarity';
 import type { ItemSeen } from './itemSeen';
-import { asGates, type AbilityBounds, type Gate } from './gates';
+import { asGates, judge, type AbilityBounds, type Gate, type GateFacts } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellDamage';
 import type { MonsterNature } from './spellReach';
@@ -1259,6 +1259,12 @@ export interface HazardReach {
    * which drinking from a waterskin casts, in the desert. Absent is none.
    */
   wards?: number[];
+  /**
+   * The gates on who the character is and what is in the room that stand
+   * ahead of it on its line (format 81): the altar's `nomonsters:evilaligned
+   * 40:cast 1135` burns only an evil character in an empty room. Absent is none.
+   */
+  gates?: Gate[];
 }
 
 /** The two things a way in fails on: an item carried, a spell up. */
@@ -1372,26 +1378,31 @@ function narrowReach(hazard: SpellHazard, keep: (way: HazardReach) => boolean): 
 }
 
 /**
- * This hazard as it applies to a character of this level.
+ * This hazard as it applies to this character: a way whose level band
+ * excludes it, or one of whose gates `judge` answers `fail`, is dropped.
  *
- * **Unknown level keeps everything**, which is the refuse-rather-than-guess
- * rule: a character the client cannot place is priced for the whole chain, as
- * it was before any of this existed. Only a *stated* level drops a *stated*
- * band, and only where the band excludes it outright.
+ * **Unknown keeps everything**, which is the refuse-rather-than-guess rule: a
+ * character the client cannot place is priced for the whole chain. Only a
+ * *stated* level drops a *stated* band, and only a gate read as failing drops
+ * its way; `unknown` and a need keep it.
  *
  * Returns the same reference where nothing is gated, so the ordinary room —
  * which is almost all of them — costs one property read.
  */
-export function hazardFor(hazard: SpellHazard, level: number | null | undefined): SpellHazard {
-  if (level === null || level === undefined) return hazard;
+export function hazardFor(hazard: SpellHazard, who: GateFacts | null | undefined): SpellHazard {
+  if (who === null || who === undefined) return hazard;
+  const level = who.level;
   return narrowReach(
     hazard,
-    ({ band }) =>
-      band === undefined ||
-      !(
-        (band.min !== undefined && level < band.min) ||
-        (band.max !== undefined && level > band.max)
-      )
+    ({ band, gates }) =>
+      (band === undefined ||
+        level === null ||
+        level === undefined ||
+        !(
+          (band.min !== undefined && level < band.min) ||
+          (band.max !== undefined && level > band.max)
+        )) &&
+      !(gates ?? []).some((gate) => judge(gate, who) === 'fail')
   );
 }
 

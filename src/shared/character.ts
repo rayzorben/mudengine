@@ -2074,6 +2074,14 @@ export function follows(state: CharacterState, who: string): boolean {
 }
 
 /**
+ * Whether `Also here:` lists a monster, a room's own resident included
+ * (`GateFacts.monstersHere`). A name nobody has placed is not counted.
+ */
+export function monstersListed(room: Pick<Room, 'occupants'>): boolean {
+  return room.occupants.some((who) => who.kind === 'mob');
+}
+
+/**
  * Whether the server has placed this room since login, rather than the client
  * remembering where the character stood before (`resolvedBy: 'remembered'`).
  */

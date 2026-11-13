@@ -295,6 +295,43 @@ describe('what a room’s spell does to whoever stands in it', () => {
   });
 
   /*
+   * The Arlysian Temple's altar (spell 1147, block 9444) and the White Forest
+   * (spell 1079, block 9443), gmud.zip: each gate on who the character is and
+   * what is in the room stays on the ways behind it, line by line (format 81).
+   */
+  it('keeps the alignment and room gates ahead of each way in', () => {
+    const table = spells({
+      1147: { abilities: [[HAZARD_ABILITY.textBlock, 9444]] },
+      1079: { abilities: [[HAZARD_ABILITY.textBlock, 9443]] },
+      1135: { abilities: [[HAZARD_ABILITY.damage, 0]], power: [50, 100] }
+    });
+    const altar = resolveHazard(
+      1147,
+      table,
+      blocks({ 9444: 'nomonsters:evilaligned 40:cast 1135' })
+    );
+    expect(altar.damage).toBe(75);
+    expect(altar.reach).toEqual({
+      damage: [{ gates: [{ kind: 'empty-room' }, { kind: 'alignment', atLeast: 40 }] }]
+    });
+
+    const forest = resolveHazard(
+      1079,
+      table,
+      blocks({
+        9443: 'evilaligned -50:goodaligned 39:teleport 1641 17\nevilaligned 40:teleport 1641 17:cast 1135'
+      })
+    );
+    expect(forest.reach).toEqual({
+      relocates: [
+        { gates: [{ kind: 'alignment', atLeast: -50, atMost: 39 }] },
+        { gates: [{ kind: 'alignment', atLeast: 40 }] }
+      ],
+      damage: [{ gates: [{ kind: 'alignment', atLeast: 40 }] }]
+    });
+  });
+
+  /*
    * An effect that can reach this character by any path is one it can reach:
    * both ways are kept, and `hazardFor` keeps the effect while either admits.
    */

@@ -2245,7 +2245,7 @@ export class Router {
     const kitFor = (room: WorldRoom): number[] => {
       const held = kits.get(room);
       if (held !== undefined) return held;
-      const hazard = this.index.hazardOf(room, traveller.level, traveller.ward);
+      const hazard = this.index.hazardOf(room, traveller, traveller.ward);
       const kit =
         hazard === null || hazardAvoided(hazard, traveller.keys, traveller.spellsUp)
           ? []
@@ -3680,7 +3680,7 @@ export class Router {
         ...(hazard !== null && hazard > 0 ? { hazard } : {}),
         // And the word, where the share is a discouragement and not a figure.
         ...(hazard !== null && hazard > 0 && arriving !== undefined
-          ? hazardWordOf(this.index.hazardOf(arriving, traveller.level, traveller.ward))
+          ? hazardWordOf(this.index.hazardOf(arriving, traveller, traveller.ward))
           : {}),
         /*
          * **Either of them reaching the wall makes the step deadly.** It was
@@ -3780,7 +3780,7 @@ export class Router {
       const room = this.rooms.get(step.to);
       if (room?.spell === undefined) continue;
       const spell = this.index.spellById(room.spell);
-      const stated = this.index.hazardOf(room, traveller.level, traveller.ward);
+      const stated = this.index.hazardOf(room, traveller, traveller.ward);
       if (spell === null || stated === null) continue;
       if (hazardAvoided(stated, traveller.keys, traveller.spellsUp)) continue;
       // What is left of it for this pack, and what would take more of it off.
@@ -3871,7 +3871,7 @@ export class Router {
       ...traveller,
       keys,
       hazard: (room, carrying = keys) => {
-        const hazard = this.index.hazardOf(room, traveller.level, traveller.ward);
+        const hazard = this.index.hazardOf(room, traveller, traveller.ward);
         return hazard !== null && hazardAvoided(hazard, carrying) ? null : priced(room, carrying);
       }
     };

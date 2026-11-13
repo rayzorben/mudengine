@@ -88,6 +88,7 @@ import { castBy, picksRead, NO_SUPPLY, readSupply, type WorldSupply } from './su
 import { fightSpellsOf } from '../../shared/summons';
 import { hitSpellsOf } from '../../shared/hitSpells';
 import { wardedFrom, type SpellWard } from '../../shared/spellWard';
+import { asGates, type GateFacts } from '../../shared/gates';
 
 export class Catalogue {
   /**
@@ -471,7 +472,7 @@ export class Catalogue {
    */
   wardsOf(spell: number, level?: number | null): number[] {
     const stated = this.spellById(spell)?.hazard;
-    return stated === undefined ? [] : hazardStoppers(hazardFor(stated, level), 'wards');
+    return stated === undefined ? [] : hazardStoppers(hazardFor(stated, { level }), 'wards');
   }
 
   /**
@@ -485,7 +486,7 @@ export class Catalogue {
     const stated = this.spellById(spell)?.hazard;
     if (stated === undefined) return [];
     const found: WorldItem[] = [];
-    for (const id of hazardStoppers(hazardFor(stated, level), 'fails')) {
+    for (const id of hazardStoppers(hazardFor(stated, { level }), 'fails')) {
       const item = this.items.get(id);
       if (item !== undefined && !found.includes(item)) found.push(item);
     }
@@ -1668,7 +1669,7 @@ export class Catalogue {
    * spell whose chain reaches nothing worth pricing. The last is the ordinary
    * case: two thirds of the realm's room spells are scenery.
    */
-  hazardOf(room: WorldRoom, level?: number | null, ward?: SpellWard): SpellHazard | null {
+  hazardOf(room: WorldRoom, who?: GateFacts | null, ward?: SpellWard): SpellHazard | null {
     if (room.spell === undefined) return null;
     const spell = this.spellById(room.spell);
     // A worn item that negates the spell takes the whole cast off its wearer,
@@ -1679,14 +1680,14 @@ export class Catalogue {
     const hazard = spell.hazard ?? null;
     /*
      * Narrowed to the character being planned for, where the realm gates an
-     * effect on level and the client knows which character it is (todo 01).
+     * effect on level, alignment, class or the room and the client knows (todo 01).
      * Every reader narrows through `hazardFor`: here for a room asked about,
      * and on the Room card for the room stood in, so a level-up there shows
      * without a move (todo 72). `hazardFor` keeps the whole hazard
-     * for an unstated level, which is the ordinary refuse-rather-than-guess
+     * for what is unstated, which is the ordinary refuse-rather-than-guess
      * answer and what every caller got before.
      */
-    return hazard === null ? null : hazardFor(hazard, level);
+    return hazard === null ? null : hazardFor(hazard, who);
   }
 
   /** Whether a spell, or what it ends in, takes one of `spells` off the character. */
@@ -2434,7 +2435,7 @@ function readHazard(value: unknown, holdable: (item: number) => boolean): SpellH
 }
 
 /**
- * Each effect's ways in (format 76, `[min, max, failitems?, wards?]`), or null
+ * Each effect's ways in (format 81, `[min, max, failitems?, wards?, gates?]`), or null
  * where every effect reaches everybody. An effect the hazard has and the
  * record does not narrow is one way that reaches everybody, so
  * `outrightStoppers` finds nothing stops it.
@@ -2463,18 +2464,21 @@ function readReach(
  * *What stops a room's spell is an item somebody can hold*.
  */
 function readWay(value: unknown, holdable: (item: number) => boolean): HazardReach[] {
-  if (!Array.isArray(value) || value.length < 2 || value.length > 4) return [];
-  const [min, max, fails, wards] = value as unknown[];
+  if (!Array.isArray(value) || value.length < 2 || value.length > 5) return [];
+  const [min, max, fails, wards, gated] = value as unknown[];
   const band: LevelBand = {};
   if (typeof min === 'number' && Number.isFinite(min)) band.min = min;
   if (typeof max === 'number' && Number.isFinite(max)) band.max = max;
   const items = readIdList(fails ?? []).filter(holdable);
   const spells = readIdList(wards ?? []);
+  // Gates the reader cannot read leave the way reaching everybody, the unsafe case.
+  const gates = (gated === undefined ? null : asGates(gated)) ?? [];
   return [
     {
       ...(band.min === undefined && band.max === undefined ? {} : { band }),
       ...(items.length > 0 ? { fails: items } : {}),
-      ...(spells.length > 0 ? { wards: spells } : {})
+      ...(spells.length > 0 ? { wards: spells } : {}),
+      ...(gates.length > 0 ? { gates } : {})
     }
   ];
 }

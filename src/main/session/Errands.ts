@@ -16,7 +16,7 @@ import {
 } from '../../shared/navigation';
 import { Navigation } from './navigation';
 import { itemsAsked, tollCharge } from '../world/navigation/exitGates';
-import { rollPercent, type TbStat } from '../../shared/gates';
+import { rollPercent, type GateFacts, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { keyJson, minutesMs } from '../../shared/values';
 import { partyFigure, walkersThrough } from '../../shared/barrierHands';
@@ -1031,6 +1031,7 @@ export class Errands implements SessionModule {
     const pack = this.packContents(state);
     const up = this.spellsUp(state);
     const ward = this.wardNow(state);
+    const who = this.gateFactsNow(state);
     const parts = this.runParts(state, 'lairKnown');
     // A route prices the wanderers auto-combat would fight as fights, and one
     // the odds book has not run off the realm's numbers (the user, 2026-11-03).
@@ -1048,7 +1049,7 @@ export class Errands implements SessionModule {
     const picklocks = partyFigure(state, 'picklocks', movement.pickLocks);
     const strength = partyFigure(state, 'strength', movement.bashDoors);
     return {
-      level: state.progress.level ?? null,
+      ...who,
       strength,
       pickSkill: picklocks ?? undefined,
       own: { picklocks: state.progress.picklocks, strength: state.progress.strength },
@@ -1086,31 +1087,6 @@ export class Errands implements SessionModule {
       wealth: wealthOf(state),
       // And the cash carried, which pays a toll without a stop at the bank.
       purse: state.inventory.wealth,
-      /*
-       * The join between the sheet's word and the realm's row id, made here
-       * for the reason every other figure on this object is: one statement,
-       * read by the loop's leg, the pick-up after a fight, the way home and
-       * main's route panel alike. `wearerOf` makes the same join for what a
-       * character may *wear*; both go through `WorldGraph.classNamed` so a
-       * Paladin cannot be one class to a helm and another to a corridor.
-       */
-      classId:
-        this.world && state.className ? (this.world.classNamed(state.className)?.id ?? null) : null,
-      // The same join one column across, for a race-gated exit.
-      raceId: this.world && state.race ? this.world.raceId(state.race) : null,
-      /*
-       * The one fact here that is not off the stat sheet: the sheet carries no
-       * standing, so the roster's own row for this character is the only place
-       * it appears. Null for the first seconds of every session, which the
-       * router treats as *nobody has said* and never as neutral.
-       */
-      alignment: ownAlignment(state),
-      /*
-       * And the quest counters, for a scripted way through gated on one. Null
-       * until `abil` has answered (`Routines.oweOnEntry`), which the router
-       * reads as *nobody has said* and never as the gate passing.
-       */
-      counters: state.abilities,
       // And the wards the server has stated up with a clock still running,
       // for a room spell one of them stops (todo 105).
       spellsUp: up,
@@ -1138,7 +1114,7 @@ export class Errands implements SessionModule {
        * it because `LairCosts` remembers per room; this has nothing to
        * remember, so what it depends on is hoisted instead.
        */
-      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up, ward),
+      hazard: (room, carrying = pack.keys) => this.roomHazard(room, state, carrying, up, ward, who),
       // And a room command's one-off hit as a share of the health now; null
       // while health is unread, which `hitCost` walls.
       shareOfHealth: healthShare(this.healthNow(state, false))
@@ -1281,6 +1257,35 @@ export class Errands implements SessionModule {
   }
 
   /**
+   * Who this character is, as a gate reads it (`judge`): the traveller's own
+   * facts, and the room spell's (`hazardOf`). Each null is *nobody has said*,
+   * which the router and the room spell never read as the gate passing.
+   */
+  gateFactsNow(state: CharacterState): GateFacts {
+    return {
+      level: state.progress.level ?? null,
+      /*
+       * The join between the sheet's word and the realm's row id, made once
+       * for every reader. `wearerOf` makes the same join for what a character
+       * may *wear*; both go through `WorldGraph.classNamed` so a Paladin
+       * cannot be one class to a helm and another to a corridor.
+       */
+      classId:
+        this.world && state.className ? (this.world.classNamed(state.className)?.id ?? null) : null,
+      // The same join one column across, for a race-gated exit.
+      raceId: this.world && state.race ? this.world.raceId(state.race) : null,
+      /*
+       * The one fact here that is not off the stat sheet: the sheet carries no
+       * standing, so the roster's own row for this character is the only place
+       * it appears. Null for the first seconds of every session.
+       */
+      alignment: ownAlignment(state),
+      // And the quest counters: null until `abil` has answered (`Routines.oweOnEntry`).
+      counters: state.abilities
+    };
+  }
+
+  /**
    * What a room's own spell is expected to cost this character, as a share of
    * the health it has now (`Traveller.hazard`, todo 01).
    *
@@ -1296,13 +1301,14 @@ export class Errands implements SessionModule {
     state: CharacterState,
     carrying: readonly number[],
     up: readonly number[],
-    ward: SpellWard
+    ward: SpellWard,
+    who: GateFacts
   ): number | null {
     if (!this.world) return null;
-    // The character's own level: the realm gates some effects on it, and a
-    // sandstorm that cannot catch this character is not a price it pays.
-    // A room spell a worn item negates does nothing to this character (`hazardOf`).
-    const stated = this.world.hazardOf(room, state.progress.level, ward);
+    // Who the character is: the realm gates some effects on level and
+    // alignment, and a sandstorm that cannot catch this character is not a
+    // price it pays. A room spell a worn item negates does nothing to it (`hazardOf`).
+    const stated = this.world.hazardOf(room, who, ward);
     if (stated === null) return null;
     // Carrying what stops it is not *unknown*, it is *free*: the room costs a
     // plain step, which is what it is for that character.

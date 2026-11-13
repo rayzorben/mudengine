@@ -482,15 +482,15 @@ describe('a hazard as it applies to one character', () => {
   };
 
   it('drops an effect the realm has already excluded this character from', () => {
-    expect(hazardFor(desert, 21).relocates).toBe(false);
+    expect(hazardFor(desert, { level: 21 }).relocates).toBe(false);
     // And keeps everything the band says nothing about.
-    expect(hazardFor(desert, 21).summons).toBe(true);
-    expect(hazardFor(desert, 21).avoidedBySpell).toEqual([711]);
+    expect(hazardFor(desert, { level: 21 }).summons).toBe(true);
+    expect(hazardFor(desert, { level: 21 }).avoidedBySpell).toEqual([711]);
   });
 
   it('keeps it for a character inside the band', () => {
-    expect(hazardFor(desert, 19).relocates).toBe(true);
-    expect(hazardFor(desert, 1).relocates).toBe(true);
+    expect(hazardFor(desert, { level: 19 }).relocates).toBe(true);
+    expect(hazardFor(desert, { level: 1 }).relocates).toBe(true);
   });
 
   /*
@@ -505,13 +505,32 @@ describe('a hazard as it applies to one character', () => {
 
   it('is the same object where nothing is gated, so the ordinary room is free', () => {
     const plain: SpellHazard = { damage: 15, avoidedBy: [690] };
-    expect(hazardFor(plain, 21)).toBe(plain);
+    expect(hazardFor(plain, { level: 21 })).toBe(plain);
+  });
+
+  /*
+   * The Arlysian Temple's altar, `nomonsters:evilaligned 40:cast 1135`
+   * (gmud.zip, format 81): Festus, Good, with Pastor Lander standing there,
+   * was walked out of a room that cannot touch him.
+   */
+  it('drops a way whose alignment or room gate the character fails', () => {
+    const altar: SpellHazard = {
+      damage: 75,
+      reach: { damage: [{ gates: [{ kind: 'empty-room' }, { kind: 'alignment', atLeast: 40 }] }] }
+    };
+    expect(hazardFor(altar, { alignment: 'Good' }).damage).toBeUndefined();
+    expect(hazardFor(altar, { alignment: 'Saint' }).damage).toBeUndefined();
+    expect(hazardFor(altar, { alignment: 'Villain', monstersHere: true }).damage).toBeUndefined();
+    // An evil character in an empty room is burned, and so is one nobody has placed.
+    expect(hazardFor(altar, { alignment: 'Villain' }).damage).toBe(75);
+    expect(hazardFor(altar, { alignment: null }).damage).toBe(75);
+    expect(hazardFor(altar, { alignment: 'Villain', monstersHere: false }).damage).toBe(75);
   });
 
   it('reads a minimum as well as a maximum', () => {
     const summonsHigh: SpellHazard = { summons: true, reach: { summons: [{ band: { min: 50 } }] } };
-    expect(hazardFor(summonsHigh, 21).summons).toBe(false);
-    expect(hazardFor(summonsHigh, 50).summons).toBe(true);
+    expect(hazardFor(summonsHigh, { level: 21 }).summons).toBe(false);
+    expect(hazardFor(summonsHigh, { level: 50 }).summons).toBe(true);
   });
 });
 
@@ -528,13 +547,13 @@ describe('a hazard as it applies to what is carried', () => {
   };
 
   it('drops an effect once level and pack have shut every way in', () => {
-    const above = hazardFor(desert, 40);
+    const above = hazardFor(desert, { level: 40 });
     expect(hazardCarried(above, [1180]).relocates).toBe(false);
     expect(hazardCarried(above, [1180]).summons).toBe(true);
     // Positive control: without the wristband the teleport stands.
     expect(hazardCarried(above, [690]).relocates).toBe(true);
     // And below level 20 the sandstorm needs no wristband.
-    expect(hazardCarried(hazardFor(desert, 10), [1180]).relocates).toBe(true);
+    expect(hazardCarried(hazardFor(desert, { level: 10 }), [1180]).relocates).toBe(true);
   });
 
   it('keeps everything for a pack nobody has listed', () => {
@@ -554,11 +573,11 @@ describe('a hazard as it applies to what is carried', () => {
 
   it('names what takes one effect off, at the level the reader meets it', () => {
     // Below level 20 the sandstorm needs no wristband, so nothing takes the teleport off.
-    expect(hazardStoppers(hazardFor(desert, 10), 'fails')).toEqual([]);
-    expect(hazardStoppers(hazardFor(desert, 40), 'fails')).toEqual([1180]);
-    expect(stopperEffects(hazardFor(desert, 40), 'fails', 1180)).toEqual(['relocates']);
+    expect(hazardStoppers(hazardFor(desert, { level: 10 }), 'fails')).toEqual([]);
+    expect(hazardStoppers(hazardFor(desert, { level: 40 }), 'fails')).toEqual([1180]);
+    expect(stopperEffects(hazardFor(desert, { level: 40 }), 'fails', 1180)).toEqual(['relocates']);
     // Positive control: an item nothing fails on takes nothing off.
-    expect(stopperEffects(hazardFor(desert, 40), 'fails', 690)).toEqual([]);
+    expect(stopperEffects(hazardFor(desert, { level: 40 }), 'fails', 690)).toEqual([]);
   });
 
   /*

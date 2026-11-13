@@ -25,7 +25,29 @@ import { behind, builtEffects, joinReach } from './hazardReach';
 import { number } from './values';
 import type { RealmSource } from './RealmSource';
 import { castMoves, SCRIPT_DEPTH, scriptsOf } from './navigation/scriptWays';
-import { linesRun, roleOf, stepsRun, type Textblock } from './navigation/textblock';
+import { gatesOf } from './navigation/stepGates';
+import { linesRun, roleOf, stepsRun, type TbStep, type Textblock } from './navigation/textblock';
+
+/**
+ * The gates kept on a way in (`HazardReach.gates`): who the character is and
+ * what is in the room. An item gate stays with the pack readers, which ask
+ * about a pack the character may not carry yet; level, `failitem` and the
+ * spell checks have their own fields.
+ */
+const WHO_GATES: ReadonlySet<TbStep['verb']> = new Set([
+  'class',
+  'race',
+  'evilaligned',
+  'goodaligned',
+  'checkability',
+  'checkabilityexact',
+  'testability',
+  'failability',
+  'checklives',
+  'nomonsters',
+  'monsters',
+  'needmonster'
+]);
 
 /** A band on disk: `[min, max]`, `null` for unbounded on either side. */
 const pair = (band: LevelBand): [number | null, number | null] => [
@@ -134,12 +156,17 @@ export function indexSpellHazards(
       if (
         reach === undefined ||
         reach.some(
-          (way) => way.band === undefined && way.fails === undefined && way.wards === undefined
+          (way) =>
+            way.band === undefined &&
+            way.fails === undefined &&
+            way.wards === undefined &&
+            way.gates === undefined
         )
       )
         continue;
       ways[key] = reach.map((way): BuiltReachWay => {
         const [min, max] = pair(way.band ?? {});
+        if (way.gates !== undefined) return [min, max, way.fails ?? [], way.wards ?? [], way.gates];
         if (way.wards !== undefined) return [min, max, way.fails ?? [], way.wards];
         return way.fails === undefined ? [min, max] : [min, max, way.fails];
       });
@@ -317,12 +344,13 @@ export function resolveHazard(
        * still inside that gate.
        */
       const outer = band;
-      // The items and spells this line fails on so far, and the ways in of what it has done.
+      // What this line fails on so far, and the ways in of what it has done.
       const fails: number[] = [];
       const wards: number[] = [];
+      const asked: TbStep[] = [];
       let lineWays: HazardReachMap = {};
       const does = (step: HazardReachMap): void => {
-        lineWays = joinReach(lineWays, behind(fails, wards, step));
+        lineWays = joinReach(lineWays, behind({ fails, wards, gates: gatesOf(asked) }, step));
       };
       // A roll table's lines are all followed at full weight, as `random` is.
       walkLine: for (const step of stepsRun(line, use)) {
@@ -414,10 +442,13 @@ export function resolveHazard(
              * A gate, or a gate that pays, decides whether the rest of the line
              * runs for somebody, so the line goes on at full weight (format 43:
              * the oasis pools' `checkspell 512 4099:cast 515` was a hazard on
-             * every route to the Golden Spire). Narration and a gift of
-             * experience are no harm. Any other effect is one this cannot
-             * price, so the room is discouraged rather than priced at nothing.
+             * every route to the Golden Spire). One on who the character is or
+             * what is in the room is kept on every way behind it (format 81),
+             * for `hazardFor` to judge. Narration and a gift of experience are
+             * no harm. Any other effect is one this cannot price, so the room
+             * is discouraged rather than priced at nothing.
              */
+            if (WHO_GATES.has(step.verb)) asked.push(step);
             const role = roleOf(step);
             if (role === 'gate' || role === 'pays' || role === 'say' || role === 'flow') break;
             if (step.verb === 'addexp') break;

@@ -20,7 +20,14 @@ import {
 } from '../world/navigation/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Block } from '../../shared/blocks';
-import { buffNames, packRows, type CharacterState, type FightSigns } from '../../shared/character';
+import type { GateFacts } from '../../shared/gates';
+import {
+  buffNames,
+  monstersListed,
+  packRows,
+  type CharacterState,
+  type FightSigns
+} from '../../shared/character';
 import { hurtsEachTick } from '../../shared/spellcraft';
 import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
@@ -42,7 +49,10 @@ export interface RoomHazardsParts {
     | Pick<WorldGraph, 'byId' | 'hazardOf' | 'spellById' | 'spellNamed' | 'item' | 'stockingPlaces'>
     | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
-  errands: Pick<Errands, 'travellerNow' | 'packContents' | 'spellsUp' | 'roomHazard' | 'wardNow'>;
+  errands: Pick<
+    Errands,
+    'travellerNow' | 'gateFactsNow' | 'packContents' | 'spellsUp' | 'roomHazard' | 'wardNow'
+  >;
   /** A monster's blow the state does not show as a fight yet, for `RoomDamageSeen`. */
   signs: FightSigns;
   /** A monster's damage line lately, wherever it is now, for `RoomDamageSeen`. */
@@ -138,7 +148,8 @@ export class RoomHazards implements SessionModule {
       state,
       errands.packContents(state).keys,
       errands.spellsUp(state),
-      errands.wardNow(state)
+      errands.wardNow(state),
+      this.who(room, state)
     );
     return share !== null && share >= tuning().world.otherWayShare ? stopper : null;
   }
@@ -177,9 +188,22 @@ export class RoomHazards implements SessionModule {
     const world = this.parts.world;
     const found = world?.byId(room);
     if (world === undefined || found === undefined || found.spell === undefined) return null;
+    // Only the character as it stands is judged on who it is: a way's stoppers are asked for a party.
     const ward = warded ? this.parts.errands.wardNow(state) : undefined;
-    const hazard = world.hazardOf(found, state.progress.level, ward);
+    const who = warded ? this.who(room, state) : { level: state.progress.level };
+    const hazard = world.hazardOf(found, who, ward);
     const spell = world.spellById(found.spell);
     return hazard === null || spell === null ? null : { id: spell.id, name: spell.name, hazard };
+  }
+
+  /**
+   * This character's gate facts in this room, with whether `Also here:` lists
+   * a monster where it stands: Pastor Lander at the Arlysian Temple's altar
+   * fails its `nomonsters` (`TextBlockPart.cs:838`).
+   */
+  private who(room: RoomId, state: CharacterState): GateFacts {
+    const facts = this.parts.errands.gateFactsNow(state);
+    if (roomAddress(state.room) !== room) return facts;
+    return { ...facts, monstersHere: monstersListed(state.room) };
   }
 }

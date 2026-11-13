@@ -21,6 +21,7 @@ import {
   type SpellStoppers,
   type WorldSpell
 } from '@shared/world';
+import type { GateFacts } from '@shared/gates';
 
 export interface RoomSpellRowsProps {
   /** Null in a passage whose own rooms cast nothing. */
@@ -37,14 +38,14 @@ export interface RoomSpellRowsProps {
 }
 
 /**
- * A room spell's hazard narrowed to a level, for the room the character is in;
- * the peek's arrives narrowed from `WorldGraph.hazardOf`. Null level keeps it whole.
+ * A room spell's hazard narrowed to this character, for the room it is in;
+ * the peek's arrives narrowed from `WorldGraph.hazardOf`. What is unknown keeps it whole.
  */
-export function hazardAtLevel(
+export function hazardFacing(
   spell: WorldSpell | null | undefined,
-  level: number | null
+  who: GateFacts
 ): SpellHazard | undefined {
-  return spell?.hazard === undefined ? undefined : hazardFor(spell.hazard, level);
+  return spell?.hazard === undefined ? undefined : hazardFor(spell.hazard, who);
 }
 
 /**
@@ -89,8 +90,8 @@ function effectWord(hazard: SpellHazard, effect: HazardEffect, hpMax: number | n
 /** One chip per effect, so a room that both hurts and moves says both. */
 export function hazardWords(hazard: SpellHazard, hpMax: number | null = null): HazardWord[] {
   const words = hazardEffects(hazard).map((effect) => effectWord(hazard, effect, hpMax));
-  // Everything the realm states was gated away from this level.
-  if (words.length === 0) words.push({ text: t('cards.roomSpell.notAtYourLevel'), loud: false });
+  // Everything the realm states is gated away from this character.
+  if (words.length === 0) words.push({ text: t('cards.roomSpell.notToYou'), loud: false });
   return words;
 }
 

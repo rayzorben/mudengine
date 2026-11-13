@@ -689,7 +689,7 @@ export class QuestPlanner {
       const known = settled.get(spell);
       if (known !== undefined) return known;
       const stated = this.catalogue.spellById(spell)?.hazard;
-      const hazard = stated === undefined ? null : hazardFor(stated, traveller.level);
+      const hazard = stated === undefined ? null : hazardFor(stated, traveller);
       const wardsUp =
         hazard === null
           ? []

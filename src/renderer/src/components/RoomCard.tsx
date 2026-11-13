@@ -22,12 +22,12 @@ import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText } from './LairList';
 import SurveyFace, { surveyCopyText } from './SurveyFace';
-import RoomSpellRows, { hazardAtLevel, roomSpellCopyLines } from './RoomSpellRows';
+import RoomSpellRows, { hazardFacing, roomSpellCopyLines } from './RoomSpellRows';
 import { roomId, type RoomCommand, type SpellHazard, type WorldShop } from '@shared/world';
 import { type Discovery } from '@shared/memory';
 import type { Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
-import { standingOf, type CharacterState } from '@shared/character';
+import { monstersListed, standingOf, type CharacterState } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import type { RoomAsk } from '@shared/quests';
 import { askLine } from '@shared/asking';
@@ -182,8 +182,12 @@ function RoomCard({
   const lair = room.lair ?? null;
   const survey = surveyHere(character);
   const answers = room.commands ?? [];
-  // The room's spell as it applies at this character's level (todo 01, 72).
-  const spellHazard = hazardAtLevel(room.spell, character.progress.level);
+  // The room's spell as it applies to this character and who is here (todo 01, 72, 20261113-1105-01).
+  const spellHazard = hazardFacing(room.spell, {
+    ...wearer,
+    level: character.progress.level,
+    monstersHere: monstersListed(room)
+  });
 
   const face = (
     <RoomBody
@@ -529,7 +533,7 @@ function RoomBody({
   /** MegaMUD's name for the room, or null (`useRoomNickname`). */
   nickname: RoomNickname | null;
   shop: WorldShop | null;
-  /** The room spell's hazard at this character's level (`hazardAtLevel`). */
+  /** The room spell's hazard for this character (`hazardFacing`). */
   spellHazard: SpellHazard | undefined;
   /** What the realm says this room answers to. See the row below the exits. */
   answers: RoomCommand[];

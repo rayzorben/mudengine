@@ -314,7 +314,7 @@ export class WorldGraph {
       spendsByEdge: this.spends,
       itemLandings: () => this.itemLandings(),
       leversFor: (room, direction) => this.leversFor(room, direction),
-      hazardOf: (room, level, ward) => catalogue.hazardOf(room, level, ward),
+      hazardOf: (room, who, ward) => catalogue.hazardOf(room, who, ward),
       spellOver: (room) => this.spellOver(room),
       item: (id) => catalogue.item(id),
       spellById: (id) => catalogue.spellById(id),

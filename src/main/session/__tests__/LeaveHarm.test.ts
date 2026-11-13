@@ -610,7 +610,8 @@ describe('a room whose spell a worn item negates', () => {
       tracker: { current: state },
       errands: {
         spellsUp: () => [],
-        wardNow: (now: CharacterState) => wardOf(now.inventory.items, null)
+        wardNow: (now: CharacterState) => wardOf(now.inventory.items, null),
+        gateFactsNow: () => ({})
       } as unknown as RoomHazardsParts['errands'],
       signs: NO_FIGHT_SIGNS,
       hangUp: { monsterHit: () => false }
@@ -629,5 +630,86 @@ describe('a room whose spell a worn item negates', () => {
     leave.consider(state);
     expect(sent).toEqual([]);
     expect(notices).toEqual([]);
+  });
+});
+
+/*
+ * Festus, 2026-11-13: walked out of The Arlysian Temple, Altar (17/2418) with
+ * Pastor Lander standing there. Its spell, church check (1147), is
+ * `nomonsters:evilaligned 40:cast 1135` (gmud.zip block 9444): it burns only
+ * an evil character in a room with no monster in it (`TextBlockPart.cs:838`).
+ */
+describe('a room whose spell is gated on alignment and an empty room', () => {
+  const ALTAR = '17/2418';
+  const graph = (() => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-altar-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const gates = [{ kind: 'empty-room' }, { kind: 'alignment', atLeast: 40 }];
+    const header = {
+      v: 81,
+      source: 'test',
+      rooms: 1,
+      generatedAt: 'x',
+      items: [],
+      spells: [
+        { id: 1147, n: 'church check', hz: { d: 75, r: { d: [[null, null, [], [], gates]] } } }
+      ]
+    };
+    const room = { m: 17, r: 2418, n: 'The Arlysian Temple, Altar', sp: 1147, x: {} };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync([header, room].map((row) => JSON.stringify(row)).join('\n'))
+    );
+    const loaded = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return loaded;
+  })();
+  const pastor: RoomOccupant = {
+    name: 'Pastor Lander',
+    kind: 'mob',
+    disposition: null,
+    uncertain: false,
+    costly: 'never',
+    charmed: false,
+    hidden: false,
+    free: false
+  };
+  const standing = (occupants: RoomOccupant[]): CharacterState => {
+    const state = at(ALTAR, 703);
+    return { ...state, room: { ...state.room, name: 'The Arlysian Temple, Altar', occupants } };
+  };
+  const hazards = (state: CharacterState, alignment: 'Good' | 'Villain' | null) =>
+    new RoomHazards({
+      world: graph,
+      tracker: { current: state },
+      errands: {
+        spellsUp: () => [],
+        wardNow: () => wardOf([], null),
+        gateFactsNow: () => ({ level: 52, alignment })
+      } as unknown as RoomHazardsParts['errands'],
+      signs: NO_FIGHT_SIGNS,
+      hangUp: { monsterHit: () => false }
+    });
+
+  it('does not hurt a good character, and is not left', () => {
+    const state = standing([]);
+    const room = hazards(state, 'Good');
+    expect(room.roomHurts(ALTAR, state)).toBeNull();
+    const { leave, sent, notices } = rig({ hurts: (r) => room.roomHurts(r, state) });
+    leave.consider(state);
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('does not hurt anybody while a monster is listed there', () => {
+    const state = standing([pastor]);
+    expect(hazards(state, null).roomHurts(ALTAR, state)).toBeNull();
+    expect(hazards(state, 'Villain').roomHurts(ALTAR, state)).toBeNull();
+  });
+
+  it('hurts an evil character, or one nobody has placed, in an empty room', () => {
+    const state = standing([]);
+    expect(hazards(state, 'Villain').roomHurts(ALTAR, state)).toBe('church check');
+    expect(hazards(state, null).roomHurts(ALTAR, state)).toBe('church check');
   });
 });

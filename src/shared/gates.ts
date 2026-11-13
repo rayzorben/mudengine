@@ -253,6 +253,13 @@ export interface GateFacts {
    */
   fareCeiling?: number | null;
   stats?: Partial<Record<TbStat, number | null>> | null;
+  /**
+   * Whether `Also here:` lists a monster in the room the gate is asked in,
+   * for the room stood in only; absent anywhere else. `nomonsters` counts
+   * every monster there, a room's own resident included (`TextBlockPart.cs:838`,
+   * `Room.cs:126`). None listed settles nothing: a hidden one still counts.
+   */
+  monstersHere?: boolean;
 }
 
 /**
@@ -354,11 +361,11 @@ export function judge(gate: Gate, facts: GateFacts): Verdict {
       return chance <= 0 ? 'fail' : { needs: { kind: 'luck', chance } };
     }
     case 'empty-room':
-      return { needs: { kind: 'clear-room' } };
+      return facts.monstersHere === true ? 'fail' : { needs: { kind: 'clear-room' } };
     case 'monster-here':
       return { needs: { kind: 'monster', monster: gate.monster } };
     case 'occupied':
-      return { needs: { kind: 'occupied' } };
+      return facts.monstersHere === true ? 'pass' : { needs: { kind: 'occupied' } };
     default: {
       const never: never = gate;
       return never;
