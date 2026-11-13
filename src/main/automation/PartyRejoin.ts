@@ -141,6 +141,11 @@ export class PartyRejoin implements PartyCarrier {
     return this.leader !== null && key(this.leader.name) === key(leader) && this.owed(this.leader);
   }
 
+  /** Following, the leader a hangup or a quit took this character away from, while owed. */
+  get owedLeader(): string | null {
+    return this.leader !== null && this.owed(this.leader) ? this.leader.name : null;
+  }
+
   onBlock(block: Block): void {
     if (block.type === 'party-left') this.partyLeft(block.groups);
     else if (block.type === 'party-joined') this.joined(block.groups['player']);

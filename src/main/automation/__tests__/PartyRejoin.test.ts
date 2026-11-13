@@ -458,6 +458,89 @@ describe('following, when the leader hangs up or quits', () => {
   });
 });
 
+/* 2026-11-13: Yang came back in the Dragon Nest with Nito gone and stood until `/nito @comeback` was typed. */
+describe('following, the first room after this character reconnects', () => {
+  const read = (here: string[]): CharacterState => {
+    const shown = state(754, here);
+    return { ...shown, room: { ...shown.room, name: 'Magma River, Dragon Nest' } };
+  };
+  const carryRand = (): void =>
+    remotes.party.carry({
+      kind: 'following',
+      leader: { name: 'Rand', droppedAt: null, quit: false }
+    });
+
+  it('asks the leader to @invite when they are in the room, said', () => {
+    carryRand();
+    remotes.onCharacter(read(['Rand']));
+    drain();
+    expect(sent).toEqual(['/Rand @invite']);
+    expect(notices).toContain(t('automation.party.askInvite', { leader: 'Rand' }));
+  });
+
+  it('asks the leader to @comeback when they are not, once a connection', () => {
+    carryRand();
+    remotes.onCharacter(read([]));
+    remotes.onCharacter(read(['Soul']));
+    drain();
+    expect(sent).toEqual(['/Rand @comeback']);
+    expect(notices).toContain(t('automation.party.askComeback', { leader: 'Rand' }));
+    remotes.reset();
+    remotes.onCharacter(read([]));
+    drain();
+    expect(sent).toEqual(['/Rand @comeback', '/Rand @comeback']);
+  });
+
+  it('waits for the room the server prints, not the one remembered from before the dial', () => {
+    carryRand();
+    remotes.onCharacter(state(754, []));
+    const remembered = read([]);
+    remotes.onCharacter({ ...remembered, room: { ...remembered.room, resolvedBy: 'remembered' } });
+    drain();
+    expect(sent).toEqual([]);
+    remotes.onCharacter(read(['Rand']));
+    drain();
+    expect(sent).toEqual(['/Rand @invite']);
+  });
+
+  it('asks nothing once the leader has taken this character back', () => {
+    carryRand();
+    const following = read(['Rand']);
+    remotes.onCharacter({ ...following, party: state(754, [], { following: 'Rand' }).party });
+    drain();
+    expect(sent).toEqual([]);
+    // Positive control: out of the party on the next connection's first room, the ask goes.
+    remotes.party.carry({
+      kind: 'following',
+      leader: { name: 'Rand', droppedAt: null, quit: false }
+    });
+    remotes.reset();
+    remotes.onCharacter(read(['Rand']));
+    drain();
+    expect(sent).toEqual(['/Rand @invite']);
+  });
+
+  it('asks nobody for a leader who hung up after the first room, or with the master switch off', () => {
+    remotes.onCharacter(read(['Rand']));
+    remotes.onCharacter({ ...read(['Rand']), party: state(754, [], { following: 'Rand' }).party });
+    remotes.onBlock(block('party-left', { leader: 'Rand' }), read(['Rand']));
+    remotes.onBlock(block('player-disconnects', { player: 'Rand' }), read([]));
+    // Positive control: the leader is owed, and only the ask is withheld.
+    expect(notices).toEqual([
+      t('automation.party.leaderDropped', { leader: 'Rand', minutes: MINUTES })
+    ]);
+    remotes.onCharacter(read([]));
+    const off = new Remotes({ ...config, enabled: false }, queue, {
+      notice: (m) => notices.push(m)
+    });
+    off.party.carry({ kind: 'following', leader: { name: 'Rand', droppedAt: null, quit: false } });
+    off.onCharacter(read([]));
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toContain(t('automation.party.askSwitchedOff', { leader: 'Rand' }));
+  });
+});
+
 describe('the carried party on disk', () => {
   it('reads back what was written, and nothing from a malformed record', () => {
     const party: CarriedParty = {

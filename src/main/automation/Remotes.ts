@@ -149,6 +149,7 @@ import {
 import { SheetReports } from './SheetReports';
 import { STANDING, StandingRemotes, type StandingRemoteEvents } from './StandingRemotes';
 import { FollowerPacing } from './FollowerPacing';
+import { RejoinAsk } from './RejoinAsk';
 import { HealthAsks } from './HealthAsks';
 import { PartyStoppers } from './PartyStoppers';
 import { ParOnWord } from './ParOnWord';
@@ -471,6 +472,8 @@ export class Remotes implements SessionModule {
   private readonly autoInvite: AutoInvite;
   /** The party a hangup took apart, owed back. See `PartyRejoin`. */
   private readonly rejoin: PartyRejoin;
+  /** Following, the leader asked back after this character's own hangup. See `RejoinAsk`. */
+  private readonly rejoinAsk: RejoinAsk;
   /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
   private readonly regroup: PartyRegroup;
   /** `@join` to somebody invited who has not joined, until they do. See `InviteFollowUp`. */
@@ -520,6 +523,10 @@ export class Remotes implements SessionModule {
     this.rejoin = new PartyRejoin(config, {
       notice,
       listParty: () => queue.enqueue(partyListingIntent(this.config, REJOIN))
+    });
+    this.rejoinAsk = new RejoinAsk(config, this.rejoin, {
+      notice,
+      ask: (leader, name, state) => this.ask(leader, name, state, undefined, REJOIN)
     });
     this.autoJoin = new AutoJoin(config, queue, this.rejoin, { notice });
     this.autoInvite = new AutoInvite(config, queue, this.rejoin, { notice });
@@ -571,6 +578,7 @@ export class Remotes implements SessionModule {
   configure(config: AutomationConfig): void {
     this.config = config;
     this.rejoin.configure(config);
+    this.rejoinAsk.configure(config);
     this.autoJoin.configure(config);
     this.autoInvite.configure(config);
     this.regroup.configure(config);
@@ -976,6 +984,7 @@ export class Remotes implements SessionModule {
     this.regroup.onCharacter(state);
     this.invites.onCharacter(state);
     this.rejoin.onCharacter(state);
+    this.rejoinAsk.onCharacter(state);
     this.autoInvite.onCharacter(state);
     // An ask left unanswered is closed whatever the master switch says; the
     // sheet and the health asks go out under the gate their first answer did (todo 118).
@@ -1213,6 +1222,7 @@ export class Remotes implements SessionModule {
     this.askedForHealAt = null;
     this.wantsHeal = false;
     this.seen = false;
+    this.rejoinAsk.reset();
     this.autoJoin.reset();
     this.autoInvite.reset();
     this.regroup.reset();

@@ -8044,6 +8044,9 @@ automation:
     leaderQuit: '{leader} left the Realm; joining them again when they invite this character, for {minutes} min.'
     reformLeading: 'Reconnected; inviting {members} back when each is in the room, for {minutes} min.'
     reformFollowing: 'Reconnected; joining {leader} again when they invite this character, for {minutes} min.'
+    askInvite: '{leader} is in the room; asked them to @invite this character.'
+    askComeback: '{leader} is not in the room; asked them to @comeback.'
+    askSwitchedOff: 'Automation is off; not asking {leader} to take this character back.'
     memberGaveUp: '{member} was not back in the party within {minutes} min; not inviting them again.'
     leaderGaveUp: '{leader} did not invite this character within {minutes} min; not joining them again.'
     # Todo 67: an exit whose spell lands each member in a room of their own.
