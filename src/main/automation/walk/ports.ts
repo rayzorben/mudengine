@@ -271,10 +271,11 @@ export interface WalkerEvents {
    */
   restInFlight?(): boolean;
   /**
-   * Whether the room read after a kill is still to be answered (todo 814,
-   * `AutoLoot.floorInFlight`): items drop unannounced, so the loot takes them
-   * off that reprint, and a step sent ahead of it puts the `get` in the next
-   * room. The same kind of fact again, bounded by the read's own expiry.
+   * Whether the room read after a kill is still to be answered, or a `get` is
+   * still queued (todo 814, `AutoLoot.floorInFlight`): items drop unannounced,
+   * so the loot takes them off that reprint, and a step sent ahead of a take
+   * puts the `get` in the next room. The same kind of fact again, bounded by
+   * the read's and the take's own expiry.
    * Absent, no step waits.
    */
   floorInFlight?(): boolean;

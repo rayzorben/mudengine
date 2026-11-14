@@ -1055,8 +1055,8 @@ export class Holds {
    * after every block rather than on the read's own, because `Walker.onBlock`
    * runs before the loot has read the exits that close it; the next block is
    * the prompt behind them. Re-asked as the beat would be, so every hold has
-   * its say again; a take the read produced still queued keeps the read in
-   * flight (`AutoLoot`), or the step would overtake it.
+   * its say again; any take still queued keeps the floor in flight
+   * (`AutoLoot.floorInFlight`), or the step would overtake it.
    */
   afterBlock(): void {
     if (!this.floorHeld || this.events.floorInFlight?.() === true) return;

@@ -95,12 +95,9 @@ let down = false;
 /** Under a timed spell the way in cast, as the session answers it (todo 765). */
 let passage = false;
 
-/** The read after a kill, built as the session builds it: its `taking` is the module's own. */
-const floored = (build: (floor: FloorAfterKill) => AutoLoot): AutoLoot => {
-  let auto: AutoLoot | null = null;
-  auto = build(new FloorAfterKill(queue, tracker, () => auto?.taking() ?? false));
-  return auto;
-};
+/** The read after a kill, built as the session builds it. */
+const floored = (build: (floor: FloorAfterKill) => AutoLoot): AutoLoot =>
+  build(new FloorAfterKill(queue, tracker));
 
 const make = (config: LootConfig, enabled = true, supplies = NO_SUPPLIES): AutoLoot => {
   notices = [];
@@ -1040,6 +1037,31 @@ describe('reading the floor after a kill', () => {
     expect(auto.floorInFlight).toBe(true);
     queue.notePrompt();
     expect(sent).toEqual(['', 'get rusty key']);
+    expect(auto.floorInFlight).toBe(false);
+  });
+
+  /*
+   * No kill at all: a search turned the spade up, and `ne` (movement) went
+   * ahead of the queued `get spade` (probe), answered `You don't see spade
+   * here.` in the next room (user's log, 2026-11-13).
+   */
+  it('holds the walk while a take off a search is still queued, until it goes or lapses', () => {
+    queue.dispose();
+    queue = queueOf({ ...automation, pacing: { ...automation.pacing, window: 1 } });
+    const auto = make(loot({ items: ['spade', 'rusty key'] }));
+    queue.enqueue({ command: 'search', priority: 'probe' });
+    expect(sent).toEqual(['search']);
+    auto.onBlock(block('room-hidden-items', { items: 'spade' }), state());
+    expect(sent).toEqual(['search']);
+    expect(auto.floorInFlight).toBe(true);
+    queue.notePrompt();
+    expect(sent).toEqual(['search', 'get spade']);
+    expect(auto.floorInFlight).toBe(false);
+
+    // A take that never gets its credit holds nothing past its expiry.
+    auto.onBlock(block('room-hidden-items', { items: 'rusty key' }), state());
+    expect(auto.floorInFlight).toBe(true);
+    vi.advanceTimersByTime(tuning().loot.expiresMs);
     expect(auto.floorInFlight).toBe(false);
   });
 

@@ -35,20 +35,17 @@ export class FloorAfterKill {
   constructor(
     private readonly queue: Pick<CommandQueue, 'enqueue'>,
     private readonly claims: RereadClaims,
-    /**
-     * Whether a take is still waiting in the queue (`AutoLoot`'s). The read's
-     * answer is the takes it produces, and the walk it holds wakes on its
-     * close (todo 765): a step outranks a `get`, so one left queued would
-     * follow the step into the next room.
-     */
-    private readonly taking: () => boolean,
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  /** Whether the read asked after a kill, or a take off its answer, has still to go. */
+  /**
+   * Whether the read asked after a kill has still to be answered. A take off
+   * its answer still queued holds the walk too, as every take does
+   * (`AutoLoot.floorInFlight`).
+   */
   get inFlight(): boolean {
     if (this.now() >= this.until) return false;
-    return this.queued || this.sent?.owed() === true || this.taking();
+    return this.queued || this.sent?.owed() === true;
   }
 
   /** Something died here that may have left more than the room shows: read it again, for `reason`. */

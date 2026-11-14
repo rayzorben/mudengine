@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CommandQueue } from '../CommandQueue';
+import { CommandQueue, type Intent } from '../CommandQueue';
 import { MASKED_COMMAND } from '../../../shared/automation';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { AutomationConfig } from '../../../shared/config';
@@ -222,6 +222,45 @@ describe('a joined proposal', () => {
     queue.noteTyping(false);
     vi.advanceTimersByTime(500);
     expect(heard).toEqual(['first']);
+  });
+});
+
+/*
+ * `queued` holds a walk on a `get` (`AutoLoot.floorInFlight`), so it reads
+ * expiry as the drain does: a lapsed take would hold the step for nothing, and
+ * one the typing hold keeps alive must keep holding it, or the step goes
+ * first at the Enter.
+ */
+describe('what is still queued', () => {
+  const isTake = (intent: Intent): boolean => intent.coalesceKey === 'loot:take:spade';
+
+  const take = (): Intent => ({
+    command: 'get spade',
+    priority: 'probe',
+    coalesceKey: 'loot:take:spade',
+    expiresAt: Date.now() + 500
+  });
+
+  it('leaves out an intent past its expiry', () => {
+    // The window full, so the take waits for credit that never comes.
+    for (const command of ['a', 'b']) queue.enqueue({ command, priority: 'probe' });
+    vi.advanceTimersByTime(100);
+    queue.enqueue(take());
+    expect(queue.queued(isTake)).toBe(true);
+    vi.advanceTimersByTime(500);
+    expect(queue.queued(isTake)).toBe(false);
+    expect(sent).toEqual(['a', 'b']);
+  });
+
+  it('keeps one past its expiry behind a half-typed line, which sends it at the Enter', () => {
+    queue.noteTyping(true);
+    queue.enqueue(take());
+    vi.advanceTimersByTime(2000);
+    expect(queue.queued(isTake)).toBe(true);
+    queue.noteTyping(false);
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['get spade']);
+    expect(queue.queued(isTake)).toBe(false);
   });
 });
 

@@ -212,6 +212,11 @@ function dueIn(intent: Queued, now: number): number {
   return (intent.notBefore ?? 0) - now;
 }
 
+/** Whether an intent's `expiresAt` has passed by the clock alone; the typing hold is the queue's to add. */
+function pastExpiry(intent: Intent, now: number): boolean {
+  return intent.expiresAt !== undefined && intent.expiresAt <= now;
+}
+
 export interface QueueEvents {
   /** Send this on the wire. */
   send(command: string, intent: Queued): void;
@@ -413,7 +418,7 @@ export class CommandQueue {
     if (!this.config.enabled && intent.priority !== 'user' && intent.keepsLink !== true) {
       return 'switched-off';
     }
-    if (intent.expiresAt !== undefined && intent.expiresAt <= Date.now()) return 'expired';
+    if (pastExpiry(intent, Date.now())) return 'expired';
     /*
      * A word this realm does not have. Refused rather than sent, and said out
      * loud by whoever answered — a safety feature that silently declines is
@@ -557,9 +562,27 @@ export class CommandQueue {
     return removed;
   }
 
-  /** Whether anything matching a predicate is still waiting to go out. */
+  /**
+   * Whether anything matching a predicate is still waiting to go out. One the
+   * next drain would drop as expired is not counted.
+   */
   queued(match: (intent: Intent) => boolean): boolean {
-    return this.pending.some(match);
+    const now = Date.now();
+    return this.pending.some((intent) => !this.lapsed(intent, now) && match(intent));
+  }
+
+  /**
+   * Expired, as `expire` and `queued` read it. Nothing lapses while the player
+   * holds the floor with a half-typed line. The hold is their own pause, and
+   * "the command comes after" means the decision made during it survives to
+   * the Enter. The alternative was proposals dying of old age behind somebody
+   * watching a fight, which read as "it is not attacking". Staleness while
+   * held is bounded by the abandoned-line ceiling, and an attack on something
+   * that died meanwhile is answered by `Your command had no effect.`, which
+   * the tracker reads and corrects from.
+   */
+  private lapsed(intent: Intent, now: number): boolean {
+    return !this.typingHeld && pastExpiry(intent, now);
   }
 
   /**
@@ -839,21 +862,9 @@ export class CommandQueue {
   }
 
   private expire(): void {
-    /*
-     * Not while the player holds the floor with a half-typed line. The hold
-     * is their own pause, and "the command comes after" means the decision
-     * made during it survives to the Enter — the alternative was proposals
-     * quietly dying of old age behind somebody watching a fight, which read
-     * as "it is not attacking". Staleness while held is bounded by the
-     * abandoned-line ceiling, and an attack on something that died meanwhile
-     * is answered by `Your command had no effect.`, which the tracker
-     * already reads and self-corrects from.
-     */
-    if (this.typingHeld) return;
     const now = Date.now();
     for (let i = this.pending.length - 1; i >= 0; i -= 1) {
-      const intent = this.pending[i]!;
-      if (intent.expiresAt !== undefined && intent.expiresAt <= now) this.pending.splice(i, 1);
+      if (this.lapsed(this.pending[i]!, now)) this.pending.splice(i, 1);
     }
   }
 

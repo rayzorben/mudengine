@@ -915,7 +915,7 @@ export class SessionManager {
       signs
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
-    const floor = new FloorAfterKill(this.queue, this.tracker, () => this.loot.taking());
+    const floor = new FloorAfterKill(this.queue, this.tracker);
     this.loot = new AutoLoot(automation.loot, automation.supplies, automation.enabled, this.queue, {
       realmItem: (name) => this.world?.buildItemEntity(name) ?? wireItem(name),
       notice,

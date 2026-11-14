@@ -266,9 +266,15 @@ export class AutoLoot implements SessionModule {
     this.foundSupplies = new FoundSupplies(deps.supplyList, this.notice);
   }
 
-  /** Whether the floor read asked after a kill is unanswered — the walk waits on it. */
+  /**
+   * Whether the floor read asked after a kill is unanswered, or a `get` is
+   * still queued: the walk waits on either. A take off a search or an arrival
+   * is `probe` and a step outranks it, so without the wait `ne` went ahead of
+   * `get spade` and the server answered `You don't see spade here.` in the
+   * next room (user's log, 2026-11-13).
+   */
   get floorInFlight(): boolean {
-    return this.floor.inFlight;
+    return this.floor.inFlight || this.taking();
   }
 
   /**
