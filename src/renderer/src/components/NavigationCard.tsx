@@ -119,6 +119,8 @@ function NavigationCard({
    */
   const through = walk.total > 0 ? Math.min(1, walk.done / walk.total) : null;
   const left = walk.total > 0 ? Math.max(0, walk.total - walk.done) : null;
+  // The centre counts to the next stop where the walk has one, else to the destination.
+  const stopLeft = walk.stop?.left ?? null;
   const walkArcs = useMemo(
     () => [
       { fraction: through, tone: walking ? ('accent' as const) : ('quiet' as const), level: null }
@@ -128,11 +130,15 @@ function NavigationCard({
   const walkCentre = useMemo(
     () => (
       <>
-        <span className="nav-ring-figure">{left ?? '—'}</span>
-        <span className="nav-ring-tag">{t('cards.navigation.route.leftTag')}</span>
+        <span className="nav-ring-figure">{stopLeft ?? left ?? '—'}</span>
+        <span className="nav-ring-tag">
+          {stopLeft === null
+            ? t('cards.navigation.route.leftTag')
+            : t('cards.navigation.route.nextTag')}
+        </span>
       </>
     ),
-    [left]
+    [left, stopLeft]
   );
   const lapCentre = useMemo(() => `${loop.stop}/${loop.stops}`, [loop.stop, loop.stops]);
   const walkLabel = t('cards.navigation.route.meterLabel', { done: walk.done, total: walk.total });
@@ -331,6 +337,17 @@ function NavigationCard({
             </span>
           </div>
           <span className="nav-hero-line">{walkLabel}</span>
+          {walk.stop !== null && (
+            <span className="nav-hero-line">
+              {walk.stop.left === 1
+                ? t('cards.navigation.route.nextLine.one', { what: walk.stop.what })
+                : t('cards.navigation.route.nextLine.many', {
+                    what: walk.stop.what,
+                    count: walk.stop.left
+                  })}{' '}
+              {place(walk.stop.name, walk.stop.room)}
+            </span>
+          )}
           {/* Small, the arrival is a line here; from medium it is a tile. */}
           {arriving !== null && (
             <span className="nav-hero-line only-small">

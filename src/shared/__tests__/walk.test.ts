@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, NO_AFFLICTIONS } from '../character';
 import { DEFAULT_CONFIG } from '../config';
+import type { RequirementKind, RouteStep } from '../world';
 import {
   paceOf,
   afflictionHolding,
   holdsPicklocks,
   isAfflictionHold,
+  nextStop,
   portalLeftUnseen,
   stillFled,
+  wayAhead,
   type FledRoom
 } from '../walk';
 
@@ -162,5 +165,67 @@ describe('paceOf', () => {
 
   it('runs with the master switch off, since nothing fights then', () => {
     expect(paceOf({ enabled: false }, true)).toBe('running');
+  });
+});
+
+/*
+ * The next stop short of the destination (the user, 2026-11-13): the Route
+ * card counted only to the end of the journey, never to the branch moved or
+ * the lever pulled on the way.
+ */
+describe('the next stop on the way', () => {
+  const step = (at: number, need: RequirementKind | null = null): RouteStep => ({
+    from: `1/${at - 1}`,
+    to: `1/${at}`,
+    direction: 'n',
+    command: 'n',
+    name: `Room ${at}`,
+    requirement: need === null ? null : { kind: need, raw: `${need} raw` },
+    dark: false
+  });
+  const plan = [step(1), step(2), step(3, 'text'), step(4), step(5)];
+
+  it('is the room an exit that needs something leaves from', () => {
+    expect(nextStop(plan, 0, null)).toEqual({
+      name: 'Room 2',
+      room: { map: 1, room: 2 },
+      left: 2,
+      what: 'text raw'
+    });
+  });
+
+  it('leaves out the step in flight, whose obstacle is shown beside it', () => {
+    expect(nextStop(plan, 2, null)).toBeNull();
+  });
+
+  it('passes a plain door and a condition the character meets', () => {
+    expect(nextStop([step(1), step(2, 'door'), step(3, 'level')], 0, null)).toBeNull();
+  });
+
+  it('stops at a locked door, which is picked or bashed', () => {
+    const locked = {
+      ...step(2, 'door'),
+      requirement: { kind: 'door' as const, raw: 'door', pickDifficulty: 40 }
+    };
+    expect(nextStop([step(1), locked], 0, null)).toMatchObject({ name: 'Room 1', left: 1 });
+  });
+
+  it("is a lever errand's room where nothing comes before it", () => {
+    expect(nextStop(plan, 3, 'pull lever')).toEqual({
+      name: 'Room 5',
+      room: { map: 1, room: 5 },
+      left: 2,
+      what: 'pull lever'
+    });
+  });
+
+  it('keeps the journey a lever errand interrupted as the destination', () => {
+    const errand = { to: '1/40', name: 'Treetops', lever: 'pull lever' };
+    expect(wayAhead(plan, 3, true, errand)).toEqual({
+      destination: 'Treetops',
+      destinationRoom: { map: 1, room: 40 },
+      stop: { name: 'Room 5', room: { map: 1, room: 5 }, left: 2, what: 'pull lever' }
+    });
+    expect(wayAhead(plan, 3, false, null)).toMatchObject({ destination: 'Room 5', stop: null });
   });
 });

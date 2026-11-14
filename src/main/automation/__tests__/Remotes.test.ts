@@ -452,6 +452,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
         step: null,
         path: [],
         ahead: [],
+        stop: null,
         reason: null,
         hold: null,
         pace: 'walking',

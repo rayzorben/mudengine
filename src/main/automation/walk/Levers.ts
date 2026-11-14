@@ -20,6 +20,7 @@ import {
 } from '../../../shared/world';
 import type { CharacterState } from '../../../shared/character';
 import type { MovementConfig } from '../../../shared/config';
+import type { ErrandJourney } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
@@ -73,6 +74,22 @@ export class Levers {
   /** The errand in hand: the top of the stack, or null. */
   private get errand(): (typeof this.errands)[number] | null {
     return this.errands.at(-1) ?? null;
+  }
+
+  /**
+   * Where the journey the errands interrupted ends, and the lever phrase for
+   * the room being walked to (null on the way back); null with no errand. The
+   * walk is still going there, so that is its destination.
+   */
+  get journey(): ErrandJourney | null {
+    const bottom = this.errands[0];
+    if (bottom === undefined) return null;
+    const say = this.errand?.rooms[0]?.say ?? [];
+    return {
+      to: bottom.back,
+      name: bottom.backName,
+      lever: say.length > 0 ? say.join(', ') : null
+    };
   }
   /**
    * The exits this walk has already made that errand for, `from|direction`.

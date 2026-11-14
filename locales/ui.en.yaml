@@ -3366,6 +3366,12 @@ cards:
       arrivingLine: 'arriving in {duration}'
       # Under the steps left in the middle of the route's ring.
       leftTag: left
+      # Under the figure when it counts steps to the next lever, gate or key on the way.
+      nextTag: to next
+      # That next room on the way where the walk does more than step, then the room's name.
+      nextLine:
+        one: 'Next, 1 step on: {what} at'
+        many: 'Next, {count} steps on: {what} at'
     title: Navigation
   party:
     badge:

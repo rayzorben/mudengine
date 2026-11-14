@@ -5,7 +5,14 @@
  * and the main process produces it, and `shared/` is the only module both may
  * import. Dependency-free, like everything else here.
  */
-import type { Requirement, RoomId, RoomReference, RouteStep } from './world';
+import {
+  asRoomReference,
+  type Requirement,
+  type RequirementKind,
+  type RoomId,
+  type RoomReference,
+  type RouteStep
+} from './world';
 import { isBlinding, type Afflictions, type CharacterState, type Vitals } from './character';
 import type { AutomationConfig, MovementConfig } from './config';
 
@@ -13,6 +20,112 @@ import type { AutomationConfig, MovementConfig } from './config';
 export interface NamedRoom {
   name: string;
   room: RoomReference | null;
+}
+
+/** A room short of the destination where the walk does more than step. */
+export interface WalkStop extends NamedRoom {
+  /** Steps from where the character stands. */
+  left: number;
+  /** What is done there: the exit's obstacle, or the lever phrase. */
+  what: string;
+}
+
+/**
+ * Whether an exit needing this has the walk act in the room it leaves. A
+ * condition the character meets or fails is passed or refused, and a door
+ * with no lock to pick or bash is opened as part of the step (a figure of
+ * `0` is the realm's `any`).
+ */
+export function stopsFor(need: Requirement): boolean {
+  const kind: RequirementKind = need.kind;
+  switch (kind) {
+    case 'door':
+      return (need.pickDifficulty ?? 0) > 0 || (need.bashDifficulty ?? 0) > 0;
+    case 'key':
+    case 'toll':
+    case 'text':
+    case 'item':
+    case 'cast':
+    case 'spell':
+    case 'trap':
+    case 'hidden':
+    case 'timed':
+    case 'room-spell':
+    case 'unknown':
+      return true;
+    case 'level':
+    case 'class':
+    case 'race':
+    case 'alignment':
+    case 'ability':
+      return false;
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
+}
+
+/** A gated step's obstacle in words, for the step being sent and the next stop. */
+export function obstacleWords(step: Pick<RouteStep, 'obstacle' | 'requirement'>): string | null {
+  return step.obstacle?.label ?? step.requirement?.raw ?? null;
+}
+
+/**
+ * The next stop on the plan after the step in flight at `index`: the first
+ * room an exit out of which `stopsFor`, else the plan's end where a lever
+ * errand is walking to it (`lever` is what it says there). The step in
+ * flight is left out, since its own obstacle is shown beside the step.
+ */
+export function nextStop(
+  steps: readonly RouteStep[],
+  index: number,
+  lever: string | null
+): WalkStop | null {
+  for (let at = index + 1; at < steps.length; at += 1) {
+    const step = steps[at]!;
+    const what = obstacleWords(step);
+    if (step.requirement === null || !stopsFor(step.requirement) || what === null) continue;
+    const into = steps[at - 1]!;
+    return { name: into.name, room: asRoomReference(into.to), left: at - index, what };
+  }
+  const last = steps.at(-1);
+  if (lever === null || last === undefined || index >= steps.length) return null;
+  return {
+    name: last.name,
+    room: asRoomReference(last.to),
+    left: steps.length - index,
+    what: lever
+  };
+}
+
+/** Where the journey a lever errand interrupted ends, and the lever phrase for the room it walks to. */
+export interface ErrandJourney {
+  to: RoomId;
+  name: string;
+  /** Null on the way back from the last lever room. */
+  lever: string | null;
+}
+
+/**
+ * Where a walk is going and its next stop, from the plan in hand: a lever
+ * errand's end is a stop, and the journey it interrupted is still the
+ * destination. No plan is stated as null, not laundered through a parser's
+ * refusal.
+ */
+export function wayAhead(
+  steps: readonly RouteStep[],
+  index: number,
+  walking: boolean,
+  errand: ErrandJourney | null
+): Pick<WalkProgress, 'destination' | 'destinationRoom' | 'stop'> {
+  const last = steps.at(-1);
+  const end = errand ?? (last === undefined ? null : { to: last.to, name: last.name });
+  return {
+    destination: end?.name ?? null,
+    destinationRoom: end === null ? null : asRoomReference(end.to),
+    stop: walking ? nextStop(steps, index, errand?.lever ?? null) : null
+  };
 }
 
 /**
@@ -104,6 +217,13 @@ export interface WalkProgress {
    * is being walked.
    */
   ahead: NamedRoom[];
+  /**
+   * The next room on the way where the walk does more than step, or null
+   * where it only walks from here to `destination`. Null unless walking. The
+   * card counts down to it, since the whole journey's count says nothing
+   * about the lever or the branch before it (the user, 2026-11-13).
+   */
+  stop: WalkStop | null;
   /**
    * Why it is no longer walking. Null while it still is.
    *
@@ -382,6 +502,7 @@ export const IDLE_WALK: WalkProgress = {
   step: null,
   path: [],
   ahead: [],
+  stop: null,
   reason: null,
   hold: null,
   pickUpOwed: false,

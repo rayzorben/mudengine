@@ -55,7 +55,8 @@
  */
 import type { WalkHold, WalkKind, WalkerProgress, WalkStatus } from '../../shared/walk';
 import type { MobWaited } from '../../shared/mobRules';
-import { paceOf, pathOf, portalLeftUnseen, type UnfinishedRoute } from '../../shared/walk';
+import { obstacleWords, paceOf, pathOf, portalLeftUnseen, wayAhead } from '../../shared/walk';
+import type { UnfinishedRoute } from '../../shared/walk';
 import type { HandAnswer } from '../../shared/barrierHands';
 import {
   roomAddress,
@@ -352,7 +353,6 @@ export class Walker implements SessionModule {
 
   get progress(): WalkerProgress {
     const step = this.route?.steps[this.index] ?? null;
-    const last = this.route?.steps.at(-1) ?? null;
     const ahead = this.remaining;
     return {
       status: this.status,
@@ -370,9 +370,7 @@ export class Walker implements SessionModule {
        * wants and exactly what `ahead` above is already sliced to.
        */
       ahead: ahead.map((entry) => ({ name: entry.name, room: asRoomReference(entry.to) })),
-      destination: last?.name ?? null,
-      // No route is stated as null, not laundered through a parser's refusal.
-      destinationRoom: last === null ? null : asRoomReference(last.to),
+      ...wayAhead(this.route?.steps ?? [], this.index, this.walking, this.levers.journey),
       step:
         this.status === 'walking' && step
           ? {
@@ -385,7 +383,7 @@ export class Walker implements SessionModule {
                * on, and it is what the route panel and the map both show, so
                * the three cannot disagree about one door.
                */
-              note: step.obstacle?.label ?? step.requirement?.raw ?? null,
+              note: obstacleWords(step),
               to: asRoomReference(step.to)
             }
           : null,
