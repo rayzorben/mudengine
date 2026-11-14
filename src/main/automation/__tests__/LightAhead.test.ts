@@ -10,7 +10,7 @@ import { carriedLights, sightOf } from '../../../shared/light';
 import type { RealmLight } from '../../../shared/lightPlan';
 import type { Loop } from '../../../shared/loops';
 import type { SafetyDecision } from '../../../shared/automation';
-import type { BuyingPlace, Route, RouteStep } from '../../../shared/world';
+import type { BuyingPlace, RouteStep } from '../../../shared/world';
 import { noticeLog, type NoticeLog } from './noticeLog';
 
 const TORCH: RealmLight = { id: 175, name: 'torch', reach: 100, uses: 800 };
@@ -29,11 +29,9 @@ const step = (to: string, light?: number): RouteStep =>
   }) as RouteStep;
 
 /** Two lit rooms and a cave at −175 between them: a torch reads it. */
-const CAVE: Route = {
-  steps: [step('1/2'), step('1/3', -175), step('1/4')],
-  cost: 3,
-  blocked: false
-} as Route;
+const CAVE: RouteStep[] = [step('1/2'), step('1/3', -175), step('1/4')];
+
+const LOOP: Loop = { name: 'crypt', stops: [{ room: 'Crypt 1/3' }] };
 
 const config = (over: Partial<AutomationConfig['movement']> = {}): AutomationConfig => ({
   ...DEFAULT_CONFIG.automation,
@@ -70,12 +68,12 @@ const shop = (item: number): BuyingPlace & { item: number } => ({
 });
 
 let settings: AutomationConfig;
-let collected: Array<{ items: readonly Wanted[]; owes: Route | null; run: boolean }>;
+let collected: Array<readonly Wanted[]>;
 let collectRefusal: string | null;
 let collecting: boolean;
 let sold: RealmLight[];
 let counters: Array<BuyingPlace & { item: number }>;
-let lap: RouteStep[];
+let lap: readonly RouteStep[];
 let notices: string[];
 let log: NoticeLog;
 let decisions: SafetyDecision[];
@@ -84,8 +82,8 @@ const planner: LightPlanner = {
   lights: () => sold,
   counters: (items) => counters.filter((place) => items.includes(place.item)),
   lapSteps: () => lap,
-  collect: (items, owes, run) => {
-    collected.push({ items, owes, run });
+  collect: (items) => {
+    collected.push(items);
     return collectRefusal;
   },
   collecting: () => collecting
@@ -96,6 +94,12 @@ const ahead = (): LightAhead =>
     notice: log.notice,
     decided: (decision) => decisions.push(decision)
   });
+
+/** One lap over `steps` starting with `state`. */
+const loopOver = (steps: readonly RouteStep[], state: CharacterState, light = ahead()): void => {
+  lap = steps;
+  light.beforeLap(LOOP, state);
+};
 
 beforeEach(() => {
   settings = config();
@@ -110,12 +114,10 @@ beforeEach(() => {
   decisions = [];
 });
 
-describe('a route through the dark', () => {
-  it('buys the light the counter least out of the way sells, then walks it', () => {
-    expect(ahead().beforeRoute(CAVE, character([]), true)).toBe(true);
-    expect(collected).toEqual([
-      { items: [{ id: 176, name: 'lantern', count: 1, dark: true }], owes: CAVE, run: true }
-    ]);
+describe('a lap through the dark', () => {
+  it('buys the light the nearest counter sells', () => {
+    loopOver(CAVE, character([]));
+    expect(collected).toEqual([[{ id: 176, name: 'lantern', count: 1, dark: true }]]);
     expect(notices).toEqual([
       t('automation.lightAhead.buying', { dark: 1, item: 'lantern', count: 1 })
     ]);
@@ -125,38 +127,37 @@ describe('a route through the dark', () => {
 
   it('counts what the inventory already holds of it, so a spent one is bought over', () => {
     counters = [shop(175)];
-    ahead().beforeRoute(CAVE, character([torchCarried({ charges: 0 })]), false);
-    expect(collected[0]?.items).toEqual([{ id: 175, name: 'torch', count: 2, dark: true }]);
+    loopOver(CAVE, character([torchCarried({ charges: 0 })]));
+    expect(collected[0]).toEqual([{ id: 175, name: 'torch', count: 2, dark: true }]);
   });
 
-  it('walks on with a usable light in the inventory, saying nothing', () => {
-    expect(ahead().beforeRoute(CAVE, character([torchCarried()]), false)).toBe(false);
+  it('loops with a usable light in the inventory, saying nothing', () => {
+    loopOver(CAVE, character([torchCarried()]));
     expect(collected).toEqual([]);
     expect(notices).toEqual([]);
   });
 
-  it('walks on, saying nothing, through rooms the realm records no level for', () => {
-    const lit = { ...CAVE, steps: [step('1/2'), step('1/4')] } as Route;
-    expect(ahead().beforeRoute(lit, character([]), false)).toBe(false);
+  it('says nothing through rooms the realm records no level for', () => {
+    loopOver([step('1/2'), step('1/4')], character([]));
     expect(notices).toEqual([]);
   });
 
   it('does nothing while switched off, or while nothing readies a light', () => {
     settings = config({ buyLight: false });
-    expect(ahead().beforeRoute(CAVE, character([]), false)).toBe(false);
+    loopOver(CAVE, character([]));
     settings = config({ provideLight: false });
-    expect(ahead().beforeRoute(CAVE, character([]), false)).toBe(false);
+    loopOver(CAVE, character([]));
     expect(collected).toEqual([]);
     expect(notices).toEqual([]);
   });
 
-  it('says why and walks on: an unread inventory, nothing sold, no counter in reach', () => {
-    expect(ahead().beforeRoute(CAVE, character([], false), false)).toBe(false);
+  it('says why and loops on: an unread inventory, nothing sold, no counter in reach', () => {
+    loopOver(CAVE, character([], false));
     sold = [];
-    expect(ahead().beforeRoute(CAVE, character([]), false)).toBe(false);
+    loopOver(CAVE, character([]));
     sold = [TORCH, LANTERN];
     counters = [];
-    expect(ahead().beforeRoute(CAVE, character([]), false)).toBe(false);
+    loopOver(CAVE, character([]));
     expect(collected).toEqual([]);
     expect(notices).toEqual([
       t('automation.lightAhead.refusalUnlisted', { dark: 1 }),
@@ -167,9 +168,8 @@ describe('a route through the dark', () => {
   });
 
   it('names the carried light that is not bright enough', () => {
-    const deep = { ...CAVE, steps: [step('1/2'), step('1/3', -260)] } as Route;
-    ahead().beforeRoute(deep, character([torchCarried()]), false);
-    expect(collected[0]?.items).toEqual([{ id: 176, name: 'lantern', count: 1, dark: true }]);
+    loopOver([step('1/2'), step('1/3', -260)], character([torchCarried()]));
+    expect(collected[0]).toEqual([{ id: 176, name: 'lantern', count: 1, dark: true }]);
     expect(notices).toEqual([
       t('automation.lightAhead.buyingBrighter', {
         dark: 1,
@@ -182,12 +182,52 @@ describe('a route through the dark', () => {
     ]);
   });
 
-  it('says the item trip refused, and walks on', () => {
+  it('says the item trip refused', () => {
     collectRefusal = 'Auto-Buy is off';
-    expect(ahead().beforeRoute(CAVE, character([]), false)).toBe(false);
+    loopOver(CAVE, character([]));
     expect(notices).toEqual([
       t('automation.lightAhead.refusalCollect', { why: 'Auto-Buy is off' })
     ]);
+  });
+
+  it('leaves the item trip its own lap', () => {
+    collecting = true;
+    loopOver(CAVE, character([]));
+    expect(collected).toEqual([]);
+  });
+});
+
+/**
+ * Festus, 2026-11-13: the way to Frozen Cavern, Cave Opening crosses the
+ * Dark Hole drop at −375 with a brass lamp (175) carried, and the client went
+ * 2,561 steps for a mirrored lantern (225). A room past lighting is left out.
+ */
+describe('rooms past lighting', () => {
+  const MIRRORED: RealmLight = { id: 1200, name: 'mirrored lantern', reach: 225, uses: 2400 };
+  const lamp: ItemEntity = { ...wireItem('brass lamp'), kind: 'light', abilities: [[54, 175]] };
+  const cavern = [step('10/201', -175), step('10/276', -375), step('10/277', -375)];
+
+  beforeEach(() => {
+    sold = [TORCH, LANTERN, MIRRORED];
+    counters = [shop(1200), shop(176)];
+  });
+
+  it('buys nothing for them when the carried light reads the rest', () => {
+    loopOver(cavern, character([lamp]));
+    expect(collected).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  // Positive control: one step brighter than the line, the lantern is bought.
+  it('buys for a room at the line', () => {
+    loopOver([step('10/201', -175), step('9/1', -350)], character([lamp]));
+    expect(collected[0]).toMatchObject([{ id: 1200 }]);
+  });
+
+  it('says nothing for a lap with only rooms past lighting', () => {
+    loopOver([step('7/1', -999)], character([]));
+    expect(collected).toEqual([]);
+    expect(notices).toEqual([]);
   });
 });
 
@@ -199,10 +239,7 @@ describe('a route through the dark', () => {
 describe('rooms a carried light leaves dimly lit', () => {
   const MOON_LAMP: RealmLight = { id: 1153, name: 'moon-lamp', reach: 200, uses: null };
   const lamp: ItemEntity = { ...wireItem('brass lamp'), kind: 'light', abilities: [[54, 175]] };
-  const grottos = {
-    ...CAVE,
-    steps: [step('1/9450', -200), step('1/9459', -200), step('1/9460', -200)]
-  } as Route;
+  const grottos = [step('1/9450', -200), step('1/9459', -200), step('1/9460', -200)];
 
   beforeEach(() => {
     sold = [TORCH, LANTERN, MOON_LAMP];
@@ -212,9 +249,8 @@ describe('rooms a carried light leaves dimly lit', () => {
   it('buys nothing for them, and says once what would light them', () => {
     settings = config({ lightDimRooms: true });
     const light = ahead();
-    expect(light.beforeRoute(grottos, character([lamp]), false)).toBe(false);
-    lap = grottos.steps;
-    light.beforeLap({ name: 'grottos', stops: [] }, character([lamp]));
+    loopOver(grottos, character([lamp]), light);
+    loopOver(grottos, character([lamp]), light);
     expect(collected).toEqual([]);
     expect(notices).toEqual([t('automation.lightAhead.dimOnly', { dim: 3, items: 'moon-lamp' })]);
     expect(decisions.map((decision) => decision.acted)).toEqual([false]);
@@ -223,9 +259,7 @@ describe('rooms a carried light leaves dimly lit', () => {
   it('says how many stay dim where nothing sold lights them fully', () => {
     settings = config({ lightDimRooms: true });
     sold = [TORCH, LANTERN];
-    const dimmer = { ...grottos, steps: [...grottos.steps, step('1/9461', -150)] } as Route;
-    const torches = character([torchCarried()]);
-    expect(ahead().beforeRoute(dimmer, torches, false)).toBe(false);
+    loopOver([...grottos, step('1/9461', -150)], character([torchCarried()]));
     expect(collected).toEqual([]);
     expect(notices).toEqual([
       t('automation.lightAhead.dimOnlyShort', { dim: 4, items: 'lantern', unlit: 3 })
@@ -233,49 +267,14 @@ describe('rooms a carried light leaves dimly lit', () => {
   });
 
   it('says nothing about them with the setting off', () => {
-    expect(ahead().beforeRoute(grottos, character([lamp]), false)).toBe(false);
+    loopOver(grottos, character([lamp]));
     expect(collected).toEqual([]);
     expect(notices).toEqual([]);
   });
 
   it('still buys where nothing carried reads them', () => {
     settings = config({ lightDimRooms: true });
-    ahead().beforeRoute(grottos, character([]), false);
-    expect(collected[0]?.items).toMatchObject([{ id: 1153 }]);
-  });
-});
-
-describe('a lap through the dark', () => {
-  const loop: Loop = { name: 'crypt', stops: [{ room: 'Crypt 1/3' }] };
-
-  it('buys for one lap, walking nothing after', () => {
-    lap = CAVE.steps;
-    ahead().beforeLap(loop, character([]));
-    expect(collected).toEqual([
-      { items: [{ id: 176, name: 'lantern', count: 1, dark: true }], owes: null, run: false }
-    ]);
-  });
-
-  it('leaves the item trip its own lap', () => {
-    lap = CAVE.steps;
-    collecting = true;
-    ahead().beforeLap(loop, character([]));
-    expect(collected).toEqual([]);
-  });
-});
-
-describe('a trip that fetches before it walks', () => {
-  it('hands its list the light, said only once the fetch answers', () => {
-    const light = ahead();
-    const fetch = light.wanted(CAVE, character([]));
-    expect(fetch?.items).toEqual([{ id: 176, name: 'lantern', count: 1, dark: true }]);
-    expect(collected).toEqual([]);
-    expect(notices).toEqual([]);
-    light.settle(fetch!, 'busy');
-    expect(notices).toEqual([t('automation.lightAhead.refusalCollect', { why: 'busy' })]);
-    expect(decisions.at(-1)).toMatchObject({ acted: false, refused: notices[0] });
-    light.settle(fetch!, null);
-    expect(notices.at(-1)).toBe(fetch!.said);
-    expect(decisions.at(-1)?.acted).toBe(true);
+    loopOver(grottos, character([]));
+    expect(collected[0]).toMatchObject([{ id: 1153 }]);
   });
 });

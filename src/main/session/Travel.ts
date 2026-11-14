@@ -244,8 +244,8 @@ export interface TravelParts {
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
   readonly questRunner: Pick<QuestRunner, 'running' | 'abandon'>;
-  /** A light bought before a dark route or lap (todo 11). */
-  readonly light: Pick<LightAhead, 'beforeRoute' | 'beforeLap'>;
+  /** A light bought before a dark lap (todo 11). */
+  readonly light: Pick<LightAhead, 'beforeLap'>;
   /** A monster's blow the state does not show as a fight yet (`fightHere`). */
   readonly signs: FightSigns;
 }
@@ -2644,16 +2644,6 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * The player's route, after a light its dark rooms want is bought (todo 11):
-   * the item trip walks it once the light is in the inventory, or it is walked now.
-   */
-  private startLit(route: Route, run: boolean): string | null {
-    return this.light.beforeRoute(route, this.tracker.current, run)
-      ? null
-      : this.startAsked(route, run);
-  }
-
-  /**
    * A route the player asked for, with the supply list consulted first.
    *
    * The one path a person's own route takes (`Invoke.walkRoute`), and the
@@ -2758,7 +2748,7 @@ export class Travel implements SessionModule {
     const choice = this.keyBuying.choose(route, run, this.tracker.current);
     switch (choice.kind) {
       case 'walk':
-        return this.startLit(route, run);
+        return this.startAsked(route, run);
       case 'listing':
         return null;
       case 'buy':
@@ -2783,7 +2773,7 @@ export class Travel implements SessionModule {
     let refused: string | null;
     // The pressed way, where the listing holds every item it demands or it was never read.
     if (!held.listed || to === undefined || this.holdsEveryKey(held.route, state)) {
-      refused = this.startLit(held.route, held.run);
+      refused = this.startAsked(held.route, held.run);
     } else {
       const plan = this.errands.planFromHere(to, {}, 'walk', crossedWords(held.route));
       if (typeof plan === 'string') refused = plan;
@@ -3188,7 +3178,7 @@ export class Travel implements SessionModule {
     if (owed === null) return;
     this.errandOwes = null;
     const route = this.errands.planFromHere(owed.to, {}, 'walk', owed.crossing);
-    const refused = typeof route === 'string' ? route : this.startLit(route, owed.run);
+    const refused = typeof route === 'string' ? route : this.startAsked(route, owed.run);
     this.session.notice(
       refused === null || refused === undefined
         ? t('session.walk.resumed', { destination: owed.name })

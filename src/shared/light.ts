@@ -263,6 +263,14 @@ export function chooseLight(
 }
 
 /**
+ * Whether a room at `level` is past lighting: darker than −`darkest`
+ * (`tuning.light.ignoreDarkerThan`), so nothing is lit or bought for it.
+ */
+export function pastLighting(level: number, darkest: number): boolean {
+  return level < -darkest;
+}
+
+/**
  * Whether the character needs a light readied for a room at `level`.
  *
  * Asked of the room *without* the light that is currently lit, so a torch

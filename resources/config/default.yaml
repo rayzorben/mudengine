@@ -983,17 +983,18 @@ automation:
 
     # Buy a light before the dark.
     #
-    # Before a route you ask for, a loop, or the trip to a trainer, the client
-    # looks at every room on the way the world database records as dark. Where
-    # this character could not see in one (by the same arithmetic as above; a
-    # dimly lit room is described anyway, so `lightDimRooms` buys nothing) and
-    # the inventory holds no usable light that would do, it buys one first at
-    # the shop least out of the way among those selling a light that reaches
-    # the darkest room, as many as burn for the dark stretch (a torch lasts 40
-    # minutes), then walks on. When nothing can be bought it says why and walks
-    # without one. Needs `provideLight` to light it and `supplies.enabled` to
-    # buy it. `carryLights` is how many it buys where the world database states
-    # no uses, and the fewest it buys anywhere.
+    # Before a loop, the client looks at every room on the lap the world
+    # database records as dark. Where this character could not see in one (by
+    # the same arithmetic as above; a dimly lit room is described anyway, so
+    # `lightDimRooms` buys nothing) and the inventory holds no usable light
+    # that would do, it buys one first at the nearest shop selling a light that
+    # reaches the darkest room, as many as burn for the dark stretch (a torch
+    # lasts 40 minutes), then loops. A route you ask for and the trip to a
+    # trainer buy nothing, and rooms darker than −350 (the Frozen Cavern drop,
+    # the Great Pyramid) are left out. When nothing can be bought it says why
+    # and loops without one. Needs `provideLight` to light it and
+    # `supplies.enabled` to buy it. `carryLights` is how many it buys where the
+    # world database states no uses, and the fewest it buys anywhere.
     buyLight: true
     carryLights: 1
 

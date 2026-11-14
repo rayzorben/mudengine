@@ -1124,7 +1124,9 @@ const TUNING_DEFAULTS = {
   /** Readying a light before a dark step — `AutoLight`. */
   light: {
     /** A `light`/`remove` still queued after this is for a room already left. */
-    expiresMs: 4000
+    expiresMs: 4000,
+    /** A room the realm records darker than minus this gets no light, lit or bought. */
+    ignoreDarkerThan: 350
   },
   /** Keeping the pack stocked — `Supplies`. */
   supplies: {

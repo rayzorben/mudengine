@@ -194,7 +194,7 @@ function travel(
       abandon: vi.fn()
     },
     questRunner: { running: false, abandon: vi.fn() },
-    light: { beforeRoute: () => false, beforeLap: vi.fn() },
+    light: { beforeLap: vi.fn() },
     signs: NO_FIGHT_SIGNS
   };
   const settings = overrides.settings ?? config;
@@ -684,7 +684,6 @@ describe('a route run with auto-combat off', () => {
       return null;
     });
     made.parts.supplies.considerBeforeRoute = () => null;
-    made.parts.light.beforeRoute = () => false;
     return made;
   }
 
@@ -890,31 +889,8 @@ describe('a route run with auto-combat off', () => {
   });
 });
 
-/* Todo 11: a light the dark rooms want is bought before the route and the lap. */
+/* Todo 11: a light the dark rooms want is bought before the lap; a route buys none (2026-11-13). */
 describe('a light bought before the dark', () => {
-  const ROUTE = {
-    steps: [{ from: '1/1', to: '1/2' }],
-    cost: 1,
-    blocked: false
-  } as unknown as Route;
-
-  it('hands the route to the light, and walks it now only when nothing is bought', () => {
-    const state = beside();
-    const { travel: moving, parts } = travel(state, 'none', false);
-    parts.supplies.considerBeforeRoute = () => null;
-    const beforeRoute = vi.fn(() => true);
-    parts.light.beforeRoute = beforeRoute;
-    expect(moving.walkRoute(ROUTE, true)).toBeNull();
-    expect(beforeRoute).toHaveBeenCalledWith(ROUTE, state, true);
-    expect(parts.walker.start).not.toHaveBeenCalled();
-    parts.light.beforeRoute = () => false;
-    moving.walkRoute(ROUTE);
-    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, state, {
-      offRounds: false,
-      startSaid: true
-    });
-  });
-
   it('asks for a lap once it has started, and not for one refused', () => {
     const state = beside();
     const { travel: looping, parts } = travel(state, 'none', false);
@@ -986,7 +962,6 @@ describe('which walks are recent destinations', () => {
       return null;
     });
     made.parts.supplies.considerBeforeRoute = () => null;
-    made.parts.light.beforeRoute = () => false;
     return { ...made, asked };
   }
 
@@ -1026,7 +1001,6 @@ describe('auto-rest put back on', () => {
       return null;
     });
     it.parts.supplies.considerBeforeRoute = () => null;
-    it.parts.light.beforeRoute = () => false;
     return it;
   }
 
@@ -1134,7 +1108,6 @@ describe('a walk that buys its key on the way', () => {
     const listed = { ...state, inventory: { ...state.inventory, listedAt: 1, rows: [] } };
     const made = travel(listed, 'none', false, { on: true, writes: true }, { settings });
     made.parts.supplies.considerBeforeRoute = () => null;
-    made.parts.light.beforeRoute = () => false;
     made.parts.walker.start = vi.fn(() => null);
     vi.mocked(made.parts.errands.boughtTo).mockReturnValue({
       way: THROUGH,
@@ -1191,7 +1164,6 @@ describe('a walk held for the inventory', () => {
     const unlisted = { ...state, inventory: { ...state.inventory, listedAt: null, rows: [] } };
     const made = travel(unlisted, 'none', false);
     made.parts.supplies.considerBeforeRoute = () => null;
-    made.parts.light.beforeRoute = () => false;
     made.parts.walker.start = vi.fn(() => null);
     const listed = (rows: number[]): CharacterState => ({
       ...state,

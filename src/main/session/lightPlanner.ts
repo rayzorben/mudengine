@@ -1,8 +1,8 @@
 /**
  * What buying a light before the dark (`LightAhead`, todo 11) is handed: the
- * realm's lights, the counters ranked by detour as the item trip ranks them,
- * one lap's steps as its legs are planned, and the item trip that buys and
- * walks on. Out of `SessionManager`'s constructor whole, so the session
+ * realm's lights, the counters ranked by distance as the item trip ranks them,
+ * one lap's steps as its legs are planned, and the item trip that buys. Out
+ * of `SessionManager`'s constructor whole, so the session
  * composes it in one call.
  */
 import type { ItemErrand } from '../automation/ItemErrand';
@@ -25,13 +25,13 @@ export interface LightPlannerModules {
 export function lightPlanner(modules: () => LightPlannerModules): LightPlanner {
   return {
     lights: () => realmLights(modules().world?.itemsWhere((item) => item.kind === 'light') ?? []),
-    counters: (items, to) => {
+    counters: (items) => {
       const { world, tracker, errands } = modules();
       const state = tracker.current;
       const here = roomAddress(state.room);
       if (world === undefined || here === null) return [];
       // The traveller the item trip prices its counters with (`Errands.itemSources`).
-      return world.stockingPlaces(items, here, to, errands.travellerNow(state));
+      return world.stockingPlaces(items, here, null, errands.travellerNow(state));
     },
     lapSteps: (loop) => {
       const { errands } = modules();
@@ -53,9 +53,9 @@ export function lightPlanner(modules: () => LightPlannerModules): LightPlanner {
         return typeof route === 'string' || route.blocked ? [] : route.steps;
       });
     },
-    collect: (items, owes, run) => {
+    collect: (items) => {
       const { itemErrand, tracker } = modules();
-      return itemErrand.collect(items, owes, tracker.current, run);
+      return itemErrand.collect(items, null, tracker.current);
     },
     collecting: () => modules().itemErrand.running
   };

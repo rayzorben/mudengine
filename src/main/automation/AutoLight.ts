@@ -63,6 +63,7 @@ import {
   chooseLight,
   lightIsUsable,
   needsLightAt,
+  pastLighting,
   type CarriedLight,
   type LightChoice
 } from '../../shared/light';
@@ -241,6 +242,9 @@ export class AutoLight implements SessionModule {
     const lights = carriedLights(state.inventory.items);
     // After a refusal `provide` lights nothing until the pack is read again.
     if (this.refusedOver === packKey(lights)) return false;
+    // Nor in a room past lighting (`provide`).
+    const level = state.room.lightLevel;
+    if (level !== undefined && pastLighting(level, tuning().light.ignoreDarkerThan)) return false;
     return lights.some((light) => !light.lit && lightIsUsable(light));
   }
 
@@ -314,6 +318,10 @@ export class AutoLight implements SessionModule {
           : { kind: 'ready', light: usable[0], guess: true };
     } else {
       if (!needsLightAt(level, vision, dim)) return;
+      if (pastLighting(level, tuning().light.ignoreDarkerThan)) {
+        this.decline(`${where}|${level}|past`, where, t('automation.light.refusalPast', { level }));
+        return;
+      }
       choice = chooseLight(level, vision, lights, dim);
     }
 
@@ -322,15 +330,7 @@ export class AutoLight implements SessionModule {
       choice.kind === 'ready' ? choice.light.name : choice.reason
     }`;
     if (choice.kind === 'none') {
-      if (this.lastKey === key) return;
-      this.lastKey = key;
-      this.events.decided?.({
-        at: this.now(),
-        action: 'light',
-        because: t('automation.light.becauseDark', { room: where }),
-        acted: false,
-        refused: refusalFor(choice.reason, lights)
-      });
+      this.decline(key, where, refusalFor(choice.reason, lights));
       return;
     }
 
@@ -380,6 +380,19 @@ export class AutoLight implements SessionModule {
       ...(choice.guess
         ? { refused: t('automation.light.guessedReach', { item: choice.light.name }) }
         : {})
+    });
+  }
+
+  /** Nothing lit for `where`, recorded once per `key`. */
+  private decline(key: string, where: string, refused: string): void {
+    if (this.lastKey === key) return;
+    this.lastKey = key;
+    this.events.decided?.({
+      at: this.now(),
+      action: 'light',
+      because: t('automation.light.becauseDark', { room: where }),
+      acted: false,
+      refused
     });
   }
 

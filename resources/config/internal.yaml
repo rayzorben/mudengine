@@ -894,8 +894,15 @@ tuning:
   # Readying a light before a dark step — `AutoLight`. A `light` or `remove`
   # still queued after this is for a room already left. How many lights to buy
   # is `automation.movement.carryLights` in the options file.
+  #
+  # A room the realm records darker than minus `ignoreDarkerThan` (−350) gets
+  # no light, lit or bought: the Frozen Cavern's Dark Hole drop (−375), the
+  # Black Ice Cavern (−400) and the Great Pyramid's 80 rooms at −999. A route
+  # goes on through them from the room before, and no light sold reads the
+  # pyramid.
   light:
     expiresMs: 4000
+    ignoreDarkerThan: 350
 
   # Keeping the pack stocked — `Supplies`. `buyTimeoutMs` is how long a `buy`
   # may go unanswered by `You just bought …` before it is taken as refused;

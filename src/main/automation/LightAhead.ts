@@ -1,14 +1,15 @@
 /**
  * Buying a light before the dark (todo 11, the user's ask 2026-10-01).
  *
- * Before a route, a loop or the trip to a trainer, the way's dark steps
- * (`darkWay`, the realm's level against this character's sight) are weighed
- * against the inventory and the realm's lights (`planLight`); short of one,
- * the item trip buys it at the counter least out of the way and walks on, as
- * it fetches a key for a door. Only rooms too dark to read are bought for; a
- * dim one under `lightDimRooms` is said once, never shopped for. Every reason
- * it is not bought is said, and the walk goes on without. See
- * `mudengine-automation` › *A light is bought before the dark*.
+ * Before a lap, the lap's dark steps (`darkWay`, the realm's level against
+ * this character's sight) are weighed against the inventory and the realm's
+ * lights (`planLight`); short of one, the item trip buys it at the nearest
+ * counter and the lap waits. A route or a trainer's trip buys nothing (the
+ * user, 2026-11-13): light is for looping, and a route goes on through the
+ * dark. Only rooms too dark to read and not past lighting are bought
+ * for; a dim one under `lightDimRooms` is said once, never shopped for. Every
+ * reason it is not bought is said. See `mudengine-automation` › *A light is
+ * bought before the dark*.
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -27,21 +28,18 @@ import {
 } from '../../shared/lightPlan';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
-import type { BuyingPlace, RoomId, Route, RouteStep } from '../../shared/world';
+import type { BuyingPlace, RouteStep } from '../../shared/world';
 import type { Wanted } from './ItemErrand';
 
 export interface LightPlanner {
   /** The realm's lights a shop stocks, with their reach and uses. */
   lights(): readonly RealmLight[];
-  /** The counters stocking any of `items`, least out of the way of the trip to `to` first. */
-  counters(
-    items: readonly number[],
-    to: RoomId | null
-  ): ReadonlyArray<BuyingPlace & { item: number }>;
+  /** The counters stocking any of `items`, nearest first. */
+  counters(items: readonly number[]): ReadonlyArray<BuyingPlace & { item: number }>;
   /** The steps of one lap of `loop`, stop to stop, as its legs are planned. */
   lapSteps(loop: Loop): readonly RouteStep[];
-  /** Fetch `items`, then walk `owes` (null walks nothing). Its refusal, or null once under way. */
-  collect(items: readonly Wanted[], owes: Route | null, run: boolean): string | null;
+  /** Fetch `items`. Its refusal, or null once under way. */
+  collect(items: readonly Wanted[]): string | null;
   /** Whether the item trip is already fetching something. */
   collecting(): boolean;
 }
@@ -51,8 +49,8 @@ export interface LightAheadEvents {
   decided?(decision: SafetyDecision): void;
 }
 
-/** What to buy and the sentence that says why, said once the item trip answers (`settle`). */
-export interface LightFetch {
+/** What to buy and the sentence that says why, said once the item trip answers. */
+interface LightFetch {
   items: Wanted[];
   said: string;
 }
@@ -70,57 +68,29 @@ export class LightAhead {
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  /**
-   * Before the player's route: true when the item trip has taken it over and
-   * walks it once the light is bought, false when the caller walks it now.
-   */
-  beforeRoute(route: Route, state: CharacterState, run: boolean): boolean {
-    const fetch = this.plan(route.steps, route.steps.at(-1)?.to ?? null, state);
-    return fetch !== null && this.collect(fetch, route, run);
-  }
-
   /** A lap just started: buy the light its rooms want, the lap held while the shop is walked to. */
   beforeLap(loop: Loop, state: CharacterState): void {
     // The item trip's own lap round a lair: it is the trip, and has nothing to spare.
     if (this.planner.collecting()) return;
-    const fetch = this.plan(this.planner.lapSteps(loop), null, state);
-    if (fetch !== null) this.collect(fetch, null, false);
-  }
-
-  /**
-   * What a trip that fetches before it walks (`TrainErrand`) adds to its list
-   * for `route`, or null. The trip hands its fetch's answer to `settle`.
-   */
-  wanted(route: Route, state: CharacterState): LightFetch | null {
-    return this.plan(route.steps, route.steps.at(-1)?.to ?? null, state);
-  }
-
-  /** Say what became of `fetch`: being bought, or `refused` and walked on without. */
-  settle(fetch: LightFetch, refused: string | null): void {
+    const fetch = this.plan(this.planner.lapSteps(loop), state);
+    if (fetch === null) return;
+    const refused = this.planner.collect(fetch.items);
     if (refused === null) this.say(fetch.said, true);
     else this.say(t('automation.lightAhead.refusalCollect', { why: refused }), false);
   }
 
-  private collect(fetch: LightFetch, owes: Route | null, run: boolean): boolean {
-    const refused = this.planner.collect(fetch.items, owes, run);
-    this.settle(fetch, refused);
-    return refused === null;
-  }
-
-  /** The light this way wants bought, or null: said where one is wanted and none can be had. */
-  private plan(
-    steps: readonly RouteStep[],
-    to: RoomId | null,
-    state: CharacterState
-  ): LightFetch | null {
+  /** The light this lap wants bought, or null: said where one is wanted and none can be had. */
+  private plan(steps: readonly RouteStep[], state: CharacterState): LightFetch | null {
     const config = this.config();
     const movement = config.movement;
     if (!config.enabled || !movement.provideLight || !movement.buyLight) return null;
     const vision = state.sight?.vision ?? 0;
     // A dimly lit room is described whole, so only rooms too dark to read are
     // bought for. Buying for dim ones sent a character 1,816 steps for a
-    // 200-reach lamp when the 175 one it carried already read them.
-    const way = darkWay(steps, vision, false);
+    // 200-reach lamp when the 175 one it carried already read them. A room
+    // past lighting is left out: the Frozen Cavern drop at −375 sent a
+    // character carrying a 175 brass lamp 2,561 steps for a mirrored lantern.
+    const way = darkWay(steps, vision, false, tuning().light.ignoreDarkerThan);
     if (way === null) return this.noteDim(steps, vision, state);
     const dark = way.reaches.length;
     // Unread is not empty: the light may be in it, so nothing is bought on a guess.
@@ -144,10 +114,7 @@ export class LightAhead {
         return unhandled;
       }
     }
-    const place = this.planner.counters(
-      answer.lights.map((light) => light.id),
-      to
-    )[0];
+    const place = this.planner.counters(answer.lights.map((light) => light.id))[0];
     const light = answer.lights.find((each) => each.id === place?.item);
     if (place === undefined || light === undefined) {
       const items = answer.lights.map((each) => each.name).join(', ');
@@ -202,7 +169,7 @@ export class LightAhead {
    */
   private noteDim(steps: readonly RouteStep[], vision: number, state: CharacterState): null {
     if (!this.config().movement.lightDimRooms || state.inventory.listedAt === null) return null;
-    const dim = darkWay(steps, vision, true);
+    const dim = darkWay(steps, vision, true, tuning().light.ignoreDarkerThan);
     if (dim === null) return null;
     const answer = planLight(dim, carriedLights(state.inventory.items), this.planner.lights());
     if (answer.kind !== 'buy') return null;

@@ -1036,7 +1036,7 @@ export class SessionManager {
       },
       reports
     );
-    // And a light bought before the dark (todo 11), for a route, a lap or a trainer's trip.
+    // And a light bought before a dark lap (todo 11).
     const light: LightAhead = new LightAhead(
       () => this.automationConfig,
       lightPlanner(() => legs()),

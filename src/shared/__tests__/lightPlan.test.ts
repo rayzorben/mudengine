@@ -48,14 +48,20 @@ describe('how long a light burns', () => {
 
 describe('the dark steps of a way', () => {
   it('counts only rooms the realm records too dark for this character', () => {
-    const way = darkWay([{}, { light: -175 }, { light: 0 }, {}, { light: -999 }, {}], 0, false);
-    expect(way).toEqual({ reaches: [25, 849], span: 4 });
+    const steps = [{}, { light: -175 }, { light: 0 }, {}, { light: -999 }, {}];
+    expect(darkWay(steps, 0, false, 1000)).toEqual({ reaches: [25, 849], span: 4 });
+  });
+
+  it('leaves out a room past lighting', () => {
+    const steps = [{ light: -175 }, { light: -350 }, { light: -375 }, { light: -999 }];
+    expect(darkWay(steps, 0, false, 350)).toEqual({ reaches: [25, 200], span: 2 });
+    expect(darkWay([{ light: -375 }], 0, false, 350)).toBeNull();
   });
 
   it('is nothing where vision reads every room, and widens to dim rooms when asked', () => {
-    expect(darkWay([{ light: -175 }], 200, false)).toBeNull();
-    expect(darkWay([{ light: -50 }], 0, false)).toBeNull();
-    expect(darkWay([{ light: -50 }], 0, true)).toEqual({ reaches: [50], span: 1 });
+    expect(darkWay([{ light: -175 }], 200, false, 350)).toBeNull();
+    expect(darkWay([{ light: -50 }], 0, false, 350)).toBeNull();
+    expect(darkWay([{ light: -50 }], 0, true, 350)).toEqual({ reaches: [50], span: 1 });
   });
 
   it('solves the reach for the same test the light is lit by', () => {

@@ -41,7 +41,6 @@ import {
   type TrainerChoice
 } from '../../shared/world';
 import { wantedFrom, type Wanted } from './ItemErrand';
-import type { LightFetch } from './LightAhead';
 import type { SessionModule } from './Module';
 
 export interface TrainPlanner {
@@ -59,10 +58,6 @@ export interface TrainPlanner {
   walk(route: Route): string | null;
   /** Gets each item (`ItemErrand.collect`), then walks `then`. Returns its refusal, or null. */
   fetch(items: ReadonlyArray<Wanted>, then: Route): string | null;
-  /** The light `route`'s dark rooms want bought first (`LightAhead.wanted`), or null. */
-  lightFor(route: Route): LightFetch | null;
-  /** What became of fetching that light, said (`LightAhead.settle`). */
-  lightSettled(light: LightFetch, refused: string | null): void;
   /** Whether that fetch is still under way. */
   fetching(): boolean;
   /**
@@ -592,37 +587,22 @@ export class TrainErrand implements SessionModule {
     }
     const { route } = way;
     const to = roomId(chosen.map, chosen.room);
-    // A light the trainer's dark rooms want is fetched as a door's key is (todo 11).
-    const light = this.planner.lightFor(route);
-    const keyed = way.needs.length > 0;
-    if (keyed || light !== null) {
+    if (way.needs.length > 0) {
       // Each key fetched where the plan gets it, which the plan has already judged.
-      const needs = [...wantedFrom(way.needs), ...(light?.items ?? [])];
+      const needs = wantedFrom(way.needs);
       const where = {
         room: chosen.roomName,
         items: needs.map((item) => item.name).join(', '),
         cost: chosen.cost.toLocaleString()
       };
       const refused = this.planner.fetch(needs, way.then);
-      // A refused keyed trip is said as the trip's refusal: nothing walks on.
-      if (light !== null && (refused === null || !keyed)) {
-        this.planner.lightSettled(light, refused);
-      }
       if (refused === null) {
-        this.events.notice?.(
-          light !== null
-            ? t('automation.train.goingFetching', where)
-            : t('automation.train.goingKeyed', where),
-          'train-level'
-        );
+        this.events.notice?.(t('automation.train.goingKeyed', where), 'train-level');
         this.phase = { kind: 'walking', to, trainer: chosen, fetching: needs };
         return;
       }
-      if (keyed) {
-        this.refuse(t('automation.train.refusalNoRoute', { room: chosen.roomName, why: refused }));
-        return;
-      }
-      // Only a light was wanted: said by `lightSettled`, and walked to without one.
+      this.refuse(t('automation.train.refusalNoRoute', { room: chosen.roomName, why: refused }));
+      return;
     }
     this.events.notice?.(
       t('automation.train.going', {

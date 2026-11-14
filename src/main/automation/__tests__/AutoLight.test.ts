@@ -9,6 +9,7 @@ import { wireItem, type ItemEntity } from '../../../shared/entities';
 import type { SafetyDecision } from '../../../shared/automation';
 import { carriedLights, sightOf, wornVision } from '../../../shared/light';
 import { recordOffers, type Offered } from './offered';
+import { t } from '../../app/i18n';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -132,13 +133,30 @@ describe('before a step into the dark', () => {
   it('refuses out loud, once, when no carried light would make the room readable', () => {
     const auto = make();
     const state = character([torch()]);
-    auto.beforeStep({ name: 'The Abyss', light: -999 }, state);
-    auto.beforeStep({ name: 'The Abyss', light: -999 }, state);
+    auto.beforeStep({ name: 'Lower Mine Tunnel', light: -325 }, state);
+    auto.beforeStep({ name: 'Lower Mine Tunnel', light: -325 }, state);
     drain();
     expect(sent).toEqual([]);
     expect(decisions).toHaveLength(1);
     expect(decisions[0]).toMatchObject({ action: 'light', acted: false });
     expect(decisions[0]?.refused).toContain('torch (100)');
+  });
+
+  /* Frozen Cavern's Dark Hole at −375: a mirrored lantern (225) would read it, and is left unlit. */
+  it('lights nothing in a room past lighting, saying so once', () => {
+    const lantern = { ...wireItem('mirrored lantern'), kind: 'light' as const };
+    const state = character([{ ...lantern, abilities: [[54, 225]] }]);
+    const auto = make();
+    auto.beforeStep({ name: 'Frozen Cavern, Dark Hole', light: -375 }, state);
+    auto.beforeStep({ name: 'Frozen Cavern, Dark Hole', light: -375 }, state);
+    drain();
+    expect(sent).toEqual([]);
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]?.refused).toBe(t('automation.light.refusalPast', { level: -375 }));
+    // Positive control: at the line it is lit.
+    auto.beforeStep({ name: 'Putrid Hollow', light: -350 }, state);
+    drain();
+    expect(sent).toEqual(['light mirrored lantern']);
   });
 
   it('refuses out loud with nothing in the pack', () => {
@@ -413,6 +431,17 @@ describe('whether a light is coming', () => {
     expect(make().couldReady(character([]))).toBe(false);
     expect(make(movement({ provideLight: false })).couldReady(character([torch()]))).toBe(false);
     expect(make(movement(), false).couldReady(character([torch()]))).toBe(false);
+  });
+
+  /* Nothing is lit in a room past lighting, so the walk does not wait for it. */
+  it('answers no in a room past lighting', () => {
+    const at = (lightLevel: number): CharacterState => {
+      const state = character([torch()]);
+      return { ...state, room: { ...state.room, lightLevel } };
+    };
+    expect(make().couldReady(at(-375))).toBe(false);
+    // Positive control: at the line a light still comes.
+    expect(make().couldReady(at(-350))).toBe(true);
   });
 
   /* Nothing is lit on the way out of a lair; the walk stops instead of waiting. */

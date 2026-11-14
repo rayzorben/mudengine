@@ -1,14 +1,14 @@
 /**
- * Whether a walk needs a light bought before it sets off, and which (todo 11).
+ * Whether a lap needs a light bought before it sets off, and which (todo 11).
  *
- * `light.ts` answers for one room at the step; this answers for the whole way
+ * `light.ts` answers for one room at the step; this answers for the whole lap
  * before the first step, by the same arithmetic: a step is dark for this
  * character when `reachWanted` is above zero at the level the realm records.
  * A step with no level is an ordinarily lit room (`WorldRoom.light`).
  * How long a light lasts is the server's (`burnSeconds`). See
  * `mudengine-automation` › *A light is bought before the dark*.
  */
-import { abilitySum, LIGHT_REACH_ABILITY, lightIsUsable, reachWanted } from './light';
+import { abilitySum, LIGHT_REACH_ABILITY, lightIsUsable, pastLighting, reachWanted } from './light';
 import type { CarriedLight } from './light';
 import type { ItemKind } from './items';
 
@@ -71,16 +71,21 @@ export interface DarkWay {
   span: number;
 }
 
+/** A room past lighting (`pastLighting`) is left out: nothing is bought for it. */
 export function darkWay(
   steps: ReadonlyArray<{ light?: number }>,
   vision: number,
-  dim: boolean
+  dim: boolean,
+  darkest: number
 ): DarkWay | null {
   const reaches: number[] = [];
   let first = -1;
   let last = -1;
   steps.forEach((step, index) => {
-    const reach = step.light === undefined ? 0 : reachWanted(step.light, vision, dim);
+    const reach =
+      step.light === undefined || pastLighting(step.light, darkest)
+        ? 0
+        : reachWanted(step.light, vision, dim);
     if (reach <= 0) return;
     reaches.push(reach);
     if (first === -1) first = index;

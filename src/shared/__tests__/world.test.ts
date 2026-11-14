@@ -46,6 +46,19 @@ describe('asRoute', () => {
     expect(asRoute({ blocked: true, cost: 0, steps: [], reason: 'nope' })).not.toBeNull();
   });
 
+  /* Frozen Cavern's Dark Hole drop: the most direct way waits there for the room's spell. */
+  it('accepts a room spell waited out, which sends nothing', () => {
+    const wait = {
+      from: '10/276',
+      to: '10/297',
+      direction: 'portal',
+      command: '',
+      name: 'Frozen Cavern, Cave Opening',
+      requirement: { kind: 'room-spell', raw: 'Spell: 1144', waits: { in: ['10/276'], ticks: 25 } }
+    };
+    expect(asRoute({ ...good, steps: [...good.steps, wait] })).not.toBeNull();
+  });
+
   /*
    * This is the payload that turns into commands on a socket, so everything
    * below is a thing a window could send that must not reach the walker. A

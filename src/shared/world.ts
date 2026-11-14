@@ -4044,7 +4044,9 @@ export function asRoute(value: unknown): Route | null {
   for (const step of candidate.steps) {
     if (typeof step !== 'object' || step === null) return null;
     const entry = step as Partial<RouteStep>;
-    if (typeof entry.command !== 'string' || entry.command.length === 0) return null;
+    if (typeof entry.command !== 'string') return null;
+    // A room's own spell is waited out where the character stands: nothing is sent.
+    if (entry.command.length === 0 && entry.requirement?.kind !== 'room-spell') return null;
     if (typeof entry.from !== 'string' || typeof entry.to !== 'string') return null;
     if (typeof entry.name !== 'string') return null;
   }

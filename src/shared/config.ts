@@ -1617,9 +1617,9 @@ export interface MovementConfig extends MovementChoices {
    */
   extinguishInLight: boolean;
   /**
-   * Buy a light before a route, a loop or a trip to a trainer that crosses
-   * rooms this character cannot see in, when the inventory holds no usable
-   * light that would do (todo 11). The shop least out of the way, as many as
+   * Buy a light before a loop that crosses rooms this character cannot see
+   * in, when the inventory holds no usable light that would do (todo 11); a
+   * route or a trainer's trip buys none. The nearest shop, as many as
    * burn for the dark stretch where the realm states the uses, else
    * `carryLights`. On by default under `provideLight`, which
    * readies what it buys.

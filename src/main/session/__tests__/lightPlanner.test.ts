@@ -46,6 +46,6 @@ describe("one lap's steps", () => {
   });
 
   it('has no counters with nowhere to stand', () => {
-    expect(planner([]).counters([175], null)).toEqual([]);
+    expect(planner([]).counters([175])).toEqual([]);
   });
 });
