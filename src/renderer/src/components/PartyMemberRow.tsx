@@ -22,6 +22,17 @@ import { PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord, meterValue } from '../lib/vitals';
 
+/**
+ * A fresh sighting as a pill draws it: the monster's name (or the room's
+ * word) beside the glyph that says fighting or hit by, and the whole
+ * sentence for a hover. Only a monster's name opens a lookup.
+ */
+export interface PartySighting {
+  readonly name: string;
+  readonly said: string;
+  readonly monster: boolean;
+}
+
 export interface PartyMemberRowProps {
   member: PartyMember;
   /** The listing's class, else the player record's. */
@@ -35,8 +46,10 @@ export interface PartyMemberRowProps {
   person: boolean;
   selected: boolean;
   /** What they were last seen fighting, and what was last seen hitting them, while fresh. */
-  fighting: string | null;
-  hitBy: string | null;
+  fighting: PartySighting | null;
+  /** Whether `fighting` is the fight the card names once above the roster: the row wears only the sword. */
+  fightShared: boolean;
+  hitBy: PartySighting | null;
   onSelect?(name: string, anchor: PopoverAnchor): void;
   /** A class or a monster clicked: the realm's answer, beside it. */
   inspect?: Inspect;
@@ -102,6 +115,37 @@ function Bar({
   );
 }
 
+/**
+ * A sighting as a pill: the sword for a fight and the shield for a hit, then
+ * the name, or the glyph alone when the card already names the fight above
+ * the roster.
+ */
+export function SightingPill({
+  sighting,
+  kind,
+  inspect,
+  markOnly = false
+}: {
+  sighting: PartySighting;
+  kind: 'fighting' | 'hitBy';
+  inspect?: Inspect;
+  markOnly?: boolean;
+}) {
+  return (
+    <span
+      aria-label={markOnly ? sighting.said : undefined}
+      className={`party-pill ${kind === 'fighting' ? 'party-fighting' : 'party-hit-by'}`}
+      data-mark={markOnly ? 'true' : undefined}
+      title={sighting.said}
+    >
+      <Icon name={kind === 'fighting' ? 'sword' : 'shield'} />
+      {!markOnly && (
+        <EntityName inspect={sighting.monster ? inspect : undefined} name={sighting.name} />
+      )}
+    </span>
+  );
+}
+
 function PartyMemberRow({
   member,
   className,
@@ -111,6 +155,7 @@ function PartyMemberRow({
   person,
   selected,
   fighting,
+  fightShared,
   hitBy,
   onSelect,
   inspect,
@@ -142,17 +187,14 @@ function PartyMemberRow({
         {/* The fact `assistLeader` acts on, and the monster a heal or a
             defence is for, while each sighting is fresh. */}
         {fighting !== null && (
-          <span className="party-pill party-fighting" title={fighting}>
-            <Icon name="sword" />
-            <EntityName inspect={inspect} name={fighting} />
-          </span>
+          <SightingPill
+            inspect={inspect}
+            kind="fighting"
+            markOnly={fightShared}
+            sighting={fighting}
+          />
         )}
-        {hitBy !== null && (
-          <span className="party-pill party-hit-by" title={hitBy}>
-            <Icon name="shield" />
-            <EntityName inspect={inspect} name={hitBy} />
-          </span>
-        )}
+        {hitBy !== null && <SightingPill inspect={inspect} kind="hitBy" sighting={hitBy} />}
         {/* `follow <name>` is how a leader is made on this realm; there is no
             verb for the other direction, so there is no other button. */}
         {ask && !member.invited && !self && !head && (

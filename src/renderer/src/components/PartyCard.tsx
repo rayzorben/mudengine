@@ -3,7 +3,7 @@ import { memo, useMemo } from 'react';
 import BentoCard, { type CardChrome } from './BentoCard';
 import Icon, { type IconName } from './Icon';
 import EntityName, { type Inspect, type PersonOpener } from './EntityName';
-import PartyMemberRow from './PartyMemberRow';
+import PartyMemberRow, { SightingPill, type PartySighting } from './PartyMemberRow';
 import {
   ratio,
   vitalLevel,
@@ -151,6 +151,9 @@ function PartyCard({
   const sheets = sheetsKey(members);
   const best = useMemo(() => partyBest(members), [sheets]);
 
+  const fights = new Map(members.map((m) => [m.name, fightingOf(character, m.name)]));
+  const shared = sharedFight(fights);
+
   return (
     <BentoCard
       {...chrome}
@@ -179,6 +182,11 @@ function PartyCard({
           /* One grid for every group, each row a subgrid of it, so names and
              classes line up down the whole card, by measurement. */
           <div className="party-roster">
+            {shared !== null && (
+              <div className="party-shared">
+                <SightingPill inspect={inspect} kind="fighting" sighting={shared} />
+              </div>
+            )}
             {GROUPS.map(({ key, label }) => {
               const inRank = members.filter((entry) => groupOf(entry) === key);
               if (inRank.length === 0) return null;
@@ -190,9 +198,12 @@ function PartyCard({
                       <PartyMemberRow
                         ask={ask}
                         className={classOf(character, players, member)}
-                        fighting={fightingWord(character, member.name)}
+                        fighting={fights.get(member.name) ?? null}
+                        fightShared={
+                          shared !== null && fights.get(member.name)?.said === shared.said
+                        }
                         head={isHead(member)}
-                        hitBy={hitByWord(character, member.name)}
+                        hitBy={hitByOf(character, member.name)}
                         inspect={inspect}
                         key={member.name}
                         member={member}
@@ -343,19 +354,49 @@ function freshSighting<T extends { at: number }>(
   return entry && Date.now() - entry.at <= tuning().fightingFreshMs ? entry : undefined;
 }
 
-/** What a member was last seen fighting, as the chip says it, or null once the sighting is stale. */
-function fightingWord(character: CharacterState, name: string): string | null {
+/** What a member was last seen fighting, or null once the sighting is stale. */
+function fightingOf(character: CharacterState, name: string): PartySighting | null {
   const seen = freshSighting(character.party.engaged, name);
   if (!seen) return null;
   return seen.kind === 'room'
-    ? t('cards.party.fightingRoom')
-    : t('cards.party.fighting', { target: seen.target });
+    ? { name: t('cards.party.everyone'), said: t('cards.party.fightingRoom'), monster: false }
+    : {
+        name: seen.target,
+        said: t('cards.party.fighting', { target: seen.target }),
+        monster: true
+      };
 }
 
-/** The monster last seen hitting a member, as the chip says it, or null once the sighting is stale. */
-function hitByWord(character: CharacterState, name: string): string | null {
+/**
+ * The fight two or more members share, the most common one, or null. The card
+ * names it once above the roster and each of those members wears only the
+ * sword, so a party on one monster has one pill above the ranks and a sword
+ * on each row.
+ */
+function sharedFight(fights: ReadonlyMap<string, PartySighting | null>): PartySighting | null {
+  const counts = new Map<string, { fight: PartySighting; count: number }>();
+  for (const fight of fights.values()) {
+    if (fight === null) continue;
+    const held = counts.get(fight.said);
+    counts.set(fight.said, { fight, count: (held?.count ?? 0) + 1 });
+  }
+  let shared: PartySighting | null = null;
+  let most = 1;
+  for (const { fight, count } of counts.values()) {
+    if (count > most) {
+      shared = fight;
+      most = count;
+    }
+  }
+  return shared;
+}
+
+/** The monster last seen hitting a member, or null once the sighting is stale. */
+function hitByOf(character: CharacterState, name: string): PartySighting | null {
   const seen = freshSighting(character.party.threatened, name);
-  return seen ? t('cards.party.hitBy', { target: seen.target }) : null;
+  return seen
+    ? { name: seen.target, said: t('cards.party.hitBy', { target: seen.target }), monster: true }
+    : null;
 }
 
 export default memo(PartyCard);

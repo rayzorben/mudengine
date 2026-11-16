@@ -85,8 +85,9 @@ describe('a Party card row', () => {
         self: false,
         person: false,
         selected: false,
-        fighting: 'kobold thief',
-        hitBy: 'orc scout',
+        fighting: { name: 'kobold thief', said: 'fighting kobold thief', monster: true },
+        fightShared: false,
+        hitBy: { name: 'orc scout', said: 'hit by orc scout', monster: true },
         inspect
       })
     );

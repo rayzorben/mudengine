@@ -12360,7 +12360,7 @@ button.lookup:focus-visible {
   .settings-name,
   .combat-name .name,
   .party-name,
-  .party-pill > span,
+  .party-pill > :not(.icon),
   .rewrite-list .rewrite-name,
   .rewrite-tag .hint,
   .settings-saving,
@@ -16070,7 +16070,9 @@ tr:hover .row-action.worn,
   padding: 0 7px;
 }
 
-.party-pill > span {
+/* A monster's name is a lookup button, and a button wraps by default. */
+.party-pill > :not(.icon) {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -16088,6 +16090,19 @@ tr:hover .row-action.worn,
   color: color-mix(in srgb, var(--danger) 80%, var(--text-hi));
 }
 
+/* A member on the fight the card names above the roster: the sword alone. */
+.party-fighting[data-mark] {
+  padding: 2px 5px;
+}
+
+/* The fight two or more members share, named once over the ranks. */
+.party-shared {
+  display: flex;
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
 .party-hit-by {
   background: color-mix(in srgb, var(--pending) var(--tone-weak), transparent);
   border-color: color-mix(in srgb, var(--pending) var(--tone-strong), transparent);
@@ -16099,7 +16114,16 @@ tr:hover .row-action.worn,
   display: inline-flex;
   flex: 0 0 auto;
   min-height: 0;
+  opacity: 0;
   padding: 1px 4px;
+  transition: opacity var(--dur-control) var(--ease-out);
+}
+
+/* Follow shows on the row under the pointer or holding focus; it keeps its
+   space while hidden, so the pills do not move when it appears. */
+.party-member:hover .party-follow,
+.party-member:focus-within .party-follow {
+  opacity: 1;
 }
 
 .party-follow .icon {
@@ -16222,7 +16246,7 @@ tr:hover .row-action.worn,
   text-transform: uppercase;
 }
 
-.party-rank-group:first-child > .party-rank-head {
+.party-rank-group:first-of-type > .party-rank-head {
   margin-top: 0;
 }
 
@@ -16291,16 +16315,17 @@ tr:hover .row-action.worn,
  * column on the left, then name, class, health, mana, the fight pills and
  * Follow. The bars stop at 240px and 120px, 2:1 as below, and the rest of the
  * width goes to the fight pills, so a player who keeps the card wide can give
- * it fewer rows. 736px, measured in the smoke: there both bars are at their
- * maximum and the fight column has 171px, what a fight pill for `dark goblin
- * archer` (the monster in the user's screenshot) and Follow need whole. With
+ * it fewer rows. 743px, measured in the smoke (2026-11-15): there both bars are
+ * at their maximum and the fight column has 178px, what a fight pill for `dark
+ * goblin archer` (the monster in the user's screenshot) and Follow need whole.
+ * It was 736px while the pill's name wrapped and so measured short. With
  * the bars at their least the same row needs 595px. The name column is
  * `fit-content(28%)` against 45% on a narrow card, since here it shares the
  * line with the bars.
  * Every cell names its column and row 1, because auto-placement would start a
  * new row when the meters come after the fight pills in the markup.
  */
-@container party (width >= 736px) {
+@container party (width >= 743px) {
   .party-roster {
     /* The bars' least widths, read by the smoke's one-line measurement. */
     --party-hp-min: 150px;

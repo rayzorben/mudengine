@@ -3391,6 +3391,8 @@ cards:
       invited: Invited
       middle: Middle
       rankUnknown: Rank unknown
+    # A pill's words after its sword: the monster's name, or this when they attack everyone in the room.
+    everyone: everyone in the room
     fighting: 'fighting {target}'
     fightingRoom: fighting everyone in the room
     followAria: 'Follow {name}'
