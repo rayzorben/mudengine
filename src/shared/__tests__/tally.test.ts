@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BLOW_KINDS,
+  binSpan,
   experienceAt,
   historySeries,
+  historyStart,
+  zoomedStatsWindow,
   rateSeries,
   withSample,
   blowKind,
@@ -525,6 +528,20 @@ describe('experience sampled for the rate graph', () => {
     expect(experienceAt(samples, -1)).toBeNull();
     expect(experienceAt(samples, 5_000_000)).toBe(3600);
     expect(rateSeries(samples, 10, 10, 4)).toEqual([null, null, null, null]);
+  });
+
+  it('steps the graph window along the list, held at either end', () => {
+    expect(zoomedStatsWindow(2, 1)).toBe(4);
+    expect(zoomedStatsWindow(2, -1)).toBe(1);
+    expect(zoomedStatsWindow(1, -1)).toBe(1);
+    expect(zoomedStatsWindow(24, 1)).toBe(24);
+    expect(zoomedStatsWindow(5, 1)).toBe(8);
+  });
+
+  it('names the stretch each bin covers', () => {
+    const hour = 3_600_000;
+    expect(historyStart(2 * hour, 2)).toBe(0);
+    expect(binSpan(0, 2 * hour, 8, 3)).toEqual({ start: 3 * 15 * 60_000, end: 4 * 15 * 60_000 });
   });
 
   it('carries the samples through a baseline, relative to it', () => {

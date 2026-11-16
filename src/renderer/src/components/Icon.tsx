@@ -56,6 +56,7 @@ export type IconName =
   | 'paste'
   | 'edit'
   | 'plus'
+  | 'minus'
   | 'check'
   | 'login'
   | 'reset'
@@ -373,6 +374,7 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   plus: <path d="M12 5.5v13M5.5 12h13" />,
+  minus: <path d="M5.5 12h13" />,
   /* On a shelf row that is already taken: what is chosen, not what to press. */
   check: <path d="M5 12.5l4.5 4.5L19 7" />,
   login: (

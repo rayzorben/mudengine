@@ -21,6 +21,7 @@
  * placed a room further west.
  */
 import { MAP_CELL, windowContains, type MapWindow } from '@shared/map';
+import { WHEEL_NOTCH } from './wheel';
 
 export interface MapView {
   /** Pixels one room cell gets: the zoom. */
@@ -123,7 +124,7 @@ export function viewBoxFor(view: MapView, box: Box, centre: Point): ViewBox {
 export function wheelFactor(deltaY: number, stepPercent: number): number {
   if (!Number.isFinite(deltaY) || deltaY === 0) return 1;
   const step = 1 + Math.max(0, stepPercent) / 100;
-  const notches = Math.max(-1, Math.min(1, -deltaY / 100));
+  const notches = Math.max(-1, Math.min(1, -deltaY / WHEEL_NOTCH));
   return Math.pow(step, notches);
 }
 

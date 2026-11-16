@@ -2618,6 +2618,44 @@ kbd {
   vector-effect: non-scaling-stroke;
 }
 
+.stats-graph .bar[data-hovered] {
+  fill: var(--accent);
+}
+
+/* The bin under the pointer, in the line drawing. */
+.stats-graph .mark {
+  stroke: var(--accent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-graph .bin {
+  fill: transparent;
+}
+
+/* The readout of the bin under the pointer is the one span that must not be
+   cut: it is the figure the pointer asked for. */
+.stats-graph-head > .stats-graph-reading {
+  color: var(--text-hi);
+  flex: 0 0 auto;
+}
+
+.stats-zoom {
+  display: flex;
+  flex: 0 0 auto;
+  margin-right: auto;
+}
+
+.stats-zoom > button {
+  line-height: 0;
+  padding: 0 2px;
+}
+
+.stats-zoom .icon {
+  height: 12px;
+  width: 12px;
+}
+
 .stats-graph .now {
   stroke: var(--ok);
   stroke-dasharray: 3 2;

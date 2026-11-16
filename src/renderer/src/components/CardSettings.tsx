@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import Popup, { type MenuAnchor } from './Popup';
-import { hidesWhenEmpty, HIDES_WHEN_EMPTY, type CardId, type CardSettings } from '../lib/cards';
+import {
+  hidesWhenEmpty,
+  HIDES_WHEN_EMPTY,
+  statsHoursChange,
+  type CardId,
+  type CardSettings
+} from '../lib/cards';
 import { t } from '../lib/i18n';
 import {
   APPEARANCES,
@@ -420,7 +426,7 @@ export default function CardSettingsPopup({
             <select
               onChange={(event) => {
                 const hours = Number.parseInt(event.target.value, 10);
-                onChange({ statsHours: hours === DEFAULT_STATS_HOURS ? undefined : hours });
+                onChange(statsHoursChange(hours));
               }}
               value={value.statsHours ?? DEFAULT_STATS_HOURS}
             >

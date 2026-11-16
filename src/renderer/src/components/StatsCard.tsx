@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import { useRememberedChoice } from '../hooks/useRemembered';
@@ -12,8 +12,11 @@ import {
   damageDealt,
   critShare,
   experienceRate,
+  binSpan,
   levelIn,
   historySeries,
+  historyStart,
+  zoomedStatsWindow,
   hitsDealt,
   mean,
   perRound,
@@ -30,8 +33,12 @@ import {
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
 import { useCardSize } from '../hooks/useCardSize';
+import { statsHoursChange } from '../lib/cards';
+import { clockMinutes } from '../lib/clock';
 import { t } from '../lib/i18n';
 import { compact, rate } from '../lib/rates';
+import { useWheelStep } from '../hooks/useWheelStep';
+import Icon from './Icon';
 import { tuning } from '../lib/tuning';
 import { duration, figure, percent } from '../lib/stats';
 import TimeFace, { timeCopyText } from './TimeFace';
@@ -242,25 +249,91 @@ function RateGraph({
   hours,
   graph,
   now,
-  current
+  current,
+  onZoom
 }: {
   tally: CombatTally;
   hours: number;
   graph: StatsGraph;
   now: number;
   current: number | null;
+  /** Sets the window, or null where the card has no settings to keep it in. */
+  onZoom: ((hours: number) => void) | null;
 }) {
   const series = historySeries(tally, now, hours, tuning().statsGraphBins);
   const known = series.filter((value): value is number => value !== null);
+  /*
+   * The bin under the pointer, kept with the window it was read in: a zoom
+   * redraws the bins under a pointer that has not moved, and a window with
+   * nothing measured has no bins to leave.
+   */
+  const [pointed, setPointed] = useState<{ hours: number; index: number } | null>(null);
+  const hovered =
+    pointed !== null && pointed.hours === hours && known.length > 0 ? pointed.index : null;
+  const shorter = zoomedStatsWindow(hours, -1);
+  const longer = zoomedStatsWindow(hours, 1);
+
+  // The wheel zooms the window, rolled away for a shorter one.
+  const surface = useRef<HTMLDivElement | null>(null);
+  useWheelStep(
+    surface,
+    onZoom === null
+      ? null
+      : {
+          can: (by) => zoomedStatsWindow(hours, by) !== hours,
+          take: (by) => onZoom(zoomedStatsWindow(hours, by))
+        }
+  );
+
+  const from = historyStart(now, hours);
+  const reading = (index: number): string => {
+    const { start, end } = binSpan(from, now, series.length, index);
+    const value = series[index] ?? null;
+    const span = { from: clockMinutes(start), to: clockMinutes(end) };
+    return value === null
+      ? t('cards.stats.graphBinEmpty', span)
+      : t('cards.stats.graphBin', {
+          ...span,
+          rate: t('cards.stats.ratePerHour', { value: figure(value) })
+        });
+  };
   const head = (
     <div className="stats-graph-head">
       <span>{t('cards.stats.graphLabel', { hours })}</span>
-      {current !== null && <span>{t('cards.stats.graphNow', { rate: rate(current) })}</span>}
+      {onZoom !== null && (
+        <span className="stats-zoom">
+          <button
+            aria-label={t('cards.stats.zoomIn')}
+            className="quiet"
+            disabled={shorter === hours}
+            onClick={() => onZoom(shorter)}
+            title={t('cards.stats.zoomIn')}
+            type="button"
+          >
+            <Icon name="plus" />
+          </button>
+          <button
+            aria-label={t('cards.stats.zoomOut')}
+            className="quiet"
+            disabled={longer === hours}
+            onClick={() => onZoom(longer)}
+            title={t('cards.stats.zoomOut')}
+            type="button"
+          >
+            <Icon name="minus" />
+          </button>
+        </span>
+      )}
+      {hovered !== null && hovered < series.length ? (
+        <span className="stats-graph-reading">{reading(hovered)}</span>
+      ) : (
+        current !== null && <span>{t('cards.stats.graphNow', { rate: rate(current) })}</span>
+      )}
     </div>
   );
   if (known.length === 0) {
     return (
-      <div className="stats-graph">
+      <div className="stats-graph" ref={surface}>
         {head}
         <span className="hint">{t('cards.stats.graphEmpty')}</span>
       </div>
@@ -271,19 +344,26 @@ function RateGraph({
   const width = 100;
   const step = width / series.length;
   const y = (value: number): number => height - 2 - (value / top) * (height - 4);
+  const centre = (index: number): number => index * step + step / 2;
   const points = series
-    .map((value, index) => (value === null ? null : `${index * step + step / 2},${y(value)}`))
+    .map((value, index) => (value === null ? null : `${centre(index)},${y(value)}`))
     .filter((point): point is string => point !== null)
     .join(' ');
   return (
-    <div className="stats-graph">
+    <div className="stats-graph" ref={surface}>
       {head}
-      <svg aria-hidden="true" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`}>
+      <svg
+        aria-hidden="true"
+        onMouseLeave={() => setPointed(null)}
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${width} ${height}`}
+      >
         {graph === 'bars' ? (
           series.map((value, index) =>
             value === null ? null : (
               <rect
                 className="bar"
+                data-hovered={index === hovered || undefined}
                 height={height - y(value)}
                 key={index}
                 width={Math.max(0.2, step - 0.6)}
@@ -293,11 +373,28 @@ function RateGraph({
             )
           )
         ) : (
-          <polyline className="line" points={points} />
+          <>
+            <polyline className="line" points={points} />
+            {hovered !== null && (series[hovered] ?? null) !== null && (
+              <line className="mark" x1={centre(hovered)} x2={centre(hovered)} y1={0} y2={height} />
+            )}
+          </>
         )}
         {current !== null && (
           <line className="now" x1={0} x2={width} y1={y(current)} y2={y(current)} />
         )}
+        {/* A whole-height strip per bin, so a short bar is as easy to point at as a tall one. */}
+        {series.map((_, index) => (
+          <rect
+            className="bin"
+            height={height}
+            key={index}
+            onMouseEnter={() => setPointed({ hours, index })}
+            width={step}
+            x={index * step}
+            y={0}
+          />
+        ))}
       </svg>
     </div>
   );
@@ -308,6 +405,15 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const [face, chooseFace] = useRememberedChoice(session, 'stats-tab', FACE_IDS, FACE_IDS[0]);
   const hours = chrome.settings?.value.statsHours ?? DEFAULT_STATS_HOURS;
   const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
+  // A zoom is the gear's window setting, so the card opens where it was left.
+  const changeSettings = chrome.settings?.onChange;
+  const zoomTo = useMemo(
+    () =>
+      changeSettings === undefined
+        ? null
+        : (to: number): void => changeSettings(statsHoursChange(to)),
+    [changeSettings]
+  );
 
   /**
    * The Reset control, as a *baseline*: main keeps one monotonic total and a
@@ -585,7 +691,14 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const copyTime = useCallback((): string => timeCopyText(shown, Date.now()), [shown]);
 
   const graphOf = (
-    <RateGraph current={expRate} graph={graph} hours={hours} now={now} tally={tally} />
+    <RateGraph
+      current={expRate}
+      graph={graph}
+      hours={hours}
+      now={now}
+      onZoom={zoomTo}
+      tally={tally}
+    />
   );
 
   const empty = shown.since === null ? <div className="empty">{t('cards.stats.empty')}</div> : null;

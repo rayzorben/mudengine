@@ -17,3 +17,14 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
 export function clock(at: number): string {
   return CLOCK.format(at);
 }
+
+/** `hh:mm`, for a span of minutes: the Combat Stats graph's bins. */
+const MINUTES = new Intl.DateTimeFormat(undefined, {
+  hour: 'numeric',
+  minute: 'numeric',
+  hour12: false
+});
+
+export function clockMinutes(at: number): string {
+  return MINUTES.format(at);
+}

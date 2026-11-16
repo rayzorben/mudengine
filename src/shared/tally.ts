@@ -488,8 +488,7 @@ export function rateSeries(
   const width = (to - from) / count;
   const out: Array<number | null> = [];
   for (let index = 0; index < count; index += 1) {
-    const start = from + index * width;
-    const end = start + width;
+    const { start, end } = binSpan(from, to, count, index);
     const before = experienceAt(samples, start);
     const after = experienceAt(samples, end);
     const present = width - awayWithin(away, start, end);
@@ -516,7 +515,37 @@ export function historySeries(
 ): Array<number | null> {
   const away =
     tally.leftAt === null ? tally.away : [...tally.away, { from: tally.leftAt, to: now }];
-  return rateSeries(tally.samples, now - hours * 3_600_000, now, bins, away);
+  return rateSeries(tally.samples, historyStart(now, hours), now, bins, away);
+}
+
+/** Where the Combat Stats graph's window of `hours` ending `now` begins. */
+export function historyStart(now: number, hours: number): number {
+  return now - hours * 3_600_000;
+}
+
+/** The moments bin `index` of `bins` equal slices of `[from, to)` covers. */
+export function binSpan(
+  from: number,
+  to: number,
+  bins: number,
+  index: number
+): { start: number; end: number } {
+  const width = (to - from) / bins;
+  return { start: from + index * width, end: from + (index + 1) * width };
+}
+
+/**
+ * The graph window one zoom step from `hours`: `1` the next longer of
+ * `STATS_WINDOW_HOURS`, `-1` the next shorter, held at either end. A window
+ * that is not on the list steps from the nearest one that is.
+ */
+export function zoomedStatsWindow(hours: number, by: 1 | -1): number {
+  const list: readonly number[] = STATS_WINDOW_HOURS;
+  const nearest = list.reduce(
+    (best, each, index) => (Math.abs(each - hours) < Math.abs(list[best]! - hours) ? index : best),
+    0
+  );
+  return list[Math.max(0, Math.min(list.length - 1, nearest + by))]!;
 }
 
 /** How much of `[start, end)` the spells cover. */

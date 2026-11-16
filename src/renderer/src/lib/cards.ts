@@ -11,7 +11,7 @@ import { t } from './i18n';
 import type { MapLegendLayout } from '@shared/map';
 import type { Appearance, ThemeId } from '@shared/themes';
 import type { TalkLayout, TalkStamp } from '@shared/talk';
-import type { StatsGraph } from '@shared/tally';
+import { DEFAULT_STATS_HOURS, type StatsGraph } from '@shared/tally';
 import type { CardSizeBounds } from './cardSize';
 import type { GridBox, GridSize, GridSpot, RailWidth } from './railGrid';
 import type { WorkspaceBox } from './workspaceBox';
@@ -351,6 +351,14 @@ export interface CardSettings {
 
 /** What a card is set to when nothing has been set on it. */
 export const NO_CARD_SETTINGS: CardSettings = {};
+
+/**
+ * The change that sets the rate graph's window, from the gear's list or a
+ * zoom on the graph. Stored only where it differs from the shipped answer.
+ */
+export function statsHoursChange(hours: number): Pick<CardSettings, 'statsHours'> {
+  return { statsHours: hours === DEFAULT_STATS_HOURS ? undefined : hours };
+}
 
 /**
  * The cards that can have nothing to say, and whether each takes itself off

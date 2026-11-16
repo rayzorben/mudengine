@@ -4411,6 +4411,10 @@ cards:
     graphEmpty: nothing measured in this window yet
     graphLabel: 'Exp. rate, last {hours} h'
     graphNow: 'now {rate}'
+    graphBin: '{from}–{to}: {rate}'
+    graphBinEmpty: '{from}–{to}: not measured'
+    zoomIn: Show fewer hours
+    zoomOut: Show more hours
     levelFigure: '{percent}% into level {next}'
     levelMade: '{made} this session'
     levelOver: '{over} over'
