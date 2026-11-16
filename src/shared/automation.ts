@@ -17,6 +17,19 @@ import type { RuleFiring } from './rules';
 import { NO_TASKS, type TaskView } from './tasks';
 
 /**
+ * Whether the chunk off the socket is read through. The server writes a round
+ * as one chunk and repaints the prompt after every blow, so a cast or a rest
+ * sent from a line in the middle of one is chosen on part of the round. Such
+ * a send waits for the chunk's last line (`ChunkRead`).
+ */
+export interface ChunkGate {
+  over(): boolean;
+}
+
+/** A gate for a caster built with no socket behind it: every line is the last. */
+export const CHUNK_READ: ChunkGate = { over: () => true };
+
+/**
  * Priority bands. Higher wins.
  *
  * `user` sits above everything automated, so a person typing is never queued

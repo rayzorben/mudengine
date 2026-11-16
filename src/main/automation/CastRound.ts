@@ -10,7 +10,7 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { SafetyDecision } from '../../shared/automation';
+import { CHUNK_READ, type ChunkGate, type SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CastGate } from '../../shared/spellcraft';
 import type { SessionModule } from './Module';
@@ -34,7 +34,8 @@ export class CastRound implements CastGate, SessionModule {
     private readonly events: CastRoundEvents = {},
     private readonly now: () => number = () => Date.now(),
     /** The session's figure for the realm's speed (`RealmSpeed`). */
-    speed: () => number = () => 1
+    speed: () => number = () => 1,
+    private readonly chunk: ChunkGate = CHUNK_READ
   ) {
     this.beat = new RoundBeat(speed);
   }
@@ -49,6 +50,15 @@ export class CastRound implements CastGate, SessionModule {
   }
 
   mayCast(spell: string): boolean {
+    /*
+     * Not from the middle of a chunk (Rayzor, 2026-11-16): the round's blows
+     * come as one, the prompt repainted after each, and a heal sized on the
+     * first prompt was `mahe` for 11 hp missing in a round that took 55. Every
+     * caster is asked again on the chunk's last line, in `act()`'s order, so
+     * no cure or blessing takes the round ahead of the heal. No decision is
+     * reported, since the wait lasts only as long as the chunk takes to read.
+     */
+    if (!this.chunk.over()) return false;
     if (this.open()) return true;
     if (!this.saidHeld) {
       this.saidHeld = true;

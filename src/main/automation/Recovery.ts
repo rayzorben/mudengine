@@ -112,7 +112,7 @@ import {
   type PartyConfig
 } from '../../shared/config';
 import type { MobRule, MobWait, MobWaited } from '../../shared/mobRules';
-import type { SafetyDecision } from '../../shared/automation';
+import type { ChunkGate, SafetyDecision } from '../../shared/automation';
 import { tuning } from '../app/tuning';
 import { holdsMeditate } from '../../shared/abilities';
 import { roomAddress } from '../../shared/world';
@@ -329,6 +329,8 @@ export class Recovery implements SessionModule {
        * opens on it (`AutoCombat.waitingOn`), rested up to; null for none.
        */
       waitingOn?(state: CharacterState): MobWaited | null;
+      /** No `rest` from the middle of a chunk: the heal waits for its last line, and goes first. */
+      chunk?: ChunkGate;
     } = {}
   ) {}
 
@@ -596,6 +598,8 @@ export class Recovery implements SessionModule {
         }
         return;
       }
+      // The regeneration spell waits with the rest: its retry clock starts at the offer.
+      if (this.midChunk()) return;
       if (restWanted) this.events.beforeRest?.(state, this.config.restTo);
       this.propose(
         'rest',
@@ -784,7 +788,14 @@ export class Recovery implements SessionModule {
     return value / max < threshold;
   }
 
+  /** Whether more of the chunk this line came in is unread (`events.chunk`). */
+  private midChunk(): boolean {
+    return this.events.chunk?.over() === false;
+  }
+
   private propose(command: string, reason: string, decision: DecisionKind): void {
+    // Treated as a refused offer: nothing is on its way, and the chunk's last line asks again.
+    if (this.midChunk()) return;
     const offered = this.queue.offer({
       command,
       decision,

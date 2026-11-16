@@ -626,6 +626,32 @@ describe('the resting ceiling', () => {
     expect(sent).toEqual(['rest']);
   });
 
+  /*
+   * A line in the middle of a chunk sends no `rest`: the heal waits for the
+   * chunk's last line, and a rest sent ahead of it is one the cast stands
+   * back up. The figure is still seen, so the stretch it starts carries to
+   * the last line, above the floor.
+   */
+  it('sends no rest from the middle of a chunk, and keeps the stretch its figure started', () => {
+    let reading = true;
+    // The regeneration spell's hook: its retry clock starts when it is asked, so it waits too.
+    const spellAsked: number[] = [];
+    const recovery = new Recovery(settings(health({ restBelow: 0.5, restTo: 0.9 })), queue, {
+      chunk: { over: () => !reading },
+      beforeRest: (asked) => spellAsked.push(asked.vitals.hp ?? -1)
+    });
+    recovery.onCharacter(state({ hp: 30, hpMax: 80 }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(spellAsked).toEqual([]);
+
+    reading = false;
+    recovery.onCharacter(state({ hp: 48, hpMax: 80 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+    expect(spellAsked).toEqual([48]);
+  });
+
   /* And stops at the ceiling rather than at the next thing to break a rest. */
   it('stops asking at the ceiling', () => {
     const recovery = make(health({ restBelow: 0.5, restTo: 0.9 }));

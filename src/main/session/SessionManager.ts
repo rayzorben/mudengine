@@ -166,6 +166,7 @@ import { STATUS_LINE } from '../parse/patterns';
 import { answeringAfter } from '../parse/echo';
 import { TerminalFeed } from './TerminalFeed';
 import { Paint } from './Paint';
+import { ChunkRead } from './ChunkRead';
 import { PlayerSteering } from './PlayerSteering';
 import { Appraisal } from './Appraisal';
 import { editorInput } from './editorInput';
@@ -303,6 +304,8 @@ export class SessionManager {
   private lineSeq = 0;
   /** When the feed is painted and the tail framed on silence. See `Paint`. */
   private readonly paint: Paint;
+  /** The chunk being read, and what waits for its last line. See `ChunkRead`. */
+  private readonly chunk: ChunkRead;
   /** Keystrokes since the last committed command. */
   private outbound = '';
   /** The command the last status line echoed, which the lines after it answer. */
@@ -649,6 +652,20 @@ export class SessionManager {
         data: (chunk) => this.sink.data(chunk)
       }
     );
+    this.chunk = new ChunkRead(
+      { tokenizer: this.tokenizer, feed: this.feed, paint: this.paint },
+      {
+        // Every byte counts for the link, unlike the keep-alive's clock: an
+        // unprompted status-line repaint says something is on the other end.
+        arrived: (text) => {
+          this.link.noteReceived();
+          this.feed.arrived();
+          this.sink.decoded?.(text);
+        },
+        publish: (framed, at) => this.publishLine(framed, at),
+        settle: () => this.reconsider()
+      }
+    );
 
     /*
      * The arbiter. Everything automated goes through here, and nothing else may
@@ -912,6 +929,7 @@ export class SessionManager {
       roomHurts: (state) => this.roomHazards.hurtsHere(state),
       waitingOn: (state) => this.combat.waitingOn(state) ?? this.walker.waitingFor,
       decided: reports.decided,
+      chunk: this.chunk,
       signs
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
@@ -1265,7 +1283,7 @@ export class SessionManager {
     });
     // One realm lookup for every caster, handing over the realm's whole row, read at the point of use.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
-    this.castRound = new CastRound(reports, undefined, realmSpeed);
+    this.castRound = new CastRound(reports, undefined, realmSpeed, this.chunk);
     this.heal = new AutoHeal(
       automation.spells,
       automation.enabled,
@@ -1714,35 +1732,7 @@ export class SessionManager {
       this.sink.notice(t('session.connection.resolved', { host, address }))
     );
 
-    this.client.on('data', (text) => {
-      const at = Date.now();
-      // Whatever was owed has been answered. Every byte counts here, unlike
-      // the keep-alive's clock below: this asks whether anything is on the
-      // other end of the socket, and an unprompted status-line repaint is as
-      // good an answer to that as a reply to a command.
-      this.link.noteReceived();
-      this.feed.arrived();
-      this.sink.decoded?.(text);
-      /*
-       * Framed first, painted second — and both in this call. The terminal is
-       * fed lines now rather than the raw chunk, so that a line can be
-       * withheld by what it is; what keeps the old guarantee is that every
-       * line terminated in this chunk is emitted before this handler
-       * returns, and the unterminated tail with it unless a quiet command is
-       * being answered. A parser fault costs the line its type, never its
-       * paint: `publishLine` guards the classifier.
-       */
-      for (const framed of this.tokenizer.push(text)) this.publishLine(framed, at);
-      this.feed.partial(this.tokenizer.buffered);
-      this.paint.afterChunk(at);
-      /*
-       * Deliberately *not* `routines.noteSent()`: the keep-alive counts this
-       * client's own silence, and bytes arriving are not it. This realm
-       * repaints its status line unprompted every thirty seconds, so counting
-       * them reset a forty-five second clock forever — see `Routines.noteSent`
-       * for the capture.
-       */
-    });
+    this.client.on('data', (text) => this.chunk.read(text, Date.now()));
 
     this.client.on('telnet', (event) => {
       this.telnetLog.push(event);

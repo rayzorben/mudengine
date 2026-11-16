@@ -4342,6 +4342,50 @@ describe('the per-line order in act()', () => {
   });
 
   /*
+   * The heal on the chunk's last line. The server writes a round as one chunk
+   * and repaints the prompt after every blow, so the first prompt in it holds
+   * part of the round (Rayzor, 2026-11-16: `mahe` sent for 11 hp missing at
+   * 159, in a chunk that ended at 125). A figure that dips and is back by the
+   * end of the chunk casts nothing; the same dip ending a chunk casts.
+   */
+  it('casts no heal on a prompt in the middle of a chunk, and casts on the one that ends it', async () => {
+    const { sink } = collect();
+    manager = build(sink, { automation: automation({ spells: mending }) });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write(`[HP=40]:${PROMPT_REPAINT}You feel better.\r\n[HP=90]:`);
+    await settled(90);
+    expect(proposed()).not.toContain('mend');
+    expect(seen()).not.toContain('mend');
+
+    // Positive control: the same figure, the last in its chunk, is healed.
+    socket.write(`${PROMPT_REPAINT}[HP=60]:${PROMPT_REPAINT}The rat bites you!\r\n[HP=40]:`);
+    await until(() => proposed().includes('mend'));
+  });
+
+  /*
+   * And a heal put off is still owed when the chunk's last line changes
+   * nothing: a sentence the client reads no fact from, with no prompt behind
+   * it. The once-a-second tick is set a minute out, so what casts here is the
+   * end of the chunk.
+   */
+  it('casts the heal a chunk put off when its last line says nothing new', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      session: { ...DEFAULT_INTERNAL.tuning.session, reconsiderMs: 60_000 }
+    });
+    const { sink } = collect();
+    manager = build(sink, { automation: automation({ spells: mending }) });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write(`[HP=40]:${PROMPT_REPAINT}A cold wind blows through.\r\n`);
+    await until(() => proposed().includes('mend'));
+  });
+
+  /*
    * Stealth before rest. `hide` clears `Resting` for every class without
    * `ShadowHome` (`HideCommand.cs:20`), so a hide sent after the rest stands
    * a hurt character back up; sent first, the rest is the command left

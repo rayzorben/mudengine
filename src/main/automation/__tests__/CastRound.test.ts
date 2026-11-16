@@ -146,6 +146,38 @@ describe('one heal, blessing or cure a round', () => {
   });
 
   /*
+   * Rayzor, 2026-11-16: a round comes as one chunk with the prompt repainted
+   * after every blow, and the heal went out on the first of them, sized for
+   * 11 hp missing in a round that took 55. No caster sends from the middle
+   * of a chunk, the cure included, or it would take the round the heal is
+   * waiting for; on the last line the heal is asked first and goes.
+   */
+  it('casts nothing from the middle of a chunk, and the heal first on its last line', () => {
+    let reading = true;
+    gate = new CastRound(
+      { decided: (decision) => decisions.push(decision) },
+      undefined,
+      undefined,
+      { over: () => !reading }
+    );
+    const healer = heal();
+    const curer = cures();
+    const poisoned = state({ afflictions: { ...NO_AFFLICTIONS, poisoned: 'yes' } });
+
+    healer.onCharacter(poisoned);
+    curer.onCharacter(poisoned);
+    expect(sent).toEqual([]);
+    // The wait is not a held cast, and nothing is left queued to go out stale.
+    expect(decisions).toEqual([]);
+    expect(queue.snapshot.pending).toEqual([]);
+
+    reading = false;
+    healer.onCharacter(poisoned);
+    curer.onCharacter(poisoned);
+    expect(sent).toEqual(['minor healing']);
+  });
+
+  /*
    * Todo 58: a stun is a confusion (`Confusion` 71, `ConfuseMsg` 56, `You are
    * stunned!`), and `ActionFigure.CheckConfusion` throws the command away at
    * the top of `Player.HandleCommand`, before `InitiateSpell` spends the
