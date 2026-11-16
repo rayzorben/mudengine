@@ -1500,10 +1500,64 @@ check(
 );
 check(cycled.includes('|'), 'theme choice is persisted', cycled);
 
+/*
+ * The theme picker (the user, 2026-11-15): opened from the status rail, a
+ * click on a swatch wears that theme at once and the panel stays up for the
+ * next one; the Dark/Light switch shows the other half; the closer puts it
+ * away.
+ */
+await evaluate(`(document.querySelector('.status-rail [data-open-themes]').click(), true)`);
+check(await shown('.theme-picker'), 'the status rail opens the theme picker');
+const pickerHalf = await evaluate(
+  `document.querySelector('.theme-picker .palette-half[data-active="true"]')?.getAttribute('data-half') ?? ''`
+);
+const picked = await evaluate(`
+  (() => {
+    // By the theme worn, since no swatch is marked while the choice is the system's.
+    const worn = document.documentElement.dataset.theme;
+    const pick = [...document.querySelectorAll('.theme-picker .palette-pick')].find(
+      (el) => el.getAttribute('data-theme-pick') !== worn
+    );
+    if (!pick) return '';
+    pick.click();
+    return pick.getAttribute('data-theme-pick') ?? '';
+  })()
+`);
+const pickedWore = await readUntil(
+  () => evaluate(`document.documentElement.dataset.theme`),
+  (now) => now === picked
+);
+check(
+  picked !== '' && pickedWore === picked,
+  'a click in the theme picker wears that theme at once',
+  `clicked ${picked}, wearing ${pickedWore}`
+);
+check(
+  await evaluate(`!!document.querySelector('.theme-picker')`),
+  'and the picker stays up for the next one'
+);
+await evaluate(
+  `(document.querySelector('.theme-picker .palette-half:not([data-active="true"])').click(), true)`
+);
+const otherPickerHalf = await readUntil(
+  () =>
+    evaluate(
+      `document.querySelector('.theme-picker .palette-half[data-active="true"]')?.getAttribute('data-half') ?? ''`
+    ),
+  (now) => now !== pickerHalf
+);
+check(
+  otherPickerHalf !== '' && otherPickerHalf !== pickerHalf,
+  'its Dark/Light switch shows the other half',
+  `${pickerHalf} then ${otherPickerHalf}`
+);
+await evaluate(`(document.querySelector('.theme-picker header button.quiet').click(), true)`);
+check(await gone('.theme-picker'), 'its closer puts the theme picker away');
+
 // ...and an edit to the options file must outrank that remembered choice.
 // Without this rule the file's `ui.theme` key goes dead after the first toggle,
 // which is the opposite of what a watched config is for.
-const remembered = cycled.split(' | ')[0];
+const remembered = await evaluate(`document.documentElement.dataset.theme`);
 const other = remembered === 'dark' ? 'light' : 'dark';
 writeConfig(other);
 let adopted = '';

@@ -8930,7 +8930,8 @@ button.gear-fold:hover:not(:disabled) {
  * and a checkbox -- rather than a list of actions, which is why it says
  * `dialog` and not `menu`.
  */
-.card-settings {
+.card-settings,
+.theme-picker {
   position: fixed;
   z-index: 60;
   display: flex;
@@ -8938,6 +8939,32 @@ button.gear-fold:hover:not(:disabled) {
   gap: 8px;
   padding: 10px;
   width: 264px;
+}
+
+/*
+ * The client's theme picker: the same panel, with no anchor. At the top of the
+ * window's middle, which with the tabs on one side and the cards on the other
+ * is over the console, which a chrome theme leaves as it was while the console
+ * is kept dark.
+ */
+.theme-picker {
+  left: 50%;
+  top: var(--gap);
+  transform: translateX(-50%);
+}
+
+.theme-picker-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.theme-picker-head > .card-settings-head {
+  flex: 1;
+}
+
+.theme-picker-system {
+  align-self: flex-start;
 }
 
 .card-settings-head {

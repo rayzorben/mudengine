@@ -41,6 +41,8 @@ import { useConsoleWidth } from './hooks/useConsoleWidth';
 import { useLoopBuilder } from './hooks/useLoopBuilder';
 import { useLoopsModal } from './hooks/useLoopsModal';
 import { useHelpScreen } from './hooks/useHelpScreen';
+import { useOpenState } from './hooks/useOpenState';
+import ThemePicker from './components/ThemePicker';
 import { useLoopJoin } from './hooks/useLoopJoin';
 import { useMovement } from './hooks/useMovement';
 import { usePanes } from './hooks/usePanes';
@@ -271,20 +273,13 @@ export default function App() {
     },
     [views]
   );
-  const {
-    theme,
-    consolePalette,
-    preference: themePreference,
-    consolePreference,
-    cycle: cycleTheme,
-    choose: chooseTheme,
-    chooseConsole
-  } = useTheme(
+  const themes = useTheme(
     characterTheme ?? config.ui.theme,
     config.ui.console.keepDark,
     config.ui.console.darkTheme,
     config.ui.console.palette
   );
+  const { theme, consolePalette } = themes;
 
   /* Same precedence as density and theme: a palette toggle is remembered until an edit to
      `ui.showHud` or `terminal.timestamps` in the options file overrides it. */
@@ -488,6 +483,7 @@ export default function App() {
   });
   const trips = useTripDialogs(session, returnFocus);
   const { helpOpen, toggleHelp, closeHelp } = useHelpScreen(returnFocus);
+  const themePicker = useOpenState(returnFocus);
 
   /** What the shown character asks its realm. */
   const {
@@ -865,14 +861,8 @@ export default function App() {
     cycleDensity: cycle,
     gameView: game.on,
     toggleGameView: game.toggle,
-    theme: {
-      theme,
-      preference: themePreference,
-      consolePreference,
-      cycle: cycleTheme,
-      choose: chooseTheme,
-      chooseConsole
-    },
+    theme: themes,
+    toggleThemes: themePicker.toggle,
     ...placement,
     panes,
     paneFlow,
@@ -940,7 +930,7 @@ export default function App() {
     { ...CLIENT_KEYS.latest, run: () => activeTerminal()?.jumpToLatest() },
     { ...CLIENT_KEYS.density, run: cycle },
     { ...CLIENT_KEYS.densityComma, run: cycle },
-    { ...CLIENT_KEYS.theme, run: cycleTheme },
+    { ...CLIENT_KEYS.theme, run: themes.cycle },
     { ...CLIENT_KEYS.search, run: toggleSearch },
     {
       ...CLIENT_KEYS.pane,
@@ -974,7 +964,9 @@ export default function App() {
      * eating the Talk card's Escape. Below that, the topmost of the route
      * panel, the search bar, the rail (`railShown`: the game view hides it) and
      * the debug window takes it; its controls `keepFocus`, so unbound, Escape went to the realm.
+     * The theme picker is drawn over all four and the first match runs, so it goes first.
      */
+    ...(!covered && themePicker.open ? [{ key: 'Escape', run: themePicker.close }] : []),
     ...(!covered && routeOpen ? [{ key: 'Escape', run: closeRoute }] : []),
     ...(!covered && searchOpen && !routeOpen ? [{ key: 'Escape', run: closeSearch }] : []),
     ...(!covered && railShown && !searchOpen && !routeOpen
@@ -1363,6 +1355,7 @@ export default function App() {
         onCycleDensity={cycle}
         onOpenPalette={openPalette}
         onOpenHelp={toggleHelp}
+        onOpenThemes={themePicker.toggle}
         onToggleConnection={toggleConnection}
         pressure={pressure}
         size={size}
@@ -1428,6 +1421,7 @@ export default function App() {
         <HomeBrowser onClose={closeBrowser} pick={browsing.pick} start={browsing.start} />
       )}
       {helpOpen && <HelpScreen onClose={closeHelp} />}
+      {themePicker.open && <ThemePicker onClose={themePicker.close} themes={themes} />}
       {/*
         Play asked back: the character has wandered a long way from what it was
         walking. The same play is pressed again, `confirmed`, or the movement

@@ -99,6 +99,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     toggleRail: vi.fn(),
     toggleDebug: vi.fn(),
     toggleHelp: vi.fn(),
+    toggleThemes: vi.fn(),
     toggleLoops: vi.fn(),
     trips: { areaSearch: vi.fn(), cashRun: vi.fn(), findMob: vi.fn() },
     reveal: vi.fn(),
@@ -238,6 +239,14 @@ describe('the palette commands', () => {
     help.run();
     expect(toggleHelp).toHaveBeenCalledOnce();
     expect(help.movesFocus).toBe(true);
+  });
+
+  it('opens the theme picker, which leaves the caret where it was', () => {
+    const toggleThemes = vi.fn();
+    const picker = find('themes', { toggleThemes });
+    picker.run();
+    expect(toggleThemes).toHaveBeenCalledOnce();
+    expect(picker.movesFocus).toBeUndefined();
   });
 
   it('always offers auto layout, and its undo only while there is a layout kept', () => {

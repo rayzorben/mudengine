@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 
+import Icon from './Icon';
 import { chord } from '../lib/platform';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -28,6 +29,8 @@ export interface StatusRailProps {
   onOpenPalette(): void;
   /** The help page (todo 75), so it has a door besides the palette. */
   onOpenHelp(): void;
+  /** The theme picker, so it has a door besides the palette. */
+  onOpenThemes(): void;
 }
 
 const PHASE_LABEL: Record<ConnectionState['phase'], string> = {
@@ -55,6 +58,7 @@ function StatusRail({
   onToggleConnection,
   onOpenPalette,
   onOpenHelp,
+  onOpenThemes,
   meter,
   pressure,
   density,
@@ -180,6 +184,17 @@ function StatusRail({
         type="button"
       >
         ?
+      </button>
+      <button
+        aria-label={t('statusRail.themes.tooltip')}
+        className="quiet"
+        data-open-themes
+        onClick={onOpenThemes}
+        onMouseDown={keepFocus}
+        title={t('statusRail.themes.tooltip')}
+        type="button"
+      >
+        <Icon name="theme" />
       </button>
       <button
         className="quiet"

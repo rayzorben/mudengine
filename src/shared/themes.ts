@@ -38,6 +38,9 @@ export type ThemeId =
   | 'night-owl'
   | 'cobalt2'
   | 'shades-of-purple'
+  | 'synthwave-84'
+  | 'high-contrast-dark'
+  | 'matrix'
   | 'light'
   | 'solarized-light'
   | 'gruvbox-light'
@@ -45,7 +48,10 @@ export type ThemeId =
   | 'rose-pine-dawn'
   | 'everforest-light'
   | 'kanagawa-lotus'
-  | 'tokyo-night-day';
+  | 'tokyo-night-day'
+  | 'high-contrast-light'
+  | 'noctis-lilac'
+  | 'horizon-bright';
 
 /** What the user may ask for: a specific theme, or "follow the OS". */
 export type ThemePreference = ThemeId | 'system';
@@ -289,7 +295,7 @@ const LIGHT: Theme = {
 /**
  * The editor themes people already have their eyes trained on.
  *
- * Twelve dark and seven light, each derived from the scheme's published ground,
+ * Fifteen dark and ten light, each derived from the scheme's published ground,
  * ink and five accents, with every text-bearing token then *fitted*: lightness
  * is nudged toward the ink until the pair clears 4.5:1 on the card, which the
  * registry test enforces. Surfaces step from the scheme's ground as the two
@@ -299,6 +305,12 @@ const LIGHT: Theme = {
  * Every theme's ground and card sit a measured distance from every other
  * theme of its appearance (`themes.test.ts`); a theme closer than that to
  * another is cut. See `mudengine-ui` › *Themes are data*.
+ *
+ * The last three of each appearance were added at the user's request
+ * (2026-11-15) to differ sharply from the rest: a neon purple, GitHub's high
+ * contrast pair, whose `ink-line` is a visible outline, a green phosphor
+ * (Matrix, the one that is no editor's scheme), a lilac and a peach. The neon
+ * and the phosphor put a glow in the shadow tokens.
  *
  * Chrome only. Every one shares the house terminal palette of its appearance,
  * because the console is a separate axis: `TERMINAL_THEMES` below is what
@@ -641,6 +653,90 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
     },
     terminal: DARK.terminal
   },
+  'synthwave-84': {
+    id: 'synthwave-84',
+    label: "Synthwave '84",
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#251a3a',
+      'ink-card': '#30224b',
+      'ink-raised': '#3b2a5c',
+      'ink-line': '#49346f',
+      'ink-edge': '#6a4c9c',
+      'text-hi': '#ffffff',
+      text: '#f4eeff',
+      'text-lo-normal': '#b3a3cf',
+      'text-lo-quiet': '#9d8dba',
+      accent: '#36f9f6',
+      ok: '#72f1b8',
+      pending: '#fede5d',
+      danger: '#ff6b78',
+      marker: '#ff7edb',
+      'on-accent': '#1a1028',
+      'glass-rim': 'inset 0 1px 0 rgb(255 126 219 / 22%)',
+      'glass-shadow': '0 0 28px rgb(255 126 219 / 16%), 0 6px 24px rgb(0 0 0 / 40%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 36%)',
+      'elev-2': '0 0 14px rgb(54 249 246 / 12%), 0 3px 10px rgb(0 0 0 / 40%)',
+      scrim: 'rgb(26 16 40 / 62%)'
+    },
+    terminal: DARK.terminal
+  },
+  'high-contrast-dark': {
+    id: 'high-contrast-dark',
+    label: 'High Contrast Dark',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#010409',
+      'ink-card': '#0a0c10',
+      'ink-raised': '#1f232b',
+      'ink-line': '#7a828e',
+      'ink-edge': '#9ea7b3',
+      'text-hi': '#ffffff',
+      text: '#f0f3f6',
+      'text-lo-normal': '#bdc4cc',
+      'text-lo-quiet': '#9ea7b3',
+      accent: '#71b7ff',
+      ok: '#26cd4d',
+      pending: '#f0b72f',
+      danger: '#ff9492',
+      marker: '#cb9eff',
+      'on-accent': '#010409',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 60%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 50%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 60%)',
+      scrim: 'rgb(1 4 9 / 70%)'
+    },
+    terminal: DARK.terminal
+  },
+  matrix: {
+    id: 'matrix',
+    label: 'Matrix',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#03160a',
+      'ink-card': '#082110',
+      'ink-raised': '#0d2d17',
+      'ink-line': '#14401f',
+      'ink-edge': '#1f6331',
+      'text-hi': '#c8ffd4',
+      text: '#5fe07f',
+      'text-lo-normal': '#3fa85c',
+      'text-lo-quiet': '#348c4c',
+      accent: '#00ff66',
+      ok: '#b4f04a',
+      pending: '#ffd24a',
+      danger: '#ff6b5e',
+      marker: '#4fe0e6',
+      'on-accent': '#021006',
+      'glass-rim': 'inset 0 1px 0 rgb(0 255 102 / 16%)',
+      'glass-shadow': '0 0 24px rgb(0 255 102 / 10%), 0 6px 24px rgb(0 0 0 / 45%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 40%)',
+      'elev-2': '0 0 12px rgb(0 255 102 / 10%), 0 3px 10px rgb(0 0 0 / 45%)',
+      scrim: 'rgb(2 12 5 / 66%)'
+    },
+    terminal: DARK.terminal
+  },
   'solarized-light': {
     id: 'solarized-light',
     label: 'Solarized Light',
@@ -836,6 +932,90 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       scrim: 'rgb(231 225 180 / 62%)'
     },
     terminal: LIGHT.terminal
+  },
+  'high-contrast-light': {
+    id: 'high-contrast-light',
+    label: 'High Contrast Light',
+    appearance: 'light',
+    chrome: {
+      'ink-void': '#d9dee3',
+      'ink-card': '#ffffff',
+      'ink-raised': '#ffffff',
+      'ink-line': '#59636e',
+      'ink-edge': '#20252c',
+      'text-hi': '#010409',
+      text: '#0e1116',
+      'text-lo-normal': '#4b535d',
+      'text-lo-quiet': '#66707b',
+      accent: '#0349b4',
+      ok: '#055d20',
+      pending: '#744500',
+      danger: '#a0111f',
+      marker: '#622cbc',
+      'on-accent': '#ffffff',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
+      'glass-shadow': '0 6px 22px rgb(1 4 9 / 18%)',
+      'elev-1': '0 1px 2px rgb(1 4 9 / 16%)',
+      'elev-2': '0 3px 10px rgb(1 4 9 / 20%)',
+      scrim: 'rgb(217 222 227 / 70%)'
+    },
+    terminal: LIGHT.terminal
+  },
+  'noctis-lilac': {
+    id: 'noctis-lilac',
+    label: 'Noctis Lilac',
+    appearance: 'light',
+    chrome: {
+      'ink-void': '#d5d2ef',
+      'ink-card': '#e9e6f8',
+      'ink-raised': '#f6f5fc',
+      'ink-line': '#c5c1e6',
+      'ink-edge': '#a59fd6',
+      'text-hi': '#0c006b',
+      text: '#302a7a',
+      'text-lo-normal': '#5d5a8f',
+      'text-lo-quiet': '#74719f',
+      accent: '#5a47d6',
+      ok: '#006f52',
+      pending: '#8f4c00',
+      danger: '#bd1845',
+      marker: '#b3246f',
+      'on-accent': '#ffffff',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
+      'glass-shadow': '0 6px 22px rgb(48 42 122 / 14%)',
+      'elev-1': '0 1px 2px rgb(48 42 122 / 12%)',
+      'elev-2': '0 3px 10px rgb(48 42 122 / 16%)',
+      scrim: 'rgb(213 210 239 / 62%)'
+    },
+    terminal: LIGHT.terminal
+  },
+  'horizon-bright': {
+    id: 'horizon-bright',
+    label: 'Horizon Bright',
+    appearance: 'light',
+    chrome: {
+      'ink-void': '#f9cbbe',
+      'ink-card': '#fdf0ed',
+      'ink-raised': '#fff8f6',
+      'ink-line': '#f3bfb1',
+      'ink-edge': '#e39a88',
+      'text-hi': '#16161c',
+      text: '#33333f',
+      'text-lo-normal': '#6f5b60',
+      'text-lo-quiet': '#8a7479',
+      accent: '#c81e62',
+      ok: '#0c7060',
+      pending: '#7d6400',
+      danger: '#a83a00',
+      marker: '#8931b9',
+      'on-accent': '#ffffff',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
+      'glass-shadow': '0 6px 22px rgb(120 40 30 / 14%)',
+      'elev-1': '0 1px 2px rgb(120 40 30 / 12%)',
+      'elev-2': '0 3px 10px rgb(120 40 30 / 16%)',
+      scrim: 'rgb(249 203 190 / 62%)'
+    },
+    terminal: LIGHT.terminal
   }
 };
 
@@ -860,6 +1040,9 @@ export const THEME_IDS: readonly ThemeId[] = [
   'night-owl',
   'cobalt2',
   'shades-of-purple',
+  'synthwave-84',
+  'high-contrast-dark',
+  'matrix',
   'light',
   'solarized-light',
   'gruvbox-light',
@@ -867,7 +1050,10 @@ export const THEME_IDS: readonly ThemeId[] = [
   'rose-pine-dawn',
   'everforest-light',
   'kanagawa-lotus',
-  'tokyo-night-day'
+  'tokyo-night-day',
+  'high-contrast-light',
+  'noctis-lilac',
+  'horizon-bright'
 ];
 
 /** Everything selectable in the options file, `system` included. */

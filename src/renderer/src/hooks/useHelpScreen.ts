@@ -4,7 +4,7 @@
  * `useState`, like the Loops modal: a page reached for and put down, never
  * reopened on launch.
  */
-import { useCallback, useState } from 'react';
+import { useOpenState } from './useOpenState';
 
 export interface HelpScreenState {
   helpOpen: boolean;
@@ -13,11 +13,6 @@ export interface HelpScreenState {
 }
 
 export function useHelpScreen(returnFocus: () => void): HelpScreenState {
-  const [helpOpen, setHelpOpen] = useState(false);
-  const toggleHelp = useCallback(() => setHelpOpen((open) => !open), []);
-  const closeHelp = useCallback(() => {
-    setHelpOpen(false);
-    returnFocus();
-  }, [returnFocus]);
-  return { helpOpen, toggleHelp, closeHelp };
+  const { open, toggle, close } = useOpenState(returnFocus);
+  return { helpOpen: open, toggleHelp: toggle, closeHelp: close };
 }

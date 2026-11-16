@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Popup, { type MenuAnchor } from './Popup';
+import { HalfSwitch, Swatch, ThemePicks } from './ThemeSwatches';
 import {
   hidesWhenEmpty,
   HIDES_WHEN_EMPTY,
@@ -8,13 +9,7 @@ import {
   type CardSettings
 } from '../lib/cards';
 import { t } from '../lib/i18n';
-import {
-  APPEARANCES,
-  themesOfAppearance,
-  THEMES,
-  type Appearance,
-  type ThemeId
-} from '@shared/themes';
+import { THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import {
   DEFAULT_MAP_DENSITY,
   DEFAULT_MAP_LEGEND,
@@ -53,34 +48,6 @@ export interface CardSettingsPopupProps {
 }
 
 /**
- * A palette as a small picture of itself.
- *
- * The colours are read out of the theme it previews rather than written here,
- * which is the only way a swatch can be honest: a hand-picked approximation
- * would be a second set of literals to keep in step with the registry, and the
- * first time they disagreed the swatch would be advertising a palette the card
- * does not wear. The three dots are the accents a card actually spends —
- * `accent`, `ok`, `danger` — over the fill, under a bar of the ink.
- */
-function Swatch({ theme }: { theme: ThemeId }) {
-  const { chrome } = THEMES[theme];
-  return (
-    <span
-      aria-hidden="true"
-      className="swatch"
-      style={{ background: chrome['ink-card'], borderColor: chrome['ink-line'] }}
-    >
-      <span className="swatch-ink" style={{ background: chrome['text-hi'] }} />
-      <span className="swatch-dots">
-        <span style={{ background: chrome.accent }} />
-        <span style={{ background: chrome.ok }} />
-        <span style={{ background: chrome.danger }} />
-      </span>
-    </span>
-  );
-}
-
-/**
  * What each arrangement is called, where a person reads it.
  *
  * A record keyed by the union rather than a `t(...)` per row, so the coverage
@@ -92,12 +59,6 @@ const LAYOUT_LABELS: Record<TalkLayout, string> = {
   original: t('cards.settings.talk.layouts.original'),
   condensed: t('cards.settings.talk.layouts.condensed'),
   'condensed-aligned': t('cards.settings.talk.layouts.condensedAligned')
-};
-
-/** What each half of the registry is called on the switch between them. */
-const HALF_LABELS: Record<Appearance, string> = {
-  dark: t('cards.settings.halves.dark'),
-  light: t('cards.settings.halves.light')
 };
 
 /**
@@ -144,7 +105,6 @@ export default function CardSettingsPopup({
   const [half, setHalf] = useState<Appearance>(
     chosen === undefined ? appearance : THEMES[chosen].appearance
   );
-  const offered = themesOfAppearance(half);
   const emptiable = Object.prototype.hasOwnProperty.call(HIDES_WHEN_EMPTY, cardId);
 
   /**
@@ -176,25 +136,7 @@ export default function CardSettingsPopup({
               chosen === undefined ? t('cards.settings.followsClient') : THEMES[chosen].label
           })}
         </p>
-        <span
-          aria-label={t('cards.settings.halvesLabel')}
-          className="card-palette-halves"
-          role="group"
-        >
-          {APPEARANCES.map((option) => (
-            <button
-              aria-pressed={half === option}
-              className="palette-half"
-              data-active={half === option ? 'true' : undefined}
-              data-half={option}
-              key={option}
-              onClick={() => setHalf(option)}
-              type="button"
-            >
-              {HALF_LABELS[option]}
-            </button>
-          ))}
-        </span>
+        <HalfSwitch half={half} onChange={setHalf} />
       </div>
       <div className="card-palettes" role="group">
         {/*
@@ -213,22 +155,7 @@ export default function CardSettingsPopup({
           <Swatch theme={clientTheme} />
           <span className="palette-name">{t('cards.settings.followsClientShort')}</span>
         </button>
-        {offered.map((id) => (
-          <button
-            aria-pressed={chosen === id}
-            className="palette-pick"
-            data-active={chosen === id ? 'true' : undefined}
-            key={id}
-            onClick={() => pick(id)}
-            // The theme's own name, which stays in code with the rest of the
-            // closed-union vocabulary rendered as itself.
-            title={THEMES[id].label}
-            type="button"
-          >
-            <Swatch theme={id} />
-            <span className="palette-name">{THEMES[id].label}</span>
-          </button>
-        ))}
+        <ThemePicks chosen={chosen} half={half} onPick={pick} />
       </div>
 
       {cardId === 'conversation' && (

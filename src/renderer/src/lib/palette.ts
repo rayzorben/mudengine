@@ -101,6 +101,8 @@ export interface PaletteDeps {
     UseTheme,
     'theme' | 'preference' | 'consolePreference' | 'cycle' | 'choose' | 'chooseConsole'
   >;
+  /** The theme picker, shown or put away. */
+  toggleThemes(): void;
   tabSide: RailSide;
   setTabSide(side: RailSide): void;
   /** Whether a side tab rail hides until the pointer reaches it (`ui.tabsAutoHide`). */
@@ -782,6 +784,15 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
           : themes.theme.label,
       group: 'view',
       run: themes.cycle
+    },
+    {
+      id: 'themes',
+      icon: 'theme' as const,
+      label: t('palette.view.themePickerLabel'),
+      hint: t('palette.view.themePickerHint'),
+      keywords: ['theme', 'colour', 'color', 'scheme', 'appearance', 'dark', 'light'],
+      group: 'view' as const,
+      run: deps.toggleThemes
     },
     // One command per theme, so a theme is *chosen* rather than cycled to
     // through fifteen others. Findable by its own name and by "theme".

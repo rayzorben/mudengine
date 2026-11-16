@@ -1611,6 +1611,8 @@ palette:
     themeCycleSystemHint: system · {themeLabel}
     themeFollowSystemLabel: 'Theme: follow the system'
     themeLabel: 'Theme: {themeLabel}'
+    themePickerHint: every dark and light theme, shown as you click
+    themePickerLabel: Themes
     themeSystemHint: light or dark, as the OS says
 # The console chrome: search bar, jump to latest, selection and clipboard.
 terminal:
@@ -1817,6 +1819,13 @@ statusRail:
     tooltip: Animation paused while the realm is sending fast
   target:
     none: no realm
+  themes:
+    tooltip: Themes
+# The theme picker: the Dark/Light switch and one swatch per theme.
+themePicker:
+  close: Close
+  system: Follow the system
+  title: Themes
 # The pane handles between the console and the rails.
 splitter:
   aria:
