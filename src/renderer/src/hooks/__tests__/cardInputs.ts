@@ -59,6 +59,6 @@ export function cardInputs(
     stepBackIn: noop,
     selectPlayer: noop,
     selectGang: noop,
-    resetStats: noop
+    cardAsks: { resetStats: noop, earlierTalk: noop }
   };
 }

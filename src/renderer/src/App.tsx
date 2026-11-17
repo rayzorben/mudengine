@@ -191,7 +191,7 @@ export default function App() {
   /** What each fact arriving for a character is worth saying, by the player's own rows. */
   const alerts = useAlerts(config.ui.vitals, config.ui.alerts);
   /** The facts about every character, kept for every character. */
-  const { views, patchView, applySnapshot, resetStats } = useSessionViews(api, alerts, panes);
+  const { views, patchView, applySnapshot, cardAsks } = useSessionViews(api, alerts, panes);
 
   const view = views[session] ?? EMPTY_VIEW;
   const { state, character, walk, automation } = view;
@@ -1024,7 +1024,7 @@ export default function App() {
     stepBackIn,
     selectPlayer,
     selectGang: slideOuts.selectGang,
-    resetStats
+    cardAsks
   });
   /** The chrome every card wears, and a put-away card's handles. */
   const { chromeFor, pinnedChrome, grabCard, floatCard } = useCardChrome(

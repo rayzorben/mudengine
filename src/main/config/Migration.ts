@@ -8840,6 +8840,10 @@ function theTuningBlockGainedKeys(
      * neither can be tuned to how fast somebody reads.
      */
     addKey('view', 'talkFollowResumeMs', DEFAULT_INTERNAL.tuning.view.talkFollowResumeMs);
+    /* How far back the Talk card keeps and how much a scroll up adds (2026-11-17). */
+    addKey('view', 'talkKeepHours', DEFAULT_INTERNAL.tuning.view.talkKeepHours);
+    addKey('view', 'talkKeepMost', DEFAULT_INTERNAL.tuning.view.talkKeepMost);
+    addKey('view', 'talkPageLines', DEFAULT_INTERNAL.tuning.view.talkPageLines);
     /*
      * How long a desktop notification's kind rests before it may speak again
      * about the same character (2026-09-10, todo 01). It is the number that

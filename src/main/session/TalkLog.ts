@@ -16,8 +16,9 @@
  * anything was dropped — by age, or a torn last line from a crash mid-append —
  * the file is rewritten atomically so the cleanup actually happens on disk
  * rather than being re-done against a growing file every launch. The tail is
- * kept in memory (capped at `view.talkLimit`, the same figure the card keeps)
- * to answer `backlog()` for every later attach without re-reading the file.
+ * kept in memory (by `talkExcess`, the rule the card keeps by) to answer
+ * `backlog()` for every later attach without re-reading the file. `page()`
+ * reads further back by line number (`mudengine-ui` › `parts/console.md`).
  *
  * ## The FightLog's rules, for the FightLog's reasons
  *
@@ -34,19 +35,23 @@ import path from 'node:path';
 
 import { DAY_MS, errorMessage } from '../../shared/values';
 import type { Block } from '../../shared/blocks';
+import { NO_TALK_PAGE, talkExcess, talkKeepOf, type TalkPage } from '../../shared/talkLog';
 import { tuning } from '../app/tuning';
 import { writeWholeSync } from '../app/writeWhole';
 
 /** What a session hands its conversation to, and what an attach reads back. */
 export interface TalkSink {
   append(block: Block): void;
-  backlog(): Block[];
+  backlog(): TalkPage;
+  /** The page of lines ending before line `before`; `NO_TALK_PAGE` when none can be read. */
+  page(before: number): Promise<TalkPage>;
 }
 
 /** The sink used when `logging.conversations` is off: writes and restores nothing. */
 export const NO_TALK: TalkSink = {
   append: () => {},
-  backlog: () => []
+  backlog: () => NO_TALK_PAGE,
+  page: () => Promise.resolve(NO_TALK_PAGE)
 };
 
 export interface TalkLogEvents {
@@ -55,12 +60,18 @@ export interface TalkLogEvents {
 }
 
 export class TalkLog implements TalkSink {
-  /** The restored tail plus everything appended since, capped at `view.talkLimit`. */
+  /** The restored tail plus everything appended since, trimmed by `talkExcess`. */
   private recent: Block[];
+  /** Lines the log holds, written or not: the number of the next one appended. */
+  private total = 0;
+  /** The byte each written line starts at, and where the next will. */
+  private starts: number[] = [];
+  private size = 0;
+  /** False once the file is out of step with the line numbers; `page()` then answers nothing. */
+  private inStep = true;
   /** Appended and not yet written. */
   private held: Block[] = [];
   private timer: NodeJS.Timeout | null = null;
-  /** Reported once. A file that will not open will not open again either. */
   private complained = false;
 
   /**
@@ -78,15 +89,49 @@ export class TalkLog implements TalkSink {
   }
 
   /** What an attaching window should seed the Talk card with, oldest first. */
-  backlog(): Block[] {
-    return [...this.recent];
+  backlog(): TalkPage {
+    return { blocks: [...this.recent], start: this.total - this.recent.length };
+  }
+
+  /**
+   * Reads the lines before `before` off the disk, `view.talkPageLines` of
+   * them. A line that will not parse costs that line; a read that fails is
+   * said once and answered with nothing.
+   */
+  async page(before: number): Promise<TalkPage> {
+    // What is held has no place on disk until it is written.
+    this.flush();
+    if (!this.inStep || !Number.isInteger(before)) return NO_TALK_PAGE;
+    const end = Math.min(before, this.starts.length);
+    if (end <= 0) return NO_TALK_PAGE;
+    const start = Math.max(0, end - Math.max(1, tuning().view.talkPageLines));
+    const from = this.starts[start]!;
+    const to = this.starts[end] ?? this.size;
+    try {
+      const text = await readSpan(this.file, from, to - from);
+      return { blocks: text.split('\n').flatMap(asBlock), start };
+    } catch (error) {
+      this.complain(
+        `The conversation log at ${this.file} could not be read: ${errorMessage(error)}`
+      );
+      return NO_TALK_PAGE;
+    }
   }
 
   append(block: Block): void {
+    this.total += 1;
     this.recent.push(block);
-    if (this.recent.length > tuning().view.talkLimit) this.recent.shift();
+    const excess = talkExcess(this.recent, this.now(), talkKeepOf(tuning().view));
+    if (excess > 0) this.recent.splice(0, excess);
     this.held.push(block);
-    if (this.held.length > tuning().records.talkHeld) this.held.shift();
+    if (this.held.length > tuning().records.talkHeld) {
+      // A numbered line that will never be written.
+      this.held.shift();
+      this.inStep = false;
+      this.complain(
+        `The conversation log at ${this.file} was not written in time and a line was dropped from it; the Talk card reads no further back until the client restarts.`
+      );
+    }
     if (this.timer !== null) return;
     this.timer = setTimeout(() => {
       this.timer = null;
@@ -110,17 +155,32 @@ export class TalkLog implements TalkSink {
     // grow the buffer for the rest of the session.
     this.held = [];
 
-    const lines = batch.map((block) => `${JSON.stringify(block)}\n`).join('');
+    const lines = batch.map((block) => `${JSON.stringify(block)}\n`);
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.appendFileSync(this.file, lines, 'utf8');
+      fs.appendFileSync(this.file, lines.join(''), 'utf8');
+      this.wrote(lines);
     } catch (error) {
-      if (this.complained) return;
-      this.complained = true;
-      this.events.notice?.(
+      this.inStep = false;
+      this.complain(
         `The conversation log could not be written to ${this.file}: ${errorMessage(error)}`
       );
     }
+  }
+
+  /** Notes where each line just written starts. Each of `lines` ends in its newline. */
+  private wrote(lines: readonly string[]): void {
+    for (const line of lines) {
+      this.starts.push(this.size);
+      this.size += Buffer.byteLength(line, 'utf8');
+    }
+  }
+
+  /** Said once. A file that will not open will not open again either. */
+  private complain(message: string): void {
+    if (this.complained) return;
+    this.complained = true;
+    this.events.notice?.(message);
   }
 
   dispose(): void {
@@ -147,8 +207,8 @@ export class TalkLog implements TalkSink {
       // rewrite from), and the one-complaint flag keeps a later append from
       // repeating the news.
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.complained = true;
-        this.events.notice?.(
+        this.inStep = false;
+        this.complain(
           `The conversation log at ${this.file} could not be read: ${errorMessage(error)}`
         );
       }
@@ -157,40 +217,56 @@ export class TalkLog implements TalkSink {
 
     const cutoff = this.now() - keepDays * DAY_MS;
     const kept: Block[] = [];
-    let dropped = false;
+    const lines: string[] = [];
     for (const line of text.split('\n')) {
-      if (line.length === 0) continue;
-      let block: Block;
-      try {
-        block = JSON.parse(line) as Block;
-      } catch {
-        // A torn last line is what a crash mid-append leaves; the prune below
-        // is what takes it off the disk.
-        dropped = true;
-        continue;
-      }
-      if (typeof block.at !== 'number' || block.at < cutoff) {
-        dropped = true;
-        continue;
-      }
+      // A torn last line is what a crash mid-append leaves; the prune below
+      // is what takes it off the disk.
+      const [block] = asBlock(line);
+      if (block === undefined || block.at < cutoff) continue;
       kept.push(block);
+      lines.push(`${line}\n`);
     }
 
-    if (dropped) {
+    // Anything but the kept lines, each ending in its newline, is rewritten:
+    // a dropped line, a blank one, a last line with no newline after it.
+    const whole = lines.join('');
+    if (whole !== text) {
       try {
-        writeWholeSync(this.file, kept.map((block) => `${JSON.stringify(block)}\n`).join(''));
+        writeWholeSync(this.file, whole);
       } catch (error) {
-        // The prune failing costs disk space, never the session — and never
-        // the backlog, which is already in hand.
-        if (!this.complained) {
-          this.complained = true;
-          this.events.notice?.(
-            `The conversation log at ${this.file} could not be pruned: ${errorMessage(error)}`
-          );
-        }
+        // The prune failing costs disk space and the pages further back, never
+        // the session and never the backlog, which is already in hand.
+        this.inStep = false;
+        this.complain(
+          `The conversation log at ${this.file} could not be pruned: ${errorMessage(error)}`
+        );
       }
     }
 
-    return kept.slice(-tuning().view.talkLimit);
+    this.total = kept.length;
+    this.wrote(lines);
+    return kept.slice(talkExcess(kept, this.now(), talkKeepOf(tuning().view)));
+  }
+}
+
+/** One line of the file as its block, or nothing where it is blank, torn or carries no time. */
+function asBlock(line: string): Block[] {
+  if (line.length === 0) return [];
+  try {
+    const block = JSON.parse(line) as Block;
+    return typeof block.at === 'number' ? [block] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** `length` bytes of a file from `from`, as text. The handle is closed either way. */
+async function readSpan(file: string, from: number, length: number): Promise<string> {
+  const handle = await fs.promises.open(file, 'r');
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(length), 0, length, from);
+    return buffer.toString('utf8', 0, bytesRead);
+  } finally {
+    await handle.close();
   }
 }

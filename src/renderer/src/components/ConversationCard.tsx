@@ -19,7 +19,9 @@ import NamedText from './NamedText';
 import type { NameIndex } from '../lib/names';
 import { isKnownPlayer, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
+import { placeOf, putBack, type ScrollPlace } from '../lib/scrollPlace';
 import { matches } from '../lib/table';
+import { DRAW_NEWEST, drawnStart, lineKey, widened, type TalkDrawn } from '../lib/talkWindow';
 import { tuning } from '../lib/tuning';
 import { linkify } from '../lib/linkify';
 import { localKeys } from '../lib/storage';
@@ -47,9 +49,16 @@ import { isOwnName, type PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
 import { mentions, mentionSpans } from '@shared/mentions';
 
+/** `ownScrollRef` when the card has moved the box nowhere: no scroll offset is near it. */
+const NO_OWN_SCROLL = Number.NEGATIVE_INFINITY;
+
 export interface ConversationCardProps extends CardChrome {
   /** What this character's card carries (`isTalkBlock`), oldest first. */
   messages: Block[];
+  /** Lines the conversation log holds before the first of `messages`; 0 when none is older. */
+  older: number;
+  /** Asks for the log's page before line `before`, which arrives at the front of `messages`. */
+  onEarlier(before: number): void;
   /** Which character's card this is, so its filters are remembered per character. */
   session: SessionId;
   /** That character's half-typed line and history, kept while its tab is away. */
@@ -359,7 +368,12 @@ const TalkLine = memo(function TalkLine(props: TalkLineProps) {
   const self = people?.self ?? null;
   const mentioned = mentions(message, self);
   return (
-    <div className="line" data-channel={message.type} data-mention={mentioned || undefined}>
+    <div
+      className="line"
+      data-channel={message.type}
+      data-line={lineKey(message)}
+      data-mention={mentioned || undefined}
+    >
       {/*
         The time the classifier stamped the block, never the moment
         this rendered: a backlog restored from the conversation log
@@ -803,6 +817,8 @@ function Composer({ picker, send, macro, queued, drop, kept }: ComposerProps) {
  */
 function ConversationCard({
   messages,
+  older,
+  onEarlier,
   onSend,
   onMacro,
   macroQueued = 0,
@@ -962,9 +978,11 @@ function ConversationCard({
    *
    * So every programmatic move records where it put the box, and a `scroll`
    * landing there is this card's own. A person's scroll lands somewhere else
-   * by definition: the wheel, the bar and the keys all move it.
+   * by definition: the wheel, the bar and the keys all move it. `NO_OWN_SCROLL`
+   * is nowhere a box can be; -1 was within the pixel of slack of the top, so a
+   * reader's scroll to the first line was taken for the card's own.
    */
-  const ownScrollRef = useRef(-1);
+  const ownScrollRef = useRef(NO_OWN_SCROLL);
   /**
    * Whether lines have arrived while the reader is holding the box still.
    *
@@ -1012,6 +1030,30 @@ function ConversationCard({
       ),
     [talked, showing, query, onlyMentions, self]
   );
+
+  /*
+   * What is drawn of `shown`: the newest `talkLimit` lines until the reader
+   * nears the top, then a page more each time (`lib/talkWindow.ts`). The card
+   * holds two days of talk for the find field and the toggles, and drawing all
+   * of it for every character at launch is work nobody is looking at.
+   */
+  const [drawn, setDrawn] = useState<TalkDrawn>(DRAW_NEWEST);
+  const drawnFrom = drawnStart(shown, drawn, tuning().talkLimit);
+  const lines = useMemo(
+    () => (drawnFrom === 0 ? shown : shown.slice(drawnFrom)),
+    [shown, drawnFrom]
+  );
+  /** Whether anything is before the first line drawn: held here, or in main's log. */
+  const earlier = drawnFrom > 0 || older > 0;
+  /** A page more at the top: from what is held while there is any, else from main's log. */
+  const showEarlier = (): void => {
+    if (drawnFrom > 0) setDrawn(widened(shown, drawnFrom, tuning().talkPageLines));
+    else if (older > 0) onEarlier(older);
+  };
+  /** The reader's line while the box is held, kept where it is as lines come and go above it. */
+  const placeRef = useRef<ScrollPlace | null>(null);
+  /** The newest line drawn at the last commit: a different one is something said. */
+  const newestRef = useRef<string | null>(null);
 
   /*
    * Who is a person, keyed by value — see `People`. The key is every fact
@@ -1065,6 +1107,7 @@ function ConversationCard({
     window.clearTimeout(resumeRef.current);
     resumeRef.current = undefined;
     setBehind(false);
+    setDrawn(DRAW_NEWEST);
     const node = logRef.current;
     if (node !== null) pin(node);
   };
@@ -1084,14 +1127,18 @@ function ConversationCard({
     // The card's own move, arriving a frame late. Not a backscroll, whatever
     // the geometry says by now — see `ownScrollRef`.
     if (Math.abs(node.scrollTop - ownScrollRef.current) <= 1) return;
-    ownScrollRef.current = -1;
+    ownScrollRef.current = NO_OWN_SCROLL;
     window.clearTimeout(resumeRef.current);
     if (atEdge(node)) {
       resumeRef.current = undefined;
       setBehind(false);
+      setDrawn(DRAW_NEWEST);
       return;
     }
     resumeRef.current = window.setTimeout(follow, tuning().talkFollowResumeMs);
+    placeRef.current = placeOf(node);
+    // Within one box of the top: the page above is drawn before the reader gets there.
+    if (earlier && node.scrollTop < node.clientHeight) showEarlier();
   };
 
   /*
@@ -1111,20 +1158,31 @@ function ConversationCard({
    * the composer at the bottom, and both scrolling away is how a chat window
    * becomes one you have to scroll back to in order to reply.
    *
-   * Keyed on `shown` itself and not on its length, which stopped changing at
-   * `talkLimit`: once the backlog is full every new line drops an old one, so
+   * Keyed on the lines drawn and not on their count, which stops changing at
+   * `talkLimit`: once the window is full every new line drops an old one, so
    * the count sits at 500 and a card left open through a long conversation
    * quietly stopped following.
    */
   useLayoutEffect(() => {
     const node = logRef.current;
     if (node === null) return;
+    const last = lines[lines.length - 1];
+    const newest = last === undefined ? null : lineKey(last);
+    const said = newest !== newestRef.current;
+    newestRef.current = newest;
     if (resumeRef.current !== undefined) {
-      // Held, and a line has arrived behind the reader's back: that is exactly
-      // what the button is for. Set here rather than derived from the message
-      // count, because *behind* is about this reader's box and not about how
-      // many lines the card holds.
-      setBehind(true);
+      // Held. A page drawn above the reader, or an old line dropped there,
+      // moved their line; it goes back where it was, and that move is the
+      // card's own.
+      if (putBack(node, placeRef.current)) {
+        ownScrollRef.current = node.scrollTop;
+        seenTopRef.current = node.scrollTop;
+      }
+      // A line has arrived behind the reader's back: that is exactly what the
+      // button is for. Set here rather than derived from the message count,
+      // because *behind* is about this reader's box and not about how many
+      // lines the card holds.
+      if (said) setBehind(true);
       return;
     }
     if (Math.abs(node.scrollTop - seenTopRef.current) > 1) {
@@ -1140,7 +1198,7 @@ function ConversationCard({
       return;
     }
     pin(node);
-  }, [shown]);
+  }, [lines]);
 
   /*
    * And a box that changes size while following stays on the newest line at
@@ -1226,15 +1284,30 @@ function ConversationCard({
         onScroll={noteScroll}
         ref={logRef}
       >
+        {/*
+          The way further back when the box has nothing to scroll: a filter
+          that leaves a few lines, or a page that held none of them. Scrolling
+          up to it does the same.
+        */}
+        {earlier && (
+          <button
+            className="quiet talk-earlier"
+            onClick={showEarlier}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {t('cards.talk.earlier')}
+          </button>
+        )}
         {shown.length === 0 ? (
           <div className="empty">
             {query.length > 0 ? t('cards.talk.empty.noMatch') : t('cards.talk.empty.none')}
           </div>
         ) : (
-          shown.map((message) => (
+          lines.map((message) => (
             <TalkLine
               inspect={inspect}
-              key={`${message.seq}-${message.at}`}
+              key={lineKey(message)}
               layout={layout}
               message={message}
               names={names ?? null}

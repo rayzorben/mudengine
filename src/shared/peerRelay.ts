@@ -103,6 +103,7 @@ export const RELAY_INVOKE: { readonly [K in keyof typeof Invoke]: RelayRule } = 
   attach: forward,
   detach: forward,
   backscrollPage: forward,
+  talkPage: forward,
   reorderSessions: local,
   popOut: refused,
   popIn: refused,

@@ -16,6 +16,7 @@
  */
 import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
+import type { TalkPage } from './talkLog';
 import type { MapAsk, MapPiece } from './mapPiece';
 import type { GameMapAsk, GameMapWindow } from './gameMap';
 import type { HudThreshold } from './gameViewConfig';
@@ -355,9 +356,10 @@ export interface AttachSnapshot {
   /**
    * The Talk card's history — the conversation log's tail, oldest first, so a
    * restart restores the conversation instead of starting the card empty.
-   * Empty when `logging.conversations` is off.
+   * Empty when `logging.conversations` is off. Its `start` is what
+   * `talkPage` is asked for the lines before it by.
    */
-  talk: Block[];
+  talk: TalkPage;
 }
 
 /**
@@ -921,6 +923,8 @@ export const Invoke = {
   detach: 'sessions:detach',
   /** The newest `lines` lines of a character's backscroll: *Load more* at the console's top. */
   backscrollPage: 'sessions:backscroll-page',
+  /** The page of a character's conversation log before line `before`: a scroll up the Talk card. */
+  talkPage: 'sessions:talk-page',
   /**
    * The rail, in the order somebody dragged it into.
    *
@@ -1594,6 +1598,8 @@ export interface IpcApi {
   attach(session: SessionId): Promise<AttachSnapshot>;
   detach(session: SessionId): Promise<void>;
   backscrollPage(session: SessionId, lines: number): Promise<BackscrollPage>;
+  /** The conversation log's lines before line `before`; nothing where none is older or the log is off. */
+  talkPage(session: SessionId, before: number): Promise<TalkPage>;
   /** The rail's own order, remembered across restarts. See the channel. */
   reorderSessions(order: SessionId[]): Promise<void>;
   /** Each resolves to why it refused, or null. */

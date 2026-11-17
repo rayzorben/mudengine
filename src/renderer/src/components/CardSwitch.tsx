@@ -537,6 +537,8 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
         <ConversationCard
           {...chrome}
           messages={view.talk}
+          older={view.talkStart}
+          onEarlier={ctx.earlierTalk}
           session={ctx.session}
           typing={ctx.kept.talk}
           // Only while there is somewhere for it to go. A composer on an

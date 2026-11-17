@@ -12,6 +12,7 @@ import {
   type BackscrollText,
   type SessionId
 } from '../../shared/ipc';
+import { NO_TALK_PAGE } from '../../shared/talkLog';
 import { EMPTY_CHARACTER } from '../../shared/character';
 import { NO_PLAYERS } from '../../shared/players';
 import { IDLE_WALK } from '../../shared/walk';
@@ -99,6 +100,6 @@ export async function attachSnapshot(
     questSaid: { ...(manager?.questProgress ?? {}) },
     questRun: manager?.questDesk.progress ?? IDLE_QUEST_RUN,
     gearTrip: manager?.gearDesk.progress ?? null,
-    talk: slot ? sources.talk(session) : []
+    talk: slot ? sources.talk(session) : NO_TALK_PAGE
   };
 }

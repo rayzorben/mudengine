@@ -1770,6 +1770,19 @@ kbd {
 }
 
 /*
+ * The Talk card's other end: a row above the oldest line drawn, scrolling with
+ * the lines. Its own width in the column layouts and across every track of
+ * the aligned grid.
+ */
+.talk-earlier {
+  align-self: center;
+  flex: 0 0 auto;
+  font-size: inherit;
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+/*
  * The console's other end: at the oldest line it holds, the next page back
  * (`lib/pages.ts`). Top and centre, clear of Jump to latest.
  */

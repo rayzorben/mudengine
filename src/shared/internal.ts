@@ -2736,10 +2736,25 @@ const TUNING_DEFAULTS = {
     /** Where an item comes from, on the Reference card: this many, quickest first, then a count. */
     raritySourcesShown: 6,
     /**
-     * Remembered conversation. Generous, because the point of keeping it is
-     * that somebody can come back to what they missed.
+     * Lines of conversation kept however old they are, and the newest lines
+     * the Talk card draws until the reader scrolls up.
      */
     talkLimit: 500,
+    /**
+     * Past `talkLimit`, a line is kept while it is this recent, so the card,
+     * its find field and its Mentions toggle reach two days back without
+     * asking the log. Measured 2026-11-17 on the player's logs: 500 lines was
+     * the last 9 hours for one character and 16 for another, and 48 hours was
+     * at most 2,522 lines.
+     */
+    talkKeepHours: 48,
+    /** The most lines kept by age, for a realm far busier than the ones measured. */
+    talkKeepMost: 5000,
+    /**
+     * Lines the Talk card adds at its top each time the reader nears it: first
+     * from what is kept, then from the log on disk a page at a time.
+     */
+    talkPageLines: 500,
     /**
      * How long the Talk card waits, after the reader's last scroll, before it
      * goes back to following the newest line.

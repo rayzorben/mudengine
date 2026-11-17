@@ -6,6 +6,7 @@ import { NO_BACKSCROLL, type BackscrollText } from '../../../shared/ipc';
 import { NO_LOOP } from '../../../shared/loops';
 import { NO_PLAYERS } from '../../../shared/players';
 import { IDLE_QUEST_RUN } from '../../../shared/quests';
+import { NO_TALK_PAGE } from '../../../shared/talkLog';
 import { EMPTY_ROOM_VERDICT } from '../../../shared/verdict';
 import { IDLE_WALK } from '../../../shared/walk';
 import { IDLE_CONNECTION, type ConnectionState, type TerminalMark } from '../../../shared/types';
@@ -73,7 +74,7 @@ function sources(find: () => AttachSlot | undefined) {
     },
     talk: (id) => {
       made.push(`talk:${id}`);
-      return [];
+      return NO_TALK_PAGE;
     }
   };
   return { src, made, registered };
@@ -112,7 +113,7 @@ describe('attachSnapshot', () => {
 
     const snapshot = await answer;
     expect(snapshot.state).toBe(IDLE_CONNECTION);
-    expect(snapshot.talk).toEqual([]);
+    expect(snapshot.talk).toEqual(NO_TALK_PAGE);
     expect(made).toEqual([]);
   });
 

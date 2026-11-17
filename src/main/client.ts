@@ -122,6 +122,7 @@ import { segmentFightLogs } from './session/fightLogMigration';
 import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
+import { NO_TALK_PAGE, type TalkPage } from '../shared/talkLog';
 import { SimulatorPool } from './app/simulatorPool';
 import { ART_BUILD_SECRET } from './art/buildSecret';
 import { pngOfDataUrl } from './art/pngOfDataUrl';
@@ -2864,6 +2865,12 @@ function registerIpc(): void {
       return slot.backscroll.latest(lines).then((page) => slot.marks.pageOf(page));
     }
   );
+
+  // Asked only of a session that exists, like the attach's talk; main chooses the page's size.
+  handle(Invoke.talkPage, (_caller, session: SessionId, before: unknown): Promise<TalkPage> => {
+    if (!host?.get(session) || typeof before !== 'number') return Promise.resolve(NO_TALK_PAGE);
+    return talkFor(session).page(before);
+  });
 
   handle(Invoke.detach, (caller, session: SessionId) => {
     windows.detach(caller.windowId, session);

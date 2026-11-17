@@ -239,6 +239,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     attach: (session) => invoke(Invoke.attach, session),
     detach: (session) => invoke(Invoke.detach, session),
     backscrollPage: (session, lines) => invoke(Invoke.backscrollPage, session, lines),
+    talkPage: (session, before) => invoke(Invoke.talkPage, session, before),
     popOut: (session) => invoke(Invoke.popOut, session),
     reorderSessions: (order) => invoke(Invoke.reorderSessions, order),
     popIn: (session) => invoke(Invoke.popIn, session),

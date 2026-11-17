@@ -8,14 +8,16 @@
  * window redraws what changed*.
  */
 import type { GearTripProgress } from '@shared/gearTrip';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { keepRoster } from '../lib/roster';
+import { NO_TALK_BACKLOG, talkAttached, withSaid, type TalkBacklog } from '../lib/talkBacklog';
 import { tuning } from '../lib/tuning';
+import { useTalkPages, type EarlierTalk } from './useTalkPages';
+import { talkKeepOf, type TalkKeep } from '@shared/talkLog';
 import { EMPTY_UNSEEN, mentionMissed, missed, nothingUnseen, type Unseen } from '../lib/unseen';
 import type { AlertRaiser } from './useAlerts';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
-import type { Block } from '@shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '@shared/character';
 import type { Find } from '@shared/finds';
 import type { Shelf } from '@shared/shops';
@@ -50,7 +52,7 @@ import { IDLE_WALK, type WalkProgress } from '@shared/walk';
  * channels already reach every window for every session, so this is a matter of
  * keeping what arrives rather than of asking for more.
  */
-export interface SessionView {
+export interface SessionView extends TalkBacklog {
   state: ConnectionState;
   character: CharacterState;
   /** What is known about the other players: its own push, never the character's (todo 730). */
@@ -73,15 +75,14 @@ export interface SessionView {
   statsBase: CombatTally | null;
   lines: StreamLine[];
   telnet: TelnetEvent[];
-  /**
-   * What has been said, per character.
+  /*
+   * What has been said, per character, is `TalkBacklog`'s `talk`.
    *
    * The terminal carries every line, but it carries *everything* — a telepath
    * scrolls out of reach behind a combat burst within seconds, which is exactly
    * when nobody can go looking for it. Kept here so a second view of the same
    * stream can hold it.
    */
-  talk: Block[];
   /**
    * What is worth knowing, ranked.
    *
@@ -154,7 +155,7 @@ export const EMPTY_VIEW: SessionView = {
   statsBase: null,
   lines: [],
   telnet: [],
-  talk: [],
+  ...NO_TALK_BACKLOG,
   notices: [],
   unseen: EMPTY_UNSEEN,
   learned: [],
@@ -169,6 +170,12 @@ export const EMPTY_VIEW: SessionView = {
 function capped<T>(log: T[], entry: T, limit: number): T[] {
   const next = [...log, entry];
   return next.length > limit ? next.slice(-limit) : next;
+}
+
+/** How much talk a view keeps, by the figures in force as the line arrives. */
+function talkKeep(): TalkKeep {
+  const { talkLimit, talkKeepMost, talkKeepHours } = tuning();
+  return talkKeepOf({ talkLimit, talkKeepMost, talkKeepHours });
 }
 
 /** Raised notices folded into a view's log, and counted if nobody is looking. */
@@ -209,7 +216,16 @@ export type ViewFeeds = Pick<
   | 'onSessions'
   | 'onStatsBase'
   | 'resetStats'
+  | 'talkPage'
 >;
+
+/** What a card asks of the views, addressed at one character. */
+export interface ViewAsks {
+  /** Re-base one character's Combat Stats card to its totals as they stand. */
+  resetStats(id: SessionId): void;
+  /** The page of one character's conversation before line `before` (`useTalkPages`). */
+  earlierTalk: EarlierTalk;
+}
 
 /** What `App` reads of the views, and the writes it makes through the one queue. */
 export interface SessionViews {
@@ -218,8 +234,8 @@ export interface SessionViews {
   patchView(id: SessionId, patch: (view: SessionView) => SessionView): void;
   /** A window attaching to a running session: everything main kept for it. */
   applySnapshot(id: SessionId, snapshot: AttachSnapshot): void;
-  /** Re-base one character's Combat Stats card to its totals as they stand. */
-  resetStats(id: SessionId): void;
+  /** The cards' asks, one object for as long as the bridge is. */
+  cardAsks: ViewAsks;
 }
 
 /**
@@ -313,7 +329,7 @@ export function useSessionViews(
         telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
         // The conversation log's tail: main keeps what was said on disk, so a
         // restart restores the Talk card instead of starting it empty.
-        talk: snapshot.talk.slice(-tuning().talkLimit),
+        ...talkAttached(snapshot.talk),
         notices: [],
         // A window that has just attached has not missed anything: the
         // backscroll it replays is the record, and a count of alerts raised
@@ -343,8 +359,12 @@ export function useSessionViews(
     }
   }, [shown, patchView]);
 
-  /** Re-base one character's Combat Stats card; main pushes the baseline back. */
-  const resetStats = useCallback((sid: SessionId) => void feeds.resetStats(sid), [feeds]);
+  const earlierTalk = useTalkPages(feeds, patchView);
+  const cardAsks = useMemo<ViewAsks>(
+    // Main pushes the re-based baseline back.
+    () => ({ resetStats: (sid) => void feeds.resetStats(sid), earlierTalk }),
+    [feeds, earlierTalk]
+  );
 
   /**
    * Facts about every character, kept for every character.
@@ -461,8 +481,7 @@ export function useSessionViews(
           const onScreen = shownRef.current.has(id);
           const told = heard(v, raised, onScreen);
           return {
-            ...v,
-            talk: conversation ? capped(v.talk, payload, tuning().talkLimit) : v.talk,
+            ...(conversation ? withSaid(v, payload, talkKeep()) : v),
             ...told,
             // A line with `@name` in it marks the tab whatever the alert rows let through (todo 29).
             unseen: mentionMissed(told.unseen, payload, v.character.name, onScreen)
@@ -474,5 +493,5 @@ export function useSessionViews(
     return () => off.forEach((unsubscribe) => unsubscribe());
   }, [feeds, alerts, patchView]);
 
-  return { views, patchView, applySnapshot, resetStats };
+  return { views, patchView, applySnapshot, cardAsks };
 }

@@ -127,6 +127,7 @@ export function useCardRenderers({
       view.shops,
       view.statsBase,
       view.talk,
+      view.talkStart,
       view.verdict,
       walk
     ]

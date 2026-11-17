@@ -2139,9 +2139,21 @@ tuning:
     # quickest first, then a count of the rest.
     raritySourcesShown: 6
 
-    # Remembered conversation. Generous, because the point of keeping it is
-    # that somebody can come back to what they missed.
+    # Lines of conversation kept however old they are, and the newest lines
+    # the Talk card draws until the reader scrolls up.
     talkLimit: 500
+
+    # Past talkLimit, a line is kept while it is this recent, so the card, its
+    # find field and its Mentions toggle reach two days back without asking
+    # the log.
+    talkKeepHours: 48
+
+    # The most lines kept by age, for a realm far busier than usual.
+    talkKeepMost: 5000
+
+    # Lines the Talk card adds at its top each time the reader nears it: first
+    # from what is kept, then from the log on disk a page at a time.
+    talkPageLines: 500
 
     # How long the Talk card waits, after the reader's last scroll, before it
     # goes back to following the newest line. Scrolling up is a question being

@@ -4504,6 +4504,9 @@ cards:
     # Said while the reader was holding the feed still. The console's own words
     # for the same offer.
     jumpToLatest: Jump to latest ↓
+    # The row above the oldest line drawn, while the client or the conversation
+    # log holds lines before it. Scrolling up to it does the same.
+    earlier: Earlier lines ↑
     # The heading's toggles, in the realm's own channel words where one exists.
     # On, the channel is drawn; off, it is not.
     tabs:

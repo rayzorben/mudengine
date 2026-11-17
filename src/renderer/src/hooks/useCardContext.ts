@@ -14,7 +14,7 @@ import type { PlayerAsked } from '../components/PlayerFlyout';
 import type { SupplyList } from '../components/SupplyControls';
 import { useKeptWork, type KeptWork } from './useKeptWork';
 import type { BuilderApi } from './useLoopBuilder';
-import type { SessionView } from './useSessionViews';
+import type { SessionView, ViewAsks } from './useSessionViews';
 import type { MobTreatment } from '@shared/mobRules';
 import { ZERO_METER, type Pressure, type StreamMeter } from './useStreamPressure';
 import type { PinnedToolbar } from './useToolbarPins';
@@ -176,6 +176,8 @@ export interface CardContext {
   openBuilder: (() => void) | null;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
+  /** The Talk card's scroll up: this character's conversation before line `before`. */
+  earlierTalk(before: number): void;
   /**
    * The Navigation card's transport. `startMoving` takes the picker's choice,
    * or null where there is none; `loops` is the character's own list to pick
@@ -267,6 +269,7 @@ export interface AddressedActions {
   treatMonster(name: string, treat: MobTreatment | null): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
+  earlierTalk(before: number): void;
   startLoop(name: string): void;
   reverseLoop(): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
@@ -391,7 +394,7 @@ export interface CardContextInputs
   stepBackIn(sid: SessionId, confirmed: number | null): void;
   selectPlayer(sid: SessionId, name: string, anchor: PopoverAnchor): void;
   selectGang(sid: SessionId, name: string, anchor: PopoverAnchor): void;
-  resetStats(sid: SessionId): void;
+  cardAsks: ViewAsks;
 }
 
 export interface CardContexts {
@@ -448,7 +451,7 @@ export function useCardContext({
   stepBackIn,
   selectPlayer,
   selectGang,
-  resetStats
+  cardAsks
 }: CardContextInputs): CardContexts {
   /*
    * Read through refs by the cached bundles below, so a bundle built on the
@@ -467,8 +470,8 @@ export function useCardContext({
   const startMovingRef = useRef(startMovingIn);
   startMovingRef.current = startMovingIn;
 
-  const resetStatsRef = useRef(resetStats);
-  resetStatsRef.current = resetStats;
+  const cardAsksRef = useRef(cardAsks);
+  cardAsksRef.current = cardAsks;
 
   const keptFor = useKeptWork(sessions);
 
@@ -522,7 +525,8 @@ export function useCardContext({
         // Through a ref like `selectPlayer` beside it: this one changes the
         // window's state rather than sending anything, and the bound object has to
         // stay the same object across renders or every card's memo is defeated.
-        resetStats: () => resetStatsRef.current(sid),
+        resetStats: () => cardAsksRef.current.resetStats(sid),
+        earlierTalk: (before) => cardAsksRef.current.earlierTalk(sid, before),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusal(sid)(refused)),
         reverseLoop: () => void api.reverseLoop(sid).then((refused) => sayRefusal(sid)(refused)),
@@ -705,6 +709,7 @@ export function useCardContext({
         // Addressed always: a pinned float's Reset re-bases that character's
         // card, never the one being watched.
         resetStats: bound.resetStats,
+        earlierTalk: bound.earlierTalk,
         // The shown character's list is the only one the renderer holds; a
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,

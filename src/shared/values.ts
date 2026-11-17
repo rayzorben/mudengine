@@ -158,6 +158,9 @@ export function errorMessage(error: unknown): string {
 /** One day in milliseconds: what a setting counted in days is compared in. */
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** One hour in milliseconds, for a setting counted in hours. */
+export const HOUR_MS = DAY_MS / 24;
+
 /** A setting counted in minutes, as a clock compares it. */
 export function minutesMs(minutes: number): number {
   return minutes * 60_000;
