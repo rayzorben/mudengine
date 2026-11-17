@@ -265,6 +265,8 @@ function migrateAll(options: MigrationOptions): void {
   theMobListsBecameRules(home, note);
   statedTheMobRules(home, note);
   alertRowsBecameEvents(home, note);
+  // Before the switches are carried, so one that said off turns this row's `notify` off too.
+  theMentionRowWasShipped(home, note);
   theDesktopSwitchesBecameRows(home, note);
   theToolbarGainedBack(home, note, options.internalTemplate);
   statedTheHunting(home, note);
@@ -944,9 +946,8 @@ function theSharedSpotWorthWent(home: Home, note: (message: string) => void): vo
  * A listing became a rewrite: its shipped design, off, appended to every
  * stated `ui.rewrites.designs` list that has no design for it, so the
  * designer lists it. The exits line (2026-10-03, todo 01), the floor
- * (2026-10-15, todo 146). A list cannot say "I removed that"
- * (`pinTheLoopShelf`'s caveat): a player who deletes the design gets it
- * back, off, on the next launch.
+ * (2026-10-15, todo 146). A player who deletes the design gets it back, off,
+ * on the next launch (`aListEntryWasShipped`).
  */
 function aDesignWasShipped(
   home: Home,
@@ -954,20 +955,66 @@ function aDesignWasShipped(
   entity: 'room' | 'floor',
   notice: (file: string) => string
 ): void {
+  const added = aListEntryWasShipped(
+    home,
+    ['ui', 'rewrites', 'designs'],
+    'entity',
+    entity,
+    (document) => designNode(document, shippedDesign(entity))
+  );
+  for (const file of added) note(notice(file));
+}
+
+/**
+ * Appends a shipped entry to the stated list at `at` in every settings file
+ * whose list has no entry with `key` equal to `value`, and answers the files
+ * it changed. A list cannot say "I removed that" (`pinTheLoopShelf`'s
+ * caveat): a deleted entry returns on the next launch.
+ */
+function aListEntryWasShipped(
+  home: Home,
+  at: readonly string[],
+  key: string,
+  value: string,
+  node: (document: Document) => Node
+): string[] {
+  const added: string[] = [];
   for (const file of everySettingsFile(home)) {
     if (!fs.existsSync(file)) continue;
-    let added = false;
     edit(file, (document) => {
-      const designs = document.getIn(['ui', 'rewrites', 'designs'], true);
-      if (!isSeq(designs)) return false;
-      const has = designs.items.some((design) => isMap(design) && design.get('entity') === entity);
-      if (has) return false;
-      designs.items.push(designNode(document, shippedDesign(entity)));
-      added = true;
+      const list = document.getIn(at, true);
+      if (!isSeq(list)) return false;
+      if (list.items.some((entry) => isMap(entry) && entry.get(key) === value)) return false;
+      list.items.push(node(document));
+      added.push(file);
       return true;
     });
-    if (added) note(notice(file));
   }
+  return added;
+}
+
+/**
+ * The `mentioned` row joined the shipped alerts on 2026-10-10 (todo 29) and
+ * reached no list already stated, so `@name` in a telepath, gossip or
+ * broadcast raised nothing for anyone who had the client before then (user,
+ * 2026-11-17): a notice from talk is produced only while a row asks for it
+ * (`mentionNotice`). The shipped row is added to every stated
+ * `ui.alerts.rules` list with no row on that event, enabled or not. A player
+ * who deletes the row gets it back on the next launch, and one who turns it
+ * off keeps it off.
+ */
+function theMentionRowWasShipped(home: Home, note: (message: string) => void): void {
+  const shipped = DEFAULT_CONFIG.ui.alerts.rules.find((rule) => rule.on === 'mentioned');
+  if (shipped === undefined) throw new Error('STARTER_ALERTS has no `mentioned` row to ship');
+  const added = aListEntryWasShipped(
+    home,
+    ['ui', 'alerts', 'rules'],
+    'on',
+    shipped.on,
+    (document) => document.createNode({ ...shipped })
+  );
+  if (added.length === 0) return;
+  note(t('notices.migration.mentionRowAdded', { count: added.length, fileList: added.join(', ') }));
 }
 
 /**

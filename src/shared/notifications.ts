@@ -879,13 +879,14 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   },
   // Somebody writing `@name` (todo 29): the user asked for the desktop notification.
+  // In front too (2026-11-17): the user's telepath test was read at the window and raised nothing.
   {
     on: 'mentioned',
     enabled: true,
     level: null,
     alert: true,
     notify: true,
-    whileFocused: false,
+    whileFocused: true,
     onlyAway: false,
     sound: false,
     side: 'below',

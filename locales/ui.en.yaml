@@ -852,6 +852,9 @@ notices:
     floorDesigned: 'The "You notice ... here." line can now be redrawn with a mark on each item
       saying whether this character may use it. A design for it, off, was added to the designs in
       {file}; turn it on under Rewrites.'
+    mentionRowAdded: 'Somebody writing @ and your name on any channel now raises a desktop
+      notification. A row for it, turned on, was added to the alert lists in {count} file(s):
+      {fileList}. Turn it off under Alerts rather than deleting it, or it is added again.'
     lightWaitStated: 'When a walk enters a room too dark to see, it now waits for Auto-Light to
       light a torch and look again, instead of stopping because it cannot tell where the character
       is. "tuning.walk.lightWaitMs" was added to your tuning file: how long it waits before giving

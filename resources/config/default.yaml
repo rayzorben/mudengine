@@ -394,7 +394,7 @@ ui:
       - 'on': mentioned
         alert: true
         notify: true
-        whileFocused: false
+        whileFocused: true
         quietSeconds: 30
 
   # Show the HUD rail beside the console.

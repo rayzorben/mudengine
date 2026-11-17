@@ -1171,8 +1171,11 @@ describe('the old alert settings becoming rows', () => {
 
   const alertsIn = (text: string): Record<string, unknown> =>
     ((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>) ?? {};
+  // Without the `mentioned` row `theMentionRowWasShipped` adds, which has its own test.
   const rulesIn = (text: string): Record<string, unknown>[] =>
-    (alertsIn(text)['rules'] as Record<string, unknown>[]) ?? [];
+    ((alertsIn(text)['rules'] as Record<string, unknown>[]) ?? []).filter(
+      (rule) => rule['on'] !== 'mentioned'
+    );
 
   it('turns a muted channel into a row that does not alert', () => {
     fs.writeFileSync(home.options, 'ui:\n  alerts:\n    mute: [movement, items]\n', 'utf8');
@@ -1239,7 +1242,7 @@ describe('the old alert settings becoming rows', () => {
     expect(alertsIn(written)['minimum']).toBeUndefined();
     // No rows are invented *for the floor*; the shipped ones arrive from
     // `statedTheAlertRules`, which runs after this and is tested on its own.
-    expect(rulesIn(written)).toEqual(DEFAULT_CONFIG.ui.alerts.rules);
+    expect(alertsIn(written)['rules']).toEqual(DEFAULT_CONFIG.ui.alerts.rules);
     expect(notesOf(said, 'notices.migration.alertFloorDropped')).toHaveLength(1);
     expect(said.join(' ')).toContain(home.options);
   });
@@ -1286,8 +1289,15 @@ describe('the desktop switches becoming the rows\u2019 own', () => {
 
   const alertsIn = (text: string): Record<string, unknown> =>
     ((parse(text).ui as Record<string, unknown>)['alerts'] as Record<string, unknown>) ?? {};
+  // The rows the file stated; the `mentioned` row added beside them is asserted on its own.
   const rulesIn = (text: string): Record<string, unknown>[] =>
-    (alertsIn(text)['rules'] as Record<string, unknown>[]) ?? [];
+    ((alertsIn(text)['rules'] as Record<string, unknown>[]) ?? []).filter(
+      (rule) => rule['on'] !== 'mentioned'
+    );
+  const mentionedIn = (text: string): Record<string, unknown> | undefined =>
+    (alertsIn(text)['rules'] as Record<string, unknown>[]).find(
+      (rule) => rule['on'] === 'mentioned'
+    );
 
   /* The shipped answer says nothing new: the rows are left exactly as written. */
   it('removes the block and leaves the rows alone where it said the default', () => {
@@ -1329,6 +1339,8 @@ describe('the desktop switches becoming the rows\u2019 own', () => {
       expect.objectContaining({ on: 'health', notify: false, whileFocused: false }),
       expect.objectContaining({ on: 'arrived', notify: false })
     ]);
+    // The row added in the same run is silenced with the rest.
+    expect(mentionedIn(written)).toMatchObject({ notify: false, whileFocused: false });
     expect(notesOf(said, 'notices.migration.desktopSwitchesSilenced')).toHaveLength(1);
   });
 
@@ -1685,6 +1697,35 @@ describe('owning the status line', () => {
     expect(notesOf(said, 'notices.migration.floorDesigned')).toEqual([]);
   });
 
+  it('adds the mentioned row to a stated alert list without one, and only once', () => {
+    const rules = (): Record<string, unknown>[] =>
+      (parse(fs.readFileSync(home.options, 'utf8')) as { ui: { alerts: { rules: [] } } }).ui.alerts
+        .rules;
+    const row = (on: string, enabled: boolean): string[] => [
+      `      - on: ${on}`,
+      `        enabled: ${enabled}`,
+      '        quietSeconds: 30'
+    ];
+    const stated = (rows: string[]): string =>
+      ['ui:', '  alerts:', '    rules:', ...rows, ''].join('\n');
+    fs.writeFileSync(home.options, stated(row('died', true)), 'utf8');
+    migrate();
+    expect(rules().map((rule) => rule['on'])).toEqual(['died', 'mentioned']);
+    expect(rules()[1]).toEqual(
+      DEFAULT_CONFIG.ui.alerts.rules.find((rule) => rule.on === 'mentioned')
+    );
+    expect(notesOf(said, 'notices.migration.mentionRowAdded')).toHaveLength(1);
+    said = [];
+    migrate();
+    expect(rules()).toHaveLength(2);
+    expect(notesOf(said, 'notices.migration.mentionRowAdded')).toEqual([]);
+    // A row the player turned off is theirs: it is not added beside.
+    fs.writeFileSync(home.options, stated(row('mentioned', false)), 'utf8');
+    migrate();
+    expect(rules().map((rule) => rule['enabled'])).toEqual([false]);
+    expect(notesOf(said, 'notices.migration.mentionRowAdded')).toEqual([]);
+  });
+
   it('takes the unplaced-room mark out of every exits design, and only once', () => {
     const designs = (file: string): Record<string, unknown>[] =>
       (parse(fs.readFileSync(file, 'utf8')) as { ui: { rewrites: { designs: [] } } }).ui.rewrites
@@ -1885,7 +1926,7 @@ describe('the alert rules', () => {
     expect(alertsIn()['rules']).toEqual(DEFAULT_CONFIG.ui.alerts.rules);
   });
 
-  /* And a list with anything in it is the player's, never touched. */
+  /* And a list with anything in it is the player's: only the `mentioned` row joins it. */
   it('leaves a list somebody has written alone', () => {
     fs.writeFileSync(
       home.options,
@@ -1894,10 +1935,9 @@ describe('the alert rules', () => {
     );
     migrate();
     const rules = alertsIn()['rules'] as Record<string, unknown>[];
-    // Still one row: the shipped rows are not added over a list somebody wrote.
-    // Its `on` is the event the `items` channel was carried to (todo 03).
-    expect(rules).toHaveLength(1);
-    expect(rules[0]?.['on']).toBe('item-found');
+    // The other shipped rows are not added over a list somebody wrote.
+    // The first `on` is the event the `items` channel was carried to (todo 03).
+    expect(rules.map((rule) => rule['on'])).toEqual(['item-found', 'mentioned']);
   });
 
   it('leaves a file with no alerts block alone', () => {
