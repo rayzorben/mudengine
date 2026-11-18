@@ -242,11 +242,18 @@ export function blessedPlayer(player: MenacePlayer, effect: BlessingEffect): Men
  * `RemovesSpell` row, so casting it takes the other off (`Spell.cs`).
  */
 export function exclusive(a: WorldSpell, b: WorldSpell): boolean {
-  const removes = (from: WorldSpell, of: WorldSpell): boolean =>
-    (from.abilities ?? []).some(
-      ([id, value]) => id === EFFECT_ABILITY.removesSpell && value === of.id
-    );
-  return removes(a, b) || removes(b, a);
+  return takesOff(a, b) || takesOff(b, a);
+}
+
+/**
+ * Whether casting `cast` takes `other` off: `cast` names it in a
+ * `RemovesSpell` row. One way only; the server applies the row on the cast
+ * (`Spell.cs`) and refuses nothing, so `other` cast afterwards stays up.
+ */
+export function takesOff(cast: WorldSpell, other: WorldSpell): boolean {
+  return (cast.abilities ?? []).some(
+    ([id, value]) => id === EFFECT_ABILITY.removesSpell && value === other.id
+  );
 }
 
 /**

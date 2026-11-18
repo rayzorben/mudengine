@@ -256,6 +256,19 @@ describe('keeping a blessing up on this character', () => {
     free.dispose();
   });
 
+  /* What `AutoInvoke` waits for (`BlessingsDue`): the same test the cast makes. */
+  it('names the self rows about to be cast: down or lapsed, above the mana floor, switch on', () => {
+    const blessings = new Blessings(spells([armour]), true, queue, standing);
+    expect(blessings.selfDue(state())).toEqual(['protection']);
+    const up = { buffs: [{ spell: 'protection', by: null, appliedAt: Date.now() }] };
+    expect(blessings.selfDue(state(up))).toEqual([]);
+    expect(blessings.selfDue(state({}, { mana: 10 }))).toEqual([]);
+    blessings.dispose();
+    const off = new Blessings({ ...spells([armour]), autoBless: false }, true, queue, standing);
+    expect(off.selfDue(state())).toEqual([]);
+    off.dispose();
+  });
+
   it('recasts one at a time, top of the list first', () => {
     const shield: BlessingConfig = { ...armour, spell: 'mage shield' };
     const blessings = new Blessings(spells([armour, shield]), true, queue, standing);

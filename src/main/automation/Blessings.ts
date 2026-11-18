@@ -64,7 +64,7 @@ import {
   type CharacterState,
   type FightSigns
 } from '../../shared/character';
-import type { BlessingConfig, BlessingSource } from '../../shared/blessings';
+import type { BlessingConfig, BlessingsDue, BlessingSource } from '../../shared/blessings';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
 import type { Block } from '../../shared/blocks';
@@ -151,7 +151,7 @@ export interface BlessingsDeps {
   readonly signs?: FightSigns;
 }
 
-export class Blessings implements SessionModule {
+export class Blessings implements SessionModule, BlessingsDue {
   private timer: NodeJS.Timeout | null = null;
   private state: CharacterState | null = null;
   /** When each clock last had its cast sent — `clockKey` → epoch ms. */
@@ -428,21 +428,34 @@ export class Blessings implements SessionModule {
     }
   }
 
-  /** Proposes one self recast if this entry is due; true when it did. */
-  private castSelf(entry: BlessingConfig, state: CharacterState, now: number): boolean {
-    const fighting = fightHere(state, this.signs, now);
-    if (fighting && !entry.inCombat) return false;
-    // Negate magic lands on this character only; mid-fight the round's blessing goes as ever.
-    if (!fighting && this.due.negateDue) return false;
-    if (!manaAtLeast(state, entry.minMana)) return false;
+  /** The self rows about to be cast (`BlessingsDue`); none with the switch off. */
+  selfDue(state: CharacterState): readonly string[] {
+    if (!this.enabled) return [];
+    const now = this.now();
+    return this.entries()
+      .filter((entry) => entry.target === 'self' && this.selfRowDue(entry, state, now))
+      .map((entry) => entry.spell);
+  }
 
+  /** Whether a self row's mana floor is met and its blessing is down or lapsed. */
+  private selfRowDue(entry: BlessingConfig, state: CharacterState, now: number): boolean {
+    if (!manaAtLeast(state, entry.minMana)) return false;
     // Under its name or any other the establishing sentence could have
     // meant: `You feel lucky!` is five spells, and a configured `bless` is up
     // whichever of them the server actually applied.
     const held = state.buffs.find((buff) =>
       buffNames(buff).some((name) => this.same(name, entry.spell))
     );
-    if (held !== undefined && !this.lapsed(held, entry, now)) return false;
+    return held === undefined || this.lapsed(held, entry, now);
+  }
+
+  /** Proposes one self recast if this entry is due; true when it did. */
+  private castSelf(entry: BlessingConfig, state: CharacterState, now: number): boolean {
+    const fighting = fightHere(state, this.signs, now);
+    if (fighting && !entry.inCombat) return false;
+    // Negate magic lands on this character only; mid-fight the round's blessing goes as ever.
+    if (!fighting && this.due.negateDue) return false;
+    if (!this.selfRowDue(entry, state, now)) return false;
 
     // `@self`, not this character's name: a self cast goes out bare, so it
     // needs no name at all, and `@` keeps the clock apart from any party

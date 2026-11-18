@@ -5,7 +5,7 @@
  * with the Spells page's list. On top of it: only the items Auto Choose
  * Blessings picked (`ChosenItems`), else those in `invokeWith`; only when the
  * spell's mana is there (an item cast costs it, `MA=21` to `MA=13` on the
- * wire); never over a blessing up that `RemovesSpell` ties it to; never in a
+ * wire); never over a blessing up that its cast would take off; never in a
  * fight or while a token that negates is next (`NegateDue`); one cast a round
  * (`CastGate`). The server's answer to a `use` is read (`invokeAnswer.ts`): a
  * failed roll or spent round is tried again, a refusal holds the item and is
@@ -20,7 +20,8 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
-import { exclusive } from '../../shared/blessingeffects';
+import { takesOff } from '../../shared/blessingeffects';
+import type { BlessingsDue } from '../../shared/blessings';
 import { isEquipCommand } from '../../shared/gear';
 import { bareName, sameItem } from '../../shared/items';
 import {
@@ -49,7 +50,7 @@ import type { SessionModule } from './Module';
 import { SwapBack, type SwapBackEvents } from './SwapBack';
 
 /** What this needs of the realm, injected as functions. */
-export interface InvokeSources extends BlessingRealm, WornReads {
+export interface InvokeSources extends BlessingRealm, WornReads, BlessingsDue {
   /**
    * A spell by name, for the buff list, which carries words, not ids.
    *
@@ -98,6 +99,8 @@ export class AutoInvoke implements SessionModule {
   private readonly saidSpent = new Set<string>();
   private enabled = false;
   private chosen: readonly string[] = [];
+  /** Since when each item has waited for a blessing about to be cast that takes its own off. */
+  private readonly waitingSince = new Map<string, number>();
   private readonly swapBack: SwapBack;
 
   constructor(
@@ -126,6 +129,7 @@ export class AutoInvoke implements SessionModule {
     this.sentAt.clear();
     this.held.clear();
     this.saidSpent.clear();
+    this.waitingSince.clear();
     this.out = null;
     this.swapBack.reset();
   }
@@ -392,17 +396,33 @@ export class AutoInvoke implements SessionModule {
     // Already up, under its own name or any the establishing sentence could
     // have meant (`sameSpell`: the server prints the whole name).
     if (spellIsUp(state.buffs, spell.name, state.spellbook, this.sources.spellNamed)) return null;
-    /*
-     * A blessing up that this one takes off, or that takes this one off
-     * (`RemovesSpell`, `Spell.cs` applies it on the cast): the one up stays.
-     * Zeal takes off the engraved warhorn's blast, so a paladin with zeal on
-     * the list would otherwise spend a `use` on every zeal recast.
-     */
-    const clashes = state.buffs.some((buff) => {
-      const removes = this.sources.spellNamed(buff.spell);
-      return removes !== null && removes.id !== spell.id && exclusive(removes, spell);
+    // A blessing up that this one's cast would take off (`RemovesSpell`): the one up stays.
+    const strips = state.buffs.some((buff) => {
+      const up = this.sources.spellNamed(buff.spell);
+      return up !== null && up.id !== spell.id && takesOff(spell, up);
     });
-    return clashes ? null : { spell, several, swap, weapon };
+    if (strips) return null;
+    /*
+     * The other way round the item is used: zeal's cast takes off the engraved
+     * warhorn's blast, and the blast cast after zeal stays up beside it until
+     * zeal is cast again (`Spell.cs`, source; Festus, 2026-11-18: held while
+     * zeal was up, the warhorn was never used). It waits only while such a
+     * blessing is about to be cast, and no longer than one retry window, so a
+     * row that never comes up does not hold the item.
+     */
+    const due = this.sources.selfDue(state).some((row) => {
+      const cast = this.sources.spellNamed(row);
+      return cast !== null && cast.id !== spell.id && takesOff(cast, spell);
+    });
+    if (!due) {
+      this.waitingSince.delete(name);
+      return { spell, several, swap, weapon };
+    }
+    const since = this.waitingSince.get(name) ?? this.now();
+    this.waitingSince.set(name, since);
+    return this.now() - since < tuning().spells.blessRetryMs
+      ? null
+      : { spell, several, swap, weapon };
   }
 }
 

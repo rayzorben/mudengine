@@ -431,6 +431,11 @@ export function blessingsFor(
   const learnedDuration = (spell: string): number | null =>
     durations()[spell.trim().toLowerCase()] ?? null;
   const source = new BlessingChoice(parts, { ...session, learnedDuration });
+  const blessings = new Blessings(automation.spells, automation.enabled, queue, {
+    ...rest,
+    learnedDuration,
+    source
+  });
   // The realm `AutoInvoke` reads: the choice's own, at the point of use.
   const { world, errands, tracker } = parts;
   const invoke: InvokeSources = {
@@ -439,14 +444,10 @@ export function blessingsFor(
     spellNamed: (name) => world?.spellNamed(name) ?? null,
     handsOf: (name) => errands.gearHandsOf(name),
     slotOf: (name) => errands.gearSlotOf(name),
+    selfDue: (state) => blessings.selfDue(state),
     charges,
     fightHere: () => fightHere(tracker.current, rest.signs, Date.now())
   };
-  const blessings = new Blessings(automation.spells, automation.enabled, queue, {
-    ...rest,
-    learnedDuration,
-    source
-  });
   return {
     blessings,
     choice: source,

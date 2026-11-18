@@ -70,6 +70,7 @@ const sources = (over: Partial<InvokeSources> = {}): InvokeSources => ({
   spellNamed: (name) => (name.trim().toLowerCase() === 'weapon major bless' ? BLESS : null),
   handsOf: () => 1,
   slotOf: () => null,
+  selfDue: () => [],
   fightHere: () => false,
   charges: { usesLeft: () => null, lookOnce: () => undefined, used: () => undefined },
   ...over
@@ -672,20 +673,60 @@ describe('asking a carried item for its blessing', () => {
     expect(sent).toEqual(['use shimmering longsword']);
   });
 
-  /* Todo 41: zeal takes the warhorn's blast off, so the blast is not used while zeal is up. */
-  it('leaves a blessing up that its spell would take off, or that takes it off', () => {
+  /*
+   * `RemovesSpell` is applied on the cast and one way (`Spell.cs`). Zeal's
+   * cast takes the warhorn's blast off; the blast used after zeal stays up
+   * beside it (Festus, 2026-11-18: held while zeal was up, never used).
+   */
+  describe('a blessing that takes the item spell off', () => {
     const zeal: WorldSpell = { id: 304, name: 'zeal', duration: 10, abilities: [[122, 114]] };
     const over: Partial<InvokeSources> = {
       spellNamed: (name) => (name === 'zeal' ? zeal : name === 'weapon major bless' ? BLESS : null)
     };
-    // Positive control: another blessing up, and the item is used.
-    run(over).consider(state({ buffs: [{ spell: 'chant', by: null, appliedAt: 0 }] }));
-    vi.advanceTimersByTime(200);
-    expect(sent).toEqual(['use shimmering longsword']);
-    sent.length = 0;
-    run(over).consider(state({ buffs: [{ spell: 'zeal', by: null, appliedAt: 0 }] }));
-    vi.advanceTimersByTime(200);
-    expect(sent).toEqual([]);
+    const zealUp = { buffs: [{ spell: 'zeal', by: null, appliedAt: 0 }] };
+    it('uses the item while that blessing is up', () => {
+      run(over).consider(state(zealUp));
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['use shimmering longsword']);
+    });
+
+    it('waits while that blessing is about to be cast, for one retry window at most', () => {
+      // Positive control: nothing about to be cast, and the item is used.
+      run(over).consider(state());
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['use shimmering longsword']);
+      sent.length = 0;
+      const waiting = run({ ...over, selfDue: () => ['zeal'] });
+      waiting.consider(state());
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual([]);
+      // Zeal never came up: the item is not held for the session.
+      vi.advanceTimersByTime(60_000);
+      waiting.consider(state());
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['use shimmering longsword']);
+    });
+
+    it('does not wait for a blessing about to be cast that leaves its spell alone', () => {
+      run({ ...over, selfDue: () => ['chant'] }).consider(state());
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['use shimmering longsword']);
+    });
+
+    it('leaves a blessing up that the item spell would take off', () => {
+      const strips: Partial<InvokeSources> = {
+        ...over,
+        spellById: (id) => (id === 114 ? { ...BLESS, abilities: [[122, 304]] } : null)
+      };
+      // Positive control: another blessing up, and the item is used.
+      run(strips).consider(state({ buffs: [{ spell: 'chant', by: null, appliedAt: 0 }] }));
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['use shimmering longsword']);
+      sent.length = 0;
+      run(strips).consider(state(zealUp));
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual([]);
+    });
   });
 });
 

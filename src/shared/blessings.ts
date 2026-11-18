@@ -99,6 +99,19 @@ export function normalizeBlessings(value: unknown): BlessingConfig[] {
 }
 
 /**
+ * The self blessings `Blessings` is about to cast: kept up, down or lapsed,
+ * and above their mana floor. `AutoInvoke` reads it so an item is not used
+ * just ahead of a cast that takes its blessing off.
+ */
+export interface BlessingsDue {
+  /** The due rows' spells, as the rows spell them. */
+  selfDue(state: CharacterState): readonly string[];
+}
+
+/** Nothing is about to be cast. */
+export const NO_BLESSINGS_DUE: BlessingsDue = { selfDue: () => [] };
+
+/**
  * Where the self rows kept up under `autoChooseBlessings` come from
  * (`BlessingChoice`): the port `Blessings` composes, refreshed and put down
  * with it.

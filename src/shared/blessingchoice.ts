@@ -397,8 +397,10 @@ function healsPerHour(input: BlessingChoiceInput, run: FightRun): number {
 
 /**
  * Why a candidate cannot join the set chosen so far, or null: the same spell
- * is up once whatever casts it, and `RemovesSpell` takes one off the other
- * whether a book or an item cast it.
+ * is up once whatever casts it, and a `RemovesSpell` row takes the other off
+ * at each cast (`takesOff`, one way), whether a book or an item cast it. The
+ * choice keeps such a pair apart either way: its upkeep prices one cast a
+ * lapse, and the pair needs the stripped one cast again after every recast.
  */
 function clashOf(
   candidate: BlessingCandidate,
