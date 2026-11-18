@@ -752,32 +752,22 @@ function Controls({ insert }: { insert: Insert }): React.JSX.Element {
       >
         <code>{`${CONTROL.group}…}`}</code>
       </button>
-      <button
-        className="rewrite-tag"
-        onClick={() =>
-          wrap(`${CONTROL.table}\n`, `\n${CONTROL.endTable}`, `${CONTROL.table}\n`.length)
-        }
-        onMouseDown={keepFocus}
-        title={t('settings.rewrites.editor.sidebar.tableHint')}
-        type="button"
-      >
-        <code>{`${CONTROL.table}…${CONTROL.endTable}`}</code>
-      </button>
-      <button
-        className="rewrite-tag"
-        onClick={() =>
-          wrap(
-            `${CONTROL.tableHeader}\n`,
-            `\n${CONTROL.endTable}`,
-            `${CONTROL.tableHeader}\n`.length
-          )
-        }
-        onMouseDown={keepFocus}
-        title={t('settings.rewrites.editor.sidebar.tableHint')}
-        type="button"
-      >
-        <code>{`${CONTROL.tableHeader}…${CONTROL.endTable}`}</code>
-      </button>
+      {[
+        { open: CONTROL.table, hint: t('settings.rewrites.editor.sidebar.tableHint') },
+        { open: CONTROL.tableHeader, hint: t('settings.rewrites.editor.sidebar.tableHint') },
+        { open: CONTROL.tableLined, hint: t('settings.rewrites.editor.sidebar.tableLinedHint') }
+      ].map(({ open, hint }) => (
+        <button
+          className="rewrite-tag"
+          key={open}
+          onClick={() => wrap(`${open}\n`, `\n${CONTROL.endTable}`, `${open}\n`.length)}
+          onMouseDown={keepFocus}
+          title={hint}
+          type="button"
+        >
+          <code>{`${open}…${CONTROL.endTable}`}</code>
+        </button>
+      ))}
       <p className="settings-note">{t('settings.rewrites.editor.sidebar.filtersHint')}</p>
     </Category>
   );

@@ -16592,13 +16592,16 @@ tr:hover .row-action.worn,
 /*
  * A listing as the console will draw it: several rows, each a run of the
  * palette's colours, with the glyphs drawn in the cells the drawing left for
- * them — the same pictures the console lays over those cells.
+ * them — the same pictures the console lays over those cells. Rows are
+ * `line-height: normal`, the font's own row height, which is what the console
+ * draws at its `lineHeight: 1`: a table's upright lines are box characters
+ * and meet from one row to the next only at that height.
  */
 .rewrite-preview {
   border-radius: 4px;
   display: block;
   font-family: var(--font-terminal, var(--font-dos));
-  line-height: 1.4;
+  line-height: normal;
   overflow-x: auto;
   padding: 6px 8px;
   white-space: pre;

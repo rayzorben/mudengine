@@ -17,6 +17,7 @@ import {
   COLOUR_PLACES,
   STYLE_CLOSERS,
   STYLE_TAGS,
+  TABLE_OPTIONS,
   type ColourPlace
 } from '@shared/template';
 
@@ -63,7 +64,8 @@ export const CONTROL = {
   endFor: '{/for}',
   group: '{group ',
   table: '{table}',
-  tableHeader: '{table header}',
+  tableHeader: `{table ${TABLE_OPTIONS.header}}`,
+  tableLined: `{table ${TABLE_OPTIONS.header} ${TABLE_OPTIONS.border} ${TABLE_OPTIONS.cells}}`,
   endTable: '{/table}'
 } as const;
 

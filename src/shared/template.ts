@@ -7,10 +7,11 @@
  * colour), `{reset}`, a closer that puts back what was in effect before
  * (`{/red}`, `{/colour}`, `{/bold}`, `{/strike}`), and three controls: `{if …}` with
  * `{else if …}` and `{else}`, `{for list}` once per row with the row's
- * fields in scope, and `{table}` / `{table header}` in which every figure is a
- * column. A tag it does not know is drawn as typed, so a typo shows itself.
- * `mudengine-ui` § The console is rewritten in one grammar.
+ * fields in scope, and `{table}` in which every figure is a column (`header`,
+ * `border`, `cells`, `padding:1` after its name). A tag it does not know is
+ * drawn as typed. `mudengine-ui` § The console is rewritten in one grammar.
  */
+import { ruleTable, type Ruling, type TableBorders } from './tableBorders';
 import type { InlineGlyph } from './types';
 
 /** The sixteen colours a design may name, in the console's own palette. */
@@ -170,7 +171,7 @@ export type Node =
    * bare one is what every template written before this says.
    */
   | { kind: 'for'; path: string; as?: string; where?: Expr; body: Node[] }
-  | { kind: 'table'; header: boolean; body: Node[] }
+  | { kind: 'table'; header: boolean; borders: TableBorders | null; body: Node[] }
   /**
    * Partitions a list in scope into matching entries and remaining entries.
    *
@@ -248,11 +249,15 @@ const GROUND = COLOUR_PLACES.ground;
 const UNDERLINE = COLOUR_PLACES.underline;
 const COLOURED = [GROUND, UNDERLINE];
 
+/** A colour a tag may name: one of the palette's sixteen, or a `#rrggbb`. */
+function isColour(colour: string): boolean {
+  return isAnsiColour(colour) || HEX.test(colour);
+}
+
 function isStyleTag(tag: string): boolean {
   if (STYLE_TAGS.includes(tag)) return true;
   const prefix = COLOURED.find((each) => tag.startsWith(each));
-  const colour = prefix === undefined ? tag : tag.slice(prefix.length);
-  return isAnsiColour(colour) || HEX.test(colour);
+  return isColour(prefix === undefined ? tag : tag.slice(prefix.length));
 }
 
 /** `{/red}`, `{/colour}`, `{/bg}`, `{/bold}`, `{/dim}`, `{/strike}`, `{/underline}`: a closer of a style. */
@@ -261,7 +266,70 @@ function isStyleCloser(tag: string): boolean {
   const name = tag.slice(1);
   if (name === 'color' || STYLE_CLOSERS.includes(name)) return true;
   if (COLOURED.some((each) => name.startsWith(each))) return isStyleTag(name);
-  return isAnsiColour(name) || HEX.test(name);
+  return isColour(name);
+}
+
+/** The words a `{table}` may carry after its name, as the designer's sidebar offers them. */
+export const TABLE_OPTIONS = {
+  header: 'header',
+  border: 'border',
+  cells: 'cells',
+  padding: 'padding'
+} as const;
+
+/**
+ * The ink a table's header names its columns in, and its lines are drawn in
+ * unless the template names a colour: dim, and the palette's, so a theme
+ * carries it.
+ */
+const HEADER_INK: AnsiColour = 'brightBlack';
+
+/** A table's `padding:`: blank cells each side of an upright line, one digit. */
+const PADDING = /^\d$/;
+
+/**
+ * What a `{table …}` tag asks for: `header` for a first row of labels,
+ * `border` for a frame, `cells` for lines between columns and rows (either
+ * may name its colour, `border:blue`), `padding:2` for blank cells each side
+ * of an upright line. Null for a word the grammar lacks, so the tag is drawn
+ * as typed.
+ */
+function tableOptions(tag: string): { header: boolean; borders: TableBorders | null } | null {
+  const [name, ...words] = tag.split(/\s+/);
+  if (name !== 'table') return null;
+  let header = false;
+  let padding = 0;
+  let padded = false;
+  // Each kind of line: whether it was asked for, and the colour it named if any.
+  const asked = { border: false, cells: false };
+  const named: { border: string | null; cells: string | null } = { border: null, cells: null };
+  for (const word of words) {
+    const colon = word.indexOf(':');
+    const option = colon < 0 ? word : word.slice(0, colon);
+    const value = colon < 0 ? null : word.slice(colon + 1);
+    if (option === TABLE_OPTIONS.header && value === null) header = true;
+    else if (
+      (option === TABLE_OPTIONS.border || option === TABLE_OPTIONS.cells) &&
+      (value === null || isColour(value))
+    ) {
+      asked[option] = true;
+      named[option] = value;
+    } else if (option === TABLE_OPTIONS.padding && value !== null && PADDING.test(value)) {
+      padding = Number(value);
+      padded = true;
+    } else return null;
+  }
+  // A padding with no line to stand beside is a typo, drawn as typed.
+  if (!asked.border && !asked.cells) return padded ? null : { header, borders: null };
+  // One colour named is the colour of both kinds, unless the other names its own.
+  const frame = named.border ?? named.cells ?? HEADER_INK;
+  const cells = named.cells ?? named.border ?? HEADER_INK;
+  return {
+    header,
+    borders: asked.border
+      ? { frame, cells: asked.cells ? cells : null, padding }
+      : { frame: null, cells, padding }
+  };
 }
 
 type Token =
@@ -410,11 +478,12 @@ export function parseTemplate(source: string): Template {
         });
         continue;
       }
-      if (tag === 'table' || tag === 'table header') {
+      const table = tag.startsWith('table') ? tableOptions(tag) : null;
+      if (table !== null) {
         const body = parseBody((next) => next === '/table');
         if (tokens[at]?.kind === 'tag') at += 1;
         else problem('unclosed', tag);
-        nodes.push({ kind: 'table', header: tag === 'table header', body });
+        nodes.push({ kind: 'table', ...table, body });
         continue;
       }
       if (BLOCK_CLOSE.test(tag) || isElse(tag)) {
@@ -984,7 +1053,7 @@ export function renderTemplate(
   const chain: Row[] = [{ ...scope }];
   const lines: Piece[][] = [[]];
   /** The lines a table is collecting, or null outside one. */
-  let table: { lines: Piece[][]; header: boolean } | null = null;
+  let table: { lines: Piece[][]; header: boolean; headed: boolean } | null = null;
 
   const current = (): Piece[] => {
     const target = table ? table.lines : lines;
@@ -1034,7 +1103,7 @@ export function renderTemplate(
     const numeric = typeof base.value === 'number';
     const { figure, align } = asHeader
       ? {
-          figure: { text: base.glyph === undefined ? label(node.path) : '', colour: 'brightBlack' },
+          figure: { text: base.glyph === undefined ? label(node.path) : '', colour: HEADER_INK },
           align: applyFilters(base, node.filters).align
         }
       : applyFilters(base, node.filters);
@@ -1195,6 +1264,7 @@ export function renderTemplate(
           if (table !== null && table.header) {
             table.header = false;
             if (first !== undefined) {
+              table.headed = true;
               chain.push(head());
               draw(node.body, true);
               chain.pop();
@@ -1220,15 +1290,25 @@ export function renderTemplate(
             draw(node.body, asHeader);
             break;
           }
-          table = { lines: [[]], header: node.header };
+          table = { lines: [[]], header: node.header, headed: false };
           draw(node.body, asHeader);
-          const done = alignColumns(table.lines);
+          const aligned = alignColumns(table.lines);
+          const done =
+            node.borders === null
+              ? aligned
+              : ruleTable(aligned, table.headed, node.borders, RULING);
           table = null;
           // The table's rows join the line the table opened on, which is
-          // where its first row starts, and the rest follow.
+          // where its first row starts, and the rest follow. A framed table
+          // starts a line of its own when that one already draws something:
+          // its top would otherwise sit beside the text and not over the rows.
           const last = lines[lines.length - 1]!;
-          last.push(...(done[0] ?? []));
-          lines.push(...done.slice(1));
+          const framed = node.borders !== null && node.borders.frame !== null;
+          if (framed && last.some((piece) => widthOf(piece) > 0)) lines.push(...done);
+          else {
+            last.push(...(done[0] ?? []));
+            lines.push(...done.slice(1));
+          }
           break;
         }
       }
@@ -1275,9 +1355,11 @@ function source(template: Template): string {
   return out;
 }
 
-/** Cells a piece takes: its text, and a glyph's two blank cells. */
+/** Cells a piece takes: its text, a glyph's two blank cells, and the padding before a glyph. */
 function widthOf(piece: Piece): number {
-  return cellsOf(piece.text) + (piece.glyph === undefined ? 0 : GLYPH_CELLS);
+  return (
+    cellsOf(piece.text) + (piece.glyph === undefined ? 0 : GLYPH_CELLS) + cellsOf(piece.lead ?? '')
+  );
 }
 
 /**
@@ -1325,6 +1407,23 @@ function alignColumns(lines: Piece[][]): Piece[][] {
     })
   );
 }
+
+/** A row's pieces as the pass that draws a table's lines reads and makes them. */
+const RULING: Ruling<Piece> = {
+  isColumn: (piece) => piece.column !== undefined,
+  isBlank: (piece) => piece.glyph === undefined && piece.text.trim().length === 0,
+  width: widthOf,
+  plain: (text, colour) => ({
+    text,
+    fg: colour,
+    bg: null,
+    bold: false,
+    dim: false,
+    strike: false,
+    underline: false
+  }),
+  under: (piece, colour) => ({ ...piece, underline: colour })
+};
 
 /** A piece's attributes alone, without its column or glyph. */
 function lookOf(piece: Look): Look {

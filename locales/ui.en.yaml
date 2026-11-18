@@ -6349,6 +6349,9 @@ settings:
           cases.
         forHint: Draws the middle once per row, with the row's fields in scope.
         tableHint: Lines up every value inside in columns; header names them in a first row.
+        tableLinedHint: 'A table with border has a frame. With cells it has a line between rows, and
+          between two values with a space between them. padding:1 leaves a space beside each
+          line; border:blue or cells:blue sets a color.'
         groupHint: 'Breaks off matching items into a new list: {group items matching "^token of " as tokens}'
         filtersHint: 'After a figure: |upper |lower |left |right |center |width:12 |or:text for a blank.'
         kindText: text

@@ -348,6 +348,150 @@ describe('the controls', () => {
     ).toEqual(['x|', 'longer|']);
   });
 
+  /*
+   * User, 2026-11-18: a table with a frame and lines between its cells. An
+   * upright line is a cell of its own where the template put blank text
+   * between two figures; a line between rows is the underline of the row
+   * above, so only the frame's top takes a row.
+   */
+  describe('a table with lines', () => {
+    const scope: Scope = {
+      rows: [
+        { name: 'ab', n: 1 },
+        { name: 'abcd', n: 22 }
+      ]
+    };
+    const ruled = (open: string, row = '{row.name} {row.n}'): Drawn[] =>
+      renderTemplate(`${open}\n{for row in rows}\n${row}\n{/for}\n{/table}\nafter`, scope);
+    /** Each line's underline: the one colour every cell of it wears, or false. */
+    const rules = (lines: readonly Drawn[]): Array<boolean | string> =>
+      lines.map((line) => {
+        const worn = new Set(line.segments.filter((s) => s.text !== '').map((s) => s.underline));
+        expect(worn.size).toBe(1);
+        return [...worn][0]!;
+      });
+
+    it('frames it and lines its cells, in the dim ink, at the height of one more row', () => {
+      const lines = ruled('{table header border cells}');
+      expect(lines.map(plainOf)).toEqual([
+        '         ',
+        '▏name│ n▕',
+        '▏ab  │ 1▕',
+        '▏abcd│22▕',
+        'after'
+      ]);
+      expect(rules(lines)).toEqual([
+        'brightBlack',
+        'brightBlack',
+        'brightBlack',
+        'brightBlack',
+        false
+      ]);
+      expect(lines[2]?.segments.filter((s) => /[▏│▕]/.test(s.text)).map((s) => s.fg)).toEqual([
+        'brightBlack',
+        'brightBlack',
+        'brightBlack'
+      ]);
+    });
+
+    it('draws the lines between cells alone, with no top row and none under the last', () => {
+      const lines = ruled('{table cells}');
+      expect(lines.map(plainOf)).toEqual(['ab  │ 1', 'abcd│22', 'after']);
+      expect(rules(lines)).toEqual(['brightBlack', false, false]);
+    });
+
+    it('draws the frame alone, with a line under the header and the spacing as typed', () => {
+      const lines = ruled('{table header border}');
+      expect(lines.map(plainOf)).toEqual([
+        '         ',
+        '▏name  n▕',
+        '▏ab    1▕',
+        '▏abcd 22▕',
+        'after'
+      ]);
+      expect(rules(lines)).toEqual(['brightBlack', 'brightBlack', false, 'brightBlack', false]);
+    });
+
+    it('takes a colour for each kind of line, one for both, and a padding', () => {
+      const lines = ruled('{table border:blue cells:red padding:1}');
+      expect(lines.map(plainOf)).toEqual([
+        '             ',
+        '▏ ab   │  1 ▕',
+        '▏ abcd │ 22 ▕',
+        'after'
+      ]);
+      expect(rules(lines)).toEqual(['blue', 'red', 'blue', false]);
+      expect(lines[1]?.segments.filter((s) => /[▏│▕]/.test(s.text)).map((s) => s.fg)).toEqual([
+        'blue',
+        'red',
+        'blue'
+      ]);
+      expect(rules(ruled('{table border cells:#102030}'))).toEqual([
+        '#102030',
+        '#102030',
+        '#102030',
+        false
+      ]);
+    });
+
+    it('keeps figures joined by other text, or by none, in one cell', () => {
+      expect(ruled('{table cells}', '{row.name}/{row.n} {row.n}{row.n}').map(plainOf)).toEqual([
+        'ab  / 1│ 1 1',
+        'abcd/22│2222',
+        'after'
+      ]);
+    });
+
+    it('draws a table option the grammar lacks as typed', () => {
+      expect(draw('{table bordr}x', {})).toEqual(['{table bordr}x']);
+      expect(draw('{table border:plaid}x', {})).toEqual(['{table border:plaid}x']);
+      expect(draw('{table padding:12}x', {})).toEqual(['{table padding:12}x']);
+      // A padding with no line to stand beside.
+      expect(draw('{table padding:1}x', {})).toEqual(['{table padding:1}x']);
+    });
+
+    const cells: Scope = { a: 'x', b: 'y', c: 'zz', d: 'w' };
+
+    it('frames a blank row inside the table like any other', () => {
+      expect(draw('{table border}\n{a} {b}\n\n{c} {d}\n{/table}', cells)).toEqual([
+        '      ',
+        '▏x y ▕',
+        '▏    ▕',
+        '▏zz w▕'
+      ]);
+    });
+
+    it('starts a framed table on a line of its own when its line already draws something', () => {
+      expect(draw('HP {table border}{a} {b}\n{c} {d}{/table}', cells)).toEqual([
+        'HP ',
+        '      ',
+        '▏x y ▕',
+        '▏zz w▕'
+      ]);
+    });
+
+    it('counts the padding before a glyph, so the frame’s right side stays in line', () => {
+      const lines = renderTemplate(
+        '{table border}\n{for row in rows}\n{row.name}{row.icon|right}\n{/for}\n{/table}',
+        {
+          rows: [
+            { name: 'ab', icon: 'wide' },
+            { name: 'abcd', icon: { text: '', glyph: { icon: 'head', label: 'Head' } } }
+          ]
+        }
+      );
+      expect(lines.map(plainOf)).toEqual(['          ', '▏ab  wide▕', `▏abcd  ${GLYPH_BLANK}▕`]);
+    });
+
+    it('draws nothing for a list with no rows', () => {
+      expect(
+        draw('{table header border cells}\n{for rows}\n{name}\n{/for}\n{/table}\nafter', {
+          rows: []
+        })
+      ).toEqual(['after']);
+    });
+  });
+
   it('says what could not be parsed, and still draws', () => {
     const open = parseTemplate('{if hp}a{for items}b');
     expect(open.problems).toEqual([
