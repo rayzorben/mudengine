@@ -3317,6 +3317,42 @@ describe('the party this character travels with', () => {
   });
 
   /*
+   * Festus's log, 2026-11-15: Kai died beside him, both following Killa. The
+   * server told Festus nothing about the party, the next `par` listed Kai no
+   * more, and until then Kai was healed into `You don't see kai here!`.
+   */
+  it('takes a member who dies out of the party, and not one who only falls', () => {
+    const { tracker, feed } = feeder();
+    const members = (): string[] => tracker.current.party.members.map((m) => m.name);
+    feed('[HP=734/734,MA=26/187]:');
+    feed('You are following Killa.');
+    feed('The following people are in your travel party:');
+    feed('  Killa                         (Mage)       [M:100%] [H: 99%]R - Frontrank');
+    feed('  Festus Ival                   (Paladin)    [M: 22%] [H:100%]  - Frontrank');
+    feed('  Kai                           (Mystic)     [K: 94%] [H: 40%]  - Midrank');
+    feed('[HP=734/734,MA=26/187]:');
+    feed('Kai drops to the ground!');
+    expect(members()).toEqual(['Killa', 'Festus', 'Kai']);
+    feed('Rend is dead.');
+    expect(members()).toEqual(['Killa', 'Festus', 'Kai']);
+    feed('Kai is dead.');
+    expect(members()).toEqual(['Killa', 'Festus']);
+    expect(tracker.current.party.following).toBe('Killa');
+  });
+
+  /* `Party.MemberLeave` takes off a leader or a follower only (server source, no capture). */
+  it('keeps an invitation whose invitee dies', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=101/KAI=5]:');
+    feed('The following people are in your travel party:');
+    feed('  Vaelor                        (Mystic)     [M:100%] [H:100%]  - Frontrank');
+    feed('  Soul Guardian                 (Warrior)    [Invited]');
+    feed('[HP=101/KAI=5]:');
+    feed('Soul is dead.');
+    expect(tracker.current.party.members.map((m) => m.name)).toEqual(['Vaelor', 'Soul']);
+  });
+
+  /*
    * Todo 142, the same evening: Brackle's MegaMUD appends `, Resting`, and
    * after he rejoined his row had no figures while the registry still held
    * his maximum, so the listing's share is laid over it.

@@ -652,18 +652,17 @@ export class Classifier {
     );
   }
 
+  /** Whether a line shaped like a room name is one: title case, or the realm's exact spelling. */
+  private namesRoom(name: string): boolean {
+    return looksLikeRoomName(name) || (fitsNameLength(name) && this.spelledAsRoom?.(name) === true);
+  }
+
   /** The first rule of `rules` that reads `text`, as a block; null when none does. */
   private firstMatch(rules: readonly Rule[], line: StreamLine, text: string): Block | null {
     for (const rule of rules) {
       const match = rule.pattern.exec(text);
       if (!match) continue;
-      if (
-        rule.type === 'room-name' &&
-        !looksLikeRoomName(text) &&
-        !(fitsNameLength(text) && this.spelledAsRoom?.(text) === true)
-      ) {
-        continue;
-      }
+      if (rule.type === 'room-name' && !this.namesRoom(text.trimEnd())) continue;
       if (this.inDescription && rule.outsideDescription) continue;
       /*
        * Not a room while a listing is being read. A gang name wrapped onto its
@@ -688,7 +687,9 @@ export class Classifier {
        */
       if (
         rule.type === 'room-name' &&
-        (this.batch === null ? opensRoomLikeListing(text) : this.batch.rule.tailsLookLikeRooms)
+        (this.batch === null
+          ? opensRoomLikeListing(text.trimEnd())
+          : this.batch.rule.tailsLookLikeRooms)
       ) {
         continue;
       }

@@ -841,8 +841,8 @@ describe('looksLikeRoomName', () => {
 
   // Mutant: the realm's own spelling not asked when the case fails.
   it('reads a name the realm spells without title case, and only that spelling', () => {
-    // Paradigm's 13/206, as the festus log printed it (2026-11-12).
-    const realm = new Set(['Jungle trail', 'Up']);
+    // Paradigm's 13/206 and 17/2253, as the festus logs printed them (2026-11-12, 2026-11-15).
+    const realm = new Set(['Jungle trail', 'mausoleum, Stone Hallway', 'Up']);
     const spelledAsRoom = (text: string): boolean => realm.has(text);
     const none = undefined;
     const classifier = new Classifier(
@@ -861,6 +861,13 @@ describe('looksLikeRoomName', () => {
     expect(classifier.classify(line('Jungle trail')).block.type).toBe('room-name');
     // Positive control: a line the realm does not spell so is still not a name.
     expect(classifier.classify(line('Jungle path')).block.type).not.toBe('room-name');
+    // A lower-case first letter reaches the realm's spelling too, and only that spelling.
+    expect(classifier.classify(line('mausoleum, Stone Hallway')).block.type).toBe('room-name');
+    // Padded as the server printed it, the name is still the realm's trimmed spelling.
+    const padded = classifier.classify(line(`mausoleum, Stone Hallway${' '.repeat(29)}`)).block;
+    expect(padded.type).toBe('room-name');
+    expect(padded.groups['name']).toBe('mausoleum, Stone Hallway');
+    expect(classifier.classify(line('mausoleum, Stone Stairs')).block.type).not.toBe('room-name');
     // And a realm room too short to tell from a stray word stays out (Paradigm has an `Up`).
     expect(classifier.classify(line('Up')).block.type).not.toBe('room-name');
   });
@@ -1900,6 +1907,9 @@ describe('combat, anchored on the frame', () => {
   it('reads a player’s death and a rest', () => {
     expect(expectType('Trickster drops to the ground!', 'player-dies')['player']).toBe('Trickster');
     expect(expectType('Rend is dead.', 'player-dies')['player']).toBe('Rend');
+    // The fall is not the death: only `is dead.` takes a member out of the party.
+    expect(expectType('Rend is dead.', 'player-dies')['dead']).toBeDefined();
+    expect(expectType('Rend drops to the ground!', 'player-dies')['dead']).toBeUndefined();
     expect(expectType('Kaylon kneels to meditate.', 'player-rests')['player']).toBe('Kaylon');
   });
 

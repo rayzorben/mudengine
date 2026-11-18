@@ -1287,8 +1287,13 @@ export const RULES: Rule[] = [
    * A player's death is composed in `Player.cs` — `<Name> drops to the
    * ground!`, then `<Name> is dead.` — unlike a monster's, which is realm data
    * and deliberately unmatched. 105 lines, 91 distinct names, all players.
+   * `dead` tells the death from the fall before it: only the dead leave the
+   * party (`withMemberDead`).
    */
-  { type: 'player-dies', pattern: /^(?<player>[A-Z][\w'-]*) (?:drops to the ground!|is dead\.)$/ },
+  {
+    type: 'player-dies',
+    pattern: /^(?<player>[A-Z][\w'-]*) (?:drops to the ground!|(?<dead>is dead)\.)$/
+  },
   /*
    * Somebody else sitting down, and which of the two it is.
    *
@@ -2411,8 +2416,16 @@ export const RULES: Rule[] = [
      * concentrated in the starting city, where a character spends most of its
      * early life. `looksLikeRoomName` is what keeps the wider shape from
      * swallowing prose.
+     *
+     * The first letter may be lower case because Paradigm names 19 rooms so
+     * (`mausoleum Labyrinth`, 17/2248 to 2255, among 63 `Mausoleum Labyrinth`),
+     * and a lower-case name failed here before the realm's spelling was asked:
+     * the walk kept the room it left (festus, 2026-11-15). A line not in title
+     * case is still refused unless the realm spells a room exactly so. The
+     * server padded 28 of the 29 prints with spaces and the world file holds
+     * the name trimmed, so the padding stays outside `name`.
      */
-    pattern: /^(?<name>[A-Z][\w'-]*\.?(?:(?:,\s+|\s+)(?:&|[A-Za-z][\w'-]*\.?))*)$/,
+    pattern: /^(?<name>[A-Za-z][\w'-]*\.?(?:(?:,\s+|\s+)(?:&|[A-Za-z][\w'-]*\.?))*)\s*$/,
     expectColour: [36]
   }
 ];

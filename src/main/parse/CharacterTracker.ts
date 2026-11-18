@@ -121,6 +121,7 @@ import {
   withInvited,
   withJoined,
   withLeft,
+  withMemberDead,
   withNoGang,
   withoutPlayer,
   withRank,
@@ -2396,13 +2397,11 @@ export class CharacterTracker {
         return this.fight.blowOnMe(s, block.at, attacker);
       }
 
-      /*
-       * A player died in this room. They leave the occupant list and the
-       * fight exactly as a killed monster does — a corpse is not an attacker,
-       * and a rule swinging at `{target}` must not be handed one.
-       */
-      case 'player-dies':
-        return playerDies(s, g['player']);
+      /* Out of the room and the fight (`playerDies`); the dead are out of the party too. */
+      case 'player-dies': {
+        const fallen = playerDies(s, g['player']);
+        return (g['dead'] ? withMemberDead(fallen ?? s, g['player']) : null) ?? fallen;
+      }
 
       /*
        * Coins landing on the floor are loot, and the room's item list is where

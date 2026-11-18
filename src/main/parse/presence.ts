@@ -726,6 +726,27 @@ export function withLeft(
   return { ...s, party: !pending && members.length <= 1 ? NO_PARTY : { ...s.party, members } };
 }
 
+/**
+ * `<Name> is dead.` naming a member: the dead are out of the party.
+ *
+ * `Player.Killed` calls `Party.MemberLeave`, which tells the leader `<Name>
+ * is no longer following you.` and the dead `You are no longer following
+ * <leader>.`, and tells the other followers nothing, so a follower has only
+ * the death to read it from. Festus's log, 2026-11-15: Kai died, the next
+ * `par` listed him no more, and until then the client sent `mahe Kai` eight
+ * times into `You don't see kai here!`. An invitation stands through a death
+ * (`MemberLeave` takes off a leader or a follower only), and this
+ * character's own death is left to the sentence the server sends it.
+ */
+export function withMemberDead(
+  s: CharacterState,
+  player: string | undefined
+): CharacterState | null {
+  if (!player || player === s.name) return null;
+  const joined = s.party.members.some((entry) => entry.name === player && !entry.invited);
+  return joined ? withLeft(s, false, player) : null;
+}
+
 /** A rank announcement; the player defaults to this character where the line names none. */
 export function withRank(
   s: CharacterState,
