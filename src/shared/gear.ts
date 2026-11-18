@@ -1168,6 +1168,8 @@ export interface OffRoundSteps {
   useAt: number;
   /** The first item put back on after the `use`, or null when nothing is. */
   putBack: string | null;
+  /** Every item the plan takes off, or could take off, which is worn again once it ends. */
+  kept: string[];
 }
 
 /** One hand or two, as the pack or the realm says; null unknown. */
@@ -1187,7 +1189,7 @@ export function offRoundSteps(
   const inHand = heldWeapon(items);
   // Already the weapon in hand: the whole dance is one command.
   if (inHand !== undefined && sameItem(inHand.name, item))
-    return { commands: [use], useAt: 0, putBack: null };
+    return { commands: [use], useAt: 0, putBack: null, kept: [] };
 
   const offHand = handsOf(spear.name) === 2 ? inOffHand(items) : undefined;
   const off = offHand === undefined ? [] : [unequip(offHand.name)];
@@ -1196,6 +1198,7 @@ export function offRoundSteps(
   return {
     commands: [...off, equip(spear.name), use, ...back.map(equip)],
     useAt: off.length + 1,
-    putBack: back[0] ?? null
+    putBack: back[0] ?? null,
+    kept: back
   };
 }

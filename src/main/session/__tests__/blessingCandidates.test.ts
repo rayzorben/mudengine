@@ -7,6 +7,7 @@ import { WEAPON_HAND } from '../../../shared/items';
 import type { BlessingRealm } from '../../../shared/invoke';
 import { prowessSheetOf } from '../../../shared/verdict';
 import type { WorldItem, WorldSpell } from '../../../shared/world';
+import type { WornReads } from '../../../shared/wornForUse';
 
 /** `weapon major bless` as the shipped realm carries it: party target, accuracy by power. */
 const BLESS: WorldSpell = {
@@ -65,7 +66,12 @@ const pricing = (state: CharacterState): CandidatePricing => ({
   speed: 1,
   learnedDuration: () => null
 });
-const ONE_HAND = (): 1 => 1;
+/** One-handed weapons, and a slot per item where a test names one. */
+const reads = (slots: Record<string, string> = {}): WornReads => ({
+  handsOf: () => 1,
+  slotOf: (name) => slots[name] ?? null
+});
+const ONE_HAND = reads();
 const carried = (name: string, equipped: boolean): CarriedItem => ({ ...wireItem(name), equipped });
 
 describe('the carried items Auto Choose Blessings weighs', () => {
@@ -88,8 +94,8 @@ describe('the carried items Auto Choose Blessings weighs', () => {
     expect(found[0]!.duration?.from).toBe('realm');
   });
 
-  /* Armour goes in its own place, which the swap does not put back. */
-  it('leaves armour in the pack not worn', () => {
+  /* Armour in the pack: worn over the emblem, used, the emblem worn again. */
+  it('prices armour in the pack as a swap, and leaves it not worn where its slot is unknown', () => {
     const cross: WorldItem = {
       ...ITEMS['black flail']!,
       name: 'large silvery cross',
@@ -99,7 +105,11 @@ describe('the carried items Auto Choose Blessings weighs', () => {
       ...realm,
       itemsNamed: (names) => Object.fromEntries(names.map((name) => [name, cross]))
     };
-    const state = bare([carried('large silvery cross', false)]);
+    const state = bare([carried('large silvery cross', false), carried('onyx emblem', true)]);
+    const worn = reads({ 'large silvery cross': 'Worn', 'onyx emblem': 'Worn' });
+    expect(itemCandidates(state, pricing(state), withCross, worn).map((each) => each.via)).toEqual([
+      { kind: 'item', item: 'large silvery cross', hand: { kind: 'swap', commands: 2 } }
+    ]);
     expect(
       itemCandidates(state, pricing(state), withCross, ONE_HAND).map((each) => each.via)
     ).toEqual([{ kind: 'item', item: 'large silvery cross', hand: { kind: 'not-worn' } }]);

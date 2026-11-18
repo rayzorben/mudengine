@@ -165,6 +165,7 @@ function choice(on: AutomationConfig = config, realmSpeed = 1) {
     errands: {
       realmSpeed,
       gearHandsOf: () => null,
+      gearSlotOf: () => null,
       fitness: (state) => `ac ${state.progress.armourClass} dr ${state.progress.damageResist}`,
       realmClass: () => ({
         combat: 4,

@@ -1,9 +1,10 @@
 /**
  * Whether the fighting weapon is back in hand after a bless weapon was wielded
- * from the pack for its `use` (todo 42), and saying so when it is not. The
- * swap-back can fail (the weapon dropped or stolen, `You may not wear that
- * item!`), and a character must never fight on with the bless weapon without
- * the player knowing. Reads the pack's hand only; `AutoInvoke` arms it.
+ * from the pack for its `use` (todo 42), or the armour back on after bless
+ * armour took its slot, and saying so when it is not. The swap-back can fail
+ * (the item dropped or stolen, `You may not wear that item!`), and a
+ * character must never fight on in the bless item without the player
+ * knowing. Reads the pack's worn items only; `AutoInvoke` arms it.
  */
 import type { CharacterState } from '../../shared/character';
 import { heldWeapon } from '../../shared/gear';
@@ -18,8 +19,15 @@ export interface SwapBackEvents {
 
 interface Armed {
   bless: string;
-  /** What goes back on: the weapon that was in hand, else the off-hand a two-hander took off. */
+  /**
+   * What goes back on: the weapon that was in hand, else the off-hand a
+   * two-hander took off, else the armour that was in the bless armour's slot.
+   */
   back: string;
+  /** Everything the swap takes off or could take off, all worn again when it has settled. */
+  kept: readonly string[];
+  /** Whether the swap took the weapon hand, which a fight may ask for. */
+  hand: boolean;
   /** Whether any of the swap's commands still waits in the queue. */
   inQueue: () => boolean;
   /** Whether the swap's first command went out, taking `back` out of hand. */
@@ -42,8 +50,14 @@ export class SwapBack {
   }
 
   /** A swap was queued, so no second one is queued behind it. */
-  queued(bless: string, back: string, inQueue: () => boolean): void {
-    this.armed = { bless, back, inQueue, begun: false, backSentAt: null };
+  queued(
+    bless: string,
+    back: string,
+    kept: readonly string[],
+    hand: boolean,
+    inQueue: () => boolean
+  ): void {
+    this.armed = { bless, back, kept, hand, inQueue, begun: false, backSentAt: null };
   }
 
   /** The swap's first command went out. */
@@ -60,9 +74,13 @@ export class SwapBack {
     this.armed = null;
   }
 
-  /** Ends the watch, giving the weapon to put back where the swap's first command went. */
+  /**
+   * Ends a weapon swap's watch, giving the weapon to put back where the
+   * swap's first command went. An armour swap is not the hand's and stays.
+   */
   handOver(): string | null {
     const armed = this.armed;
+    if (armed !== null && !armed.hand) return null;
     this.armed = null;
     return armed?.begun === true ? armed.back : null;
   }
@@ -70,7 +88,7 @@ export class SwapBack {
   /**
    * On every state change. Ended by the queue, never by a clock of its own:
    * forgotten when nothing of a swap whose first command never went is still
-   * queued, settled when `back` is in hand after the last command went. Said
+   * queued, settled when all of `kept` is worn after the last command went. Said
    * once when the commands putting `back` were dropped from the queue, or
    * `swapBackMs` passes after they went with `back` not in hand.
    */
@@ -84,23 +102,26 @@ export class SwapBack {
       return;
     }
     const held = heldWeapon(state.inventory.items);
-    const backInHand = state.inventory.items.some(
-      (item) => item.equipped && sameItem(item.name, armed.back)
+    const off = armed.kept.find(
+      (name) => !state.inventory.items.some((item) => item.equipped && sameItem(item.name, name))
     );
     if (armed.backSentAt === null) {
       // Still on its way, behind whatever a fight queued first.
       if (armed.inQueue()) return;
-    } else if (backInHand) {
+    } else if (off === undefined) {
       this.armed = null;
       return;
     } else if (this.now() - armed.backSentAt < tuning().spells.swapBackMs) return;
     this.armed = null;
+    const missing = off ?? armed.back;
     this.events.notice?.(
-      t('automation.invoke.notPutBack', {
-        weapon: armed.back,
-        held: held?.name ?? t('automation.invoke.emptyHand'),
-        item: armed.bless
-      }),
+      armed.hand && missing === armed.back
+        ? t('automation.invoke.notPutBack', {
+            weapon: missing,
+            held: held?.name ?? t('automation.invoke.emptyHand'),
+            item: armed.bless
+          })
+        : t('automation.invoke.notWornBack', { back: missing, item: armed.bless }),
       'swap-back-check'
     );
   }

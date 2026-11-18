@@ -44,9 +44,9 @@ export const BLESSING_REFUSALS = [
   'exclusive',
   /** The same spell is already chosen, from the spellbook or another item. */
   'same-spell',
-  /** Armour that blesses only while worn, and it is in the pack. */
+  /** It blesses only while worn, it is in the pack, and there is no plan to put it on. */
   'not-worn',
-  /** A weapon in the pack whose swap would cost more commands an hour than a swap may. */
+  /** An item in the pack whose swap would cost more commands an hour than a swap may. */
   'swap-too-often',
   /** Up, the fight goes no better by enough to pay for it. */
   'no-gain',
@@ -65,9 +65,9 @@ export type BlessingVia =
 
 /**
  * Whether `use` takes the item as it is carried. `use` refuses a weapon or
- * armour that is not worn; a weapon in the pack is wielded for the cast and
- * the fighting weapon put back (`offRoundPlan`, todo 42), `commands` more
- * than the `use`; armour in the pack waits to be worn.
+ * armour that is not worn; one in the pack is put on for the cast and what
+ * it took the place of put back (`useFromPackSteps`), `commands` more than
+ * the `use`; one whose slot is unknown waits to be worn.
  */
 export type ItemHand =
   { kind: 'ready' } | { kind: 'swap'; commands: number } | { kind: 'not-worn' };

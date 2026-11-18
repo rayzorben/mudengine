@@ -54,7 +54,10 @@ export interface BlessingChoiceParts {
   readonly world:
     | Pick<WorldGraph, 'spellNamed' | 'byId' | 'lairEntities' | 'itemsNamed' | 'spellById'>
     | undefined;
-  readonly errands: Pick<Errands, 'fitness' | 'realmClass' | 'realmSpeed' | 'gearHandsOf'>;
+  readonly errands: Pick<
+    Errands,
+    'fitness' | 'realmClass' | 'realmSpeed' | 'gearHandsOf' | 'gearSlotOf'
+  >;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
   readonly simulator: FightSimulator;
@@ -272,7 +275,10 @@ export class BlessingChoice
     const own = config.spells.blessings.filter((row) => row.target === 'self');
     return [
       ...bookCandidates(bare, pricing, own, spellOf),
-      ...itemCandidates(bare, pricing, world, (name) => this.errands.gearHandsOf(name))
+      ...itemCandidates(bare, pricing, world, {
+        handsOf: (name) => this.errands.gearHandsOf(name),
+        slotOf: (name) => this.errands.gearSlotOf(name)
+      })
     ];
   }
 
@@ -432,6 +438,7 @@ export function blessingsFor(
     spellById: (id) => world?.spellById(id) ?? null,
     spellNamed: (name) => world?.spellNamed(name) ?? null,
     handsOf: (name) => errands.gearHandsOf(name),
+    slotOf: (name) => errands.gearSlotOf(name),
     charges,
     fightHere: () => fightHere(tracker.current, rest.signs, Date.now())
   };

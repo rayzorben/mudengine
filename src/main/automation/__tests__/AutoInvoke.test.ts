@@ -69,6 +69,7 @@ const sources = (over: Partial<InvokeSources> = {}): InvokeSources => ({
   spellById: (id) => (id === 114 ? BLESS : null),
   spellNamed: (name) => (name.trim().toLowerCase() === 'weapon major bless' ? BLESS : null),
   handsOf: () => 1,
+  slotOf: () => null,
   fightHere: () => false,
   charges: { usesLeft: () => null, lookOnce: () => undefined, used: () => undefined },
   ...over
@@ -277,14 +278,124 @@ describe('asking a carried item for its blessing', () => {
     ]);
   });
 
-  /* Armour must be worn in its own place, which this swap does not do. */
-  it('leaves bless armour in the pack alone', () => {
-    const tome: WorldItem = { ...LONGSWORD, kind: 'armour' };
-    run({ itemsNamed: named(() => tome) }).consider(
-      state({}, [carried('shimmering longsword', false)])
-    );
-    vi.advanceTimersByTime(200);
-    expect(sent).toEqual([]);
+  /*
+   * Bless armour in the pack (the engraved warhorn, 2026-11-18): worn over
+   * what is in its slot, used, and that item worn again. `wear` takes the old
+   * item off itself where the slot has one place (`EquipCommand.Execute`).
+   */
+  describe('bless armour in the pack', () => {
+    const HORN: WorldItem = { ...LONGSWORD, name: 'engraved warhorn', kind: 'armour' };
+    const horn = (slots: Record<string, string>, over: Partial<InvokeSources> = {}): AutoInvoke =>
+      run({ itemsNamed: named(() => HORN), slotOf: (name) => slots[name] ?? null, ...over }, true, [
+        'engraved warhorn'
+      ]);
+
+    it('wears it, uses it and wears what was in its slot again', () => {
+      horn({ 'engraved warhorn': 'Worn', 'onyx emblem': 'Worn', 'star helm': 'Head' }).consider(
+        state({}, [
+          carried('star helm'),
+          carried('onyx emblem'),
+          carried('engraved warhorn', false)
+        ])
+      );
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['wear engraved warhorn', 'use engraved warhorn', 'wear onyx emblem']);
+    });
+
+    it('wears it into an empty slot and leaves it on', () => {
+      horn({ 'engraved warhorn': 'Worn', 'star helm': 'Head' }).consider(
+        state({}, [carried('star helm'), carried('engraved warhorn', false)])
+      );
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['wear engraved warhorn', 'use engraved warhorn']);
+    });
+
+    /* Two rings on: `wear` would take off the first place, which the inventory does not name. */
+    it('takes one of two rings off by name and puts it back in the same place', () => {
+      horn({ 'engraved warhorn': 'Finger', 'gold ring': 'Finger', 'jade ring': 'Finger' }).consider(
+        state({}, [carried('gold ring'), carried('jade ring'), carried('engraved warhorn', false)])
+      );
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual([
+        'remove gold ring',
+        'wear engraved warhorn',
+        'use engraved warhorn',
+        'remove engraved warhorn',
+        'wear gold ring'
+      ]);
+    });
+
+    /* A worn item whose slot nobody knows could be the one `wear` takes off. */
+    it('sends nothing while its slot or a worn item slot is unknown', () => {
+      const pack = [carried('onyx emblem'), carried('engraved warhorn', false)];
+      horn({ 'onyx emblem': 'Worn' }).consider(state({}, pack));
+      horn({ 'engraved warhorn': 'Worn' }).consider(state({}, pack));
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual([]);
+    });
+
+    /* The hand is not this swap's: a fight asking for it gets nothing and drops nothing. */
+    it('finishes when a fight takes the weapon hand', () => {
+      const invoke = horn({ 'engraved warhorn': 'Worn', 'onyx emblem': 'Worn' });
+      invoke.consider(state({}, [carried('onyx emblem'), carried('engraved warhorn', false)]));
+      expect(invoke.yieldHand()).toBeNull();
+      vi.advanceTimersByTime(200);
+      expect(sent).toEqual(['wear engraved warhorn', 'use engraved warhorn', 'wear onyx emblem']);
+    });
+
+    it('says when the old item is not back on', () => {
+      const notices: string[] = [];
+      const invoke = new AutoInvoke(
+        { invokeItems: true, invokeWith: ['engraved warhorn'] },
+        true,
+        queue,
+        sources({
+          itemsNamed: named(() => HORN),
+          slotOf: () => 'Worn'
+        }),
+        undefined,
+        undefined,
+        undefined,
+        { notice: (message) => notices.push(message) }
+      );
+      invoke.consider(state({}, [carried('onyx emblem'), carried('engraved warhorn', false)]));
+      vi.advanceTimersByTime(200);
+      expect(sent).toHaveLength(3);
+      const hornOn = [carried('onyx emblem', false), carried('engraved warhorn')];
+      vi.advanceTimersByTime(60_000);
+      invoke.consider(state({}, hornOn));
+      invoke.consider(state({}, hornOn));
+      expect(notices).toEqual(['onyx emblem is not back on after using engraved warhorn.']);
+    });
+
+    /*
+     * A cursed ring's `remove` is refused, so `wear` takes off the ring in
+     * the first place, which can be the other one. Both rings are watched.
+     */
+    it('says when the other ring of two is the one left off', () => {
+      const notices: string[] = [];
+      const invoke = new AutoInvoke(
+        { invokeItems: true, invokeWith: ['engraved warhorn'] },
+        true,
+        queue,
+        sources({ itemsNamed: named(() => HORN), slotOf: () => 'Finger' }),
+        undefined,
+        undefined,
+        undefined,
+        { notice: (message) => notices.push(message) }
+      );
+      const rings = (jade: boolean): CarriedItem[] => [
+        carried('gold ring'),
+        carried('jade ring', jade),
+        carried('engraved warhorn', false)
+      ];
+      invoke.consider(state({}, rings(true)));
+      vi.advanceTimersByTime(200);
+      expect(sent).toHaveLength(5);
+      vi.advanceTimersByTime(60_000);
+      invoke.consider(state({}, rings(false)));
+      expect(notices).toEqual(['jade ring is not back on after using engraved warhorn.']);
+    });
   });
 
   /* Never mid-fight: `use` and `wear` both break combat. */

@@ -6100,8 +6100,8 @@ settings:
       picks whether this is on or not.
     invokeLegend: Items That Bless
     invokeNote: Items in your inventory that cast a bless when used, for ever or with uses that come
-      back each new day. Tick the ones to use; a weapon or armour blesses only while it is worn or
-      wielded.
+      back each new day. Tick the ones to use; a weapon or armour that is not equipped is put on
+      out of a fight and used, and anything it took the place of is put back on.
     invokeUnlisted: List your inventory (i) in the realm to see which items can bless.
     invokeNone: Nothing in your inventory can bless.
     invokeNoneChosen: No item is ticked, so the switch uses none. Tick one below.
@@ -7332,6 +7332,10 @@ automation:
     swapReason: wielding {item} to cast {spell}, then the weapon you fight with
     notPutBack: '{weapon} is not back in your hand after using {item}: you are holding {held}.'
     emptyHand: nothing
+    # Bless armour in the pack, worn for the cast and what it replaced worn again.
+    wearReason: wearing {item} to cast {spell}
+    wearBackReason: wearing {item} to cast {spell}, then {back} again
+    notWornBack: '{back} is not back on after using {item}.'
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
@@ -7365,8 +7369,8 @@ automation:
     whyUnknownDuration: how long it lasts is not known
     whyExclusive: it cancels a spell already chosen
     whySameSpell: the same spell is already chosen
-    whyNotWorn: it blesses only while worn, and it is in your pack
-    whySwapTooOften: it wears off too soon to be worth wielding it from your pack and back each time
+    whyNotWorn: it blesses only while worn, and it cannot be put on from your pack as you are
+    whySwapTooOften: it wears off too soon to be worth putting it on from your pack and back each time
     whyNoGain: not worth its mana here
     whyOverBudget: the heals would run short of mana
   castRound:

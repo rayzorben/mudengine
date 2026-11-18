@@ -11,7 +11,7 @@ import type { BlessingCandidate, BlessingVia, ItemHand } from '../../shared/bles
 import { effectOf } from '../../shared/blessingeffects';
 import type { BlessingConfig } from '../../shared/blessings';
 import type { CharacterState } from '../../shared/character';
-import { offRoundPlan, type HandsOf } from '../../shared/gear';
+import { useFromPackSteps, type WornReads } from '../../shared/wornForUse';
 import { carriedBlessings, type BlessingRealm, type ItemBlessing } from '../../shared/invoke';
 import { effectSeconds, scaledDuration } from '../../shared/menace';
 import { castOdds, type ProwessSheet } from '../../shared/prowess';
@@ -49,22 +49,22 @@ export function bookCandidates(
 
 /**
  * The carried items that bless, each priced. Only a listed pack: an unlisted
- * one is not an empty one. A weapon in the pack carries its swap's commands
- * and armour in the pack is `not-worn`, so the choice can price the one and
- * say why it passed over the other.
+ * one is not an empty one. A weapon or armour in the pack carries its swap's
+ * commands, and one with no swap (its slot unknown) is `not-worn`, so the
+ * choice can price the one and say why it passed over the other.
  */
 export function itemCandidates(
   bare: CharacterState,
   pricing: CandidatePricing,
   realm: BlessingRealm,
-  handsOf: HandsOf
+  reads: WornReads
 ): BlessingCandidate[] {
   if (bare.inventory.listedAt === null) return [];
   const items = bare.inventory.items;
   // Unlimited items only: upkeep over an hour outruns a charged item's uses a day (todo 44).
   return carriedBlessings(items, realm).flatMap(
     ({ item, blessing, equipped }): BlessingCandidate[] => {
-      const hand = handOf(item, blessing, equipped, items, handsOf);
+      const hand = handOf(item, blessing, equipped, items, reads);
       const candidate = priced(item, blessing.spell, pricing, { kind: 'item', item, hand });
       return candidate === null ? [] : [candidate];
     }
@@ -77,12 +77,12 @@ function handOf(
   blessing: ItemBlessing,
   equipped: boolean,
   items: CharacterState['inventory']['items'],
-  handsOf: HandsOf
+  reads: WornReads
 ): ItemHand {
   if (equipped || !blessing.mustBeEquipped) return { kind: 'ready' };
-  if (!blessing.weapon) return { kind: 'not-worn' };
   // The `use` is a cast like any book cast; the commands around it are the swap.
-  const commands = offRoundPlan(item, null, items, handsOf).length - 1;
+  const plan = useFromPackSteps(item, blessing.weapon, items, reads);
+  const commands = (plan?.commands.length ?? 0) - 1;
   return commands < 1 ? { kind: 'not-worn' } : { kind: 'swap', commands };
 }
 

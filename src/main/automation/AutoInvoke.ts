@@ -9,8 +9,9 @@
  * fight or while a token that negates is next (`NegateDue`); one cast a round
  * (`CastGate`). The server's answer to a `use` is read (`invokeAnswer.ts`): a
  * failed roll or spent round is tried again, a refusal holds the item and is
- * said. A bless weapon in the pack is wielded for the `use` and the fighting
- * weapon put back (`offRoundPlan`, todo 42), watched by `SwapBack`. See
+ * said. A bless weapon or bless armour in the pack is put on for the `use` and
+ * what it took the place of put back (`useFromPackSteps`), watched by
+ * `SwapBack`. See
  * `mudengine-automation` › parts/recovery.md, *A weapon that blesses is
  * chosen, and pays the spell's mana*.
  */
@@ -20,7 +21,7 @@ import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
 import { exclusive } from '../../shared/blessingeffects';
-import { isEquipCommand, offRoundSteps, type HandsOf } from '../../shared/gear';
+import { isEquipCommand } from '../../shared/gear';
 import { bareName, sameItem } from '../../shared/items';
 import {
   renewingBlessing,
@@ -36,6 +37,7 @@ import {
   spellIsUp,
   type CastGate
 } from '../../shared/spellcraft';
+import { useFromPackSteps, type WornReads } from '../../shared/wornForUse';
 import type { WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -47,7 +49,7 @@ import type { SessionModule } from './Module';
 import { SwapBack, type SwapBackEvents } from './SwapBack';
 
 /** What this needs of the realm, injected as functions. */
-export interface InvokeSources extends BlessingRealm {
+export interface InvokeSources extends BlessingRealm, WornReads {
   /**
    * A spell by name, for the buff list, which carries words, not ids.
    *
@@ -59,8 +61,6 @@ export interface InvokeSources extends BlessingRealm {
   spellNamed(name: string): WorldSpell | null;
   /** The uses left on a charged item, and a look to learn them (`ItemCharges`, todo 44). */
   charges: Pick<ChargeLedger, 'usesLeft' | 'lookOnce' | 'used'>;
-  /** One hand or two, as `Errands.gearHandsOf` reads it, or null. */
-  handsOf: HandsOf;
   /** A fight running, asked for or still swinging, on the state at the send (`fightHere`). */
   fightHere(): boolean;
 }
@@ -72,12 +72,16 @@ export interface AutoInvokeEvents extends SwapBackEvents {
 
 /** The coalesce keys of a swap's commands, by which the queue says one is still waiting. */
 const SWAP_KEY = 'invoke-swap:';
+/** The same for armour worn from the pack, which a fight wanting the hand leaves alone. */
+const WORN_KEY = 'invoke-worn:';
 
-/** What a chosen item would give now, and whether it is wielded from the pack first. */
+/** What a chosen item would give now, and whether it is put on from the pack first. */
 interface Offer {
   spell: WorldSpell;
   several: boolean;
   swap: boolean;
+  /** A weapon by the realm's word: the swap takes the hand. */
+  weapon: boolean;
 }
 
 /** The two settings this reads: the switch and the items it may use. */
@@ -238,12 +242,14 @@ export class AutoInvoke implements SessionModule {
   }
 
   /**
-   * The weapon hand is wanted for a fight (`EquipmentManager.wieldFor`): the
-   * swap's commands still queued are dropped, and the weapon it would have
-   * put back is returned for that module to put back after the fight; null
-   * where no swap had started.
+   * The weapon hand is wanted for a fight (`EquipmentManager.wieldFor`): a
+   * weapon swap's commands still queued are dropped, and the weapon it would
+   * have put back is returned for that module to put back after the fight;
+   * null where no weapon swap had started. Armour worn from the pack is left
+   * to finish.
    */
   yieldHand(): string | null {
+    // `WORN_KEY` commands are not cancelled: the hand is not theirs.
     this.queue.cancel((intent) => intent.coalesceKey?.startsWith(SWAP_KEY) === true);
     return this.swapBack.handOver();
   }
@@ -259,11 +265,12 @@ export class AutoInvoke implements SessionModule {
 
   /**
    * A bless weapon in the pack: wielded, used, and the fighting weapon (and a
-   * two-hander's off-hand) put back, in one band so nothing of this module's
-   * comes between. Only the first command (the off-hand off, or the `wear`)
-   * and the `use` can be dropped (a fight, the round's cast spent, expired);
-   * once the first has gone the rest always follow, since the swap-back is
-   * what must not be lost. False where there is nothing to swap.
+   * two-hander's off-hand) put back. Bless armour in the pack: worn, used,
+   * and what was in its slot worn again. In one band so nothing of this
+   * module's comes between. Only the first command and the `use` can be
+   * dropped (a fight, the round's cast spent, expired); once the first has
+   * gone the rest always follow, since the swap-back is what must not be
+   * lost. False where there is nothing to swap.
    */
   private swap(name: string, found: Offer, state: CharacterState, now: number): boolean {
     // A fight running or asked for (`aa` unanswered) is a fight: never swap into one.
@@ -271,14 +278,17 @@ export class AutoInvoke implements SessionModule {
     // Another module's `wear` or `remove` waiting (a gear set, a reach weapon
     // going back): the hand this would put back is not settled yet.
     if (this.queue.queued((intent) => isEquipCommand(intent.command))) return false;
-    const plan = offRoundSteps(name, null, state.inventory.items, (item) =>
-      this.sources.handsOf(item)
-    );
+    const plan = useFromPackSteps(name, found.weapon, state.inventory.items, this.sources);
     if (plan === null) return false;
     const { commands, useAt, putBack } = plan;
     const spell = found.spell.name;
     const expiresAt = now + tuning().spells.buffExpiresMs;
-    const reason = t('automation.invoke.swapReason', { item: name, spell });
+    const key = found.weapon ? SWAP_KEY : WORN_KEY;
+    const reason = found.weapon
+      ? t('automation.invoke.swapReason', { item: name, spell })
+      : putBack === null
+        ? t('automation.invoke.wearReason', { item: name, spell })
+        : t('automation.invoke.wearBackReason', { item: name, spell, back: putBack });
     const wanted = (): boolean => !this.sources.fightHere() && this.gate.mayCast(spell);
     let started = false;
     const last = commands.length - 1;
@@ -286,7 +296,7 @@ export class AutoInvoke implements SessionModule {
       const step = {
         command,
         priority: 'probe' as const,
-        coalesceKey: `${SWAP_KEY}${index}:${command}`,
+        coalesceKey: `${key}${index}:${command}`,
         decision: 'invoke-item' as const,
         reason
       };
@@ -323,10 +333,10 @@ export class AutoInvoke implements SessionModule {
     const [first, ...rest] = steps;
     if (first === undefined) return false;
     // Armed before the offer: the queue may send the first command at once.
-    // Nothing to put back (an empty hand): the bless weapon stays wielded.
+    // Nothing to put back (an empty hand or slot): the bless item stays on.
     if (putBack !== null)
-      this.swapBack.queued(name, putBack, () =>
-        this.queue.queued((intent) => intent.coalesceKey?.startsWith(SWAP_KEY) === true)
+      this.swapBack.queued(name, putBack, plan.kept, found.weapon, () =>
+        this.queue.queued((intent) => intent.coalesceKey?.startsWith(key) === true)
       );
     const offered = this.queue.offer(first);
     // Refused at the door (switched off, held): nothing of the swap goes.
@@ -359,8 +369,8 @@ export class AutoInvoke implements SessionModule {
   /**
    * The buff this chosen item would give now, or null when it would give
    * none worth asking for: the realm's reading first, then the hand, the
-   * mana, and the buffs that are up. A weapon in the pack is offered as a
-   * swap; armour in the pack waits to be worn.
+   * mana, and the buffs that are up. A weapon or armour in the pack is
+   * offered as a swap.
    */
   private offer(name: string, equipped: boolean, state: CharacterState): Offer | null {
     const blessing = renewingBlessing(name, this.sources);
@@ -376,8 +386,7 @@ export class AutoInvoke implements SessionModule {
         this.sources.charges.lookOnce(name, t('automation.invoke.lookReason', { item: name }));
     }
     const swap = blessing.mustBeEquipped && !equipped;
-    if (swap && !blessing.weapon) return null;
-    const { spell, several } = blessing;
+    const { spell, several, weapon } = blessing;
     if (!canPayFor(state, spell.mana ?? null)) return null;
 
     // Already up, under its own name or any the establishing sentence could
@@ -393,7 +402,7 @@ export class AutoInvoke implements SessionModule {
       const removes = this.sources.spellNamed(buff.spell);
       return removes !== null && removes.id !== spell.id && exclusive(removes, spell);
     });
-    return clashes ? null : { spell, several, swap };
+    return clashes ? null : { spell, several, swap, weapon };
   }
 }
 
