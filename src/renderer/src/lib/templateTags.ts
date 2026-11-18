@@ -12,7 +12,13 @@ import {
   type FieldSpec,
   type RewriteEntity
 } from '@shared/rewrites';
-import { ANSI_COLOURS, STYLE_CLOSERS, STYLE_TAGS } from '@shared/template';
+import {
+  ANSI_COLOURS,
+  COLOUR_PLACES,
+  STYLE_CLOSERS,
+  STYLE_TAGS,
+  type ColourPlace
+} from '@shared/template';
 
 /** A field's tag: `{weight}`, or `{me.hp}` under a record. */
 export const tagOf = (prefix: string, key: string): string => `{${prefix}${key}}`;
@@ -32,9 +38,12 @@ export const repeatTag = (list: FieldSpec, prefix = ''): string =>
 export const selfPrefix = (entity: RewriteEntity): string =>
   ENTITY_SPECS[entity].self === 'top' ? '' : 'me.';
 
-/** A colour's tag, for the text or, with `ground`, behind it. */
-export const colourTag = (colour: string, ground: boolean): string =>
-  `{${ground ? 'bg:' : ''}${colour}}`;
+/** A colour's tag for where it goes: the text, the ground behind it or the line under it. */
+export const colourTag = (colour: string, place: ColourPlace): string =>
+  `{${COLOUR_PLACES[place]}${colour}}`;
+
+/** The places a colour may go, in the order the sidebar offers them. */
+export const COLOUR_PLACE_NAMES = Object.keys(COLOUR_PLACES) as ColourPlace[];
 
 /** A style's tag, `{bold}`, and the tag that ends it, `{/bold}`. */
 export const styleTag = (style: string): string => `{${style}}`;
@@ -77,7 +86,9 @@ export function templateTags(entity: RewriteEntity): string[] {
     ]),
     ...CHARACTER_FIELDS.flatMap((field) => fieldTags(field, self)),
     ...(lists.length > 0 ? ROW_FIELDS.flatMap((field) => fieldTags(field, '')) : []),
-    ...ANSI_COLOURS.flatMap((colour) => [colourTag(colour, false), colourTag(colour, true)]),
+    ...ANSI_COLOURS.flatMap((colour) =>
+      COLOUR_PLACE_NAMES.map((place) => colourTag(colour, place))
+    ),
     ...STYLE_TAGS.map(styleTag),
     ...STYLE_CLOSERS.map(closerTag),
     ...Object.values(CONTROL)

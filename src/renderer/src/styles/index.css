@@ -16942,9 +16942,15 @@ tr:hover .row-action.worn,
   padding-left: 1.5ch;
 }
 
+/*
+ * Laid over the two blank cells drawn before it, which are the glyph's own:
+ * the margin takes it back exactly its width, so what those cells wear (a
+ * ground, a line under the row) shows behind it.
+ */
 .rewrite-preview .rewrite-glyph {
   display: inline-block;
   height: 1em;
+  margin-inline-start: -2ch;
   vertical-align: -0.15em;
   width: 2ch;
 }

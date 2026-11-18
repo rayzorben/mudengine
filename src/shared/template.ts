@@ -3,7 +3,8 @@
  *
  * A template is text with `{tags}`: a figure (`{hp}`, `{item.weight}`,
  * `{keys|or:none}`), a colour (`{red}`, `{#ff8800}`, `{bg:blue}`), `{bold}`,
- * `{dim}`, `{strike}`, `{reset}`, a closer that puts back what was in effect before
+ * `{dim}`, `{strike}`, `{underline}` (`{underline:blue}` for a line of another
+ * colour), `{reset}`, a closer that puts back what was in effect before
  * (`{/red}`, `{/colour}`, `{/bold}`, `{/strike}`), and three controls: `{if …}` with
  * `{else if …}` and `{else}`, `{for list}` once per row with the row's
  * fields in scope, and `{table}` / `{table header}` in which every figure is a
@@ -65,6 +66,12 @@ export interface Segment {
   dim: boolean;
   /** A line through the text: a shop's scroll whose spell is learnt already (todo 770). */
   strike: boolean;
+  /**
+   * A line under the text: a rule between the rows of a listing that takes no
+   * row of its own (user, 2026-11-18). `true` is the text's own colour, a
+   * palette name or `#rrggbb` is the line's own, and `false` is no line.
+   */
+  underline: boolean | string;
 }
 
 /** The attributes a run wears, without its text: what two runs must share to be one. */
@@ -73,7 +80,12 @@ type Look = Omit<Segment, 'text'>;
 /** Whether two runs wear the same attributes, so they draw as one. */
 function sameLook(a: Look, b: Look): boolean {
   return (
-    a.fg === b.fg && a.bg === b.bg && a.bold === b.bold && a.dim === b.dim && a.strike === b.strike
+    a.fg === b.fg &&
+    a.bg === b.bg &&
+    a.bold === b.bold &&
+    a.dim === b.dim &&
+    a.strike === b.strike &&
+    a.underline === b.underline
   );
 }
 
@@ -212,26 +224,43 @@ const BLOCK_OPEN = /^(if|else if|elif|else|for|table|group)(?:\s|$)/;
 const BLOCK_CLOSE = /^\/(if|for|table)$/;
 
 /** The named style tags, as the designer's sidebar offers them. */
-export const STYLE_TAGS: readonly string[] = ['bold', 'dim', 'strike', 'reset'];
+export const STYLE_TAGS: readonly string[] = ['bold', 'dim', 'strike', 'underline', 'reset'];
 
 /** The named closers the sidebar offers; `{/color}` and `{/<colour>}` close too. */
-export const STYLE_CLOSERS: readonly string[] = ['colour', 'bg', 'bold', 'dim', 'strike'];
+export const STYLE_CLOSERS: readonly string[] = [
+  'colour',
+  'bg',
+  'bold',
+  'dim',
+  'strike',
+  'underline'
+];
+
+/**
+ * What a colour may be put on, each with the prefix its tag opens with:
+ * `{blue}` the text, `{bg:blue}` the ground behind it, `{underline:blue}` the
+ * line under it.
+ */
+export const COLOUR_PLACES = { text: '', ground: 'bg:', underline: 'underline:' } as const;
+export type ColourPlace = keyof typeof COLOUR_PLACES;
+
+const GROUND = COLOUR_PLACES.ground;
+const UNDERLINE = COLOUR_PLACES.underline;
+const COLOURED = [GROUND, UNDERLINE];
 
 function isStyleTag(tag: string): boolean {
   if (STYLE_TAGS.includes(tag)) return true;
-  if (tag.startsWith('bg:')) {
-    const colour = tag.slice(3);
-    return isAnsiColour(colour) || HEX.test(colour);
-  }
-  return isAnsiColour(tag) || HEX.test(tag);
+  const prefix = COLOURED.find((each) => tag.startsWith(each));
+  const colour = prefix === undefined ? tag : tag.slice(prefix.length);
+  return isAnsiColour(colour) || HEX.test(colour);
 }
 
-/** `{/red}`, `{/colour}`, `{/bg}`, `{/bold}`, `{/dim}`, `{/strike}`: a closer of a style. */
+/** `{/red}`, `{/colour}`, `{/bg}`, `{/bold}`, `{/dim}`, `{/strike}`, `{/underline}`: a closer of a style. */
 function isStyleCloser(tag: string): boolean {
   if (!tag.startsWith('/')) return false;
   const name = tag.slice(1);
   if (name === 'color' || STYLE_CLOSERS.includes(name)) return true;
-  if (name.startsWith('bg:')) return isStyleTag(name);
+  if (COLOURED.some((each) => name.startsWith(each))) return isStyleTag(name);
   return isAnsiColour(name) || HEX.test(name);
 }
 
@@ -820,6 +849,8 @@ interface Style {
   bold: number;
   dim: number;
   strike: number;
+  /** Each `{underline}` open, innermost last: `true` in the text's colour, else the line's own. */
+  underline: Array<true | string>;
 }
 
 type Align = 'left' | 'right' | 'center';
@@ -934,18 +965,21 @@ export function renderTemplate(
   const parsed = typeof template === 'string' ? parseTemplate(template) : template;
   const label = options.label ?? ((path: string) => path.split('.').pop() ?? path);
 
-  const style: Style = { fg: [], bg: [], bold: 0, dim: 0, strike: 0 };
+  const style: Style = { fg: [], bg: [], bold: 0, dim: 0, strike: 0, underline: [] };
   /**
    * The attributes the style stack puts on whatever is drawn next. A header
    * is never struck: it is drawn on the first row's fields, so a strike that
-   * row opens with `{if}` would strike the labels (todo 770).
+   * row opens with `{if}` would strike the labels (todo 770). It is underlined
+   * as its first row is, so the labels get the same rule under them; a row
+   * that underlines itself on a test gives the labels its answer, accepted.
    */
   const look = (asHeader = false): Look => ({
     fg: style.fg[style.fg.length - 1] ?? null,
     bg: style.bg[style.bg.length - 1] ?? null,
     bold: style.bold > 0,
     dim: style.dim > 0,
-    strike: style.strike > 0 && !asHeader
+    strike: style.strike > 0 && !asHeader,
+    underline: style.underline[style.underline.length - 1] ?? false
   });
   const chain: Row[] = [{ ...scope }];
   const lines: Piece[][] = [[]];
@@ -970,15 +1004,19 @@ export function renderTemplate(
       style.bold = 0;
       style.dim = 0;
       style.strike = 0;
+      style.underline = [];
     } else if (tag === 'bold') style.bold += 1;
     else if (tag === 'dim') style.dim += 1;
     else if (tag === 'strike') style.strike += 1;
+    else if (tag === 'underline') style.underline.push(true);
+    else if (tag.startsWith(UNDERLINE)) style.underline.push(tag.slice(UNDERLINE.length));
+    else if (tag === '/underline' || tag.startsWith(`/${UNDERLINE}`)) style.underline.pop();
     else if (tag === '/bold') style.bold = Math.max(0, style.bold - 1);
     else if (tag === '/dim') style.dim = Math.max(0, style.dim - 1);
     else if (tag === '/strike') style.strike = Math.max(0, style.strike - 1);
-    else if (tag === '/bg' || tag.startsWith('/bg:')) style.bg.pop();
+    else if (tag === '/bg' || tag.startsWith(`/${GROUND}`)) style.bg.pop();
     else if (tag.startsWith('/')) style.fg.pop();
-    else if (tag.startsWith('bg:')) style.bg.push(tag.slice(3));
+    else if (tag.startsWith(GROUND)) style.bg.push(tag.slice(GROUND.length));
     else style.fg.push(tag);
   };
 
@@ -1276,7 +1314,8 @@ function alignColumns(lines: Piece[][]): Piece[][] {
         return [{ ...piece, lead: ' '.repeat(before), text: piece.text + ' '.repeat(after) }];
       }
       // A line through the column's padding would strike blank cells past the
-      // name: the padding wears everything but the strike.
+      // name: the padding wears everything but the strike. An underline is a
+      // rule across the row, so the padding keeps it.
       if (piece.strike) {
         const blank = (cells: number): Piece[] =>
           cells === 0 ? [] : [{ ...lookOf(piece), strike: false, text: ' '.repeat(cells) }];
@@ -1289,7 +1328,14 @@ function alignColumns(lines: Piece[][]): Piece[][] {
 
 /** A piece's attributes alone, without its column or glyph. */
 function lookOf(piece: Look): Look {
-  return { fg: piece.fg, bg: piece.bg, bold: piece.bold, dim: piece.dim, strike: piece.strike };
+  return {
+    fg: piece.fg,
+    bg: piece.bg,
+    bold: piece.bold,
+    dim: piece.dim,
+    strike: piece.strike,
+    underline: piece.underline
+  };
 }
 
 /** A line's pieces as runs, glyphs placed at the cell they start in. */
@@ -1367,16 +1413,22 @@ export function pathsIn(template: Template | string): string[] {
 
 /* ─────────────────────────────────────────────────────────── to bytes */
 
-function sgrColour(colour: string, background: boolean): string {
+/** The SGR that opens an extended colour for each place one may go. */
+const EXTENDED: Record<ColourPlace, number> = { text: 38, ground: 48, underline: 58 };
+
+function sgrColour(colour: string, on: ColourPlace): string {
   if (isAnsiColour(colour)) {
     const index = ANSI_COLOURS.indexOf(colour);
+    // SGR has no short codes for an underline's colour: the palette's sixteen by index.
+    if (on === 'underline') return `${EXTENDED[on]};5;${index}`;
+    const background = on === 'ground';
     const base = index < 8 ? (background ? 40 : 30) + index : (background ? 100 : 90) + index - 8;
     return String(base);
   }
   const r = Number.parseInt(colour.slice(1, 3), 16);
   const g = Number.parseInt(colour.slice(3, 5), 16);
   const b = Number.parseInt(colour.slice(5, 7), 16);
-  return `${background ? 48 : 38};2;${r};${g};${b}`;
+  return `${EXTENDED[on]};2;${r};${g};${b}`;
 }
 
 /** The SGR that puts the console back to its default ink. */
@@ -1411,8 +1463,11 @@ export function toAnsi(segments: readonly Segment[]): string {
     if (segment.bold) codes.push('1');
     if (segment.dim) codes.push('2');
     if (segment.strike) codes.push('9');
-    if (segment.fg !== null) codes.push(sgrColour(segment.fg, false));
-    if (segment.bg !== null) codes.push(sgrColour(segment.bg, true));
+    if (segment.underline !== false) codes.push('4');
+    if (typeof segment.underline === 'string')
+      codes.push(sgrColour(segment.underline, 'underline'));
+    if (segment.fg !== null) codes.push(sgrColour(segment.fg, 'text'));
+    if (segment.bg !== null) codes.push(sgrColour(segment.bg, 'ground'));
     out += `\x1b[${codes.join(';')}m${segment.text}`;
   }
   return segments[segments.length - 1]?.text === '' ? out : out + SGR_RESET;

@@ -92,7 +92,7 @@ const shipped = (entity: RewriteDesign['entity']): RewriteDesign => ({
 
 describe('the prompt row', () => {
   const facts: RewriteFacts = { entity: 'statline', figures: FIGURES };
-  const plain = { bg: null, bold: false, dim: false, strike: false };
+  const plain = { bg: null, bold: false, dim: false, strike: false, underline: false };
 
   it('draws the figures, colours a banded one for its own characters only, and hands the colour back', () => {
     const bands: VitalBands = {

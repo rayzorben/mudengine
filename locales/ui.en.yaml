@@ -6336,7 +6336,13 @@ settings:
         insertHint: Puts {tag} at the caret.
         pickColour: Any color
         pickColourHint: Your own color, as a hex code the palette cannot change.
-        ground: On the ground
+        place:
+          label: Where a color goes
+          hint: 'Puts the color you press on the text, on the ground behind it or on a line under
+            it. {underline} on a row draws a line between it and the next without taking a row.'
+          text: Text
+          ground: Ground
+          underline: Underline
         closers: Closers
         closersHint: Restores the color or style that was in effect before.
         ifHint: Draws the middle only when the test is true; else if and else handle the other

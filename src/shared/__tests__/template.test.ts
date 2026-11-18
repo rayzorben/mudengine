@@ -74,14 +74,67 @@ describe('the tags', () => {
 });
 
 describe('the styles', () => {
-  const plain = { bg: null, bold: false, dim: false, strike: false };
+  const plain = { bg: null, bold: false, dim: false, strike: false, underline: false };
 
   it('takes a hex, a background and the attributes, and reset clears them all', () => {
     const [line] = renderTemplate('{#ff8800}{bg:blue}{bold}{dim}x{reset}y', {});
     expect(line?.segments).toEqual([
-      { text: 'x', fg: '#ff8800', bg: 'blue', bold: true, dim: true, strike: false },
+      { text: 'x', fg: '#ff8800', ...plain, bg: 'blue', bold: true, dim: true },
       { text: 'y', fg: null, ...plain }
     ]);
+  });
+
+  /*
+   * User, 2026-11-18: a rule between the rows of a listing that takes no row
+   * of its own. SGR 4, in the text's colour or one named (SGR 58). Unlike the
+   * strike it runs through a column's padding, a glyph's cells and the
+   * header, because it is a line across the row.
+   */
+  it('underlines text in its own colour or one named, closes and resets it', () => {
+    const [line] = renderTemplate(
+      '{underline}a{underline:brightBlack}b{/underline}c{/underline}d{underline:#102030}e{reset}f',
+      {}
+    );
+    expect(line?.segments.map((s) => [s.text, s.underline])).toEqual([
+      ['a', true],
+      ['b', 'brightBlack'],
+      ['c', true],
+      ['d', false],
+      ['e', '#102030'],
+      ['f', false]
+    ]);
+    const bytes = toAnsi(line!.segments);
+    expect(bytes).toContain('\x1b[0;4ma');
+    expect(bytes).toContain('\x1b[0;4;58;5;8mb');
+    expect(bytes).toContain('\x1b[0;4;58;2;16;32;48me');
+    expect(bytes).toContain('\x1b[0mf');
+  });
+
+  it('underlines a whole row of a table: the padding, a glyph and the header', () => {
+    const scope = {
+      rows: [
+        { name: 'ab', icon: { text: '', glyph: { icon: 'head', label: 'Head' } } },
+        { name: 'abcd', icon: { text: '', glyph: { icon: 'head', label: 'Head' } } }
+      ]
+    };
+    const drawn = renderTemplate(
+      '{table header}{for row in rows}{underline:blue}{row.name} {row.icon}|{reset}\n{/for}{/table}',
+      scope
+    );
+    expect(drawn.map((line) => line.segments.map((s) => s.text).join(''))).toEqual([
+      `name ${GLYPH_BLANK}|`,
+      `ab   ${GLYPH_BLANK}|`,
+      `abcd ${GLYPH_BLANK}|`
+    ]);
+    // Every cell drawn; the run of no cells a template ends in is the reset after it.
+    for (const line of drawn) {
+      const cells = line.segments.filter((s) => s.text !== '');
+      expect(cells.map((s) => s.underline)).toEqual(cells.map(() => 'blue'));
+    }
+  });
+
+  it('draws an underline colour the palette does not name as typed', () => {
+    expect(draw('{underline:plaid}x', {})).toEqual(['{underline:plaid}x']);
   });
 
   /*
@@ -147,8 +200,8 @@ describe('the styles', () => {
   it('writes bytes the console reads: one SGR per run and a reset at the end', () => {
     expect(
       toAnsi([
-        { text: 'HP ', fg: 'brightWhite', bg: null, bold: true, dim: false, strike: false },
-        { text: '120', fg: '#ff8800', bg: 'blue', bold: false, dim: false, strike: false }
+        { text: 'HP ', fg: 'brightWhite', ...plain, bold: true },
+        { text: '120', fg: '#ff8800', ...plain, bg: 'blue' }
       ])
     ).toBe('\x1b[0;1;97mHP \x1b[0;38;2;255;136;0;44m120\x1b[0m');
   });

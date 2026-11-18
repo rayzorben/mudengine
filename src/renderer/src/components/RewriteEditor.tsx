@@ -8,11 +8,14 @@
  * Rewrites section is a list, and a design opens in an editor.
  */
 import {
+  Fragment,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent
 } from 'react';
@@ -24,6 +27,7 @@ import { useTagCompletion } from '../hooks/useTagCompletion';
 import {
   closerTag,
   colourTag,
+  COLOUR_PLACE_NAMES,
   CONTROL,
   recordPrefix,
   repeatTag,
@@ -59,10 +63,12 @@ import {
 import { STATLINE_MAX_CELLS, type StatlineFigures } from '@shared/statline';
 import {
   ANSI_COLOURS,
+  GLYPH_BLANK,
   isAnsiColour,
   parseTemplate,
   STYLE_CLOSERS,
   STYLE_TAGS,
+  type ColourPlace,
   type Drawn,
   type PlacedGlyph,
   type Segment
@@ -587,6 +593,22 @@ function FieldRow({
   );
 }
 
+/** What the sidebar calls each place a colour may go. */
+function placeLabel(place: ColourPlace): string {
+  switch (place) {
+    case 'text':
+      return t('settings.rewrites.editor.sidebar.place.text');
+    case 'ground':
+      return t('settings.rewrites.editor.sidebar.place.ground');
+    case 'underline':
+      return t('settings.rewrites.editor.sidebar.place.underline');
+    default: {
+      const unknown: never = place;
+      return unknown;
+    }
+  }
+}
+
 /** The sixteen as swatches in the console's own palette, a colour of one's own, and the attributes. */
 function Colours({
   insert,
@@ -595,38 +617,49 @@ function Colours({
   insert: Insert;
   palette: TerminalPalette;
 }): React.JSX.Element {
-  const [ground, setGround] = useState(false);
+  const [place, setPlace] = useState<ColourPlace>('text');
+  const group = useId();
   return (
     <Category label={t('settings.rewrites.editor.sidebar.colours')}>
       <div className="rewrite-swatches" role="group">
         {ANSI_COLOURS.map((colour) => (
           <button
-            aria-label={colourTag(colour, ground)}
+            aria-label={colourTag(colour, place)}
             className="rewrite-swatch"
             key={colour}
-            onClick={() => insert({ text: colourTag(colour, ground) })}
+            onClick={() => insert({ text: colourTag(colour, place) })}
             onMouseDown={keepFocus}
             style={{ background: palette[colour] }}
-            title={colourTag(colour, ground)}
+            title={colourTag(colour, place)}
             type="button"
           />
         ))}
       </div>
-      <label className="rewrite-check">
-        <input
-          checked={ground}
-          onChange={(event) => setGround(event.target.checked)}
-          type="checkbox"
-        />
-        <span>{t('settings.rewrites.editor.sidebar.ground')}</span>
-      </label>
+      <div
+        aria-label={t('settings.rewrites.editor.sidebar.place.label')}
+        className="rewrite-tag-row"
+        role="radiogroup"
+        title={t('settings.rewrites.editor.sidebar.place.hint')}
+      >
+        {COLOUR_PLACE_NAMES.map((each) => (
+          <label className="rewrite-check" key={each}>
+            <input
+              checked={place === each}
+              name={group}
+              onChange={() => setPlace(each)}
+              type="radio"
+            />
+            <span>{placeLabel(each)}</span>
+          </label>
+        ))}
+      </div>
       <label
         className="rewrite-tag rewrite-pick"
         title={t('settings.rewrites.editor.sidebar.pickColourHint')}
       >
         <input
           aria-label={t('settings.rewrites.editor.sidebar.pickColour')}
-          onChange={(event) => insert({ text: colourTag(event.target.value, ground) })}
+          onChange={(event) => insert({ text: colourTag(event.target.value, place) })}
           type="color"
         />
         <span className="hint">{t('settings.rewrites.editor.sidebar.pickColour')}</span>
@@ -1027,12 +1060,14 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
 /* ────────────────────────────────────────────────────────── the preview */
 
 type Piece =
-  { kind: 'text'; segment: Segment; text: string } | { kind: 'glyph'; glyph: PlacedGlyph };
+  | { kind: 'text'; segment: Segment; text: string }
+  | { kind: 'glyph'; segment: Segment; glyph: PlacedGlyph };
 
 /**
  * A drawn line as pieces to render: its runs, with each glyph's two blank
- * cells replaced by the glyph itself. Walked cell by cell, because the
- * blanks may have merged into the run before them.
+ * cells replaced by the glyph itself, which keeps the run those cells were
+ * in so they are drawn under it. Walked cell by cell, because the blanks may
+ * have merged into the run before them.
  */
 export function piecesOf(line: Drawn): Piece[] {
   const pieces: Piece[] = [];
@@ -1047,7 +1082,7 @@ export function piecesOf(line: Drawn): Piece[] {
       if (glyph !== undefined && glyph.x === cells && chars[i] === ' ' && chars[i + 1] === ' ') {
         if (text.length > 0) pieces.push({ kind: 'text', segment, text });
         text = '';
-        pieces.push({ kind: 'glyph', glyph });
+        pieces.push({ kind: 'glyph', segment, glyph });
         next += 1;
         cells += 2;
         i += 1;
@@ -1082,6 +1117,19 @@ export function Preview({
 }): React.JSX.Element {
   const colourOf = (colour: string | null): string | undefined =>
     colour === null ? undefined : isAnsiColour(colour) ? palette[colour] : colour;
+  /* A run's attributes as the CSS that draws them; no run is plain ink. */
+  const wearOf = (run: Segment | undefined): CSSProperties => {
+    if (run === undefined) return {};
+    const lines = [run.strike ? 'line-through' : '', run.underline === false ? '' : 'underline'];
+    return {
+      background: colourOf(run.bg),
+      color: colourOf(run.fg),
+      fontWeight: run.bold ? 700 : undefined,
+      opacity: run.dim ? 0.6 : undefined,
+      textDecorationLine: lines.join(' ').trim() || undefined,
+      textDecorationColor: typeof run.underline === 'string' ? colourOf(run.underline) : undefined
+    };
+  };
   /* The run the line ends in, zero-width or not; nothing drawn is plain ink. */
   const ending = lines[lines.length - 1]?.segments.at(-1);
   return (
@@ -1103,42 +1151,31 @@ export function Preview({
               <div key={row}>
                 {pieces.map((piece, index) =>
                   piece.kind === 'glyph' ? (
-                    <span
-                      aria-label={piece.glyph.label}
-                      className="rewrite-glyph"
-                      dangerouslySetInnerHTML={{ __html: MARK_GLYPH[piece.glyph.icon] }}
-                      data-mark={piece.glyph.icon}
-                      key={index}
-                      role="img"
-                      title={piece.glyph.label}
-                    />
+                    /*
+                     * The glyph's two cells are drawn blank in their run, as
+                     * the console draws them, and the glyph laid over them:
+                     * a line under the row runs on under the glyph.
+                     */
+                    <Fragment key={index}>
+                      <span style={wearOf(piece.segment)}>{GLYPH_BLANK}</span>
+                      <span
+                        aria-label={piece.glyph.label}
+                        className="rewrite-glyph"
+                        dangerouslySetInnerHTML={{ __html: MARK_GLYPH[piece.glyph.icon] }}
+                        data-mark={piece.glyph.icon}
+                        role="img"
+                        title={piece.glyph.label}
+                      />
+                    </Fragment>
                   ) : (
-                    <span
-                      key={index}
-                      style={{
-                        background: colourOf(piece.segment.bg),
-                        color: colourOf(piece.segment.fg),
-                        fontWeight: piece.segment.bold ? 700 : undefined,
-                        opacity: piece.segment.dim ? 0.6 : undefined,
-                        textDecoration: piece.segment.strike ? 'line-through' : undefined
-                      }}
-                    >
+                    <span key={index} style={wearOf(piece.segment)}>
                       {piece.text}
                     </span>
                   )
                 )}
                 {pieces.length === 0 && !(typed && row === lines.length - 1) ? ' ' : null}
                 {typed !== undefined && row === lines.length - 1 ? (
-                  <span
-                    className="rewrite-typed"
-                    style={{
-                      background: colourOf(ending?.bg ?? null),
-                      color: colourOf(ending?.fg ?? null),
-                      fontWeight: ending?.bold ? 700 : undefined,
-                      opacity: ending?.dim ? 0.6 : undefined,
-                      textDecoration: ending?.strike ? 'line-through' : undefined
-                    }}
-                  >
+                  <span className="rewrite-typed" style={wearOf(ending)}>
                     {typed}
                   </span>
                 ) : null}
