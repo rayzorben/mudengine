@@ -873,6 +873,17 @@ export class EffectTracker {
   }
 
   /**
+   * A hold's sentence, the realm's or one fixed in the server's code (`You are
+   * held!`, stock MajorMUD's `You can't seem to move anywhere!`): the flag, and
+   * the move it refused where one is at the head. Null when the flag already
+   * says so.
+   */
+  held(s: CharacterState): CharacterState | null {
+    this.expect.shiftHeldMove();
+    return afflicted(s, 'held', 'yes');
+  }
+
+  /**
    * A spell onset that stands the character still, and the move it refused.
    *
    * **The realm states which spells hold and the server states what that
@@ -905,10 +916,7 @@ export class EffectTracker {
   private heldByOnset(s: CharacterState, candidates: readonly string[]): CharacterState | null {
     const rows = candidates.map((name) => this.world?.spellNamed(name));
     let next: CharacterState | null = null;
-    if (rows.some(holdsMovement)) {
-      this.expect.shiftHeldMove();
-      next = afflicted(s, 'held', 'yes');
-    }
+    if (rows.some(holdsMovement)) next = this.held(s);
     // A confusion landing refuses nothing by itself — the fumbles come later,
     // one command at a time — so the flag is set and no claim is taken.
     if (rows.some(confuses)) next = afflicted(next ?? s, 'confused', 'yes') ?? next;

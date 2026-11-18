@@ -2613,6 +2613,8 @@ describe('afflictions, on and off', () => {
     // `CheckForHoldPerson`'s own fallback, when the ability is on the
     // character and no active effect carries a sentence to print for it.
     ['You are held!', 'user-held'],
+    // Stock MajorMUD's answer to a move while held (yang's wire, 2026-11-18).
+    ["You can't seem to move anywhere!", 'user-held'],
     ['You can move again!', 'user-held-ends']
   ];
   for (const [text, type] of cases) {

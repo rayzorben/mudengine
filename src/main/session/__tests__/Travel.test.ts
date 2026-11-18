@@ -110,7 +110,9 @@ function travel(
       // A way that charges nothing, or within the share (`Errands.fareOf`).
       fareOf: vi.fn(() => null),
       cashFrom: vi.fn(() => []),
-      nearestRoom: vi.fn(() => null)
+      nearestRoom: vi.fn(() => null),
+      // As `Errands.spellsHold` with no realm loaded: it cannot say.
+      spellsHold: vi.fn<TravelParts['errands']['spellsHold']>(() => null)
     },
     roomHazards: {
       stoppersAlong: vi.fn(() => []),
@@ -404,6 +406,62 @@ describe('running from a fight', () => {
     moving.settleEscape({ type: 'room' } as never, first.room);
     moving.considerEscape(empty);
     expect(sent).toEqual(['n']);
+  });
+
+  /*
+   * yang, 2026-11-18: `ne` under a mermex hunter's threads was answered `You
+   * can't seem to move anywhere!`, the run stayed unanswered for its whole
+   * patience and the teleport waited behind it until yang dropped.
+   */
+  it('takes a hold’s sentence as the run refused, so the teleport is not kept waiting', () => {
+    const state = hit(8, 'Dank Room', 1);
+    const {
+      travel: moving,
+      sent,
+      parts
+    } = travel(state, 'none', true, undefined, {
+      settings: plain
+    });
+    moving.considerEscape(state);
+    expect(sent).toEqual(['n']);
+    expect(moving.escapeUnanswered).toBe(true);
+    // A line that is no answer leaves it waiting: the positive control.
+    moving.settleEscape({ type: 'mob-hits', text: '', groups: {} } as never, state.room);
+    expect(moving.escapeUnanswered).toBe(true);
+    moving.settleEscape(
+      { type: 'user-held', text: "You can't seem to move anywhere!", groups: {} } as never,
+      state.room
+    );
+    expect(moving.escapeUnanswered).toBe(false);
+    expect(sent).toEqual(['n']);
+    expect(parts.errands.spellsHold).not.toHaveBeenCalled();
+  });
+
+  it('takes the realm’s sentence for a spell that holds the same way, and no other onset', () => {
+    const state = hit(8, 'Dank Room', 1);
+    const { travel: moving, parts } = travel(state, 'none', true, undefined, {
+      settings: plain
+    });
+    moving.considerEscape(state);
+    const onset = { type: 'spell-onset', text: 'You are entangled!', groups: { spells: 'web' } };
+    vi.mocked(parts.errands.spellsHold).mockReturnValue(false);
+    moving.settleEscape(onset as never, state.room);
+    expect(moving.escapeUnanswered).toBe(true);
+    vi.mocked(parts.errands.spellsHold).mockReturnValue(true);
+    moving.settleEscape(onset as never, state.room);
+    expect(moving.escapeUnanswered).toBe(false);
+  });
+
+  it('takes an onset the realm cannot judge as a hold', () => {
+    const state = hit(8, 'Dank Room', 1);
+    const { travel: moving } = travel(state, 'none', true, undefined, { settings: plain });
+    moving.considerEscape(state);
+    expect(moving.escapeUnanswered).toBe(true);
+    moving.settleEscape(
+      { type: 'spell-onset', text: 'You are entangled!', groups: { spells: 'web' } } as never,
+      state.room
+    );
+    expect(moving.escapeUnanswered).toBe(false);
   });
 });
 

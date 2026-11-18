@@ -53,6 +53,7 @@ import type { AutomationConfig, ConfigSwitch, HeldSwitchPort } from '../../share
 import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { mobListed, rowName, stanceHere } from '../../shared/mobRules';
 import { manaRunFloor } from '../../shared/safety';
+import { splitSpells } from '../../shared/spell-messages';
 import { splitStop, type Loop, type LoopProgress, type ResumedBy } from '../../shared/loops';
 import { AutoRestBack } from './AutoRestBack';
 import { switchedOn } from './switchedOn';
@@ -200,6 +201,7 @@ export interface TravelParts {
     | 'fareOf'
     | 'cashFrom'
     | 'nearestRoom'
+    | 'spellsHold'
   >;
   /** A room's spell against the character: what a way wants carried, where it is sold, whether it hurts. */
   readonly roomHazards: Pick<
@@ -2120,11 +2122,23 @@ export class Travel implements SessionModule {
   }
 
   /**
+   * Whether a block is a hold's own sentence: one fixed in the server's code
+   * (`user-held`), or a realm onset the realm does not say is harmless. A
+   * spell the realm cannot judge counts as a hold, as `Holds.noteOnset` has it.
+   */
+  private holdSentence(block: Block): boolean {
+    if (block.type === 'user-held') return true;
+    if (block.type !== 'spell-onset') return false;
+    return this.errands.spellsHold(splitSpells(block.groups['spells'])) !== false;
+  }
+
+  /**
    * What the server said back to the escape, read against the block that
    * just applied — the postcondition `escape` arms.
    *
-   * Five answers. A room that is not the one the move was sent from is the
-   * escape landing, and the decision is recorded `acted: true` only now. A
+   * Six answers. A hold's sentence refuses the run whole (yang, 2026-11-18:
+   * `You can't seem to move anywhere!` unread kept the teleport waiting). A
+   * room that is not the one the move was sent from is the escape landing, and the decision is recorded `acted: true` only now. A
    * death is a teleport and not an escape. `direction-failed` naming a
    * barrier is a shut door, and `movement.openDoors` opens it — `open
    * <direction>` then the direction again, both in the `emergency` band,
@@ -2198,6 +2212,12 @@ export class Travel implements SessionModule {
       return;
     }
     if (block.type === 'command-refused') {
+      settle(false, block.text);
+      return;
+    }
+    // A hold's sentence refuses every direction, so no rung is tried and the
+    // teleport (`FleeGoto`) is not kept waiting for the deadline.
+    if (this.holdSentence(block)) {
       settle(false, block.text);
       return;
     }

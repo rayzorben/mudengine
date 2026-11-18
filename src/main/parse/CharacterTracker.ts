@@ -1986,7 +1986,7 @@ export class CharacterTracker {
       case 'user-disease-ends':
         return afflicted(s, 'diseased', 'no');
       case 'user-held':
-        return afflicted(s, 'held', 'yes');
+        return this.effects.held(s);
       case 'user-held-ends':
         return afflicted(s, 'held', 'no');
       case 'user-confused':

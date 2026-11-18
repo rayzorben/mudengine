@@ -9447,6 +9447,17 @@ describe('what the server has said is wrong with the character', () => {
     });
 
     /*
+     * Stock MajorMUD answers a held move in a sentence of its own (yang's
+     * wire, 2026-11-18). Unread, the run's `ne` stayed pending and the
+     * teleport waited behind it.
+     */
+    it('consumes the step `You can’t seem to move anywhere!` refused', () => {
+      const tracker = play(['[HP=49/KAI=16]:', { send: 'ne' }, "You can't seem to move anywhere!"]);
+      expect(tracker.current.afflictions.held).toBe('yes');
+      expect(tracker.pendingMoves).toBe(0);
+    });
+
+    /*
      * The release that needs no sentence, for the realm that ships a
      * twenty-first hold the table does not pair. A held character is refused
      * before it moves, so a step that *landed* is proof the hold was over.

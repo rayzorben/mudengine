@@ -1855,6 +1855,18 @@ export const RULES: Rule[] = [
    */
   { type: 'command-refused', pattern: /^You may not do that while you are mortally wounded!/ },
   { type: 'direction-failed', pattern: /^You are too heavy to move!/ },
+  /*
+   * `You can't seem to move anywhere!` is stock MajorMUD's answer to a move
+   * sent while held, where GreaterMUD prints the holding spell's own sentence.
+   * On the wire in `2026-11-18_17-52-04_yang.mudcap.jsonl`, t=1500310, answering
+   * `ne` under a mermex hunter's sticky threads, and in captures/051:53, the
+   * same threads answering `n` (053 has it twice with no move echoed, where
+   * `shiftHeldMove` takes nothing). Unread, the run's
+   * move stayed unanswered for `retreatPatienceMs`, the teleport waited behind
+   * it, and yang died at 13 of 166. `user-held` because the sentence proves the
+   * hold and the exit is not at fault, so the edge is not written off.
+   */
+  { type: 'user-held', pattern: /^You can't seem to move anywhere!$/ },
   { type: 'bash-failed', pattern: /^Your attempts to bash through fail!/ },
   { type: 'heard-movement', pattern: /^You hear movement to the (?<direction>\w+)\./ },
   /*
