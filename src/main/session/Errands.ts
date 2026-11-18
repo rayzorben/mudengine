@@ -14,6 +14,7 @@ import {
   type Plan,
   type PlannedFetch
 } from '../../shared/navigation';
+import { KeptUnder } from './keptUnder';
 import { Navigation } from './navigation';
 import { itemsAsked, tollCharge } from '../world/navigation/exitGates';
 import { rollPercent, type GateFacts, type TbStat } from '../../shared/gates';
@@ -462,6 +463,13 @@ export class Errands implements SessionModule {
     survey: (measure) => this.huntingGrounds(null, measure),
     here: () => this.surveyHere()
   });
+  /**
+   * The rooms each lap leg `standsOnLeg` was asked about steps into, searched
+   * once each: every ask was a search on the socket thread, 9.9 s of the
+   * 33.7 s the hosted client stalled in 48 minutes (2026-11-17, todo
+   * 20261117-2040-01).
+   */
+  private readonly lapLegs = new KeptUnder<ReadonlySet<RoomId>>(() => tuning().world.keptLegs);
   /** Every toll the realm's exits charge, in copper, cheapest first; read once. */
   private tolls: number[] | null = null;
   /** `gateItems`, read once per realm. */
@@ -838,10 +846,19 @@ export class Errands implements SessionModule {
    * the lap plans it (`lapTraveller`); false while it cannot be placed.
    */
   standsOnLeg(from: RoomId, to: RoomId): boolean {
-    const here = roomAddress(this.tracker.current.room);
-    if (here === null) return false;
+    const state = this.tracker.current;
+    const here = roomAddress(state.room);
+    const world = this.world;
+    if (here === null || world === undefined) return false;
+    const at = `${from}>${to}`;
+    const kept = this.lapLegs.under(world, this.lapReachKey(state)).get(at);
+    if (kept !== undefined) return kept.has(here);
     const leg = this.routeBetween(from, to, 'lap');
-    return typeof leg !== 'string' && !leg.blocked && leg.steps.some((step) => step.to === here);
+    // A leg with no way steps into no room.
+    const walked = typeof leg === 'string' || leg.blocked ? [] : leg.steps;
+    const rooms = new Set(walked.map((step) => step.to));
+    this.lapLegs.keep(at, rooms);
+    return rooms.has(here);
   }
 
   /** `planFromHere` for a traveller already made, with the counters asked and a room run from said. */
@@ -1133,8 +1150,22 @@ export class Errands implements SessionModule {
    * `TrainErrand.trainersAhead` keeps its routes while this stays the same.
    */
   reachKey(state: CharacterState = this.tracker.current): string {
-    const { wealth, purse, keys, ...reach } = this.travellerNow(state);
+    return this.reachKeyOf(this.travellerNow(state), state);
+  }
+
+  /**
+   * `reachKey` for the traveller a lap's leg is planned with (`lapTraveller`
+   * and its fares), which `standsOnLeg` keeps its legs under.
+   */
+  private lapReachKey(state: CharacterState): string {
+    return this.reachKeyOf(this.travellerFor('lap', state), state);
+  }
+
+  /** `reachKey` for a traveller already made; a fare ceiling counts as the tolls it covers. */
+  private reachKeyOf(traveller: Traveller, state: CharacterState): string {
+    const { wealth, purse, keys, fareCeiling, ...reach } = traveller;
     const tollsPaid = this.tollsWithin(wealth);
+    const faresPaid = this.tollsWithin(fareCeiling);
     // A toll the purse pays costs nothing, so which ones it pays is part of the reach too.
     const tollsCarried = this.tollsWithin(purse);
     const health = this.healthNow(state, false);
@@ -1149,6 +1180,7 @@ export class Errands implements SessionModule {
       keys: carried,
       tollsPaid,
       tollsCarried,
+      faresPaid,
       hitsWalled,
       fights: this.combatOn()
     });

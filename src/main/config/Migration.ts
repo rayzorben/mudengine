@@ -8994,6 +8994,8 @@ function theTuningBlockGainedKeys(
     addKey('session', 'lostLinesKept', DEFAULT_INTERNAL.tuning.session.lostLinesKept);
     // The grade between two doors the character cannot force (todo 20261103-1100-01).
     addKey('world', 'wallTiebreak', DEFAULT_INTERNAL.tuning.world.wallTiebreak);
+    // The lap legs kept for a loop asking whether it stands on one (todo 20261117-2040-01).
+    addKey('world', 'keptLegs', DEFAULT_INTERNAL.tuning.world.keptLegs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

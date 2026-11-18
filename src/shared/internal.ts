@@ -2283,6 +2283,12 @@ const TUNING_DEFAULTS = {
      */
     keptSweeps: 512,
     /**
+     * How many lap legs' rooms are kept for one character as it stands
+     * (`Errands.standsOnLeg`): a loop asks about two legs a stop, so 256 holds
+     * a lap of 128 stops, each leg a few dozen room ids.
+     */
+    keptLegs: 256,
+    /**
      * How many items seen lying in rooms the realm's floor record keeps
      * (`FloorBook`): one row per item per room, the longest unseen dropped
      * first. Players drop things everywhere, so the pairs grow without it.

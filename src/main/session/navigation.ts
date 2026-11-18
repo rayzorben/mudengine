@@ -24,6 +24,7 @@ import {
   type WorldRoom
 } from '../../shared/world';
 import type { Errands } from './Errands';
+import { KeptUnder } from './keptUnder';
 import type { OddsReader } from './OddsBook';
 
 export interface NavigationParts {
@@ -52,18 +53,13 @@ export interface NavigationParts {
   odds(): OddsReader;
 }
 
-/** The sweeps `withinNow` keeps, for one realm, one tuning and one `reachKey`. */
-interface KeptReach {
-  readonly world: object;
-  readonly tuning: object;
-  readonly key: string;
-  readonly sweeps: Map<string, ReadonlyMap<RoomId, number>>;
-  /** The one whole-realm sweep kept (`withinNow`), by its key in `sweeps`. */
-  whole: string | null;
-}
-
 export class Navigation {
-  private kept: KeptReach | null = null;
+  /** The sweeps `withinNow` keeps, for one realm, one tuning and one `reachKey`. */
+  private readonly sweeps = new KeptUnder<ReadonlyMap<RoomId, number>>(
+    () => tuning().world.keptSweeps
+  );
+  /** The one whole-realm sweep kept (`withinNow`), by its key in `sweeps`. */
+  private whole: string | null = null;
 
   constructor(private readonly parts: NavigationParts) {}
 
@@ -125,26 +121,15 @@ export class Navigation {
   ): ReadonlyMap<RoomId, number> {
     const world = this.parts.world();
     if (world === undefined) return new Map();
-    const key = this.parts.errands.reachKey(state);
-    const now = tuning();
-    let kept = this.kept;
-    if (kept === null || kept.world !== world || kept.tuning !== now || kept.key !== key) {
-      kept = { world, tuning: now, key, sweeps: new Map(), whole: null };
-      this.kept = kept;
-    }
     const at = `${from}#${steps}`;
-    const known = kept.sweeps.get(at);
+    const known = this.sweeps.under(world, this.parts.errands.reachKey(state)).get(at);
     if (known !== undefined) return known;
-    if (kept.sweeps.size >= tuning().world.keptSweeps) {
-      kept.sweeps.clear();
-      kept.whole = null;
-    }
     const swept = this.within(from, steps, this.parts.errands.travellerNow(state));
-    if (steps === Number.POSITIVE_INFINITY) {
-      if (kept.whole !== null) kept.sweeps.delete(kept.whole);
-      kept.whole = at;
-    }
-    kept.sweeps.set(at, swept);
+    const whole = steps === Number.POSITIVE_INFINITY;
+    if (whole && this.whole !== null) this.sweeps.drop(this.whole);
+    const dropped = this.sweeps.keep(at, swept);
+    if (whole) this.whole = at;
+    else if (dropped) this.whole = null;
     return swept;
   }
 
