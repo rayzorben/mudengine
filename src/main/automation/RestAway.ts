@@ -13,12 +13,12 @@
  * See `mudengine-automation` § *A rest is taken next door to a lair*.
  */
 import type { CommandQueue } from './CommandQueue';
-import { fightIsHere } from './Recovery';
-import { countThreats } from './RuleEngine';
+import { FollowersWait } from './FollowersWait';
+import { fightIsHere, restWouldBreak } from './Recovery';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
-import type { CharacterState } from '../../shared/character';
+import { NO_FIGHT_SIGNS, type CharacterState, type FightSigns } from '../../shared/character';
 import type { AutomationConfig, CombatConfig, HealthConfig } from '../../shared/config';
 import type { MobRule } from '../../shared/mobRules';
 import { OPPOSITE, type Direction, type RoomId } from '../../shared/world';
@@ -55,6 +55,8 @@ export interface RestAwayPlanner {
 export interface RestAwayEvents {
   notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
+  /** A fight the state stopped showing (`fightSigned`); omitted, the state alone. */
+  signs?: FightSigns;
 }
 
 /** What `consider` decided about this status line's rest. */
@@ -87,6 +89,8 @@ export class RestAway implements SessionModule {
   /** The room the character last stood in, and the one it stood in before that. */
   private lastHere: RoomId | null = null;
   private cameFrom: RoomId | null = null;
+  /** After a step, the monsters that follow are waited for; fed by `noteRoom`, read by `Recovery` too. */
+  private readonly followers = new FollowersWait();
 
   constructor(
     private settings: RestAwaySettings,
@@ -113,6 +117,15 @@ export class RestAway implements SessionModule {
     return this.settings.combat.mobRules;
   }
 
+  /**
+   * Whether the monsters that followed the last step may still be walking in
+   * (`FollowersWait`): no look next door goes out, and `Recovery` proposes no
+   * rest, until they have had the time.
+   */
+  get followed(): boolean {
+    return this.followers.awaited(this.now());
+  }
+
   reset(): void {
     this.phase = { kind: 'idle' };
     this.tried.clear();
@@ -121,6 +134,7 @@ export class RestAway implements SessionModule {
     this.stayingSaid = null;
     this.lastHere = null;
     this.cameFrom = null;
+    this.followers.reset();
   }
 
   /**
@@ -157,7 +171,9 @@ export class RestAway implements SessionModule {
     if (seconds === null) return 'not-mine';
     if (this.allowedIn === here) return 'rest-here';
     // `Recovery` refuses these itself; nothing steps out of a fight either.
-    if (fightIsHere(state) || countThreats(state, this.mobRules) > 0) return 'took-over';
+    if (this.monstersHere(state)) return 'took-over';
+    // Nor is the room next door looked into before what followed the last step has walked in.
+    if (this.followed) return 'took-over';
     if (this.walkedOn()) return 'took-over';
     /*
      * Stepping out is moving, and only a character the client is taking
@@ -230,6 +246,11 @@ export class RestAway implements SessionModule {
     return clock !== null && clock <= this.config.restNextDoorMinutes * 60 ? clock : null;
   }
 
+  /** What `Recovery` refuses a rest for: nothing looks or steps next door for a rest either. */
+  private monstersHere(state: CharacterState): boolean {
+    return restWouldBreak(state, this.events.signs ?? NO_FIGHT_SIGNS, this.mobRules, this.now());
+  }
+
   /**
    * Something else has the character: a move on the wire, a walk, an escape.
    * Two steps on the wire together are read as each other's answers
@@ -251,6 +272,16 @@ export class RestAway implements SessionModule {
     if (peeked !== null && peeked.at >= since && peeked.direction === direction) {
       const present = peeked.room.occupants.map((who) => who.name);
       if (present.length === 0) {
+        /*
+         * A monster that moved in during the look: nothing steps out of a
+         * fight, and it would follow. Festus left four on the Lorthan River
+         * this way and was followed to the room he rested in (2026-11-17).
+         */
+        if (this.monstersHere(state)) {
+          this.events.notice?.(t('automation.restAway.monstersCame'), AWAY);
+          this.phase = { kind: 'idle' };
+          return 'took-over';
+        }
         // A walk that began during the look has the character, or nothing takes it anywhere now.
         if (this.walkedOn() || this.planner.stayingReason() !== null) {
           this.phase = { kind: 'idle' };
@@ -348,9 +379,11 @@ export class RestAway implements SessionModule {
   /**
    * Every changed state, ahead of every gate `consider` sits behind: a walk
    * sends its next step from the line it arrives on, so a room seen only by
-   * `consider` can be two back. A room unresolved breaks the chain.
+   * `consider` can be two back. A room unresolved breaks the chain. And the
+   * wait for what follows a step is counted from the line the room arrived on.
    */
-  noteRoom(): void {
+  noteRoom(state: CharacterState): void {
+    this.followers.note(state, this.now());
     const here = this.planner.here();
     if (here === this.lastHere) return;
     this.cameFrom = here === null ? null : this.lastHere;

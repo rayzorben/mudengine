@@ -1078,6 +1078,12 @@ tuning:
     # asked for again; cleared the moment the flag does arrive.
     askedMs: 3000
 
+    # How long after a step a rest, and the look next door for one, waits for
+    # the monsters that follow the character in. They walk in behind it: most
+    # inside 100ms of the room, the rest about a second later (Festus on
+    # Paradigm, 2026-11-16).
+    followersMs: 1500
+
   # A room that hurts the character every tick, and leaving it.
   roomHarm:
     # Health lost this many times out of a fight in one room is the room's

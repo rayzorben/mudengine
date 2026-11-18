@@ -9,6 +9,7 @@ import { classifyOccupant } from '../../../shared/mobs';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { Direction } from '../../../shared/world';
 import type { DecisionKind } from '../../../shared/decisionSettings';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -162,6 +163,48 @@ describe('resting in a lair with a short clock', () => {
     expect(sent).toEqual(['l n']);
   });
 
+  /*
+   * Festus on the Lorthan River, 2026-11-17: four monsters moved in between
+   * the `l e` and its answer, the step went out anyway and they followed.
+   */
+  it('does not step out once monsters have moved in during the look', () => {
+    const auto = make();
+    auto.consider(hurtInTheLair(), true);
+    drain();
+    expect(sent).toEqual(['l n']);
+    const crowded = hurtInTheLair();
+    crowded.room.occupants = [mob('thin muck crab')];
+    expect(auto.consider(peeked(crowded, 'n', [], Date.now()), true)).toBe('took-over');
+    drain();
+    expect(sent).toEqual(['l n']);
+    expect(notices.at(-1)).toBe(t('automation.restAway.monstersCame'));
+    // And the step does go once they are gone: the look is asked again.
+    auto.consider(hurtInTheLair(), true);
+    drain();
+    expect(sent).toEqual(['l n', 'l n']);
+  });
+
+  it('does not look next door until what followed the last step has had time to walk in', () => {
+    const auto = make();
+    here = '8/914';
+    auto.noteRoom(hurtInTheLair());
+    expect(auto.followed).toBe(false);
+    // Stepped into the lair: the arrival moves.
+    here = '8/915';
+    const arrived = hurtInTheLair();
+    arrived.room.arrival += 1;
+    auto.noteRoom(arrived);
+    expect(auto.followed).toBe(true);
+    expect(auto.consider(arrived, true)).toBe('took-over');
+    drain();
+    expect(sent).toEqual([]);
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.rest.followersMs);
+    expect(auto.followed).toBe(false);
+    expect(auto.consider(arrived, true)).toBe('took-over');
+    drain();
+    expect(sent).toEqual(['l n']);
+  });
+
   /* The reviewer's case: somebody dragged the room full and hung up. */
   it('does not step into a room something is standing in, and tries the next neighbour', () => {
     const auto = make();
@@ -183,9 +226,9 @@ describe('resting in a lair with a short clock', () => {
   it('looks first into the room the character came from', () => {
     const auto = make();
     here = '8/916';
-    auto.noteRoom();
+    auto.noteRoom(hurtInTheLair());
     here = '8/915';
-    auto.noteRoom();
+    auto.noteRoom(hurtInTheLair());
     auto.consider(hurtInTheLair(), true);
     drain();
     expect(sent).toEqual(['l e']);
@@ -197,11 +240,11 @@ describe('resting in a lair with a short clock', () => {
   it('keeps the exits in order when the character came from no room next door', () => {
     const auto = make();
     here = '8/916';
-    auto.noteRoom();
+    auto.noteRoom(hurtInTheLair());
     here = null;
-    auto.noteRoom();
+    auto.noteRoom(hurtInTheLair());
     here = '8/915';
-    auto.noteRoom();
+    auto.noteRoom(hurtInTheLair());
     auto.consider(hurtInTheLair(), true);
     drain();
     expect(sent).toEqual(['l n']);

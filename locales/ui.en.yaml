@@ -8278,6 +8278,7 @@ automation:
     becauseClock: the room spawns monsters every {seconds}s
     becauseStepped: 'stepped {direction} out of the lair to rest'
     notSafe: 'Not resting in {name}: {who} standing there.'
+    monstersCame: 'Not stepping out to rest: a fight or a monster is here now.'
     peekUnanswered: Nothing described {name} in time; not stepping into a room without seeing it.
     stepping: 'Stepping {direction} into {name} to rest, out of the lair.'
     stepUnanswered: The step {direction} got no answer; resting where the character is.
@@ -8299,6 +8300,9 @@ automation:
       it first.'
     becauseHurts: '{spell} hurts in this room'
     refusalHurts: nothing carried stops the room's spell
+    # A rest waiting in the command queue, dropped because a monster walked in first.
+    becauseMovedIn: a monster moved in or a fight began before it was sent
+    refusalMovedIn: a fight here breaks the rest
     reasonMana: 'recovery: mana is low'
     verbRefused: The game answered {verb} with "Your command had no effect."; not trying it again
       this session.

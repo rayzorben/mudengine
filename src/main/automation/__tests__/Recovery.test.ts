@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
+import { FollowersWait } from '../FollowersWait';
 import { fightIsHere, Recovery, type RecoverySettings } from '../Recovery';
 import { HangUpWatch, MOB_ENGAGED_MS } from '../HangUp';
 import { t } from '../../app/i18n';
@@ -893,6 +894,135 @@ describe('with a threat in the room', () => {
     auto.onCharacter(hurt);
     drain();
     expect(sent).toEqual(['rest']);
+  });
+});
+
+/*
+ * Festus on the Lorthan River, 2026-11-17 (Paradigm): `rest` on the prompt of
+ * an empty room, a thin muck crab and two water pixies in behind it, and the
+ * rest broken by the first blow.
+ */
+describe('monsters that follow the character in', () => {
+  const crab = {
+    name: 'thin muck crab',
+    kind: 'mob' as const,
+    disposition: 'hostile' as const,
+    uncertain: false,
+    costly: 'never' as const,
+    charmed: false,
+    hidden: false,
+    free: false
+  };
+  const hurt = (arrival: number, occupants: (typeof crab)[] = []): CharacterState => {
+    const s = state({ hp: 10, hpMax: 100 });
+    return { ...s, room: { ...s.room, arrival, occupants } };
+  };
+
+  it('drops a rest at the send when a monster moved in while it waited its turn', () => {
+    // A gap between sends, so the rest waits behind the command ahead of it.
+    const paced = new CommandQueue(
+      { ...automation, pacing: { ...automation.pacing, minGapMs: 200 } },
+      { send: (command) => sent.push(command) }
+    );
+    const refusals: (string | undefined)[] = [];
+    try {
+      const auto = new Recovery(settings(health({ restBelow: 0.5 })), paced, {
+        decided: (decision) => refusals.push(decision.refused)
+      });
+      paced.enqueue({ command: 'st', priority: 'probe' });
+      auto.onCharacter(hurt(0));
+      expect(auto.restInFlight).toBe(true);
+      expect(sent).toEqual(['st']);
+      auto.onCharacter(hurt(0, [crab]));
+      drain();
+      expect(sent).toEqual(['st']);
+      // Nothing is on its way any more: no walk or lap holds for it, and it is recorded.
+      expect(auto.restInFlight).toBe(false);
+      expect(refusals).toEqual([t('automation.recovery.refusalMovedIn')]);
+      // Control: the same wait with nobody moving in, and the rest goes out.
+      paced.enqueue({ command: 'st', priority: 'probe' });
+      auto.onCharacter(hurt(0));
+      expect(sent).toEqual(['st', 'st']);
+      drain();
+      expect(sent).toEqual(['st', 'st', 'rest']);
+    } finally {
+      paced.dispose();
+    }
+  });
+
+  /* In a lair `RestAway` takes the line over and `Recovery` is not shown the arrival. */
+  it('asks the state as it stands at the send, not the last line it was shown', () => {
+    const paced = new CommandQueue(
+      { ...automation, pacing: { ...automation.pacing, minGapMs: 200 } },
+      { send: (command) => sent.push(command) }
+    );
+    try {
+      let now = hurt(0);
+      const auto = new Recovery(settings(health({ restBelow: 0.5 })), paced, {
+        stateNow: () => now
+      });
+      paced.enqueue({ command: 'st', priority: 'probe' });
+      auto.onCharacter(now);
+      now = hurt(0, [crab]);
+      drain();
+      expect(sent).toEqual(['st']);
+      // The drop closes the window itself, with no line shown to `Recovery`.
+      expect(auto.restInFlight).toBe(false);
+      // Control: the room as it was shown, and the rest goes out.
+      now = hurt(0);
+      paced.enqueue({ command: 'st', priority: 'probe' });
+      auto.onCharacter(now);
+      drain();
+      expect(sent).toEqual(['st', 'st', 'rest']);
+    } finally {
+      paced.dispose();
+    }
+  });
+
+  it('waits after a step for what follows before sitting down', () => {
+    let followed = true;
+    const auto = new Recovery(settings(health({ restBelow: 0.5 })), queue, {
+      followed: () => followed
+    });
+    // Stepped into an empty room, hurt: nothing yet, and nothing claimed.
+    auto.onCharacter(hurt(1));
+    drain();
+    expect(sent).toEqual([]);
+    expect(auto.restInFlight).toBe(false);
+    // Nobody followed inside the wait: the rest goes.
+    followed = false;
+    auto.onCharacter(hurt(1));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+});
+
+describe('the wait for what follows a step', () => {
+  const at = (arrival: number): CharacterState => {
+    const s = state();
+    return { ...s, room: { ...s.room, arrival } };
+  };
+
+  it('runs from the line the room arrived on, for the measured time', () => {
+    const wait = new FollowersWait();
+    wait.note(at(3), 1000);
+    wait.note(at(4), 2000);
+    expect(wait.awaited(2000)).toBe(true);
+    // A reprint of the same room does not start it again.
+    wait.note(at(4), 3000);
+    expect(wait.awaited(2000 + tuning().rest.followersMs - 1)).toBe(true);
+    expect(wait.awaited(2000 + tuning().rest.followersMs)).toBe(false);
+  });
+
+  it('does not wait in the first room seen, which nothing was stepped into', () => {
+    const wait = new FollowersWait();
+    wait.note(at(7), 1000);
+    expect(wait.awaited(1000)).toBe(false);
+    // Control: the next room is waited in, and a reset forgets it.
+    wait.note(at(8), 1000);
+    expect(wait.awaited(1000)).toBe(true);
+    wait.reset();
+    expect(wait.awaited(1000)).toBe(false);
   });
 });
 

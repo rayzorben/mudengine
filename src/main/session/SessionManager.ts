@@ -930,7 +930,7 @@ export class SessionManager {
       waitingOn: (state) => this.combat.waitingOn(state) ?? this.walker.waitingFor,
       decided: reports.decided,
       chunk: this.chunk,
-      signs
+      ...{ signs, stateNow: () => this.tracker.current, followed: () => this.restAway.followed }
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
     const floor = new FloorAfterKill(this.queue, this.tracker);
@@ -1195,7 +1195,7 @@ export class SessionManager {
         stayingReason: () => this.travel.stayingReason(this.tracker.current),
         busy: () => this.travel.escaping
       },
-      reports
+      { ...reports, signs }
     );
     // And the character points, on the one screen the queue stands down for: the driver
     // writes past the queue, since the hold refuses every intent while the form is up.
@@ -2781,7 +2781,7 @@ export class SessionManager {
       // A walk or loop the player steered out from under stands down now, so the
       // walker says "you moved the character yourself", not a wrong-room stop.
       this.steering.note(state);
-      this.restAway.noteRoom();
+      this.restAway.noteRoom(state);
       this.roomHazards.note(state);
       this.marks.onCharacter(state);
       // The saved gear's hold after a death: bookkeeping, under no switch (todo 82).

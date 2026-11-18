@@ -1361,7 +1361,16 @@ const TUNING_DEFAULTS = {
      * is still asked for again. Cleared the moment the flag does arrive, so a
      * rest broken a second later is re-proposed at once.
      */
-    askedMs: 3000
+    askedMs: 3000,
+    /**
+     * How long after a step a rest, and the look next door for one, waits for
+     * the monsters that follow the character in (`FollowersWait`). Measured on
+     * the lines `into the room from` within five seconds of a step's `Obvious
+     * exits:`, Festus on Paradigm, two captures of 2026-11-16: 188 of 310
+     * inside 100ms, 5 between 100ms and 700ms, 112 between 700ms and 1500ms,
+     * 5 later.
+     */
+    followersMs: 1500
   },
   /** A room that hurts the character every tick, and leaving it — `RoomDamageSeen`, `LeaveHarm`. */
   roomHarm: {

@@ -192,6 +192,25 @@ export function fightIsHere(state: CharacterState): boolean {
   return state.room.occupants.length > 0;
 }
 
+/** `fightIsHere`, or a fight only the signs show (`fightSigned`, todo 131). */
+function fightShown(state: CharacterState, signs: FightSigns, now: number): boolean {
+  return fightIsHere(state) || fightSigned(state, signs, now);
+}
+
+/**
+ * Whether a rest taken now would be broken: a fight here, or a monster here
+ * that attacks on sight. The one test for the rest, for the rest asked again
+ * at its send, and for `RestAway`'s look and step next door.
+ */
+export function restWouldBreak(
+  state: CharacterState,
+  signs: FightSigns,
+  rules: readonly MobRule[],
+  now: number
+): boolean {
+  return fightShown(state, signs, now) || countThreats(state, rules) > 0;
+}
+
 /** What a reload hands `Recovery`: its block, the master switch, the party, and the monster rows. */
 export type RecoverySettings = Pick<AutomationConfig, 'health' | 'enabled' | 'party'> & {
   combat: Pick<CombatConfig, 'mobRules'>;
@@ -331,6 +350,10 @@ export class Recovery implements SessionModule {
       waitingOn?(state: CharacterState): MobWaited | null;
       /** No `rest` from the middle of a chunk: the heal waits for its last line, and goes first. */
       chunk?: ChunkGate;
+      /** The state as it stands, for the rest asked again at its send; omitted, the last line shown here. */
+      stateNow?(): CharacterState;
+      /** The monsters that followed the last step may still be walking in (`RestAway.followed`). */
+      followed?(): boolean;
     } = {}
   ) {}
 
@@ -340,8 +363,29 @@ export class Recovery implements SessionModule {
    * (todo 131): Rayzor sent `rest` after every heal while being hit.
    */
   private fighting(state: CharacterState): boolean {
+    return fightShown(state, this.events.signs ?? NO_FIGHT_SIGNS, Date.now());
+  }
+
+  private wouldBeBroken(state: CharacterState): boolean {
     const signs = this.events.signs ?? NO_FIGHT_SIGNS;
-    return fightIsHere(state) || fightSigned(state, signs, Date.now());
+    return restWouldBreak(state, signs, this.mobRules, Date.now());
+  }
+
+  /**
+   * The proposal was dropped at its send (`stillWanted`), so nothing is on
+   * its way: the window closes for the walk and the lap holding on it, and
+   * the refusal is recorded.
+   */
+  private withdraw(command: string): void {
+    this.askedUntil = 0;
+    this.proposed = null;
+    this.events.decided?.({
+      at: Date.now(),
+      action: command,
+      because: t('automation.recovery.becauseMovedIn'),
+      acted: false,
+      refused: t('automation.recovery.refusalMovedIn')
+    });
   }
 
   configure(settings: RecoverySettings): void {
@@ -459,6 +503,7 @@ export class Recovery implements SessionModule {
     this.state = state;
     if (!this.enabled) return;
     if (state.phase !== 'in-game') return;
+    const broken = this.wouldBeBroken(state);
     const { hp, hpMax, mana, manaMax, resting, meditating } = state.vitals;
     // A figure seen under its floor starts a stretch, fight or no fight (todo 825).
     if (this.below(hp, hpMax, this.config.restBelow)) this.sitting = true;
@@ -510,7 +555,7 @@ export class Recovery implements SessionModule {
         return;
       }
       // Not with something here that attacks on sight: the switch would be broken by it.
-      if (Date.now() < this.askedUntil || countThreats(state, this.mobRules) > 0) return;
+      if (Date.now() < this.askedUntil || broken) return;
       const reason =
         other === 'med'
           ? t('automation.recovery.reasonMana')
@@ -524,12 +569,14 @@ export class Recovery implements SessionModule {
      * `askedUntil`.
      */
     if (Date.now() < this.askedUntil) return;
+    // Nor on the heels of a step, before what follows the character has walked in.
+    if (this.events.followed?.() === true) return;
     /*
      * Nor with something in the room that attacks on sight: measured on the
      * road above the arena, where the monsters wander up — rest, attacked,
      * fight, rest, all evening. A rest about to be broken is a command spent.
      */
-    if (countThreats(state, this.mobRules) > 0) return;
+    if (broken) return;
 
     const wait = this.waitOf(state);
     const restWanted = this.wantsRest(hp, hpMax, wait.health) && !this.refused.has('rest');
@@ -796,6 +843,8 @@ export class Recovery implements SessionModule {
   private propose(command: string, reason: string, decision: DecisionKind): void {
     // Treated as a refused offer: nothing is on its way, and the chunk's last line asks again.
     if (this.midChunk()) return;
+    // The queue can ask `stillWanted` inside `offer`, so a drop there is noted from within it.
+    let dropped = false;
     const offered = this.queue.offer({
       command,
       decision,
@@ -811,11 +860,25 @@ export class Recovery implements SessionModule {
        */
       coalesceKey: 'recovery',
       expiresAt: Date.now() + tuning().rest.expiresMs,
+      /*
+       * Asked again at the send, against the state as it stands: a monster
+       * that moved in while this waited its turn breaks the rest with its
+       * first blow. A state nobody can show is not a safe one. The drop is
+       * the one answer the queue acts on, so the window is closed here and
+       * not on a later line `Recovery` may never be shown.
+       */
+      stillWanted: () => {
+        const now = this.events.stateNow?.() ?? this.state;
+        if (now !== null && !this.wouldBeBroken(now)) return true;
+        dropped = true;
+        this.withdraw(command);
+        return false;
+      },
       reason
     });
     // Refused (a screen up, the link down, a word the realm lacks): nothing is
     // on its way, so nothing waits on it and the next line asks again.
-    if (!taken(offered)) return;
+    if (!taken(offered) || dropped) return;
     // Asked. Nothing else is proposed until the status line says it worked, or
     // until the deadline says it never will — see `askedUntil`.
     this.askedUntil = Date.now() + tuning().rest.askedMs;
