@@ -3681,6 +3681,68 @@ describe('lairs', () => {
         expect(graph.mobAt('gnoll scout', '1/1')).toMatchObject({ hp: 830, span: [100, 830] });
       });
 
+      /*
+       * Cretin, 2026-11-18: `giant rat` is rows 1 and 109, which attack on
+       * sight, and row 1116, which does not. The Newhaven Arena's group holds
+       * only the first two, and each rat that walked in swung first.
+       */
+      describe('a room naming several of the rows', () => {
+        const rats = {
+          n: 'giant rat',
+          hp: 10,
+          hi: 12,
+          i: [1, 109, 1116],
+          d: 'h',
+          x: 1,
+          rw: [
+            { hp: 12, d: 'h', xp: 9 },
+            { hp: 12, d: 'h', xp: 9 },
+            { hp: 10, d: 'p', xp: 5 }
+          ]
+        };
+        const arena = (rows: Record<string, unknown>) =>
+          makeWorld(
+            [
+              { m: 1, r: 1, n: 'Arena', x: {}, ...rows },
+              { m: 1, r: 2, n: 'Small Cavern', x: {}, lair: '(Max 1): 1116,' }
+            ],
+            { mobs: [rats] },
+            61
+          );
+
+        it('is certain where the rows its wanderers name agree', () => {
+          const graph = arena({ wd: [1, 2, 109] });
+          expect(graph.mob('giant rat')).toMatchObject({ disposition: 'hostile', uncertain: true });
+          expect(graph.resolveMobRow('giant rat', '1/1')).toBeNull();
+          const here = graph.mobAt('giant rat', '1/1')!;
+          expect(here).toMatchObject({ disposition: 'hostile', uncertain: false, ids: [1, 109] });
+          // Only the rows and the temper narrow: the figures stay the name's.
+          expect(here).toMatchObject({ hp: 12, span: [10, 12] });
+          expect(here).not.toHaveProperty('row');
+          expect(graph.buildMobEntity('small giant rat', { at: '1/1' })).toMatchObject({
+            disposition: 'hostile',
+            uncertain: false
+          });
+        });
+
+        it('stays uncertain where the rows named disagree, or the room names every one', () => {
+          const mixed = arena({ lair: '(Max 2): 109,1116,' });
+          expect(mixed.mobAt('giant rat', '1/1')).toMatchObject({
+            disposition: 'hostile',
+            uncertain: true,
+            ids: [109, 1116]
+          });
+          const all = arena({ wd: [1, 109, 1116] });
+          expect(all.mobAt('giant rat', '1/1')).toBe(all.mob('giant rat'));
+        });
+
+        it('takes the one row its wanderers name', () => {
+          const graph = arena({ wd: [109, 7] });
+          expect(graph.resolveMobRow('giant rat', '1/1')).toMatchObject({ id: 109, how: 'here' });
+          expect(graph.mobAt('giant rat', '1/2')).toMatchObject({ disposition: 'passive' });
+        });
+      });
+
       it('takes the decisively nearer row where no room here names one', () => {
         // A corridor: the scout's two rows spawn at either end, and the reader
         // stands one step from row 224 and eleven from row 2204.

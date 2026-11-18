@@ -21,15 +21,17 @@ import { WorldGraph } from '../WorldGraph';
  * room command's one-off hit a wall (`Router.hitCost`), so 10 of the 1,704
  * sampled sweeps reach fewer rooms: 196 between them, behind the pyramid pits,
  * the flaming portals, a tentacle hole and the roof at 8/758 (2026-11-03).
+ * A room's wanderers name a row as its lair does (2026-11-18), so a row found
+ * `nearest` in such a room is `here`; the sample resolves as many as before.
  */
 const MEASURED = {
   gmud: {
     within: '4df39121086b6a3a',
-    rows: { asked: 1638, resolved: 388, digest: 'f00dfbd2f8e0ad8a' }
+    rows: { asked: 1638, resolved: 388, digest: '6d468d89b3de62ce' }
   },
   pmud: {
     within: '4efdaccdf6aea77c',
-    rows: { asked: 1832, resolved: 451, digest: '44bd251f9ba47d49' }
+    rows: { asked: 1832, resolved: 451, digest: '7d908ffaeb9b678a' }
   }
 } as const;
 

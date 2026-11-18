@@ -1358,8 +1358,11 @@ export class RoomTracker {
      * `costly` is not brought over: `BuiltMobRow` carries no alignment cost,
      * so there is no row answer to prefer to the fold's — and *sometimes* on a
      * resolved row is the same artefact, a format bump away.
+     *
+     * A room naming several rows that agree is in step the same way
+     * (`amongRowsHere`), so the test is whether the realm knows the monster.
      */
-    return mob.row === undefined
+    return mob.source === 'wire'
       ? { ...who, mob }
       : { ...who, mob, disposition: mob.disposition, uncertain: mob.uncertain };
   }

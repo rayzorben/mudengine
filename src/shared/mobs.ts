@@ -245,6 +245,15 @@ export function worstDisposition(all: Iterable<MobDisposition>): MobDisposition 
   return worst;
 }
 
+/** What several rows say between them: the worst, and whether they disagree. */
+export function foldDisposition(all: Iterable<MobDisposition>): {
+  disposition: MobDisposition;
+  uncertain: boolean;
+} {
+  const each = new Set(all);
+  return { disposition: worstDisposition(each), uncertain: each.size > 1 };
+}
+
 /**
  * Whether a monster will open the fight, given how the realm ranks you and
  * what you hold.

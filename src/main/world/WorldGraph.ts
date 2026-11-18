@@ -101,6 +101,7 @@ import {
 import { dearerStepsOf, Router, type RouteOptions, type Traveller } from './Router';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { Catalogue, mobAsRow } from './Catalogue';
+import { amongRowsHere, rowsNamedHere } from './mobRowsHere';
 import { Joiners } from './joiners';
 import { readActions, readRows } from './roomColumns';
 import { headerOf, NO_HEADER, type RealmHeader } from './realmHeader';
@@ -623,8 +624,8 @@ export class WorldGraph {
    *
    * Two rungs, and a refusal under both:
    *
-   * 1. **Here.** The room's own lair or resident names exactly one of the
-   *    rows. Nothing beats this and nothing is searched.
+   * 1. **Here.** The room's own lair, resident or wanderers name exactly one
+   *    of the rows. Nothing beats this and nothing is searched.
    * 2. **Nearest.** Breadth-first from the room over walkable exits, keeping
    *    the first distance at which each row is reached, and stopping once the
    *    answer can no longer change: past `mobRowMargin` times the nearest hit
@@ -665,22 +666,15 @@ export class WorldGraph {
     if (here === undefined) return null;
 
     /*
-     * Rung one: what the realm says spawns in this very room. A resident and a
-     * lair are both claims about *this* room, and one of them naming exactly
-     * one candidate ends the question — there is nothing a distance could add.
+     * Rung one: what the realm says spawns in this very room. A resident, a
+     * lair and the group's wanderers are claims about *this* room, and exactly
+     * one candidate named ends the question — there is nothing a distance could add.
      */
-    const named = new Set<number>();
-    if (here.npcId !== undefined && wanted.has(here.npcId)) named.add(here.npcId);
-    if (here.lair !== undefined) {
-      for (const id of parseLair(here.lair).ids) if (wanted.has(id)) named.add(id);
-    }
-    if (named.size === 1) {
-      const [id] = [...named];
-      return { id: id!, how: 'here', steps: 0, beyond: null };
-    }
+    const named = rowsNamedHere(here, wanted);
+    if (named.length === 1) return { id: named[0]!, how: 'here', steps: 0, beyond: null };
     // Two of the name's rows spawn in this room: the room cannot tell them
-    // apart, and neither can anything downstream of it.
-    if (named.size > 1) return null;
+    // apart, and `mobAt` keeps only what the two agree on (`amongRowsHere`).
+    if (named.length > 1) return null;
 
     /*
      * Rung two. The reverse index is already built for the Reference card's
@@ -753,7 +747,10 @@ export class WorldGraph {
     const mob = this.mobAsPrinted(name);
     if (mob === undefined) return undefined;
     const choice = this.resolveMobRow(name, from);
-    if (choice === null) return mob;
+    if (choice === null) {
+      const room = from === null ? undefined : this.rooms.get(from);
+      return amongRowsHere(mob, room, (id) => this.catalogue.mobRow(id));
+    }
     const row = this.catalogue.mobRow(choice.id);
     return row === undefined ? mob : mobAsRow(mob, row, choice);
   }

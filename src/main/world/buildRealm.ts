@@ -55,7 +55,7 @@ import {
   shareOfRows,
   DISPOSITION_CODE,
   dispositionOf,
-  worstDisposition,
+  foldDisposition,
   type MobDisposition
 } from '../../shared/mobs';
 import { DENOMINATIONS, type Denomination } from '../../shared/character';
@@ -2541,11 +2541,12 @@ export function indexMobs(
       const mob: BuiltMob = { n, hp: span.lo };
       if (span.ids.length > 0) mob.i = span.ids;
       if (span.hi > span.lo) mob.hi = span.hi;
-      if (span.how.size > 0) mob.d = DISPOSITION_CODE[worstDisposition(span.how)];
+      const temper = foldDisposition(span.how);
+      if (span.how.size > 0) mob.d = DISPOSITION_CODE[temper.disposition];
       // 21 of 1,514 names in the shipped realm, `giant rat` among them. The
       // flag is what stops the worst case being acted on as though it were the
       // answer; see `WorldMob.uncertain`.
-      if (span.how.size > 1) mob.x = 1;
+      if (temper.uncertain) mob.x = 1;
       const cost = shareOfRows(span.costs);
       if (cost !== 'never') mob.ep = cost === 'always' ? 'a' : 's';
       // Format 79, as `ep` is.
