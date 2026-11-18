@@ -36,6 +36,7 @@ import type { Stash } from './stash';
 import type { RoomReference } from './world';
 import type { CharacterIdentity } from './reset';
 import type { CombatTally } from './tally';
+import { NO_QUEST_WATCHED, type QuestWatchedSink } from './questWatched';
 import { NO_UNDERWAY, type UnderwaySink } from './underway';
 
 /**
@@ -239,7 +240,11 @@ export const NO_BELONGINGS: BelongingsSink = {
 };
 
 /** The whole of a character's record, as the session holds it; each reader takes its own half. */
-export type CharacterRecord = BelongingsSink & UnderwaySink;
+export type CharacterRecord = BelongingsSink & UnderwaySink & QuestWatchedSink;
 
-/** `NO_BELONGINGS`, and nothing underway either. */
-export const NO_RECORD: CharacterRecord = { ...NO_BELONGINGS, ...NO_UNDERWAY };
+/** `NO_BELONGINGS`, and nothing underway or watched either. */
+export const NO_RECORD: CharacterRecord = {
+  ...NO_BELONGINGS,
+  ...NO_UNDERWAY,
+  ...NO_QUEST_WATCHED
+};

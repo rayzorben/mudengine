@@ -480,7 +480,7 @@ export class SessionManager {
   readonly locating: Locating;
   /** A step out of an unplaced room where the realm cannot say. See `PlacingStep`. */
   private readonly placing: PlacingStep;
-  /** What this character has been seen to do about each quest this sitting. See `QuestWatch`. */
+  /** What this character has been seen to do about each quest. See `QuestWatch`. */
   private readonly questWatch: QuestWatch;
   /** Walking, looping and running away, and what a lost connection carries. See `Travel`. */
   private readonly travel: Travel;
@@ -2372,7 +2372,7 @@ export class SessionManager {
     this.tracker.useBelongings(belongings);
     if (belongings !== this.belongings) this.carryOver.leave(this.belongings);
     this.belongings = belongings;
-    this.statsBaseline.useStore(belongings);
+    for (const it of [this.statsBaseline, this.questWatch]) it.useStore(belongings);
     this.tracker.forgetBelongings();
     this.forgetPlayers = players.subscribe((batch) => {
       if (this.tracker.absorbPlayers(batch)) this.publisher.players();

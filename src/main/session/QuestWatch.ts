@@ -1,10 +1,10 @@
 /**
- * What this character has been seen to do about each quest this sitting: a
- * line sent that reaches a step and a monster watched die, each only ever
- * forward, and refused where a complete `abil` listing's own counter gates
- * say the step cannot have run. Never the realm's count, which stays
- * `CharacterState.abilities` and outranks it on the card. See
- * `mudengine-world` › `parts/quests.md` and `mudengine-ui` ›
+ * What this character has been seen to do about each quest, kept in its
+ * record between sessions: a line sent that reaches a step and a monster
+ * watched die, each only ever forward, and refused where a complete `abil`
+ * listing's own counter gates say the step cannot have run. Never the realm's
+ * count, which stays `CharacterState.abilities` and outranks it on the card.
+ * See `mudengine-world` › `parts/quests.md` and `mudengine-ui` ›
  * `parts/quests.md`.
  */
 import type { SessionModule } from '../automation/Module';
@@ -22,6 +22,11 @@ import {
   type QuestStep,
   type QuestWatched
 } from '../../shared/quests';
+import {
+  NO_QUEST_WATCHED,
+  NOTHING_WATCHED,
+  type QuestWatchedSink
+} from '../../shared/questWatched';
 import { roomAddress } from '../../shared/world';
 
 /** Where the character stands and what `abil` last listed, and the realm's quests. */
@@ -36,12 +41,13 @@ export class QuestWatch implements SessionModule {
   /**
    * The rank each quest's counter has been *seen* to reach, and **when**.
    *
-   * Per session: it is a record of this sitting's actions. The clock is what
+   * Kept in the character's record between sessions. The clock is what
    * lets it be ranked against the realm's own count rather than simply losing
    * to it — a listing read before the act is older evidence than the act. See
    * `questReading`.
    */
-  private questSaid: Record<number, QuestSeen> = {};
+  private questSaid: QuestWatched = NOTHING_WATCHED;
+  private store: QuestWatchedSink = NO_QUEST_WATCHED;
 
   constructor(
     parts: QuestWatchParts,
@@ -56,15 +62,26 @@ export class QuestWatch implements SessionModule {
     return this.questSaid;
   }
 
+  /** The character's record, on each realm dialled. What it kept is what is watched. */
+  useStore(store: QuestWatchedSink): void {
+    this.store = store;
+    this.reset();
+  }
+
   /**
-   * The character that was is put down: on connect, on leaving the realm (a
-   * reroll at the menu walks back in as somebody else) and on forgetting it.
-   * The card is told only when it held something, so an empty reset is silent.
+   * Back to what the character's record kept: on connect, on leaving the realm
+   * and on forgetting the character, which empties the record first. A realm
+   * with no `abil` has no other count, so a reconnect that emptied this left
+   * the book at nothing done (Yang, 2026-11-18). A reroll is `ResetWatch`'s to
+   * notice, as it is for the `abil` listing kept beside this. The card is told
+   * only when what it holds changes.
    */
   reset(): void {
-    if (Object.keys(this.questSaid).length === 0) return;
-    this.questSaid = {};
-    this.sink.questSaid?.(this.questSaid);
+    const kept = this.store.recallQuestWatched();
+    if (kept === this.questSaid) return;
+    const silent = Object.keys(kept).length === 0 && Object.keys(this.questSaid).length === 0;
+    this.questSaid = kept;
+    if (!silent) this.sink.questSaid?.(this.questSaid);
   }
 
   /**
@@ -153,6 +170,7 @@ export class QuestWatch implements SessionModule {
     if (countersRefuse(found.step, this.countersNow())) return;
     const seen: QuestSeen = { to: found.step.to, at: Date.now() };
     this.questSaid = { ...this.questSaid, [found.quest.id]: seen };
+    this.store.rememberQuestWatched(this.questSaid);
     this.sink.questSaid?.(this.questSaid);
   }
 }

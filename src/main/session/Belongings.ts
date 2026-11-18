@@ -47,6 +47,8 @@ import {
   type Underway,
   type UnderwaySink
 } from '../../shared/underway';
+import { asQuestWatched, NOTHING_WATCHED, type QuestWatchedSink } from '../../shared/questWatched';
+import type { QuestWatched } from '../../shared/quests';
 import { combatTallyFault, settleClocks, type CombatTally } from '../../shared/tally';
 import type { GearLock, Loadout, WornSlot } from '../../shared/gear';
 import { isStashEntry, type Stash, type StashEntry } from '../../shared/stash';
@@ -96,6 +98,8 @@ interface BelongingsFile {
    * quest book turns a step on that difference.
    */
   abilities?: AbilitySums;
+  /** The quest ranks watched, by counter id. Parsed by `asQuestWatched`; absent is none. */
+  questWatched?: unknown;
   /**
    * Who this character was, so a reset can be noticed. Absent means never read.
    * See `src/shared/reset.ts`.
@@ -128,7 +132,7 @@ export interface BelongingsOptions {
   notify?(message: string): void;
 }
 
-export class Belongings implements BelongingsSink, UnderwaySink {
+export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSink {
   private banks: BankBalance[] = [];
   private loadout: WornSlot[] = [];
   private stash: Stash = [];
@@ -138,6 +142,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   private huntRates = new Map<string, MeasuredRate>();
   /** Null is *never read*, never "the realm counts none". See the sink. */
   private abilities: AbilitySums | null = null;
+  private questWatched: QuestWatched = NOTHING_WATCHED;
   /** Null is *never read*. See `recallIdentity`. */
   private identity: CharacterIdentity | null = null;
   /** Null is *never kept*. See `recallStats`. */
@@ -271,6 +276,17 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     return this.abilities;
   }
 
+  recallQuestWatched(): QuestWatched {
+    return this.questWatched;
+  }
+
+  rememberQuestWatched(watched: QuestWatched): void {
+    // Kept by reference: `QuestWatch` replaces the record whole and never edits it.
+    if (this.suspended || watched === this.questWatched) return;
+    this.questWatched = watched;
+    this.schedule();
+  }
+
   recallIdentity(): CharacterIdentity | null {
     return this.identity;
   }
@@ -340,6 +356,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     this.durations = {};
     this.fled = [];
     this.abilities = null;
+    this.questWatched = NOTHING_WATCHED;
     this.identity = null;
     this.stats = null;
     this.statsBase = null;
@@ -492,6 +509,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     this.huntRates = new Map(Object.entries(file.huntRates ?? {}));
     // Absent is *never read*, and stays null — the spellbook's rule.
     this.abilities = file.abilities ?? null;
+    this.questWatched = asQuestWatched(file.questWatched);
     this.identity = file.identity ?? null;
     this.stats = file.stats ?? null;
     this.statsBase = file.statsBase ?? null;
@@ -568,6 +586,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.huntRates.size > 0 ? { huntRates: Object.fromEntries(this.huntRates) } : {}),
       // Omitted while never read, so the absence survives the round trip.
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
+      ...(Object.keys(this.questWatched).length > 0 ? { questWatched: this.questWatched } : {}),
       ...(this.identity !== null ? { identity: this.identity } : {}),
       ...(this.stats !== null ? { stats: this.stats } : {}),
       ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),

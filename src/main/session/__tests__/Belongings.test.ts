@@ -460,6 +460,37 @@ describe('what abil last summed', () => {
     expect(new Belongings({ file, realm: 'elsewhere:23' }).recallAbilities()).toBeNull();
   });
 
+  it('keeps the quest ranks watched through a restart, and drops them when forgotten', () => {
+    const watched = { 126: { to: 4, at: 1_757_000_000_000 } };
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberQuestWatched(watched);
+    store.close();
+
+    const next = new Belongings({ file, realm: REALM });
+    expect(next.recallQuestWatched()).toEqual(watched);
+
+    next.forget();
+    next.close();
+    expect(new Belongings({ file, realm: REALM }).recallQuestWatched()).toEqual({});
+  });
+
+  it('reads a watched rank that is not a number as nothing watched for that quest', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: REALM,
+        banks: [balance()],
+        questWatched: { 126: { to: 'four', at: 1 }, 127: { to: 2, at: 9 } }
+      }),
+      'utf8'
+    );
+    const store = new Belongings({ file, realm: REALM });
+    expect(store.recallQuestWatched()).toEqual({ 127: { to: 2, at: 9 } });
+    expect(store.recallBanks()).toEqual([balance()]);
+  });
+
   it('refuses a row with no `complete` flag, which is what decides an absent id', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(

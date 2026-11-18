@@ -44,6 +44,7 @@ import { NO_LORE } from '../../../shared/lore';
 import { SPAWNS_VERSION, type LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
 import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../../shared/belongings';
+import { NOTHING_WATCHED } from '../../../shared/questWatched';
 import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
 import { NO_PEER_GRANT } from '../../../shared/peerGrant';
@@ -3182,18 +3183,34 @@ describe('the plan to a step', () => {
    * Todo 743: the rank a quest was watched reaching is the character's who
    * watched it. A reroll at the menu walked back in holding the old one's
    * rank, which outranked the new one's complete listing, so a run marked
-   * steps done that this character never did; and the card kept the old map.
+   * steps done that this character never did. Since 2026-11-18 the rank is
+   * kept in the character's record, so it is still held at the menu; the
+   * newer listing answers for the counter, and Forget empties the record.
    */
   describe('and the character that watched a rank gone', () => {
     const questing: AutomationConfig = { ...still, quests: { ...still.quests, enabled: true } };
     const beside = 'Location:            1,2\r\nMiddle Road\r\nObvious exits: west\r\n';
+
+    /** A record that keeps the ranks watched as `Belongings` does, and empties them at a forget. */
+    function keeping(): CharacterRecord {
+      let kept: QuestWatched = NOTHING_WATCHED;
+      return {
+        ...NO_RECORD,
+        recallQuestWatched: () => kept,
+        rememberQuestWatched: (watched) => void (kept = watched),
+        forget: () => {
+          kept = NOTHING_WATCHED;
+          return true;
+        }
+      };
+    }
 
     /** In the realm beside the Sage, every map the window is sent kept in `pushed`. */
     async function withTheSage(pushed: QuestWatched[]): Promise<net.Socket> {
       const { sink } = collect();
       sink.questSaid = (progress) => pushed.push(progress);
       manager = build(sink, { world: questWorld(), automation: questing });
-      manager.useRealm(NO_REALM_PLAYERS, { ...NO_RECORD, forget: () => true });
+      manager.useRealm(NO_REALM_PLAYERS, keeping());
       await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
       const socket = await client();
       socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT + beside);
@@ -3209,15 +3226,16 @@ describe('the plan to a step', () => {
       expect(pushed.map((map) => map[134]?.to)).toEqual([1]);
     }
 
-    it('forgets it at the menu, clears the card, and runs the next one from its listing', async () => {
+    it('keeps it at the menu, and runs the next character from its own listing', async () => {
       const pushed: QuestWatched[] = [];
       const socket = await withTheSage(pushed);
       await askTheSage(pushed);
 
       socket.write('You will exit after a period of silent meditation.\r\n[PARADIGM]:');
       await until(() => manager!.character.phase !== 'in-game');
-      expect(manager!.questProgress).toEqual({});
-      expect(pushed).toEqual([{ 134: expect.anything() }, {}]);
+      // The record kept it, so the same character walking back in has lost nothing.
+      expect(manager!.questProgress[134]?.to).toBe(1);
+      expect(pushed).toEqual([{ 134: expect.anything() }]);
 
       // Back in as somebody else, whose complete listing holds no counter 134.
       socket.write(

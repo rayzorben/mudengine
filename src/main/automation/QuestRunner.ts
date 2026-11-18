@@ -33,6 +33,7 @@ import { type QuestsConfig } from '../../shared/config';
 import { BOUGHT_ROW, type SupplyItem } from '../../shared/packConfig';
 import {
   IDLE_QUEST_RUN,
+  questReading,
   stepRoll,
   type PlanItem,
   type PlanStep,
@@ -578,14 +579,14 @@ export class QuestRunner implements SessionModule {
   }
 
   /**
-   * Where the counter stands as the client can read it: the listing walked
-   * forward by what this run and the player were watched doing. Minus
-   * infinity where nothing has stated it, so no step is skipped on silence.
+   * Where the counter stands as the client can read it: the card's own
+   * reading (`questReading`), so a listing read after a watched rank answers
+   * for it, and a rank kept from a character since rerolled skips no step.
+   * Minus infinity where nothing has stated it, so none is skipped on silence.
    */
   private rankNow(run: Run, state: CharacterState): number {
-    const watched = this.planner.watched()[run.quest.id]?.to;
-    const listed = listedSum(state.abilities, run.quest.id);
-    return Math.max(watched ?? -Infinity, listed ?? -Infinity);
+    const reading = questReading(run.quest.id, state.abilities, this.planner.watched());
+    return reading.rank ?? -Infinity;
   }
 
   // ---------------------------------------------------------------- gathering
