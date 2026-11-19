@@ -10131,6 +10131,89 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       (await readUntil(shown, (now) => now === 'hidden')) === 'hidden',
       'the pointer leaving puts them away again'
     );
+
+    /*
+     * A circle is a handle (the user, 2026-11-18): the grip is outside the
+     * column, so the circle is what is dragged there. A press that does not
+     * travel is still the click that shows a character.
+     */
+    {
+      const railIds = () =>
+        evaluate(
+          `[...document.querySelectorAll('.tab-rail .tab[data-session]')].map((tab) => tab.dataset.session).join('|')`
+        );
+      const showing = () =>
+        evaluate(
+          `document.querySelector('.tab-rail .tab[data-active="true"]')?.dataset.session ?? ''`
+        );
+      const [upper, lower] = closed.tabs;
+      const above = { x: upper.circle.x, y: upper.tab.top + 2 };
+      const before = String(await railIds());
+      const shownBefore = String(await showing());
+      const [head, next, ...rest] = before.split('|');
+      const swapped = [next, head, ...rest].join('|');
+      await drag(lower.circle, above, gapIn('.tab-rail .tabs'));
+      const after = await readUntil(railIds, (now) => now === swapped);
+      check(
+        after === swapped,
+        'a circle dragged up the hidden column moves its character up the rail',
+        JSON.stringify({ before, after })
+      );
+      check(
+        String(await showing()) === shownBefore,
+        'and the release shows no other character',
+        String(await showing())
+      );
+      await drag(lower.circle, above, gapIn('.tab-rail .tabs'));
+      check(
+        (await readUntil(railIds, (now) => now === before)) === before,
+        'and dragged again it goes back',
+        String(await railIds())
+      );
+      const other = shownBefore === head ? next : head;
+      const circleOf = (id) => (id === head ? upper.circle : lower.circle);
+      // Dropped back on its own tab: the release lands on the tab, and the
+      // click that follows it must not show the character. The click is
+      // counted ahead of the client's own listener, and waited for.
+      await evaluate(
+        `window.__circleClicks = 0; window.addEventListener('click', () => { window.__circleClicks += 1; }, { capture: true, once: true }); 1`
+      );
+      let lifted = false;
+      await drag(
+        circleOf(other),
+        { x: circleOf(other).x, y: circleOf(other).y + 10 },
+        async () =>
+          (lifted ||= Boolean(await evaluate(`!!document.querySelector('.tab[data-dragging]')`)))
+      );
+      const clicked = await readUntil(
+        () => evaluate(`window.__circleClicks`),
+        (count) => count === 1
+      );
+      check(
+        lifted && clicked === 1,
+        'a circle dragged and dropped on its own tab is followed by a click',
+        JSON.stringify({ lifted, clicked })
+      );
+      check(
+        String(await showing()) === shownBefore && String(await railIds()) === before,
+        'which moves nothing and shows no other character',
+        JSON.stringify({ showing: await showing(), order: await railIds() })
+      );
+      await drag(circleOf(other), circleOf(other));
+      check(
+        (await readUntil(showing, (now) => now === other)) === other,
+        'a press on a circle that does not travel shows that character',
+        String(await showing())
+      );
+      await drag(circleOf(shownBefore), circleOf(shownBefore));
+      check(
+        (await readUntil(showing, (now) => now === shownBefore)) === shownBefore,
+        'and a press on the first one shows it again',
+        String(await showing())
+      );
+      await pointAt(tucked.console.left + tucked.console.width - 10, middle);
+      await readUntil(shown, (now) => now === 'hidden');
+    }
     check(
       String(await pressCommand('hide', 'tabsautohide')) === 'true' &&
         (await readUntil(hiding, (now) => now === '')) === '',

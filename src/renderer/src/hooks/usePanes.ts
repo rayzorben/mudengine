@@ -75,6 +75,16 @@ export function usePanes(
     return sessions.length > 0 ? [sessions[0]!.id] : [];
   }, [paneIds, sessions]);
 
+  /*
+   * The head of the rail is shown until a character is picked, and it is kept
+   * as the pick once shown: the rail dragged into another order has a new head,
+   * and the console followed it to another character (the smoke, 2026-11-18).
+   */
+  useEffect(() => {
+    const head = panes[0];
+    if (head !== undefined && !paneIds.includes(head)) setPaneIds(panes);
+  }, [panes, paneIds]);
+
   const paneAt = Math.min(focusedPane, Math.max(0, panes.length - 1));
   const session = panes[paneAt] ?? NO_SESSION;
 

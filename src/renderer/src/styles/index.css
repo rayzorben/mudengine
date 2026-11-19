@@ -8284,8 +8284,17 @@ button.gear-fold:hover:not(:disabled) {
   outline-offset: -1px;
 }
 
-.tab[data-dragging] .tab-grip {
+.tab[data-dragging] :is(.tab-grip, .char-badge) {
   cursor: grabbing;
+}
+
+/*
+ * A character's own circle is dragged like its grip; on the hidden rail it is
+ * the only handle in the column. A shared character's tab has no
+ * `data-session` and is not dragged.
+ */
+.tab[data-session] > .char-badge {
+  cursor: grab;
 }
 
 /*

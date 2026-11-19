@@ -630,6 +630,14 @@ function TabRail({
                 // The caret goes to the terminal of the character being shown, not
                 // to the tab that was clicked.
                 onMouseDown={keepFocus}
+                // The circle is a handle as well as the grip (user, 2026-11-18):
+                // on the hidden rail it is all of a tab that shows. A press that
+                // stays inside the slop is still the click that selects.
+                onPointerDown={(event) => {
+                  if (event.target instanceof Element && event.target.closest('.char-badge')) {
+                    drag.begin(session.id, event);
+                  }
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
