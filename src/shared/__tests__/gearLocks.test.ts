@@ -50,6 +50,24 @@ describe('gear locks', () => {
     expect(freeLoadout(held, items)[1]?.locked).not.toBeNull();
   });
 
+  it('frees both rings of a slot of two places once each is carried or worn', () => {
+    const rings = lockLoadout(
+      [
+        { slot: 'Finger', item: 'silver ring', at: 1, locked: null },
+        { slot: 'Finger', item: 'moonstone ring', at: 1, locked: null }
+      ],
+      10,
+      0
+    );
+    const back = [
+      carried('silver ring'),
+      carried('moonstone ring', { equipped: true, slot: 'Finger' })
+    ];
+    expect(freeLoadout(rings, back).map((worn) => worn.locked)).toEqual([null, null]);
+    const spare = [...back, carried('pearl ring', { equipped: true, slot: 'Finger' })];
+    expect(freeLoadout(rings, spare)).toBe(rings);
+  });
+
   it('runs the allowance on play time from each lock', () => {
     const held = lockLoadout(free.slice(0, 2), 10, 0);
     expect(expiredSlots(held, 3 * HOUR - 1, 3 * HOUR)).toEqual([]);

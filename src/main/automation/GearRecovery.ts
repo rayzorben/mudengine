@@ -282,7 +282,7 @@ export class GearRecovery implements SessionModule {
   }
 
   private dress(asked: readonly string[], arrived: readonly string[], state: CharacterState): void {
-    const plan = restorePlan(state.loadout, state.inventory.items, tuning().spending.maxGear);
+    const plan = restorePlan(state.loadout, state.inventory.items);
     for (const command of plan.commands) {
       this.queue.enqueue({
         command,

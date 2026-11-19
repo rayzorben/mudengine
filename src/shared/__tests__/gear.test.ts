@@ -94,6 +94,66 @@ describe('learning what is in each slot', () => {
     );
     expect(after.map((entry) => entry.slot)).toEqual(['Feet', 'Head', 'Torso']);
   });
+
+  /* Cretin wore a silver ring and a moonstone ring; one `Finger` entry kept
+     only the last listed, and the other was never put back (2026-11-19). */
+  describe('a slot of two places', () => {
+    const rings = [worn('silver ring', 'Finger'), worn('moonstone ring', 'Finger')];
+    const names = (loadout: Loadout): string[] => loadout.map((entry) => entry.item);
+
+    it('saves both rings, and is the same loadout on the next listing', () => {
+      const held = learnLoadout([], rings, NOW);
+      expect(names(held)).toEqual(['silver ring', 'moonstone ring']);
+      expect(learnLoadout(held, rings, NOW + 1000)).toBe(held);
+    });
+
+    it('keeps a ring that came off, and gives its place to a third ring worn', () => {
+      const held = learnLoadout([], rings, NOW);
+      const one = [worn('moonstone ring', 'Finger'), carried({ name: 'silver ring' })];
+      expect(learnLoadout(held, one, NOW + 1000)).toBe(held);
+      const after = learnLoadout(held, [...one, worn('pearl ring', 'Finger')], NOW + 2000);
+      expect(names(after)).toEqual(['pearl ring', 'moonstone ring']);
+    });
+
+    it('saves no spare ring while both places are held since a death', () => {
+      const held = learnLoadout([], rings, NOW).map((entry) => ({
+        ...entry,
+        locked: { at: NOW, played: 0 }
+      }));
+      expect(learnLoadout(held, [worn('pearl ring', 'Finger')], NOW + 1000)).toBe(held);
+    });
+
+    it('saves no spare ring on the bare finger while the other ring is held', () => {
+      const held: Loadout = [
+        { slot: 'Finger', item: 'moonstone ring', at: NOW, locked: { at: NOW, played: 0 } }
+      ];
+      expect(learnLoadout(held, [worn('pearl ring', 'Finger')], NOW + 1000)).toBe(held);
+    });
+
+    it('puts both back on', () => {
+      const plan = restorePlan(
+        learnLoadout([], rings, NOW),
+        rings.map((ring) => carried({ name: ring.name }))
+      );
+      expect(plan.commands).toEqual(['wear silver ring', 'wear moonstone ring']);
+    });
+
+    /* With both fingers full `wear` replaces the first place, so the second
+       saved ring would take the first off again (`roomFor`). */
+    it('takes a spare ring off before each saved ring goes on a full hand', () => {
+      const plan = restorePlan(learnLoadout([], rings, NOW), [
+        ...rings.map((ring) => carried({ name: ring.name })),
+        worn('pearl ring', 'Finger'),
+        worn('jade ring', 'Finger')
+      ]);
+      expect(plan.commands).toEqual([
+        'remove pearl ring',
+        'wear silver ring',
+        'remove jade ring',
+        'wear moonstone ring'
+      ]);
+    });
+  });
 });
 
 describe('putting back what was on', () => {
@@ -103,11 +163,10 @@ describe('putting back what was on', () => {
   ];
 
   it('wears what the pack holds and the character is not using', () => {
-    const plan = restorePlan(
-      loadout,
-      [carried({ name: 'padded helm' }), carried({ name: 'padded vest' })],
-      10
-    );
+    const plan = restorePlan(loadout, [
+      carried({ name: 'padded helm' }),
+      carried({ name: 'padded vest' })
+    ]);
     expect(plan.commands).toEqual(['wear padded helm', 'wear padded vest']);
     expect(plan.missing).toEqual([]);
   });
@@ -115,11 +174,10 @@ describe('putting back what was on', () => {
   /* Re-wearing something already on earns `You are already wearing …`, a
      command spent to be told so. */
   it('leaves alone what is already in use', () => {
-    const plan = restorePlan(
-      loadout,
-      [worn('padded helm', 'Head'), carried({ name: 'padded vest' })],
-      10
-    );
+    const plan = restorePlan(loadout, [
+      worn('padded helm', 'Head'),
+      carried({ name: 'padded vest' })
+    ]);
     expect(plan.commands).toEqual(['wear padded vest']);
   });
 
@@ -129,23 +187,19 @@ describe('putting back what was on', () => {
    * would hide it.
    */
   it('reports kit the pack no longer holds rather than asking for it', () => {
-    const plan = restorePlan(loadout, [carried({ name: 'padded helm' })], 10);
+    const plan = restorePlan(loadout, [carried({ name: 'padded helm' })]);
     expect(plan.commands).toEqual(['wear padded helm']);
     expect(plan.missing).toEqual(['padded vest']);
   });
 
   it('does nothing at all when everything is already on', () => {
-    const plan = restorePlan(
-      loadout,
-      [worn('padded helm', 'Head'), worn('padded vest', 'Torso')],
-      10
-    );
+    const plan = restorePlan(loadout, [worn('padded helm', 'Head'), worn('padded vest', 'Torso')]);
     expect(plan).toEqual({ commands: [], missing: [], overflow: 0 });
   });
 
-  /* Each one is a command out of the budget a fight is fought with. */
-  it('stops at the cap and says how many were left', () => {
-    const many: Loadout = Array.from({ length: 5 }, (_, at) => ({
+  /* Cretin's fifteen were cut to ten and five stayed in the pack (2026-11-19). */
+  it('puts every saved item back on, however many', () => {
+    const many: Loadout = Array.from({ length: 15 }, (_, at) => ({
       slot: `Slot${at}`,
       item: `item${at}`,
       at: NOW,
@@ -153,11 +207,10 @@ describe('putting back what was on', () => {
     }));
     const plan = restorePlan(
       many,
-      many.map((entry) => carried({ name: entry.item })),
-      2
+      many.map((entry) => carried({ name: entry.item }))
     );
-    expect(plan.commands).toHaveLength(2);
-    expect(plan.overflow).toBe(3);
+    expect(plan.commands).toHaveLength(15);
+    expect(plan.overflow).toBe(0);
   });
 
   /* Lit whenever a slot is recorded, everything on or not (todo 18): the
@@ -173,7 +226,7 @@ describe('putting back what was on', () => {
     const torch: Loadout = [{ slot: 'Readied', item: 'torch', at: NOW, locked: null }];
 
     it('is never worn by a re-equip', () => {
-      const plan = restorePlan([...loadout, ...torch], [carried({ name: 'torch' })], 10);
+      const plan = restorePlan([...loadout, ...torch], [carried({ name: 'torch' })]);
       expect(plan.commands).toEqual([]);
       expect(plan.missing).toEqual(['padded helm', 'padded vest']);
     });

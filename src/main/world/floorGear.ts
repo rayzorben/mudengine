@@ -70,10 +70,9 @@ export function floorGear(
   if (over !== null && gear.ranking.by === 'armour' && asker.weighing.casts === null) {
     return refused('classUnread', over);
   }
-  // A slot held since a death keeps the gear died in (todo 82); only that item may fill it.
-  const held = lockedSlots(state.loadout).find(
-    (worn) => wornOfWord(worn.slot) === code && !sameItem(worn.item, row.name)
-  );
+  // A slot held since a death keeps the gear died in (todo 82); only an item held there may fill it.
+  const locks = lockedSlots(state.loadout).filter((worn) => wornOfWord(worn.slot) === code);
+  const held = locks.some((worn) => sameItem(worn.item, row.name)) ? undefined : locks[0];
   if (held !== undefined) return refused('locked', held.item);
   /*
    * `EquipCommand` refuses a two-hander with the off-hand worn and an off-hand

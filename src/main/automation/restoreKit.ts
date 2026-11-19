@@ -6,18 +6,17 @@
  */
 import type { CharacterState } from '../../shared/character';
 import { restorePlan } from '../../shared/gear';
-import { tuning } from '../app/tuning';
 import { restoreNotices } from './gearNotices';
 
 export interface Restored {
   /** How many commands went to `send`. */
   sent: number;
-  /** What the pack no longer holds, the cap, or that nothing was off. */
+  /** What the pack no longer holds, or that nothing was off. */
   notices: string[];
 }
 
 export function restoreKit(state: CharacterState, send: (command: string) => void): Restored {
-  const plan = restorePlan(state.loadout, state.inventory.items, tuning().spending.maxGear);
+  const plan = restorePlan(state.loadout, state.inventory.items);
   for (const command of plan.commands) send(command);
   return { sent: plan.commands.length, notices: restoreNotices(plan, state.loadout) };
 }

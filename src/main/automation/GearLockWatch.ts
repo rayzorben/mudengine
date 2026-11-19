@@ -11,7 +11,7 @@ import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import type { NoticeSink } from '../../shared/decisionSettings';
-import { allowanceLeft, expiredSlots, lockedSlots } from '../../shared/gearLocks';
+import { allowanceLeft, expiredSlots, lockedSlots, slotWords } from '../../shared/gearLocks';
 import { playedFor } from '../../shared/tally';
 
 export interface GearLockEvents {
@@ -49,7 +49,7 @@ export class GearLockWatch implements SessionModule {
     const played = playedFor(state.tally, now);
     const expired = expiredSlots(state.loadout, played, allowance);
     if (expired.length > 0) {
-      const slots = expired.map((worn) => worn.slot);
+      const slots = slotWords(expired);
       if (this.release(slots, now) && allowance > 0) {
         this.events.notice?.(
           t('automation.gearLocks.released', { slots: slots.join(', ') }),
@@ -63,7 +63,7 @@ export class GearLockWatch implements SessionModule {
     for (const worn of fresh) this.said.add(lockKey(worn.slot, worn.locked?.at));
     this.events.notice?.(
       t('automation.gearLocks.held', {
-        slots: held.map((worn) => worn.slot).join(', '),
+        slots: slotWords(held).join(', '),
         minutes: Math.ceil((allowanceLeft(state.loadout, played, allowance) ?? 0) / MINUTE_MS)
       }),
       'gear-lock-release'

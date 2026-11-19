@@ -36,7 +36,7 @@ export function freeLoadout(held: Loadout, items: readonly CarriedItem[]): Loado
   const used = new Set<CarriedItem>();
   let changed = false;
   const next = held.map((worn) => {
-    if (worn.locked === null || filledByAnother(worn, items)) return worn;
+    if (worn.locked === null || filledByAnother(worn, held, items)) return worn;
     const copy = items.find((item) => !used.has(item) && sameItem(item.name, worn.item));
     if (copy === undefined) return worn;
     used.add(copy);
@@ -46,11 +46,21 @@ export function freeLoadout(held: Loadout, items: readonly CarriedItem[]): Loado
   return changed ? next : held;
 }
 
-function filledByAnother(worn: WornSlot, items: readonly CarriedItem[]): boolean {
+/** Whether the slot wears an item the saved gear does not name there: the second saved ring is not a spare. */
+function filledByAnother(worn: WornSlot, held: Loadout, items: readonly CarriedItem[]): boolean {
   const key = worn.slot.toLowerCase();
+  const saved = held.filter((other) => other.slot.toLowerCase() === key);
   return items.some(
-    (item) => item.equipped && item.slot?.toLowerCase() === key && !sameItem(item.name, worn.item)
+    (item) =>
+      item.equipped &&
+      item.slot?.toLowerCase() === key &&
+      !saved.some((other) => sameItem(item.name, other.item))
   );
+}
+
+/** The slot words of these entries, each once: two held rings are one `Finger`. */
+export function slotWords(slots: readonly WornSlot[]): string[] {
+  return [...new Set(slots.map((worn) => worn.slot))];
 }
 
 /** The slots still held. */

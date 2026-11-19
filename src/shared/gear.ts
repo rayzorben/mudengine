@@ -77,6 +77,9 @@ export interface GearLock {
  * only ever *replaced*, by something else being worn in it — which is how
  * swapping a helm by hand quietly re-teaches the loadout, with no second
  * gesture to remember.
+ *
+ * A slot of two places (`placesOf`: `Finger`, `Wrist`) has an entry for each
+ * item seen in it, so the list can name one slot twice.
  */
 export type Loadout = readonly WornSlot[];
 
@@ -87,8 +90,11 @@ export type Loadout = readonly WornSlot[];
  * change from a status line arriving and skip the write.
  */
 export function learnLoadout(held: Loadout, items: readonly CarriedItem[], at: number): Loadout {
-  const next = new Map(held.map((worn) => [worn.slot.toLowerCase(), worn] as const));
-  let changed = false;
+  const next = [...held];
+  // The entries a worn item accounts for: each is one item's, never two.
+  const worn = new Set<number>();
+  const inSlot = (key: string) => (entry: WornSlot) => entry.slot.toLowerCase() === key;
+  const unsaved: CarriedItem[] = [];
 
   for (const item of items) {
     /*
@@ -98,18 +104,44 @@ export function learnLoadout(held: Loadout, items: readonly CarriedItem[], at: n
      * word we do not have would be inventing the one thing this must not.
      */
     if (!item.equipped || item.slot === null) continue;
-    const key = item.slot.toLowerCase();
-    const before = next.get(key);
-    // A slot held since a death keeps the gear it died in (todo 82).
-    if (before && (before.locked !== null || sameItem(before.item, item.name))) continue;
-    next.set(key, { slot: item.slot, item: item.name, at, locked: null });
+    const filed = inSlot(item.slot.toLowerCase());
+    const saved = next.findIndex(
+      (entry, index) => !worn.has(index) && filed(entry) && sameItem(entry.item, item.name)
+    );
+    if (saved >= 0) worn.add(saved);
+    else unsaved.push(item);
+  }
+
+  let changed = false;
+  for (const item of unsaved) {
+    if (item.slot === null) continue;
+    const filed = inSlot(item.slot.toLowerCase());
+    const entry: WornSlot = { slot: item.slot, item: item.name, at, locked: null };
+    // It replaces an item no longer worn there. A place held since a death
+    // keeps the gear it died in (todo 82).
+    const replaced = next.findIndex(
+      (before, index) => !worn.has(index) && filed(before) && before.locked === null
+    );
+    const there = next.filter(filed);
+    if (replaced >= 0) {
+      next[replaced] = entry;
+      worn.add(replaced);
+    } else if (
+      there.length < placesOf(item.slot) &&
+      // A finger bare at the death stays bare while the other ring is held.
+      there.every((before) => before.locked === null)
+    ) {
+      worn.add(next.push(entry) - 1);
+    } else {
+      continue;
+    }
     changed = true;
   }
 
   if (!changed) return held;
   // Ordered by slot so a file written twice from the same facts is the same
   // file, and a diff of one is about what moved.
-  return [...next.values()].sort((a, b) => a.slot.localeCompare(b.slot));
+  return next.sort((a, b) => a.slot.localeCompare(b.slot));
 }
 
 /** What a bulk gear action would send, and what it could not do. */
@@ -141,16 +173,21 @@ const NOTHING: GearPlan = { commands: [], missing: [], overflow: 0 };
  * `wear` is the server's own `Equip` verb and covers wielding and holding as
  * well (docs/greatermud/commands.md: `ready`, `arm` and `wear` are one
  * command), which is why there is one verb here and not three chosen by slot.
+ *
+ * Never capped: the saved gear is one item a worn place, and Cretin's fifteen
+ * were cut to ten with the rest left in the pack (2026-11-19). A spare ring
+ * worn since comes off first where both fingers are full (`roomFor`).
  */
-export function restorePlan(
-  loadout: Loadout,
-  items: readonly CarriedItem[],
-  max: number
-): GearPlan {
-  const wanted: string[] = [];
+export function restorePlan(loadout: Loadout, items: readonly CarriedItem[]): GearPlan {
+  const wanted: WornSlot[] = [];
   const missing: string[] = [];
+  const kit = new Map<string, string>();
 
   for (const worn of kitOf(loadout)) {
+    const slot = worn.slot.toLowerCase();
+    let place = 0;
+    while (kit.has(placeIn(slot, place))) place += 1;
+    kit.set(placeIn(slot, place), worn.item);
     const held = items.filter((item) => sameItem(item.name, worn.item));
     if (held.length === 0) {
       missing.push(worn.item);
@@ -160,10 +197,12 @@ export function restorePlan(
     // slot an item lands in, and second-guessing it is how a client comes to
     // send `wear` at something it is wearing.
     if (held.some((item) => item.equipped)) continue;
-    wanted.push(worn.item);
+    wanted.push(worn);
   }
 
-  return capped(wanted.map(equip), missing, max);
+  const room = roomFor(kit, items);
+  const commands = wanted.flatMap((worn) => wearInto(room, worn.slot.toLowerCase(), worn.item));
+  return capped(commands, missing, Number.POSITIVE_INFINITY);
 }
 
 /**
@@ -1035,12 +1074,15 @@ export function swapPlan(
   const commands = [
     ...removals,
     ...(weapon === undefined ? [] : [equip(weapon.item)]),
-    ...rest.flatMap((row) => {
-      const off = room(slotOfKey(row.slot));
-      return off === null ? [equip(row.item)] : [unequip(off), equip(row.item)];
-    })
+    ...rest.flatMap((row) => wearInto(room, slotOfKey(row.slot), row.item))
   ];
   return capped(commands, missing, max);
+}
+
+/** One item put on, what `roomFor` says must come off for it first. */
+function wearInto(room: (slot: string) => string | null, slot: string, item: string): string[] {
+  const off = room(slot);
+  return off === null ? [equip(item)] : [unequip(off), equip(item)];
 }
 
 /**
