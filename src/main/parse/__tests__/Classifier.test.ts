@@ -2095,6 +2095,20 @@ describe('the cheap eight', () => {
     );
   });
 
+  /* `GiveCommand.cs`; no capture yet. */
+  it('reads a give of what the pack does not hold', () => {
+    expect(expectType("You don't have 4 silver nobles to give!", 'user-gives-nothing')).toEqual({
+      what: '4 silver nobles'
+    });
+  });
+
+  /* Festus's wire, 2026-11-19. */
+  it('reads the start of a recover', () => {
+    expect(
+      expectType('You begin to pick through the corpse of Cretin...', 'user-picks-through-corpse')
+    ).toEqual({ player: 'Cretin' });
+  });
+
   it('reads the guild training a level, captured live', () => {
     expect(expectType('Welcome to level 2!', 'user-levels')['level']).toBe('2');
     expect(

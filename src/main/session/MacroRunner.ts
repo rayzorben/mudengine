@@ -5,8 +5,8 @@
  * walk's arrival, or the answer to `sn`, queues the next run; a walk that
  * stops, `sn` refused, a hold, a death or the Talk box's Drop drops the rest
  * and says why. One waits at a time; a new macro drops the one waiting and
- * says so. `alias` and `unalias` are answered here, before anything splits
- * the line. `mudengine-automation` › *A macro is a list of steps*.
+ * says so. `alias`, `unalias` and `return` are answered here, before anything
+ * splits the line. `mudengine-automation` › *A macro is a list of steps*.
  */
 import { aliasCommandOf } from '../../shared/aliasCommand';
 import { expandAlias } from '../../shared/aliases';
@@ -19,6 +19,7 @@ import type { MacroPlaceholder } from '../../shared/macro';
 import { macroBook } from '../../shared/macroBook';
 import { expandMacros, typedSteps, type MacroStep } from '../../shared/macroSteps';
 import type { RoomMatch } from '../../shared/loops';
+import { returnCommandOf, type ReturnCommand } from '../../shared/returnCommand';
 import { roomAddress, roomId, type RoomId, type RoomReference } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -46,6 +47,8 @@ export interface MacroRunnerParts extends MacroParts {
   keys(): KeyBindings;
   /** The character's own file, where `alias` writes; null where nothing may be written. */
   aliasFile(): AliasFile | null;
+  /** `return` typed: listed, or given back (`RecoveredLoot.answer`). */
+  giveBack(command: ReturnCommand): void;
   /** Whether a move sent is still unanswered, so a route cannot start from it yet. */
   movesPending(): boolean;
   /** A room the server refuses `sn` in (`cannotSneakHere`). */
@@ -107,6 +110,8 @@ export class MacroRunner implements SessionModule {
       const book = { keys: parts.keys(), aliases: parts.automation().aliases };
       return answerAlias(command, book, parts.aliasFile(), parts.notice);
     }
+    const back = asTyped(typed) === null ? returnCommandOf(typed) : null;
+    if (back !== null) return parts.giveBack(back);
     const line = expandAlias(typed, parts.automation().aliases) ?? typed;
     const read = typedSteps(line);
     if (read === null) {

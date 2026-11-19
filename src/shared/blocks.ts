@@ -634,6 +634,8 @@ export type BlockType =
    * behind. Each item came before it as `You took`.
    */
   | 'user-recovers-corpse'
+  /** `You begin to pick through the corpse of Cretin...`: a `recover` starting; what it takes follows. */
+  | 'user-picks-through-corpse'
   | 'player-drops'
   | 'user-equipped'
   | 'user-equipped-failed'
@@ -723,6 +725,8 @@ export type BlockType =
   | 'user-given'
   /** `You give red iron axe to Killa.`: the same hand-over, from this side. */
   | 'user-gives'
+  /** `You don't have 4 silver nobles to give!`: the player is here and the pack is short of it. */
+  | 'user-gives-nothing'
   // stealth
   | 'user-sneaking'
   | 'user-not-sneaking'
@@ -1125,6 +1129,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'realm-cleanup': 'session',
   'player-gets': 'items',
   'user-recovers-corpse': 'items',
+  'user-picks-through-corpse': 'items',
   'player-drops': 'items',
   'user-equipped': 'items',
   'user-equipped-failed': 'items',
@@ -1146,6 +1151,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-gets-coins': 'items',
   'user-given': 'items',
   'user-gives': 'items',
+  'user-gives-nothing': 'items',
 
   'user-sneaking': 'stealth',
   'user-not-sneaking': 'stealth',

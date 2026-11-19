@@ -865,6 +865,11 @@ automation:
   # kept as written, `;` and all), `alias dg` shows it and `unalias dg` takes
   # it away. Only the character's own file is written.
   #
+  # `return` is the client's own too. After `recover` empties another
+  # player's corpse into the pack, `return cretin` gives Cretin every coin and
+  # item that came out of it, and `return` alone lists what is still carried
+  # for each player.
+  #
   #   aliases:
   #     kk: pu kobold
   #     ret: 2d,6s;rest

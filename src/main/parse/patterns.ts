@@ -2160,6 +2160,15 @@ export const RULES: Rule[] = [
   { type: 'user-recovers-corpse', pattern: /^You have recovered the corpse of (?<player>\w+)\.$/ },
   { type: 'user-recovers-corpse', pattern: /^The corpse of (?<player>\w+) remains\.$/ },
   /*
+   * The start of a `recover` (`RecoverCommand.cs`; Festus's wire, 2026-11-19,
+   * `You begin to pick through the corpse of Cretin...`): the coins and items
+   * up to the end line came out of that player's corpse.
+   */
+  {
+    type: 'user-picks-through-corpse',
+    pattern: /^You begin to pick through the corpse of (?<player>\w+)\.\.\.$/
+  },
+  /*
    * A give between two players in the room (`GiveCommand.cs`; orohost wire,
    * `Killa gives you red iron axe.`, 2026-10-09). The stack's name carries
    * its count and no article (`ItemStack.GetItemStackName`); coins end without
@@ -2187,6 +2196,12 @@ export const RULES: Rule[] = [
       `^You give (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) to (?<target>[^.]+)\\.$`
     )
   },
+  /*
+   * A give to somebody who is here of an item the pack does not have, or of
+   * more coins than it has, from the server's source (`GiveCommand.cs`; no
+   * capture as of 2026-11-19). The words are the command's own, count and all.
+   */
+  { type: 'user-gives-nothing', pattern: /^You don't have (?<what>.+) to give!$/ },
   /*
    * Coins dropped (`DropCommand.cs:115`, `:117`): your own with the count and
    * no full stop, another's as `some <coins>`, with one on MajorMUD

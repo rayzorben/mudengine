@@ -16,6 +16,7 @@ import { isBareKeyName } from './keys';
 import { isClientWord } from './macro';
 import { lineFault, macroRefusalText, type MacroRefusal } from './macroSteps';
 import { statedPairs, type StatedPair } from './pairs';
+import { RETURN_COMMAND_WORD } from './returnCommand';
 import { channelPrefix } from './talk';
 
 /** Word to line, the word lower case. */
@@ -30,7 +31,7 @@ export type AliasRefusal =
   | 'empty'
   | 'command'
   | 'twice'
-  /** A word the client reads itself: `alias`, `{goto}`, `{mob}`, `{hp}`. */
+  /** A word the client reads itself: `alias`, `return`, `{goto}`, `{mob}`, `{hp}`. */
   | 'client'
   /** A key's name, which `{f2}` calls. */
   | 'key'
@@ -46,9 +47,8 @@ export function aliasWord(name: string): string {
 export function aliasRefusal(word: string, line: string): AliasRefusal | null {
   const spelled = aliasWord(word);
   if (!WORD.test(spelled)) return 'word';
-  if ((ALIAS_COMMAND_WORDS as readonly string[]).includes(spelled) || isClientWord(spelled)) {
-    return 'client';
-  }
+  const typed: readonly string[] = [...ALIAS_COMMAND_WORDS, RETURN_COMMAND_WORD];
+  if (typed.includes(spelled) || isClientWord(spelled)) return 'client';
   if (isBareKeyName(spelled)) return 'key';
   if (line.trim().length === 0) return 'empty';
   /*

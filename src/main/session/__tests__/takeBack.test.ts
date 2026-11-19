@@ -56,6 +56,7 @@ describe('a line typed in the terminal', () => {
     expect(caughtInTerminal('alias doit ne;sw', {})).toBe(true);
     expect(caughtInTerminal('\\alias', {})).toBe(true);
     expect(caughtInTerminal('{goto 1/297}', {})).toBe(true);
+    expect(caughtInTerminal('return cretin', {})).toBe(true);
     // Positive control: speech that names it is not.
     expect(caughtInTerminal('gos alias', {})).toBe(false);
   });

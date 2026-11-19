@@ -78,6 +78,7 @@ import { EquipmentManager } from '../automation/EquipmentManager';
 import { placeReads } from './placeReads';
 import { Wards } from '../automation/Wards';
 import { RealmMenu } from './RealmMenu';
+import { RecoveredLoot } from './RecoveredLoot';
 import { RowOverrides } from '../automation/RowOverrides';
 import { Grounded } from './Grounded';
 import { Safety } from './Safety';
@@ -392,6 +393,7 @@ export class SessionManager {
   /** Going back for the kit after a death. See `GearRecovery`. */
   private readonly recoverGear: GearRecovery;
   private readonly corpse: RecoveredCorpse;
+  private readonly owed: RecoveredLoot;
   /** The saved gear held from a death until the corpse is recovered (todo 82). */
   private readonly gearLocks: GearLockWatch;
   /** Going to collect the level when the experience is there — todo 18. */
@@ -1086,6 +1088,7 @@ export class SessionManager {
       busy: escaping
     });
     this.corpse = new RecoveredCorpse(automation, this.queue, () => this.tracker.current, reports);
+    this.owed = new RecoveredLoot(this.queue, () => this.tracker.current, this.vocabulary, notice);
     const releaseLocks = (slots: readonly string[], at: number): boolean => {
       const freed = this.tracker.releaseGearLocks(slots, at);
       if (freed) this.publishCharacter();
@@ -1570,6 +1573,7 @@ export class SessionManager {
       automation: () => this.automationConfig,
       keys: () => sink.keys?.() ?? {},
       aliasFile: () => sink.aliasFile?.() ?? null,
+      giveBack: (command) => this.owed.answer(command),
       ...{ movesPending: moveInFlight, sneakBlocked: cannotSneakHere, sneakRefusals },
       roomNamed: (request) => roomNamed(request, this.errands),
       // The player's own route, as the palette's Go to walks it.
@@ -1713,7 +1717,7 @@ export class SessionManager {
       { module: this.hangUp },
       { module: this.rowOverrides, configure: (a) => this.rowOverrides.configure(a) },
       ...[{ module: this.safety }, { module: this.fleeGoto }, { module: this.roomHazards }],
-      ...[{ module: this.locating }, { module: this.placing }],
+      ...[{ module: this.locating }, { module: this.placing }, { module: this.owed }],
       { module: this.macros },
       { module: this.travel },
       { module: this.errands }
@@ -2571,24 +2575,19 @@ export class SessionManager {
     this.wards.onBlock(block, this.tracker.current);
     /*
      * A `rm` used to go out on every `*Combat Off*` while a loop ran, on the
-     * reading that combat is where dead reckoning breaks. **Measured, and it
-     * is not.** Replaying all 113 recorded sessions through the real tracker
-     * — 2,159 rooms, 5,842 commands, no re-anchoring at all after the opening
-     * fix — the client's own reckoning agreed with every single `Location:`
-     * the server ever stated. Not one wrong room, in either direction.
+     * reading that combat is where the client loses the room. Measured, it is
+     * not: replaying all 113 recorded sessions through the tracker (2,159
+     * rooms, 5,842 commands, no `rm` after the opening fix), the client's room
+     * agreed with every `Location:` the server stated.
      *
-     * The one position it ever lost was not combat either: it was a refused
-     * command leaving a move queued that no room was coming for, which
-     * `command-not-understood` now takes back where it is handled. And the
-     * courtesy reprint this guarded against fires on 4 of 574 live `*Combat
-     * Off*`s, while the guard fired on all 574.
+     * The one room it lost was a refused command leaving a move queued that
+     * no room was coming for, which `command-not-understood` takes back where
+     * it is handled. The courtesy reprint the ask guarded against comes on 4
+     * of 574 live `*Combat Off*`s, and the ask went out on all 574.
      *
      * So the ask is gone, and what is left is `LoopRunner`'s bounded locate,
-     * which asks only when the client actually cannot tell — the shape every
-     * other command in this client follows. It also had to go for a reason no
-     * measurement was needed for: **MajorMUD has no `rm`**, so on that realm
-     * every one of those was the client saying "rm" out loud to everybody in
-     * the room, once per fight, all evening.
+     * which asks only when the client cannot tell. MajorMUD has no `rm`
+     * either: there each ask was said out loud to the room, once per fight.
      */
     for (const each of [this.combat, this.gear]) each.onBlock(block, this.answering);
     // A listing the server wrapped arrives as a batch: a floor long enough to
@@ -2612,7 +2611,7 @@ export class SessionManager {
     for (const each of [this.hostTrips, this.areaSearch, this.errands, this.tasks]) {
       each.onBlock(block);
     }
-    this.corpse.onBlock(block);
+    for (const each of [this.corpse, this.owed]) each.onBlock(block);
     /*
      * Before `tracker.apply`, deliberately: a wear-off is about to take the
      * buff off the list, and the entry — with the caster's name on it — is

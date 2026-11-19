@@ -83,7 +83,26 @@ export function queueStep(step: QueuedStep, batch: MacroBatch, parts: MacroParts
 /** Drops what is still waiting of one run: its steps refuse, its queued commands go. */
 export function cancelRun(batch: MacroBatch, queue: Pick<CommandQueue, 'cancel'>): void {
   batch.stop();
-  queue.cancel((intent) => intent.coalesceKey?.startsWith(batch.key) === true);
+  cancelKeyed(batch.key, queue);
+}
+
+/** Takes the commands still waiting under a typed line's key out of the queue. */
+export function cancelKeyed(key: string, queue: Pick<CommandQueue, 'cancel'>): void {
+  queue.cancel((intent) => intent.coalesceKey?.startsWith(key) === true);
+}
+
+/** Says that a typed line stops at `command`, which the queue would not take, and why. */
+export function sayRestRefused(
+  command: string,
+  queue: Pick<CommandQueue, 'holding'>,
+  notice: NoticeSink
+): void {
+  const reason = queue.holding;
+  notice(
+    reason !== null
+      ? t('session.macro.restHeld', { command, reason })
+      : t('session.macro.restRefused', { command })
+  );
 }
 
 /**
@@ -93,12 +112,7 @@ export function cancelRun(batch: MacroBatch, queue: Pick<CommandQueue, 'cancel'>
  */
 export function refused(command: string, batch: MacroBatch, parts: MacroParts): void {
   cancelRun(batch, parts.queue);
-  const reason = parts.queue.holding;
-  parts.notice(
-    reason !== null
-      ? t('session.macro.restHeld', { command, reason })
-      : t('session.macro.restRefused', { command })
-  );
+  sayRestRefused(command, parts.queue, parts.notice);
   parts.published();
 }
 

@@ -10,6 +10,7 @@ import { aliasCommandOf } from '../../shared/aliasCommand';
 import { expandAlias, type Aliases } from '../../shared/aliases';
 import { asTyped } from '../../shared/clientCommands';
 import { runsItself } from '../../shared/macroSteps';
+import { returnCommandOf } from '../../shared/returnCommand';
 
 export interface TakenBack {
   /** What erases the line the server holds. */
@@ -21,13 +22,14 @@ export interface TakenBack {
 /**
  * Whether a line the server already holds, typed in the terminal, is taken
  * back at Enter and read by main: one command main runs itself, a line that
- * opens on one of the player's aliases, the `alias` command, or one marked
+ * opens on one of the player's aliases, the `alias` or `return` command, or one marked
  * `AS_TYPED` whose mark has to come off. A `;` line typed there goes out as
  * typed, as it always has.
  */
 export function caughtInTerminal(line: string, aliases: Aliases): boolean {
   const bare = asTyped(line) ?? line;
-  return runsItself(bare) || expandAlias(bare, aliases) !== null || aliasCommandOf(bare) !== null;
+  if (runsItself(bare) || expandAlias(bare, aliases) !== null) return true;
+  return aliasCommandOf(bare) !== null || returnCommandOf(bare) !== null;
 }
 
 /**

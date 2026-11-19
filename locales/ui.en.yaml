@@ -4705,7 +4705,7 @@ settings:
       empty: it sends nothing
       command: the realm already has this command
       twice: the word is set twice, so neither loads
-      client: the client reads this word in braces itself
+      client: the client reads this word itself
       key: it is the name of a key, which {f2} runs
   # Macros, `keys:` (todo 74, 134): MegaMUD's macros, a key that runs one command a line.
   keys:
@@ -6602,6 +6602,18 @@ session:
     noFile: This character's file cannot be written from here; use the settings screen.
     notWritten: 'Could not write {word}: {error}'
     unreadable: "This character's file could not be read, so its own aliases are not marked: {error}"
+  # `return` typed in the game: what `recover` took out of another player's corpse, given back.
+  return:
+    usage: 'Type return and one name, like return cretin. Type return alone to list what is carried.'
+    none: Nothing taken out of another player's corpse is being carried.
+    carrying: 'Carrying for {player}: {things}.'
+    nobody: "Nothing from {player}'s corpse is being carried."
+    several: '{name} could be {players}. Type more of the name.'
+    gone: 'No longer carried, so not given to {player}: {things}.'
+    refused: "The game says you don't have {things} to give, so it is no longer listed for {player}."
+    filed: "What came out of {player}'s corpse is remembered. Type return {word} to give it back."
+    returned: "Everything from {player}'s corpse has been given back."
+    reason: "Giving back what came out of {player}'s corpse"
   clientCommand:
     getAllEmpty: Nothing is listed on the floor to get.
     getAllCapped: 'Getting the first {max} of the {total} items listed on the floor.'

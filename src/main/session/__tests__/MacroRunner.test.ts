@@ -12,6 +12,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { wireItem } from '../../../shared/entities';
 import type { KeyBindings } from '../../../shared/keys';
 import type { RoomMatch } from '../../../shared/loops';
+import type { ReturnCommand } from '../../../shared/returnCommand';
 import type { RoomReference } from '../../../shared/world';
 
 let seq = 0;
@@ -52,6 +53,7 @@ describe('a macro', () => {
   let writes: Array<[string, string | null]>;
   let runner: MacroRunner;
   let refusals: SneakRefusals;
+  let returns: ReturnCommand[];
 
   const parts = (): MacroRunnerParts => ({
     send: (data) => typed.push(data.trim()),
@@ -69,6 +71,7 @@ describe('a macro', () => {
     }),
     keys: () => keys,
     aliasFile: () => file,
+    giveBack: (command) => void returns.push(command),
     movesPending: () => pending,
     sneakBlocked: () => blocked,
     sneakRefusals: refusals,
@@ -104,6 +107,7 @@ describe('a macro', () => {
     sent = [];
     typed = [];
     notices = [];
+    returns = [];
     mob = null;
     keys = {};
     aliases = {};
@@ -584,6 +588,23 @@ describe('a macro', () => {
       runner.run('\\alias');
       expect(typed).toEqual(['alias']);
       expect(writes).toEqual([]);
+    });
+  });
+
+  // `return` (`shared/returnCommand.ts`); what it gives is `RecoveredLoot`'s.
+  describe('return', () => {
+    it('is handed over whole, and nothing of it goes as typed', () => {
+      runner.run('return cretin');
+      runner.run('Return');
+      expect(returns).toEqual([{ kind: 'give', player: 'cretin' }, { kind: 'list' }]);
+      expect(typed).toEqual([]);
+      expect(sent).toEqual([]);
+    });
+
+    it('sends \\return to the server', () => {
+      runner.run('\\return cretin');
+      expect(typed).toEqual(['return cretin']);
+      expect(returns).toEqual([]);
     });
   });
 });

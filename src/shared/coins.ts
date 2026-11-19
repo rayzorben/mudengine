@@ -291,6 +291,8 @@ export interface CoinReader {
   toStock(line: string): string;
   /** The word that picks a coin up here: the first of the realm's name, else the denomination. */
   word(coin: Denomination): string;
+  /** The realm's whole name for a count of a coin, `gold crowns`, which no item's name is read as. */
+  plural(coin: Denomination): string;
 }
 
 /**
@@ -322,8 +324,14 @@ export function coinReader(names: CoinNames): CoinReader {
             (_match, count: string, name: string, plural: string) =>
               `${count}${stockOf.get(name.toLowerCase()) ?? name}${plural}`
           ),
-    word: (coin) => names[coin]?.split(/\s+/)[0] ?? coin
+    word: (coin) => names[coin]?.split(/\s+/)[0] ?? coin,
+    plural: (coin) => (names[coin] === undefined ? stockPlural(coin) : `${names[coin]}s`)
   };
+}
+
+/** The stock name for a count of a coin, as a line read by `toStock` spells it. */
+export function stockPlural(coin: Denomination): string {
+  return `${STOCK_COIN[coin]}s`;
 }
 
 /**

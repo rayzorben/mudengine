@@ -85,7 +85,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the chosen opener's wiring, gone as a blank opener became none (2026-11-12).
   // Lowered by the counter comment, condensed as printsCounters came to read the vocabulary (2026-11-13).
   // Lowered by the socket's data handler, out to `ChunkRead` as the heal came to wait for a chunk's last line (2026-11-16).
-  'src/main/session/SessionManager.ts': 3174,
+  // Lowered by the `rm` comment, condensed as `RecoveredLoot` came (2026-11-19).
+  'src/main/session/SessionManager.ts': 3173,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

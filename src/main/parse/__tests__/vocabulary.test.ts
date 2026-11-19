@@ -186,6 +186,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/invokeAnswer.ts',
       // The rows `@death` answers from (2026-10-29).
       'src/main/automation/DeathsRemote.ts',
+      // What came out of another player's corpse, carried for `return`.
+      'src/main/session/RecoveredLoot.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))
