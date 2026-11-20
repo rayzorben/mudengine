@@ -1,4 +1,7 @@
 import Icon from './Icon';
+import RowGrip from './RowGrip';
+import ToggleChip from './ToggleChip';
+import { useRowReorder } from '../hooks/useRowReorder';
 import { SpellCombo } from './SpellPicker';
 import { t } from '../lib/i18n';
 import type { BlessingDraft } from '@shared/drafts';
@@ -33,8 +36,8 @@ export interface BlessingListProps {
  * thing is a form that invites exactly that.
  *
  * **The order is the priority**: when several blessings are down, the top
- * one is recast first, which is why each row carries the up and down arrows
- * the login steps do not need. Percentages on screen, fractions in the
+ * one is recast first, which is why each row leads with a grip the login
+ * steps do not need. Percentages on screen, fractions in the
  * draft, like every threshold field. The recast clock is drawn only on a
  * party row — a self blessing recasts on the wear-off frame, with a watchdog
  * measured from earlier casts, and a field for a number the client refuses
@@ -67,44 +70,20 @@ export default function BlessingList({
     );
   };
 
-  const move = (index: number, delta: -1 | 1) => {
-    const to = index + delta;
-    if (to < 0 || to >= blessings.length) return;
-    const next = [...blessings];
-    const [row] = next.splice(index, 1);
-    next.splice(to, 0, row!);
-    onChange(next);
-  };
+  const reorder = useRowReorder(blessings, onChange);
 
   return (
     <div className="settings-list" data-setting={setting}>
       {blessings.length > 0 && (
-        <ul className="settings-steps settings-blessings">
+        <ul className="settings-steps settings-blessings" {...reorder.listProps}>
           {blessings.map((blessing, index) => (
-            <li key={index}>
+            <li key={index} {...reorder.rowProps(index)}>
               <div className="blessing-line">
-                <span className="blessing-order">
-                  <button
-                    aria-label={t('settings.spells.blessingUpAria', { number: index + 1 })}
-                    className="quiet"
-                    disabled={index === 0}
-                    onClick={() => move(index, -1)}
-                    title={t('settings.spells.blessingUpTitle')}
-                    type="button"
-                  >
-                    <Icon name="chevronUp" />
-                  </button>
-                  <button
-                    aria-label={t('settings.spells.blessingDownAria', { number: index + 1 })}
-                    className="quiet"
-                    disabled={index === blessings.length - 1}
-                    onClick={() => move(index, 1)}
-                    title={t('settings.spells.blessingDownTitle')}
-                    type="button"
-                  >
-                    <Icon name="chevronDown" />
-                  </button>
-                </span>
+                <RowGrip
+                  handlers={reorder.grip(index)}
+                  label={t('settings.spells.blessingGripAria', { number: index + 1 })}
+                  title={t('settings.spells.blessingGripTitle')}
+                />
                 <SpellCombo
                   ariaLabel={t('settings.spells.blessingSpellAria', { number: index + 1 })}
                   name={`${namePrefix}-${index}-spell`}
@@ -187,26 +166,18 @@ export default function BlessingList({
                     />
                   </label>
                 )}
-                <label className="blessing-check">
-                  <input
-                    checked={blessing.inCombat}
-                    name={`${namePrefix}-${index}-in-combat`}
-                    onChange={(event) => update(index, { inCombat: event.target.checked })}
-                    type="checkbox"
-                  />
-                  <span>{t('settings.spells.blessingInCombat')}</span>
-                </label>
-                <label className="blessing-check">
-                  <input
-                    checked={blessing.prioritizeOverHeal}
-                    name={`${namePrefix}-${index}-over-heal`}
-                    onChange={(event) =>
-                      update(index, { prioritizeOverHeal: event.target.checked })
-                    }
-                    type="checkbox"
-                  />
-                  <span>{t('settings.spells.blessingOverHeal')}</span>
-                </label>
+                <ToggleChip
+                  checked={blessing.inCombat}
+                  label={t('settings.spells.blessingInCombat')}
+                  name={`${namePrefix}-${index}-in-combat`}
+                  onChange={(inCombat) => update(index, { inCombat })}
+                />
+                <ToggleChip
+                  checked={blessing.prioritizeOverHeal}
+                  label={t('settings.spells.blessingOverHeal')}
+                  name={`${namePrefix}-${index}-over-heal`}
+                  onChange={(prioritizeOverHeal) => update(index, { prioritizeOverHeal })}
+                />
               </div>
             </li>
           ))}

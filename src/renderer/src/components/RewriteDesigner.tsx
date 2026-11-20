@@ -91,6 +91,7 @@ export default function RewritesDesigner({
                   <input
                     aria-label={t('settings.rewrites.enabledAria', { name })}
                     checked={design.enabled}
+                    className="switch"
                     onChange={(event) =>
                       setDesigns(withEnabled(designs, index, event.target.checked))
                     }

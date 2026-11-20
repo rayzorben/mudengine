@@ -1,4 +1,7 @@
 import Icon from './Icon';
+import RowGrip from './RowGrip';
+import ToggleChip from './ToggleChip';
+import { useRowReorder } from '../hooks/useRowReorder';
 import { t } from '../lib/i18n';
 import {
   ALERT_EVENT_NAMES,
@@ -23,53 +26,25 @@ export interface AlertListProps {
 }
 
 /**
- * The player's alert rows, edited one at a time (todos 29, 02 and 03).
+ * The player's alert rows, one line each (todos 29, 02 and 03; the line,
+ * 2026-11-19). `mudengine-settings` › `parts/pages.md` has the account.
  *
- * **A grid, not a row of controls** (todo 03). Each row used to be a flex line
- * whose controls appeared and disappeared per row — a figure on the two
- * numeric ones, a name on the two named ones, nothing on the rest — so no two
- * rows put the same control in the same place and nothing lined up down the
- * page. The columns are declared once and a row with no metric leaves that
- * cell **empty**, which is what makes a column a column.
+ * The columns are declared once on the list and the heading and every row
+ * borrow them, so a row with no measure leaves that cell empty and the rest
+ * still line up. In a panel too narrow for one line the chips take a second
+ * line under the row (`index.css`).
  *
- * **Every control sits under the heading that names it** (2026-09-13). The
- * headings were their own `<li>` with its own copy of the grid, so the two
- * tracks only agreed by arithmetic — and the switch wore an `On` label beside
- * it, which is a field's grammar in a table's row: the column heading is where
- * a table says what a cell is. The heading row and the rows are now one
- * subgrid, the switch is a bare box under `Enabled`, and the label survives
- * for a screen reader alone.
- *
- * **The arrows are trailing controls, not a leading column** (2026-09-13).
- * Order decides — the first enabled row claiming a notice wins — so they stay;
- * but they are what is *done to* a row, like the remove, rather than something
- * the row is about, and in front they pushed every heading off its column.
- *
- * **A row names an event**, one thing that happens in the realm, grouped under
- * the category it belongs to. It used to name one of eleven internal channels
- * — the buckets this module sorts notices into — which is why nothing in that
- * picker read as selectable.
- *
- * **Order is the rule and the arrows are how it is said.** The first enabled
- * row that claims a notice decides it, so a quiet blanket row at the bottom
- * with a loud specific one above it is a thing somebody can write.
- *
- * **A control is drawn only where it means something**: a comparison and a
- * figure where the event is measured by one, a name where it is matched by
- * one, *even when the window is in front* only where the row notifies at all.
+ * A row names an event, grouped under its channel. Order decides: the first
+ * enabled row that claims a notice wins, so the grip that moves a row leads it.
+ * A control is drawn only where it means something: a comparison and a figure
+ * on a measured event, a name on a named one, the two notification chips only
+ * while the row notifies.
  */
 export default function AlertList({ rules, namePrefix, onChange }: AlertListProps) {
   const update = (index: number, change: Partial<AlertRule>) =>
     onChange(rules.map((entry, at) => (at === index ? { ...entry, ...change } : entry)));
 
-  const move = (index: number, delta: -1 | 1) => {
-    const to = index + delta;
-    if (to < 0 || to >= rules.length) return;
-    const next = [...rules];
-    const [row] = next.splice(index, 1);
-    next.splice(to, 0, row!);
-    onChange(next);
-  };
+  const reorder = useRowReorder(rules, onChange);
 
   /**
    * Whether an earlier enabled row already claims everything this one would.
@@ -81,37 +56,42 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
     rules.some((earlier, at) => at < index && earlier.enabled && earlier.on === rules[index]!.on);
 
   return (
-    <>
+    <div className="alert-rows">
       {rules.length > 0 && (
-        <ul className="settings-steps settings-alerts">
+        <ul className="settings-steps settings-alerts" {...reorder.listProps}>
           {/*
-            The column headings, in the same grid the rows use rather than a
-            second copy of it, and one per control rather than a label beside
-            each. Hidden from assistive technology because every control under
-            them carries its own `aria-label` naming the row it belongs to,
-            which a column heading cannot say.
+            The column headings, in the same grid the rows use. Hidden from
+            assistive technology because every control under them carries its
+            own `aria-label` naming the row it belongs to, which a column
+            heading cannot say.
           */}
           <li className="alert-heading" aria-hidden="true">
             <div className="alert-line">
-              <span>{t('settings.alerts.columnEnabled')}</span>
-              <span>{t('settings.alerts.columnEvent')}</span>
-              <span>{t('settings.alerts.columnMetric')}</span>
-              <span>{t('settings.alerts.columnMeasure')}</span>
-              <span>{t('settings.alerts.columnLevel')}</span>
-              <span>{t('settings.alerts.columnQuiet')}</span>
-              <span className="alert-controls">{t('settings.alerts.columnOrder')}</span>
+              <span data-column="grip" />
+              <span data-column="enabled">{t('settings.alerts.columnEnabled')}</span>
+              <span data-column="event">{t('settings.alerts.columnEvent')}</span>
+              <span data-column="measure">{t('settings.alerts.columnMeasure')}</span>
+              <span data-column="level">{t('settings.alerts.columnLevel')}</span>
+              <span data-column="deliver">{t('settings.alerts.columnDeliver')}</span>
+              <span data-column="quiet">{t('settings.alerts.columnQuiet')}</span>
+              <span data-column="remove" />
             </div>
           </li>
           {rules.map((rule, index) => (
-            <li key={index}>
+            <li data-off={rule.enabled ? undefined : ''} key={index} {...reorder.rowProps(index)}>
               <div className="alert-line">
-                {/* A bare box under its heading. The word it wore beside it is
-                    the column's now, and what is left is for a reader who
-                    cannot see the column. */}
+                <RowGrip
+                  handlers={reorder.grip(index)}
+                  label={t('settings.alerts.ruleGripAria', { number: index + 1 })}
+                  title={t('settings.alerts.ruleGripTitle')}
+                />
+                {/* A bare switch under its heading: the column says what it
+                    is, and the label is for a reader who cannot see it. */}
                 <span className="alert-cell alert-enabled">
                   <input
                     aria-label={t('settings.alerts.ruleEnabledAria', { number: index + 1 })}
                     checked={rule.enabled}
+                    className="switch"
                     name={`${namePrefix}-${index}-enabled`}
                     onChange={(event) => update(index, { enabled: event.target.checked })}
                     type="checkbox"
@@ -139,9 +119,9 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   ))}
                 </select>
 
-                {/* Metric: which figure, or which name. Empty where the event
-                    is one that either happened or did not. */}
-                <span className="alert-cell">
+                {/* Measure: which side of which figure, or which name. Empty
+                    where the event is one that either happened or did not. */}
+                <span className="alert-cell alert-measure">
                   {alertIsMeasured(rule.on) && !alertIsCash(rule.on) && (
                     <select
                       aria-label={t('settings.alerts.ruleSideAria', { number: index + 1 })}
@@ -169,10 +149,6 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   {alertIsNamed(rule.on) && (
                     <span className="alert-fixed">{t('settings.alerts.metricNamed')}</span>
                   )}
-                </span>
-
-                {/* Measure: the figure, or the name to wait for. */}
-                <span className="alert-cell">
                   {alertIsMeasured(rule.on) && (
                     <>
                       <input
@@ -190,15 +166,12 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                           says, and which they meant is not guessable from the
                           number. Absent where there is no maximum to share. */}
                       {eventTakesPercent(rule.on) && (
-                        <label className="blessing-check">
-                          <input
-                            checked={rule.percent}
-                            name={`${namePrefix}-${index}-percent`}
-                            onChange={(event) => update(index, { percent: event.target.checked })}
-                            type="checkbox"
-                          />
-                          <span>{t('settings.alerts.rulePercent')}</span>
-                        </label>
+                        <ToggleChip
+                          checked={rule.percent}
+                          label={t('settings.alerts.rulePercent')}
+                          name={`${namePrefix}-${index}-percent`}
+                          onChange={(percent) => update(index, { percent })}
+                        />
                       )}
                     </>
                   )}
@@ -216,6 +189,8 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
 
                 <select
                   aria-label={t('settings.alerts.ruleLevelAria', { number: index + 1 })}
+                  className="alert-rule-level"
+                  data-level={rule.level ?? 'keep'}
                   name={`${namePrefix}-${index}-level`}
                   onChange={(event) =>
                     update(index, {
@@ -234,6 +209,62 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   ))}
                 </select>
 
+                {/* What the row does when it fires. */}
+                <span className="alert-cell alert-deliver">
+                  <ToggleChip
+                    checked={rule.alert}
+                    label={t('settings.alerts.ruleAlert')}
+                    name={`${namePrefix}-${index}-alert`}
+                    onChange={(alert) =>
+                      // A sound plays as the alert shows, so it goes with it.
+                      update(index, { alert, ...(alert ? {} : { sound: false }) })
+                    }
+                  />
+                  <ToggleChip
+                    checked={rule.sound}
+                    disabled={!rule.alert}
+                    label={t('settings.alerts.ruleSound')}
+                    name={`${namePrefix}-${index}-sound`}
+                    onChange={(sound) => update(index, { sound })}
+                  />
+                  <ToggleChip
+                    checked={rule.notify}
+                    label={t('settings.alerts.ruleNotify')}
+                    name={`${namePrefix}-${index}-notify`}
+                    onChange={(notify) =>
+                      // The two below mean nothing without this, so they go
+                      // with it rather than staying set on a row that no
+                      // longer notifies.
+                      update(index, {
+                        notify,
+                        ...(notify ? {} : { whileFocused: false, onlyAway: false })
+                      })
+                    }
+                  />
+                  {/* Drawn only while the row notifies (the user, 2026-11-19):
+                      both qualify the notification and do nothing without it. */}
+                  {rule.notify && (
+                    <>
+                      <ToggleChip
+                        checked={rule.whileFocused}
+                        label={t('settings.alerts.ruleWhileFocused')}
+                        name={`${namePrefix}-${index}-while-focused`}
+                        onChange={(whileFocused) => update(index, { whileFocused })}
+                        sub
+                        title={t('settings.alerts.ruleWhileFocusedTitle')}
+                      />
+                      <ToggleChip
+                        checked={rule.onlyAway}
+                        label={t('settings.alerts.ruleOnlyAway')}
+                        name={`${namePrefix}-${index}-only-away`}
+                        onChange={(onlyAway) => update(index, { onlyAway })}
+                        sub
+                        title={t('settings.alerts.ruleOnlyAwayTitle')}
+                      />
+                    </>
+                  )}
+                </span>
+
                 {/* How long the row stays quiet after firing. On every row,
                     because every event can repeat. 0 is every occurrence. */}
                 <input
@@ -249,122 +280,21 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   value={rule.quietSeconds}
                 />
 
-                {/*
-                  What is done TO the row, together at its end: move it, or
-                  remove it. Order decides which row claims a notice — the
-                  first enabled one — so the arrows are not decoration; they
-                  are simply not something the row is *about*, which is what
-                  the columns in front of them hold.
-                */}
-                <span className="alert-controls">
-                  <button
-                    aria-label={t('settings.alerts.ruleUpAria', { number: index + 1 })}
-                    className="quiet"
-                    disabled={index === 0}
-                    onClick={() => move(index, -1)}
-                    title={t('settings.alerts.ruleUpTitle')}
-                    type="button"
-                  >
-                    <Icon name="chevronUp" />
-                  </button>
-                  <button
-                    aria-label={t('settings.alerts.ruleDownAria', { number: index + 1 })}
-                    className="quiet"
-                    disabled={index === rules.length - 1}
-                    onClick={() => move(index, 1)}
-                    title={t('settings.alerts.ruleDownTitle')}
-                    type="button"
-                  >
-                    <Icon name="chevronDown" />
-                  </button>
-                  <button
-                    aria-label={t('settings.alerts.ruleRemoveAria', { number: index + 1 })}
-                    className="quiet"
-                    onClick={() => onChange(rules.filter((_, at) => at !== index))}
-                    title={t('settings.alerts.ruleRemoveTitle')}
-                    type="button"
-                  >
-                    <Icon name="close" />
-                  </button>
-                </span>
+                <button
+                  aria-label={t('settings.alerts.ruleRemoveAria', { number: index + 1 })}
+                  className="quiet alert-remove"
+                  onClick={() => onChange(rules.filter((_, at) => at !== index))}
+                  title={t('settings.alerts.ruleRemoveTitle')}
+                  type="button"
+                >
+                  <Icon name="close" />
+                </button>
               </div>
               {shadowed(index) && (
                 <p className="settings-warn blessing-duplicate">
                   {t('settings.alerts.ruleShadowed')}
                 </p>
               )}
-              {/*
-                What the row does when it fires, on its own line under the
-                what-it-is-about one. Three switches that read as a sentence
-                together and would each be a column nothing else fills.
-              */}
-              <div className="alert-line alert-detail">
-                <label className="blessing-check">
-                  <input
-                    checked={rule.alert}
-                    name={`${namePrefix}-${index}-alert`}
-                    onChange={(event) =>
-                      update(index, {
-                        alert: event.target.checked,
-                        // A sound plays as the alert shows, so it goes with it.
-                        ...(event.target.checked ? {} : { sound: false })
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  <span>{t('settings.alerts.ruleAlert')}</span>
-                </label>
-                <label className="blessing-check">
-                  <input
-                    checked={rule.sound}
-                    disabled={!rule.alert}
-                    name={`${namePrefix}-${index}-sound`}
-                    onChange={(event) => update(index, { sound: event.target.checked })}
-                    type="checkbox"
-                  />
-                  <span>{t('settings.alerts.ruleSound')}</span>
-                </label>
-                <label className="blessing-check">
-                  <input
-                    checked={rule.notify}
-                    name={`${namePrefix}-${index}-notify`}
-                    onChange={(event) =>
-                      update(index, {
-                        notify: event.target.checked,
-                        // The one below means nothing without this, so it goes
-                        // with it rather than being left behind, set, on a row
-                        // that no longer notifies.
-                        ...(event.target.checked ? {} : { whileFocused: false, onlyAway: false })
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  <span>{t('settings.alerts.ruleNotify')}</span>
-                </label>
-                {/* Disabled rather than hidden while notifications are off:
-                    the option is part of what the row can say, and hiding it
-                    would make it look absent. */}
-                <label className="blessing-check">
-                  <input
-                    checked={rule.whileFocused}
-                    disabled={!rule.notify}
-                    name={`${namePrefix}-${index}-while-focused`}
-                    onChange={(event) => update(index, { whileFocused: event.target.checked })}
-                    type="checkbox"
-                  />
-                  <span>{t('settings.alerts.ruleWhileFocused')}</span>
-                </label>
-                <label className="blessing-check">
-                  <input
-                    checked={rule.onlyAway}
-                    disabled={!rule.notify}
-                    name={`${namePrefix}-${index}-only-away`}
-                    onChange={(event) => update(index, { onlyAway: event.target.checked })}
-                    type="checkbox"
-                  />
-                  <span>{t('settings.alerts.ruleOnlyAway')}</span>
-                </label>
-              </div>
             </li>
           ))}
         </ul>
@@ -396,7 +326,7 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
         <Icon name="plus" />
         {t('settings.alerts.ruleAdd')}
       </button>
-    </>
+    </div>
   );
 }
 

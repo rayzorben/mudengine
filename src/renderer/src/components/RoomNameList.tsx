@@ -7,6 +7,7 @@
  * › `parts/pages.md`.
  */
 import Icon from './Icon';
+import ToggleChip from './ToggleChip';
 import { t } from '../lib/i18n';
 import {
   level,
@@ -88,24 +89,18 @@ export default function RoomNameList({ rows, onChange, namePrefix }: RoomNameLis
                   </button>
                 </div>
                 <div className="blessing-line blessing-detail">
-                  <label>
-                    <input
-                      checked={row.stopBefore}
-                      name={`${name}-stop`}
-                      onChange={(event) => update(index, { stopBefore: event.target.checked })}
-                      type="checkbox"
-                    />
-                    <span>{t('settings.rooms.stopBefore')}</span>
-                  </label>
-                  <label>
-                    <input
-                      checked={row.avoid}
-                      name={`${name}-avoid`}
-                      onChange={(event) => update(index, { avoid: event.target.checked })}
-                      type="checkbox"
-                    />
-                    <span>{t('settings.rooms.avoid')}</span>
-                  </label>
+                  <ToggleChip
+                    checked={row.stopBefore}
+                    label={t('settings.rooms.stopBefore')}
+                    name={`${name}-stop`}
+                    onChange={(stopBefore) => update(index, { stopBefore })}
+                  />
+                  <ToggleChip
+                    checked={row.avoid}
+                    label={t('settings.rooms.avoid')}
+                    name={`${name}-avoid`}
+                    onChange={(avoid) => update(index, { avoid })}
+                  />
                   <label>
                     <span>{t('settings.rooms.levels')}</span>
                     <input

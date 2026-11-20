@@ -46,10 +46,43 @@ export function insertionIndex(slots: readonly number[], along: number): number 
 export function reordered<T>(list: readonly T[], entry: T, index: number): readonly T[] {
   const from = list.indexOf(entry);
   if (from === -1) return list;
-  const to = index > from ? index - 1 : index;
-  if (to === from || to < 0 || to > list.length - 1) return list;
+  return moved(list, from, index > from ? index - 1 : index);
+}
+
+/**
+ * The list with the entry at `from` moved to `to`, both counted in the list as
+ * it stands. The same array when either is outside it or nothing moves.
+ */
+export function moved<T>(list: readonly T[], from: number, to: number): readonly T[] {
+  const last = list.length - 1;
+  if (from === to || from < 0 || to < 0 || from > last || to > last) return list;
   const next = [...list];
-  next.splice(from, 1);
-  next.splice(to, 0, entry);
+  const [entry] = next.splice(from, 1);
+  next.splice(to, 0, entry!);
   return next;
+}
+
+/** A row's extent along the axis the rows are stacked on. */
+export interface RowExtent {
+  start: number;
+  end: number;
+}
+
+/**
+ * The place a dragged row takes while the pointer is at `along`.
+ *
+ * The row moves live, one render per place, so the rule has to hold still
+ * after each move: a row goes past a neighbour only once the pointer is past
+ * that neighbour's midpoint. With rows of unequal height (a row with a warning
+ * under it) a rule on edges would swap the two back on the next pointer event.
+ */
+export function rowUnderDrag(rows: readonly RowExtent[], from: number, along: number): number {
+  const middle = (row: RowExtent): number => (row.start + row.end) / 2;
+  for (let at = 0; at < from; at += 1) {
+    if (along < middle(rows[at]!)) return at;
+  }
+  for (let at = rows.length - 1; at > from; at -= 1) {
+    if (along > middle(rows[at]!)) return at;
+  }
+  return from;
 }

@@ -531,7 +531,7 @@ notices:
       settings. {fileList}'
     desktopSwitchesBecameRows: '"ui.alerts.desktop" was removed from {count} file(s). Its two
       switches are now set on each alert row: "Notify" says whether the row shows a desktop
-      notification, and "Even when MudEngine is in front" says whether it does so while you are
+      notification, and "In front too" says whether it does so while you are
       looking at the window. Set them per row in the Alerts section of settings. {fileList}'
     desktopSwitchesSilenced: Notifications were turned off completely in {count} file(s), so every
       alert row there has "Notify" turned off to keep them quiet. Turn it back on for the rows you
@@ -4794,9 +4794,11 @@ settings:
     ruleAdd: Add an alert
     ruleAlert: Alert
     ruleNotify: Notify
-    ruleWhileFocused: Even when MudEngine is in front
+    ruleWhileFocused: In front too
+    ruleWhileFocusedTitle: Notify even when MudEngine is in front
     # Todo 79: MegaMUD's Play Alert Only When AFK.
-    ruleOnlyAway: Only when AFK
+    ruleOnlyAway: Only AFK
+    ruleOnlyAwayTitle: Notify only when AFK
     # Todo 80: MegaMUD's [Alerts] sounds.
     ruleSound: Sound
     levelKeep: as decided
@@ -4804,10 +4806,8 @@ settings:
     ruleNamePlaceholder: name to watch for
     ruleShadowed: An earlier row already matches this, so this one never fires.
     ruleRemoveTitle: Remove this alert
-    ruleUpTitle: Move up, so this is checked first
-    ruleDownTitle: Move down
-    ruleUpAria: 'Move alert {number} up'
-    ruleDownAria: 'Move alert {number} down'
+    ruleGripTitle: Drag to change the order. Rows are checked from the top.
+    ruleGripAria: 'Move alert {number}: drag it, or press the up and down arrows'
     ruleEnabledAria: 'Whether alert {number} is on'
     ruleOnAria: 'What alert {number} is about'
     ruleSideAria: 'Which side of the figure alert {number} fires on'
@@ -4819,10 +4819,9 @@ settings:
     sideAbove: above
     sideOver: over
     metricNamed: named
-    columnEnabled: Enabled
-    columnOrder: Order
+    columnEnabled: On
+    columnDeliver: Tell me by
     columnEvent: Event
-    columnMetric: Metric
     columnMeasure: Measure
     columnLevel: Level
     columnQuiet: Quiet (s)
@@ -6064,10 +6063,10 @@ settings:
     realm: Which realm
   spells:
     addBlessing: Add a bless spell
-    blessingDownAria: Move blessing {number} down
+    blessingGripAria: 'Move blessing {number}: drag it, or press the up and down arrows'
     blessingDuplicate: An earlier row already casts this spell on this target. Only that one is kept
       when this saves.
-    blessingDownTitle: Lower priority
+    blessingGripTitle: Drag to change the order. The top of the list is cast first.
     blessingFallback: Recast After, s
     blessingFallbackAria: Blessing {number} fallback seconds
     blessingInCombat: In Combat
@@ -6078,8 +6077,6 @@ settings:
     blessingTargetAria: Blessing {number} target
     blessingTargetParty: Party
     blessingTargetSelf: Self
-    blessingUpAria: Move blessing {number} up
-    blessingUpTitle: Higher priority
     blessingsLegend: Bless Spells
     blessingsNote: Spells the client keeps up for you. When the game says one has worn off, it is
       cast again right away. The top of the list is cast first, and blesses on yourself always come

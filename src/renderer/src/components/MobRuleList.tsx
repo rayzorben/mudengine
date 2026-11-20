@@ -4,6 +4,7 @@ import Icon from './Icon';
 import InheritedMobRules from './InheritedMobRules';
 import NameCombo from './NameCombo';
 import { SpellCombo } from './SpellPicker';
+import ToggleChip from './ToggleChip';
 import { fractionOf, percentOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import { TREATMENT_WORD } from '../lib/mobRuleWords';
@@ -174,47 +175,37 @@ export default function MobRuleList({
                       value={row.cast?.times ?? 0}
                     />
                   </label>
-                  <label className="blessing-check">
-                    <input
-                      checked={row.noBackstab === true}
-                      name={`${namePrefix}-${index}-no-backstab`}
-                      onChange={(event) =>
-                        replace(index, { ...row, noBackstab: event.target.checked })
-                      }
-                      type="checkbox"
-                    />
-                    <span>{t('settings.combat.mobRuleNoBackstab')}</span>
-                  </label>
-                  <label className="blessing-check">
-                    <input
-                      aria-describedby={fieldHintId(`${namePrefix}-${index}-not-hostile`)}
+                  <ToggleChip
+                    checked={row.noBackstab === true}
+                    label={t('settings.combat.mobRuleNoBackstab')}
+                    name={`${namePrefix}-${index}-no-backstab`}
+                    onChange={(noBackstab) => replace(index, { ...row, noBackstab })}
+                  />
+                  {/* A chip and the hint that follows it stay together when the line wraps. */}
+                  <span className="chip-with-hint">
+                    <ToggleChip
                       checked={row.notHostile === true}
+                      describedBy={fieldHintId(`${namePrefix}-${index}-not-hostile`)}
+                      label={t('settings.combat.mobRuleNotHostile')}
                       name={`${namePrefix}-${index}-not-hostile`}
-                      onChange={(event) =>
-                        replace(index, { ...row, notHostile: event.target.checked })
-                      }
-                      type="checkbox"
+                      onChange={(notHostile) => replace(index, { ...row, notHostile })}
                     />
-                    <span>{t('settings.combat.mobRuleNotHostile')}</span>
                     <Hint id={fieldHintId(`${namePrefix}-${index}-not-hostile`)}>
                       {t('settings.combat.mobRuleNotHostileHint')}
                     </Hint>
-                  </label>
-                  <label className="blessing-check">
-                    <input
-                      aria-describedby={fieldHintId(`${namePrefix}-${index}-stop-to-kill`)}
+                  </span>
+                  <span className="chip-with-hint">
+                    <ToggleChip
                       checked={row.stopToKill === true}
+                      describedBy={fieldHintId(`${namePrefix}-${index}-stop-to-kill`)}
+                      label={t('settings.combat.mobRuleStopToKill')}
                       name={`${namePrefix}-${index}-stop-to-kill`}
-                      onChange={(event) =>
-                        replace(index, { ...row, stopToKill: event.target.checked })
-                      }
-                      type="checkbox"
+                      onChange={(stopToKill) => replace(index, { ...row, stopToKill })}
                     />
-                    <span>{t('settings.combat.mobRuleStopToKill')}</span>
                     <Hint id={fieldHintId(`${namePrefix}-${index}-stop-to-kill`)}>
                       {t('settings.combat.mobRuleStopToKillHint')}
                     </Hint>
-                  </label>
+                  </span>
                   <WaitField
                     field="waitHealth"
                     label={t('settings.combat.mobRuleWaitHealth')}

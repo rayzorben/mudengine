@@ -13085,8 +13085,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     (() => {
       const rows = [...document.querySelectorAll('.settings-alerts > li:not(.alert-heading)')];
       if (rows.length < 2) return 'fewer than two rows';
-      const heads = [...document.querySelectorAll('.settings-alerts .alert-heading span')];
-      if (heads.length < 6) return 'no heading row';
+      const head = (column) =>
+        document.querySelector('.settings-alerts .alert-heading [data-column="' + column + '"]');
+      if (!head('event') || !head('level')) return 'no heading row';
       const left = (el) => Math.round(el.getBoundingClientRect().left);
       const columnOf = (row, name) => {
         const el = row.querySelector('[name$="-' + name + '"]');
@@ -13096,15 +13097,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       const levels = rows.map((row) => columnOf(row, 'level')).filter((x) => x !== null);
       const same = (xs) => xs.length > 1 && new Set(xs).size === 1;
       /*
-       * The headings, in the order they are written: enabled, event, metric,
-       * measure, level, quiet, order. A heading is over its column when it
-       * shares the left edge of the control beneath it -- within a pixel,
-       * because a select's border box and a span's are not the same box.
+       * A heading is over its column when it shares the left edge of the
+       * control beneath it -- within a pixel, because a select's border box
+       * and a span's are not the same box.
        */
       const near = (a, b) => a !== null && b !== null && Math.abs(a - b) <= 2;
       const over = {
-        event: near(left(heads[1]), events[0] ?? null),
-        level: near(left(heads[4]), levels[0] ?? null)
+        event: near(left(head('event')), events[0] ?? null),
+        level: near(left(head('level')), levels[0] ?? null)
       };
       return JSON.stringify({
         events,
@@ -13127,62 +13127,108 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
 
   /*
-   * The switch is a bare box under `Enabled`, not a labelled field in the row.
+   * The switch is a bare switch under its heading, not a labelled field in the
+   * row.
    *
    * A column heading is where a table says what a cell is; a label beside each
-   * box is the same word drawn once per row, which is what the screenshot that
-   * asked for this shows. The label survives as an `aria-label` for a reader
-   * who cannot see the column, so this asserts both halves.
+   * switch is the same word drawn once per row. The label survives as an
+   * `aria-label` for a reader who cannot see the column, so this asserts both
+   * halves.
    */
   const switched = await evaluate(`
     (() => {
       const box = document.querySelector('.settings-alerts [name$="-0-enabled"]');
       if (!box) return 'no enabled switch';
-      const heads = [...document.querySelectorAll('.settings-alerts .alert-heading span')]
-        .map((s) => s.innerText.trim().toLowerCase());
+      const head = document.querySelector('.settings-alerts .alert-heading [data-column="enabled"]');
       return JSON.stringify({
         labelled: !box.closest('label'),
         named: (box.getAttribute('aria-label') ?? '').length > 0,
-        heads
+        head: head?.innerText.trim().toLowerCase() ?? null
       });
     })()
   `);
   check(
     /"labelled":true/.test(switched) &&
       /"named":true/.test(switched) &&
-      isCopy(JSON.parse(switched).heads?.[0], 'settings.alerts.columnEnabled') &&
-      (JSON.parse(switched).heads ?? []).some((head) =>
-        isCopy(head, 'settings.alerts.columnOrder')
-      ),
-    'and the switch is a bare box under an Enabled heading, named for a screen reader',
+      isCopy(JSON.parse(switched).head, 'settings.alerts.columnEnabled'),
+    'and the switch is bare under its own heading, named for a screen reader',
     switched
   );
 
   /*
-   * The order arrows are trailing controls, beside the remove.
+   * A row is reordered by the grip that leads it (2026-11-19), dragged or
+   * moved with the arrow keys while it has focus.
    *
-   * Order still decides -- the first enabled row claiming a notice wins -- so
-   * they are kept; what changed is where. In front they took the first two
-   * columns and pushed every heading off the control it named.
+   * Order decides -- the first enabled row claiming a notice wins. The key is
+   * the half a harness can press: the first row goes down a place and the
+   * focus goes with it, then comes back, so the shipped order is what stays.
+   * Two rows naming the same event would swap unseen, so that they differ is
+   * asserted first.
    */
-  const ordering = await evaluate(`
+  const firstTwoEvents = () =>
+    evaluate(`
+      JSON.stringify([...document.querySelectorAll('.settings-alerts [name$="-on"]')]
+        .slice(0, 2).map((select) => select.value))
+    `);
+  const pressOnGrip = (index, key) =>
+    evaluate(`
+      (() => {
+        const grip = document.querySelectorAll('.settings-alerts [data-reorder-grip]')[${index}];
+        if (!grip) return false;
+        grip.focus();
+        grip.dispatchEvent(new KeyboardEvent('keydown', { key: '${key}', bubbles: true }));
+        return true;
+      })()
+    `);
+  const shippedOrder = JSON.parse(await firstTwoEvents());
+  check(
+    shippedOrder.length === 2 && shippedOrder[0] !== shippedOrder[1],
+    'the first two alert rows name different events',
+    JSON.stringify(shippedOrder)
+  );
+  const swappedOrder = JSON.stringify([shippedOrder[1], shippedOrder[0]]);
+  check(await pressOnGrip(0, 'ArrowDown'), 'and the first row leads with a grip');
+  check(
+    (await readUntil(firstTwoEvents, (order) => order === swappedOrder)) === swappedOrder,
+    'and the down arrow on its grip moves the row down a place',
+    swappedOrder
+  );
+  check(
+    await evaluate(
+      `document.activeElement === document.querySelectorAll('.settings-alerts [data-reorder-grip]')[1]`
+    ),
+    'and the focus goes with the row'
+  );
+  check(await pressOnGrip(1, 'ArrowUp'), 'and the row still leads with a grip in its new place');
+  check(
+    (await readUntil(firstTwoEvents, (order) => order === JSON.stringify(shippedOrder))) ===
+      JSON.stringify(shippedOrder),
+    'and the up arrow moves it back'
+  );
+
+  /*
+   * What a row does when it fires is chips on the row, and the two that
+   * qualify a notification are drawn only on a row that notifies.
+   */
+  const chips = await evaluate(`
     (() => {
-      const row = document.querySelector('.settings-alerts > li:not(.alert-heading)');
-      if (!row) return 'no row';
-      const controls = row.querySelector('.alert-controls');
-      if (!controls) return 'no controls cell';
-      const box = row.querySelector('[name$="-enabled"]');
-      const right = (el) => Math.round(el.getBoundingClientRect().left);
+      const rows = [...document.querySelectorAll('.settings-alerts > li:not(.alert-heading)')];
+      const stray = rows.filter((row) => {
+        const notify = row.querySelector('[name$="-notify"]');
+        const qualifier = row.querySelector('[name$="-while-focused"]');
+        return !notify || notify.checked !== !!qualifier;
+      }).length;
       return JSON.stringify({
-        buttons: controls.querySelectorAll('button').length,
-        afterSwitch: box ? right(controls) > right(box) : null
+        rows: rows.length,
+        chipped: rows.every((row) => !!row.querySelector('.toggle-chip [name$="-alert"]')),
+        stray
       });
     })()
   `);
   check(
-    /"buttons":3/.test(ordering) && /"afterSwitch":true/.test(ordering),
-    'and the order arrows sit with the remove at the row\u2019s end, not in front of it',
-    ordering
+    /"rows":[1-9]/.test(chips) && /"chipped":true/.test(chips) && /"stray":0\b/.test(chips),
+    'and each row says what it does in chips, the notification\u2019s two only where it notifies',
+    chips
   );
 
   /* The picker offers happenings, not the buckets the client sorts them into. */

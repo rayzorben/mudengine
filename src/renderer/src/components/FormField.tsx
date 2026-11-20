@@ -432,6 +432,7 @@ export function CheckField({
       <input
         aria-describedby={description}
         checked={checked}
+        className="switch"
         onChange={(event) => onChange(event.target.checked)}
         type="checkbox"
       />

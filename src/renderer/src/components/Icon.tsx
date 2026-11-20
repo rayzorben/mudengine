@@ -50,6 +50,7 @@ export type IconName =
   | 'clearCircle'
   | 'copy'
   | 'more'
+  | 'grip'
   | 'trash'
   | 'download'
   | 'upload'
@@ -320,6 +321,17 @@ const ICONS: Record<IconName, ReactNode> = {
       <circle cx="12" cy="5.5" r="1.4" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
       <circle cx="12" cy="18.5" r="1.4" fill="currentColor" stroke="none" />
+    </>
+  ),
+  /* Two columns of dots: the handle a settings row is dragged by. */
+  grip: (
+    <>
+      <circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none" />
     </>
   ),
   /* A bin, for striking a record out. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { insertionIndex, reordered } from '../reorder';
+import { insertionIndex, moved, reordered, rowUnderDrag } from '../reorder';
 
 /*
  * The arithmetic both rails drag by. It lived in `useCardDrag` alone and was
@@ -68,5 +68,51 @@ describe('moving one entry to a gap', () => {
     const one = ['vaelor'];
     expect(reordered(one, 'vaelor', 0)).toBe(one);
     expect(reordered(one, 'vaelor', 1)).toBe(one);
+  });
+});
+
+describe('a row moved from one place to another', () => {
+  const rows = ['health', 'mana', 'attacked'];
+
+  it('moves a row down and up', () => {
+    expect(moved(rows, 0, 2)).toEqual(['mana', 'attacked', 'health']);
+    expect(moved(rows, 2, 0)).toEqual(['attacked', 'health', 'mana']);
+  });
+
+  it('is the same list when nothing moves or a place is outside it', () => {
+    expect(moved(rows, 1, 1)).toBe(rows);
+    expect(moved(rows, 0, -1)).toBe(rows);
+    expect(moved(rows, 2, 3)).toBe(rows);
+  });
+});
+
+describe('the place a dragged row takes', () => {
+  /* A short row, a tall one with a warning under it, a short one. */
+  const rows = [
+    { start: 0, end: 30 },
+    { start: 30, end: 90 },
+    { start: 90, end: 120 }
+  ];
+
+  it('stays put until the pointer passes a neighbour midpoint', () => {
+    expect(rowUnderDrag(rows, 0, 59)).toBe(0);
+    expect(rowUnderDrag(rows, 0, 61)).toBe(1);
+    expect(rowUnderDrag(rows, 2, 61)).toBe(2);
+    expect(rowUnderDrag(rows, 2, 59)).toBe(1);
+  });
+
+  it('goes past several rows at once', () => {
+    expect(rowUnderDrag(rows, 0, 110)).toBe(2);
+    expect(rowUnderDrag(rows, 2, 5)).toBe(0);
+  });
+
+  /* The short row went under the tall one at 61; the tall one now starts at 0. */
+  it('holds still after the two rows swap', () => {
+    const swapped = [
+      { start: 0, end: 60 },
+      { start: 60, end: 90 },
+      { start: 90, end: 120 }
+    ];
+    expect(rowUnderDrag(swapped, 1, 61)).toBe(1);
   });
 });

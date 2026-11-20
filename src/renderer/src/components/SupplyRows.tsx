@@ -1,6 +1,7 @@
 import ChoiceFields, { type ChoiceRow } from './ChoiceFields';
 import Icon from './Icon';
 import { CheckField } from './FormField';
+import ToggleChip from './ToggleChip';
 import { wholeOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import {
@@ -113,24 +114,20 @@ export default function SupplyRows({ supplies, idPrefix, onChange }: SupplyRowsP
                     value={row.max}
                   />
                 </label>
-                <label title={t('cards.self.supplies.buyTooltip')}>
-                  <input
-                    checked={row.buy}
-                    name={`${idPrefix}supplies-${index}-buy`}
-                    onChange={(event) => update(index, { buy: event.target.checked })}
-                    type="checkbox"
-                  />
-                  <span>{t('cards.self.supplies.buy')}</span>
-                </label>
-                <label title={t('cards.self.supplies.doneOnFoundTooltip')}>
-                  <input
-                    checked={row.doneOnFound}
-                    name={`${idPrefix}supplies-${index}-done`}
-                    onChange={(event) => update(index, { doneOnFound: event.target.checked })}
-                    type="checkbox"
-                  />
-                  <span>{t('cards.self.supplies.doneOnFound')}</span>
-                </label>
+                <ToggleChip
+                  checked={row.buy}
+                  label={t('cards.self.supplies.buy')}
+                  name={`${idPrefix}supplies-${index}-buy`}
+                  onChange={(buy) => update(index, { buy })}
+                  title={t('cards.self.supplies.buyTooltip')}
+                />
+                <ToggleChip
+                  checked={row.doneOnFound}
+                  label={t('cards.self.supplies.doneOnFound')}
+                  name={`${idPrefix}supplies-${index}-done`}
+                  onChange={(doneOnFound) => update(index, { doneOnFound })}
+                  title={t('cards.self.supplies.doneOnFoundTooltip')}
+                />
                 <span>
                   {!row.buy
                     ? t('cards.self.supplies.collectOnly')

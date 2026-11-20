@@ -10865,14 +10865,166 @@ button.shelf-tile:hover {
   gap: 6px;
 }
 
-.blessing-order {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 2px;
+/*
+ * The handle a row is reordered by (`RowGrip`, `useRowReorder`): dragged, or
+ * moved with the arrow keys while it has focus. `touch-action: none` keeps a
+ * touch drag from scrolling the form instead.
+ */
+.settings-steps {
+  --row-grip-w: 22px;
 }
 
-.blessing-order button {
-  padding: 2px 3px;
+.row-grip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: center;
+  justify-content: center;
+  width: var(--row-grip-w);
+  height: 24px;
+  padding: 0;
+  color: var(--text-lo-quiet);
+  cursor: grab;
+  touch-action: none;
+}
+
+.row-grip:active {
+  cursor: grabbing;
+}
+
+.settings-steps > li[data-dragging] {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+}
+
+/*
+ * A switch (the user, 2026-11-19): every standing on-or-off in the settings
+ * and the switch that leads a list row. A checkbox underneath, drawn as a
+ * track and a knob in the theme's accent, the same size wherever it is.
+ */
+input.switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  min-width: 30px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  /* The quiet ink at half strength: a track that shows on a light card as
+     well as a dark one, which `--ink-edge` on a light theme did not. */
+  background: color-mix(in srgb, var(--text-lo) 50%, transparent);
+  appearance: none;
+  cursor: pointer;
+  transition: background var(--dur-tint) linear;
+}
+
+input.switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink-card);
+  content: '';
+  transition: left var(--dur-tint) linear;
+}
+
+/* On, in the hue of the block it is in, as a focused field answers there. */
+input.switch:checked {
+  background: var(--group-hue, var(--accent));
+}
+
+input.switch:checked::after {
+  left: 16px;
+  background: var(--on-accent);
+}
+
+input.switch:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* A tick box that stays one (a login step's pager flag) ticks in the theme's
+   accent too, not the browser's blue. */
+.settings-form input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+/* `input:focus` drops the outline for text fields, which show focus on their
+   border; a switch has no border to show it on. */
+input.switch:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * A yes-or-no on a list row, as a chip (`ToggleChip`): an outline while off, a
+ * tint of the accent while on. The checkbox covers the chip, unseen, so the
+ * whole chip is pressed and focused as one.
+ */
+.toggle-chip {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border: var(--rule) solid var(--ink-line);
+  border-radius: 12px;
+  color: var(--text-lo);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background var(--dur-tint) linear,
+    color var(--dur-tint) linear,
+    border-color var(--dur-tint) linear;
+}
+
+.toggle-chip > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: inherit;
+  opacity: 0;
+}
+
+.toggle-chip:has(> input:checked) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--group-hue, var(--accent)) var(--tone-strong), transparent);
+  color: var(--text-hi);
+}
+
+.toggle-chip:has(> input:focus-visible) {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toggle-chip:has(> input:disabled) {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* A chip that only qualifies the one before it: smaller, dashed while off. */
+.toggle-chip[data-sub] {
+  height: 20px;
+  padding: 0 7px;
+  border-style: dashed;
+  font-size: 0.9em;
+}
+
+.toggle-chip[data-sub]:has(> input:checked) {
+  border-style: solid;
+}
+
+.chip-with-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .blessing-detail,
@@ -10884,6 +11036,12 @@ button.shelf-tile:hover {
 
 .blessing-detail {
   padding-left: 52px;
+}
+
+/* Under a row that leads with a grip, the second line starts where the
+   first line's fields do. */
+.settings-blessings .blessing-detail {
+  padding-left: calc(var(--row-grip-w) + 6px);
 }
 
 .blessing-detail label,
@@ -10910,54 +11068,38 @@ button.shelf-tile:hover {
 }
 
 /*
- * The alert rows, as a grid (todo 03).
+ * The alert rows, one line each (todo 03; the line, 2026-11-19).
  *
- * They were flex rows whose controls came and went per row -- a figure on the
- * two numeric ones, a name on the two named ones, nothing on the rest -- so no
- * two rows put the same control in the same place and nothing lined up down the
- * page. The columns are declared once here and a row with no metric leaves that
- * cell empty, which is the whole of what makes a column a column.
+ * The list owns the tracks and the heading and every row are `subgrid`, so a
+ * row with no measure leaves that cell empty and every control still stands
+ * under its heading. A second copy of the tracks on the heading agreed with
+ * the rows only until one was edited.
  *
- * **The list owns the tracks and every line borrows them** (2026-09-13). The
- * heading used to carry its own copy of `grid-template-columns`, so the two
- * agreed only as long as nobody edited one of them -- and `auto` tracks are
- * sized per grid, so a heading word longer than the control under it moved its
- * own column and not the row's. The tracks are declared once on the list and
- * both the heading and every row are `subgrid`, which is the same fix
- * `.readout` rows take when they cannot be siblings.
+ * Seven tracks: the grip, the switch, the event, the measure, the level, the
+ * quiet seconds and the remove. The chips that say what a row does take an
+ * eighth between the level and the quiet seconds where the panel has room for
+ * it, and a second line under the row where it does not.
  *
- * Seven tracks: the switch, the event, the metric, the measure, the level, the
- * quiet seconds, and the controls done TO the row (order, remove). The measure
- * takes the slack so a name to wait for has room to be read.
- *
- * The switch and the quiet tracks have floors in `ch` sized to their HEADINGS
- * rather than to their controls: a checkbox is 13px and `Enabled` is seven
- * characters, so an `auto` track sized to the box alone left the heading
- * overlapping the one beside it -- a column heading that does not fit its
- * column names the wrong column.
+ * `.alert-rows` is the box that width is asked of: a container query reads an
+ * ancestor, never the grid itself.
  */
+.alert-rows {
+  container-type: inline-size;
+}
+
 .settings-alerts {
   display: grid;
   grid-template-columns:
-    minmax(7ch, auto) minmax(16ch, 1.4fr) minmax(7ch, auto)
-    minmax(9ch, 1fr) minmax(8ch, auto) minmax(5ch, 4.2em) minmax(5ch, auto);
+    var(--row-grip-w) auto minmax(16ch, 2fr) minmax(min-content, 1fr)
+    minmax(11ch, auto) minmax(5ch, 4.2em) auto;
   /*
    * The rows scroll sideways inside their own box rather than the form doing
-   * it. Seven columns of controls do not always fit a panel somebody has
-   * dragged narrow, and the alternative is the event picker squeezed to
-   * nothing -- which is the thing this grid exists to stop.
+   * it, where somebody has dragged the panel narrower than the controls.
    */
   overflow-x: auto;
 }
 
-/*
- * A row spans every track and lays its own children on them, so one set of
- * tracks serves the heading and all the rows.
- *
- * Two lines stacked, not two things side by side: `.settings-steps li` is a
- * flex ROW, which put the row's controls and the *what it does when it fires*
- * sentence beside each other and pushed the sentence to the far right.
- */
+/* A row spans every track and lays its own children on them. */
 .settings-alerts > li {
   display: grid;
   grid-column: 1 / -1;
@@ -10965,16 +11107,20 @@ button.shelf-tile:hover {
   min-width: 38rem;
 }
 
+.settings-alerts > li:not(.alert-heading) {
+  padding: 4px 0;
+  border-top: var(--rule) solid color-mix(in srgb, var(--ink-line) 60%, transparent);
+}
+
 .settings-alerts .alert-line {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
 }
 
-/* A cell holding two controls -- a figure and its per-cent box -- keeps them
-   on one line and lets the pair shrink together. */
+/* A cell holding several controls keeps them on one line. */
 .settings-alerts .alert-cell {
   display: flex;
   align-items: center;
@@ -10982,56 +11128,83 @@ button.shelf-tile:hover {
   min-width: 0;
 }
 
-.settings-alerts .alert-cell > input:not([type='checkbox']),
-.settings-alerts .alert-cell > select {
-  min-width: 0;
-  width: 100%;
+/* The comparison keeps its word, the figure a readable width, and a name to
+   wait for takes what is left. */
+.settings-alerts .alert-measure > select {
+  flex: 0 0 auto;
+  width: auto;
 }
 
-/* The figure keeps a readable width beside its per-cent box rather than being
-   squeezed to the few pixels the box leaves. */
-.settings-alerts .alert-cell > input.number {
-  flex: 1 1 5ch;
-  min-width: 5ch;
+/* Five digits and the field's own padding and border (9px and 1px a side). */
+.settings-alerts .alert-measure > input.number {
+  flex: 0 0 auto;
+  width: calc(5ch + 20px);
 }
 
-/*
- * The switch under its own heading: a bare box, centred on the column the word
- * `Enabled` names. It wore that word as a label beside it, which is a field's
- * grammar -- in a table the heading is where the column says what it is, and a
- * label repeating it per row is the same word drawn once per row.
- */
-.settings-alerts .alert-enabled {
-  justify-content: center;
-}
-
-/*
- * What is done TO a row -- move it up, move it down, remove it -- kept
- * together at its end. They led the row until 2026-09-13, where they pushed
- * every heading a column off the control it named.
- */
-.settings-alerts .alert-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  justify-self: end;
-}
-
-.settings-alerts .alert-controls button {
-  padding: 2px 3px;
+.settings-alerts .alert-measure > input:not(.number) {
+  flex: 1 1 8ch;
+  width: 0;
+  min-width: 8ch;
 }
 
 /* A comparison the event states rather than offers: `over` for money, `named`
-   for a row matched by name. Drawn as the text it is, in the column a select
-   would have taken, so the measure beside it still lines up. */
+   for a row matched by name. */
 .settings-alerts .alert-fixed {
   color: var(--text-lo-quiet);
   white-space: nowrap;
 }
 
-/* The column headings: quiet, and each one over the control it names. */
-/* Headings sit on their last line, so a two-line one (`Quiet (s)`) shares a
-   baseline with its neighbours instead of floating above them. */
+/*
+ * The level wears what it means: the alert's own hues, as a tint. *As decided*
+ * is an outline, since the row leaves the level to the client.
+ */
+.settings-alerts select.alert-rule-level {
+  border: var(--rule) solid transparent;
+  border-radius: 12px;
+}
+
+.settings-alerts select.alert-rule-level[data-level='critical'] {
+  background-color: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
+}
+
+.settings-alerts select.alert-rule-level[data-level='warning'] {
+  background-color: color-mix(in srgb, var(--pending) var(--tone-strong), transparent);
+}
+
+.settings-alerts select.alert-rule-level[data-level='info'] {
+  background-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+}
+
+.settings-alerts select.alert-rule-level[data-level='keep'] {
+  border-color: var(--ink-line);
+  background-color: transparent;
+  color: var(--text);
+}
+
+/* What the row does when it fires. Under the row, from the event's column on,
+   until the panel is wide enough for a track of its own (below). */
+.settings-alerts .alert-deliver {
+  grid-row: 2;
+  grid-column: 3 / -1;
+  flex-wrap: wrap;
+}
+
+.settings-alerts .alert-heading [data-column='deliver'] {
+  display: none;
+}
+
+.settings-alerts .alert-remove {
+  padding: 2px 3px;
+}
+
+/* A row that is switched off stays readable and stops asking to be read. The
+   grip, the switch and the remove still act on it, so they keep their ink. */
+.settings-alerts > li[data-off] .alert-line > :not(.row-grip, .alert-enabled, .alert-remove) {
+  opacity: 0.5;
+}
+
+/* The column headings: quiet, and each one over the control it names. They
+   sit on their last line, so a two-line one shares a baseline with the rest. */
 .settings-alerts .alert-heading .alert-line {
   align-items: end;
   padding-bottom: 2px;
@@ -11048,54 +11221,6 @@ button.shelf-tile:hover {
   line-height: 1.15;
 }
 
-/* The switch's and the controls' headings centre on what they name, as those
-   two cells do. */
-.settings-alerts .alert-heading span:first-child,
-.settings-alerts .alert-heading .alert-controls {
-  text-align: center;
-}
-
-.settings-alerts .alert-heading .alert-controls {
-  justify-self: end;
-  text-align: right;
-}
-
-/*
- * What the row does when it fires: three switches under the row proper.
- *
- * A flex line spanning every track rather than three more columns, because
- * each would be a column every other row leaves empty -- and the three read as
- * one sentence together, which a grid would pull apart.
- */
-.settings-alerts .alert-detail {
-  display: flex;
-  grid-column: 1 / -1;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  /* Inset past the switch column, so the sentence reads as belonging to the
-     row above it rather than floating loose under the whole grid. */
-  padding: 2px 0 6px 28px;
-  justify-content: flex-start;
-  font-size: 0.85em;
-  color: var(--text-lo-quiet);
-}
-
-/*
- * A switch in the sentence is a box and its words on ONE line.
- *
- * `.settings-field` is the form's two-row subgrid, and a `label` inheriting it
- * here stacked each box above its words -- three little towers instead of a
- * sentence. It is stated rather than left to `.blessing-check`, which only
- * stops the words wrapping.
- */
-.settings-alerts .alert-detail label {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 5px;
-}
-
 /* The warning under a shadowed row spans the tracks rather than sitting in the
    first one. */
 .settings-alerts .blessing-duplicate {
@@ -11105,6 +11230,29 @@ button.shelf-tile:hover {
 .settings-alerts select,
 .settings-alerts input:not([type='checkbox']) {
   min-width: 0;
+}
+
+/*
+ * One line. 76em is the eight tracks at their floors with every chip drawn,
+ * measured at the default font: below it the event's name is cut short before
+ * the chips fit.
+ */
+@container (min-width: 76em) {
+  .settings-alerts {
+    grid-template-columns:
+      var(--row-grip-w) auto minmax(16ch, 2fr) minmax(min-content, 1fr)
+      minmax(11ch, auto) auto minmax(5ch, 4.2em) auto;
+  }
+
+  .settings-alerts .alert-deliver {
+    grid-row: auto;
+    grid-column: auto;
+    flex-wrap: nowrap;
+  }
+
+  .settings-alerts .alert-heading [data-column='deliver'] {
+    display: inline;
+  }
 }
 
 /*
@@ -11210,10 +11358,6 @@ button.shelf-tile:hover {
 .settings-mob-rules .mob-rule-detail input.number {
   width: 56px;
   flex: 0 0 auto;
-}
-
-.blessing-check {
-  white-space: nowrap;
 }
 
 /*
