@@ -94,6 +94,11 @@ export const CLIENT_KEYS: Readonly<Record<ClientKey, ClientChord>> = {
   walkRoute: { key: 'g', alt: true }
 };
 
+/** `Alt 1` to `Alt 9` show the first nine characters on the tab rail, in its order. */
+export const TAB_KEYS: readonly ClientChord[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(
+  (key) => ({ key, alt: true })
+);
+
 /** The punctuation `CLIENT_KEYS` names, by the physical key it sits on. */
 const PUNCTUATION_CODES: Readonly<Record<string, string>> = {
   ',': 'Comma',
@@ -104,6 +109,7 @@ const PUNCTUATION_CODES: Readonly<Record<string, string>> = {
 /** The physical key a `ClientChord` sits on; `useHotkeys` matches an Alt chord by it. */
 export function codeOfKey(key: string): string {
   if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
+  if (/^\d$/.test(key)) return `Digit${key}`;
   return PUNCTUATION_CODES[key] ?? key;
 }
 
@@ -116,7 +122,7 @@ const EDITING: readonly Chord[] = ['KeyA', 'KeyC', 'KeyV', 'KeyX', 'KeyY', 'KeyZ
 );
 
 const TAKEN: ReadonlySet<string> = new Set([
-  ...Object.values(CLIENT_KEYS).map((chord) =>
+  ...[...Object.values(CLIENT_KEYS), ...TAB_KEYS].map((chord) =>
     chordName({
       code: codeOfKey(chord.key),
       mod: chord.mod ?? false,

@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { NO_CARD_SETTINGS, type CardArrangement } from '../cards';
 import { t } from '../i18n';
 import { paletteCommands, paletteKeys, type PaletteDeps } from '../palette';
-import { chord } from '../platform';
+import { chord, clientChord } from '../platform';
+import { TAB_KEYS } from '@shared/keys';
 import { THEMES } from '@shared/themes';
 import { NO_SESSION, type Revealed, type SessionId } from '@shared/ipc';
 
 const HERO = 'hero' as SessionId;
 const HEALER = 'healer' as SessionId;
+const SHARED = 'shared' as SessionId;
 const OPENED: Revealed = { how: 'opened' };
 const NO_AUTO_LAYOUT = { run: vi.fn(), undo: vi.fn(), canUndo: false };
 const NO_NAMED_LAYOUTS = { layouts: [], shown: null, apply: vi.fn() };
@@ -31,7 +33,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
       copyText: vi.fn(async () => undefined)
     },
     session: HERO,
-    sessions: [{ id: HERO, name: 'Hero' }],
+    sessions: [{ id: HERO, name: 'Hero', remote: null }],
     profiles: [],
     servers: [],
     phases: {},
@@ -126,12 +128,28 @@ describe('the palette commands', () => {
     expect(ids().some((id) => id.startsWith('show:'))).toBe(false);
     const two = {
       sessions: [
-        { id: HERO, name: 'Hero' },
-        { id: HEALER, name: 'Healer' }
+        { id: HERO, name: 'Hero', remote: null },
+        { id: HEALER, name: 'Healer', remote: null }
       ]
     };
     expect(ids(two)).toContain(`show:${HEALER}`);
     expect(ids(two)).not.toContain(`show:${HERO}`);
+  });
+
+  it("names a character's Alt digit by its place among the rail's own tabs", () => {
+    const status = t('palette.character.showIdleStatus');
+    const withShared = {
+      sessions: [
+        { id: HERO, name: 'Hero', remote: null },
+        { id: SHARED, name: 'Shared', remote: { via: HERO, viaName: 'Hero' } },
+        { id: HEALER, name: 'Healer', remote: null }
+      ]
+    };
+    expect(find(`show:${HEALER}`, withShared).hint).toBe(
+      t('palette.character.showKeyHint', { status, chord: clientChord(TAB_KEYS[1]!) })
+    );
+    // A character another player shares has no key.
+    expect(find(`show:${SHARED}`, withShared).hint).toBe(status);
   });
 
   it('withholds the window moves in a browser tab, where there is no second window', () => {

@@ -1,5 +1,5 @@
 import type { CharacterState } from '@shared/character';
-import type { ProfileSummary } from '@shared/ipc';
+import type { ProfileSummary, SessionSummary } from '@shared/ipc';
 
 /**
  * The realm's roster, kept the same array for as long as its rows are equal.
@@ -40,4 +40,13 @@ export function closedCharacters<T extends Pick<ProfileSummary, 'loaded'>>(
   profiles: readonly T[]
 ): T[] {
   return profiles.filter((profile) => !profile.loaded);
+}
+
+/**
+ * This install's own characters, in rail order: the tabs the rail draws, drags
+ * and counts `Alt 1` to `Alt 9` over. A character another player shares sits
+ * apart from them (`RemoteTabs`).
+ */
+export function ownTabs<T extends Pick<SessionSummary, 'remote'>>(roster: readonly T[]): T[] {
+  return roster.filter((entry) => entry.remote === null);
 }

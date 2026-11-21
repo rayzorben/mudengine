@@ -22,7 +22,10 @@ import {
   type WalkProgress
 } from '@shared/walk';
 import { loopIsResting, type LoopProgress } from '@shared/loops';
+import { TAB_KEYS } from '@shared/keys';
 import { keepFocus } from '../lib/focus';
+import { clientChord } from '../lib/platform';
+import { ownTabs } from '../lib/roster';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { t } from '../lib/i18n';
 import type { Unseen } from '../lib/unseen';
@@ -457,7 +460,7 @@ function TabRail({
    */
   const stacked = side !== 'top';
   // This install's own characters are dragged and dialled; those controlled from here sit apart.
-  const sessions = useMemo(() => roster.filter((entry) => entry.remote === null), [roster]);
+  const sessions = useMemo(() => ownTabs(roster), [roster]);
   const opened = useMemo(() => roster.filter((entry) => entry.remote !== null), [roster]);
   const sharers = useRemoteCharacters(api, sessions);
   /*
@@ -582,6 +585,8 @@ function TabRail({
           const doing = activity(view);
           const room = view?.character.room.name ?? null;
           const isActive = session.id === active;
+          // `Alt 1` to `Alt 9` show the first nine (`useTabKeys`).
+          const tabKey = TAB_KEYS[at];
           const phase = view?.state.phase ?? 'idle';
           // Only a close is waited for. A dial with no answer yet, or a
           // reconnect's wait, takes a press as *dial now* (todo 22).
@@ -680,10 +685,18 @@ function TabRail({
 
                 <span
                   className="who"
-                  title={t('tabs.tab.whoTooltip', {
-                    characterName: session.name,
-                    realmName: session.server
-                  })}
+                  title={
+                    tabKey === undefined
+                      ? t('tabs.tab.whoTooltip', {
+                          characterName: session.name,
+                          realmName: session.server
+                        })
+                      : t('tabs.tab.whoKeyTooltip', {
+                          characterName: session.name,
+                          realmName: session.server,
+                          chord: clientChord(tabKey)
+                        })
+                  }
                 >
                   <span className="name">{session.name}</span>
                   {/*

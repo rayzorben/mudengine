@@ -46,6 +46,7 @@ import ThemePicker from './components/ThemePicker';
 import { useLoopJoin } from './hooks/useLoopJoin';
 import { useMovement } from './hooks/useMovement';
 import { usePanes } from './hooks/usePanes';
+import { useTabKeys } from './hooks/useTabKeys';
 import { useProfileReaders } from './hooks/useProfileReaders';
 import { useRoutePanel } from './hooks/useRoutePanel';
 import { useSearchBar } from './hooks/useSearchBar';
@@ -168,6 +169,7 @@ export default function App() {
     turnPanes,
     closePane
   } = usePanes(sessions, noticeTo);
+  useTabKeys(sessions, showSession, stepSession);
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;
@@ -923,7 +925,7 @@ export default function App() {
     settingsOpen ||
     helpOpen;
   useHotkeys([
-    // Each chord is `CLIENT_KEYS`'s; the connection's are `useConnectionKeys`.
+    // Each chord is `CLIENT_KEYS`'s; the connection's are `useConnectionKeys`, the tabs' `useTabKeys`.
     { ...CLIENT_KEYS.palette, run: togglePalette },
     { ...CLIENT_KEYS.loops, run: toggleLoops },
     { ...CLIENT_KEYS.rail, run: toggleRail },
@@ -940,8 +942,6 @@ export default function App() {
         else closePane();
       }
     },
-    { ...CLIENT_KEYS.nextTab, run: () => stepSession(1) },
-    { ...CLIENT_KEYS.previousTab, run: () => stepSession(-1) },
     { ...CLIENT_KEYS.route, run: toggleRoute },
     /*
      * Escape dismisses the topmost thing that is open, and is registered only

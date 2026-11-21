@@ -20,8 +20,8 @@ import {
 import type { NamedLayoutsApi, RailLayoutsApi } from './cardLayouts';
 import { t } from './i18n';
 import type { HeldLoop } from './loops';
-import { chord } from './platform';
-import { closedCharacters } from './roster';
+import { chord, clientChord } from './platform';
+import { closedCharacters, ownTabs } from './roster';
 import { CONSOLE_COLUMNS as MIN_COLUMNS, type PaneFlow } from './splitter';
 import type { UseTheme } from './theme';
 import { tuning } from './tuning';
@@ -40,6 +40,7 @@ import {
   type SessionId,
   type SessionSummary
 } from '@shared/ipc';
+import { TAB_KEYS } from '@shared/keys';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import type { ConnectionState, ConnectionTarget } from '@shared/types';
 import type { Switch } from './switch';
@@ -69,7 +70,7 @@ export interface PaletteDeps {
   api: PaletteApi;
   /** The character on screen, or `NO_SESSION`. */
   session: SessionId;
-  sessions: readonly Pick<SessionSummary, 'id' | 'name'>[];
+  sessions: readonly Pick<SessionSummary, 'id' | 'name' | 'remote'>[];
   profiles: readonly Pick<ProfileSummary, 'id' | 'name' | 'loaded' | 'target'>[];
   servers: readonly Server[];
   /** Each character's connection phase, keyed by value (`phasesKey`). */
@@ -208,6 +209,7 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
     tabSide,
     theme: themes
   } = deps;
+  const own = ownTabs(sessions);
   const shownName = sessions.find((e) => e.id === session)?.name ?? session;
   return [
     /*
@@ -388,14 +390,22 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
     ...(sessions.length > 1
       ? sessions
           .filter((entry) => entry.id !== session)
-          .map((entry) => ({
-            id: `show:${entry.id}`,
-            icon: 'user' as const,
-            label: t('palette.character.showLabel', { characterName: entry.name }),
-            hint: phases[entry.id] ?? t('palette.character.showIdleStatus'),
-            group: 'character' as const,
-            run: () => deps.showSession(entry.id)
-          }))
+          .map((entry) => {
+            const status = phases[entry.id] ?? t('palette.character.showIdleStatus');
+            // `Alt 1` to `Alt 9` go by a character's place among the rail's own tabs.
+            const tabKey = TAB_KEYS[own.indexOf(entry)];
+            return {
+              id: `show:${entry.id}`,
+              icon: 'user' as const,
+              label: t('palette.character.showLabel', { characterName: entry.name }),
+              hint:
+                tabKey === undefined
+                  ? status
+                  : t('palette.character.showKeyHint', { status, chord: clientChord(tabKey) }),
+              group: 'character' as const,
+              run: () => deps.showSession(entry.id)
+            };
+          })
       : []),
     ...closedCharacters(profiles).map((profile) => ({
       id: `open:${profile.id}`,

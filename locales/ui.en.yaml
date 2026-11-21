@@ -1503,6 +1503,7 @@ palette:
     settingsDefaultsLabel: 'Settings: what a new realm or character starts with…'
     settingsLabel: 'Settings: add or edit a character, realm or password…'
     showIdleStatus: idle
+    showKeyHint: '{status} · {chord}'
     showLabel: 'Show: {characterName}'
   dialogLabel: Command palette
   filterLabel: Filter commands
@@ -1788,6 +1789,7 @@ tabs:
     markWalking: walking
     markRunning: running
     whoTooltip: '{characterName} ({realmName})'
+    whoKeyTooltip: '{characterName} ({realmName}), {chord}'
 # The status rail under the console.
 statusRail:
   action:

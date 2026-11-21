@@ -102,6 +102,10 @@ describe('what a keys: block loads', () => {
         .join('+');
       expect(keyRowRefusals([{ name, text: 'look' }]), name).toEqual(['client']);
     }
+    // `Alt 1` to `Alt 9` show a character (`TAB_KEYS`); Alt 0 is free.
+    expect(keyRowRefusals([{ name: 'Alt+Digit1', text: 'look' }])).toEqual(['client']);
+    expect(keyRowRefusals([{ name: 'Alt+Digit9', text: 'look' }])).toEqual(['client']);
+    expect(keyRowRefusals([{ name: 'Alt+Digit0', text: 'look' }])).toEqual([null]);
     expect(keyRowRefusals([{ name: 'Ctrl+KeyC', text: 'look' }])).toEqual(['client']);
     expect(keyRowRefusals([{ name: 'Ctrl+Shift+KeyV', text: 'look' }])).toEqual(['client']);
     expect(keyRowRefusals([{ name: 'Ctrl+KeyB', text: 'look' }])).toEqual([null]);
