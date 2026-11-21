@@ -150,10 +150,11 @@ export interface ProwessClass {
   /** What the realm's rounds measured (`RoundCount`); absent or null is none. */
   rounds?: MeasuredRounds | null;
   /**
-   * ImmuPoison (21) on the class or race row (`spellWard.ts`). Absent or null
-   * is unread, which wards nothing.
+   * The ImmuPoison (21) sum off the class and race rows where one holds a
+   * row (`spellWard.ts`). Absent or null is no row or unread, which wards
+   * nothing.
    */
-  poisonImmune?: boolean | null;
+  poisonImmunity?: number | null;
 }
 
 /** The class as a fight is priced: its rows, the realm's family, and the attack fought with. */

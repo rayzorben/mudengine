@@ -1358,6 +1358,17 @@ const EFFECT_OFF: Record<HazardEffect, Partial<SpellHazard>> = {
   unread: { unread: false }
 };
 
+/** This hazard with one effect off and its ways in dropped; the same reference where it has none. */
+export function hazardWithout(hazard: SpellHazard, effect: HazardEffect): SpellHazard {
+  if (!hazardHas(hazard, effect)) return hazard;
+  const without: SpellHazard = { ...hazard, ...EFFECT_OFF[effect] };
+  if (hazard.reach !== undefined) {
+    const { [effect]: _dropped, ...reach } = hazard.reach;
+    without.reach = reach;
+  }
+  return without;
+}
+
 /** This hazard with only the ways `keep` admits; an effect none admits is off. */
 function narrowReach(hazard: SpellHazard, keep: (way: HazardReach) => boolean): SpellHazard {
   const reach = hazard.reach;

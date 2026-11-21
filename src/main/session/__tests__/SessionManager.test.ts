@@ -6980,7 +6980,7 @@ describe('what this character costs to move', () => {
             source: 'test',
             rooms: 1,
             generatedAt: 'x',
-            races: [{ id: 13, n: 'Kang' }],
+            races: [{ id: 13, n: 'Kang', ab: [[21, 100]] }],
             classes: [{ id: 3, n: 'Paladin' }],
             items: [
               { id: 191, n: 'rope and grapple' },
@@ -7055,6 +7055,8 @@ describe('what this character costs to move', () => {
     // the router treat a missing item as a wall.
     expect(traveller.packKnown).toBe(true);
     expect(manager.character.inventory.listedAt).not.toBeNull();
+    // A Kang's race row is ImmuPoison 100, which a poison-typed room spell's damage is 0 at.
+    expect(traveller.ward).toMatchObject({ poisonImmune: true, poisonProof: true });
   });
 
   /*
@@ -7078,6 +7080,7 @@ describe('what this character costs to move', () => {
     expect(traveller.classId).toBeNull();
     expect(traveller.raceId).toBeNull();
     expect(traveller.alignment).toBeNull();
+    expect(traveller.ward).toMatchObject({ poisonImmune: false, poisonProof: false });
     expect(traveller.keys).toEqual([]);
     /*
      * And the empty pack is a **silence**, not a claim. This is the state every

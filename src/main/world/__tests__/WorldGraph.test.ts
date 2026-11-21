@@ -45,7 +45,7 @@ import { t } from '../../app/i18n';
 import { questLevel } from '../../../shared/quests';
 import type { QuestStep } from '../../../shared/quests';
 import type { NavigationOracle } from '../../../shared/navigation';
-import { wardOf, type SpellWard } from '../../../shared/spellWard';
+import { NO_WARD, wardOf, type SpellWard } from '../../../shared/spellWard';
 
 /** Every fight won and every counter paid: what a quest plan's way is weighed on here. */
 const WINS: NavigationOracle = {
@@ -7237,7 +7237,7 @@ describe('what a room does to whoever stands in it prices the way through it', (
         },
         30
       );
-    const feather: SpellWard = { negates: new Set([218, 526]), poisonImmune: false };
+    const feather: SpellWard = { ...NO_WARD, negates: new Set([218, 526]) };
 
     it('takes the whole spell off its wearer', () => {
       const graph = lava();
@@ -7256,6 +7256,43 @@ describe('what a room does to whoever stands in it prices the way through it', (
       const route = graph.route(roomId(1, 1), roomId(1, 4), { ward: feather, hazard });
       expect(route.steps.map((step) => step.name)).toEqual(['River', 'River', 'Landing']);
       expect(route.hazards).toBeUndefined();
+    });
+  });
+
+  /*
+   * Festus, a Kang, 2026-11-21: `You take 0 damage from the poisonous swamp!`
+   * in Misty Bog, and the client walked him out of it four times. gmud.zip's
+   * swamp poison (485) is poison-typed (`at` 6) and carries Damage, not Poison.
+   */
+  describe('a poison-typed room spell and ImmuPoison at 100', () => {
+    const bog = () =>
+      makeWorld(
+        bothWays(3).map((room) => (room['sp'] === 753 ? { ...room, sp: 485 } : room)),
+        {
+          spells: [
+            {
+              id: 485,
+              n: 'swamp poison',
+              ab: [
+                [1, 0],
+                [144, 0]
+              ],
+              pw: [2, 20],
+              at: 6,
+              hz: { d: 11 }
+            }
+          ]
+        },
+        34
+      );
+
+    it('costs a Kang no health, and anybody else the stated figure', () => {
+      const graph = bog();
+      const room = graph.get(1, 2)!;
+      expect(graph.hazardOf(room)?.damage).toBe(11);
+      expect(graph.hazardOf(room, null, wardOf([], 99))?.damage).toBe(11);
+      expect(graph.hazardOf(room, null, wardOf([], null))?.damage).toBe(11);
+      expect(graph.hazardOf(room, null, wardOf([], 100))?.damage).toBeUndefined();
     });
   });
 

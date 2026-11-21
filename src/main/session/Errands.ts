@@ -3321,12 +3321,14 @@ export class Errands implements SessionModule {
 
   /** What the worn gear negates, and ImmuPoison off the class and race rows (`wardOf`). */
   wardNow(state: CharacterState): SpellWard {
-    return wardOf(state.inventory.items, this.poisonImmune());
+    return wardOf(state.inventory.items, this.poisonImmunity());
   }
 
-  /** ImmuPoison off the class and race rows; null while neither is read. */
-  private poisonImmune(): boolean | null {
-    return holdsAbility(this.capabilities(), IMMUNE_TO_POISON_ABILITY);
+  /** The ImmuPoison sum off the class and race rows; null where neither holds a row or is read. */
+  private poisonImmunity(): number | null {
+    const capabilities = this.capabilities();
+    if (holdsAbility(capabilities, IMMUNE_TO_POISON_ABILITY) !== true) return null;
+    return abilitySum(capabilities.abilities ?? [], IMMUNE_TO_POISON_ABILITY);
   }
 
   /** `realmClass` without the attack, which `words` prices every attack from. */
@@ -3339,7 +3341,7 @@ export class Errands implements SessionModule {
       mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
       crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits),
-      poisonImmune: this.poisonImmune(),
+      poisonImmunity: this.poisonImmunity(),
       rounds: this.measuredRounds()
     };
   }

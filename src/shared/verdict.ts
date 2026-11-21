@@ -284,7 +284,7 @@ export function menacePlayerOf(
     statedVersusGood: said?.versusGood ?? null,
     dodge: dodge(prowessSheetOf(state, cls), cls.family)?.value ?? null,
     family: cls.family,
-    ward: wardOf(state.inventory.items, cls.poisonImmune ?? null)
+    ward: wardOf(state.inventory.items, cls.poisonImmunity ?? null)
   };
 }
 

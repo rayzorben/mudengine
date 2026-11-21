@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ItemEntity } from '../entities';
 import type { MenacePlayer } from '../menace';
 import { spellEffect } from '../mobRound';
-import { NO_WARD, wardedFrom, wardOf } from '../spellWard';
+import { hazardWarded, NO_WARD, wardedFrom, wardOf } from '../spellWard';
 import type { WorldSpell } from '../world';
 
 /*
@@ -45,16 +45,70 @@ describe('a spell that never reaches the character', () => {
   });
 
   it('is any spell carrying Poison against ImmuPoison, from the race or from gear', () => {
-    expect(wardedFrom(venom, wardOf([], true))).toBe(true);
+    expect(wardedFrom(venom, wardOf([], 100))).toBe(true);
+    expect(wardedFrom(venom, wardOf([], 0))).toBe(true);
     expect(wardedFrom(venom, wardOf([], null))).toBe(false);
-    expect(wardedFrom(venom, wardOf([{ equipped: true, abilities: [[21, 100]] }], false))).toBe(
+    expect(wardedFrom(venom, wardOf([{ equipped: true, abilities: [[21, 100]] }], null))).toBe(
       true
     );
     expect(wardedFrom(drain, NO_WARD)).toBe(false);
   });
 
+  /*
+   * gmud.zip's swamp poison (485): poison-typed, Damage on its own roll.
+   * `Spell.CheckResistance` returns 0 at an ImmuPoison sum of 100 and the
+   * whole figure under it; a Kang's race row is 100, a demonhide piece 20.
+   */
+  describe('a poison-typed spell’s damage', () => {
+    const swamp: WorldSpell = {
+      id: 485,
+      name: 'swamp poison',
+      abilities: [
+        [1, 0],
+        [144, 0]
+      ],
+      power: [2, 20],
+      element: 'poison',
+      hazard: { damage: 11, summons: true, reach: { damage: [{}], summons: [{}] } }
+    };
+    const demonhide = { equipped: true, abilities: [[21, 20]] as [number, number][] };
+
+    it('is 0 at an ImmuPoison sum of 100, from the race or from gear, and whole under it', () => {
+      expect(wardOf([], 100).poisonProof).toBe(true);
+      expect(wardOf(Array(5).fill(demonhide), null).poisonProof).toBe(true);
+      expect(wardOf(Array(4).fill(demonhide), null).poisonProof).toBe(false);
+      expect(wardOf([demonhide], 80).poisonProof).toBe(true);
+      expect(wardOf([{ ...demonhide, equipped: false }], 80).poisonProof).toBe(false);
+      expect(wardOf([], null).poisonProof).toBe(false);
+      expect(hazardWarded(swamp, wardOf([], 100))).toEqual({
+        summons: true,
+        reach: { summons: [{}] }
+      });
+      expect(hazardWarded(swamp, wardOf([], 99))).toBe(swamp.hazard);
+      expect(hazardWarded(swamp, undefined)).toBe(swamp.hazard);
+    });
+
+    it('is 0 for a DamageWithMR row and a later spell’s chain too', () => {
+      const proof = wardOf([], 100);
+      const resisted = { ...swamp, abilities: [[17, 0] as [number, number]] };
+      expect(hazardWarded(resisted, proof)?.damage).toBeUndefined();
+      const chained = { ...swamp, abilities: [...swamp.abilities!, [151, 9] as [number, number]] };
+      expect(hazardWarded(chained, proof)?.damage).toBeUndefined();
+    });
+
+    it('is kept for another element, a drain or Poison row beside it, and a script', () => {
+      const proof = wardOf([], 100);
+      const heat = { ...swamp, element: 'fire' as const };
+      expect(hazardWarded(heat, proof)).toBe(swamp.hazard);
+      for (const row of [8, 19, 148]) {
+        const mixed = { ...swamp, abilities: [...swamp.abilities!, [row, 9] as [number, number]] };
+        expect(hazardWarded(mixed, proof)).toBe(swamp.hazard);
+      }
+    });
+  });
+
   it('does nothing to the character in the fight, and its summons still come', () => {
-    const ward = wardOf([cross], true);
+    const ward = wardOf([cross], 100);
     expect(spellEffect(drain, 0, BARE)).not.toBeNull();
     expect(spellEffect(drain, 0, { ...BARE, ward })).toBeNull();
     expect(spellEffect(venom, 0, { ...BARE, ward })).toBeNull();

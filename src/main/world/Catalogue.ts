@@ -87,7 +87,7 @@ import type { RealmHeader } from './realmHeader';
 import { castBy, picksRead, NO_SUPPLY, readSupply, type WorldSupply } from './supply';
 import { fightSpellsOf } from '../../shared/summons';
 import { hitSpellsOf } from '../../shared/hitSpells';
-import { wardedFrom, type SpellWard } from '../../shared/spellWard';
+import { hazardWarded, wardedFrom, type SpellWard } from '../../shared/spellWard';
 import { asGates, type GateFacts } from '../../shared/gates';
 
 export class Catalogue {
@@ -1677,7 +1677,8 @@ export class Catalogue {
     // same `RollAndApplySpellAbilities` check (`Spell.cs:970-1060`). Rayzor's
     // phoenix feather and the lava rooms' magma heat, 2026-11-06.
     if (spell === null || wardedFrom(spell, ward)) return null;
-    const hazard = spell.hazard ?? null;
+    // A poison-typed spell's own damage is 0 where ImmuPoison sums to 100 (`hazardWarded`).
+    const hazard = hazardWarded(spell, ward);
     /*
      * Narrowed to the character being planned for, where the realm gates an
      * effect on level, alignment, class or the room and the client knows (todo 01).

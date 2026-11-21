@@ -22,7 +22,7 @@ const errands = (over: Partial<FightSetupParts['errands']> = {}): FightSetupPart
     mageryType: 1,
     family: 'greatermud',
     crits: 0,
-    poisonImmune: false,
+    poisonImmunity: null,
     rounds: null,
     attack: PLAIN_ATTACK,
     verb: PLAIN_ATTACK_VERB

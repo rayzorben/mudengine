@@ -659,7 +659,7 @@ describe('the character as a monster’s blow meets it', () => {
   const cls = { combat: 3, magery: null, crits: 0, family: 'majormud' as const };
 
   it('wards the spells the worn item negates, and poison where the class rows say', () => {
-    const player = menacePlayerOf(worn, { ...cls, poisonImmune: true }, () => null);
+    const player = menacePlayerOf(worn, { ...cls, poisonImmunity: 100 }, () => null);
     expect([...player.ward!.negates]).toEqual([101]);
     expect(player.ward!.poisonImmune).toBe(true);
     expect(menacePlayerOf(worn, cls, () => null).ward!.poisonImmune).toBe(false);
