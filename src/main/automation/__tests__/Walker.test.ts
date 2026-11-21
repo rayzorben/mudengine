@@ -2375,6 +2375,62 @@ describe('sneaking before a route', () => {
     walk.dispose();
   });
 
+  /*
+   * Yang, 2026-11-21 (`2026-11-20_16-05-02_yang.mudcap.jsonl`, t=28832816 and
+   * t=29394008): a door opened (bashed, there), the `sn` behind it waiting in
+   * the queue, and the door's deadline left running under the wait for that
+   * `sn`. It fired rooms later and the walk stopped with *nothing came back
+   * after se* for a step the server had answered.
+   */
+  it('leaves no deadline of the door behind to stop a step rooms later', () => {
+    // The shipped gap between two commands, which is what holds the `sn` back.
+    const gapMs = 350;
+    const paced = new CommandQueue(
+      { ...config, pacing: { ...config.pacing, minGapMs: gapMs } },
+      { send: (command) => sent.push(command) }
+    );
+    let now = at(1, 1, { stealth: 'sneaking' });
+    const walk = new Walker(
+      {
+        ...config,
+        movement: { ...config.movement, sneak: true, openDoors: true, openTries: 1 }
+      },
+      paced,
+      // Standing, as the session says, so a deadline left behind sends its Enter.
+      { notice: (m) => notices.push(m), stateNow: () => now, onTheGround: () => false }
+    );
+    const rooms = 8;
+    const far = routeOf(...Array.from({ length: rooms - 1 }, (_, i) => stepOf(i + 1, i + 2, 'e')));
+    walk.start(far, now);
+    vi.advanceTimersByTime(gapMs);
+    walk.onBlock(block('direction-failed', { barrier: 'door' }));
+    expect(sent).toEqual(['e', 'open e']);
+
+    // The door opens inside the gap behind `open e`, so the `sn` waits in the queue.
+    now = at(1, 1, { stealth: 'seen' });
+    paced.notePrompt();
+    walk.onBlock(block('door-changed', { barrier: 'door', state: 'open' }));
+    expect(sent).toEqual(['e', 'open e']);
+    vi.advanceTimersByTime(gapMs);
+    expect(sent).toEqual(['e', 'open e', 'sn']);
+    paced.notePrompt();
+    walk.onBlock(block('user-sneak-initiate'));
+
+    // Every step answered inside the nudge's deadline, sneaking all the way.
+    const answerMs = TUNING.walk.nudgeAfterMs - 100;
+    for (let room = 2; room <= rooms; room += 1) {
+      vi.advanceTimersByTime(answerMs);
+      now = at(1, room, { stealth: 'sneaking' });
+      paced.notePrompt();
+      walk.onCharacter(now);
+    }
+    vi.advanceTimersByTime(config.walk.stepTimeoutMs * 2);
+    expect(sent).toEqual(['e', 'open e', 'sn', ...Array<string>(rooms - 1).fill('e')]);
+    expect(walk.progress.status).toBe('arrived');
+    walk.dispose();
+    paced.dispose();
+  });
+
   it('still sneaks with only a player in the room', () => {
     const walk = sneaking();
     walk.start(

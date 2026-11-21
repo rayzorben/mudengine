@@ -14,8 +14,17 @@ export class WalkClock {
   private step: NodeJS.Timeout | null = null;
   private hold: NodeJS.Timeout | null = null;
 
-  /** Arms the step's deadline: the send, the answer, the prompt, an `open`. */
+  /**
+   * Arms the step's deadline: the send, the answer, the prompt, an `open`.
+   *
+   * The deadline already in the slot is put down first. Left running, a
+   * door's deadline (an `open` or a bash) under the wait for a queued `sn`
+   * fired rooms later, emptied the slot under the step then in flight, and
+   * stopped Yang's walk with *nothing came back after se* for a step the
+   * server had answered (`2026-11-20_16-05-02_yang.mudcap.jsonl`, t=29394008).
+   */
   afterStep(ms: number, then: () => void): void {
+    if (this.step !== null) clearTimeout(this.step);
     this.step = setTimeout(() => {
       this.step = null;
       then();
