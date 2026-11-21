@@ -27,6 +27,24 @@ export function stepGoesNow(
   return leftMs > 2 * stepMs + marginMs || periodMs - leftMs <= marginMs;
 }
 
+/**
+ * Whether a blessing cast in a fight goes now. The cast ends the attack
+ * (`*Combat Off*`) and the attack is sent again behind it, so it goes in the
+ * first `share` of a round after that round's blows were seen, `sinceSeenMs`
+ * ago. Where a round came due and none was seen, it goes by the beat alone,
+ * with at least that share of a round left before the next (`leftMs`).
+ */
+export function blessGoesNow(
+  sinceSeenMs: number,
+  leftMs: number,
+  periodMs: number,
+  share: number
+): boolean {
+  const offRound = periodMs * share;
+  if (sinceSeenMs <= offRound) return true;
+  return sinceSeenMs >= periodMs + offRound && leftMs >= offRound;
+}
+
 /** The off-round: how long after a round `stepGoesNow` holds, never under the margin. */
 export function offRoundMs(periodMs: number, stepMs: number, marginMs: number): number {
   return Math.min(periodMs, Math.max(marginMs, periodMs - 2 * stepMs - marginMs));

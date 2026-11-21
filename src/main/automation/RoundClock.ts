@@ -14,7 +14,15 @@ import type { Block } from '../../shared/blocks';
 import { RoundBeat } from './RoundBeat';
 
 /** The next round, or that none has been seen to count from. */
-export type NextRound = { known: true; at: number; periodMs: number } | { known: false };
+export type NextRound =
+  | {
+      known: true;
+      at: number;
+      periodMs: number;
+      /** When the latest round was seen, on the beat or off it. */
+      seenAt: number;
+    }
+  | { known: false };
 
 /** A round seen, numbered on the beat. */
 type Seen = { readonly at: number; readonly n: number };
@@ -58,6 +66,7 @@ export class RoundClock {
   /** Rounds off the beat since the last one on it. */
   private off: number[] = [];
   private fitted: Beat | null = null;
+  private seenAt = 0;
 
   /** `speed`: the session's figure for the realm's speed (`RealmSpeed`). */
   constructor(speed: () => number = () => 1) {
@@ -74,7 +83,8 @@ export class RoundClock {
     const latest = this.seen.at(-1);
     if (beat === null || latest === undefined) return { known: false };
     const ahead = Math.max(Math.floor((now - beat.zero) / beat.periodMs) + 1, latest.n + 1);
-    return { known: true, at: beat.zero + ahead * beat.periodMs, periodMs: beat.periodMs };
+    const at = beat.zero + ahead * beat.periodMs;
+    return { known: true, at, periodMs: beat.periodMs, seenAt: this.seenAt };
   }
 
   reset(): void {
@@ -82,9 +92,11 @@ export class RoundClock {
     this.seen = [];
     this.off = [];
     this.fitted = null;
+    this.seenAt = 0;
   }
 
   private note(at: number): void {
+    this.seenAt = at;
     const beat = this.fitted;
     if (beat === null) return this.restart([at]);
     const place = (at - beat.zero) / beat.periodMs;

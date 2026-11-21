@@ -7394,6 +7394,10 @@ automation:
     whyOverBudget: the heals would run short of mana
   castRound:
     held: a heal, blessing or cure already went this round; casting it next round
+  # A blessing cast in a fight ends the attack, so it waits for the round's
+  # blows and goes right after them (2026-11-21).
+  blessRound:
+    held: a blessing in a fight goes right after a round; casting it when the next round goes off
   cure:
     reason: 'cure: {cure}'
     derived: Casting {spell} as the {cure} cure, the cheapest spell in your book that cures it.

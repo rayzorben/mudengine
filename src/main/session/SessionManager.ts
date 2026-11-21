@@ -1530,7 +1530,7 @@ export class SessionManager {
       { tracker: this.tracker, world, errands: this.errands, ...book, hunt: this.hunt },
       {
         ...{ queue: this.queue, realmSpell, onTheGround, castGate: this.castRound, signs, charges },
-        due: this.hostTrips,
+        ...{ due: this.hostTrips, rounds: this.walker.times.rounds },
         durations: () => this.belongings.recallSpellDurations()
       },
       { ...reports, config: () => this.automationConfig },

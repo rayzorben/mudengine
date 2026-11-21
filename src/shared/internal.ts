@@ -846,7 +846,15 @@ const TUNING_DEFAULTS = {
      * one when no blow says a round began: out of a fight, where the room's
      * tick prints nothing.
      */
-    castSlackMs: 1000
+    castSlackMs: 1000,
+    /**
+     * The share of a round, counted from its blows, in which a blessing cast
+     * in a fight still goes (`BlessRound`); later it waits for the next round.
+     * The cast ends the attack and the attack is sent again behind it: on
+     * Paradigm (Cretin, 2026-11-21) that took 35 to 524 ms of a 5 s round.
+     * Half is this client's own figure.
+     */
+    blessOffRoundShare: 0.5
   },
   /** Drinking on the character's behalf — `Potions`. */
   potions: {

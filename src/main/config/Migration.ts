@@ -8996,6 +8996,8 @@ function theTuningBlockGainedKeys(
     addKey('world', 'wallTiebreak', DEFAULT_INTERNAL.tuning.world.wallTiebreak);
     // The lap legs kept for a loop asking whether it stands on one (todo 20261117-2040-01).
     addKey('world', 'keptLegs', DEFAULT_INTERNAL.tuning.world.keptLegs);
+    // How much of a round a blessing cast in a fight may go in (2026-11-21).
+    addKey('spells', 'blessOffRoundShare', DEFAULT_INTERNAL.tuning.spells.blessOffRoundShare);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

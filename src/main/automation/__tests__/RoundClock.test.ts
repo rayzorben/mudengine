@@ -47,7 +47,8 @@ describe('the next round', () => {
     expect(clockOver([10_000]).next(10_100)).toEqual({
       known: true,
       at: 10_000 + NOMINAL,
-      periodMs: NOMINAL
+      periodMs: NOMINAL,
+      seenAt: 10_000
     });
   });
 
@@ -57,7 +58,8 @@ describe('the next round', () => {
     expect(clock.next(100_000 + 5.5 * NOMINAL)).toEqual({
       known: true,
       at: expect.closeTo(100_000 + 6 * NOMINAL + late, 6),
-      periodMs: NOMINAL
+      periodMs: NOMINAL,
+      seenAt: 100_000 + 5 * NOMINAL + JITTER[5]!
     });
   });
 
@@ -97,6 +99,12 @@ describe('the next round', () => {
     expect(nextAt(clock, rounds.at(-1)! + 3000)).toBe(
       nextAt(clockOver(rounds), rounds.at(-1)! + 3000)
     );
+  });
+
+  it('says when the latest round was seen, off the beat too', () => {
+    const rounds = beat(100_000, NOMINAL, 6);
+    const off = rounds.at(-1)! + 2600;
+    expect(clockOver([...rounds, off]).next(off + 100)).toMatchObject({ seenAt: off });
   });
 
   it('forgets everything on a new connection', () => {

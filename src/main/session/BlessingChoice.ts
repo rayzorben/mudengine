@@ -13,6 +13,8 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { AutoInvoke, type InvokeSources } from '../automation/AutoInvoke';
 import { Blessings, type BlessingsDeps } from '../automation/Blessings';
+import { BlessRound } from '../automation/BlessRound';
+import type { RoundClock } from '../automation/RoundClock';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
@@ -45,6 +47,7 @@ import { measuredManaRate, NO_MANA_WATCH, watchMana, type ManaWatch } from '../.
 import { statedNow } from '../../shared/stated';
 import type { FightSimulator } from '../../shared/simulator';
 import type { Survival, SurvivalInput } from '../../shared/survival';
+import { OPEN_CAST_GATE } from '../../shared/spellcraft';
 import { prowessSheetOf } from '../../shared/verdict';
 import { lairKey, parseLair, roomId, type WorldRoom, type WorldSpell } from '../../shared/world';
 import type { NoticeSink } from '../../shared/decisionSettings';
@@ -416,13 +419,21 @@ export function blessingsFor(
     readonly signs: FightSigns;
     /** The uses left on each charged item (todo 44). */
     readonly charges: InvokeSources['charges'];
+    /** The rounds' beat, which a blessing cast in a fight is timed to (`BlessRound`). */
+    readonly rounds: Pick<RoundClock, 'next'>;
     /** `Belongings.recallSpellDurations`, read at the point of use: the store arrives with `useRealm`. */
     durations(): Readonly<Record<string, number>>;
   },
   session: Omit<BlessingChoiceSession, 'learnedDuration'>,
   automation: AutomationConfig
 ): { blessings: Blessings; invoke: AutoInvoke; choice: BlessingChoiceReport } {
-  const { queue, charges, durations, ...rest } = deps;
+  const { queue, charges, durations, rounds, ...rest } = deps;
+  const { world, errands, tracker } = parts;
+  const fighting = (): boolean => fightHere(tracker.current, rest.signs, Date.now());
+  // A blessing or an item's, cast in a fight, waits for the round to go off (`BlessRound`).
+  const castGate = new BlessRound(rest.castGate ?? OPEN_CAST_GATE, rounds, fighting, {
+    decided: session.decided
+  });
   /*
    * The measured duration of this character's own cast, null before any
    * measurement (the shipped watchdog covers that). The one fact here that
@@ -433,11 +444,11 @@ export function blessingsFor(
   const source = new BlessingChoice(parts, { ...session, learnedDuration });
   const blessings = new Blessings(automation.spells, automation.enabled, queue, {
     ...rest,
+    castGate,
     learnedDuration,
     source
   });
   // The realm `AutoInvoke` reads: the choice's own, at the point of use.
-  const { world, errands, tracker } = parts;
   const invoke: InvokeSources = {
     itemsNamed: (names) => world?.itemsNamed(names) ?? {},
     spellById: (id) => world?.spellById(id) ?? null,
@@ -446,7 +457,7 @@ export function blessingsFor(
     slotOf: (name) => errands.gearSlotOf(name),
     selfDue: (state) => blessings.selfDue(state),
     charges,
-    fightHere: () => fightHere(tracker.current, rest.signs, Date.now())
+    fightHere: fighting
   };
   return {
     blessings,
@@ -457,7 +468,7 @@ export function blessingsFor(
       automation.enabled,
       queue,
       invoke,
-      rest.castGate,
+      castGate,
       undefined,
       source,
       { decided: session.decided, notice: session.notice },

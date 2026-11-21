@@ -726,6 +726,11 @@ tuning:
     # round (hunting.roundSeconds) and this much more.
     castSlackMs: 1000
 
+    # The share of a round, counted from its blows, in which a blessing cast in
+    # a fight still goes; later it waits for the next round. The cast ends the
+    # attack and the attack is sent again behind it.
+    blessOffRoundShare: 0.5
+
   # Drinking on the character's behalf — `Potions`.
   potions:
     expiresMs: 3000
