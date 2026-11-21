@@ -186,15 +186,39 @@ export class PartyWait {
         this.letGo([key]);
         return;
       }
-      if (!this.moves.pauseMoving(said)) return;
+      if (!this.moves.pauseMoving(said)) {
+        /*
+         * Nothing was moving, so a member's word stopped nothing and is not
+         * kept: only its `@ok` would ever take it out. Cretin's `@wait` after
+         * a death (Festus, 2026-11-20) was still kept a day later, and Grogu's
+         * `@ok` left the route stopped behind it. A bar or a hangup is read again
+         * from every state, so it is kept for a lap started later.
+         */
+        if (!isTracked(why)) this.waiting.delete(key);
+        return;
+      }
       this.paused = true;
       if (why !== 'away') this.arm();
       return;
     }
-    this.waiting.delete(key);
-    if (this.waiting.size > 0 || !this.paused || !this.moves.stopped()) return;
+    const waited = this.waiting.delete(key);
+    if (!this.paused || !this.moves.stopped()) return;
+    if (this.waiting.size > 0) {
+      // Said once a reason goes, for a word, a join or a member back; a bar crossing is not.
+      if (waited && !isBarReason(why))
+        this.moves.notice(
+          t('session.loop.partyStillWaits', { who: this.waitedFor().join(', ') }),
+          'party-wait'
+        );
+      return;
+    }
     this.end();
     this.moves.resume(who);
+  }
+
+  /** Everyone the party waits for now, each named once. */
+  private waitedFor(): string[] {
+    return [...new Set(this.waiting.values())];
   }
 
   /**
@@ -261,9 +285,15 @@ export class PartyWait {
       this.moves.notice(t('session.loop.partyWaitLetGo', { who: who.join(', ') }), 'party-wait');
   }
 
-  /** The stop is no longer this wait's to end (a death stopped the lap too). */
+  /**
+   * The stop is no longer this wait's to end (a death stopped the lap too).
+   * A member's word or a join was a claim on that stop and goes with it, or
+   * one whose `@ok` never comes would hold every later wait.
+   */
   end(): void {
     this.paused = false;
+    for (const key of [...this.waiting.keys()])
+      if (!isTracked(reasonOf(key))) this.waiting.delete(key);
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
   }
@@ -279,7 +309,7 @@ export class PartyWait {
   /** The tracked members waited for now, but those `kept`, are not waited for again until they recover or are back. */
   private giveUpOnTracked(kept: (key: string) => boolean = () => false): void {
     for (const key of [...this.waiting.keys()]) {
-      if (kept(key) || !TRACKED_REASONS.some((why) => key.startsWith(`${why}:`))) continue;
+      if (kept(key) || !isTracked(reasonOf(key))) continue;
       this.givenUp.add(key);
       this.waiting.delete(key);
     }
@@ -308,7 +338,7 @@ export class PartyWait {
     const kept = (key: string): boolean => isAway(key) && !gone.has(nameOf(key));
     this.giveUpOnTracked(kept);
     for (const key of [...this.waiting.keys()]) if (!kept(key)) this.waiting.delete(key);
-    const still = [...new Set(this.waiting.values())];
+    const still = this.waitedFor();
     if (who.length > 0)
       this.moves.notice(
         still.length > 0
@@ -334,6 +364,15 @@ function isAway(key: string): boolean {
 /** The lower-cased name a wait's key is kept under, after its reason. */
 function nameOf(key: string): string {
   return key.slice(key.indexOf(':') + 1);
+}
+
+/** The reason a wait's key is kept under, before the name. */
+function reasonOf(key: string): PaceReason {
+  return key.slice(0, key.indexOf(':')) as PaceReason;
+}
+
+function isTracked(why: PaceReason): why is (typeof TRACKED_REASONS)[number] {
+  return (TRACKED_REASONS as readonly PaceReason[]).includes(why);
 }
 
 function isBarReason(why: PaceReason): why is (typeof BAR_REASONS)[number] {

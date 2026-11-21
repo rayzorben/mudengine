@@ -8093,6 +8093,49 @@ describe('starting and stopping a movement', () => {
   });
 
   /*
+   * Festus on OCI, 2026-11-21: Cretin had died the day before, dropped out of
+   * the party and sent `@wait (HP's too low)` with nothing moving, and never
+   * sent `@ok`. That wait was still kept when Grogu was knocked flat on a
+   * route, so Grogu's `@ok` printed "Grogu is ready." and the route stayed
+   * stopped until Stop and Play were pressed. The corridor's rooms are named
+   * with digits, which no room name carries, so each is placed by `rm`'s line.
+   */
+  it("walks a route on at a held member's @ok, after another member's @wait that stopped nothing", async () => {
+    const paces: AutomationConfig['remotes']['players'][string] = {
+      allow: ['wait', 'held', 'ok'],
+      deny: [],
+      allowAll: false,
+      autoInvite: false,
+      ...NO_PEER_GRANT
+    };
+    const { socket, world, notices } = await atTheNorthEnd({
+      ...quiet,
+      remotes: { ...quiet.remotes, enabled: true, players: { cretin: paces, grogu: paces } }
+    });
+    const prompt = '[HP=100/MA=50]:' + PROMPT_REPAINT;
+    const said = (key: 'followerWait' | 'followerReady', from: string): boolean =>
+      notices.includes(t(`automation.remotes.${key}`, { from }));
+
+    socket.write("Cretin telepaths: @wait (HP's too low)\r\n" + prompt);
+    await until(() => said('followerWait', 'Cretin'));
+
+    expect(manager!.walkRoute(world.route('1/40', '1/30'))).toBeNull();
+    const room = 'Room 39\r\nAlso here: Grogu.\r\nObvious exits: north, south\r\n';
+    const placed = 'Location:            1,39\r\n' + prompt;
+    socket.write(room + '*Combat Engaged*\r\n' + prompt + placed);
+    await until(() => manager!.character.room.number === 39 && manager!.character.inCombat);
+    socket.write("Grogu telepaths: @wait (can't move)\r\n" + prompt);
+    await until(() => manager!.walker.progress.status === 'stopped');
+    socket.write('Grogu telepaths: @held\r\n' + prompt);
+    socket.write('*Combat Off*\r\n' + prompt + room + prompt + placed);
+    await until(() => manager!.character.inCombat === false);
+
+    socket.write('Grogu telepaths: @ok\r\n' + prompt);
+    await until(() => said('followerReady', 'Grogu'));
+    expect(manager!.walker.progress).toMatchObject({ status: 'walking', destination: 'Room 30' });
+  });
+
+  /*
    * A lap's leg is short only once the lap is being walked: the first leg of a
    * lap across the realm is a journey. So the lap measures what the route
    * measures — how much further away the character is than when it stopped —

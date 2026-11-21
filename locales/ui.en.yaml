@@ -6504,6 +6504,7 @@ session:
     pausedForJoin: 'Waiting for {who} to join the party'
     pausedForRejoin: 'Waiting for {who} to rejoin the party'
     tripGoesOn: The party is ready; going on with the trip.
+    partyStillWaits: 'Still waiting for {who}.'
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
     partyWaitLetGo: 'No longer waiting for {who} to rejoin the party; they are still invited back when seen.'
     partyWaitGaveUpStillAway: 'Waited {minutes} min for {who} (Wait No Longer Than); still stopped for {away}, who hung up and is not back.'

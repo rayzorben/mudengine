@@ -8,6 +8,7 @@ import type { Block, BlockType } from '../../../shared/blocks';
 
 const ASKED = (who: string): string => `pause:${t('session.loop.pausedForRemote', { who })}`;
 const HURT = (who: string): string => `pause:${t('session.loop.pausedForHealth', { who })}`;
+const STILL = (who: string): string => `party-wait:${t('session.loop.partyStillWaits', { who })}`;
 
 /** A member's party line as the leader reads it; `removed` marks the leader's uninvite. */
 const partyLine = (type: BlockType, player: string, removed = false): Block => ({
@@ -63,9 +64,11 @@ describe('a leader waiting for its party', () => {
     expect(moves).toEqual([ASKED('Soul'), brakkle]);
     wait.pace('Soul', true, 'asked');
     wait.pace('Brakkle', true, 'asked');
-    expect(moves).toEqual([ASKED('Soul'), brakkle]);
+    // Each word of ready that leaves the lap stopped says who it still waits for.
+    const said = [ASKED('Soul'), brakkle, STILL('Yang, Brakkle'), STILL('Yang')];
+    expect(moves).toEqual(said);
     wait.pace('Yang', true, 'hurt');
-    expect(moves).toEqual([ASKED('Soul'), brakkle, 'resume:Yang']);
+    expect(moves).toEqual([...said, 'resume:Yang']);
   });
 
   it("keeps a member's @ok from ending a wait its health still asks for", () => {
@@ -73,6 +76,42 @@ describe('a leader waiting for its party', () => {
     wait.pace('Soul', true, 'asked');
     expect(moves).toEqual([HURT('Soul')]);
     expect(wait.holding).toBe(true);
+  });
+
+  /*
+   * Festus, 2026-11-21: Cretin died, dropped out of the party and sent `@wait
+   * (HP's too low)` with nothing moving, and never sent `@ok`. A day later
+   * Grogu's `@ok` left the route stopped, twice, behind that wait.
+   */
+  it('keeps no word that stopped nothing, so a later @ok walks on', () => {
+    running = false;
+    wait.pace('Cretin', false, 'asked');
+    expect(wait.waitsFor('Cretin', 'asked')).toBe(false);
+    running = true;
+    wait.pace('Grogu', false, 'asked');
+    wait.pace('Grogu', true, 'asked');
+    expect(moves).toEqual([ASKED('Grogu'), 'resume:Grogu']);
+  });
+
+  it("drops a member's word with the stop the player ended, so a later @ok walks on", () => {
+    wait.pace('Cretin', false, 'asked');
+    wait.stopByPerson();
+    expect(wait.waitsFor('Cretin', 'asked')).toBe(false);
+    running = true;
+    wait.pace('Grogu', false, 'asked');
+    wait.pace('Grogu', true, 'asked');
+    expect(moves).toEqual([ASKED('Cretin'), ASKED('Grogu'), 'resume:Grogu']);
+  });
+
+  it("drops a member's word when the player walks on with Play", () => {
+    wait.pace('Cretin', false, 'asked');
+    const went = wait.beforePlay();
+    running = true;
+    went();
+    expect(wait.waitsFor('Cretin', 'asked')).toBe(false);
+    wait.pace('Grogu', false, 'asked');
+    wait.pace('Grogu', true, 'asked');
+    expect(moves).toEqual([ASKED('Cretin'), ASKED('Grogu'), 'resume:Grogu']);
   });
 
   it('gives the wait up after its limit, and says for whom', () => {
@@ -135,6 +174,7 @@ describe('a leader waiting for its party', () => {
     expect(moves).toEqual([
       ASKED('Brakkle'),
       `party-wait:${t('session.loop.pausedForJoin', { who: 'Brakkle' })}`,
+      STILL('Brakkle'),
       'resume:Brakkle'
     ]);
   });
