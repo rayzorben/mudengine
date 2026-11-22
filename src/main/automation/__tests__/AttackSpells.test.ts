@@ -787,3 +787,81 @@ describe('casts per target for a spell whose landing names no caster', () => {
     expect(spells.change(EMPTY_CHARACTER, dog, 'a', 'a')).toBeNull();
   });
 });
+
+/*
+ * The round spell is a chain (`attackChain`): the first of attack, fallback
+ * and third that is not capped, under its mana floor or unpayable is cast.
+ */
+describe('the attack spell chain', () => {
+  const kobold = { name: 'tall kobold thief', entity: null, remaining: null };
+  const book = [
+    { name: 'lightning bolt', short: 'lbol', level: 1, cost: 5 },
+    { name: 'magic missile', short: 'mmis', level: 1, cost: 1 },
+    { name: 'frost bolt', short: 'fbol', level: 1, cost: 1 }
+  ];
+  const withMana = (mana: number): CharacterState => ({
+    ...EMPTY_CHARACTER,
+    spellbook: book,
+    vitals: { ...EMPTY_CHARACTER.vitals, mana, manaMax: 100, manaType: 'MA' }
+  });
+  const chain = (over: Partial<typeof DEFAULT_CONFIG.automation.spells>): AttackSpells =>
+    new AttackSpells(
+      {
+        ...DEFAULT_CONFIG.automation.spells,
+        attack: 'lbol',
+        attackFallback: 'mmis',
+        autoChoose: false,
+        minMana: 0,
+        ...over
+      },
+      {},
+      () => null,
+      () => ({ combat: null, magery: null, crits: 0, family: null })
+    );
+  const blow = (spell: string) =>
+    block('user-hits', {
+      attacker: 'You',
+      line: `cast ${spell} at tall kobold thief`,
+      damage: '15'
+    });
+
+  it('casts the first spell once, then the fallback (lbol, then mmis)', () => {
+    const spells = chain({ attackCasts: 1 });
+    const state = withMana(90);
+    const opening = spells.opening(state, kobold, 'in the room', 'a');
+    expect(opening?.command).toBe('lbol tall kobold thief');
+    spells.sent(opening!.action);
+    spells.heard(block('combat-status', { status: 'Engaged' }), state);
+    spells.heard(blow('lightning bolt'), state);
+    expect(spells.change(state, kobold, 'a', 'a')?.command).toBe('mmis tall kobold thief');
+  });
+
+  it('casts the first spell only above its mana floor (the control keeps it above)', () => {
+    expect(
+      chain({ attackMinMana: 0.6 }).opening(withMana(60), kobold, 'in the room', 'a')?.command
+    ).toBe('lbol tall kobold thief');
+    expect(
+      chain({ attackMinMana: 0.6 }).opening(withMana(59), kobold, 'in the room', 'a')?.command
+    ).toBe('mmis tall kobold thief');
+  });
+
+  it('leaves a spell under its floor to the next and to the third one in turn', () => {
+    const over = { attackMinMana: 0.6, fallbackMinMana: 0.3, attackThird: 'fbol' };
+    expect(chain(over).opening(withMana(40), kobold, 'in the room', 'a')?.command).toBe(
+      'mmis tall kobold thief'
+    );
+    expect(chain(over).opening(withMana(20), kobold, 'in the room', 'a')?.command).toBe(
+      'fbol tall kobold thief'
+    );
+  });
+
+  it('goes on to the next spell where the first cannot be paid for', () => {
+    expect(chain({}).opening(withMana(3), kobold, 'in the room', 'a')?.command).toBe(
+      'mmis tall kobold thief'
+    );
+  });
+
+  it('casts the fallback never first with no attack spell', () => {
+    expect(chain({ attack: '' }).opening(withMana(90), kobold, 'in the room', 'a')).toBeNull();
+  });
+});

@@ -25,6 +25,7 @@ import { castAimedAt, typedCast } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
+import { attackChain } from '../../shared/attackChain';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
@@ -722,18 +723,21 @@ export class AttackSpells {
         ? null
         : this.payable(state, chosen, false, opening, 'auto-choose-spell');
     }
-    const attack = this.spells.attack.trim();
-    if (attack.length === 0) return null;
     /*
-     * Once the server has said the round spell has no effect on this target,
-     * the fallback stands in for the rest of the fight — MegaMUD's
-     * `FailoverSpellAttacks`. No fallback, or the fallback refused too, and
-     * the melee round carries it: the fallback is never cast *first*.
+     * The chain: the first spell that is not capped, refused on this target
+     * (MegaMUD's `FailoverSpellAttacks`), under its own mana floor or beyond
+     * the pool is cast, so the fallback stands in once `attack` is spent for
+     * any of those reasons. With none left the melee round carries the
+     * fight; the fallback is never cast *first* (`attackChain`).
      */
-    const spell = this.ruledOut(attack, target) ? this.spells.attackFallback.trim() : attack;
-    if (spell.length === 0 || !this.usable(spell, this.spells.attackCasts)) return null;
-    if (passedOver(spell) || this.ruledOut(spell, target)) return null;
-    return this.payable(state, spell, false, opening, 'attack-spell');
+    for (const step of attackChain(this.spells)) {
+      const spell = step.spell.trim();
+      if (!this.usable(spell, step.casts) || !above(step.minMana)) continue;
+      if (passedOver(spell) || this.ruledOut(spell, target)) continue;
+      const cast = this.payable(state, spell, false, opening, 'attack-spell');
+      if (cast !== null) return cast;
+    }
+    return null;
   }
 
   /**
@@ -999,7 +1003,14 @@ export class AttackSpells {
     if (cast === undefined || cast === null || this.ineffective.has(this.keyOf(cast.spell))) return;
     this.ineffective.add(this.keyOf(cast.spell));
     if (!cast.area && monster !== null) this.keep(cast.spell, monster);
-    const fallback = this.spells.attackFallback.trim();
+    // The next step still open to this fight (`usable`, as `wanted` asks it); none for a spell outside the chain.
+    const chain = attackChain(this.spells);
+    const at = chain.findIndex((step) => this.keyOf(step.spell) === this.keyOf(cast.spell));
+    const fallback =
+      chain
+        .slice(at + 1)
+        .find((step) => at !== -1 && this.usable(step.spell.trim(), step.casts))
+        ?.spell.trim() ?? '';
     if (cast.area) {
       this.events.notice?.(
         t('automation.combat.spellIneffectiveArea', { spell: cast.spell }),

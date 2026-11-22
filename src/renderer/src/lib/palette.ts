@@ -143,6 +143,8 @@ export interface PaletteDeps {
   closeSession(id: SessionId): void;
   openRoute(): void;
   openBuilder(): void;
+  /** Opens the builder and its chooser for MegaMUD path files. */
+  openImport(): void;
   openSearch(): void;
   toggleRail(): void;
   toggleDebug(): void;
@@ -512,6 +514,19 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       group: 'navigate' as const,
       keywords: ['build', 'create', 'draw', 'make', 'new', 'waypoint', 'path', 'editor'],
       run: deps.openBuilder
+    },
+    /*
+     * MegaMUD's recorded paths into the builder, drawn on the map to be
+     * checked before they are filed. `megamud` and `mp` are what somebody
+     * coming from that program types; `import` is the verb.
+     */
+    {
+      id: 'builder:import',
+      icon: 'upload' as const,
+      label: t('palette.navigate.importLabel'),
+      group: 'navigate' as const,
+      keywords: ['import', 'megamud', 'mega', 'mp', 'path', 'paths', 'loop', 'load', 'file'],
+      run: deps.openImport
     },
     /*
      * The question an evening starts with, and the one the client could

@@ -91,6 +91,7 @@ export const RELAY_INVOKE: { readonly [K in keyof typeof Invoke]: RelayRule } = 
   reverseLoop: forward,
   loopCatalogue: local,
   draftLoop: forward,
+  importMegamud: forward,
   getWalk: forward,
   getAutomation: forward,
   listExtensions: local,

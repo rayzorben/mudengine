@@ -1441,6 +1441,9 @@ export default function GlobalSettings({
               values={{
                 ...draft.automation.spells,
                 minMana: percent(draft.automation.spells.minMana),
+                attackMinMana: percent(draft.automation.spells.attackMinMana),
+                fallbackMinMana: percent(draft.automation.spells.fallbackMinMana),
+                thirdMinMana: percent(draft.automation.spells.thirdMinMana),
                 areaMinMana: percent(draft.automation.spells.areaMinMana),
                 killConfidence: percent(draft.automation.spells.killConfidence)
               }}

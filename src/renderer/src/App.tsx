@@ -776,7 +776,7 @@ export default function App() {
   const chooseLoop = useLoopJoin({ api, session, runChosenLoop, openToJoin, say: noticeTo });
 
   /** The loop builder, addressed at the shown character. */
-  const { openBuilder, createHunt, builderApi } = useLoopBuilder({
+  const { openBuilder, openImport, createHunt, builderApi } = useLoopBuilder({
     api,
     session,
     profiles,
@@ -880,6 +880,7 @@ export default function App() {
     closeSession,
     openRoute,
     openBuilder,
+    openImport,
     openSearch,
     toggleRail,
     toggleDebug,

@@ -211,7 +211,13 @@ import type { SessionSummary } from '../shared/ipc';
 import type { RealmWorld } from '../shared/realm';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
-import { isLoopScope, mergeLoops } from '../shared/loops';
+import {
+  isLoopScope,
+  mergeLoops,
+  MEGAMUD_FILE_LIMIT,
+  MEGAMUD_FILES_MAX,
+  type MegamudPath
+} from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
 import type { ExtensionInfo, ExtensionManifest } from '../shared/extensions';
 import { extensionOn } from '../shared/extensionSwitches';
@@ -233,6 +239,7 @@ import {
 import { LapIndexCache } from './world/lapIndex';
 import { LapPlanner, planningLegs, planningReach } from './world/LapPlanner';
 import { LoopDraftCache } from './world/loopDraft';
+import { readMegamudPath } from './world/megamudImport';
 import { pagesOf, type RoutePage, type RoutePages, type WalkPages } from '../shared/routeLegs';
 import { errorMessage, str } from '../shared/values';
 import { BUILD, versionWithCommit } from '../shared/build';
@@ -2334,6 +2341,31 @@ function registerIpc(): void {
    * corridors it prefers — so the way drawn is the way the reduction
    * reproduces and the way the lap walks; see the header of `loopDraft.ts`.
    */
+  /*
+   * MegaMUD path files read against the session's realm. Parsed, not
+   * trusted: the list and each file's size are bounded, because every room a
+   * path walks is a lookup and the reduction is an A* pass per room on this
+   * thread. Nothing is written; the builder draws the picks and the player
+   * files them.
+   */
+  handle(Invoke.importMegamud, (_caller, session: SessionId, files: unknown) => {
+    const world = worldFor(session);
+    if (!world || world.size === 0) throw new Error(t('app.loop.importNoRealm'));
+    if (!Array.isArray(files) || files.length > MEGAMUD_FILES_MAX) {
+      throw new Error(t('app.loop.importTooMany', { max: MEGAMUD_FILES_MAX }));
+    }
+    const traveller = lapTravellerOf(session);
+    return files.map((entry: unknown): MegamudPath => {
+      const file = (entry as { name?: unknown } | null)?.name;
+      const text = (entry as { text?: unknown } | null)?.text;
+      const name = typeof file === 'string' ? file : '';
+      if (typeof text !== 'string' || text.length > MEGAMUD_FILE_LIMIT) {
+        return { ok: false, file: name, reason: 'header' };
+      }
+      return readMegamudPath(world, name, text, traveller);
+    });
+  });
+
   handle(Invoke.draftLoop, (_caller, session: SessionId, rooms: unknown) => {
     const world = worldFor(session);
     if (!world || world.size === 0) return EMPTY_LOOP_DRAFT;

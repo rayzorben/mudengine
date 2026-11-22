@@ -97,6 +97,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     closeSession: vi.fn(),
     openRoute: vi.fn(),
     openBuilder: vi.fn(),
+    openImport: vi.fn(),
     openSearch: vi.fn(),
     toggleRail: vi.fn(),
     toggleDebug: vi.fn(),

@@ -96,6 +96,8 @@ app:
     invalidName: Invalid path/loop name.
     invalidLoop: Invalid loop definition.
     invalidPicks: The loop builder sent something other than a list of up to {max} rooms.
+    importNoRealm: This character has no realm data to read a path against.
+    importTooMany: 'At most {max} path files can be imported at once.'
     notFound: No loop named {name} in this character's options.
     unknownScope: Invalid loop scope.
   logs:
@@ -365,6 +367,8 @@ notices:
       {file}'
     tuningNothingAdded: nothing
     tuningNothingRemoved: nothing
+    fallbackCastsStated: 'The fallback spell {spell} now has its own Fallback Casts, set to {casts}
+      to match your Casts Per Target, so it is cast no more often than before. {file}'
     autoReconnectStated:
       many: '"Reconnect if the connection drops" was added to {count} character files, turned on,
         with a comment explaining it. This is what they were already doing. {fileList}'
@@ -1603,6 +1607,7 @@ palette:
       many: '{stopCount} stops'
       one: '{stopCount} stop'
     buildLabel: Build a loop on the map
+    importLabel: 'Loops: import MegaMUD paths'
     huntLabel: Where should I hunt?
     gearLabel: What gear should I get?
     routeLabel: Route to room
@@ -3315,6 +3320,19 @@ cards:
   # whose routes reproduce it.
   builder:
     blocked: 'No way through: {reason}'
+    importAria: Import MegaMUD paths
+    importTitle: Import MegaMUD path files (.mp). One is drawn here to check; several are filed where the chips say.
+    imported: 'Imported {name}. Check it on the map, then save.'
+    importedMany: 'Filed {count} imported loops.'
+    importNone: No loop could be made from the file.
+    importTooMany: 'Choose at most {max} path files at a time.'
+    importTooBig: A path file that large is not a MegaMUD path.
+    importRefused:
+      header: not a MegaMUD path file.
+      start: its start room is not in this realm.
+      steps: its steps do not fit this realm's rooms.
+      tiny: it walks no further than one room.
+      blocked: a leg of it has no way through.
     linger: wait
     lingerAria: Seconds to wait at {room}
     lingerTitle: Seconds to stay in this room before moving on, for a lair to fill again. 0 walks
@@ -6215,12 +6233,29 @@ settings:
     autoChooseHealHint: 'Picks each heal from your spellbook and the world data against the health
       actually missing, and casts a party heal like healing rain when it does more than one heal on
       the worst hurt. The healing spells below are cast when this is off, or when it cannot choose.'
-    fallbackCastHint: Cast instead for the rest of the fight once the game says the attack spell has
-      no effect on the target. Blank leaves the fight to your regular attacks.
+    fallbackCastHint: Cast once the attack spell has hit its cast limit, is under its mana floor, or
+      the game says it has no effect on the target. Blank leaves the fight to your regular attacks.
     fallbackCastLabel: Fallback Spell
-    attackCastsHint: Casts of the attack spell per target, then your regular attacks take over. 0 is
-      no limit; MegaMUD's default is 1.
+    attackCastsHint: Casts of the attack spell per target, then the fallback spell takes over, or
+      your regular attacks if there is none. 0 is no limit; MegaMUD's default is 1.
     attackCastsLabel: Casts Per Target
+    attackMinManaHint: Cast the attack spell only at or above this share of your mana. Below it the
+      fallback spell takes over. 0 is no floor.
+    attackMinManaLabel: Not Below Mana %
+    fallbackCastsHint: Casts of the fallback spell per target, then the third spell takes over, or
+      your regular attacks. 0 is no limit.
+    fallbackCastsLabel: Fallback Casts
+    fallbackMinManaHint: Cast the fallback spell only at or above this share of your mana. Below it
+      the third spell takes over. 0 is no floor.
+    fallbackMinManaLabel: Fallback Not Below %
+    thirdCastHint: Cast when the attack and fallback spells are spent, under their mana floors, or
+      the game says they have no effect. Blank leaves the fight to your regular attacks.
+    thirdCastLabel: Third Spell
+    thirdCastsHint: Casts of the third spell per target, then your regular attacks take over. 0 is
+      no limit.
+    thirdCastsLabel: Third Casts
+    thirdMinManaHint: Cast the third spell only at or above this share of your mana. 0 is no floor.
+    thirdMinManaLabel: Third Not Below %
     areaCastsHint: Casts of the area spell per fight. 0 is no limit.
     areaCastsLabel: AE Casts Per Fight
     drainLegend: Drain When Hurt

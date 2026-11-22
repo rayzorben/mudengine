@@ -820,3 +820,28 @@ export const NO_LOOP: LoopProgress = {
   rateFrom: null,
   rateGraceMs: 0
 };
+
+/** What one path file came to. */
+export type MegamudPath =
+  | {
+      ok: true;
+      file: string;
+      /** `Area: Title`, as the shipped shelf names them. */
+      name: string;
+      /** The fewest rooms whose routes reproduce the walk; closed on the first for a ring. */
+      picks: RoomId[];
+      closed: boolean;
+      /** Steps that may have moved the character where the realm cannot follow. */
+      unread: number;
+    }
+  | { ok: false; file: string; reason: MegamudRefusal };
+
+export type MegamudRefusal = 'header' | 'start' | 'steps' | 'tiny';
+
+/** The most text one path file may be: the largest of MegaMUD's 488 is a few kilobytes. */
+export const MEGAMUD_FILE_LIMIT = 256 * 1024;
+
+/** The most path files one import takes. */
+export const MEGAMUD_FILES_MAX = 100;
+
+

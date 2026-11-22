@@ -78,7 +78,15 @@ import type { CharacterState } from '@shared/character';
 import type { FoundRoom } from '@shared/destinations';
 import { LOOP_LIMITS } from '@shared/drafts';
 import { roomsWithFinds, type Find } from '@shared/finds';
-import { LINGER_MAX_SECONDS, type Loop, type LoopScope } from '@shared/loops';
+import {
+  LINGER_MAX_SECONDS,
+  MEGAMUD_FILE_LIMIT,
+  MEGAMUD_FILES_MAX,
+  type Loop,
+  type LoopScope,
+  type MegamudPath,
+  type MegamudRefusal
+} from '@shared/loops';
 import { EMPTY_MAP, type LocalMap, type MapAway, type MapLoader } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import {
@@ -138,6 +146,8 @@ export interface BuilderWork {
   /** Seconds to wait at each waypoint, by room; a stop's `linger`. */
   lingers: Readonly<Record<RoomId, number>>;
   seedStamp: number | null;
+  /** The palette's import request last taken, so one stamp opens the chooser once. */
+  importStamp: number | null;
 }
 
 const NOTHING_BUILT: BuilderWork = {
@@ -146,7 +156,8 @@ const NOTHING_BUILT: BuilderWork = {
   destination: 'profile',
   prefer: true,
   lingers: {},
-  seedStamp: null
+  seedStamp: null,
+  importStamp: null
 };
 
 export interface LoopBuilderCardProps extends CardChrome {
@@ -177,6 +188,10 @@ export interface LoopBuilderCardProps extends CardChrome {
   draft(rooms: RoomId[]): Promise<LoopDraft>;
   /** Files the loop. Resolves to why it could not, or null. */
   save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  /** MegaMUD path files, read against this character's realm into picks. */
+  importPaths(files: ReadonlyArray<{ name: string; text: string }>): Promise<MegamudPath[]>;
+  /** The palette's import request, stamped; null when none was made. */
+  importAsked?: number | null;
   /** A loop to open on, drawn; null opens empty. */
   seed?: BuilderSeed | null;
   /** This character's half-built loop. */
@@ -195,6 +210,8 @@ function LoopBuilderCard({
   loadMap,
   draft,
   save,
+  importPaths,
+  importAsked = null,
   seed = null,
   kept,
   ...chrome
@@ -219,6 +236,7 @@ function LoopBuilderCard({
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
   const finder = useRef<HTMLInputElement>(null);
+  const chooser = useRef<HTMLInputElement>(null);
 
   const { map: area, number } = character.room;
   const here = area === null || number === null ? null : roomId(area, number);
@@ -252,6 +270,18 @@ function LoopBuilderCard({
     if (first !== undefined) setCentre(first);
     setStatus(null);
   }, [seed, seedTaken, setWork]);
+
+  /*
+   * The palette's *Import MegaMUD paths* opens the file chooser, once per
+   * request: the stamp is kept with the work, so a card drawn again for the
+   * same request does not ask a second time.
+   */
+  const importTaken = work.importStamp;
+  useEffect(() => {
+    if (importAsked === null || importAsked === importTaken) return;
+    setWork((was) => ({ ...was, importStamp: importAsked }));
+    chooser.current?.click();
+  }, [importAsked, importTaken, setWork]);
 
   /*
    * The plan follows the picks, and a late answer is dropped: two clicks in
@@ -454,6 +484,95 @@ function LoopBuilderCard({
   /* The legs between consecutive waypoints, read off the planned steps. */
   const legs = useMemo(() => legsBetweenWaypoints(plan), [plan]);
 
+  /**
+   * MegaMUD path files, read here and replanned by main on this character's
+   * realm. One file is drawn on the map to be checked, as a seed is; several
+   * are filed outright where the chips say, since nobody reviews thirty paths
+   * one by one.
+   */
+  const importFiles = (chosen: File[]): void => {
+    if (chosen.length === 0) return;
+    if (chosen.length > MEGAMUD_FILES_MAX) {
+      setStatus({ text: t('cards.builder.importTooMany', { max: MEGAMUD_FILES_MAX }), failed: true });
+      return;
+    }
+    if (chosen.some((entry) => entry.size > MEGAMUD_FILE_LIMIT)) {
+      setStatus({ text: t('cards.builder.importTooBig'), failed: true });
+      return;
+    }
+    void (async () => {
+      try {
+        const files = await Promise.all(
+          chosen.map(async (entry) => ({ name: entry.name, text: await entry.text() }))
+        );
+        const results = await importPaths(files);
+        const read = results.filter(
+          (entry): entry is Extract<MegamudPath, { ok: true }> => entry.ok
+        );
+        const refused = results.filter(
+          (entry): entry is Extract<MegamudPath, { ok: false }> => !entry.ok
+        );
+        // Literal calls, which is what the i18n coverage test reads.
+        const why = (reason: MegamudRefusal): string =>
+          reason === 'header'
+            ? t('cards.builder.importRefused.header')
+            : reason === 'start'
+              ? t('cards.builder.importRefused.start')
+              : reason === 'steps'
+                ? t('cards.builder.importRefused.steps')
+                : t('cards.builder.importRefused.tiny');
+        const refusedText = refused
+          .map((entry) => `${entry.file}: ${why(entry.reason)}`)
+          .join(' ');
+        if (read.length === 0) {
+          setStatus({
+            text: `${t('cards.builder.importNone')} ${refusedText}`.trim(),
+            failed: true
+          });
+          return;
+        }
+        const only = read[0];
+        if (read.length === 1 && only !== undefined) {
+          setWork((was) => ({
+            ...was,
+            history: begin([...only.picks]),
+            typedName: only.name
+          }));
+          const first = only.picks[0];
+          if (first !== undefined) setCentre(first);
+          setStatus({
+            text: `${t('cards.builder.imported', { name: only.name })} ${refusedText}`.trim(),
+            failed: refused.length > 0
+          });
+          return;
+        }
+        let filed = 0;
+        const failures: string[] = [];
+        for (const entry of read) {
+          const planned = await draft([...entry.picks]);
+          const built = loopFor(planned, entry.picks, entry.name, prefer);
+          if (built === null) {
+            failures.push(`${entry.file}: ${t('cards.builder.importRefused.blocked')}`);
+            continue;
+          }
+          const saved = await save(built, destination);
+          if (saved === null) filed += 1;
+          else failures.push(`${entry.file}: ${saved}`);
+        }
+        setStatus({
+          text: [
+            t('cards.builder.importedMany', { count: filed }),
+            ...failures,
+            ...(refusedText.length > 0 ? [refusedText] : [])
+          ].join(' '),
+          failed: failures.length > 0 || refused.length > 0
+        });
+      } catch (error) {
+        setStatus({ text: errorMessage(error), failed: true });
+      }
+    })();
+  };
+
   const file = (): void => {
     if (loop === null) return;
     const where =
@@ -552,6 +671,29 @@ function LoopBuilderCard({
         >
           <Icon name="reset" />
         </button>
+        <button
+          aria-label={t('cards.builder.importAria')}
+          className="quiet builder-key"
+          onClick={() => chooser.current?.click()}
+          onMouseDown={keepFocus}
+          title={t('cards.builder.importTitle')}
+          type="button"
+        >
+          <Icon name="upload" />
+        </button>
+        <input
+          accept=".mp"
+          aria-label={t('cards.builder.importAria')}
+          hidden
+          multiple
+          onChange={(event) => {
+            importFiles([...(event.target.files ?? [])]);
+            // The same file chosen twice is two imports.
+            event.target.value = '';
+          }}
+          ref={chooser}
+          type="file"
+        />
       </div>
 
       {matches.length > 0 && (

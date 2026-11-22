@@ -335,6 +335,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     wards: (session) => invoke(Invoke.wards, session),
     invokeChoices: (session) => invoke(Invoke.invokeChoices, session),
     draftLoop: (session, rooms) => invoke(Invoke.draftLoop, session, rooms),
+    importMegamud: (session, files) => invoke(Invoke.importMegamud, session, files),
     wearer: (session) => invoke(Invoke.wearer, session),
     lookup: (session, query) => invoke(Invoke.lookup, session, query),
     forget: (session, discovery) => invoke(Invoke.forget, session, discovery),

@@ -178,6 +178,7 @@ const api: WireApi = {
   wards: (session) => ipcRenderer.invoke(Invoke.wards, session),
   invokeChoices: (session) => ipcRenderer.invoke(Invoke.invokeChoices, session),
   draftLoop: (session, rooms) => ipcRenderer.invoke(Invoke.draftLoop, session, rooms),
+  importMegamud: (session, files) => ipcRenderer.invoke(Invoke.importMegamud, session, files),
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),
   lookup: (session, query) => ipcRenderer.invoke(Invoke.lookup, session, query),
   forget: (session, discovery) => ipcRenderer.invoke(Invoke.forget, session, discovery),

@@ -227,6 +227,7 @@ function migrateAll(options: MigrationOptions): void {
   theEscapeIsADirection(home, note, options.template);
   theLoopSettlesAfterAnEscape(home, note, options.internalTemplate);
   statedAutoReconnect(home, note);
+  theFallbackKeepsItsCap(home, note);
   statedTheLightAndSupplies(home, note);
   statedTheConditionWaits(home, note, options.template);
   statedTheKeyPickup(home, note);
@@ -937,6 +938,31 @@ function theSharedSpotWorthWent(home: Home, note: (message: string) => void): vo
       hunting.delete('contestedShare');
       if (hunting.items.length === 0) document.deleteIn(HUNTING_BLOCK);
       note(t('notices.migration.sharedSpotWorthWent', { file }));
+      return true;
+    });
+  }
+}
+
+/**
+ * The fallback spell has its own cast limit (2026-11-22). `attackCasts` used to
+ * cap whichever round spell was cast, the fallback included, so a file stating
+ * a fallback and a limit gets the limit stated for the fallback too, and the
+ * caster keeps casting no more than it did. A file that states no limit is
+ * left alone.
+ */
+function theFallbackKeepsItsCap(home: Home, note: (message: string) => void): void {
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const spells = document.getIn(['automation', 'spells'], true);
+      if (!isMap(spells) || spells.has('fallbackCasts')) return false;
+      const fallback = spells.get('attackFallback');
+      const cap = spells.get('attackCasts');
+      if (typeof fallback !== 'string' || fallback.trim().length === 0) return false;
+      if (typeof cap !== 'number' || cap <= 0) return false;
+      spells.set('fallbackCasts', cap);
+      note(
+        t('notices.migration.fallbackCastsStated', { file, spell: fallback.trim(), casts: cap })
+      );
       return true;
     });
   }

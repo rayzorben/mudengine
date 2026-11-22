@@ -102,7 +102,7 @@ import type { ProfileAccent } from './profiles';
 import type { LocateWord } from './locate';
 import type { LowLivesAnswer } from './lives';
 import type { InternalConfig } from './internal';
-import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
+import type { Loop, LoopProgress, LoopScope, MegamudPath, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
 import type { LoopJoin, LoopsThrough, MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
@@ -886,6 +886,8 @@ export const Invoke = {
    * builder card asks on every pick, so what it draws is what would be walked.
    */
   draftLoop: 'loop:draft',
+  /** MegaMUD path files read against a character's realm, into picks for the builder. */
+  importMegamud: 'loop:import-megamud',
   /** Walk progress, for a renderer that mounted mid-walk. */
   getWalk: 'walk:get',
   /** The decision trace, for a renderer that mounted mid-session. */
@@ -1577,6 +1579,15 @@ export interface IpcApi {
    * query: the picks name rooms on this character's realm.
    */
   draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
+  /**
+   * MegaMUD path files (`*.mp`), as their names and text, read against this
+   * character's realm: one result per file, in order, each the picks to
+   * draw in the builder or why the file was refused. Nothing is saved.
+   */
+  importMegamud(
+    session: SessionId,
+    files: ReadonlyArray<{ name: string; text: string }>
+  ): Promise<MegamudPath[]>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
   listExtensions(): Promise<ExtensionInfo[]>;

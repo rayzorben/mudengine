@@ -2020,23 +2020,37 @@ automation:
     areaMinMobs: 3
     areaMinMana: 0.35
 
-    # The spell cast instead of `attack` for the rest of a fight once the
-    # server says `Your spell has no effect on <monster>.` -- MegaMUD's
+    # The spell cast once `attack` is capped or under its mana floor, and
+    # instead of it for the rest of a fight once the server says
+    # `Your spell has no effect on <monster>.` -- MegaMUD's
     # AttackSpl2 with FailoverSpellAttacks. The monster is immune, and
     # without this a caster on a loop paid for the same spell every round of
     # every such fight, all night, for nothing. Blank means none: the round
     # attacks carry the fight, and the refusal is said once.
     attackFallback: ''
+    # A third spell in the chain. Blank means none.
+    attackThird: ''
 
-    # How many times the round spell (or its fallback) is cast per target,
-    # and the same for the area spell -- MegaMUD's MaxCastCnt / MultCastCnt.
-    # 0 is no limit. MegaMUD's own default is 1: open with the spell, then let
-    # the melee round carry the fight, which is what a caster with a small
-    # pool wants for a night's grinding. Counted on the server's confirmation
-    # of each cast it repeats (a cast that fizzles is not one), and a new
-    # target starts the count again.
+    # How many times each round spell is cast per target, and the same for
+    # the area spell -- MegaMUD's MaxCastCnt / MultCastCnt. 0 is no limit.
+    # MegaMUD's own default is 1: open with the spell, then let the melee
+    # round carry the fight, which is what a caster with a small pool wants
+    # for a night's grinding. Here the next spell in the chain (`attack`,
+    # then `attackFallback`, then `attackThird`) takes over once one is
+    # capped, and the melee round once all are. Counted on the server's
+    # confirmation of each cast it repeats (a cast that fizzles is not one),
+    # and a new target starts the count again.
     attackCasts: 0
+    fallbackCasts: 0
+    thirdCasts: 0
     areaCasts: 0
+
+    # Each round spell is cast only at or above this share of maximum mana;
+    # under it the next spell in the chain is. 0 is no floor. `minMana`
+    # below stops every attack spell, these hand over to the next.
+    attackMinMana: 0
+    fallbackMinMana: 0
+    thirdMinMana: 0
 
     # Drain when hurt. A drain spell hurts the monster and heals you by what it
     # takes: a row with DrainLife (`vampiric assault`), or a hit that ends in a

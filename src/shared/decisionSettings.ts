@@ -111,8 +111,14 @@ export const DECISION_SETTINGS = {
   'attack-spell': [
     'automation.spells.attack',
     'automation.spells.attackFallback',
+    'automation.spells.attackThird',
     'automation.spells.autoChoose',
     'automation.spells.attackCasts',
+    'automation.spells.fallbackCasts',
+    'automation.spells.thirdCasts',
+    'automation.spells.attackMinMana',
+    'automation.spells.fallbackMinMana',
+    'automation.spells.thirdMinMana',
     'automation.spells.minMana',
     'automation.spells.killConfidence',
     'automation.combat.mobRules'

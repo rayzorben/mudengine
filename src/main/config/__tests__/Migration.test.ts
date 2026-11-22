@@ -1790,6 +1790,30 @@ describe('owning the status line', () => {
     expect(notesOf(said, 'notices.migration.shelfStrikesLearned')).toEqual([]);
   });
 
+  it('states the fallback its own cast limit where a file had a fallback and a limit', () => {
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(
+      festus,
+      'name: Festus\nautomation:\n  spells:\n    attack: lbol\n    attackFallback: mmis\n    attackCasts: 2\n'
+    );
+    fs.writeFileSync(home.options, 'automation:\n  spells:\n    attackCasts: 2\n', 'utf8');
+    migrate();
+    const spellsOf = (file: string): Record<string, unknown> | undefined =>
+      (
+        parse(fs.readFileSync(file, 'utf8')) as {
+          automation?: { spells?: Record<string, unknown> };
+        }
+      ).automation?.spells;
+    expect(spellsOf(festus)?.['fallbackCasts']).toBe(2);
+    // No fallback stated: nothing to state it for.
+    expect(spellsOf(home.options)?.['fallbackCasts']).toBeUndefined();
+    expect(notesOf(said, 'notices.migration.fallbackCastsStated')).toHaveLength(1);
+    said = [];
+    migrate();
+    expect(notesOf(said, 'notices.migration.fallbackCastsStated')).toEqual([]);
+  });
+
   it('takes the shared spot worth out of every file, and its clock out of the tuning', () => {
     fs.writeFileSync(
       home.options,

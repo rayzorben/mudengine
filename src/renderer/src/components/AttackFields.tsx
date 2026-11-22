@@ -1,8 +1,10 @@
 /**
  * The attack spell, one set of fields for the character form and the options
  * page, as `HealFields` is for the heal: *Auto Choose Best Spell*, the round
- * spell with its fallback, cap and mana floor, and the room spell with its
- * crowd, floor and cap, and how sure a kill Auto Choose wants (todo 118).
+ * spell chain (the spell, its fallback and a third, each with a cap and a
+ * mana floor of its own), the floor under every attack spell, the room spell
+ * with its crowd, floor and cap, and how sure a kill Auto Choose wants
+ * (todo 118).
  * Each value is as the page holds it, a percent for a floor or a share; the
  * page turns a change back into its own draft by `ATTACK_KIND`.
  */
@@ -14,9 +16,11 @@ import SpellField from './SpellPicker';
 import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
 
-export type AttackText = 'attack' | 'attackFallback' | 'areaAttack';
-export type AttackCount = 'attackCasts' | 'areaMinMobs' | 'areaCasts';
-export type AttackFloor = 'minMana' | 'areaMinMana';
+export type AttackText = 'attack' | 'attackFallback' | 'attackThird' | 'areaAttack';
+export type AttackCount =
+  'attackCasts' | 'fallbackCasts' | 'thirdCasts' | 'areaMinMobs' | 'areaCasts';
+export type AttackFloor =
+  'minMana' | 'attackMinMana' | 'fallbackMinMana' | 'thirdMinMana' | 'areaMinMana';
 export type AttackShare = 'killConfidence';
 export type AttackField = AttackText | AttackCount | AttackFloor | AttackShare;
 
@@ -24,11 +28,17 @@ export type AttackField = AttackText | AttackCount | AttackFloor | AttackShare;
 export const ATTACK_KIND = {
   attack: 'text',
   attackFallback: 'text',
+  attackThird: 'text',
   areaAttack: 'text',
   attackCasts: 'count',
+  fallbackCasts: 'count',
+  thirdCasts: 'count',
   areaMinMobs: 'count',
   areaCasts: 'count',
   minMana: 'floor',
+  attackMinMana: 'floor',
+  fallbackMinMana: 'floor',
+  thirdMinMana: 'floor',
   areaMinMana: 'floor',
   killConfidence: 'share'
 } as const satisfies Record<AttackField, 'text' | 'count' | 'floor' | 'share'>;
@@ -134,6 +144,22 @@ export default function AttackFields({
           hint: t('settings.spells.castHint'),
           setting: 'automation.spells.attack'
         })}
+        {count({
+          field: 'attackCasts',
+          name: 'attack-casts',
+          label: t('settings.spells.attackCastsLabel'),
+          hint: t('settings.spells.attackCastsHint'),
+          setting: 'automation.spells.attackCasts'
+        })}
+        {floor({
+          field: 'attackMinMana',
+          name: 'attack-min-mana',
+          label: t('settings.spells.attackMinManaLabel'),
+          hint: t('settings.spells.attackMinManaHint'),
+          setting: 'automation.spells.attackMinMana'
+        })}
+      </div>
+      <div className="settings-inline">
         {spell({
           field: 'attackFallback',
           name: 'spell-fallback',
@@ -142,12 +168,44 @@ export default function AttackFields({
           setting: 'automation.spells.attackFallback'
         })}
         {count({
-          field: 'attackCasts',
-          name: 'attack-casts',
-          label: t('settings.spells.attackCastsLabel'),
-          hint: t('settings.spells.attackCastsHint'),
-          setting: 'automation.spells.attackCasts'
+          field: 'fallbackCasts',
+          name: 'fallback-casts',
+          label: t('settings.spells.fallbackCastsLabel'),
+          hint: t('settings.spells.fallbackCastsHint'),
+          setting: 'automation.spells.fallbackCasts'
         })}
+        {floor({
+          field: 'fallbackMinMana',
+          name: 'fallback-min-mana',
+          label: t('settings.spells.fallbackMinManaLabel'),
+          hint: t('settings.spells.fallbackMinManaHint'),
+          setting: 'automation.spells.fallbackMinMana'
+        })}
+      </div>
+      <div className="settings-inline">
+        {spell({
+          field: 'attackThird',
+          name: 'spell-third',
+          label: t('settings.spells.thirdCastLabel'),
+          hint: t('settings.spells.thirdCastHint'),
+          setting: 'automation.spells.attackThird'
+        })}
+        {count({
+          field: 'thirdCasts',
+          name: 'third-casts',
+          label: t('settings.spells.thirdCastsLabel'),
+          hint: t('settings.spells.thirdCastsHint'),
+          setting: 'automation.spells.thirdCasts'
+        })}
+        {floor({
+          field: 'thirdMinMana',
+          name: 'third-min-mana',
+          label: t('settings.spells.thirdMinManaLabel'),
+          hint: t('settings.spells.thirdMinManaHint'),
+          setting: 'automation.spells.thirdMinMana'
+        })}
+      </div>
+      <div className="settings-inline">
         {floor({
           field: 'minMana',
           name: 'min-mana',

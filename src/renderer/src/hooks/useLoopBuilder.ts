@@ -13,7 +13,7 @@ import { t } from '../lib/i18n';
 import { loopOwner } from '../lib/loops';
 import type { HuntingRoom } from '@shared/hunting';
 import { NO_SESSION, type IpcApi, type ProfileSummary, type SessionId } from '@shared/ipc';
-import type { Loop } from '@shared/loops';
+import type { Loop, MegamudPath } from '@shared/loops';
 import type { MapLoader } from '@shared/map';
 import type { LoopDraft, RoomId } from '@shared/world';
 import type { FoundRoom } from '@shared/destinations';
@@ -26,12 +26,16 @@ export interface BuilderApi {
   loadMap: MapLoader;
   draft(rooms: RoomId[]): Promise<LoopDraft>;
   save(loop: Loop, destination: BuilderDestination): Promise<string | null>;
+  /** MegaMUD path files, read against this character's realm into picks. */
+  importPaths(files: ReadonlyArray<{ name: string; text: string }>): Promise<MegamudPath[]>;
+  /** Stamps the palette's *Import MegaMUD paths* asked at; the card opens its file chooser once per stamp. */
+  importAsked: number | null;
   /** A loop to open drawn — the Hunting card's — or null for an empty map. */
   seed: BuilderSeed | null;
 }
 
 export interface LoopBuilderInputs {
-  api: Pick<IpcApi, 'draftLoop' | 'addLoop'>;
+  api: Pick<IpcApi, 'draftLoop' | 'addLoop' | 'importMegamud'>;
   /** The character on screen, or `NO_SESSION`. */
   session: SessionId;
   profiles: readonly Pick<ProfileSummary, 'id' | 'serverName'>[];
@@ -48,6 +52,8 @@ export interface LoopBuilderInputs {
 
 export interface LoopBuilder {
   openBuilder(): void;
+  /** Opens the builder and has it ask for MegaMUD path files. */
+  openImport(): void;
   /** Opens the builder on a loop the Hunting card drew, named. */
   createHunt(rooms: HuntingRoom[], name: string): void;
   builderApi: BuilderApi;
@@ -99,6 +105,23 @@ export function useLoopBuilder({
     },
     [openBuilder, session]
   );
+  /*
+   * The palette's way into the import: the builder is brought out and told, by
+   * a stamp, to open its file chooser. Held with the character, like the seed,
+   * so another tab's builder never opens a chooser it was not asked for.
+   */
+  const [asked, setAsked] = useState<{ for: SessionId; stamp: number } | null>(null);
+  const openImport = useCallback(() => {
+    if (session === NO_SESSION) return;
+    setAsked({ for: session, stamp: Date.now() });
+    openBuilder();
+  }, [openBuilder, session]);
+  const importAsked = asked !== null && asked.for === session ? asked.stamp : null;
+  const importPaths = useCallback(
+    (files: ReadonlyArray<{ name: string; text: string }>) => api.importMegamud(session, files),
+    [api, session]
+  );
+
   const builderSeed = seeded !== null && seeded.for === session ? seeded.seed : null;
 
   /**
@@ -135,6 +158,8 @@ export function useLoopBuilder({
       loadMap,
       draft: draftLoop,
       save: saveDraftLoop,
+      importPaths,
+      importAsked,
       seed: builderSeed
     }),
     [
@@ -144,9 +169,11 @@ export function useLoopBuilder({
       loadMap,
       draftLoop,
       saveDraftLoop,
+      importPaths,
+      importAsked,
       builderSeed
     ]
   );
 
-  return { openBuilder, createHunt, builderApi };
+  return { openBuilder, openImport, createHunt, builderApi };
 }

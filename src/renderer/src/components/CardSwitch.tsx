@@ -188,6 +188,8 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           onPeekEnd={ctx.endPeek}
           realmName={ctx.builder.realmName}
           save={ctx.builder.save}
+          importPaths={ctx.builder.importPaths}
+          importAsked={ctx.builder.importAsked}
           search={ctx.builder.search}
           seed={ctx.builder.seed}
           kept={ctx.kept.builder}

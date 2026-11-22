@@ -316,6 +316,12 @@ export interface GlobalDraft {
       areaMinMana: number;
       attackFallback: string;
       attackCasts: number;
+      attackMinMana: number;
+      fallbackCasts: number;
+      fallbackMinMana: number;
+      attackThird: string;
+      thirdCasts: number;
+      thirdMinMana: number;
       areaCasts: number;
       drain: string;
       areaDrain: string;
@@ -649,6 +655,12 @@ export interface ProfileDraft {
     /** See `SpellsConfig`: the fallback once the round spell has no effect, and the per-target cast caps. */
     attackFallback: string;
     attackCasts: number;
+    attackMinMana: number;
+    fallbackCasts: number;
+    fallbackMinMana: number;
+    attackThird: string;
+    thirdCasts: number;
+    thirdMinMana: number;
     areaCasts: number;
     /** See `SpellsConfig`: the drains cast instead while health is low (841). */
     drain: string;
@@ -1300,8 +1312,14 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
           ? spells['attackFallback'].trim().slice(0, 40)
           : '',
       // 0 is no limit, so a missing or unreadable figure is the unlimited one.
-      attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
-      areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
+      attackCasts: casts(spells['attackCasts']),
+      attackMinMana: unit(spells['attackMinMana']),
+      fallbackCasts: casts(spells['fallbackCasts']),
+      fallbackMinMana: unit(spells['fallbackMinMana']),
+      attackThird: text(spells['attackThird']).slice(0, 40),
+      thirdCasts: casts(spells['thirdCasts']),
+      thirdMinMana: unit(spells['thirdMinMana']),
+      areaCasts: casts(spells['areaCasts']),
       drain: text(spells['drain']).slice(0, 40),
       areaDrain: text(spells['areaDrain']).slice(0, 40),
       drainBelow: unit(spells['drainBelow']),
@@ -1547,8 +1565,14 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         areaMinMobs: Math.max(1, Math.min(99, Math.round(Number(spells['areaMinMobs']) || 3))),
         areaMinMana: unit(spells['areaMinMana']),
         attackFallback: text(spells['attackFallback']).slice(0, 40),
-        attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
-        areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
+        attackCasts: casts(spells['attackCasts']),
+        attackMinMana: unit(spells['attackMinMana']),
+        fallbackCasts: casts(spells['fallbackCasts']),
+        fallbackMinMana: unit(spells['fallbackMinMana']),
+        attackThird: text(spells['attackThird']).slice(0, 40),
+        thirdCasts: casts(spells['thirdCasts']),
+        thirdMinMana: unit(spells['thirdMinMana']),
+        areaCasts: casts(spells['areaCasts']),
         drain: text(spells['drain']).slice(0, 40),
         areaDrain: text(spells['areaDrain']).slice(0, 40),
         drainBelow: unit(spells['drainBelow']),
@@ -1621,6 +1645,11 @@ function unit(value: unknown, fallback = 0): number {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(1, Math.max(0, number));
+}
+
+/** A cast limit per target: 0 to 99, where 0 is no limit, so an unreadable figure is 0. */
+function casts(value: unknown): number {
+  return Math.max(0, Math.min(99, Math.round(Number(value) || 0)));
 }
 
 function word(value: unknown): string {

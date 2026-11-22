@@ -1855,7 +1855,8 @@ export interface SpellsConfig {
    */
   attackFallback: string;
   /**
-   * How many times the round spell (or its fallback) is cast per target —
+   * How many times the round spell is cast per target, before the fallback
+   * takes over (`attackChain`; the fallback and the third spell have their own) —
    * MegaMUD's `MaxCastCnt` (its `sample.ini` ships 10). **0 is no limit
    * here**, which is what this client did before the field existed; MegaMUD
    * reads 0 as none ("0 means zero, not unlimited", `MegaMud.chm`), and that
@@ -1866,6 +1867,27 @@ export interface SpellsConfig {
    * new target starts the count again.
    */
   attackCasts: number;
+  /**
+   * Cast `attack` only while mana is at or above this fraction of maximum;
+   * under it the next spell in the chain (`attackFallback`, then
+   * `attackThird`) is the one cast. 0 is no floor. Apart from `minMana`,
+   * which stops every attack spell: this one hands over to the next.
+   */
+  attackMinMana: number;
+  /** `attackFallback`'s own cap per target, as `attackCasts` is `attack`'s. 0 is no limit. */
+  fallbackCasts: number;
+  /** `attackFallback` is cast only at or above this fraction of maximum mana. 0 is no floor. */
+  fallbackMinMana: number;
+  /**
+   * A third spell in the chain, cast once `attack` and `attackFallback` are
+   * each capped, refused by the monster, under their mana floor or unpayable.
+   * Blank means none.
+   */
+  attackThird: string;
+  /** `attackThird`'s own cap per target. 0 is no limit. */
+  thirdCasts: number;
+  /** `attackThird` is cast only at or above this fraction of maximum mana. 0 is no floor. */
+  thirdMinMana: number;
   /**
    * The same cap for the area spell — MegaMUD's `MultCastCnt`. 0 is no limit.
    * The area spell is the expensive one, and a room that took three of them
@@ -2786,6 +2808,12 @@ export const DEFAULT_CONFIG: AppConfig = {
       areaMinMana: 0.35,
       attackFallback: '',
       attackCasts: 0,
+      attackMinMana: 0,
+      fallbackCasts: 0,
+      fallbackMinMana: 0,
+      attackThird: '',
+      thirdCasts: 0,
+      thirdMinMana: 0,
       areaCasts: 0,
       drain: '',
       areaDrain: '',
@@ -3989,6 +4017,12 @@ function normalizeSpells(value: unknown): SpellsConfig {
     areaMinMana: fraction(raw['areaMinMana'], d.areaMinMana),
     attackFallback: str(raw['attackFallback'], d.attackFallback).trim(),
     attackCasts: int(raw['attackCasts'], d.attackCasts, 0, 99),
+    attackMinMana: fraction(raw['attackMinMana'], d.attackMinMana),
+    fallbackCasts: int(raw['fallbackCasts'], d.fallbackCasts, 0, 99),
+    fallbackMinMana: fraction(raw['fallbackMinMana'], d.fallbackMinMana),
+    attackThird: str(raw['attackThird'], d.attackThird).trim(),
+    thirdCasts: int(raw['thirdCasts'], d.thirdCasts, 0, 99),
+    thirdMinMana: fraction(raw['thirdMinMana'], d.thirdMinMana),
     areaCasts: int(raw['areaCasts'], d.areaCasts, 0, 99),
     drain: str(raw['drain'], d.drain).trim(),
     areaDrain: str(raw['areaDrain'], d.areaDrain).trim(),

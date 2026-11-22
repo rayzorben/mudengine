@@ -257,6 +257,13 @@ export interface CharacterFields {
   /** The fallback once the round spell has no effect, and the per-target cast caps (0 is no limit). */
   spellAttackFallback: string;
   spellAttackCasts: string;
+  /** The round spell's chain: each spell's mana floor, the fallback's cap, and the third spell. */
+  spellAttackMinMana: string;
+  spellFallbackCasts: string;
+  spellFallbackMinMana: string;
+  spellAttackThird: string;
+  spellThirdCasts: string;
+  spellThirdMinMana: string;
   spellAreaCasts: string;
   /** The drains cast instead while health is low, and the pair that starts and stops them (841). */
   spellDrain: string;
@@ -454,6 +461,12 @@ export const ATTACK_KEYS = {
   attack: 'spellAttack',
   attackFallback: 'spellAttackFallback',
   attackCasts: 'spellAttackCasts',
+  attackMinMana: 'spellAttackMinMana',
+  fallbackCasts: 'spellFallbackCasts',
+  fallbackMinMana: 'spellFallbackMinMana',
+  attackThird: 'spellAttackThird',
+  thirdCasts: 'spellThirdCasts',
+  thirdMinMana: 'spellThirdMinMana',
   minMana: 'spellMinMana',
   areaAttack: 'spellAreaAttack',
   areaMinMobs: 'spellAreaMinMobs',
@@ -615,6 +628,12 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     spellAreaMinMana: percent(entry.spells.areaMinMana),
     spellAttackFallback: entry.spells.attackFallback,
     spellAttackCasts: String(entry.spells.attackCasts),
+    spellAttackMinMana: percent(entry.spells.attackMinMana),
+    spellFallbackCasts: String(entry.spells.fallbackCasts),
+    spellFallbackMinMana: percent(entry.spells.fallbackMinMana),
+    spellAttackThird: entry.spells.attackThird,
+    spellThirdCasts: String(entry.spells.thirdCasts),
+    spellThirdMinMana: percent(entry.spells.thirdMinMana),
     spellAreaCasts: String(entry.spells.areaCasts),
     spellDrain: entry.spells.drain,
     spellAreaDrain: entry.spells.areaDrain,
@@ -827,8 +846,14 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       areaMinMobs: Math.max(1, Number.parseInt(form.spellAreaMinMobs, 10) || 3),
       areaMinMana: fractionOf(form.spellAreaMinMana),
       attackFallback: form.spellAttackFallback.trim(),
-      attackCasts: Math.max(0, Number.parseInt(form.spellAttackCasts, 10) || 0),
-      areaCasts: Math.max(0, Number.parseInt(form.spellAreaCasts, 10) || 0),
+      attackCasts: wholeOf(form.spellAttackCasts),
+      attackMinMana: fractionOf(form.spellAttackMinMana),
+      fallbackCasts: wholeOf(form.spellFallbackCasts),
+      fallbackMinMana: fractionOf(form.spellFallbackMinMana),
+      attackThird: form.spellAttackThird.trim(),
+      thirdCasts: wholeOf(form.spellThirdCasts),
+      thirdMinMana: fractionOf(form.spellThirdMinMana),
+      areaCasts: wholeOf(form.spellAreaCasts),
       drain: form.spellDrain.trim(),
       areaDrain: form.spellAreaDrain.trim(),
       drainBelow: fractionOf(form.spellDrainBelow),
@@ -1187,6 +1212,12 @@ export function emptyForm(
     spellAreaMinMana: percent(spells.areaMinMana),
     spellAttackFallback: spells.attackFallback,
     spellAttackCasts: String(spells.attackCasts),
+    spellAttackMinMana: percent(spells.attackMinMana),
+    spellFallbackCasts: String(spells.fallbackCasts),
+    spellFallbackMinMana: percent(spells.fallbackMinMana),
+    spellAttackThird: spells.attackThird,
+    spellThirdCasts: String(spells.thirdCasts),
+    spellThirdMinMana: percent(spells.thirdMinMana),
     spellAreaCasts: String(spells.areaCasts),
     spellDrain: spells.drain,
     spellAreaDrain: spells.areaDrain,
