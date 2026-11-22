@@ -241,6 +241,21 @@
   --game-caution: var(--pending);
   --game-critical: var(--danger);
   --game-blur: blur(14px) saturate(1.2);
+  /* The phone shell: the game view's glass, a thumb-sized target, and the accent's own gradient. */
+  --phone-console-min: 1000px;
+  --phone-target: 44px;
+  --phone-radius: 20px;
+  --phone-gap: 8px;
+  --phone-gradient: linear-gradient(
+    135deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 55%, var(--marker))
+  );
+  --phone-aurora: radial-gradient(
+    280px 220px at 0% 0%,
+    color-mix(in srgb, var(--marker) 22%, transparent),
+    transparent
+  );
   /* The paper doll's body regions (todo 20261018-2032-01), from the hues above:
    * each region's body part, line and slot square wear one. */
   --game-region-head: var(--game-player);

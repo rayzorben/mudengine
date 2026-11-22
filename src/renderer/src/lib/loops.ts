@@ -364,20 +364,24 @@ function sectionOf(row: LoopRow, here: LoopHere): LoopSection | null {
  * found wanting, which is a claim about fifty-six other areas the reader then
  * has to scroll past to disprove.
  */
+/** The rows every word of `query` finds, in any order: a name, an area or a room the loop visits. */
+export function loopMatches(rows: readonly LoopRow[], query: string): LoopRow[] {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return terms.length === 0
+    ? [...rows]
+    : rows.filter((row) => terms.every((term) => row.search.includes(term)));
+}
+
 export function groupLoops(
   rows: readonly LoopRow[],
   query: string,
   here: LoopHere = NOWHERE
 ): LoopGroup[] {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const sections = new Map<LoopSection, LoopRow[]>();
   const areas = new Map<string, LoopRow[]>();
   const order: string[] = [];
 
-  for (const row of rows) {
-    if (terms.length > 0) {
-      if (!terms.every((term) => row.search.includes(term))) continue;
-    }
+  for (const row of loopMatches(rows, query)) {
     const section = sectionOf(row, here);
     if (section !== null) {
       const held = sections.get(section);

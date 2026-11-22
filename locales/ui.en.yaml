@@ -1188,6 +1188,52 @@ loops:
     many: "{count} loops are left out: each has a stop that can't be found in the world database."
   throughFailed: 'Which loops pass through this room could not be worked out: {reason}'
   paletteLabel: 'Loops: find one to walk'
+# The phone shell: the interface of a small touch window.
+phone:
+  noName: Not logged in
+  noRoom: Room not known
+  nav:
+    aria: Tabs
+  tab:
+    terminal: Terminal
+    chat: Chat
+    pack: Pack
+    loops: Loops
+    map: Map
+  ring:
+    hp: 'Health {value} of {max}'
+    mana: 'Mana {value} of {max}'
+  terminal:
+    aria: What the server sent
+    empty: Nothing has arrived yet.
+  chat:
+    aria: What was said
+    empty: Nobody has said anything yet.
+  dock:
+    chipsAria: Quick commands
+    fieldAria: Command
+    placeholder: Command
+    send: Send
+  loops:
+    runningAria: The loop that is running
+    unnamed: A loop
+    stop: 'Stop {stop} of {stops}'
+    stopAt: 'Stop {stop} of {stops} · {name}'
+    stopButton: Stop
+    findAria: Find a loop
+    find: Find a loop, an area or a room
+    loading: Loading the loops.
+    none: No loop matches.
+    rowDetail: '{area} · {stops} stops'
+    run: Run
+    more: '{count} more; type to narrow the list.'
+  map:
+    noLocation: The character's room is not known yet.
+    noData: The world database has no map of this room.
+    goAria: Go to a room
+    goTo: Go to a room
+    go: Go
+    padAria: Step by hand
 # Command palette: entries, groups, hints and chrome.
 # The game view (todo 140): the world map, the arena and the HUD, from the palette.
 game:

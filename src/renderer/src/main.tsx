@@ -10,6 +10,7 @@ import './styles/tokens.css';
 import './styles/fonts.css';
 import './styles/index.css';
 import './styles/game.css';
+import './styles/phone.css';
 import '@xterm/xterm/css/xterm.css';
 
 /*

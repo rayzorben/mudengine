@@ -30,6 +30,8 @@ export interface LoopsModalState {
   /** The shelf and this character's own, as the rows the modal draws. */
   rows: LoopRow[];
   here: LoopHere;
+  /** Asks for the shelf without opening the modal: the phone's Loops tab has no modal to open. */
+  load(): void;
 }
 
 export interface LoopsModalInputs {
@@ -114,8 +116,10 @@ export function useLoopsModal({
    * once.
    */
   const [catalogue, setCatalogue] = useState<Loop[] | null>(null);
+  const [asked, setAsked] = useState(false);
+  const load = useCallback(() => setAsked(true), []);
   useEffect(() => {
-    if (!open || catalogue !== null) return;
+    if (!(open || asked) || catalogue !== null) return;
     let stale = false;
     void api
       .loopCatalogue()
@@ -138,7 +142,7 @@ export function useLoopsModal({
     return () => {
       stale = true;
     };
-  }, [api, open, catalogue, session, say]);
+  }, [api, open, asked, catalogue, session, say]);
 
   /*
    * Memoised on both, so a status line republishing `character` does not
@@ -213,5 +217,9 @@ export function useLoopsModal({
     [recent, room.name, room.map, room.number, laps]
   );
 
-  return { open, toggle, close, loading: catalogue === null, rows, here };
+  const loading = catalogue === null;
+  return useMemo(
+    () => ({ open, toggle, close, loading, rows, here, load }),
+    [open, toggle, close, loading, rows, here, load]
+  );
 }

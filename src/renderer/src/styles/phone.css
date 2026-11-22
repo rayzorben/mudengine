@@ -1,0 +1,361 @@
+/*
+ * The phone shell (components/phone/). Glass and gradients are the chrome's;
+ * the terminal's text keeps the console's own ground (`--ink-slate`) and
+ * monospace face. Every colour is a token; a target is at least
+ * `--phone-target` high.
+ */
+
+/*
+ * The consoles stay mounted and laid out, only unseen and untouched, and as wide
+ * as a desktop's: the realm wraps at 80 columns and never negotiates a narrower
+ * one, so a console fitted to a phone's width would shear every map. 1000px holds
+ * 80 columns for an advance up to 12px, which is a 20px monospace face; the
+ * advance at the default size has not been measured here.
+ */
+.app[data-view='phone'] > .workspace {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: max(100%, var(--phone-console-min));
+  height: 100%;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.phone-shell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--phone-gap);
+  padding: var(--phone-gap);
+  background: var(--ink-void) var(--phone-aurora);
+  color: var(--text);
+  overflow: hidden;
+  /* The shell is the page's scroller or nothing: a drag in it never pulls the page. */
+  overscroll-behavior: none;
+}
+
+.phone-glass {
+  border: 1px solid var(--game-line);
+  background: var(--game-glass);
+  backdrop-filter: var(--game-blur);
+}
+
+.phone-quiet {
+  color: var(--game-faint);
+  font-size: 12px;
+}
+
+.phone-shell button {
+  min-height: var(--phone-target);
+  min-width: var(--phone-target);
+  border: 0;
+  border-radius: calc(var(--phone-target) / 2);
+  background: var(--game-line);
+  color: var(--text-hi);
+  font: inherit;
+  padding: 0 14px;
+  touch-action: manipulation;
+}
+
+.phone-shell input {
+  min-height: var(--phone-target);
+  border: 0;
+  background: transparent;
+  color: var(--text-hi);
+  font: inherit;
+  /* Under 16px a phone browser zooms the page when a field takes focus. */
+  font-size: max(16px, 1em);
+  outline: none;
+}
+
+/* ------------------------------------------------------------------ header */
+
+.phone-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--phone-radius);
+}
+
+.phone-header[data-compact='true'] {
+  padding: 4px 10px;
+}
+
+.phone-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.phone-who b,
+.phone-who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phone-who small {
+  color: var(--game-faint);
+  font-size: 11px;
+}
+
+.phone-ring {
+  --phone-ring-size: 42px;
+  display: grid;
+  place-items: center;
+  width: var(--phone-ring-size);
+  height: var(--phone-ring-size);
+  border-radius: 50%;
+  background: conic-gradient(var(--phone-ring-tone) var(--phone-fill), var(--game-line) 0);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.phone-ring > span {
+  display: grid;
+  place-items: center;
+  width: calc(var(--phone-ring-size) - 8px);
+  height: calc(var(--phone-ring-size) - 8px);
+  border-radius: 50%;
+  background: var(--ink-card);
+}
+
+.phone-ring[data-kind='hp'] {
+  --phone-ring-tone: var(--danger);
+}
+
+.phone-ring[data-kind='mana'] {
+  --phone-ring-tone: var(--accent);
+  --phone-ring-size: 32px;
+  font-size: 10px;
+}
+
+.phone-ring[data-unknown='true'] {
+  background: var(--game-line);
+}
+
+.phone-header[data-compact='true'] .phone-ring {
+  --phone-ring-size: 30px;
+}
+
+/* -------------------------------------------------------------------- page */
+
+.phone-page {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.phone-terminal,
+.phone-chat,
+.phone-pack,
+.phone-loops,
+.phone-map {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.phone-terminal {
+  padding: 10px;
+  border-radius: var(--phone-radius);
+  background: var(--ink-slate);
+  border: 1px solid var(--game-line);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.phone-terminal p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.phone-terminal [data-tone='red'] {
+  color: var(--danger);
+}
+.phone-terminal [data-tone='green'] {
+  color: var(--ok);
+}
+.phone-terminal [data-tone='yellow'] {
+  color: var(--pending);
+}
+.phone-terminal [data-tone='blue'],
+.phone-terminal [data-tone='cyan'] {
+  color: var(--accent);
+}
+.phone-terminal [data-tone='magenta'] {
+  color: var(--marker);
+}
+.phone-terminal [data-bold='true'] {
+  font-weight: 700;
+}
+
+.phone-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phone-chat p {
+  margin: 0;
+  max-width: 84%;
+  padding: 8px 12px;
+  border-radius: 18px 18px 18px 6px;
+}
+
+.phone-chat p[data-mine='true'] {
+  align-self: flex-end;
+  border-radius: 18px 18px 6px 18px;
+  background: var(--phone-gradient);
+  color: var(--on-accent);
+}
+
+.phone-chat p[data-for-you='true'] {
+  border-color: var(--accent);
+}
+
+.phone-loops,
+.phone-map {
+  display: flex;
+  flex-direction: column;
+  gap: var(--phone-gap);
+}
+
+.phone-find {
+  flex: none;
+  padding: 0 16px;
+  border-radius: calc(var(--phone-target) / 2);
+}
+
+.phone-loops ul,
+.phone-found {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phone-row,
+.phone-running {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border-radius: var(--phone-radius);
+}
+
+.phone-row b,
+.phone-running b {
+  display: block;
+}
+
+.phone-row small,
+.phone-running small {
+  color: var(--game-faint);
+  font-size: 11px;
+}
+
+.phone-row button,
+.phone-send {
+  background: var(--phone-gradient);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.phone-shell .phone-danger {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--danger);
+}
+
+.phone-map-view {
+  flex: 1 0 200px;
+  min-height: 200px;
+  overflow: hidden;
+  border-radius: var(--phone-radius);
+  background: var(--ink-slate);
+}
+
+.phone-pad {
+  display: flex;
+  gap: var(--phone-gap);
+  justify-content: center;
+}
+
+/* -------------------------------------------------------------------- dock */
+
+.phone-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phone-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.phone-chips button {
+  flex: none;
+}
+
+.phone-chips button[aria-pressed='true'] {
+  background: var(--phone-gradient);
+  color: var(--on-accent);
+}
+
+.phone-capsule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 16px;
+  border-radius: calc(var(--phone-target) / 2 + 4px);
+}
+
+.phone-capsule input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --------------------------------------------------------------------- nav */
+
+.phone-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin: 0 var(--phone-gap) 4px;
+  /* The home bar of a phone that has one. */
+  padding: 6px 6px max(6px, env(safe-area-inset-bottom));
+  border-radius: calc(var(--phone-target) / 2 + 10px);
+}
+
+.phone-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--game-faint);
+  font-size: 12px;
+}
+
+.phone-nav button[aria-current='page'] {
+  background: var(--phone-gradient);
+  color: var(--on-accent);
+  font-weight: 700;
+}

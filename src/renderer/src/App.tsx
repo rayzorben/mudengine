@@ -20,6 +20,7 @@ import DebugView from './components/DebugView';
 import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
 import LoopsModal from './components/LoopsModal';
+import PhoneShell from './components/phone/PhoneShell';
 import HomeBrowser from './components/HomeBrowser';
 import HelpScreen from './components/HelpScreen';
 import { TOOLBAR_ACTIONS } from './lib/toolbar';
@@ -53,8 +54,9 @@ import { useSearchBar } from './hooks/useSearchBar';
 import { useSettingsScreen } from './hooks/useSettingsScreen';
 import { useSettingsApi } from './hooks/useSettingsApi';
 import { useGameView } from './hooks/useGameView';
+import { usePhoneView, withPhoneView } from './hooks/usePhoneView';
+import { useTalkPanel } from './hooks/useTalkPanel';
 import GameView from './components/game/GameView';
-import { cardElement } from './components/CardSwitch';
 import { useRouteOpeners } from './hooks/useRouteOpeners';
 import { useRecentMenu } from './hooks/useRecentMenu';
 import { useShownRealm } from './hooks/useShownRealm';
@@ -429,6 +431,7 @@ export default function App() {
    */
   // The game view, or the classic one (todo 140); its command layer is where focus settles.
   const game = useGameView(config.gameView, activeTerminal, size.cols);
+  const phone = usePhoneView();
   const returnFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       if (document.activeElement?.closest('[role="dialog"]') || game.takeFocus()) return;
@@ -467,14 +470,7 @@ export default function App() {
     toggle: toggleSearch,
     run: runSearch
   } = useSearchBar(session, terminals, returnFocus);
-  const {
-    open: loopsOpen,
-    toggle: toggleLoops,
-    close: closeLoops,
-    loading: loopsLoading,
-    rows: loopChoices,
-    here: loopHere
-  } = useLoopsModal({
+  const loopsModal = useLoopsModal({
     api,
     session,
     loops,
@@ -888,7 +884,7 @@ export default function App() {
     toggleRail,
     toggleDebug,
     toggleHelp,
-    toggleLoops,
+    toggleLoops: loopsModal.toggle,
     trips: trips.opens,
     reveal,
     terminal: activeTerminal,
@@ -921,13 +917,13 @@ export default function App() {
     flyout !== null ||
     browsing !== null ||
     paletteOpen ||
-    loopsOpen ||
+    loopsModal.open ||
     settingsOpen ||
     helpOpen;
   useHotkeys([
     // Each chord is `CLIENT_KEYS`'s; the connection's are `useConnectionKeys`, the tabs' `useTabKeys`.
     { ...CLIENT_KEYS.palette, run: togglePalette },
-    { ...CLIENT_KEYS.loops, run: toggleLoops },
+    { ...CLIENT_KEYS.loops, run: loopsModal.toggle },
     { ...CLIENT_KEYS.rail, run: toggleRail },
     { ...CLIENT_KEYS.latest, run: () => activeTerminal()?.jumpToLatest() },
     { ...CLIENT_KEYS.density, run: cycle },
@@ -1015,7 +1011,7 @@ export default function App() {
     stopMoving,
     startLoop,
     reverseLoop,
-    openLoops: toggleLoops,
+    openLoops: loopsModal.toggle,
     openAreaSearch: trips.opens.areaSearch,
     dial,
     hangUp,
@@ -1047,17 +1043,9 @@ export default function App() {
     pinnedChrome
   });
 
-  // The Talk card in the game view's panel, with the panel's own close (todo 140).
-  const renderTalk = useCallback(
-    (onClose: () => void) =>
-      cardElement(
-        'conversation',
-        contextFor(session, view, { cardId: 'conversation', onClose, returnFocus })
-      ),
-    [contextFor, session, view, returnFocus]
-  );
+  const renderTalk = useTalkPanel(contextFor, session, view, returnFocus);
   return (
-    <div className="app" {...game.appProps}>
+    <div className="app" {...withPhoneView(game.appProps, phone)}>
       <div
         className="workspace"
         data-dragging={drag.state?.live ? 'true' : undefined}
@@ -1311,7 +1299,19 @@ export default function App() {
         />
       </div>
 
-      {game.on && (
+      {phone && (
+        <PhoneShell
+          api={api}
+          chooseLoop={chooseLoop}
+          loadMap={loadMap}
+          loops={loopsModal}
+          openRouteOn={openRouteOn}
+          searchRooms={searchRooms}
+          session={session}
+          view={view}
+        />
+      )}
+      {game.on && !phone && (
         <GameView
           // One character's view (todo 20261102-2220-01); its unread mark is kept.
           key={session}
@@ -1403,12 +1403,12 @@ export default function App() {
       {/* Every loop the client knows; a pick shows the way to it first (`useLoopJoin`). */}
       <LoopsModal
         characterName={character.name ?? session}
-        here={loopHere}
-        loading={loopsLoading}
-        loops={loopChoices}
+        here={loopsModal.here}
+        loading={loopsModal.loading}
+        loops={loopsModal.rows}
         onChoose={chooseLoop}
-        onClose={closeLoops}
-        open={loopsOpen}
+        onClose={loopsModal.close}
+        open={loopsModal.open}
         realmName={profiles.find((profile) => profile.id === session)?.serverName ?? ''}
       />
 

@@ -24,20 +24,56 @@ const GROUP_LABEL: Record<PackGroup, string> = {
   other: t('game.pack.group.other')
 };
 
+/** What the pack holds, as the game view's panel and the phone's Pack tab both draw it. */
+export const PackBody = memo(function PackBody({
+  character,
+  inspect
+}: {
+  character: CharacterState;
+  /** An item's name clicked: the realm's answer, beside it. */
+  inspect?: Inspect;
+}) {
+  const art = useItemArt();
+  const { inventory, realm } = character;
+  const pack = useMemo(() => packOf(inventory), [inventory]);
+  const load = useMemo(() => loadOf(inventory), [inventory]);
+  if (pack === null) return <p className="gv-quiet">{t('game.pack.notListed')}</p>;
+  return (
+    <>
+      <LoadBar load={load} />
+      <div className="gv-pack-cards">
+        {PACK_GROUPS.map((group) => (
+          <PackCard
+            art={art}
+            group={group}
+            inspect={inspect}
+            items={pack.groups[group]}
+            key={group}
+            label={GROUP_LABEL[group]}
+            realm={realm}
+          />
+        ))}
+      </div>
+      <PackTray
+        art={art}
+        inspect={inspect}
+        inventory={inventory}
+        realm={realm}
+        tokens={pack.tokens}
+      />
+    </>
+  );
+});
+
 function PackPanel({
   character,
   inspect,
   onClose
 }: {
   character: CharacterState;
-  /** An item's name clicked: the realm's answer, beside it. */
   inspect?: Inspect;
   onClose(): void;
 }) {
-  const art = useItemArt();
-  const { inventory, realm } = character;
-  const pack = useMemo(() => packOf(inventory), [inventory]);
-  const load = useMemo(() => loadOf(inventory), [inventory]);
   return (
     <aside aria-label={t('game.pack.aria')} className="gv-hud gv-glass gv-panel gv-pack">
       <button
@@ -49,33 +85,7 @@ function PackPanel({
         ×
       </button>
       <h3>{t('game.pack.title')}</h3>
-      {pack === null ? (
-        <p className="gv-quiet">{t('game.pack.notListed')}</p>
-      ) : (
-        <>
-          <LoadBar load={load} />
-          <div className="gv-pack-cards">
-            {PACK_GROUPS.map((group) => (
-              <PackCard
-                art={art}
-                group={group}
-                inspect={inspect}
-                items={pack.groups[group]}
-                key={group}
-                label={GROUP_LABEL[group]}
-                realm={realm}
-              />
-            ))}
-          </div>
-          <PackTray
-            art={art}
-            inspect={inspect}
-            inventory={inventory}
-            realm={realm}
-            tokens={pack.tokens}
-          />
-        </>
-      )}
+      <PackBody character={character} inspect={inspect} />
     </aside>
   );
 }
