@@ -84,7 +84,10 @@ export class HostTrips implements SessionModule {
     this.find.abandon();
   }
 
-  /** A walk back for a member: every trip ends, saying `why`, the find as the player's Stop ends it. */
+  /**
+   * Every trip ends, saying `why`, the find as the player's Stop ends it: a
+   * walk back for a member, or this character starting to follow a leader.
+   */
   giveUp(why: string): void {
     this.endTrips(why);
     this.find.stop(why);

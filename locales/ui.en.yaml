@@ -6925,6 +6925,7 @@ session:
       stopped waiting for them. Nothing was held up.
     stoppedByPlayer: you asked it to
     stoppedByRemote: '{who} sent @stop'
+    stoppedFollowing: you are now following {leader}
     stoppedConnectionClosed: the connection closed
     stoppedLeftRealm: you left the realm
     resumed: Back in the realm; resuming the walk to {destination} from here.

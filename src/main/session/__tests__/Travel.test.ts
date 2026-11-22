@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../app/i18n';
-import { personStop } from '../../automation/personStop';
+import { followStop, personStop, stoppedByPerson } from '../../automation/personStop';
 import { SessionSwitches } from '../../automation/SessionSwitches';
 import { runStarted } from '../../automation/walk/startWords';
 import { Travel, type TravelParts, type TravelSession } from '../Travel';
 import type { SafetyDecision } from '../../../shared/automation';
+import type { Block } from '../../../shared/blocks';
 import type { DecisionKind } from '../../../shared/decisionSettings';
 import {
   EMPTY_CHARACTER,
@@ -1261,6 +1262,47 @@ describe('a walk held for the inventory', () => {
     );
     moving.walkOnceListed(listed([942]));
     expect(parts.walker.start).not.toHaveBeenCalled();
+  });
+
+  /*
+   * Cretin, 2026-11-22: joined Festus while its loop rested, and the loop
+   * walked it east out of the party once it had mended.
+   */
+  describe('starting to follow a leader', () => {
+    const joined = (groups: Record<string, string>, text: string): Block =>
+      ({ type: 'party-joined', text, groups }) as unknown as Block;
+    const lapping = () => {
+      const made = holding();
+      Object.assign(made.parts.loops, { progress: { ...NO_LOOP, status: 'running' } });
+      return made;
+    };
+
+    it('stops the lap, the walk and every trip, giving the leader as the reason', () => {
+      const { travel: moving, parts, notices } = lapping();
+      moving.walkRoute(DOOR);
+      const reason = followStop('Festus');
+
+      moving.beforeWalkBlock(joined({ leader: 'Festus' }, 'You are now following Festus.'));
+
+      expect(parts.loops.stop).toHaveBeenCalledWith(reason);
+      expect(parts.walker.stop).toHaveBeenCalledWith(reason);
+      expect(parts.hostTrips.giveUp).toHaveBeenCalledWith(reason);
+      expect(parts.itemErrand.abandon).toHaveBeenCalledWith(reason);
+      expect(parts.hunt.noteStopped).toHaveBeenCalled();
+      expect(notices).toContain(t('session.walk.notResumed', { destination: 'Mine', reason }));
+      // An errand ends on it as on a pressed Stop, and plans no leg from the leader's side.
+      expect(stoppedByPerson(reason)).toBe(true);
+    });
+
+    it('stops nothing when somebody starts to follow this character', () => {
+      const { travel: moving, parts } = lapping();
+      moving.beforeWalkBlock(joined({ player: 'Brakkle' }, 'Brakkle started to follow you.'));
+      expect(parts.loops.stop).not.toHaveBeenCalled();
+      expect(parts.walker.stop).not.toHaveBeenCalled();
+      // The same block read as this character's own join does stop it.
+      moving.beforeWalkBlock(joined({ leader: 'Brakkle' }, 'You are now following Brakkle.'));
+      expect(parts.loops.stop).toHaveBeenCalledWith(followStop('Brakkle'));
+    });
   });
 
   it('walks nowhere after a death, and says so', () => {

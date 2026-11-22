@@ -432,8 +432,8 @@ export class QuestRunner implements SessionModule {
     const run = this.run;
     if (run === null) return;
     /*
-     * A person pressed Stop or sent `@stop` (`stoppedByPerson`, the supply
-     * trip's reading too). It is read whatever the run is doing, since a
+     * A person pressed Stop or sent `@stop`, or the character started following
+     * a leader (`stoppedByPerson`, the supply trip's reading too). It is read whatever the run is doing, since a
      * trip's leg is walking too, and a run that took that for a setback would
      * start the same trip again in twenty seconds.
      */

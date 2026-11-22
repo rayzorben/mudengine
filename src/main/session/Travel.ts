@@ -22,7 +22,7 @@ import type { QuestRunner } from '../automation/QuestRunner';
 import type { Supplies } from '../automation/Supplies';
 import type { GearRecovery } from '../automation/GearRecovery';
 import type { OutgrownGear } from '../automation/OutgrownGear';
-import { personStop } from '../automation/personStop';
+import { followStop, personStop } from '../automation/personStop';
 import type { HostTrips } from './hostTrips';
 import type { AreaSearch } from '../automation/AreaSearch';
 import type { TrainErrand } from '../automation/TrainErrand';
@@ -699,6 +699,8 @@ export class Travel implements SessionModule {
     this.fareCash.onBlock(block);
     this.partyWait.onBlock(block);
     this.aimedHold.onBlock(block, this.tracker.current);
+    const leader = block.type === 'party-joined' ? block.groups['leader'] : undefined;
+    if (leader !== undefined) this.stopToFollow(leader);
   }
 
   /**
@@ -2924,9 +2926,23 @@ export class Travel implements SessionModule {
    * the character on to the destination, so a stop started a walk (todo 15).
    */
   stopMoving(by: string | null = null): void {
+    this.stopFor(personStop(by), true);
+  }
+
+  /**
+   * This character started following `leader` (`You are now following
+   * Festus.`): the same stop as a person's, since the leader moves it from
+   * here and one step of its own takes it out of the party. Every trip ends
+   * with it, each saying the reason.
+   */
+  private stopToFollow(leader: string): void {
+    this.stopFor(followStop(leader), false);
+  }
+
+  /** The stop itself. `pressed` is a person's Stop or `@stop`, which a cash run words its own way. */
+  private stopFor(reason: string, pressed: boolean): void {
     // A walk home the player stops is not carried past the fight it stops in.
     this.dropWalkHome();
-    const reason = personStop(by);
     const owed = this.errandOwes;
     this.errandOwes = null;
     if (owed !== null) {
@@ -2954,7 +2970,8 @@ export class Travel implements SessionModule {
     this.comeBack.cancel(reason);
     // Before the walk, so the leg's end is not read as a room to pass over.
     this.areaSearch.stop(reason);
-    this.hostTrips.stop(reason);
+    if (pressed) this.hostTrips.stop(reason);
+    else this.hostTrips.giveUp(reason);
     this.walker.stop(reason);
     // The one door a person's stop comes through, so it is the one place that
     // can tell a hunt it was stopped *by somebody* rather than by the realm.

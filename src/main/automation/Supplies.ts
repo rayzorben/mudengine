@@ -451,8 +451,9 @@ export class Supplies implements SessionModule {
       return;
     }
     /*
-     * A person pressed Stop or sent `@stop` (`stoppedByPerson`, read from the
-     * copy as `LoopRunner.advance` reads its own). It is the same decision
+     * A person pressed Stop or sent `@stop`, or the character started following
+     * a leader (`stoppedByPerson`, read from the copy as `LoopRunner.advance`
+     * reads its own). It is the same decision
      * `notePlayerMoved` makes for a typed direction.
      */
     if (stoppedByPerson(reason)) {
