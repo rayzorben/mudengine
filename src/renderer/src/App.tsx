@@ -382,9 +382,8 @@ export default function App() {
     root.setProperty('--font-ui-family', uiFonts);
     root.setProperty('--font-ui-base', `${config.ui.font.size}px`);
     // The slate must not inherit chrome typography: `ui.font` may legitimately
-    // be proportional, and the terminal cell never may. This also makes the
-    // resolved console stack observable from the DOM, which xterm's canvas
-    // renderer otherwise hides.
+    // be proportional, and the terminal cell never may. Setting it also puts the
+    // console stack in the DOM, which xterm's canvas renderer otherwise hides.
     root.setProperty('--font-terminal', terminalFonts);
   }, [uiFonts, config.ui.font.size, terminalFonts]);
 
