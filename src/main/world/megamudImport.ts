@@ -144,7 +144,11 @@ export function replay(
  * (`[Burning Plains (NW)-17 9507][Winterhawk]`): the title, without the
  * coordinates where the realm has a room there. Empty when the line has none.
  */
-export function friendlyTitle(world: WorldGraph, line: string | undefined, room: WorldRoom): string {
+export function friendlyTitle(
+  world: WorldGraph,
+  line: string | undefined,
+  room: WorldRoom
+): string {
   const title = (/^\[([^\]]*)\]/.exec(line ?? '')?.[1] ?? '').trim();
   if (title.length === 0) return '';
   const tail = coordinateTail(world, title);

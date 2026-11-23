@@ -843,5 +843,3 @@ export const MEGAMUD_FILE_LIMIT = 256 * 1024;
 
 /** The most path files one import takes. */
 export const MEGAMUD_FILES_MAX = 100;
-
-

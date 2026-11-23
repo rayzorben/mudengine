@@ -493,7 +493,10 @@ function LoopBuilderCard({
   const importFiles = (chosen: File[]): void => {
     if (chosen.length === 0) return;
     if (chosen.length > MEGAMUD_FILES_MAX) {
-      setStatus({ text: t('cards.builder.importTooMany', { max: MEGAMUD_FILES_MAX }), failed: true });
+      setStatus({
+        text: t('cards.builder.importTooMany', { max: MEGAMUD_FILES_MAX }),
+        failed: true
+      });
       return;
     }
     if (chosen.some((entry) => entry.size > MEGAMUD_FILE_LIMIT)) {
@@ -521,9 +524,7 @@ function LoopBuilderCard({
               : reason === 'steps'
                 ? t('cards.builder.importRefused.steps')
                 : t('cards.builder.importRefused.tiny');
-        const refusedText = refused
-          .map((entry) => `${entry.file}: ${why(entry.reason)}`)
-          .join(' ');
+        const refusedText = refused.map((entry) => `${entry.file}: ${why(entry.reason)}`).join(' ');
         if (read.length === 0) {
           setStatus({
             text: `${t('cards.builder.importNone')} ${refusedText}`.trim(),
