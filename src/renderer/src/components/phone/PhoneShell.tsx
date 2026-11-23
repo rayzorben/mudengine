@@ -12,7 +12,7 @@
 import { memo, useCallback, useState } from 'react';
 
 import type { FoundRoom } from '@shared/destinations';
-import type { IpcApi, SessionId } from '@shared/ipc';
+import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
 import type { MapLoader } from '@shared/map';
 import type { WorldRoom } from '@shared/world';
 import type { LoopsModalState } from '../../hooks/useLoopsModal';
@@ -24,6 +24,7 @@ import { walkTo } from '../../lib/walkTo';
 import { PHONE_TABS, type PhoneTab } from '../../lib/phone';
 import { PackBody } from '../game/PackPanel';
 import PhoneChat from './PhoneChat';
+import PhoneCharacters from './PhoneCharacters';
 import PhoneDock from './PhoneDock';
 import PhoneHeader from './PhoneHeader';
 import PhoneLoops from './PhoneLoops';
@@ -33,6 +34,9 @@ import PhoneTerminal from './PhoneTerminal';
 export interface PhoneShellProps {
   api: Pick<IpcApi, 'input' | 'stopMoving' | 'routeTo' | 'walkRoute'>;
   session: SessionId;
+  /** Every character in this window, and the choice of which one shows. */
+  sessions: readonly SessionSummary[];
+  onSelect(session: SessionId): void;
   view: SessionView;
   loops: Pick<LoopsModalState, 'rows' | 'loading' | 'load'>;
   chooseLoop(choice: LoopChoice, destination: LoopDestination): void;
@@ -53,6 +57,8 @@ const TAB_ICONS: Record<PhoneTab, string> = {
 function PhoneShell({
   api,
   session,
+  sessions,
+  onSelect,
   view,
   loops,
   chooseLoop,
@@ -61,6 +67,9 @@ function PhoneShell({
   openRouteOn
 }: PhoneShellProps) {
   const [tab, setTab] = useState<PhoneTab>('terminal');
+  const [picking, setPicking] = useState(false);
+  const pick = useCallback(() => setPicking(true), []);
+  const unpick = useCallback(() => setPicking(false), []);
   const keyboard = useKeyboardHeight();
   const send = useCallback((line: string) => void api.input(session, `${line}\r`), [api, session]);
   const stop = useCallback(() => void api.stopMoving(session), [api, session]);
@@ -77,7 +86,7 @@ function PhoneShell({
       data-tab={tab}
       style={{ height: keyboard.height }}
     >
-      <PhoneHeader character={character} compact={keyboard.up} />
+      <PhoneHeader character={character} compact={keyboard.up} onPick={pick} />
       <main className="phone-page">
         {tab === 'terminal' && <PhoneTerminal lines={view.lines} />}
         {tab === 'chat' && <PhoneChat self={character.name} talk={view.talk} />}
@@ -107,6 +116,14 @@ function PhoneShell({
           />
         )}
       </main>
+      {picking && (
+        <PhoneCharacters
+          active={session}
+          onClose={unpick}
+          onSelect={onSelect}
+          sessions={sessions}
+        />
+      )}
       {(tab === 'terminal' || tab === 'chat') && <PhoneDock send={send} talking={tab === 'chat'} />}
       {!keyboard.up && (
         <nav aria-label={t('phone.nav.aria')} className="phone-nav phone-glass">

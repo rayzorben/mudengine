@@ -1195,6 +1195,10 @@ loops:
 # The phone shell: the interface of a small touch window.
 phone:
   noName: Not logged in
+  pick: Switch character
+  characters:
+    aria: Characters
+    none: No character is open.
   noRoom: Room not known
   nav:
     aria: Tabs

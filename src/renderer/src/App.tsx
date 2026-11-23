@@ -29,6 +29,7 @@ import { useToolbarPins } from './hooks/useToolbarPins';
 import { type TerminalHandle } from './components/TerminalView';
 import { useConfig } from './hooks/useConfig';
 import { useConnection } from './hooks/useConnection';
+import { useConsoleResize } from './hooks/useConsoleResize';
 import { useDiagnosticFeeds } from './hooks/useDiagnosticFeeds';
 import { useNameIndexes } from './hooks/useNameIndexes';
 import { useNavigationVisible } from './hooks/useNavigationVisible';
@@ -559,6 +560,7 @@ export default function App() {
     api,
     sessions,
     railOpen,
+    phoneShown: phone,
     streamFloating: cards.floatOf('stream') !== undefined,
     debugOpen,
     patchView
@@ -789,17 +791,7 @@ export default function App() {
 
   const handleInput = useCallback((id: SessionId, data: string) => api.input(id, data), [api]);
 
-  const handleResize = useCallback(
-    (id: SessionId, next: TerminalSize) => {
-      // The status rail describes the slate in front of you, so it follows the
-      // shown character. Every session still reports its own geometry: they
-      // share a box, so the numbers agree — but each says so for itself, which
-      // is the shape that stays correct once panes can differ.
-      if (id === activeRef.current) setSize(next);
-      api.resize(id, next);
-    },
-    [api]
-  );
+  const handleResize = useConsoleResize(api, activeRef, setSize);
 
   const toggleDebug = useCallback(() => setDebugOpen((open) => !open), []);
 
@@ -1306,8 +1298,10 @@ export default function App() {
           loadMap={loadMap}
           loops={loopsModal}
           openRouteOn={openRouteOn}
+          onSelect={showSession}
           searchRooms={searchRooms}
           session={session}
+          sessions={sessions}
           view={view}
         />
       )}

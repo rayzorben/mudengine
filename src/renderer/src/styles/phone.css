@@ -359,3 +359,72 @@
   color: var(--on-accent);
   font-weight: 700;
 }
+
+/* ------------------------------------------------------- character switcher */
+
+.phone-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  padding: calc(var(--phone-target) + 2 * var(--phone-gap)) var(--phone-gap) 0;
+  background: var(--game-glass);
+}
+
+.phone-sheet {
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: var(--phone-radius);
+}
+
+.phone-sheet button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  background: transparent;
+}
+
+.phone-sheet button[aria-current='true'] {
+  background: var(--game-line);
+}
+
+.phone-sheet small {
+  display: block;
+  color: var(--game-faint);
+  font-size: 11px;
+}
+
+.phone-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--game-faint);
+}
+
+.phone-sheet button[data-phase='connected'] .phone-dot {
+  background: var(--ok);
+}
+
+.phone-shell button.phone-who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+/* The desktop's status bar overlaid the phone's command field and tabs. */
+.app[data-view='phone'] > .status-rail {
+  display: none;
+}

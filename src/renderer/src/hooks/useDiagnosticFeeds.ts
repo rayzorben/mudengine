@@ -19,6 +19,8 @@ export interface DiagnosticFeedInputs {
   sessions: readonly Pick<SessionSummary, 'id'>[];
   /** The diagnostics rail, which draws the Stream card. */
   railOpen: boolean;
+  /** The phone shell, whose Terminal tab reads the lines. */
+  phoneShown: boolean;
   /** Whether the shown character has the Stream card floating. */
   streamFloating: boolean;
   debugOpen: boolean;
@@ -30,6 +32,7 @@ export function useDiagnosticFeeds({
   api,
   sessions,
   railOpen,
+  phoneShown,
   streamFloating,
   debugOpen,
   patchView
@@ -65,7 +68,7 @@ export function useDiagnosticFeeds({
    * retained lines rather than replaying the pushes missed while it was
    * closed.
    */
-  const wantsLineFeed = railOpen || streamFloating || pinnedStreams.size > 0;
+  const wantsLineFeed = railOpen || phoneShown || streamFloating || pinnedStreams.size > 0;
   /*
    * And the debug feed, which is a *second* flag.
    *

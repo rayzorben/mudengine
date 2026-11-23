@@ -34,15 +34,30 @@ function Ring({
   );
 }
 
-function PhoneHeader({ character, compact }: { character: CharacterState; compact: boolean }) {
+function PhoneHeader({
+  character,
+  compact,
+  onPick
+}: {
+  character: CharacterState;
+  compact: boolean;
+  /** Opens the character switcher. */
+  onPick(): void;
+}) {
   const { vitals, room } = character;
   return (
     <header className="phone-header phone-glass" data-compact={compact ? 'true' : undefined}>
       <Ring kind="hp" max={vitals.hpMax} value={vitals.hp} />
-      <div className="phone-who">
+      <button
+        aria-haspopup="true"
+        className="phone-who"
+        title={t('phone.pick')}
+        onClick={onPick}
+        type="button"
+      >
         <b>{character.name ?? t('phone.noName')}</b>
         {!compact && <small>{room.name ?? t('phone.noRoom')}</small>}
-      </div>
+      </button>
       {vitals.mana !== null && <Ring kind="mana" max={vitals.manaMax} value={vitals.mana} />}
     </header>
   );
