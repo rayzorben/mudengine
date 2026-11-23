@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fraction, phoneWanted, runsOf } from '../phone';
+import { fraction, keyboardUp, phoneWanted, runsOf } from '../phone';
 
 describe('phoneWanted', () => {
   it('follows the media query without a flag', () => {
@@ -48,5 +48,17 @@ describe('runsOf', () => {
   it('drops cursor sequences and gives nothing for an empty line', () => {
     expect(runsOf('\x1b[79D\x1b[Kready')).toEqual([{ text: 'ready', tone: null, bold: false }]);
     expect(runsOf('')).toEqual([]);
+  });
+});
+
+describe('keyboardUp', () => {
+  it('needs a focused field and a clearly shorter window', () => {
+    expect(keyboardUp(600, 900, true)).toBe(true);
+    expect(keyboardUp(600, 900, false)).toBe(false);
+  });
+
+  it('does not take the browser bars for a keyboard', () => {
+    expect(keyboardUp(860, 900, true)).toBe(false);
+    expect(keyboardUp(900, 900, true)).toBe(false);
   });
 });

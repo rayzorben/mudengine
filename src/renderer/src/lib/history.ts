@@ -133,7 +133,7 @@ export interface HistoryTarget {
 
 export function historyIntent(event: HistoryKey, target: HistoryTarget | null): HistoryIntent {
   if (!event.ctrlKey && !event.metaKey) return null;
-  if (typing(target)) return null;
+  if (takesText(target)) return null;
 
   const key = event.key.toLowerCase();
   if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
@@ -142,7 +142,8 @@ export function historyIntent(event: HistoryKey, target: HistoryTarget | null): 
   return null;
 }
 
-function typing(target: HistoryTarget | null): boolean {
+/** Whether a keystroke or a focus on this takes text, so a soft keyboard comes up for it. */
+export function takesText(target: HistoryTarget | null): boolean {
   if (target === null) return false;
   if (target.isContentEditable === true) return true;
   const tag = (target.tagName ?? '').toUpperCase();

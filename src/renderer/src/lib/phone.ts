@@ -81,3 +81,15 @@ export function runsOf(line: string): Run[] {
   push(line.length);
   return runs;
 }
+
+/**
+ * Under this share of the resting height, with a field focused, the bottom of the
+ * window is covered. Gboard in portrait is about a third of a phone's height, so a
+ * keyboard leaves about 0.66; the browser's own bars take a few percent.
+ */
+const KEYBOARD_SHARE = 0.8;
+
+/** Whether a touch keyboard is up: a field has focus and the visible height has shrunk. */
+export function keyboardUp(visible: number, resting: number, fieldFocused: boolean): boolean {
+  return fieldFocused && visible < resting * KEYBOARD_SHARE;
+}

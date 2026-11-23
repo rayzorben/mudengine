@@ -5,27 +5,16 @@
  * at full height, so a fixed-height shell would slide under the keys. The
  * shell takes this height instead, which keeps the command field on the keys
  * at whatever size the keyboard is.
+ *
+ * A keyboard is up only while a text field has focus and the visible height
+ * has fallen well under what it was with none focused. Comparing against the
+ * window's own height reported a keyboard on the user's phone (2026-11-23) with
+ * none showing, and hid the tab bar; the figures there were not captured.
  */
-import { useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-/**
- * Under this share of the window's height, something is covering the bottom of it. Gboard in
- * portrait is about 270 dp on a screen of about 800 dp, a third, so a keyboard leaves about 0.66;
- * 0.75 sits between that and a bare address bar, which takes a few percent.
- */
-const KEYBOARD_SHARE = 0.75;
-
-function subscribe(notify: () => void): () => void {
-  const viewport = window.visualViewport;
-  viewport?.addEventListener('resize', notify);
-  window.addEventListener('resize', notify);
-  return () => {
-    viewport?.removeEventListener('resize', notify);
-    window.removeEventListener('resize', notify);
-  };
-}
-
-const height = (): number => Math.round(window.visualViewport?.height ?? window.innerHeight);
+import { takesText, targetOf } from '../lib/history';
+import { keyboardUp } from '../lib/phone';
 
 export interface KeyboardView {
   /** Pixels visible. */
@@ -33,7 +22,38 @@ export interface KeyboardView {
   up: boolean;
 }
 
+const visibleHeight = (): number => Math.round(window.visualViewport?.height ?? window.innerHeight);
+
+const typing = (): boolean => takesText(targetOf(document.activeElement));
+
 export function useKeyboardHeight(): KeyboardView {
-  const visible = useSyncExternalStore(subscribe, height);
-  return { height: visible, up: visible < window.innerHeight * KEYBOARD_SHARE };
+  const [view, setView] = useState<KeyboardView>(() => ({ height: visibleHeight(), up: false }));
+  /** The visible height the last time no field had focus: the page's with the browser bars showing and no keyboard. */
+  const resting = useRef(visibleHeight());
+  /** The width it was taken at: a turned phone is a different page, whatever its keys are doing. */
+  const width = useRef(window.innerWidth);
+  useEffect(() => {
+    const update = () => {
+      const height = visibleHeight();
+      const focused = typing();
+      if (window.innerWidth !== width.current) {
+        width.current = window.innerWidth;
+        resting.current = window.innerHeight;
+      }
+      if (!focused) resting.current = height;
+      const up = keyboardUp(height, resting.current, focused);
+      setView((was) => (was.height === height && was.up === up ? was : { height, up }));
+    };
+    const viewport = window.visualViewport;
+    viewport?.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    document.addEventListener('focusin', update);
+    update();
+    return () => {
+      viewport?.removeEventListener('resize', update);
+      window.removeEventListener('resize', update);
+      document.removeEventListener('focusin', update);
+    };
+  }, []);
+  return view;
 }
