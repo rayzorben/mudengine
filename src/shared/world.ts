@@ -4032,6 +4032,20 @@ export interface RouteChances {
   walk: number | null;
 }
 
+/** An item a window asks main to fetch: the realm's id and name for it. */
+export interface WantedItem {
+  id: number;
+  name: string;
+}
+
+/** Narrows one payload entry into a `WantedItem`, or rejects it. */
+export function asWantedItem(value: unknown): WantedItem | null {
+  const asked = value as { id?: unknown; name?: unknown } | null;
+  const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
+  const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
+  return id === null || name.length === 0 ? null : { id, name };
+}
+
 /**
  * Narrows a payload that crossed the bridge into a `Route`, or rejects it.
  *

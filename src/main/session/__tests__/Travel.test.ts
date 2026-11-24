@@ -194,6 +194,7 @@ function travel(
     itemErrand: {
       running: false,
       collect: vi.fn<TravelParts['itemErrand']['collect']>(() => null),
+      acquire: vi.fn<TravelParts['itemErrand']['acquire']>(() => null),
       abandon: vi.fn()
     },
     questRunner: { running: false, abandon: vi.fn() },
@@ -580,6 +581,21 @@ describe('a route asked for with automation off', () => {
     expect(moving.collectThenWalk(items, route)).toBeNull();
     expect(switched).toEqual([]);
     expect(notices).toEqual([]);
+  });
+
+  it('acquires one item with automation switched on, owing no route', () => {
+    const {
+      travel: moving,
+      parts,
+      switched
+    } = travel(beside(), 'none', false, {
+      on: false,
+      writes: true
+    });
+    expect(moving.acquireItem(items[0]!)).toBeNull();
+    expect(switched).toEqual([true]);
+    expect(parts.itemErrand.acquire).toHaveBeenCalledWith(items[0], expect.anything());
+    expect(parts.itemErrand.collect).not.toHaveBeenCalled();
   });
 });
 

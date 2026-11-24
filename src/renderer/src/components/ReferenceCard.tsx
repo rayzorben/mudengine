@@ -1,3 +1,4 @@
+import type { AcquireItem } from '../lib/acquire';
 import type { SupplyList } from './SupplyControls';
 import { memo, useEffect, useMemo, useState } from 'react';
 
@@ -44,6 +45,8 @@ export interface ReferenceCardProps extends CardChrome {
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /** This character's supplies list and the write. See `ReferenceDetailProps`. */
   supplies?: SupplyList | null;
+  /** *Acquire item* on an item. Null for a character not shown. See `ReferenceDetailProps`. */
+  onAcquire?: AcquireItem | null;
 }
 
 /** A match's glyph, by what kind of thing it is, so a long list reads by shape. */
@@ -93,6 +96,7 @@ function ReferenceCard({
   onRoom = null,
   onName = null,
   supplies = null,
+  onAcquire = null,
   ...chrome
 }: ReferenceCardProps) {
   const [query, setQuery] = useState('');
@@ -171,6 +175,7 @@ function ReferenceCard({
             referred={found.referred}
             shopPlaces={found.shopPlaces ?? {}}
             supplies={supplies}
+            onAcquire={onAcquire}
           />
         )}
 

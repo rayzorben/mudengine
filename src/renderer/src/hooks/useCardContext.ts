@@ -7,6 +7,7 @@
  * Out of `App` (todo 733); `cardElement` draws from it. See `mudengine-ui` ›
  * *The window redraws what changed*.
  */
+import type { AcquireItem } from '../lib/acquire';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { CardChrome } from '../components/BentoCard';
@@ -108,6 +109,8 @@ export interface CardContext {
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
+  /** *Acquire item* on an item card, for the shown character. Null for a pinned float's, for `chooseOnMap`'s reason. */
+  acquireItem: AcquireItem | null;
   /**
    * A room pointed at on the map, and the pointer leaving it. Null for a
    * character not shown, for `chooseOnMap`'s reason: the panel asks that
@@ -359,6 +362,7 @@ export interface CardContextInputs
       | 'inspect'
       | 'goToRoom'
       | 'chooseOnMap'
+      | 'acquireItem'
       | 'peekRoom'
       | 'endPeek'
       | 'runHunt'
@@ -431,6 +435,7 @@ export function useCardContext({
   loadMap,
   lookupName,
   chooseOnMap,
+  acquireItem,
   peekRoom,
   endPeek,
   goToRoom,
@@ -682,6 +687,7 @@ export function useCardContext({
         shares: api,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
+        acquireItem: shown ? acquireItem : null,
         peekRoom: shown ? peekRoom : null,
         endPeek: shown ? endPeek : null,
         goToRoom: shown ? goToRoom : null,
@@ -792,6 +798,7 @@ export function useCardContext({
       builder,
       meter,
       chooseOnMap,
+      acquireItem,
       goToRoom,
       openBuilder,
       profileNameFor,

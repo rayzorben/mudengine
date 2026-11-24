@@ -1,4 +1,5 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
+import type { AcquireItem } from '../lib/acquire';
 import { Fragment, useState } from 'react';
 import EntityName, { type Inspect } from './EntityName';
 import { NameList } from './Sentence';
@@ -780,7 +781,8 @@ function ItemDetail({
   shopPlaces,
   onRoom,
   onResize,
-  supplies
+  supplies,
+  onAcquire
 }: {
   item: WorldItem;
   rarity: ItemRarity | null;
@@ -791,6 +793,7 @@ function ItemDetail({
   onRoom: ((map: number, room: number) => void) | null;
   onResize: (() => void) | null;
   supplies: SupplyList | null;
+  onAcquire: AcquireItem | null;
 }) {
   const nothing =
     item.weapon === undefined &&
@@ -804,7 +807,7 @@ function ItemDetail({
     !item.from?.length &&
     item.placed === undefined &&
     !item.abilities?.length;
-  if (nothing && supplies === null && rarity === null && seen.length === 0) {
+  if (nothing && supplies === null && onAcquire === null && rarity === null && seen.length === 0) {
     return <div className="empty">{t('cards.reference.item.noDetail')}</div>;
   }
 
@@ -816,6 +819,21 @@ function ItemDetail({
         control on it. The shops that sell it are the choices, from the same
         join `Sold by` below is drawn from.
       */}
+      {onAcquire !== null && (
+        <>
+          <dt>{t('cards.reference.item.acquireLabel')}</dt>
+          <dd>
+            <button
+              className="lookup"
+              onClick={() => onAcquire({ id: item.id, name: item.name })}
+              title={t('cards.reference.item.acquireTitle')}
+              type="button"
+            >
+              {t('cards.reference.item.acquireButton')}
+            </button>
+          </dd>
+        </>
+      )}
       {supplies !== null && (
         <SupplyControl
           name={item.name}
@@ -1243,6 +1261,11 @@ export interface ReferenceDetailProps {
    */
   supplies?: SupplyList | null;
   /**
+   * Go and get this item (*Acquire item*). Null where there is no shown
+   * character to send, for `supplies`' reason, and the button is not drawn.
+   */
+  onAcquire?: AcquireItem | null;
+  /**
    * Whether to draw the name row.
    *
    * False inside the slide-out panel, whose own heading carries the name — a
@@ -1273,6 +1296,7 @@ export default function ReferenceDetail({
   onResize = null,
   onAsk = null,
   supplies = null,
+  onAcquire = null,
   heading = true
 }: ReferenceDetailProps) {
   const names: EffectNames = { classNames, referred, onName };
@@ -1318,6 +1342,7 @@ export default function ReferenceDetail({
           realm={realm}
           shopPlaces={shopPlaces}
           supplies={supplies}
+          onAcquire={onAcquire}
         />
       )}
       {entry.kind === 'spell' && (

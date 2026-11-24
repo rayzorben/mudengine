@@ -221,6 +221,25 @@ describe('collecting what a route needs', () => {
     expect(decisions.at(-1)).toMatchObject({ action: 'collect', acted: true });
   });
 
+  /* *Acquire item*: the same fetch with no way owed, and a pack that holds it is said. */
+  it('acquires one item and walks nowhere after', () => {
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand();
+    expect(auto.acquire(KEY, ready())).toBeNull();
+    expect(bought).toHaveLength(1);
+    auto.onCharacter(carrying());
+    expect(walked).toHaveLength(0);
+    expect(auto.running).toBe(false);
+  });
+
+  it('says so when asked to acquire what the pack already holds', () => {
+    const auto = errand();
+    expect(auto.acquire(KEY, carrying())).toBe(
+      t('automation.collect.refusalAlreadyCarried', { item: KEY.name })
+    );
+    expect(bought).toHaveLength(0);
+  });
+
   /* *Run it* rides through the errand to the walk it ends in (todo 06). */
   it('carries a run through to the walk it ends in', () => {
     const runs: boolean[] = [];

@@ -116,7 +116,8 @@ import type {
   TrainerChoice,
   WardRule,
   WorldLookup,
-  WorldNames
+  WorldNames,
+  WantedItem
 } from './world';
 import type { FoundRoom } from './destinations';
 import type { RealmWorld } from './realm';
@@ -792,6 +793,13 @@ export const Invoke = {
    * Returns why it could not start, or null. See `SessionManager.collectThenWalk`.
    */
   collectThenWalk: 'walk:collect',
+  /**
+   * Go and get one item, with no route walked after: bought, asked for, or
+   * hunted from the dropper's lair, as *Collect it first* does for a door.
+   * The palette's *Acquire* row and the item card's button. Returns why it
+   * could not start, or null. See `Travel.acquireItem`.
+   */
+  acquireItem: 'walk:acquire',
   /**
    * What searching every room within so many steps would walk, for the
    * dialog: the room count, the walking, and the rooms left out and why.
@@ -1471,6 +1479,12 @@ export interface IpcApi {
     route: Route,
     run?: boolean
   ): Promise<string | null>;
+  /**
+   * Go and get one item and stop there: the errand `collectThenWalk` runs
+   * before a door, with nothing walked after. Resolves to why it could not
+   * start, or null.
+   */
+  acquireItem(session: SessionId, item: WantedItem): Promise<string | null>;
   /** What searching every room within `radius` steps would walk; null, the dialog's first radius. */
   previewAreaSearch(session: SessionId, radius: number | null): Promise<AreaSearchPreview>;
   /** Search every room within `radius` steps, `searches` times each; why not, or null. */

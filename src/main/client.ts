@@ -229,6 +229,7 @@ import { asMapAsk, NO_PIECE } from '../shared/mapPiece';
 import {
   asRoomIds,
   asRoute,
+  asWantedItem,
   COLLECT_ITEMS_MAX,
   EMPTY_LOOP_DRAFT,
   roomId,
@@ -2434,15 +2435,21 @@ function registerIpc(): void {
       }
       const wanted: Array<{ id: number; name: string }> = [];
       for (const item of items) {
-        const asked = item as { id?: unknown; name?: unknown } | null;
-        const id = typeof asked?.id === 'number' && Number.isFinite(asked.id) ? asked.id : null;
-        const name = typeof asked?.name === 'string' ? asked.name.trim() : '';
-        if (id === null || name.length === 0) return t('app.route.invalidPayload');
-        wanted.push({ id, name });
+        const one = asWantedItem(item);
+        if (one === null) return t('app.route.invalidPayload');
+        wanted.push(one);
       }
       return slot.manager.moves.collectThenWalk(wanted, route, run === true);
     }
   );
+  // One item, parsed as narrowly as `collectThenWalk`'s entries.
+  handle(Invoke.acquireItem, (_caller, session: SessionId, item: unknown) => {
+    const slot = host?.get(session);
+    if (!slot) return t('app.session.notConnected');
+    const wanted = asWantedItem(item);
+    if (wanted === null) return t('app.route.invalidPayload');
+    return slot.manager.moves.acquireItem(wanted);
+  });
   /*
    * The one play button and the one stop button.
    *

@@ -94,7 +94,8 @@ import {
   type Direction,
   type RoomId,
   type Route,
-  type TrailStep
+  type TrailStep,
+  type WantedItem
 } from '../../shared/world';
 
 /** `escapeRefusalSaid` for a character nothing is taking anywhere, which no room key can equal. */
@@ -244,7 +245,7 @@ export interface TravelParts {
   readonly hostTrips: Pick<HostTrips, 'busy' | 'abandon' | 'stop' | 'giveUp'>;
   readonly areaSearch: Pick<AreaSearch, 'busy' | 'abandon' | 'stop'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
-  readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
+  readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'acquire' | 'abandon'>;
   readonly questRunner: Pick<QuestRunner, 'running' | 'abandon'>;
   /** A light bought before a dark lap (todo 11). */
   readonly light: Pick<LightAhead, 'beforeLap'>;
@@ -2416,6 +2417,15 @@ export class Travel implements SessionModule {
         return this.itemErrand.collect(wanted, route, this.tracker.current, run);
       })
     );
+  }
+
+  /**
+   * Go and get one item, walking nowhere after: the item card's and the
+   * palette's *Acquire*. The same errand as *Collect it first*, with no way
+   * owed; switched on for the press like any route the player sends.
+   */
+  acquireItem(item: WantedItem): string | null {
+    return this.switchedOnFor(() => this.itemErrand.acquire(item, this.tracker.current));
   }
 
   /**

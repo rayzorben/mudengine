@@ -13,6 +13,7 @@
  */
 import type { Command, Found } from '../components/CommandPalette';
 import type { IconName } from '../components/Icon';
+import type { AcquireItem } from './acquire';
 import { t } from './i18n';
 import type { PopoverAnchor } from './popover';
 import { entryNumber, entryWord, flattenLookup } from './reference';
@@ -37,6 +38,8 @@ export interface PaletteFindDeps {
   inspect(name: string, anchor: PopoverAnchor): void;
   /** The Find a monster dialog, opened on the monster named. */
   findMob(name: string): void;
+  acquire: AcquireItem;
+  /** Go and get the item, buying, asking or hunting as the realm allows. */
 }
 
 /**
@@ -88,6 +91,11 @@ function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
   };
 }
 
+/** `acquire black star key` asks the realm about the key, not about the word. */
+function withoutVerb(query: string): string {
+  return query.replace(/^\s*acquire(?:\s+item)?\s+/i, '');
+}
+
 /**
  * What the realm knows by a name typed into the palette: a monster, an item,
  * a spell, offered as rows that open the same quick view a clicked name does.
@@ -101,7 +109,7 @@ function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
  */
 export async function realmRows(query: string, deps: PaletteFindDeps): Promise<Command[]> {
   const { api, session, inspect } = deps;
-  const entries = flattenLookup(await api.lookup(session, query));
+  const entries = flattenLookup(await api.lookup(session, withoutVerb(query)));
   return entries.slice(0, tuning().paletteFoundRows).flatMap((entry, index) => {
     const kindWord = entryWord(entry);
     const number = entityNumber(entryNumber(entry));
@@ -160,7 +168,25 @@ export async function realmRows(query: string, deps: PaletteFindDeps): Promise<C
             }
           ]
         : [];
-    return [row, ...find];
+    /*
+     * An item gets a row that goes and gets it, beside its quick view:
+     * `ItemErrand` buys it, asks for it or hunts the lair that drops it, as it
+     * does for a door. Typing `acquire black star key` reaches it too (`withoutVerb`).
+     */
+    const acquire: Command[] =
+      entry.kind === 'item'
+        ? [
+            {
+              id: `acquire:item:${index}`,
+              icon: 'bag',
+              transient: true,
+              label: t('palette.navigate.acquireRow', { name: entry.name }),
+              hint: t('palette.navigate.acquireHint'),
+              run: () => deps.acquire({ id: entry.item.id, name: entry.item.name })
+            }
+          ]
+        : [];
+    return [row, ...find, ...acquire];
   });
 }
 

@@ -83,7 +83,8 @@ import { useTheme } from './hooks/useTheme';
 import { useStreamPressure } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
 import { paletteCommands, paletteKeys, type PaletteDeps } from './lib/palette';
-import { paletteFind } from './lib/paletteFind';
+import { useAcquireItem } from './hooks/useAcquireItem';
+import { usePaletteFind } from './hooks/usePaletteFind';
 import { statusAction } from './lib/statusAction';
 import {
   AUTOMATION_SWITCH_NAMES,
@@ -128,11 +129,8 @@ export default function App() {
   const [size, setSize] = useState<TerminalSize>({ cols: 80, rows: 24 });
 
   /**
-   * Every mounted terminal, by character.
-   *
-   * They all stay mounted (see `SessionTerminal`), so this is how the window
-   * reaches the one it is showing — to focus it, to search it, or to print an
-   * engine message into it.
+   * Every mounted terminal, by character. They all stay mounted (see
+   * `SessionTerminal`); this reaches the shown one to focus, search or print.
    */
   const terminals = useRef(new Map<SessionId, TerminalHandle>());
   /** A sentence into one character's console: a refusal, said where it applies. */
@@ -499,12 +497,8 @@ export default function App() {
   /** The route panel opened on a room pointed at, by a map, a name or a quest step. */
   const { chooseOnMap, chooseRoomNamed, goToRoom } = useRouteOpeners({ api, session, openRouteOn });
   /**
-   * Where this realm's find log says something was turned up, for the route
-   * panel's picture — the mark the Map card draws from the same log.
-   *
-   * Here because the panel belongs to the character on screen; a *card*
-   * computes its own, addressed at the character it was drawn for, as every
-   * other world fact in this file is.
+   * Where the find log turned something up, for the route panel's picture.
+   * Here because the panel is the shown character's; a card computes its own.
    */
   const foundRooms = useMemo(() => [...roomsWithFinds(view.finds)], [view.finds]);
 
@@ -515,13 +509,8 @@ export default function App() {
   const { browsing, close: closeBrowser, reveal } = useHomeBrowser(returnFocus);
 
   /**
-   * Say the client is ready exactly once.
-   *
-   * It used to be announced by the terminal registering, which was one event
-   * while there was one terminal. There are now several, and each of them
-   * announcing would be several — the autoconnect latch in main is built for
-   * exactly that mistake, but relying on it would be relying on someone else's
-   * guard rather than not making the noise.
+   * Say the client is ready exactly once: several terminals register, and
+   * each announcing would be several (main's autoconnect latch is a backstop).
    */
   useEffect(() => {
     api.clientReady();
@@ -750,10 +739,15 @@ export default function App() {
   const settingsApi = useSettingsApi(api, reveal);
 
   /** What a typed query reaches past the commands (`lib/paletteFind.ts`). */
-  const findFromPalette = useCallback(
-    (query: string) => paletteFind(query, { api, session, openRouteOn, inspect, ...trips.opens }),
-    [api, session, openRouteOn, inspect, trips.opens]
-  );
+  const acquireItem = useAcquireItem(api, session, noticeTo);
+  const findFromPalette = usePaletteFind({
+    api,
+    session,
+    openRouteOn,
+    inspect,
+    findMob: trips.opens.findMob,
+    acquire: acquireItem
+  });
 
   /** The console's own name index, per character. */
   const nameIndexes = useNameIndexes(api, sessions, views);
@@ -992,6 +986,7 @@ export default function App() {
     loadMap,
     lookupName,
     chooseOnMap,
+    acquireItem,
     peekRoom,
     endPeek,
     goToRoom,
@@ -1337,6 +1332,7 @@ export default function App() {
         returnFocus={returnFocus}
         say={noticeTo}
         slot={slideOuts}
+        acquire={acquireItem}
         supplies={suppliesBundle(session)}
         views={views}
       />

@@ -532,6 +532,7 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           onRoom={ctx.chooseOnMap}
           realm={character.realm}
           supplies={ctx.chooseOnMap === null ? null : ctx.supplies}
+          onAcquire={ctx.acquireItem}
         />
       );
     case 'conversation':

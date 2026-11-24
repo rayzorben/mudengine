@@ -59,6 +59,7 @@ export const RELAY_INVOKE: { readonly [K in keyof typeof Invoke]: RelayRule } = 
   walkPage: forward,
   walkRoute: forward,
   collectThenWalk: forward,
+  acquireItem: forward,
   previewAreaSearch: forward,
   searchArea: forward,
   previewMobFind: forward,

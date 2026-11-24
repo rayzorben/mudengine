@@ -51,6 +51,7 @@ function deps(
   const openRouteOn = vi.fn<PaletteFindDeps['openRouteOn']>();
   const inspect = vi.fn<PaletteFindDeps['inspect']>();
   const findMob = vi.fn<PaletteFindDeps['findMob']>();
+  const acquire = vi.fn<PaletteFindDeps['acquire']>();
   const walkRoute = vi.fn(async () => answers.walk ?? { started: true as const });
   const handed: PaletteFindDeps = {
     api: {
@@ -67,9 +68,10 @@ function deps(
     session: HERO,
     openRouteOn,
     inspect,
-    findMob
+    findMob,
+    acquire
   };
-  return { handed, openRouteOn, inspect, walkRoute, findMob };
+  return { handed, openRouteOn, inspect, walkRoute, findMob, acquire };
 }
 
 describe('the palette query, as found blocks', () => {
@@ -156,7 +158,10 @@ describe('what the realm knows by the query', () => {
       name: `ring ${at}`
     }));
     const { handed } = deps({ lookup: { ...NOTHING, items: many } });
-    expect(await realmRows('ring', handed)).toHaveLength(tuning().paletteFoundRows);
+    const rows = await realmRows('ring', handed);
+    expect(rows.filter((row) => row.id.startsWith('lookup:'))).toHaveLength(
+      tuning().paletteFoundRows
+    );
   });
 
   it('offers a find beside a monster with a regen time of its own and more than one lair', async () => {
@@ -197,5 +202,34 @@ describe('what the realm knows by the query', () => {
     };
     row?.run(from);
     expect(inspect).toHaveBeenCalledWith('torch', from);
+  });
+});
+
+describe('acquire item', () => {
+  it('offers the errand beside an item, by the realm id, and none beside a spell', async () => {
+    const { handed, acquire } = deps({
+      lookup: {
+        ...NOTHING,
+        items: [{ id: 4211, name: 'black star key' }],
+        spells: [{ id: 52, name: 'magic armour' }]
+      }
+    });
+    const rows = await realmRows('black', handed);
+    expect(rows.filter((row) => row.id.startsWith('acquire:')).map((row) => row.id)).toEqual([
+      'acquire:item:0'
+    ]);
+    rows.find((row) => row.id === 'acquire:item:0')?.run();
+    expect(acquire).toHaveBeenCalledWith({ id: 4211, name: 'black star key' });
+  });
+
+  it('asks the realm about the item when the query begins with the word acquire', async () => {
+    const asked: string[] = [];
+    const { handed } = deps();
+    handed.api.lookup = async (_session, query) => {
+      asked.push(query);
+      return NOTHING;
+    };
+    await realmRows('acquire black star key', handed);
+    expect(asked).toEqual(['black star key']);
   });
 });

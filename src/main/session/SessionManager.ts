@@ -487,7 +487,7 @@ export class SessionManager {
   /** Walking, looping and running away, and what a lost connection carries. See `Travel`. */
   private readonly travel: Travel;
   /** The window's presses that are Travel's alone: Collect then walk, Walk On Without the Party. */
-  readonly moves: Pick<Travel, 'collectThenWalk' | 'walkOnWithoutParty'>;
+  readonly moves: Pick<Travel, 'collectThenWalk' | 'acquireItem' | 'walkOnWithoutParty'>;
   /** What was underway, kept in the character's record across a relaunch. See `CarryOver`. */
   private readonly carryOver: CarryOver;
   /** The timed passage the character stands in, said going in and coming out. */

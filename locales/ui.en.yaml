@@ -1630,6 +1630,8 @@ palette:
     findMobLabel: Find a monster…
     findMobRow: 'Find {name}'
     findMobHint: '{count} lairs'
+    acquireRow: 'Acquire item: {name}'
+    acquireHint: buy it, ask for it or hunt it
   noMatches: No matching command, and nothing in the world database by that name.
   findFailed: 'The world database could not be searched: {reason}'
   pin:
@@ -3751,6 +3753,9 @@ cards:
         showFewer: Show fewer
       shopPlaces: (in {count} places)
       shopRouteTitle: Plan a route to {room}
+      acquireLabel: Get it
+      acquireButton: Acquire item
+      acquireTitle: Buy it, ask for it or hunt the monster that drops it, then stop
       soldByLabel: Sold by
       usesLabel: Uses
       usesMany: '{count} charges'
@@ -7091,6 +7096,7 @@ automation:
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
     loopName: 'Collect: {item}'
     refusalBusy: Something is already being collected.
+    refusalAlreadyCarried: You already carry {item}.
     refusalCombatOff: 'Not collecting: it means killing {mob}, and auto-combat is off. Turn auto-combat on and try again.'
     replacingLap: Stopping {loopName} to go and get it; it will not restart on its own.
     refusalLapStopped: The hunt for {item} stopped before you had one.

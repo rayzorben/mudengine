@@ -8,6 +8,7 @@
  * `mudengine-ui` › *A listing and the detail chosen from it: two cards, and a
  * flyout*.
  */
+import type { AcquireItem } from '../lib/acquire';
 import { useCallback } from 'react';
 
 import GangFlyout from './GangFlyout';
@@ -37,6 +38,8 @@ export interface SlideOutsProps {
   lookup: ReferencePopoverProps['lookup'];
   loadRoomBrief: RoomQuickViewProps['load'];
   supplies: ReferencePopoverProps['supplies'];
+  /** *Acquire item* on a clicked item, for the shown character. */
+  acquire: AcquireItem;
   /** A command through the shown character's queue: a monster's word asked from the reference. */
   ask(command: string): void;
   /** The route panel on a room: a shop in *Sold by* opens it. */
@@ -56,6 +59,7 @@ export default function SlideOuts({
   lookup,
   loadRoomBrief,
   supplies,
+  acquire,
   ask,
   chooseOnMap,
   remotesFor,
@@ -123,6 +127,7 @@ export default function SlideOuts({
           }}
           realm={character.realm}
           supplies={supplies}
+          onAcquire={acquire}
         />
       )}
 

@@ -39,6 +39,7 @@ export function cardInputs(
     loadMap: pending,
     lookupName: pending,
     chooseOnMap: noop,
+    acquireItem: noop,
     peekRoom: noop,
     endPeek: noop,
     goToRoom: noop,

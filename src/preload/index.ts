@@ -61,6 +61,7 @@ const api: WireApi = {
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
   collectThenWalk: (session, items, route, run) =>
     ipcRenderer.invoke(Invoke.collectThenWalk, session, items, route, run),
+  acquireItem: (session, item) => ipcRenderer.invoke(Invoke.acquireItem, session, item),
   previewAreaSearch: (session, radius) =>
     ipcRenderer.invoke(Invoke.previewAreaSearch, session, radius),
   searchArea: (session, radius, searches) =>

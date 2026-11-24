@@ -1,3 +1,4 @@
+import type { AcquireItem } from '../lib/acquire';
 import type { SupplyList } from './SupplyControls';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -58,6 +59,8 @@ export interface ReferencePopoverProps {
   onName?: ((name: string, anchor: HTMLElement) => void) | null;
   /** This character's supplies list and the write. See `ReferenceDetailProps`. */
   supplies?: SupplyList | null;
+  /** *Acquire item* on an item. Null for a character not shown. See `ReferenceDetailProps`. */
+  onAcquire?: AcquireItem | null;
   /** Asks the monster about a word, by the name that was clicked. See `ReferenceDetailProps`. */
   onAsk?: ((word: string) => void) | null;
   onDismiss(): void;
@@ -88,6 +91,7 @@ export default function ReferencePopover({
   onName = null,
   onDismiss,
   supplies = null,
+  onAcquire = null,
   onAsk = null
 }: ReferencePopoverProps) {
   const [entry, setEntry] = useState<ReferenceEntry | null | 'pending'>('pending');
@@ -219,6 +223,7 @@ export default function ReferencePopover({
             referred={referred}
             shopPlaces={shopPlaces}
             supplies={supplies}
+            onAcquire={onAcquire}
           />
         )}
       </div>

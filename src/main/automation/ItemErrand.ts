@@ -227,6 +227,17 @@ export class ItemErrand implements SessionModule {
   }
 
   /**
+   * Go and get one item and walk nowhere after (the palette's and the item
+   * card's *Acquire*). A press, so a pack that already holds it is answered
+   * rather than left silent as `collect` does for a quest run.
+   */
+  acquire(item: Wanted, state: CharacterState): string | null {
+    if (!short(state, item))
+      return t('automation.collect.refusalAlreadyCarried', { item: item.name });
+    return this.collect([item], null, state);
+  }
+
+  /**
    * Go and get every one of `items`, one after another, then walk `owes`.
    *
    * Returns a refusal for the window that asked — this is a press, so the
