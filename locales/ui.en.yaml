@@ -7093,6 +7093,7 @@ automation:
     waitingForParty: '{item} is in your inventory; the way is walked once the party is ready.'
     hunting: 'Looking for {item}: {mob} drops it, starting at {room}, {steps} steps away.'
     huntingHere: 'Looking for {item}: {mob} drops it, starting here in {room}.'
+    campingHere: 'Looking for {item}: {mob} drops it, and {room} is the only room in reach where it spawns, so the loop waits here for it.'
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
     loopName: 'Collect: {item}'
     refusalBusy: Something is already being collected.

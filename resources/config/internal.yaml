@@ -811,6 +811,10 @@ tuning:
     partyDamageStep: 0.1
     trivialShare: 0.1
     clusterRadius: 30
+    # How far, in steps, a collect loop looks for more lairs when the ring at
+    # clusterRadius found only one. Only used then; a wider ring is a longer
+    # walk between stops.
+    lonelyLairRadius: 90
     fillerRadius: 8
     sizeTolerance: 0.05
     # A hunt's measured exp an hour, per character and spot: trusted for a week,

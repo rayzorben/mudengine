@@ -513,6 +513,16 @@ describe('collecting what a route needs', () => {
     expect(bought).toHaveLength(0);
   });
 
+  it('says it is waiting for a spawn when the one lair in reach is the room it stands in', () => {
+    const where = { item: KEY.name, mob: 'zombie', room: 'Graveyard' };
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 0 }])
+    };
+    errand().collect([KEY], OWED, ready());
+    expect(notices).toContain(t('automation.collect.campingHere', where));
+  });
+
   /* Zero and one are facts, not figures: three literal sentences. */
   it('says where the hunt starts without printing 0 or 1 as a count of steps', () => {
     const where = { item: KEY.name, mob: 'zombie', room: 'Graveyard' };
@@ -524,7 +534,10 @@ describe('collecting what a route needs', () => {
       notices = [];
       sources = {
         shops: [],
-        ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps }])
+        ...dropped([
+          { id: '1/816', name: 'Graveyard', mob: 'zombie', steps },
+          { id: '1/817', name: 'Crypt', mob: 'zombie', steps: steps + 5 }
+        ])
       };
       errand().collect([KEY], OWED, ready());
       expect(notices).toContain(said);

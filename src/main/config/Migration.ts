@@ -9024,6 +9024,8 @@ function theTuningBlockGainedKeys(
     addKey('world', 'keptLegs', DEFAULT_INTERNAL.tuning.world.keptLegs);
     // How much of a round a blessing cast in a fight may go in (2026-11-21).
     addKey('spells', 'blessOffRoundShare', DEFAULT_INTERNAL.tuning.spells.blessOffRoundShare);
+    // A collect loop whose ring held one lair looks this far for more (2026-11-24).
+    addKey('hunting', 'lonelyLairRadius', DEFAULT_INTERNAL.tuning.hunting.lonelyLairRadius);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

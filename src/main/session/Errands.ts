@@ -2132,9 +2132,19 @@ export class Errands implements SessionModule {
     const shops = world.buyingPlaces(item.id, here, to, traveller);
     // And where saying something gets it, walked as the counter is (todo 806).
     const asks = world.itemAsks(item.id, here, traveller);
-    const { maxLoopRooms, clusterRadius } = tuning().hunting;
-    const ring = { rooms: maxLoopRooms, radius: clusterRadius };
-    const drops = world.droppingPlaces(item, here, this.lapTraveller(state), ring);
+    const { maxLoopRooms, clusterRadius, lonelyLairRadius } = tuning().hunting;
+    const lap = this.lapTraveller(state);
+    const near = world.droppingPlaces(item, here, lap, {
+      rooms: maxLoopRooms,
+      radius: clusterRadius
+    });
+    // One lair in reach is a one-stop loop that waits for a spawn: look wider
+    // before settling for it, and keep it when nothing wider turns up.
+    const wide =
+      near.lairs.length === 1
+        ? world.droppingPlaces(item, here, lap, { rooms: maxLoopRooms, radius: lonelyLairRadius })
+        : near;
+    const drops = wide.lairs.length > 1 ? wide : near;
     return { shops, asks, droppers: drops.droppers, lairs: drops.lairs };
   }
 

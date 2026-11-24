@@ -455,7 +455,9 @@ export class ItemErrand implements SessionModule {
     const where = { item: item.name, mob, room: lair.name };
     this.events.notice?.(
       lair.steps === 0
-        ? t('automation.collect.huntingHere', where)
+        ? sources.lairs.length === 1
+          ? t('automation.collect.campingHere', where)
+          : t('automation.collect.huntingHere', where)
         : lair.steps === 1
           ? t('automation.collect.huntingNextDoor', where)
           : t('automation.collect.hunting', { ...where, steps: lair.steps })

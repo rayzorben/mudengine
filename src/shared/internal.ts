@@ -991,6 +991,14 @@ const TUNING_DEFAULTS = {
      * out-and-back guess. Measured 0.8ms a sweep at thirty on Paradigm.
      */
     clusterRadius: 30,
+    /**
+     * How far, in steps, a collect loop looks for more lairs when the ring
+     * at `clusterRadius` found only one: a dark monk drops the black serpent
+     * key and Western Road, Fork was the one room in reach, one spawn in
+     * seven, so Yang stood there for hours. Only widened where the ring held
+     * a single room; a wider ring is a longer walk between stops.
+     */
+    lonelyLairRadius: 90,
     /** How far off the ring a filler lair may lie, in steps, out and back. */
     fillerRadius: 8,
     /**
