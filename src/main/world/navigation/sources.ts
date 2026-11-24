@@ -1,9 +1,10 @@
 /**
  * Every way the realm gives an item, one table: a counter that sells it, a
  * word that hands it over, a monster that drops it (where the realm puts it,
- * where its summoner is, where a room's words call it up) and a monster whose
- * death hands it over. Each is a room to go to and what to do there; what it
- * costs this character and whether they can win the fight is the planner's.
+ * where its group wanders in, where its summoner is, where a room's words
+ * call it up) and a monster whose death hands it over. Each is a room to go
+ * to and what to do there; what it costs this character and whether they can
+ * win the fight is the planner's.
  */
 import {
   asRoomReference,
@@ -27,6 +28,8 @@ export interface SourceRealm {
   droppers(item: number): readonly WorldMob[];
   summonersOf(mob: WorldMob): readonly WorldMob[];
   spawnRoomsOf(mob: WorldMob): ReadonlyArray<{ room: WorldRoom }>;
+  /** The rooms with no lair the monster's group may put it in (`WorldRoom.wanderers`). */
+  wanderRoomsOf(mob: WorldMob): readonly WorldRoom[];
 }
 
 export type ItemSource =
@@ -37,6 +40,8 @@ export type ItemSource =
    * Kill `monster` in the room for it. `summon` is what brings it there first:
    * a room's words, or the death of the monster that summons it. `certain`
    * marks a death that always hands the item over; a drop may not come.
+   * `wander` marks a room the realm does not place it in: its group may put
+   * it there as a player walks in, one of the group's rows at a time.
    */
   | {
       kind: 'kill';
@@ -44,6 +49,7 @@ export type ItemSource =
       room: RoomId;
       summon?: { say: string } | { by: string };
       certain?: true;
+      wander?: true;
     };
 
 /** What to say at a source: an ask's words, or the words that summon its dropper. */
@@ -130,8 +136,15 @@ export class ItemSources {
       }
     }
     for (const mob of this.realm.droppers(item)) {
+      const placed = new Set<RoomId>();
       for (const { room } of this.realm.spawnRoomsOf(mob)) {
+        placed.add(roomId(room.map, room.room));
         add({ kind: 'kill', monster: mob.name, room: roomId(room.map, room.room) });
+      }
+      for (const room of this.realm.wanderRoomsOf(mob)) {
+        const id = roomId(room.map, room.room);
+        // A resident's room is the stronger claim, as a lair's is.
+        if (!placed.has(id)) add({ kind: 'kill', monster: mob.name, room: id, wander: true });
       }
       // A dropper only ever summoned is where its summoner is (todo 806).
       for (const by of this.realm.summonersOf(mob)) {

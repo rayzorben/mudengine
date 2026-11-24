@@ -13,7 +13,8 @@ const ROOMS = [
   room(1, 3),
   room(1, 4, { commands: [{ say: ['ring bell'], summons: [30] }] }),
   room(1, 5),
-  room(1, 6)
+  room(1, 6),
+  room(1, 7)
 ];
 const ogre = mob('ogre', [30]);
 const shaman = mob('shaman', [31]);
@@ -31,7 +32,9 @@ const realm: SourceRealm = {
       : [],
   droppers: (item) => (item === 7 ? [ogre] : []),
   summonersOf: (who) => (who === ogre ? [shaman] : []),
-  spawnRoomsOf: (who) => (who === ogre ? [{ room: ROOMS[4]! }] : [{ room: ROOMS[1]! }])
+  spawnRoomsOf: (who) => (who === ogre ? [{ room: ROOMS[4]! }] : [{ room: ROOMS[1]! }]),
+  // The ogre's group wanders into the room it lives in too, and into one more.
+  wanderRoomsOf: (who) => (who === ogre ? [ROOMS[4]!, ROOMS[6]!] : [])
 };
 
 describe('every way the realm gives an item', () => {
@@ -43,6 +46,7 @@ describe('every way the realm gives an item', () => {
       { kind: 'ask', room: '1/3', say: 'pull ring' },
       { kind: 'kill', monster: 'lich', room: '1/6', certain: true },
       { kind: 'kill', monster: 'ogre', room: '1/5' },
+      { kind: 'kill', monster: 'ogre', room: '1/7', wander: true },
       { kind: 'kill', monster: 'ogre', room: '1/2', summon: { by: 'shaman' } },
       { kind: 'kill', monster: 'ogre', room: '1/4', summon: { say: 'ring bell' } }
     ]);
@@ -53,8 +57,18 @@ describe('every way the realm gives an item', () => {
       null,
       null,
       null,
+      null,
       'ring bell'
     ]);
+  });
+
+  /* A room the dropper lives in is listed once, as its placement. */
+  it('lists a room the dropper only wanders into, and never its own room twice', () => {
+    const kills = new ItemSources(realm).of(7).filter((source) => source.kind === 'kill');
+    expect(kills.filter((source) => source.room === '1/5')).toEqual([
+      { kind: 'kill', monster: 'ogre', room: '1/5' }
+    ]);
+    expect(kills).toContainEqual({ kind: 'kill', monster: 'ogre', room: '1/7', wander: true });
   });
 
   /* A death that hands a key over is a place to get it. */

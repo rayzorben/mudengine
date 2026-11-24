@@ -1758,10 +1758,14 @@ describe('the shipped realm data', () => {
     const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
     const head = { id: 1152, name: 'saracen head' };
     const found = realm!.droppingPlaces(head, roomId(12, 59), festus, ring);
-    expect(found.droppers).toEqual([{ mob: 'saracen raider', placed: 16 }]);
-    // Half the ring is behind doors this traveller cannot force, with no
-    // strength or picklocks on record, which the sweep skips (2026-10-02).
-    expect(found.lairs).toHaveLength(4);
+    // 16 lairs, and 40 rooms of the quarters its group wanders into (2026-11-24).
+    expect(found.droppers).toEqual([{ mob: 'saracen raider', placed: 56 }]);
+    // Half the ring's lairs are behind doors this traveller cannot force, with
+    // no strength or picklocks on record, which the sweep skips (2026-10-02);
+    // rooms the raider wanders into fill the other four stops.
+    expect(found.lairs).toHaveLength(8);
+    const lairs = found.lairs.filter((lair) => realm!.byId(lair.id)?.lair !== undefined);
+    expect(lairs).toHaveLength(4);
     for (const lair of found.lairs) {
       expect(lair).toMatchObject({ mob: 'saracen raider' });
       expect(lair.id.startsWith('12/')).toBe(true);
@@ -1772,7 +1776,7 @@ describe('the shipped realm data', () => {
     // A room nothing leads out of: placed all the same, and nowhere to go. (The
     // Filthy Room, 17/2020, has the old man's `portal` since format 73.)
     const shut = realm!.droppingPlaces(head, roomId(12, 1172), festus, ring);
-    expect(shut).toEqual({ droppers: [{ mob: 'saracen raider', placed: 16 }], lairs: [] });
+    expect(shut).toEqual({ droppers: [{ mob: 'saracen raider', placed: 56 }], lairs: [] });
     // Nothing drops a thing nobody drops, and it is said as that.
     expect(
       realm!.droppingPlaces({ id: 9, name: 'grey robes' }, roomId(12, 59), festus, ring)

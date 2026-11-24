@@ -238,6 +238,56 @@ describe('a plan made whole before the first step', () => {
     const far = 5 + survivalCost + 10;
     expect(killed(plan(ogreOrTroll(far), ogreLoses, 'here', 'goal', nobody))).toBe('ogre');
   });
+
+  /*
+   * A room the dropper's group only wanders into is where it turns up one
+   * pass in ten at best, so the plan goes to a lair however much nearer the
+   * wanderers' room is, and to the wanderers' room where no lair is reached.
+   */
+  const lairOrRoad = (lairReached: boolean): PlanRealm => ({
+    ...realm,
+    sources: (item): readonly ItemSource[] =>
+      item === 2
+        ? [
+            { kind: 'kill', monster: 'troll', room: 'road', wander: true },
+            { kind: 'kill', monster: 'troll', room: 'far' }
+          ]
+        : realm.sources(item),
+    sweep: (_from, rooms) =>
+      new Map(
+        [...rooms]
+          .filter((room) => lairReached || room !== 'far')
+          .map((room) => [room, { cost: room === 'far' ? 500 : 5 }])
+      )
+  });
+  const killedIn = (made: ReturnType<typeof plan>): string | undefined =>
+    made.kind === 'plan'
+      ? made.steps.flatMap((each) => (each.kind === 'kill' ? [each.room] : []))[0]
+      : undefined;
+
+  it('goes to a lair before a nearer room the dropper only wanders into', () => {
+    expect(killedIn(plan(lairOrRoad(true), odds(WON), 'here', 'goal', nobody))).toBe('far');
+  });
+
+  it('goes to the room the dropper wanders into where no lair is reached', () => {
+    expect(killedIn(plan(lairOrRoad(false), odds(WON), 'here', 'goal', nobody))).toBe('road');
+  });
+
+  /* The rule is between one item's sources: the cheapest item still comes first. */
+  it('fetches a nearer item had only from wanderers before a farther one from a lair', () => {
+    const twoKeys: PlanRealm = {
+      ...lairOrRoad(true),
+      sources: (item): readonly ItemSource[] =>
+        item === 1
+          ? [{ kind: 'kill', monster: 'ogre', room: 'road', wander: true }]
+          : [{ kind: 'kill', monster: 'troll', room: 'far' }]
+    };
+    const made = plan(twoKeys, odds(WON), 'here', 'goal', nobody);
+    expect(
+      made.kind === 'plan' &&
+        made.steps.flatMap((each) => (each.kind === 'kill' ? [each.room] : []))
+    ).toEqual(['road', 'far']);
+  });
 });
 
 /* Todo 20261021-1200-01: the Silver River without a raft. */

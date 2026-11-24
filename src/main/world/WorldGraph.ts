@@ -18,6 +18,7 @@ import type { BuiltExit } from './buildRealm';
 import { scriptAfter } from './navigation/scriptWays';
 import { ItemSources, spokenFor, type ItemSource } from './navigation/sources';
 import { planRealmOf } from './navigation/realm';
+import { SpawnRooms, type MobSpawnRoom } from './spawnRooms';
 import type { NavigationOracle } from '../../shared/navigation';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
@@ -249,8 +250,8 @@ export class WorldGraph {
   private readonly resolvedRows = new Map<string, MobRowChoice | null>();
   /** Shop name → its rooms, built on the first ask: most sessions never open a Reference card. */
   private shopRoomsByName: Map<string, WorldRoom[]> | null = null;
-  /** Monster number → its spawn rooms, built on the first ask: one scan for every monster, never one per name. */
-  private mobRoomsById: Map<number, MobSpawnRoom[]> | null = null;
+  /** Where the realm puts each monster row (`spawnRooms.ts`). */
+  private readonly spawnRooms: SpawnRooms;
   /** Item id → the rooms whose counter stocks it, built on the first ask: a shop name is not a room. */
   private stocking: Record<'sold' | 'taken', Map<number, WorldRoom[]>> | null = null;
   /** Every way the realm gives an item (`navigation/sources.ts`). */
@@ -261,7 +262,8 @@ export class WorldGraph {
     handovers: (item) => this.catalogue.item(item)?.from ?? [],
     droppers: (item) => this.sourcesOf({ id: item }).mobs.flatMap((name) => this.mob(name) ?? []),
     summonersOf: (mob) => this.catalogue.summonersOf(mob),
-    spawnRoomsOf: (mob) => this.spawnRoomsOf(mob)
+    spawnRoomsOf: (mob) => this.spawnRooms.of(mob),
+    wanderRoomsOf: (mob) => this.spawnRooms.wanderedInto(mob)
   });
   /** The items that are a way through, as edges from everywhere to one room, built once and shared. */
   private landings: ReadonlyArray<PortalExit> | null = null;
@@ -289,6 +291,7 @@ export class WorldGraph {
 
   constructor(catalogue: Catalogue, quests?: unknown) {
     this.catalogue = catalogue;
+    this.spawnRooms = new SpawnRooms(() => this.rooms.values(), catalogue);
     this.joiners = new Joiners(catalogue);
     // Here rather than beside the field, so every table the router holds
     // exists whatever order the fields above are declared in.
@@ -336,7 +339,7 @@ export class WorldGraph {
       roomsById: this.rooms,
       spellOver: (room) => this.spellOver(room),
       mobPlaces: (mob) => this.mobPlaces(mob),
-      spawnRoomsOf: (mob) => this.spawnRoomsOf(mob),
+      spawnRoomsOf: (mob) => this.spawnRooms.of(mob),
       itemSources: (item) => this.sources.of(item),
       shopPlace: (name) => this.shopPlace(name),
       placingHandovers: (item) => this.placingHandovers(item),
@@ -682,9 +685,8 @@ export class WorldGraph {
      * the sweep tests each room against a handful of addresses.
      */
     const targets = new Map<RoomId, number>();
-    const spawns = this.mobRooms();
     for (const id of wanted) {
-      for (const entry of spawns.get(id) ?? []) {
+      for (const entry of this.spawnRooms.ofRow(id)) {
         const at = roomId(entry.room.map, entry.room.room);
         // First writer wins, so a room two rows both spawn in resolves to
         // neither: it is added under the first and read back as a tie below.
@@ -965,7 +967,7 @@ export class WorldGraph {
    * nowhere when the data says it is summoned or scripted in.
    */
   mobPlaces(mob: WorldMob, groups = 12, perGroup = 12): MobPlaces | undefined {
-    const found = this.spawnRoomsOf(mob);
+    const found = this.spawnRooms.of(mob);
     if (found.length === 0) return undefined;
 
     /*
@@ -1045,49 +1047,10 @@ export class WorldGraph {
    */
   lairRoomsOf(mob: WorldMob): RoomId[] {
     const rooms = new Set<RoomId>();
-    for (const entry of this.spawnRoomsOf(mob)) {
+    for (const entry of this.spawnRooms.of(mob)) {
       if (entry.via === 'lair') rooms.add(roomId(entry.room.map, entry.room.room));
     }
     return [...rooms];
-  }
-
-  /**
-   * Every placement of this monster, one entry per room and slot, uncapped.
-   * A name can hold several of the realm's rows (five `cocoon`s), each placed
-   * separately, so every id behind the name contributes, asked of the id
-   * index. Through the fold, not the argument: `mobAt` hands back a copy
-   * re-answered by one row, and an identity test against it matches nothing
-   * (the card lost its `spawns in` list the day rooms began resolving names).
-   * Where one row was resolved, only that row's rooms are this monster's.
-   */
-  private spawnRoomsOf(mob: WorldMob): MobSpawnRoom[] {
-    const found: MobSpawnRoom[] = [];
-    const fold = this.catalogue.mob(mob.name);
-    const only = mob.row?.id;
-    for (const [id, rooms] of this.mobRooms()) {
-      if (only !== undefined ? id !== only : this.catalogue.mobById(id) !== fold) continue;
-      found.push(...rooms);
-    }
-    return found;
-  }
-
-  /** The reverse index, built on the first ask. See `mobPlaces`. */
-  private mobRooms(): Map<number, MobSpawnRoom[]> {
-    if (this.mobRoomsById !== null) return this.mobRoomsById;
-    const index = new Map<number, MobSpawnRoom[]>();
-    const put = (id: number, entry: MobSpawnRoom): void => {
-      const bucket = index.get(id);
-      if (bucket === undefined) index.set(id, [entry]);
-      else bucket.push(entry);
-    };
-    for (const room of this.rooms.values()) {
-      if (room.npcId !== undefined) put(room.npcId, { room, via: 'npc', max: null });
-      if (room.lair === undefined) continue;
-      const { max, ids } = parseLair(room.lair);
-      for (const id of ids) put(id, { room, via: 'lair', max });
-    }
-    this.mobRoomsById = index;
-    return index;
   }
 
   private shopsByName(): Map<string, WorldRoom[]> {
@@ -2198,20 +2161,6 @@ export class WorldGraph {
   itemSources(item: number): ItemSource[] {
     return this.sources.of(item);
   }
-}
-
-/**
- * One room the realm spawns a monster in, before the grouping.
- *
- * The room itself rather than its address, because the group is keyed on the
- * room's *name* and re-reading it out of the index per entry would be a lookup
- * per room in a scan built to avoid exactly that.
- */
-interface MobSpawnRoom {
-  room: WorldRoom;
-  via: MobSpawn['via'];
-  /** The lair's slot count; null for a resident, which has no such figure. */
-  max: number | null;
 }
 
 /**

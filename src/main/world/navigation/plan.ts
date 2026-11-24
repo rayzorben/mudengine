@@ -268,6 +268,11 @@ function fightsOf(source: ItemSource): string[] {
     : [source.monster];
 }
 
+/** Whether the source is a kill in a room the monster's group only wanders into. */
+function wanders(source: ItemSource): boolean {
+  return source.kind === 'kill' && source.wander === true;
+}
+
 type Leg =
   { kind: 'leg'; steps: PlanStep[]; cost: number } | { kind: 'refused'; refusal: PlanRefusal };
 
@@ -636,6 +641,7 @@ function acquire(
         .filter((source) => item.at === undefined || source.room === item.at);
       if (sources.length === 0) refuse({ kind: 'no-source', item });
       const reach = realm.sweep(at, new Set(sources.map((source) => source.room)), holding);
+      const had: typeof candidates = [];
       for (const source of sources) {
         const priced = source.room === at ? { cost: 0 } : reach.get(source.room);
         if (priced === undefined || priced.cost >= tuning().world.wallCost) {
@@ -647,13 +653,17 @@ function acquire(
           continue;
         }
         const step = actionAt(realm, oracle, source, item);
-        candidates.push({
+        had.push({
           item,
           source,
           price: priced.cost + sourceFights(source, step, holding),
           step
         });
       }
+      // A room the dropper only wanders into is taken only when no other
+      // source of that item is in reach.
+      const placed = had.filter((candidate) => !wanders(candidate.source));
+      candidates.push(...(placed.length > 0 ? placed : had));
     }
     candidates.sort((a, b) => a.price - b.price);
     let best: {

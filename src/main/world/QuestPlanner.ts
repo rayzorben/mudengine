@@ -920,7 +920,8 @@ export class QuestPlanner {
     ring: { rooms: number; radius: number }
   ): DropSources {
     // The kills the table lists (`navigation/sources.ts`): where the realm
-    // places a dropper, where a death hands the item over, and, for a dropper
+    // places a dropper, where its group may put it as a player walks in,
+    // where a death hands the item over, and, for a dropper
     // the realm places nowhere, where the monster that summons it on dying
     // lives (todo 806). A summons by words is an ask, found by `itemAsks`.
     const kills = this.index
@@ -931,23 +932,31 @@ export class QuestPlanner {
           : []
       );
     const placedAt = new Map<string, Set<RoomId>>();
+    const wanderedAt = new Map<string, Set<RoomId>>();
     for (const kill of kills) {
       if (kill.summon !== undefined || kill.certain === true) continue;
-      placedAt.set(kill.monster, (placedAt.get(kill.monster) ?? new Set()).add(kill.room));
+      const rooms = kill.wander === true ? wanderedAt : placedAt;
+      rooms.set(kill.monster, (rooms.get(kill.monster) ?? new Set()).add(kill.room));
     }
     // Keyed by the monster's own name, which the table carries; a drop list
     // may spell it otherwise (`Catalogue.mob` reads either).
     const droppers: Dropper[] = this.catalogue.sourcesOf(item).mobs.map((mob) => {
       const own = this.catalogue.mob(mob)?.name ?? mob;
-      return { mob, placed: placedAt.get(own)?.size ?? 0 };
+      return {
+        mob,
+        placed: (placedAt.get(own)?.size ?? 0) + (wanderedAt.get(own)?.size ?? 0)
+      };
     });
     const spawns = new Map<RoomId, { room: WorldRoom; mob: string; via?: string }>();
     const summoned = new Map<RoomId, { room: WorldRoom; mob: string; via: string }>();
+    // The rooms a dropper's group only wanders into (`ItemSource.wander`).
+    const wandered = new Map<RoomId, { room: WorldRoom; mob: string }>();
     for (const kill of kills) {
       const room = this.index.roomsById.get(kill.room);
       if (room === undefined) continue;
       if (kill.summon === undefined) {
-        if (!spawns.has(kill.room)) spawns.set(kill.room, { room, mob: kill.monster });
+        const into = kill.wander === true ? wandered : spawns;
+        if (!into.has(kill.room)) into.set(kill.room, { room, mob: kill.monster });
       } else if ('by' in kill.summon && (placedAt.get(kill.monster)?.size ?? 0) === 0) {
         if (!summoned.has(kill.room)) {
           summoned.set(kill.room, { room, mob: kill.monster, via: kill.summon.by });
@@ -955,27 +964,41 @@ export class QuestPlanner {
       }
     }
     for (const [id, place] of summoned) if (!spawns.has(id)) spawns.set(id, place);
-    if (spawns.size === 0) return { droppers, lairs: [] };
-    const priced = [...this.router.sweepTo(from, new Set(spawns.keys()), traveller)].sort(
+    const places: typeof spawns = new Map([...wandered, ...spawns]);
+    if (places.size === 0) return { droppers, lairs: [] };
+    const priced = [...this.router.sweepTo(from, new Set(places.keys()), traveller)].sort(
       (a, b) => a[1].cost - b[1].cost || a[1].moves - b[1].moves || a[0].localeCompare(b[0])
     );
-    const first = priced[0];
+    /*
+     * The ring starts at the cheapest room the realm places a dropper in, and
+     * the rooms its group wanders into fill what the ring has left: a lair
+     * lists the monster for every slot, a room of wanderers draws one of the
+     * group's rows at `WANDERER_CHANCE` a pass. Where no placement is in
+     * reach the ring is the wanderers' rooms alone.
+     */
+    const { wallCost } = tuning().world;
+    const first = priced.find(([id, { cost }]) => spawns.has(id) && cost < wallCost) ?? priced[0];
     if (first === undefined) return { droppers, lairs: [] };
     const around = this.router.withinSteps(first[0], ring.radius, traveller);
-    const lairs = priced
-      .filter(([id]) => around.has(id))
-      .sort(
-        (a, b) => around.get(a[0])! - around.get(b[0])! || priced.indexOf(a) - priced.indexOf(b)
-      )
+    const rank = new Map(priced.map(([id], index) => [id, index]));
+    const walkedOut = (a: RoomId, b: RoomId): number =>
+      around.get(a)! - around.get(b)! || rank.get(a)! - rank.get(b)!;
+    const inRing = priced.filter(([id]) => around.has(id)).sort((a, b) => walkedOut(a[0], b[0]));
+    const lairs = [
+      ...inRing.filter(([id]) => spawns.has(id)),
+      ...inRing.filter(([id]) => !spawns.has(id))
+    ]
       .slice(0, Math.max(1, ring.rooms))
+      .sort((a, b) => walkedOut(a[0], b[0]))
       .map(([id, { moves }]) => {
-        const place = spawns.get(id)!;
+        const place = places.get(id)!;
         return {
           id,
           name: place.room.name,
           mob: place.mob,
           steps: moves,
-          ...('via' in place ? { via: place.via } : {})
+          ...('via' in place ? { via: place.via } : {}),
+          ...(spawns.has(id) ? {} : { wander: true as const })
         };
       });
     return { droppers, lairs };

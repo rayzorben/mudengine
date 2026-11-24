@@ -201,6 +201,7 @@ import {
   roomAddress,
   roomId,
   routeFares,
+  placedStops,
   type BuyingPlace,
   type CashPlace,
   type FightOdds,
@@ -2138,13 +2139,13 @@ export class Errands implements SessionModule {
       rooms: maxLoopRooms,
       radius: clusterRadius
     });
-    // One lair in reach is a one-stop loop that waits for a spawn: look wider
-    // before settling for it, and keep it when nothing wider turns up.
+    // One lair in reach waits for a spawn, whatever wanderers' rooms fill the
+    // loop: look wider first, and keep it when nothing wider turns up.
     const wide =
-      near.lairs.length === 1
+      placedStops(near) === 1
         ? world.droppingPlaces(item, here, lap, { rooms: maxLoopRooms, radius: lonelyLairRadius })
         : near;
-    const drops = wide.lairs.length > 1 ? wide : near;
+    const drops = placedStops(wide) > 1 ? wide : near;
     return { shops, asks, droppers: drops.droppers, lairs: drops.lairs };
   }
 

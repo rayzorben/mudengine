@@ -1095,6 +1095,11 @@ export interface DropPlace {
    * leader is the slaver leader's death spell. Absent for a placed dropper.
    */
   via?: string;
+  /**
+   * The realm places the dropper in no slot of this room: its group may put
+   * it here as a player walks in (`WorldRoom.wanderers`).
+   */
+  wander?: true;
 }
 
 /**
@@ -1117,7 +1122,10 @@ export interface ItemAsk {
 export interface Dropper {
   /** As the realm spells it. */
   mob: string;
-  /** How many rooms the realm spawns it in, reachable or not; 0 for one only ever summoned. */
+  /**
+   * How many rooms the realm spawns it in, reachable or not, the rooms its
+   * group wanders into counted; 0 for one only ever summoned.
+   */
   placed: number;
 }
 
@@ -1134,9 +1142,15 @@ export interface DropSources {
   /**
    * The ring nearest the character: the cheapest placement to reach and the
    * placements within `hunting.clusterRadius` of it, capped, in the order a
-   * lap walks out from the first.
+   * lap walks out from the first. The rooms a dropper's group wanders into
+   * fill what the placements leave of the cap.
    */
   lairs: readonly DropPlace[];
+}
+
+/** How many stops of the ring the realm places a dropper in, wanderers' rooms left out. */
+export function placedStops(drops: DropSources): number {
+  return drops.lairs.filter((lair) => lair.wander !== true).length;
 }
 
 /** `Shops.ShopType` as words, sampled name by name (see `buildRealm.ts`). */
