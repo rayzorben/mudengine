@@ -119,6 +119,10 @@ app:
     invalidId: A character's file name may only use letters, numbers, - and _.
     missingId: Give the character a File Name.
     loadFailed: 'Character not loaded: {error}'
+    closedTabsNotSaved: 'The list of closed character tabs could not be saved: {message}'
+    closedTabsUnreadable:
+      'The list of closed character tabs could not be read, so every character is shown:
+      {message}'
     noSuchCharacter: No such character.
     stillConnected: '{name} is still connected.'
   transfer:
@@ -1142,6 +1146,11 @@ notices:
         session sees is still shown.
       readError: Could not read {fileName} ({message}). Bank balances and worn slots are not saved
         until it can be read; what this session sees is still shown.
+      zeroDurationsRemoved:
+        many: '{fileName} held {count} spell durations of 0 seconds, which an earlier version
+          wrote and which stopped the record saving. They are removed.'
+        one: '{fileName} held a spell duration of 0 seconds, which an earlier version wrote and
+          which stopped the record saving. It is removed.'
       saveError: 'Could not save {fileName}: {message}'
       setAside: '{fileName} held the record for {other}. It is kept as {asideName}, and comes back
         when this character plays there again; {fileName} now holds the record for {realm}.'

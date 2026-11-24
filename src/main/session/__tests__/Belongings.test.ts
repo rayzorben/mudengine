@@ -907,3 +907,32 @@ describe('what this character hid', () => {
     expect(book.recallStash()).toEqual([]);
   });
 });
+
+/*
+ * Festus's record stopped saving on 2026-11-01: a spell duration rounded to 0
+ * had been written, and the reader refused the file for it.
+ */
+describe('a record holding a spell duration of 0', () => {
+  it('drops it, says so, and goes on saving', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: REALM,
+        banks: [balance()],
+        spellDurations: { bless: 41, knockdown: 0 }
+      })
+    );
+    const said: string[] = [];
+    const book = new Belongings({ file, realm: REALM, notify: (m: string) => said.push(m) });
+    expect(book.recallBanks()).toEqual([balance()]);
+    expect(said).toHaveLength(1);
+    book.rememberBanks([balance({ copper: 9 })]);
+    book.close();
+
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.spellDurations).toEqual({ bless: 41 });
+    expect(written.banks[0].copper).toBe(9);
+  });
+});

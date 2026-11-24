@@ -169,6 +169,7 @@ import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { attachSnapshot } from './session/attach';
 import { WindowRegistry } from './windows/WindowRegistry';
+import { ClosedTabs } from './windows/ClosedTabs';
 import { Workspace } from './windows/Workspace';
 import { quitGuard, type QuitAnswer } from './app/quit';
 import { FlightRecorder, mainThreadProfiler } from './app/FlightRecorder';
@@ -1465,10 +1466,10 @@ const DORMANT_PHASES = new Set(['idle', 'closed', 'error']);
  * A profile file is the statement that a character *exists*; a tab is the
  * statement that they are playing it now. Without this set, closing a tab would
  * be undone by the next directory poll, which is a close button that does not
- * close. Kept for the life of the process — which window layout persists across
- * restarts is step 5's problem, not this one's.
+ * close. Kept across restarts (`ClosedTabs`), or every character came back at the
+ * next launch.
  */
-const unloaded = new Set<SessionId>();
+const unloaded = new ClosedTabs((message) => notice(message));
 
 /**
  * A list of remotes off the wire, or `null` if any of it is not one.
@@ -1688,8 +1689,11 @@ function createProfiles(): ProfileStore {
   store.on('change', (snapshot) => {
     // A file that has come back is a character the player wants again; leaving
     // it in `unloaded` would make re-adding it silently do nothing.
-    for (const id of [...unloaded]) {
-      if (!snapshot.profiles.some((profile) => profile.id === id)) unloaded.delete(id);
+    // Not while a file fails to parse: that character is missing for now, not gone.
+    if (snapshot.errors.length === 0) {
+      for (const id of unloaded.all()) {
+        if (!snapshot.profiles.some((profile) => profile.id === id)) unloaded.delete(id);
+      }
     }
     syncSessions(snapshot);
     publishRosters();
@@ -4170,6 +4174,7 @@ function build(): void {
    * finding out at connect time is finding out too late.
    */
   realms.shippedGraph();
+  unloaded.open(home.state('closed-tabs.json'));
   workspace = new Workspace({
     mainWindowId: () => platform.mainWindowId(),
     allSessions: () => host?.summaries.map((entry) => entry.id) ?? [],

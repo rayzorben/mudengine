@@ -469,8 +469,21 @@ export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSin
     const fileName = path.basename(file);
     try {
       if (!fs.existsSync(file)) return null;
-      const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const mended = withoutZeroDurations(JSON.parse(fs.readFileSync(file, 'utf8')));
+      const parsed = mended.value;
       const fault = belongingsFault(parsed);
+      if (fault === null && mended.removed > 0) {
+        // Written now, so the repaired file is on disk before the next change.
+        this.schedule();
+        this.options.notify?.(
+          mended.removed === 1
+            ? t('notices.world.belongings.zeroDurationsRemoved.one', { fileName })
+            : t('notices.world.belongings.zeroDurationsRemoved.many', {
+                fileName,
+                count: mended.removed
+              })
+        );
+      }
       if (fault !== null) {
         this.suspended = true;
         const notSaved = t('notices.world.belongings.notSaved');
@@ -715,7 +728,7 @@ export function asidePath(file: string, realm: string): string {
 function readRecord(file: string): BelongingsFile | null {
   try {
     if (!fs.existsSync(file)) return null;
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const parsed = withoutZeroDurations(JSON.parse(fs.readFileSync(file, 'utf8'))).value;
     return isBelongingsFile(parsed) ? parsed : null;
   } catch {
     return null;
@@ -840,6 +853,32 @@ function isKnownSpell(value: unknown): value is KnownSpell {
     (spell.level === null || typeof spell.level === 'number') &&
     (spell.cost === null || typeof spell.cost === 'number')
   );
+}
+
+/**
+ * The parsed file without the spell durations of 0 or less. An earlier version
+ * wrote a rounded 0 (festus's `knockdown`, 2026-11-01), which `isDurationRecord`
+ * refuses, so the whole record stopped saving. The writer now refuses them
+ * (`rememberSpellDuration`); this repairs the files it had already written, on
+ * the player's own copies, which live on a host this change cannot reach.
+ * Exemption from the no-legacy rule, 2026-11-24: remove it once festus.json
+ * has been loaded under this version.
+ */
+function withoutZeroDurations(parsed: unknown): { value: unknown; removed: number } {
+  const durations =
+    typeof parsed === 'object' && parsed !== null
+      ? (parsed as { spellDurations?: unknown }).spellDurations
+      : undefined;
+  if (typeof durations !== 'object' || durations === null || Array.isArray(durations)) {
+    return { value: parsed, removed: 0 };
+  }
+  const entries = Object.entries(durations);
+  const kept = entries.filter(([, seconds]) => !(typeof seconds === 'number' && seconds <= 0));
+  if (kept.length === entries.length) return { value: parsed, removed: 0 };
+  return {
+    value: { ...(parsed as object), spellDurations: Object.fromEntries(kept) },
+    removed: entries.length - kept.length
+  };
 }
 
 function isDurationRecord(value: unknown): value is Record<string, number> {
