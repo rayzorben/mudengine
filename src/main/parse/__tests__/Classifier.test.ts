@@ -1971,6 +1971,13 @@ describe('a sysop command the realm refuses', () => {
       expect(classify(text).type, text).not.toBe('sys-refused');
     }
   });
+
+  /* Stock MajorMUD, OCI `logs/2026-11-25_00-18-38_yang.log:13216`, after `sys go s`. */
+  it('reads the teleport refused for an attack still on, and not the sentence quoted', () => {
+    const text = 'You may not be in autocombat when you do that.';
+    expectType(text, 'autocombat-refused');
+    expect(classify(`Yang says "${text}"`).type).not.toBe('autocombat-refused');
+  });
 });
 
 describe('spells', () => {

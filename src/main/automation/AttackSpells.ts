@@ -26,6 +26,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { attackChain } from '../../shared/attackChain';
+import { BREAK } from '../../shared/commands';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
@@ -105,9 +106,6 @@ export function isCastResult(block: Block): boolean {
 
 /** What *Auto Choose Best Spell* says about its pick or its refusal is under its own settings. */
 const AUTO_CHOOSE: DecisionKind = 'auto-choose-spell';
-
-/** The command that stops the spell the server repeats: MegaMUD's own. */
-const BREAK = 'break';
 
 /** A spell worth casting, by the name its casts are counted under, and the word that casts it. */
 interface Wanted {

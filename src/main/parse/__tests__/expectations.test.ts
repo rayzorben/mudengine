@@ -717,6 +717,19 @@ describe('a sys go the realm refused', () => {
     expect(memory.promised).toBeNull();
   });
 
+  /* Stock MajorMUD, an attack still on: OCI `logs/2026-11-25_00-18-38_yang.log:13216`. */
+  it('disarms them on the autocombat refusal echoed against the go, and not against another', () => {
+    const IN_AUTOCOMBAT = 'You may not be in autocombat when you do that.';
+    const memory = new Expectations();
+    heard(memory, 'status-line', '[HP=34]:pu wyvern');
+    memory.observeCommand('sys go 1 297', inGame);
+    heard(memory, 'autocombat-refused', IN_AUTOCOMBAT);
+    expect(memory.promised).toEqual({ map: 1, number: 297 });
+    heard(memory, 'status-line', '[HP=34]:sys go 1 297');
+    heard(memory, 'autocombat-refused', IN_AUTOCOMBAT);
+    expect(memory.promised).toBeNull();
+  });
+
   it('leaves them to no effect echoed against another command', () => {
     const memory = new Expectations();
     heard(memory, 'status-line', '[HP=34]:aa rat');

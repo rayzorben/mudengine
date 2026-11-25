@@ -2240,7 +2240,8 @@ export class AutoCombat implements SessionModule {
     if (command === null) return;
     this.owedBack();
     // A typed `break` ended it on purpose: nothing is owed back once the stand-down lapses.
-    if (commandOf(command) === 'Break') this.broken.forget();
+    // The client's own (`FleeGoto`'s, ahead of a teleport) starts no stand-down and stays owed.
+    if (commandOf(command) === 'Break' && this.stoodDown) this.broken.forget();
   }
 
   /** The broken fight's monsters are owed their attack, so no engage cooldown holds one back. */

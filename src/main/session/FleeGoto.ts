@@ -6,7 +6,8 @@
  * until the answer (`Travel.teleportSent`): a new room is the escape landing,
  * `Your command had no effect.` or `sys-refused` (a bad room) echoed against
  * it a refusal kept for the connection (the clock released), a death or
- * leaving the realm drops it, silence gives it up.
+ * leaving the realm drops it, silence gives it up. Refused for an attack
+ * still on (stock MajorMUD), it is sent again behind `break`.
  * Never on the ground. See `mudengine-automation` › `parts/safety.md`.
  */
 import { t } from '../app/i18n';
@@ -22,6 +23,7 @@ import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { Block, BlockType } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
+import { BREAK } from '../../shared/commands';
 import type { AutomationConfig } from '../../shared/config';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import { landed } from '../../shared/walk';
@@ -34,7 +36,8 @@ const ACTION = 'teleport';
 const REFUSALS: ReadonlySet<BlockType> = new Set([
   'command-no-effect',
   'sys-refused',
-  'command-refused'
+  'command-refused',
+  'autocombat-refused'
 ]);
 /**
  * The refusals of the command itself, true for the whole connection: not a
@@ -91,7 +94,16 @@ export class FleeGoto implements SessionModule {
     deadline: number;
     /** The echoes since the send, which pair a refusal with this command. */
     echo: EchoSince;
+    /** Whether `break` went ahead of it: refused for the attack again, it is not sent a third time. */
+    broke: boolean;
   } | null = null;
+  /**
+   * The realm refuses the teleport while the character's attack is on
+   * (`autocombat-refused`), learned from its answer and kept until the
+   * character leaves the realm: every teleport out of a fight after it goes
+   * behind `break`.
+   */
+  private breaksFirst = false;
   /** The retry floor, the retreat's own `cooldownMs`. */
   private lastAsked = 0;
   /**
@@ -129,6 +141,7 @@ export class FleeGoto implements SessionModule {
     this.lastAsked = 0;
     this.refused = null;
     this.saidThisFight = false;
+    this.breaksFirst = false;
   }
 
   /**
@@ -191,14 +204,39 @@ export class FleeGoto implements SessionModule {
       at: now,
       sent: false,
       deadline: now + tuning().session.retreatPatienceMs,
-      echo: new EchoSince(command)
+      echo: new EchoSince(command),
+      broke: false
     };
     this.awaiting = awaiting;
-    // Dropped at the send once it is settled or the character is down.
-    const stillWanted = (): boolean => this.awaiting === awaiting && !this.grounded.down;
     // The members are told first: one emergency band, sent in the order proposed.
-    const panic = panicCall(state, automation.party, why, stillWanted);
+    const panic = panicCall(state, automation.party, why, () => this.stillWanted(awaiting));
     if (panic !== null) this.queue.enqueue(panic);
+    this.send(awaiting);
+  }
+
+  /** Dropped at the send once it is settled or the character is down. */
+  private stillWanted(awaiting: NonNullable<FleeGoto['awaiting']>): boolean {
+    return this.awaiting === awaiting && !this.grounded.down;
+  }
+
+  /** The teleport into the emergency band, behind `break` where the realm refuses it with an attack on. */
+  private send(awaiting: NonNullable<FleeGoto['awaiting']>, refused = false): void {
+    const stillWanted = (): boolean => this.stillWanted(awaiting);
+    const { command, why } = awaiting;
+    // Out of a fight (a room that hurts) there is no attack to end, unless the realm just said so.
+    const state = this.tracker.current;
+    const fighting = state.inCombat || state.combat.attackers.length > 0;
+    if (refused || (this.breaksFirst && fighting)) {
+      awaiting.broke = true;
+      this.queue.enqueue({
+        command: BREAK,
+        priority: 'emergency',
+        coalesceKey: 'escape:teleport-break',
+        reason: t('session.safety.teleportBreakReason', { why }),
+        decision: 'teleport',
+        stillWanted
+      });
+    }
     this.queue.enqueue({
       command,
       priority: 'emergency',
@@ -244,6 +282,24 @@ export class FleeGoto implements SessionModule {
       return;
     }
     waiting.echo.heard(block, answering);
+    /*
+     * Stock MajorMUD refuses a teleport while the character's attack is on,
+     * and a step into the next room does not end the attack. Unread, yang
+     * waited `retreatPatienceMs` on it with every heal and swing stood down,
+     * and died in the next round (OmniverseBBS, 2026-11-25). The attack is
+     * ended and the teleport sent again at once, on the same sent clock.
+     */
+    if (block.type === 'autocombat-refused' && waiting.echo.answers && !waiting.broke) {
+      this.breaksFirst = true;
+      waiting.sent = false;
+      waiting.echo = new EchoSince(waiting.command);
+      this.session.notice(
+        t('session.safety.teleportBreaking', { command: waiting.command }),
+        'teleport'
+      );
+      this.send(waiting, true);
+      return;
+    }
     if (REFUSALS.has(block.type) && waiting.echo.answers) {
       this.awaiting = null;
       if (KEPT.has(block.type) && waiting.echo.echoed) this.refused = waiting.command;

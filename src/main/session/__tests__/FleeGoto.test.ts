@@ -397,6 +397,91 @@ describe('FleeGoto', () => {
     expect(sent).toHaveLength(2);
   });
 
+  /*
+   * yang on OmniverseBBS (stock MajorMUD), OCI
+   * `logs/2026-11-25_00-18-38_yang.log:13215`: `sys go s` one room on from the
+   * wyverns, answered `You may not be in autocombat when you do that.` in the
+   * same second, unread; the next round came four seconds later and killed him.
+   */
+  describe('refused for an attack still on', () => {
+    const REFUSAL = 'You may not be in autocombat when you do that.';
+    const config = settings({ command: 'sys go s' });
+
+    it('sends break and the teleport again at once, on the same sent clock', () => {
+      const { flee, tracker, sent, leave, answer, travel, notice } = rig(config);
+      flee.consider(tracker.current);
+      leave();
+      answer('command-echo', 'sys go s', undefined, null);
+      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
+      expect(sent.map((intent) => intent.command)).toEqual(['sys go s', 'break', 'sys go s']);
+      expect(sent[1]).toMatchObject({ priority: 'emergency', decision: 'teleport' });
+      // The heal and the swing stay stood down: the teleport is still on its way.
+      expect(travel.teleportRefused).not.toHaveBeenCalled();
+      expect(notice).toHaveBeenLastCalledWith(
+        t('session.safety.teleportBreaking', { command: 'sys go s' }),
+        'teleport'
+      );
+      leave();
+      answer('command-echo', 'sys go s', undefined, 'break');
+      answer('room-exits', 'Obvious exits: north', BANK, 'sys go s');
+      expect(travel.teleportLanded).toHaveBeenCalledWith(LAIR, Date.now());
+    });
+
+    it('sends break ahead of every teleport after it, until a reconnect', () => {
+      const { flee, tracker, sent, leave, answer } = rig(config);
+      flee.consider(tracker.current);
+      leave();
+      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
+      leave();
+      answer('room-exits', 'Obvious exits: north', BANK, 'sys go s');
+      sent.length = 0;
+      tracker.current = fighting(15);
+      vi.advanceTimersByTime(DEFAULT_CONFIG.automation.safety.retreat.cooldownMs);
+      flee.consider(tracker.current);
+      expect(sent.map((intent) => intent.command)).toEqual(['break', 'sys go s']);
+      leave();
+      answer('room-exits', 'Obvious exits: north', BANK, 'sys go s');
+      sent.length = 0;
+      flee.reset();
+      tracker.current = fighting(15);
+      flee.consider(tracker.current);
+      expect(sent.map((intent) => intent.command)).toEqual(['sys go s']);
+    });
+
+    it('is refused as any other once break went ahead of it, and tried again after the cooldown', () => {
+      const { flee, tracker, sent, leave, answer, travel, notice } = rig(config);
+      flee.consider(tracker.current);
+      leave();
+      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
+      leave();
+      // Positive control: the first refusal released nothing.
+      expect(travel.teleportRefused).not.toHaveBeenCalled();
+      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
+      expect(sent).toHaveLength(3);
+      expect(travel.teleportRefused).toHaveBeenCalledWith(Date.now());
+      expect(notice).toHaveBeenLastCalledWith(
+        t('session.safety.teleportRefused', { command: 'sys go s', answer: REFUSAL }),
+        'teleport'
+      );
+      vi.advanceTimersByTime(DEFAULT_CONFIG.automation.safety.retreat.cooldownMs);
+      flee.consider(tracker.current);
+      expect(sent.slice(3).map((intent) => intent.command)).toEqual(['break', 'sys go s']);
+    });
+
+    it('leaves the sentence echoed against another command to that command', () => {
+      const { flee, tracker, sent, leave, answer } = rig(config);
+      flee.consider(tracker.current);
+      leave();
+      answer('command-echo', 'sys go khaz', undefined, null);
+      answer('autocombat-refused', REFUSAL, undefined, 'sys go khaz');
+      expect(sent).toHaveLength(1);
+      // Positive control: echoed against the teleport, it is answered.
+      answer('command-echo', 'sys go s', undefined, null);
+      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
+      expect(sent).toHaveLength(3);
+    });
+  });
+
   it('is not sent once dropped, nor from the ground, however long the queue held it', () => {
     const { flee, tracker, sent, answer, grounded } = rig();
     flee.consider(tracker.current);

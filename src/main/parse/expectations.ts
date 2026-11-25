@@ -1136,12 +1136,14 @@ export class Expectations {
    * answer (the promise waits for a room, as before), and a bare prompt
    * repainted after an attack's echo, just before the go, gives the attack's
    * refusal to the go (its room resolves by name). Neither places a wrong room.
+   * `autocombat-refused` (stock MajorMUD, an attack still on) is paired the same way.
    */
   heard(block: Pick<Block, 'type' | 'text'>): void {
     const go = this.teleport?.go;
     if (go !== undefined) {
       go.heard(block, this.answering);
-      if (block.type === 'sys-refused' || (block.type === 'command-no-effect' && go.answers)) {
+      const moments = block.type === 'command-no-effect' || block.type === 'autocombat-refused';
+      if (block.type === 'sys-refused' || (moments && go.answers)) {
         this.teleport = null;
       }
     }

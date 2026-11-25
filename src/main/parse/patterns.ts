@@ -2017,6 +2017,14 @@ export const RULES: Rule[] = [
     pattern: /^(?:Map and\/or Room not found|Incorrect syntax|Command not allowed in live realm\.)$/
   },
   /*
+   * Stock MajorMUD's answer to a `sys go` sent while the character's attack is
+   * on. A step does not end the attack there: `*Combat Off*` comes with the
+   * next round, or at once after `break`. OCI's wire, eleven times on yang
+   * (`logs/2026-11-25_00-18-38_yang.log:13216`, after `sys go s` one room on
+   * from the fight) and once on soul.
+   */
+  { type: 'autocombat-refused', pattern: /^You may not be in autocombat when you do that\.$/ },
+  /*
    * The command was thrown away before the server even looked at it.
    *
    * `ActionFigure.CheckConfusion` runs at the top of `Player.HandleCommand` —

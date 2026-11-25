@@ -879,6 +879,9 @@ export const GREATERMUD_ONLY: ReadonlySet<CommandName> = new Set([
  */
 export const NOT_COMMANDS: readonly string[] = ['flee'];
 
+/** The command that ends the character's own attack or repeated spell: MegaMUD's own. */
+export const BREAK = 'break';
+
 /**
  * The command a line of input reaches, or `null` for a word the table has no
  * entry for.

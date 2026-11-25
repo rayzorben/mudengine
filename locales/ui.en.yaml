@@ -6831,6 +6831,9 @@ session:
     teleportReason: 'safety: teleport, {why}'
     panicReason: 'safety: @panic! to the party before the teleport, {why}'
     teleportRefused: 'The game refused {command}: {answer}'
+    # Stock MajorMUD refuses the teleport while the character's attack is on.
+    teleportBreaking: 'The game refused {command} with an attack on: sending break, then {command} again.'
+    teleportBreakReason: 'safety: break ahead of the teleport, {why}'
     teleportNot: 'Not teleporting: {why}, but {refused}.'
     teleportUnstated: no teleport command is stated for this realm or character
     teleportRefusedBefore: the game refused {command} earlier this session

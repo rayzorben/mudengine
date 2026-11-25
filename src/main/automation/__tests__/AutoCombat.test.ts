@@ -4909,6 +4909,16 @@ describe('a fight a heal broke', () => {
     expect(sent).toEqual(['aa big stitched zombie', 'aa big stitched zombie']);
   });
 
+  /* The teleport's `break` (`FleeGoto`, yang 2026-11-25): refused again, the fight is still here. */
+  it('goes back at the monster after a break the client sent itself', () => {
+    const auto = festus();
+    swungAt(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'break');
+    auto.onCharacter(fight(null, []));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie', 'aa big stitched zombie']);
+  });
+
   it('owes nothing in the next room', () => {
     const auto = festus();
     swungAt(auto);

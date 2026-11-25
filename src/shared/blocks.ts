@@ -802,6 +802,13 @@ export type BlockType =
    */
   | 'sys-refused'
   /**
+   * `You may not be in autocombat when you do that.` — stock MajorMUD refusing
+   * a `sys go` while the character's attack is still on, which a step into the
+   * next room does not end (yang on OmniverseBBS, 2026-11-25). A refusal
+   * for the moment: `break` ends the attack. See `FleeGoto.settle`.
+   */
+  | 'autocombat-refused'
+  /**
    * `Please be more specific.  You could have meant any of these:` — a look or
    * a command whose argument reached more than one thing.
    *
@@ -1166,6 +1173,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'command-fumbled': 'failure',
   'command-refused': 'failure',
   'sys-refused': 'failure',
+  'autocombat-refused': 'failure',
   'target-missing': 'failure',
   'target-ambiguous': 'failure',
   'open-failed': 'failure',
