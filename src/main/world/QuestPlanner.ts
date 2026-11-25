@@ -11,6 +11,8 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { droppersPerHour, pickRing } from './dropRing';
+import { residentClockSeconds, roomClockSeconds } from './itemRarity';
 import {
   earlierHandover,
   itemsBrought,
@@ -76,6 +78,7 @@ type PlannerCatalogue = Pick<
   | 'stockedBy'
   | 'stoppersOf'
   | 'summonersOf'
+  | 'supply'
 >;
 
 export class QuestPlanner {
@@ -887,7 +890,9 @@ export class QuestPlanner {
     lap: Traveller
   ): { mob: string; at: PlanPlace } | undefined {
     if (from !== null && this.rooms.has(from)) {
-      const first = this.droppingPlaces(item, from, lap, { rooms: 1, radius: 0 }).lairs[0];
+      // The ring the errand asks for (`Errands.itemSources`): the choice depends on it.
+      const { maxLoopRooms: rooms, clusterRadius: radius } = tuning().hunting;
+      const first = this.droppingPlaces(item, from, lap, { rooms, radius }).lairs[0];
       const at = first === undefined ? undefined : this.planPlace(first.id);
       if (first !== undefined && at !== undefined) return { mob: first.mob, at };
     }
@@ -902,10 +907,10 @@ export class QuestPlanner {
    * Where to go and kill for an item, from one room: the realm's every
    * placement of a dropper, priced from `from` with `Router.sweepTo` — the
    * router's units for the choice, moves for the sentence, a wall walked as the
-   * errand solver walks one — and the ring nearest: the cheapest placement to reach
-   * and the placements within `ring.radius` of it, `ring.rooms` at most, in
-   * the order a lap walks out from the first. Cheapest-eight-from-here was a
-   * march: five maps for an item five monsters drop.
+   * errand solver walks one — and one ring of them, `ring.rooms` at most
+   * within `ring.radius` of a placement: the ring that brings a dropper up
+   * soonest (`dropRing.ts`). Cheapest-eight-from-here was a march: five maps
+   * for an item five monsters drop.
    *
    * Realm-wide, on the index `mobPlaces` reads: the errand's bounded sweep
    * called a raider 88 moves off *nowhere* (2026-09-21; `mudengine-automation`
@@ -969,38 +974,43 @@ export class QuestPlanner {
     const priced = [...this.router.sweepTo(from, new Set(places.keys()), traveller)].sort(
       (a, b) => a[1].cost - b[1].cost || a[1].moves - b[1].moves || a[0].localeCompare(b[0])
     );
-    /*
-     * The ring starts at the cheapest room the realm places a dropper in, and
-     * the rooms its group wanders into fill what the ring has left: a lair
-     * lists the monster for every slot, a room of wanderers draws one of the
-     * group's rows at `WANDERER_CHANCE` a pass. Where no placement is in
-     * reach the ring is the wanderers' rooms alone.
-     */
-    const { wallCost } = tuning().world;
-    const first = priced.find(([id, { cost }]) => spawns.has(id) && cost < wallCost) ?? priced[0];
-    if (first === undefined) return { droppers, lairs: [] };
-    const around = this.router.withinSteps(first[0], ring.radius, traveller);
-    const rank = new Map(priced.map(([id], index) => [id, index]));
-    const walkedOut = (a: RoomId, b: RoomId): number =>
-      around.get(a)! - around.get(b)! || rank.get(a)! - rank.get(b)!;
-    const inRing = priced.filter(([id]) => around.has(id)).sort((a, b) => walkedOut(a[0], b[0]));
-    const lairs = [
-      ...inRing.filter(([id]) => spawns.has(id)),
-      ...inRing.filter(([id]) => !spawns.has(id))
-    ]
-      .slice(0, Math.max(1, ring.rooms))
-      .sort((a, b) => walkedOut(a[0], b[0]))
-      .map(([id, { moves }]) => {
+    // Which of them the hunt walks is `dropRing.ts`'s: the ring that brings a
+    // dropper up soonest, by what each room brings up an hour. The clocks are
+    // the server's nominal figures; no family or speed reaches here, so a
+    // sped-up realm's wait is overstated against the walk.
+    const { roomRegenSeconds, greatermudRespawnOffsetSeconds } = tuning().hunting;
+    const { lairSeconds } = tuning().rarity;
+    const clocks = { lairSeconds, roomRegenSeconds, greatermudRespawnOffsetSeconds };
+    const supply = this.catalogue.supply();
+    const rowsOf = (mob: string): ReadonlySet<number> => new Set(this.catalogue.mob(mob)?.ids);
+    const lairs = pickRing(
+      priced.map(([id, { cost, moves }]) => {
         const place = places.get(id)!;
-        return {
-          id,
-          name: place.room.name,
-          mob: place.mob,
-          steps: moves,
-          ...('via' in place ? { via: place.via } : {}),
-          ...(spawns.has(id) ? {} : { wander: true as const })
-        };
-      });
+        const rate = droppersPerHour(
+          place.room,
+          rowsOf(place.via ?? place.mob),
+          roomClockSeconds(place.room, null, clocks),
+          (monster) => residentClockSeconds(monster, supply, clocks)
+        );
+        return { id, cost, moves, placed: spawns.has(id), rate };
+      }),
+      {
+        ...ring,
+        wallCost: tuning().world.wallCost,
+        stepSeconds: tuning().hunting.stepMs / 1000,
+        within: (room, steps) => this.router.withinSteps(room, steps, traveller)
+      }
+    ).map(({ id, moves, placed }) => {
+      const place = places.get(id)!;
+      return {
+        id,
+        name: place.room.name,
+        mob: place.mob,
+        steps: moves,
+        ...('via' in place ? { via: place.via } : {}),
+        ...(placed ? {} : { wander: true as const })
+      };
+    });
     return { droppers, lairs };
   }
 }

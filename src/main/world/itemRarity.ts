@@ -47,7 +47,43 @@ interface Rated {
   feed: Feed;
 }
 
-const perHour = (seconds: number): number => 3600 / seconds;
+export const perHour = (seconds: number): number => 3600 / seconds;
+
+/**
+ * The rows a lair lists and what each arrives at an hour on a clock of
+ * `seconds`: every slot fills each clock, and `RegenSlot` picks one of the
+ * listed rows at random per slot.
+ */
+export function lairArrivals(
+  lair: string,
+  seconds: number
+): { ids: readonly number[]; each: number } {
+  const { max, ids } = parseLair(lair);
+  return { ids, each: ids.length === 0 ? 0 : ((max ?? 1) / ids.length) * perHour(seconds) };
+}
+
+/** How often a room fills again, in seconds: its stated `Delay`, else `lairSeconds`. */
+export function roomClockSeconds(
+  room: Pick<WorldRoom, 'delay'>,
+  family: RealmFamily | null,
+  constants: Pick<
+    RarityConstants,
+    'lairSeconds' | 'roomRegenSeconds' | 'greatermudRespawnOffsetSeconds'
+  >
+): number {
+  const stated = respawnSeconds(room.delay ?? null, family, constants);
+  return stated !== null && stated > 0 ? stated : constants.lairSeconds;
+}
+
+/** How often a room's own monster comes back: its own clock, else the next regen pass. */
+export function residentClockSeconds(
+  monster: number,
+  supply: Pick<WorldSupply, 'clocks'>,
+  constants: Pick<RarityConstants, 'roomRegenSeconds'>
+): number {
+  const hours = supply.clocks.get(monster);
+  return hours === undefined ? constants.roomRegenSeconds : hours * 3600;
+}
 
 function raise(rates: Map<number, number>, id: number, rate: number): void {
   if (rate > (rates.get(id) ?? 0)) rates.set(id, rate);
@@ -134,18 +170,12 @@ export class RarityBook {
     const family = this.world.info.family;
     for (const room of this.world.everyRoom()) {
       if (room.lair) {
-        const { max, ids } = parseLair(room.lair);
-        const stated = respawnSeconds(room.delay ?? null, family, constants);
-        const clock = stated !== null && stated > 0 ? stated : constants.lairSeconds;
-        for (const id of ids) raise(arrivals, id, ((max ?? 1) / ids.length) * perHour(clock));
+        const clock = roomClockSeconds(room, family, constants);
+        const { ids, each } = lairArrivals(room.lair, clock);
+        for (const id of ids) raise(arrivals, id, each);
       }
       if (room.npcId !== undefined) {
-        const hours = supply.clocks.get(room.npcId);
-        raise(
-          arrivals,
-          room.npcId,
-          hours === undefined ? perHour(constants.roomRegenSeconds) : 1 / hours
-        );
+        raise(arrivals, room.npcId, perHour(residentClockSeconds(room.npcId, supply, constants)));
       }
       for (const item of room.placed ?? []) {
         put(item, {

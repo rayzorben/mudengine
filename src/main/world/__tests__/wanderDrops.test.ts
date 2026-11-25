@@ -39,6 +39,30 @@ describe.runIf(available)('a dropper is hunted where its group wanders in', () =
     }
   });
 
+  /*
+   * The first fix filled the ring with the seven rooms nearest the Fork, and
+   * Yang met two dark monks in forty minutes of laps (the user, 2026-11-25).
+   * A room of wanderers draws for a player walking in, so the lap is worth the
+   * rooms it crosses: the stops are spread across the ring.
+   */
+  it('spreads the stops so a lap crosses the rooms the monk wanders into', () => {
+    const { lairs } = graph!.droppingPlaces(key, fork, monk, ring);
+    const crossed = new Set<string>();
+    let moves = 0;
+    for (const [index, lair] of lairs.entries()) {
+      const next = lairs[(index + 1) % lairs.length]!;
+      const leg = graph!.route(lair.id, next.id, monk);
+      expect(leg.blocked).toBe(false);
+      moves += leg.steps.length;
+      for (const step of leg.steps) {
+        if (graph!.byId(step.to)?.wanderers?.includes(228) === true) crossed.add(step.to);
+      }
+    }
+    // Seven rooms before; 219 measured, on a lap of 232 moves.
+    expect(crossed.size).toBeGreaterThan(150);
+    expect(moves).toBeLessThan(300);
+  });
+
   it('starts at the lair from a room the monk only wanders into', () => {
     const road = roomId(2, 41);
     expect(graph!.byId(road)!.wanderers).toContain(228);

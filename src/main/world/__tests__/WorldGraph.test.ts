@@ -1887,9 +1887,19 @@ describe('the shipped realm data', () => {
     const first = found.lairs[0]!;
     const near = realm!.withinSteps(first.id, tuning().hunting.clusterRadius, festus);
     for (const lair of found.lairs) expect(near.has(lair.id)).toBe(true);
-    // And walked out from the first, so the lap's legs are short.
-    const spread = found.lairs.map((lair) => near.get(lair.id)!);
-    expect(spread).toEqual([...spread].sort((a, b) => a - b));
+    // And walked from the first, each time to the nearest stop left
+    // (`dropRing.ts`, 2026-11-25), so the lap's legs are short.
+    const legs = found.lairs.map((lair, index) => {
+      const next = found.lairs[(index + 1) % found.lairs.length]!;
+      return realm!.withinSteps(lair.id, 2 * tuning().hunting.clusterRadius, festus).get(next.id)!;
+    });
+    const walkedOut = [...found.lairs].sort((a, b) => near.get(a.id)! - near.get(b.id)!);
+    const outLegs = walkedOut.map((lair, index) => {
+      const next = walkedOut[(index + 1) % walkedOut.length]!;
+      return realm!.withinSteps(lair.id, 2 * tuning().hunting.clusterRadius, festus).get(next.id)!;
+    });
+    const sum = (steps: number[]): number => steps.reduce((total, each) => total + each, 0);
+    expect(sum(legs)).toBeLessThanOrEqual(sum(outLegs));
   });
 
   /*
