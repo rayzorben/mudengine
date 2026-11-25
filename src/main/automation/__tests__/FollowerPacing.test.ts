@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FollowerPacing } from '../FollowerPacing';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 
 const config: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -57,6 +57,45 @@ describe('an @ok whose wait ended out of the party', () => {
     // Positive control: the same character, freed while following, says `@ok`.
     p.onCharacter(state('Rayzor', 'no'));
     expect(told).toEqual(['Rayzor @wait', 'Rayzor @held', 'Rayzor @ok']);
+  });
+});
+
+describe('an @ok while the leader rests', () => {
+  const withLeaderResting = (held: 'yes' | 'no'): CharacterState => {
+    const s = state('Bemir', held);
+    return {
+      ...s,
+      party: {
+        ...s.party,
+        members: [partyMember('Bemir', { activity: { state: 'resting' } })]
+      }
+    };
+  };
+
+  it('is sent the moment the hold ends, as the leader rests', () => {
+    const { told, pacing: p } = pacing();
+    p.onCharacter(state('Bemir', 'yes'));
+    expect(told).toEqual(['Bemir @wait', 'Bemir @held']);
+    p.onCharacter(withLeaderResting('yes'));
+    expect(told).toHaveLength(2);
+    p.onCharacter(withLeaderResting('no'));
+    expect(told).toEqual(['Bemir @wait', 'Bemir @held', 'Bemir @ok']);
+  });
+
+  it('is not sent for a low vital, which waits for the leader to get up', () => {
+    const { told, pacing: p } = pacing();
+    const vitals = (hp: number): CharacterState['vitals'] => ({
+      ...EMPTY_CHARACTER.vitals,
+      hp,
+      hpMax: 100
+    });
+    p.onCharacter({ ...state('Bemir', 'no'), vitals: vitals(1) });
+    expect(told).toEqual(['Bemir @wait']);
+    p.onCharacter({ ...withLeaderResting('no'), vitals: vitals(100) });
+    expect(told).toEqual(['Bemir @wait']);
+    // Positive control: the leader up, the same character says `@ok`.
+    p.onCharacter({ ...state('Bemir', 'no'), vitals: vitals(100) });
+    expect(told).toEqual(['Bemir @wait', 'Bemir @ok']);
   });
 });
 

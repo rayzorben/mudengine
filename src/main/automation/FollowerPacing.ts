@@ -14,7 +14,7 @@ import type { Block } from '../../shared/blocks';
 import { follows, leaderOf, type CharacterState } from '../../shared/character';
 import { stillFor, type AutomationConfig } from '../../shared/config';
 import { waitArgument, type WaitReason } from '../../shared/remotes';
-import { afflictionHolding } from '../../shared/walk';
+import { afflictionHolding, isAfflictionHold } from '../../shared/walk';
 
 export interface FollowerPacingEvents {
   /** Telepath the leader `@wait` (with its bracket), `@held`, `@ok` or `@comeback`. */
@@ -67,10 +67,12 @@ export class FollowerPacing {
         margin
       );
     }
+    const reason = this.reasonFor(state);
     // Nothing said while the leader rests: that rest is its own, and a wait already
     // asked stands until the leader is up (an `@ok` here went out at 2 mana, Rayzor, 2026-11-02).
-    if (leaderResting(state)) return;
-    const reason = this.reasonFor(state);
+    // The one exception is a hold that has ended: Bemir rested right after each `@held` and
+    // waited 90 seconds for the `@ok` of a hold gone in 10 (Rayzor, 2026-11-25).
+    if (leaderResting(state) && !(isAfflictionHold(this.reason) && reason === null)) return;
     const was = this.reason;
     this.reason = reason;
     if (reason !== 'held') this.askedBack = false;
