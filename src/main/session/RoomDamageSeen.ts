@@ -3,7 +3,7 @@
  * (todo 20261103-0140-01): health lost `tuning.roomHarm.drops` times inside
  * `withinMs` in one room with the same maximum. Not while a fight is here
  * (`fightHere`), inside `MOB_ENGAGED_MS` of a monster's damage line
- * (`monsterHit`), poisoned, bleeding on the ground, in a room where it has
+ * (`monsterHit`), poisoned, diseased, bleeding on the ground, in a room where it has
  * bashed since it came in (`bashedIn`) or under a spell that takes health each
  * tick (`ticking`). A room the data gives no spell still counts, since unknown
  * is the unsafe case. A mark clears after `clearAfterMs` standing in the room
@@ -119,9 +119,12 @@ export class RoomDamageSeen {
 }
 
 /**
- * No fight, a monster's recent blow, poison or bleeding on the ground accounts
- * for it: what is left is the room. Below 1 the character bleeds a point a
- * tick, so a fall from there is not counted.
+ * No fight, a monster's recent blow, poison, disease or bleeding on the ground
+ * accounts for it: what is left is the room. Below 1 the character bleeds a
+ * point a tick, so a fall from there is not counted. A disease takes health
+ * each tick as a poison does, and `You are diseased!` names no spell for
+ * `ticking` to read: a shade's disease took 1 a tick from Festus for 95 seconds (OCI,
+ * 2026-11-25).
  */
 function unexplained(
   state: CharacterState,
@@ -132,6 +135,7 @@ function unexplained(
   return (
     !fightHere(state, signs, now) &&
     state.afflictions.poisoned !== 'yes' &&
+    state.afflictions.diseased !== 'yes' &&
     !state.mortallyWounded &&
     before > 0
   );

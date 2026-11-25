@@ -314,6 +314,31 @@ describe('a room whose damage the world database does not list', () => {
     expect(sent.map((intent) => intent.command)).toEqual(['n']);
   });
 
+  /*
+   * Festus, 2026-11-25 02:46 on OCI: a shade's `You are diseased!` took 1 a
+   * tick until `The disease dies down.`, and each room he stood in was marked
+   * and left, the Huge Pit beside his party among them.
+   */
+  it('does not count health a disease took, and counts again once it ends', () => {
+    const current = { state: at(RIVER, 861) };
+    const room = hazards(current);
+    const { leave, sent } = rig({ hurts: (r) => room.roomHurts(r) });
+    const feed = (hps: readonly number[], diseased: 'yes' | 'no'): void => {
+      for (const hp of hps) {
+        const afflictions = { ...EMPTY_CHARACTER.afflictions, diseased };
+        current.state = at(RIVER, hp, { afflictions });
+        room.note(current.state);
+        leave.consider(current.state);
+      }
+    };
+    feed([861, 860, 859, 858, 857], 'yes');
+    expect(room.hurtsHere(current.state)).toBeNull();
+    expect(sent).toEqual([]);
+    feed([856, 855], 'no');
+    expect(room.hurtsHere(current.state)).toBe(t('session.harm.unlisted'));
+    expect(sent.map((intent) => intent.command)).toEqual(['n']);
+  });
+
   /* Rayzor, 2026-11-04: a poison read as the room's marked 7/745 for the session. */
   it('clears a mark once the character stands in the room unhurt long enough', () => {
     const current = { state: at(RIVER, 115) };
