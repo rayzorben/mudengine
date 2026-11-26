@@ -260,6 +260,16 @@ export default function TerminalView({
   const holdRef = useRef(false);
 
   /**
+   * Whether the reader was last on the live edge by their own doing. xterm
+   * maps its scroll offset to a row by cell height, so a metric change under a
+   * hidden console can read as a scroll. `pinned` read from the buffer alone
+   * took it for the reader scrolling up, and Jump to latest showed on a console
+   * switched to without a scroll. Suspected cause, not measured (2026-11-25).
+   * Only a scroll while the console is visible, outside a fit's window, clears it.
+   */
+  const followingRef = useRef(true);
+
+  /**
    * The one thing that writes to this console, once the terminal exists.
    *
    * A ref because the console has more than one author and they are in
@@ -379,6 +389,7 @@ export default function TerminalView({
     const term = termRef.current;
     if (!term) return;
     holdRef.current = false;
+    followingRef.current = true;
     term.clearSelection();
     term.scrollToBottom();
     term.focus();
@@ -724,10 +735,12 @@ export default function TerminalView({
     const refit = (): void => {
       if (mount.clientWidth <= 0 || mount.clientHeight <= 0) return;
       const buffer = term.buffer.active;
-      const following = !holdRef.current && atLiveEdge(buffer.viewportY, buffer.baseY);
+      const following =
+        !holdRef.current && (followingRef.current || atLiveEdge(buffer.viewportY, buffer.baseY));
       fit.fit();
       if (!following) return;
       term.scrollToBottom();
+      followingRef.current = true;
       endFitWindow();
       fitFrame = requestAnimationFrame(() => {
         fitFrame = requestAnimationFrame(() => {
@@ -948,12 +961,23 @@ export default function TerminalView({
     let edge: ScrollEdge | null = null;
     const syncPin = (): void => {
       const buffer = term.buffer.active;
-      if (fitFrame !== null && !holdRef.current && !atLiveEdge(buffer.viewportY, buffer.baseY)) {
+      /*
+       * Nobody scrolls a console they cannot see (`visibility: hidden`, and no
+       * pointer events), so a scroll there is xterm re-measuring: a following
+       * console is put back, as it is in a fit's window.
+       */
+      if (
+        !holdRef.current &&
+        (followingRef.current || fitFrame !== null) &&
+        !atLiveEdge(buffer.viewportY, buffer.baseY) &&
+        (fitFrame !== null || !mount.checkVisibility({ visibilityProperty: true }))
+      ) {
         // Scrolling raises `onScroll`, which runs this again at the live edge.
         term.scrollToBottom();
         return;
       }
       const now = edgeOf(buffer.viewportY, buffer.baseY);
+      followingRef.current = now === 'latest';
       setPinned(now === 'latest');
       if (now === edge) return;
       edge = now;
@@ -1068,6 +1092,8 @@ export default function TerminalView({
           // Said again once it is done: the edges it passed while filling were not heard.
           edge = null;
           endFitWindow();
+          // A placement the reader asked for: the view is read where it lands.
+          followingRef.current = false;
           term.scrollToLine(Math.max(0, term.buffer.active.baseY - above));
           syncPin();
         });
@@ -1085,6 +1111,7 @@ export default function TerminalView({
         const row = rowOf(linesOf(rowsOf(buffer)), place, tuning().readBackReach);
         if (row === null) return false;
         endFitWindow();
+        followingRef.current = false;
         term.scrollToLine(row);
         // Said afresh: the edges a fill passed were not heard by the reader.
         edge = null;
