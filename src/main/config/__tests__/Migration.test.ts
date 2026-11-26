@@ -627,7 +627,12 @@ describe('the teleport below the retreat', () => {
   it('is stated off, beside the retreat, with the template’s paragraph', () => {
     fs.writeFileSync(home.options, SAFETY, 'utf8');
     migrate(true);
-    expect(fleeGoto()).toEqual({ enabled: false, belowHealth: 0.2, command: '' });
+    expect(fleeGoto()).toEqual({
+      enabled: false,
+      belowHealth: 0.2,
+      command: '',
+      resume: true
+    });
     const text = fs.readFileSync(home.options, 'utf8');
     expect(text.indexOf('fleeGoto')).toBeGreaterThan(text.indexOf('retreat'));
     expect(text.indexOf('fleeGoto')).toBeLessThan(text.indexOf('hangUp'));
@@ -642,7 +647,7 @@ describe('the teleport below the retreat', () => {
     );
     migrate(true);
     migrate(true);
-    expect(fleeGoto()).toEqual({ enabled: true, belowHealth: 0.1 });
+    expect(fleeGoto()).toEqual({ enabled: true, belowHealth: 0.1, resume: true });
     // Positive control: the same run states it where it is missing.
     fs.writeFileSync(home.options, SAFETY, 'utf8');
     migrate(true);
@@ -9359,5 +9364,48 @@ describe("the player's own room names are stated (todo 153)", () => {
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toContain(own);
     expect(notesOf(said, 'notices.migration.roomNamesStated')).toHaveLength(0);
+  });
+});
+
+/*
+ * `safety.fleeGoto.resume` (`statedTheTeleportResume`): a key added inside a
+ * block the file already states reaches nobody through the template.
+ */
+describe('the teleport resume switch is stated', () => {
+  const block = (file: string): Record<string, unknown> =>
+    (
+      parse(fs.readFileSync(file, 'utf8')) as {
+        automation: { safety: { fleeGoto: Record<string, unknown> } };
+      }
+    ).automation.safety.fleeGoto;
+
+  it('adds it on to a fleeGoto block that predates it, keeps a stated one, and says so', () => {
+    const old = home.profile('festus').file;
+    const own = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(old), { recursive: true });
+    fs.mkdirSync(path.dirname(own), { recursive: true });
+    fs.writeFileSync(
+      old,
+      'automation:\n  safety:\n    fleeGoto:\n      enabled: true\n      belowHealth: 0.1\n',
+      'utf8'
+    );
+    fs.writeFileSync(
+      own,
+      'automation:\n  safety:\n    fleeGoto:\n      enabled: true\n      resume: false\n',
+      'utf8'
+    );
+    migrate();
+    expect(block(old)).toEqual({ enabled: true, belowHealth: 0.1, resume: true });
+    expect(block(own)).toEqual({ enabled: true, resume: false });
+    expect(
+      notesOf(
+        said,
+        'notices.migration.teleportResumeStated.one',
+        'notices.migration.teleportResumeStated.many'
+      )
+    ).toHaveLength(1);
+    const before = fs.readFileSync(old, 'utf8');
+    migrate();
+    expect(fs.readFileSync(old, 'utf8')).toBe(before);
   });
 });

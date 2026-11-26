@@ -1035,6 +1035,27 @@ describe('holding after an escape', () => {
     expect(walked).toEqual(['Arena', 'Road']);
   });
 
+  /*
+   * `fleeGoto.resume`: a teleport lands with no mana floor in the run, and the
+   * lap waits for mana to the rest limit all the same, then walks on.
+   */
+  it('waits for mana to the rest limit after a teleport when asked to', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    const drained = (mana: number): CharacterState =>
+      state({ vitals: { ...EMPTY_CHARACTER.vitals, hp: 100, hpMax: 100, mana, manaMax: 100 } });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelowMana: 0.2, restToMana: 0.8 });
+    runner.start(loop, drained(100));
+    runner.onWalkEnded(true, null, drained(10));
+    runner.noteEscaped(0, 0, true);
+    vi.advanceTimersByTime(30_000);
+    runner.onCharacter(drained(50));
+    expect(runner.progress.hold).toBe('retreated');
+    expect(walked).toEqual(['Arena']);
+    runner.onCharacter(drained(80));
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
   /* The control: where nothing runs for mana, the same mana walks on at health alone. */
   it('does not wait for mana where nothing runs for mana', () => {
     const { planner: p, walked } = planner();

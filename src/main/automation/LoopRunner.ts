@@ -56,6 +56,7 @@ import {
   DEFAULT_CONFIG,
   stillFor,
   resumeAfterManaRun,
+  resumeAfterTeleportMana,
   resumeAtHealth,
   type HealthConfig,
   type MovementConfig,
@@ -321,6 +322,8 @@ export class LoopRunner implements SessionModule {
   private escapedUntil = 0;
   /** The mana share the run went under, 0 for never (`manaRunFloor`). */
   private escapeManaFloor = 0;
+  /** Whether the hold also waits for mana to reach the rest limit (`fleeGoto.resume`). */
+  private escapeToLimits = false;
   /** Whether this hold's wait for mana has been said; once per run. */
   private manaWaitSaid = false;
   /**
@@ -898,13 +901,14 @@ export class LoopRunner implements SessionModule {
    * while a loop is marching and allows it while one is held, so those two
    * seconds used to be the whole window the character had to sit down in.
    */
-  noteEscaped(until = 0, runBelowMana = 0): void {
+  noteEscaped(until = 0, runBelowMana = 0, toLimits = false): void {
     if (this.status !== 'running') return;
     if (this.escaped) return this.notePvpWindow(until);
     this.escaped = true;
     this.escapedAt = this.now();
     this.escapedUntil = until;
     this.escapeManaFloor = runBelowMana;
+    this.escapeToLimits = toLimits;
     this.manaWaitSaid = false;
     this.waiting = true;
     /*
@@ -1513,10 +1517,10 @@ export class LoopRunner implements SessionModule {
    * (2026-11-12). Standing here, mana comes back on the tick. Unknown lets go.
    */
   private shortOfManaAfterRun(state: CharacterState): boolean {
-    const line = resumeAfterManaRun(
-      this.escapeManaFloor,
-      this.health,
-      tuning().loop.resumeMarginWhenUncapped
+    const margin = tuning().loop.resumeMarginWhenUncapped;
+    const line = Math.max(
+      resumeAfterManaRun(this.escapeManaFloor, this.health, margin),
+      this.escapeToLimits ? resumeAfterTeleportMana(this.health, margin) : 0
     );
     const share = manaFraction(state);
     if (line <= 0 || share === null || share >= line) return false;

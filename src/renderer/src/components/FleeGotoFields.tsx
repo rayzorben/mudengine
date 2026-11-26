@@ -10,7 +10,10 @@ import type { barOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { CharacterFields } from '../lib/characterForm';
 
-export type FleeGotoForm = Pick<CharacterFields, 'fleeGoto' | 'fleeGotoBelow' | 'fleeGotoCommand'>;
+export type FleeGotoForm = Pick<
+  CharacterFields,
+  'fleeGoto' | 'fleeGotoBelow' | 'fleeGotoCommand' | 'fleeGotoResume'
+>;
 
 export interface FleeGotoFieldsProps {
   form: FleeGotoForm;
@@ -53,6 +56,14 @@ export default function FleeGotoFields({
           value={form.fleeGotoBelow}
         />
       </div>
+      <CheckField
+        checked={form.fleeGotoResume}
+        hint={t('settings.health.fleeGotoResumeHint')}
+        label={t('settings.health.fleeGotoResumeLabel')}
+        name={`${namePrefix}flee-goto-resume`}
+        setting="automation.safety.fleeGoto.resume"
+        onChange={(value) => patch({ fleeGotoResume: value })}
+      />
       {!withoutCommand && (
         <TextField
           hint={t('settings.health.fleeGotoCommandHint')}

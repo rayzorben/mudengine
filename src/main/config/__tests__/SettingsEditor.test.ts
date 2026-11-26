@@ -74,7 +74,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
     strategy: 'step-back',
     safeHavenRoom: ''
   },
-  fleeGoto: { enabled: false, belowHealth: 0.2, command: '' },
+  fleeGoto: { enabled: false, belowHealth: 0.2, command: '', resume: true },
   pvp: { notifyGang: false, action: 'none' },
   // The shipped defaults, so a draft that says nothing about combat writes no
   // `combat:` block at all -- which is the behaviour the tests below assert.
@@ -1906,9 +1906,19 @@ describe('a character\u2019s own teleport command', () => {
     const safety = () =>
       (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)['safety'];
 
-    const stated = { enabled: true, belowHealth: 0.1, command: 'sys goto silvermere' };
+    const stated = {
+      enabled: true,
+      belowHealth: 0.1,
+      command: 'sys goto silvermere',
+      resume: true
+    };
     expect(editor.saveProfile('vaelor', draft({ fleeGoto: stated }))).toEqual({ ok: true });
-    expect(safety()?.['fleeGoto']).toEqual(stated);
+    // The resume switch equals the inherited one, so no key is written for it.
+    expect(safety()?.['fleeGoto']).toEqual({
+      enabled: true,
+      belowHealth: 0.1,
+      command: 'sys goto silvermere'
+    });
     expect(own()?.command).toBe('sys goto silvermere');
 
     expect(editor.saveProfile('vaelor', draft({ fleeGoto: { ...stated, command: '' } }))).toEqual({

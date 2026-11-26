@@ -4270,6 +4270,17 @@ export function resumeAtMana(health: HealthConfig, marginWhenUncapped: number): 
 }
 
 /**
+ * The mana a lap held after a teleport (`fleeGoto.resume`) walks on at: the
+ * rest limit `restToMana`, or the floor and margin where only `restBelowMana`
+ * is stated, or 0 where this character rests for no mana and nothing waits.
+ */
+export function resumeAfterTeleportMana(health: HealthConfig, marginWhenUncapped: number): number {
+  if (!health.autoRest) return 0;
+  if (health.restToMana > 0) return health.restToMana;
+  return health.restBelowMana > 0 ? resumeAtMana(health, marginWhenUncapped) : 0;
+}
+
+/**
  * The mana a lap held after a run walks on at, while mana is under the run's
  * floor, or 0 where nothing runs for mana: `restToMana` where it is over the
  * floor, else the floor and the margin. At the floor itself the next fight's

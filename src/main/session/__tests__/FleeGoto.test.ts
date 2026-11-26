@@ -43,7 +43,13 @@ function settings(
     safety: {
       ...safety,
       retreat: { ...safety.retreat, ...retreat },
-      fleeGoto: { enabled: true, belowHealth: 0.2, command: 'sys go 1 297', ...fleeGoto }
+      fleeGoto: {
+        enabled: true,
+        belowHealth: 0.2,
+        command: 'sys go 1 297',
+        resume: true,
+        ...fleeGoto
+      }
     }
   };
 }

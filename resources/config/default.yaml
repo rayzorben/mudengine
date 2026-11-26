@@ -2654,6 +2654,11 @@ automation:
       # Empty follows the realm.
       command: ''
 
+      # After the teleport lands, the loop walks on once health and mana are
+      # back up to health.restTo and health.restToMana. Off, it walks on at
+      # health alone, as after any run.
+      resume: true
+
     # Hanging up to escape.
     #
     # READ THIS BEFORE TURNING IT ON. Every MegaMUD-era client offers

@@ -3805,7 +3805,7 @@ describe('which way out', () => {
     ...escaping({ cooldownMs: 1, enabled: false }),
     safety: {
       ...escaping({ cooldownMs: 1, enabled: false }).safety,
-      fleeGoto: { enabled: true, belowHealth: 0.2, command: 'sys go 1 297' }
+      fleeGoto: { enabled: true, belowHealth: 0.2, command: 'sys go 1 297', resume: true }
     }
   });
 
@@ -4336,7 +4336,7 @@ describe('the per-line order in act()', () => {
       automation: automation({
         safety: {
           ...DEFAULT_CONFIG.automation.safety,
-          fleeGoto: { enabled: true, belowHealth: 0.2, command: 'sys go 1 297' }
+          fleeGoto: { enabled: true, belowHealth: 0.2, command: 'sys go 1 297', resume: true }
         },
         spells: mending
       })

@@ -540,7 +540,7 @@ export interface ProfileEditable {
     safeHavenRoom: string;
   };
   /** Resolved; `command` alone is this character's own, empty where it follows the realm. */
-  fleeGoto: { enabled: boolean; belowHealth: number; command: string };
+  fleeGoto: { enabled: boolean; belowHealth: number; command: string; resume: boolean };
   /** What to do when a player opens on this character. Resolved, like the two above. */
   pvp: { notifyGang: boolean; action: PvpAction };
   /**

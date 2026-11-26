@@ -630,7 +630,7 @@ describe('the last-ditch teleport', () => {
 
   it('ships off, under the retreat’s floor and over the hang-up’s, stating no command', () => {
     const shipped = fleeGoto(undefined);
-    expect(shipped).toEqual({ enabled: false, belowHealth: 0.2, command: '' });
+    expect(shipped).toEqual({ enabled: false, belowHealth: 0.2, command: '', resume: true });
     const safety = normalizeConfig({}).automation.safety;
     expect(shipped.belowHealth).toBeLessThan(safety.retreat.belowHealth);
     expect(shipped.belowHealth).toBeGreaterThan(safety.hangUp.belowHealth);

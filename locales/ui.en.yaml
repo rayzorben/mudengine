@@ -914,6 +914,9 @@ notices:
       one:
         'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
         to {fileList}'
+    teleportResumeStated:
+      many: 'Resume Loop After Teleport was added, turned on, to the teleport settings in {count} files: {fileList}'
+      one: 'Resume Loop After Teleport was added, turned on, to the teleport settings in {count} file: {fileList}'
     freedomCureStated:
       many: 'A Freedom spell, cast when the character is held in place, was added blank to the cures
         in {count} files: {fileList}'
@@ -5354,6 +5357,9 @@ settings:
     fleeGotoHint: "After Auto-Run: the realm's own teleport, sent mid-fight once running has had its
       chance. On GreaterMUD, sys is a sysop command; a player is told it had no effect, and it is
       not sent again that session."
+    fleeGotoResumeLabel: Resume Loop After Teleport
+    fleeGotoResumeHint: After a teleport lands, the loop waits for mana as well as health before walking
+      on, using the rest settings. Off, it waits for health alone.
     fleeGotoCommandLabel: Teleport Command
     fleeGotoCommandHint: Sent exactly as written. Blank uses the realm's own.
     fleeGotoRealmHint: This realm's teleport, sent exactly as written, such as GreaterMUD sys go 1
@@ -7960,7 +7966,7 @@ automation:
     heldAfterEscape: Ran away; the loop waits here until the fight is over and health is back.
     heldAfterPvp: 'Ran from a player; the loop waits here {minutes} min for the PvP timer and for health to come back.'
     walkingOnAfterEscape: Recovered after running; the loop continues.
-    heldForManaAfterEscape: 'Mana at {percent} after running; the loop waits here until it is back to {target}.'
+    heldForManaAfterEscape: 'Mana at {percent} after getting away; the loop waits here until it is back to {target}.'
     heldOffline: Disconnected; the loop waits until you are back in the realm.
     carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'
     walkingOnAfterReconnect: Back in the realm; the loop continues from here.

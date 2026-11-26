@@ -190,6 +190,7 @@ export interface CharacterFields {
   fleeGoto: boolean;
   fleeGotoBelow: string;
   fleeGotoCommand: string;
+  fleeGotoResume: boolean;
   /**
    * Auto-combat's settings, as the form holds them. Whether it runs is the
    * session's switch, never the form's (todo 20261102-1830-01).
@@ -583,6 +584,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     fleeGoto: entry.fleeGoto.enabled,
     fleeGotoBelow: percent(entry.fleeGoto.belowHealth),
     fleeGotoCommand: entry.fleeGoto.command,
+    fleeGotoResume: entry.fleeGoto.resume,
     hangUp: entry.hangUp.enabled,
     // As a percentage, because that is how somebody thinks about health. The
     // file keeps a fraction, so the whole client holds one representation.
@@ -791,7 +793,8 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     fleeGoto: {
       enabled: form.fleeGoto,
       belowHealth: fractionOf(form.fleeGotoBelow),
-      command: form.fleeGotoCommand.trim()
+      command: form.fleeGotoCommand.trim(),
+      resume: form.fleeGotoResume
     },
     combat: {
       attack: form.combatAttack,
@@ -1170,6 +1173,7 @@ export function emptyForm(
     fleeGotoBelow: percent(fleeGoto.belowHealth),
     // Not the options file's command copied down: it would outrank the realm's.
     fleeGotoCommand: '',
+    fleeGotoResume: fleeGoto.resume,
     hangUp: hangUp.enabled,
     hangUpBelow: percent(hangUp.belowHealth),
     // Not the options file's answer copied down: a copy would outrank the

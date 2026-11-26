@@ -1293,7 +1293,8 @@ export default function GlobalSettings({
                 form={{
                   fleeGoto: draft.automation.fleeGoto.enabled,
                   fleeGotoBelow: String(percent(draft.automation.fleeGoto.belowHealth)),
-                  fleeGotoCommand: draft.automation.fleeGoto.command
+                  fleeGotoCommand: draft.automation.fleeGoto.command,
+                  fleeGotoResume: draft.automation.fleeGoto.resume
                 }}
                 namePrefix="global-"
                 patch={(change) =>
@@ -1301,6 +1302,9 @@ export default function GlobalSettings({
                     fleeGoto: {
                       ...draft.automation.fleeGoto,
                       ...(change.fleeGoto === undefined ? {} : { enabled: change.fleeGoto }),
+                      ...(change.fleeGotoResume === undefined
+                        ? {}
+                        : { resume: change.fleeGotoResume }),
                       ...(change.fleeGotoBelow === undefined
                         ? {}
                         : { belowHealth: fraction(change.fleeGotoBelow) })

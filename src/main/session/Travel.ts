@@ -2056,7 +2056,7 @@ export class Travel implements SessionModule {
    */
   teleportLanded(from: CharacterState['room'], now: number): void {
     this.teleportAt = 0;
-    this.leaving(roomAddress(from), now);
+    this.leaving(roomAddress(from), now, 0, this.automationConfig.safety.fleeGoto.resume);
   }
 
   /**
@@ -2064,7 +2064,7 @@ export class Travel implements SessionModule {
    * room left, starts the sent clock everything that keeps a character alive
    * stands down on, and holds the loop and the route.
    */
-  private leaving(here: RoomId | null, now: number, holdUntil = 0): void {
+  private leaving(here: RoomId | null, now: number, holdUntil = 0, toLimits = false): void {
     /*
      * The room being run out of, so nothing walks back into it while the fight
      * that emptied it is still going. See `ranFrom`.
@@ -2113,7 +2113,7 @@ export class Travel implements SessionModule {
      * walk, and the runner waits for that walk to finish (`walking()`) before
      * it plans anything of its own.
      */
-    this.loops.noteEscaped(holdUntil, manaRunFloor(this.automationConfig.safety.retreat));
+    this.loops.noteEscaped(holdUntil, manaRunFloor(this.automationConfig.safety.retreat), toLimits);
     /*
      * And the same for a route the player asked for, which now survives the
      * fight it ran from (`Holds.holdForFight`) and would otherwise plan its

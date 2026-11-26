@@ -280,6 +280,7 @@ function migrateAll(options: MigrationOptions): void {
   thePagerRepeats(home, note);
   theHangPenaltyIsTheRealms(home, note);
   statedTheTeleport(home, note, options.template);
+  statedTheTeleportResume(home, note);
   statedTheFreedomCure(home, note);
   statedThePartyPacing(home, note, options.template);
   statedTheHealChoice(home, note, options.template);
@@ -5944,6 +5945,38 @@ function theHealKeptItsOwnFloor(
     stated.length === 1
       ? t('notices.migration.healMinMana.one', params)
       : t('notices.migration.healMinMana.many', params)
+  );
+}
+
+const TELEPORT_RESUME_COMMENT =
+  '\n After the teleport lands, the loop walks on once health and mana are back up to\n health.restTo and health.restToMana. Off, it walks on at health alone, as after\n any run.\n';
+
+/**
+ * `safety.fleeGoto.resume` (2026-11-26): a key inside a `fleeGoto:` block the
+ * file already states reaches nobody through the template, so the block
+ * `statedTheTeleport` wrote earlier would never show the switch. Written on, as
+ * shipped. A file with no block is left to that step. Idempotent: a stated key
+ * stays whatever its value.
+ */
+function statedTheTeleportResume(home: Home, note: (message: string) => void): void {
+  const stated: string[] = [];
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const block = document.getIn(['automation', 'safety', 'fleeGoto'], true);
+      if (!isMap(block) || block.has('resume')) return false;
+      const pair = document.createPair('resume', DEFAULT_CONFIG.automation.safety.fleeGoto.resume);
+      if (isScalar(pair.key)) pair.key.commentBefore = TELEPORT_RESUME_COMMENT;
+      block.items.push(pair);
+      stated.push(file);
+      return true;
+    });
+  }
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.teleportResumeStated.one', params)
+      : t('notices.migration.teleportResumeStated.many', params)
   );
 }
 

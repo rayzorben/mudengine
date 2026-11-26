@@ -284,6 +284,7 @@ export const DECISION_SETTINGS = {
     'automation.safety.fleeGoto.enabled',
     'automation.safety.fleeGoto.belowHealth',
     'automation.safety.fleeGoto.command',
+    'automation.safety.fleeGoto.resume',
     'automation.safety.retreat.belowHealth',
     'server.fleeGoto'
   ],

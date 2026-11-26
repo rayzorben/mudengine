@@ -486,7 +486,7 @@ export interface ProfileDraft {
     safeHavenRoom: string;
   };
   /** The teleport below the retreat; an empty `command` follows the realm. See `FleeGotoConfig`. */
-  fleeGoto: { enabled: boolean; belowHealth: number; command: string };
+  fleeGoto: { enabled: boolean; belowHealth: number; command: string; resume: boolean };
   /** What to do the moment a player opens on this character — `automation.safety.pvp`. */
   pvp: { notifyGang: boolean; action: PvpAction };
   /**
@@ -1008,7 +1008,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     fleeGoto: {
       enabled: fleeGoto['enabled'] === true,
       belowHealth: unit(fleeGoto['belowHealth']),
-      command: text(fleeGoto['command']).slice(0, 120)
+      command: text(fleeGoto['command']).slice(0, 120),
+      resume: fleeGoto['resume'] !== false
     },
     pvp: {
       notifyGang: pvp['notifyGang'] === true,

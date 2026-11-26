@@ -410,7 +410,8 @@ export class SettingsEditor {
           {
             enabled: draft.fleeGoto.enabled,
             belowHealth: draft.fleeGoto.belowHealth,
-            command: draft.fleeGoto.command.length > 0 ? draft.fleeGoto.command : undefined
+            command: draft.fleeGoto.command.length > 0 ? draft.fleeGoto.command : undefined,
+            resume: draft.fleeGoto.resume
           },
           now
         );

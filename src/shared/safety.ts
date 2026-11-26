@@ -154,6 +154,12 @@ export interface FleeGotoConfig {
   belowHealth: number;
   /** The literal command; empty follows the realm, and none anywhere sends nothing. */
   command: string;
+  /**
+   * After a landing, the held loop walks on once health and mana are back to
+   * the rest limits (`restTo`, `restToMana`) and not before. Off, it walks on
+   * at health alone, as after any run.
+   */
+  resume: boolean;
 }
 
 /**
@@ -230,7 +236,7 @@ export const DEFAULT_SAFETY: SafetyConfig = {
   },
   // Off, and between the retreat's floor and the hang-up's, so the
   // teleport has its turn before the panic button. See `FleeGotoConfig`.
-  fleeGoto: { enabled: false, belowHealth: 0.2, command: '' },
+  fleeGoto: { enabled: false, belowHealth: 0.2, command: '', resume: true },
   pvp: { notifyGang: false, action: 'none' }
 };
 
@@ -265,7 +271,8 @@ export function normalizeSafety(value: unknown): SafetyConfig {
     fleeGoto: {
       enabled: bool(fleeGoto['enabled'], g.enabled),
       belowHealth: fraction(fleeGoto['belowHealth'], g.belowHealth),
-      command: str(fleeGoto['command'], g.command).trim()
+      command: str(fleeGoto['command'], g.command).trim(),
+      resume: bool(fleeGoto['resume'], g.resume)
     },
     hangUp: {
       enabled: bool(hangUp['enabled'], d.enabled),
