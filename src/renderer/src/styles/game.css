@@ -194,7 +194,8 @@
 }
 
 .gv-glass {
-  border: 1px solid var(--game-line);
+  --gv-line-w: 1px;
+  border: var(--gv-line-w) solid var(--game-line);
   border-radius: 12px;
   background: var(--game-glass);
   backdrop-filter: var(--game-blur);
@@ -208,14 +209,18 @@
 /* ----------------------------------------------------------- the player bar */
 
 .gv-player {
-  top: 10px;
-  left: 16px;
-  right: 16px;
+  --gv-bar-top: 10px;
+  --gv-bar-edge: 16px;
+  top: var(--gv-bar-top);
+  left: var(--gv-bar-edge);
+  right: var(--gv-bar-edge);
   display: grid;
-  grid-template-columns: auto minmax(260px, 440px) minmax(200px, 320px) 1fr auto auto;
+  grid-template-columns: auto minmax(260px, 440px) minmax(200px, 320px) 1fr auto var(
+      --view-switch-w
+    );
   gap: 22px;
   align-items: center;
-  padding: 8px 16px 8px 9px;
+  padding: 8px var(--gv-bar-edge) 8px 9px;
 }
 
 .gv-player-id {
@@ -414,11 +419,23 @@
   font-weight: 600;
 }
 
-/* The view switch (todo 04): a chip on the player bar that is a button. */
+/*
+ * The view switch (todo 04): a chip on the player bar that is a button. It is
+ * placed at the window's top right like the classic view's (`button.view-switch`
+ * in index.css); the bar's last column keeps the room under it.
+ */
 .gv-player > button.gv-chip {
   border: 0;
   cursor: pointer;
   font-family: inherit;
+  /*
+   * Absolute, since the bar's backdrop-filter makes it the containing block
+   * of anything fixed. The offsets take off the bar's own place (top 10px,
+   * right 16px) and its 1px border.
+   */
+  position: absolute;
+  right: calc(var(--view-switch-right) - var(--gv-bar-edge) - var(--gv-line-w));
+  top: calc(var(--view-switch-top) - var(--gv-bar-top) - var(--gv-line-w));
 }
 
 .gv-player > button.gv-chip:hover,
@@ -1171,6 +1188,7 @@
   .gv-player {
     grid-template-columns: auto minmax(0, 1fr);
     gap: 8px 16px;
+    padding-right: calc(var(--view-switch-w) + var(--gv-bar-edge));
   }
 
   .gv-commands {

@@ -12713,6 +12713,39 @@ button.lookup:focus-visible {
   -webkit-user-select: none;
 }
 
+/*
+ * The view switch has the same size in both views, and where the rail is the
+ * window's right-hand column it sits at the same place in the window as in the
+ * game view's player bar (`.gv-player`), so a press needs no pointer move. The
+ * rail head keeps the room it takes. With the rail on the left or the tabs on
+ * the right or across the top the rail head is not at the window's top right,
+ * so the button stays in the head's row at the same size.
+ */
+button.view-switch[data-action='switch-view'] {
+  align-items: center;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  font-size: 11.5px;
+  gap: 5px;
+  height: var(--view-switch-h);
+  justify-content: center;
+  padding: 0 8px;
+  width: var(--view-switch-w);
+}
+
+.workspace[data-rail-side='right'][data-tabs='left'] .card-rail-head {
+  padding-inline-end: calc(var(--view-switch-w) + var(--view-switch-right));
+}
+
+.workspace[data-rail-side='right'][data-tabs='left']
+  .card-rail-head
+  button.view-switch[data-action='switch-view'] {
+  position: fixed;
+  right: var(--view-switch-right);
+  top: var(--view-switch-top);
+}
+
 .card-rail-head .chip .icon {
   height: 12px;
   stroke-width: 1.9;

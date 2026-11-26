@@ -25,6 +25,16 @@
   /* Overwritten by the theme; see `useTheme`. */
   color-scheme: dark;
 
+  /*
+   * The view switch's box in the window, one for both views so the button is
+   * under the pointer after a press (`button.view-switch` in index.css). The
+   * width fits the longer label, so "Game view" and "Classic view" match.
+   */
+  --view-switch-w: 116px;
+  --view-switch-h: 28px;
+  --view-switch-top: 11px;
+  --view-switch-right: 32px;
+
   /* ---------------------------------------------------------- neutrals */
   --ink-void: #12151a;
   --ink-card: #1a1f26;

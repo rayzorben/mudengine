@@ -22,7 +22,7 @@ function ViewSwitch({ game, onToggle, className }: ViewSwitchProps) {
   return (
     <button
       aria-label={label}
-      className={className}
+      className={`view-switch ${className}`}
       data-action="switch-view"
       onClick={onToggle}
       onMouseDown={keepFocus}
