@@ -11415,6 +11415,45 @@ describe('the spellbook', () => {
     expect(tracker.current.vitals.manaType).toBe('KAI');
   });
 
+  /*
+   * A row is anchored by its three leading columns and the name is the rest of
+   * the line. `lower portal (uninvited)` is in both shipped realms and its
+   * bracket was refused by the old name class, which dropped the row whole.
+   */
+  it.each(["god's wrath", "banshee's wail", 'thunderstaff-lbol', 'lower portal (uninvited)'])(
+    'keeps a spell named %s',
+    (name) => {
+      const tracker = play([
+        'You have the following spells:',
+        'Level Mana Short Spell Name',
+        '  8   3    agon  agony',
+        ` 25   12   gwra  ${name}`,
+        '[HP=33/MA=22]:'
+      ]);
+      expect(tracker.current.spellbook?.map((spell) => spell.name)).toEqual(['agony', name]);
+    }
+  );
+
+  it.each(['majormud', 'paradigm'])('keeps every castable spell name of %s', (realmName) => {
+    const file = path.resolve(`resources/world/${realmName}.jsonl.gz`);
+    if (!fs.existsSync(file)) return;
+    const names = WorldGraph.load(file)
+      .castableSpells()
+      .map((spell) => spell.name);
+    expect(names.length).toBeGreaterThan(0);
+    // The listing's own cap is 64 rows, so a long book is read in pages.
+    for (let at = 0; at < names.length; at += 60) {
+      const page = names.slice(at, at + 60);
+      const tracker = play([
+        'You have the following spells:',
+        'Level Mana Short Spell Name',
+        ...page.map((name, i) => `  ${i + 1}   ${i + 1}    s${i}  ${name}`),
+        '[HP=33/MA=22]:'
+      ]);
+      expect(tracker.current.spellbook?.map((spell) => spell.name)).toEqual(page);
+    }
+  });
+
   it('is replaced by the next listing, never merged', () => {
     const tracker = play([
       ...powers,

@@ -3235,6 +3235,11 @@ export const BATCH_RULES: BatchRule[] = [
      * is right-aligned, the run-lengths are the server's own padding, and the
      * status line terminates the listing as it does every batch.
      *
+     * The row is anchored by its three leading columns, so the name is
+     * whatever follows the abbreviation, to the end of the line. Both shipped
+     * realms have `lower portal (uninvited)`, and the old pattern's list of
+     * allowed characters dropped that row whole.
+     *
      * The column header is a qualifier with no groups: consumed, no row.
      * Before this batch existed it was read as a *room name* — title-cased,
      * multi-word, so the loosest rule in the table took it — and every row
@@ -3254,7 +3259,7 @@ export const BATCH_RULES: BatchRule[] = [
     maxLines: 64,
     qualifiers: [
       /^Level (?:Mana|Kai)\s+Short Spell Name$/,
-      /^\s*(?<level>\d{1,3})\s+(?<cost>\d{1,3})\s+(?<short>[\w'-]+)\s+(?<name>[\w' -]+?)\s*$/
+      /^\s*(?<level>\d{1,3})\s+(?<cost>\d{1,3})\s+(?<short>\S+)\s+(?<name>\S.*?)\s*$/
     ]
   },
   {
