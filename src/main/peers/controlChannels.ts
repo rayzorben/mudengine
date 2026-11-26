@@ -9,14 +9,18 @@ import { isPeerName } from '../../shared/peers';
 import { t } from '../app/i18n';
 import type { Host } from '../host/Host';
 import type { Peers } from './wiring';
+import { handleSharedSettings, type SharedSettingsEditor } from './sharedSettings';
 
 export interface ControlChannelsDeps {
   host: Pick<Host, 'transport'>;
   /** The sharing client, while there is one. */
   peers(): Peers | null;
+  /** The settings editor, for the settings of a character another player controls. */
+  editor(): SharedSettingsEditor;
 }
 
-export function handleControlChannels({ host, peers }: ControlChannelsDeps): void {
+export function handleControlChannels({ host, peers, editor }: ControlChannelsDeps): void {
+  handleSharedSettings({ host, editor });
   const { transport } = host;
   transport.handle(Invoke.controlOpen, (_caller, session: unknown, name: unknown) => {
     if (typeof session !== 'string' || !isPeerName(name)) return t('peers.control.badName');

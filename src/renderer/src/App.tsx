@@ -736,7 +736,7 @@ export default function App() {
     returnFocus();
   }, [returnFocus]);
 
-  const settingsApi = useSettingsApi(api, reveal);
+  const settingsApi = useSettingsApi(api, reveal, sessions);
 
   /** What a typed query reaches past the commands (`lib/paletteFind.ts`). */
   const acquireItem = useAcquireItem(api, session, noticeTo);

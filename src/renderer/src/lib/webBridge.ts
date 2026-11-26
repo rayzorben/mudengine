@@ -297,6 +297,8 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     },
 
     saveProfile: (id, draft) => invoke(Invoke.saveProfile, id, draft),
+    sharedSettings: (session) => invoke(Invoke.sharedSettings, session),
+    saveSharedSettings: (session, draft) => invoke(Invoke.saveSharedSettings, session, draft),
     deleteProfile: (id) => invoke(Invoke.deleteProfile, id),
     saveServer: (previousName, draft) => invoke(Invoke.saveServer, previousName, draft),
     deleteServer: (name) => invoke(Invoke.deleteServer, name),

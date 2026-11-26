@@ -138,6 +138,9 @@ const api: WireApi = {
   pasteText: () => ipcRenderer.invoke(Invoke.pasteText),
 
   saveProfile: (id, draft) => ipcRenderer.invoke(Invoke.saveProfile, id, draft),
+  sharedSettings: (session) => ipcRenderer.invoke(Invoke.sharedSettings, session),
+  saveSharedSettings: (session, draft) =>
+    ipcRenderer.invoke(Invoke.saveSharedSettings, session, draft),
   deleteProfile: (id) => ipcRenderer.invoke(Invoke.deleteProfile, id),
   saveServer: (previousName, draft) => ipcRenderer.invoke(Invoke.saveServer, previousName, draft),
   deleteServer: (name) => ipcRenderer.invoke(Invoke.deleteServer, name),

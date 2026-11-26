@@ -16,7 +16,8 @@ export interface EditorActionsProps {
   confirming: boolean;
   /** The question the removal asks. */
   confirmText: string;
-  onAsk(): void;
+  /** Absent where the thing cannot be removed here: no removal is drawn. */
+  onAsk: (() => void) | undefined;
   onRemove(): void;
   onKeep(): void;
 }
@@ -55,7 +56,7 @@ export default function EditorActions({
             {t('settings.actions.confirmKeep')}
           </button>
         </>
-      ) : (
+      ) : onAsk === undefined ? null : (
         <button className="quiet" onClick={onAsk} type="button">
           {t('settings.actions.remove')}
         </button>

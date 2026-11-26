@@ -168,7 +168,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the character's aliases and keys, out together (`MacroSections`, todo 134).
   // Lowered by the Auto-Attack checkbox and the two guards behind it, gone to
   // the session's switch (todo 20261102-1830-01).
-  'src/renderer/src/components/CharacterForm.tsx': 1236
+  'src/renderer/src/components/CharacterForm.tsx': 1133
 };
 
 /**

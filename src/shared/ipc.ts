@@ -1029,6 +1029,14 @@ export const Invoke = {
    * somebody can still fix it.
    */
   saveProfile: 'settings:save-profile',
+  /**
+   * A shared character's settings form, for the player controlling it: the
+   * form of `settingsSnapshot` without the account, its login script and the
+   * connect switches' meaning. Null when the character has no file.
+   */
+  sharedSettings: 'settings:shared',
+  /** A controller's save of a shared character: everything but the server, account, login and connect switches. */
+  saveSharedSettings: 'settings:save-shared',
   deleteProfile: 'settings:delete-profile',
   saveServer: 'settings:save-server',
   /** Write the options file everything is inherited from. */
@@ -1655,6 +1663,8 @@ export interface IpcApi {
 
   /** Each resolves to why it refused, or null if it was written. */
   saveProfile(id: string, draft: ProfileDraft): Promise<string | null>;
+  sharedSettings(session: SessionId): Promise<ProfileEditable | null>;
+  saveSharedSettings(session: SessionId, draft: ProfileDraft): Promise<string | null>;
   deleteProfile(id: string): Promise<string | null>;
   saveServer(previousName: string | null, draft: ServerDraft): Promise<string | null>;
   deleteServer(name: string): Promise<string | null>;

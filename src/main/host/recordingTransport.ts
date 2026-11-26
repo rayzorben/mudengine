@@ -62,6 +62,7 @@ const QUIET: ReadonlySet<string> = new Set([
   Invoke.inheritedMobRules,
   Invoke.readCardLayout,
   Invoke.settingsSnapshot,
+  Invoke.sharedSettings,
   Invoke.pasteText
 ]);
 

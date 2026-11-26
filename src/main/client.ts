@@ -3712,7 +3712,7 @@ function registerIpc(): void {
     picture: (id) => art?.portraits.picture(id) ?? null,
     nameOf: (id) => labelOf(id).name
   });
-  handleControlChannels({ host: platform, peers: () => peers });
+  handleControlChannels({ host: platform, peers: () => peers, editor });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
     const read = readProfileId(rawId);

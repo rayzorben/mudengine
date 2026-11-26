@@ -10,7 +10,7 @@ import type { TerminalPalette } from '@shared/themes';
 import AlertList from './AlertList';
 import MobRuleList from './MobRuleList';
 import SettingsSection from './SettingsSection';
-import { CHARACTER_SECTION_LABEL } from './characterNav';
+import { CHARACTER_SECTION_LABEL, isShared } from './characterNav';
 import BetterGearFields from './BetterGearFields';
 import GearSetList from './GearSetList';
 import OffRoundFields from './OffRoundFields';
@@ -22,14 +22,7 @@ import AsksFieldset from './AsksFieldset';
 import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
 import LoginStepRows from './LoginStepRows';
-import FormField, {
-  CheckField,
-  NumberField,
-  PasswordField,
-  SelectField,
-  TextField
-} from './FormField';
-import Advanced from './Advanced';
+import FormField, { CheckField, NumberField, SelectField, TextField } from './FormField';
 import CarrySections from './CarrySections';
 import BlessingFields from './BlessingFields';
 import CureFields from './CureFields';
@@ -47,7 +40,7 @@ import ConditionWaitFields from './ConditionWaitFields';
 import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
 import RecoverFields from './RecoverFields';
-import DialFields from './DialFields';
+import AccountFields from './AccountFields';
 import MonsterFields from './MonsterFields';
 import FightOddsFields from './FightOddsFields';
 import InvokeFields from './InvokeFields';
@@ -85,7 +78,6 @@ import { asLocateWord } from '@shared/locate';
 import { isThemePreference, THEME_IDS, THEMES } from '@shared/themes';
 import type { ProfileEditable } from '@shared/ipc';
 import type { Loop, ScopedLoop } from '@shared/loops';
-import { ENCODINGS, type StreamEncoding } from '@shared/types';
 import { type EngagePolicy, type Server, type VitalsUiConfig } from '@shared/config';
 import { PVP_ACTIONS } from '@shared/safety';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
@@ -193,6 +185,8 @@ export default function CharacterForm({
   actions
 }: CharacterFormProps): React.JSX.Element {
   const { trainers, serving, wards, mobs, banks } = realm;
+  // A character another player shares: its realm, account and login stay the sharer's.
+  const shared = isShared(form.id);
   const shows = (id: CharacterSection): boolean => searching || section === id;
   const sectionOf = (id: CharacterSection) => ({
     id,
@@ -282,113 +276,16 @@ export default function CharacterForm({
             value={form.name}
           />
 
-          <FormField label={t('settings.profile.realmLabel')} name="realm" wide>
-            {() => (
-              <div className="settings-file">
-                <select
-                  onChange={(event) =>
-                    patch({
-                      serverName: event.target.value === '' ? null : event.target.value
-                    })
-                  }
-                  value={form.serverName ?? ''}
-                >
-                  {servers.map((server) => (
-                    <option key={server.name} value={server.name}>
-                      {server.name}
-                    </option>
-                  ))}
-                  <option value="">{t('settings.profile.realmElsewhere')}</option>
-                </select>
-                {/*
-                  The other way to a realm, beside the field that
-                  names one -- not only from the command palette. A
-                  realm edited here is one that every character
-                  referring to it by name plays on next connection.
-                */}
-                <button
-                  className="quiet"
-                  onClick={onManageRealms}
-                  onMouseDown={keepFocus}
-                  type="button"
-                >
-                  {t('settings.profile.manageRealms')}
-                </button>
-              </div>
-            )}
-          </FormField>
-
-          {form.serverName === null && (
-            <div className="settings-inline">
-              <TextField
-                label={t('settings.profile.hostLabel')}
-                name="host"
-                onChange={(value) => patch({ host: value })}
-                placeholder={t('settings.profile.hostPlaceholder')}
-                spellCheck={false}
-                value={form.host}
-              />
-              <NumberField
-                label={t('settings.profile.portLabel')}
-                name="port"
-                onChange={(value) => patch({ port: value })}
-                value={form.port}
-              />
-            </div>
+          {/* The realm, account and dial switches are the sharer's: a controller never sees them. */}
+          {!shared && (
+            <AccountFields
+              form={form}
+              onManageRealms={onManageRealms}
+              patch={patch}
+              servers={servers}
+              shown={shown}
+            />
           )}
-
-          {/*
-            The encoding is the right answer already, and it is one
-            nobody can choose well without knowing what CP437 is --
-            so it sits behind a press rather than beside the
-            username on the form somebody opened to type a
-            password. Only for a character that spells its address
-            out: one playing on a saved realm takes the realm's.
-          */}
-          {form.serverName === null && (
-            <Advanced label={t('settings.advancedWire')}>
-              <SelectField
-                hint={t('settings.profile.encodingHint')}
-                label={t('settings.profile.encodingLabel')}
-                name="character-encoding"
-                onChange={(value) => patch({ encoding: value as StreamEncoding })}
-                options={ENCODINGS.map((encoding) => ({
-                  value: encoding,
-                  label: encoding
-                }))}
-                value={form.encoding}
-              />
-            </Advanced>
-          )}
-
-          <TextField
-            autoComplete="off"
-            label={t('settings.profile.usernameLabel')}
-            name="username"
-            onChange={(value) => patch({ username: value })}
-            spellCheck={false}
-            value={form.username}
-          />
-
-          {/* Never read back out of the file: a password that has
-              crossed to a window can end up in a devtools
-              snapshot, a crash report or a screenshot. */}
-          <PasswordField
-            hint={t('settings.profile.passwordHint')}
-            label={t('settings.profile.passwordLabel')}
-            name="password"
-            onChange={(value) => patch({ password: value, changePassword: true })}
-            placeholder={
-              form.changePassword
-                ? ''
-                : shown?.hasPassword
-                  ? t('settings.profile.passwordPlaceholderSet')
-                  : t('settings.profile.passwordPlaceholderUnset')
-            }
-            value={form.password}
-          />
-
-          <DialFields onChange={patch} value={form} />
 
           <FormField label={t('settings.profile.accentLabel')} name="accent">
             {() => (
@@ -427,7 +324,7 @@ export default function CharacterForm({
         </SettingsSection>
       )}
 
-      {shows('login') && (
+      {shows('login') && !shared && (
         <SettingsSection {...sectionOf('login')}>
           <fieldset className="settings-menus" data-fieldset="login">
             <legend>{t('settings.login.legend')}</legend>

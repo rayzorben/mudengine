@@ -11,7 +11,7 @@
  * session argument is the shared character; the sharer checks the rule again
  * and never takes the controller's word for it. Nothing that dials, hangs up,
  * reads or writes the account, deletes, changes who may control or share, or
- * touches the sharer's files crosses. See `mudengine-session` › *Peers*.
+ * touches the sharer's files other than the character's own settings (never its account, realm or login) crosses. See `mudengine-session` › *Peers*.
  */
 import { Invoke, Push, Send } from './ipc';
 import { MOST_PART_NUMBER, RELAY_PART_CHARS, type RelayPart } from './peerWire';
@@ -120,8 +120,11 @@ export const RELAY_INVOKE: { readonly [K in keyof typeof Invoke]: RelayRule } = 
   copyText: local,
   pasteText: local,
   copyImage: local,
-  // The whole file, the account and its password among it.
+  // The whole file, the account and its password among it (see sharedSettings below for the controller's part).
   saveProfile: refused,
+  // Not saveProfile, which writes the whole file: these two leave out the account, realm, login and connect switches on the sharer's side.
+  sharedSettings: forward,
+  saveSharedSettings: forward,
   deleteProfile: refused,
   saveServer: local,
   saveGlobal: local,

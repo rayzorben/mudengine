@@ -551,6 +551,48 @@ ui:
     expect(read('vaelor')['account']).toEqual({ username: 'someone', password: 'secret-value' });
   });
 
+  /*
+   * A controller of a shared character (`peerRelay.ts`) edits how it plays.
+   * Its draft arrives with a blank account and whatever dial switches the
+   * form held, and none of those may reach the sharer's file.
+   */
+  describe('a save for a character another player controls', () => {
+    const own = { username: 'someone', password: 'secret-value' };
+
+    beforeEach(() => {
+      editor.saveProfile('vaelor', draft({ autoConnect: true, lowLives: 3 }));
+    });
+
+    it('changes the colour and leaves the account, realm, login and switches as they were', () => {
+      editor.saveProfile(
+        'vaelor',
+        draft({
+          accent: 'violet',
+          username: '',
+          password: '',
+          changePassword: false,
+          server: { kind: 'inline', host: 'elsewhere', port: 23, encoding: 'cp437' },
+          autoConnect: false,
+          lowLives: 0
+        }),
+        'shared'
+      );
+      const file = read('vaelor');
+      expect(file['accent']).toBe('violet');
+      expect(file['account']).toEqual(own);
+      expect(file['server']).toBe('GreaterMUD (local)');
+      expect(file['autoConnect']).toBe(true);
+      expect(file['lowLives']).toBe(3);
+    });
+
+    it('shows the form without the account', () => {
+      const form = editor.sharedCharacter('vaelor');
+      expect(form).toMatchObject({ id: 'vaelor', username: '', hasPassword: false, login: [] });
+      expect(JSON.stringify(form)).not.toContain(own.password);
+      expect(editor.sharedCharacter('nobody-at-all')).toBeNull();
+    });
+  });
+
   it('refuses to touch a file that does not parse', () => {
     const file = home.profile('broken').file;
     fs.mkdirSync(path.dirname(file), { recursive: true });

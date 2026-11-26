@@ -263,7 +263,11 @@ export class SettingsEditor {
    * that already carries an `automation:` block keeps it, because a character
    * whose rules vanished when its colour was changed is worse than no editor.
    */
-  saveProfile(id: string, draft: ProfileDraft): EditResult {
+  saveProfile(id: string, draft: ProfileDraft, whose: 'own' | 'shared' = 'own'): EditResult {
+    // A controller of a shared character edits how it plays, never how it is
+    // dialled: the server, the account, the login and the connect switches
+    // are the sharer's, so a draft from a controller leaves them as written.
+    const dialling = whose === 'own';
     const file = this.profilePath(id);
     const base = this.baseSource();
     /*
@@ -279,12 +283,15 @@ export class SettingsEditor {
 
     const written = this.files.edit(file, {
       mutate: (document) => {
-        document.setIn(['name'], draft.name.length > 0 ? draft.name : id);
+        // A controller's form carries its tab's name, not the file's: the name stays the sharer's.
+        if (dialling) document.setIn(['name'], draft.name.length > 0 ? draft.name : id);
         document.setIn(['accent'], draft.accent);
-        document.setIn(['autoConnect'], draft.autoConnect);
-        document.setIn(['autoReconnect'], draft.autoReconnect);
-        document.setIn(['lowLives'], draft.lowLives);
-        document.setIn(['reconnectTries'], draft.reconnectTries);
+        if (dialling) {
+          document.setIn(['autoConnect'], draft.autoConnect);
+          document.setIn(['autoReconnect'], draft.autoReconnect);
+          document.setIn(['lowLives'], draft.lowLives);
+          document.setIn(['reconnectTries'], draft.reconnectTries);
+        }
         // A theme is `ui.theme`, the overlay every other setting uses; blank
         // means "follow the options file", so the key is removed rather than
         // written empty, and an emptied `ui` map goes with it.
@@ -305,73 +312,7 @@ export class SettingsEditor {
           }
         }
 
-        if (draft.server.kind === 'saved') {
-          // A reference, so renaming the host in one place moves every
-          // character that plays there.
-          document.setIn(['server'], draft.server.name);
-        } else {
-          // Keys the inline server lacks are removed, so switching from a
-          // saved server to an inline one does not leave the old name beside
-          // the new host.
-          setKeeping(document, ['server'], {
-            host: draft.server.host,
-            port: draft.server.port,
-            encoding: draft.server.encoding
-          });
-        }
-
-        /*
-         * Credentials go inline on the character, always. Two characters on
-         * one BBS account simply state the same username in two files — there
-         * is no shared store to keep them in step, and a password that drifts
-         * between them is theirs to notice, not the client's to prevent.
-         */
-        if (draft.username.length > 0) {
-          /*
-           * A blank password field means "I did not touch this", not "there
-           * is no password". The screen is never told the current one — a
-           * password that has crossed to a renderer can reach a devtools
-           * snapshot or a screenshot — so it cannot echo it back, and
-           * treating blank as empty would silently wipe the account's
-           * credentials every time somebody changed its colour.
-           */
-          const existing = document.getIn(['account', 'password']);
-          setKeeping(document, ['account'], {
-            username: draft.username,
-            password: draft.changePassword
-              ? draft.password
-              : typeof existing === 'string'
-                ? existing
-                : ''
-          });
-        } else if (document.hasIn(['account'])) {
-          // No username is a character that has not been given an account
-          // yet, which is a legitimate state: it connects and waits at the
-          // prompt. An empty `account:` block would resolve to no account and
-          // read as a mistake.
-          document.deleteIn(['account']);
-        }
-
-        /*
-         * This character's own menu script, written only when it has one.
-         *
-         * Absent means "use the server's", which is the ordinary case: the
-         * script belongs to the BBS. A `login:` block left behind empty would
-         * mean the opposite — a character that answers *no* menus — and would
-         * be noise in a file people read besides.
-         */
-        if (draft.login.length > 0) {
-          setKeeping(document, ['login', 'steps'], draft.login.map(loginRow));
-        } else if (document.hasIn(['login', 'steps'])) {
-          document.deleteIn(['login', 'steps']);
-        }
-        // Off is written; on is the default and removes the key.
-        if (!draft.autoLogin) document.setIn(['login', 'enabled'], false);
-        else if (document.hasIn(['login', 'enabled'])) document.deleteIn(['login', 'enabled']);
-        if (!draft.learnLogin) document.setIn(['login', 'learn'], false);
-        else if (document.hasIn(['login', 'learn'])) document.deleteIn(['login', 'learn']);
-        const loginBlock = document.get('login');
-        if (isMap(loginBlock) && loginBlock.items.length === 0) document.deleteIn(['login']);
+        if (dialling) writeDialling(document, draft);
 
         // Its own locate word, or null to follow the realm: cleared only when
         // the form could have shown it, as the theme above is.
@@ -1389,6 +1330,28 @@ export class SettingsEditor {
   }
 
   /**
+   * One character as a controller of it may see its form: the account, the
+   * login script, the realm and the connect switches are the sharer's, so they
+   * read as empty or off. Null where the character has no file here.
+   */
+  sharedCharacter(id: string): ProfileEditable | null {
+    const found = this.snapshot().characters.find((character) => character.id === id);
+    if (found === undefined) return null;
+    return {
+      ...found,
+      username: '',
+      hasPassword: false,
+      login: [],
+      serverName: null,
+      target: { ...found.target, host: '' },
+      autoConnect: false,
+      autoReconnect: true,
+      autoLogin: true,
+      learnLogin: true
+    };
+  }
+
+  /**
    * What a settings screen draws itself from.
    *
    * Read off disk each time rather than from the resolved profiles, and that
@@ -1614,6 +1577,73 @@ function inheritedLoops(
 const SUPPLIES = ['automation', 'supplies'] as const;
 /** Where the auto-drop block sits in a file. */
 const DROP = ['automation', 'drop'] as const;
+
+/** The server, account and login a character is dialled with: the part of a save a controller never makes. */
+function writeDialling(document: Document, draft: ProfileDraft): void {
+  if (draft.server.kind === 'saved') {
+    // A reference, so renaming the host in one place moves every
+    // character that plays there.
+    document.setIn(['server'], draft.server.name);
+  } else {
+    // Keys the inline server lacks are removed, so switching from a
+    // saved server to an inline one does not leave the old name beside
+    // the new host.
+    setKeeping(document, ['server'], {
+      host: draft.server.host,
+      port: draft.server.port,
+      encoding: draft.server.encoding
+    });
+  }
+
+  /*
+   * Credentials go inline on the character, always. Two characters on
+   * one BBS account simply state the same username in two files — there
+   * is no shared store to keep them in step, and a password that drifts
+   * between them is theirs to notice, not the client's to prevent.
+   */
+  if (draft.username.length > 0) {
+    /*
+     * A blank password field means "I did not touch this", not "there
+     * is no password". The screen is never told the current one — a
+     * password that has crossed to a renderer can reach a devtools
+     * snapshot or a screenshot — so it cannot echo it back, and
+     * treating blank as empty would silently wipe the account's
+     * credentials every time somebody changed its colour.
+     */
+    const existing = document.getIn(['account', 'password']);
+    setKeeping(document, ['account'], {
+      username: draft.username,
+      password: draft.changePassword ? draft.password : typeof existing === 'string' ? existing : ''
+    });
+  } else if (document.hasIn(['account'])) {
+    // No username is a character that has not been given an account
+    // yet, which is a legitimate state: it connects and waits at the
+    // prompt. An empty `account:` block would resolve to no account and
+    // read as a mistake.
+    document.deleteIn(['account']);
+  }
+
+  /*
+   * This character's own menu script, written only when it has one.
+   *
+   * Absent means "use the server's", which is the ordinary case: the
+   * script belongs to the BBS. A `login:` block left behind empty would
+   * mean the opposite — a character that answers *no* menus — and would
+   * be noise in a file people read besides.
+   */
+  if (draft.login.length > 0) {
+    setKeeping(document, ['login', 'steps'], draft.login.map(loginRow));
+  } else if (document.hasIn(['login', 'steps'])) {
+    document.deleteIn(['login', 'steps']);
+  }
+  // Off is written; on is the default and removes the key.
+  if (!draft.autoLogin) document.setIn(['login', 'enabled'], false);
+  else if (document.hasIn(['login', 'enabled'])) document.deleteIn(['login', 'enabled']);
+  if (!draft.learnLogin) document.setIn(['login', 'learn'], false);
+  else if (document.hasIn(['login', 'learn'])) document.deleteIn(['login', 'learn']);
+  const loginBlock = document.get('login');
+  if (isMap(loginBlock) && loginBlock.items.length === 0) document.deleteIn(['login']);
+}
 
 /**
  * The supplies block's switch and figures, patched against what the file

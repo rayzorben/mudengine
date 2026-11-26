@@ -5,6 +5,7 @@
  */
 import type { NavFieldset, NavSection } from './SettingsNav';
 
+import { isRemoteSessionId } from '@shared/peerRelay';
 import { t } from '../lib/i18n';
 import { CHARACTER_SECTIONS, type CharacterSection } from '../lib/characterForm';
 
@@ -107,3 +108,12 @@ export const CHARACTER_NAV: readonly NavSection[] = CHARACTER_SECTIONS.map((id) 
   label: CHARACTER_SECTION_LABEL[id],
   fieldsets: SECTION_FIELDSETS[id]
 }));
+
+/** Whether the character on the page is one another player shares, controlled from here. */
+export const isShared = (id: string | null): boolean => id !== null && isRemoteSessionId(id);
+
+const SHARED_NAV: readonly NavSection[] = CHARACTER_NAV.filter((section) => section.id !== 'login');
+
+/** The rail's rows for `id`: a shared character has no login script of its own to edit. */
+export const navFor = (id: string | null): readonly NavSection[] =>
+  isShared(id) ? SHARED_NAV : CHARACTER_NAV;

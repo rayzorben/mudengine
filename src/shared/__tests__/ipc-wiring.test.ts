@@ -26,7 +26,8 @@ const main = [
   'src/main/app/transfer.ts',
   'src/main/app/layoutFiles.ts',
   'src/main/art/portraitFiles.ts',
-  'src/main/peers/controlChannels.ts'
+  'src/main/peers/controlChannels.ts',
+  'src/main/peers/sharedSettings.ts'
 ]
   .map(read)
   .join('\n');

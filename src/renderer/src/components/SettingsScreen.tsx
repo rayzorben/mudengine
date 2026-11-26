@@ -3,7 +3,7 @@ import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
 import SettingsNav from './SettingsNav';
 import CharacterForm from './CharacterForm';
-import { CHARACTER_NAV } from './characterNav';
+import { isShared, navFor } from './characterNav';
 import ServerForm from './ServerForm';
 import FormActions from './FormActions';
 import EditorActions from './EditorActions';
@@ -1061,7 +1061,7 @@ export default function SettingsScreen({
                   onChoose: (id: string) => choose(id)
                 }}
                 section={section}
-                sections={CHARACTER_NAV}
+                sections={navFor(selected)}
               />
 
               {form === null ? (
@@ -1079,7 +1079,7 @@ export default function SettingsScreen({
                       create={
                         selected === NEW_CHARACTER ? t('settings.actions.createCharacter') : null
                       }
-                      onAsk={() => setConfirming(selected)}
+                      onAsk={isShared(selected) ? undefined : () => setConfirming(selected)}
                       onKeep={() => setConfirming(null)}
                       onRemove={() => void remove()}
                       status={status}

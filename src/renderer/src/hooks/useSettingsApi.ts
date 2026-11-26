@@ -6,16 +6,54 @@
  * a child that keys an effect on one then runs it on every render, which is
  * how a refused save came to flash and vanish before anybody could read it.
  */
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
-import type { IpcApi, Revealed, SessionId } from '@shared/ipc';
+import type { IpcApi, Revealed, SessionId, SessionSummary, SettingsSnapshot } from '@shared/ipc';
+import { isRemoteSessionId } from '@shared/peerRelay';
 
-export function useSettingsApi(api: IpcApi, reveal: (ask: () => Promise<Revealed>) => void) {
+/** Who a controlled character is called here: its tab's name, since its file is the sharer's. */
+type OpenedShare = Pick<SessionSummary, 'id' | 'name' | 'remote'>;
+
+/**
+ * This client's own characters, then each one another player shares that is
+ * open here, read through the sharer's client without its account. A share the
+ * sharer's client does not answer for is left out, not shown broken.
+ */
+async function withShared(
+  api: IpcApi,
+  own: SettingsSnapshot,
+  opened: readonly OpenedShare[]
+): Promise<SettingsSnapshot> {
+  const forms = await Promise.all(
+    opened.map(async (share) => {
+      // A share the sharer's client will not answer for (link down, control stopped) is left out
+      // of the list, and the reason goes to the console rather than nowhere.
+      const form = await api.sharedSettings(share.id).catch((error: unknown) => {
+        console.warn(`Settings of ${share.name} are not available: ${String(error)}`);
+        return null;
+      });
+      return form === null ? null : { ...form, id: share.id, name: share.name };
+    })
+  );
+  const shared = forms.filter((form) => form !== null);
+  return shared.length === 0 ? own : { ...own, characters: [...own.characters, ...shared] };
+}
+
+export function useSettingsApi(
+  api: IpcApi,
+  reveal: (ask: () => Promise<Revealed>) => void,
+  roster: readonly SessionSummary[]
+) {
+  // Read at the moment a screen asks, so a share opened since does not make every callback new.
+  const opened = useRef<readonly OpenedShare[]>([]);
+  opened.current = roster.filter((entry) => entry.remote !== null);
+
   return useMemo(
     () => ({
-      load: () => api.settingsSnapshot(),
-      saveProfile: (id: string, draft: ProfileDraft) => api.saveProfile(id, draft),
+      load: async () => withShared(api, await api.settingsSnapshot(), opened.current),
+      saveProfile: (id: string, draft: ProfileDraft) =>
+        isRemoteSessionId(id) ? api.saveSharedSettings(id, draft) : api.saveProfile(id, draft),
       deleteProfile: (id: string) => api.deleteProfile(id),
       saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
       deleteServer: (name: string) => api.deleteServer(name),
