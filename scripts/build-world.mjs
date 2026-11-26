@@ -37,6 +37,7 @@ import zlib from 'node:zlib';
 
 import { openRealm } from '../src/main/world/RealmSource.ts';
 import { buildRealm, identityOfArchive } from '../src/main/world/buildRealm.ts';
+import { loadBlankRoomNames } from '../src/main/world/blankRoomNames.ts';
 import { loadProtectedRooms } from '../src/main/world/protectedRooms.ts';
 import { asShippedWorld, SHIPPED_WORLDS, shippedWorldFile } from '../src/shared/worlds.ts';
 
@@ -76,6 +77,9 @@ for (const { world, source } of jobs) {
     new Date().toISOString().slice(0, 10),
     { world, archive: identityOfArchive(source) },
     loadProtectedRooms(outDir, (message) => {
+      throw new Error(message);
+    }),
+    loadBlankRoomNames(outDir, (message) => {
       throw new Error(message);
     })
   );

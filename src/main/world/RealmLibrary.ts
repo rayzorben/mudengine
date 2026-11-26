@@ -8,6 +8,7 @@ import { writeWholeSync } from '../app/writeWhole';
 import { WorldGraph } from './WorldGraph';
 import { buildRealm, REALM_FORMAT } from './buildRealm';
 import { archiveWorldOf, databasePath, shippedArchives, shippedWorldPath } from './bundledArchive';
+import { loadBlankRoomNames } from './blankRoomNames';
 import { loadProtectedRooms } from './protectedRooms';
 import { openRealm } from './RealmSource';
 import { tuning } from '../app/tuning';
@@ -356,7 +357,8 @@ export class RealmLibrary {
         source,
         new Date().toISOString().slice(0, 10),
         undefined,
-        loadProtectedRooms(this.options.shippedDir, (message) => this.options.notify?.(message))
+        loadProtectedRooms(this.options.shippedDir, (message) => this.options.notify?.(message)),
+        loadBlankRoomNames(this.options.shippedDir, (message) => this.options.notify?.(message))
       );
       source.close();
 

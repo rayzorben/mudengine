@@ -1089,6 +1089,9 @@ notices:
       empty: the message table {file} is empty; only the built-in patterns are read
     protectedRooms:
       readError: 'could not read the protected room table {file}: {message}; no room is marked safe'
+    blankRoomNames:
+      readError: 'could not read the room name table {file}: {message}; rooms the database leaves
+        unnamed stay unnamed'
     themePack:
       readError: 'could not read the world map theme {file}: {message}; each room takes the look its
         name suggests'
