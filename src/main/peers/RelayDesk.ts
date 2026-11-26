@@ -46,8 +46,8 @@ export interface RelayDeskDeps {
   handlers: HandlerTable;
   windows: Pick<WindowRegistry, 'add' | 'remove'>;
   link: Pick<PeerLink, 'feed'>;
-  /** Why the line `by` typed into `id`'s terminal is not sent, or null to send it. */
-  screen(id: SessionId, line: string, by: string): string | null;
+  /** Why the line typed into `id`'s terminal is not sent, or null to send it. */
+  screen(id: SessionId, line: string): string | null;
   notice(id: SessionId, message: string): void;
   refused(id: SessionId, decision: SafetyDecision): void;
   /** The client's log, for a call that could not be read. */
@@ -267,7 +267,7 @@ export class RelayDesk {
     for (const [at, line] of lines.entries()) {
       const whole = (at === 0 ? typed + line : line).trim();
       if (whole.length === 0) continue;
-      const why = this.deps.screen(relay.session, whole, relay.by.name);
+      const why = this.deps.screen(relay.session, whole);
       if (why !== null) return why;
     }
     return null;

@@ -85,7 +85,7 @@ function controlled(level: Exclude<ShareLevel, 'off'>) {
     handlers: recorded.handlers,
     windows: sharerWindows,
     link: sharer.link,
-    screen: (_id, line, by) => screenLine(line, by, {}),
+    screen: (_id, line) => screenLine(line),
     notice: (_id, message) => notices.push(message),
     refused: (_id, decision) => refusals.push(decision),
     say: (message) => notices.push(message),

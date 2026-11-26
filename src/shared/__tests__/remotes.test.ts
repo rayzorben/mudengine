@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  passesOnARemote,
   judgeRemote,
   formatEncumbrance,
   formatExp,
@@ -712,38 +711,5 @@ describe('@abil', () => {
     );
     const at0 = { ...phoenix, value: 0, setBy: [], next: { rank: 1, steps: [] } };
     expect(formatAbilities([at0], 255)).toBe('{PhoenixQuest(133) - 0 -> 1}');
-  });
-});
-
-/* Todo 20261103-0930-01: what a command run on a sender's `@do` may not send. */
-describe('whether a command passes a remote on', () => {
-  it.each([
-    '/Brakkle @do drop all',
-    '/ Brakkle  @do drop all',
-    '>Brakkle @health',
-    '.@do n',
-    '. @do n',
-    '"@do n',
-    '-@do n',
-    "'@do n",
-    'gos @do n',
-    'bg @party n',
-    'gb @do n',
-    '@do n',
-    '  @hangup'
-  ])('reads %s as passing one on', (command) => {
-    expect(passesOnARemote(command)).toBe(true);
-  });
-
-  it.each([
-    'look',
-    '/Brakkle hello',
-    '/Brakkle hi @do n',
-    'gos look at @do',
-    'get sword@do',
-    '/Brakkle {ok}',
-    '/Brakkle @lol'
-  ])('reads %s as passing none on', (command) => {
-    expect(passesOnARemote(command)).toBe(false);
   });
 });

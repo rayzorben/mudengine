@@ -54,7 +54,6 @@ import type { RecentDeath } from './recentDeaths';
 import type { AutomationSwitch } from './automationSwitches';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 import { twoDigits } from './values';
-import { channelPrefix } from './talk';
 
 export const REMOTE_NAMES = [
   'version',
@@ -595,28 +594,6 @@ function callArgument(rest: string): string | null | undefined {
   if (match === null) return undefined;
   const argument = match.groups?.['argument']?.trim() ?? null;
   return argument === null || argument.length === 0 ? null : argument;
-}
-
-/**
- * Whether sending `command` would put an `@` command in front of another
- * character: a telepath, a directed or spoken say, a gang or realm-wide line
- * whose message opens with one, or a bare `@word`, which the server says out
- * loud in the room as a word it has no command for. Read the way the
- * character receiving it reads it (`parseRemoteCall`). A command run on a
- * sender's `@do` or `@party` may not be one (todo 20261103-0930-01): the
- * character it reaches trusts this one, not whoever sent the `@do`.
- */
-export function passesOnARemote(command: string): boolean {
-  const text = command.trim();
-  const at = text.indexOf('@');
-  if (at < 0 || parseRemoteCall(text.slice(at)) === null) return false;
-  // Everything before the `@` must be the channel and nothing else, as the
-  // receiving end reads only a message that opens with the word.
-  const before = text.slice(0, at).trimEnd();
-  if (before.length === 0) return true;
-  const unspaced = (said: string): string => said.replace(/\s+/g, '');
-  const prefix = channelPrefix(`${before} `);
-  return prefix !== null && unspaced(prefix) === unspaced(before);
 }
 
 /**

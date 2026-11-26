@@ -1828,11 +1828,9 @@ function createPeers(): Peers {
     announce: (message) => announce('peers', message, 'log'),
     handlers,
     windows,
-    screen: (id, line, by) => {
+    screen: (id, line) => {
       const manager = host?.get(id)?.manager;
-      return manager === undefined
-        ? t('app.session.notConnected')
-        : screenLine(line, by, manager.reports);
+      return manager === undefined ? t('app.session.notConnected') : screenLine(line);
     },
     refused: (id, decision) => host?.get(id)?.manager.reports.decided(decision),
     nameOf: nameOfCharacter,

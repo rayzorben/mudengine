@@ -55,8 +55,8 @@ export interface PeersDeps {
   /** Every handler, for a call a controller relays (`relayTransport`). */
   handlers: HandlerTable;
   windows: WindowRegistry;
-  /** Why the line `by` typed into `id`'s terminal is not sent, or null (`screenLine`). */
-  screen(id: SessionId, line: string, by: string): string | null;
+  /** Why the line typed into `id`'s terminal is not sent, or null (`screenLine`). */
+  screen(id: SessionId, line: string): string | null;
   /** A remote control refusal, for `id`'s safety trace. */
   refused(id: SessionId, decision: SafetyDecision): void;
   /** `id`'s name on the rail. */
