@@ -5,6 +5,7 @@
  * optional members are diagnostics by design. See `mudengine-session`.
  */
 import type { GearTripProgress } from '../../shared/gearTrip';
+import type { Intent, QueueRefusal } from '../automation/CommandQueue';
 import type { StandDown } from '../automation/LoginAutomator';
 import type { AliasFile } from './aliasAnswers';
 import type { AutomationSnapshot } from '../../shared/automation';
@@ -136,6 +137,12 @@ export interface SessionSink {
    * One place does this, so a capture and the tracker cannot disagree.
    */
   command?(command: string, source: 'user' | 'automation'): void;
+  /**
+   * A command the queue refused to take, and why. The one place a
+   * proposer's silence is explained: an intent that is never sent leaves no
+   * line on the wire.
+   */
+  queueRefused?(intent: Intent, refusal: QueueRefusal): void;
   /** How a route walk is going, when one is running. */
   walk?(progress: WalkProgress): void;
   /**

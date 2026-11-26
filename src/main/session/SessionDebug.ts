@@ -13,6 +13,9 @@ import {
   type DebugRecord
 } from '../../shared/debug';
 import type { AutomationSnapshot } from '../../shared/automation';
+import { changedPaths } from '../../shared/changes';
+import type { LoopProgress } from '../../shared/loops';
+import type { WalkProgress } from '../../shared/walk';
 import { NO_PLAYERS, type PlayerRegistry } from '../../shared/players';
 import type { ConnectionState, StreamLine, TelnetEvent } from '../../shared/types';
 import { tuning } from '../app/tuning';
@@ -104,6 +107,15 @@ export class SessionDebug {
     this.push('out', source, visible(command));
   }
 
+  /**
+   * Something a person or a remote asked of this client: a window's call, a
+   * relayed command. Recorded before the handler runs, so a handler that
+   * throws or declines still shows that it was asked.
+   */
+  action(tag: string, text: string): void {
+    this.push('event', tag, clip(text));
+  }
+
   /** One framed line, with what a parser will actually match underneath it. */
   line(line: StreamLine): void {
     this.push('line', line.terminator, clip(visible(line.text)), `plain: ${clip(line.plain)}`);
@@ -192,6 +204,7 @@ export class SessionDebug {
    * stored the other way round for a card that reads backwards.
    */
   automation(snapshot: AutomationSnapshot): void {
+    this.switches(snapshot);
     this.since('rule', snapshot.firings, (firing) =>
       firing.blockedBy === undefined
         ? `${firing.rule} → ${firing.commands.join('; ')}`
@@ -199,6 +212,96 @@ export class SessionDebug {
     );
     this.since('safety', snapshot.safety, safetyText);
     this.since('engage', snapshot.engagements, engageText);
+  }
+
+  /** The master switch, away and the held switches, when any of them changes. */
+
+  private switches(snapshot: AutomationSnapshot): void {
+    const held = Object.entries(snapshot.held)
+      .map(([name, on]) => `${name} ${on ? 'on' : 'off'}`)
+      .join(', ');
+    const now = `automation ${snapshot.enabled ? 'on' : 'off'}, away ${snapshot.away ? 'yes' : 'no'}, ${held}`;
+    this.onChange('switch', now);
+  }
+
+  /** When each refusal of each command was last recorded, and how many came since. */
+  private readonly refusals = new Map<string, { at: number; since: number }>();
+
+  /**
+   * An intent the queue would not take. A proposer on a tick offers the same
+   * command every status line, so a refusal is recorded once per command and
+   * reason in `tuning.session.refusalRepeatMs`, with the count it stood for.
+   */
+  refusal(command: string, refusal: string, priority: string): void {
+    const key = `${refusal}\u0000${command}`;
+    const now = Date.now();
+    if (this.refusals.size > tuning().session.refusalKeys) this.refusals.clear();
+    const last = this.refusals.get(key);
+    if (last !== undefined && now - last.at < tuning().session.refusalRepeatMs) {
+      last.since += 1;
+      return;
+    }
+    const again = last === undefined || last.since === 0 ? '' : ` (${last.since} more since)`;
+    this.refusals.set(key, { at: now, since: 0 });
+    this.push('event', 'refused', clip(`${command} [${priority}] ${refusal}${again}`));
+  }
+
+  /** The automation settings as of the last reload, null before the first. */
+  private settingsWere: unknown = null;
+
+  /**
+   * The settings the session now runs on. A reload that changed nothing is
+   * recorded as nothing; the first is the baseline. Only `automation` is
+   * passed: it holds no credential, which is why this is allowed to print values.
+   */
+  settings(automation: unknown): void {
+    const before = this.settingsWere;
+    this.settingsWere = automation;
+    if (before === null) return;
+    const changes = changedPaths(before, automation);
+    if (changes.length === 0) return;
+    const shownChanges = changes.slice(0, 20);
+    const more =
+      changes.length > shownChanges.length
+        ? ` (+${changes.length - shownChanges.length} more)`
+        : '';
+    this.push('event', 'setting', clip(`${shownChanges.join('; ')}${more}`));
+  }
+
+  /** The loop's last stated position, so only a change is recorded. */
+  /** What each tag last said, so a republish of the same state is recorded as nothing. */
+  private readonly said = new Map<string, string>();
+
+  private onChange(tag: string, text: string): void {
+    if (this.said.get(tag) === text) return;
+    this.said.set(tag, text);
+    this.push('event', tag, clip(text));
+  }
+
+  /**
+   * Whether a loop is running, stopped or standing still, and why. A loop that
+   * shows Stop and does nothing is a `hold` or a stop that was never stated
+   * anywhere; each change of status, hold, reason or stop is a record.
+   */
+  loop(progress: LoopProgress): void {
+    const now = [
+      progress.status,
+      progress.name ?? '—',
+      `stop ${progress.stop}/${progress.stops}`,
+      progress.stopName === null ? '' : `to ${progress.stopName}`,
+      progress.hold === null ? '' : `hold ${progress.hold}`,
+      progress.reason === null ? '' : `reason ${progress.reason}`,
+      `lap ${progress.laps}`
+    ]
+      .filter((part) => part.length > 0)
+      .join(', ');
+    this.onChange('loop', now);
+  }
+
+  /** A walk's status and where it is bound, on each change. */
+  walk(progress: WalkProgress): void {
+    const now = `${progress.status}${progress.destination === null ? '' : ` to ${progress.destination}`}`;
+    this.onChange('walk', now);
   }
 
   /** The entry each list ended at when it was last read. */

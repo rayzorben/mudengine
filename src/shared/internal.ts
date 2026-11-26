@@ -2045,6 +2045,14 @@ const TUNING_DEFAULTS = {
      */
     debugLogLimit: 10000,
     /**
+     * How long a repeat of one refused command is counted instead of recorded
+     * in the session's activity file, and how many distinct refusals are
+     * tracked at once. A proposer on a tick offers the same command every
+     * status line.
+     */
+    refusalRepeatMs: 30000,
+    refusalKeys: 500,
+    /**
      * Shapes of unread line the debug window keeps per realm (todo 73). The
      * corpus puts a capture at 15 distinct shapes median, 87 at p95 and 368 at
      * most (`todo/73-unread-tally-census.txt`); past this the one seen longest

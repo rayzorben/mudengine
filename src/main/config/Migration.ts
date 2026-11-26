@@ -8774,6 +8774,9 @@ function theTuningBlockGainedKeys(
     /* The debug window's two bounds (todo 05): main's ring, and the window's. */
     addKey('session', 'debugLogLimit', DEFAULT_INTERNAL.tuning.session.debugLogLimit);
     addKey('view', 'debugRows', DEFAULT_INTERNAL.tuning.view.debugRows);
+    /* The activity record's refusal de-duplication (2026-11-26). */
+    addKey('session', 'refusalRepeatMs', DEFAULT_INTERNAL.tuning.session.refusalRepeatMs);
+    addKey('session', 'refusalKeys', DEFAULT_INTERNAL.tuning.session.refusalKeys);
     /* What a step on a saved route costs (2026-09-05, the loop builder). */
     addKey('world', 'preferredStepCost', DEFAULT_INTERNAL.tuning.world.preferredStepCost);
     /* The wheel on a map: how much a notch zooms, and when the card writes it down. */

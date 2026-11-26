@@ -10,6 +10,8 @@ import { clockOf, dayOf } from '../../shared/values';
 
 /** What a session log's name ends in. */
 export const LOG_SUFFIX = '.log';
+/** What the client's own record of a session ends in: commands, clicks, decisions, state changes. */
+export const ACTIVITY_SUFFIX = '.activity.log';
 /** What a capture's name ends in. */
 export const CAPTURE_SUFFIX = '.mudcap.jsonl';
 
@@ -33,12 +35,12 @@ export function stamp(at: Date): string {
 const STAMP = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/;
 
 /**
- * A name `SessionLog` or `SessionCapture` wrote: the stamp, a slug, a suffix.
+ * A name `SessionLog` (either record) or `SessionCapture` wrote: the stamp, a slug, a suffix.
  * The sweep deletes nothing else, since `logging.directory` may name a folder
  * that holds the player's own files too.
  */
 export function isSessionRecord(name: string): boolean {
-  const suffix = [LOG_SUFFIX, CAPTURE_SUFFIX].find((end) => name.endsWith(end));
+  const suffix = [ACTIVITY_SUFFIX, LOG_SUFFIX, CAPTURE_SUFFIX].find((end) => name.endsWith(end));
   if (suffix === undefined) return false;
   const stem = name.slice(0, -suffix.length);
   const label = stem.replace(STAMP, '');

@@ -676,6 +676,7 @@ export class SessionManager {
     this.automationConfig = automation;
     this.configured = [automation, login];
     this.queue = new CommandQueue(automation, {
+      refused: (intent, why) => this.sink.queueRefused?.(intent, why),
       send: (command, intent) => {
         /*
          * The player's own line, paced (todo 04): the path a keystroke takes,
@@ -3160,8 +3161,7 @@ export class SessionManager {
    */
   forgetCharacter(): boolean {
     if (!this.belongings.forget()) return false;
-    // The persisted fields are re-seeded from the now empty record, and the
-    // book is listed again; the room, the roster and the phase are left as they are.
+    // Re-seeded from the now empty record, and the book listed again; room, roster and phase stay.
     this.tracker.forgetBelongings();
     this.routines.characterForgotten(this.tracker.current);
     this.statsBaseline.useStore(this.belongings);

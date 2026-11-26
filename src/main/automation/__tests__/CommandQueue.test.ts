@@ -872,3 +872,20 @@ describe('an intent resolved at the send', () => {
     expect(queue.snapshot.depth).toBe(0);
   });
 });
+
+describe('what the queue reports refusing', () => {
+  it('hands the intent and the reason to the session, once per refusal, and nothing for a taken one', () => {
+    const refused: string[] = [];
+    const q = new CommandQueue(
+      { ...base, enabled: false },
+      {
+        send: (command) => sent.push(command),
+        refused: (intent, why) => refused.push(`${intent.command} ${why}`)
+      }
+    );
+    sent = [];
+    expect(q.offer({ command: 'n', priority: 'movement' })).toBe('switched-off');
+    expect(q.offer({ command: 'st', priority: 'user' })).toBe('queued');
+    expect(refused).toEqual(['n switched-off']);
+  });
+});

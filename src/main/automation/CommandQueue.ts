@@ -222,6 +222,8 @@ export interface QueueEvents {
   send(command: string, intent: Queued): void;
   /** Something worth telling the player. */
   notice?(message: string): void;
+  /** An intent the queue refused, and why: said by nobody else, since nothing is sent. */
+  refused?(intent: Intent, refusal: QueueRefusal): void;
   /**
    * Commit whatever half-typed line the player has on the wire, so an
    * emergency can go out clean. See the emergency exception in `drain`.
@@ -409,6 +411,12 @@ export class CommandQueue {
 
   /** Offers an intent, and says what became of it. See `Offered`. */
   offer(intent: Intent): Offered {
+    const offered = this.decide(intent);
+    if (!taken(offered)) this.events.refused?.(intent, offered);
+    return offered;
+  }
+
+  private decide(intent: Intent): Offered {
     // Ahead of the `user` exemption every other gate here makes: a person's
     // toolbar press is a command for the realm too, and the realm is not what
     // is listening.

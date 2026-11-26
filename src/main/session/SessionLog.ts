@@ -35,6 +35,8 @@ export interface SessionLogOptions {
   directory: string;
   /** Stop appending past this many bytes. */
   maxBytes: number;
+  /** What the file's name ends in; `LOG_SUFFIX` unless this is the activity record. */
+  suffix?: string | undefined;
   /** Reports the first failure, and the cap being reached. */
   onProblem?: ((message: string) => void) | undefined;
 }
@@ -99,7 +101,10 @@ export class SessionLog {
      * `npm run check:secrets` walks the whole directory. A file holding only
      * the header it was opened with is a file with nothing in it.
      */
-    this.file = path.join(this.options.directory, `${stamp(at)}_${label}${LOG_SUFFIX}`);
+    this.file = path.join(
+      this.options.directory,
+      `${stamp(at)}_${label}${this.options.suffix ?? LOG_SUFFIX}`
+    );
     this.header = `--- session ${target.host}:${target.port} (${target.encoding}) ---\n`;
   }
 

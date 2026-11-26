@@ -130,6 +130,7 @@ import { handlePortraitFiles } from './art/portraitFiles';
 import { wireArt, type Art } from './art/wiring';
 import { wirePeers, type Peers } from './peers/wiring';
 import { screenLine } from './peers/screenLine';
+import { recordingTransport } from './host/recordingTransport';
 import { relayTransport, type HandlerTable } from './peers/relayTransport';
 import { handleControlChannels } from './peers/controlChannels';
 import { DEFAULT_ART, type ArtConfig } from '../shared/artConfig';
@@ -1836,6 +1837,16 @@ function createPeers(): Peers {
     nameOf: nameOfCharacter,
     rostersChanged: publishRosters
   });
+}
+
+/** A call is about a session when its first argument names a loaded one; else it is about the client. */
+function sessionNamed(candidate: unknown): string {
+  return typeof candidate === 'string' && host?.has(candidate) ? candidate : '';
+}
+
+/** Into the activity record (`recordingTransport`); `''` reaches every session's. */
+function recordAction(session: string, tag: string, text: string): void {
+  host?.recordAction(session, tag, text);
 }
 
 function createHost(): SessionHost {
@@ -3974,11 +3985,15 @@ export function startClient(
   built: { simulatorWorker: string; artWorker: string; lapWorker: string }
 ): void {
   const relayed = relayTransport(host.transport, () => peers?.relay ?? null);
+  // Outside the relay, so the handler it keeps is the recorded one and a relayed call is recorded too.
+  const recorded = recordingTransport(relayed.transport, recordAction, sessionNamed, (message) =>
+    announce('session', message)
+  );
   handlers = relayed.handlers;
   // Every handler goes through the relay: both hosts are closures, so the proxy reaches each as itself.
   platform = new Proxy(host, {
     get: (target, key, receiver) =>
-      key === 'transport' ? relayed.transport : Reflect.get(target, key, receiver)
+      key === 'transport' ? recorded : Reflect.get(target, key, receiver)
   });
   simulatorWorker = built.simulatorWorker;
   artWorker = built.artWorker;

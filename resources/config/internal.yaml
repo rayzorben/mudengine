@@ -1584,6 +1584,12 @@ tuning:
     # catches it. 10000 is about six minutes of a fight.
     debugLogLimit: 10000
 
+    # How long a repeat of one refused command is counted instead of recorded in
+    # the session's activity file, and how many distinct refusals are tracked at
+    # once. A proposer on a tick offers the same command every status line.
+    refusalRepeatMs: 30000
+    refusalKeys: 500
+
     # Shapes of unread line the debug window keeps per realm: lines the parser
     # did not read, grouped with their figures as #. Past this the shape seen
     # longest ago goes.

@@ -53,6 +53,20 @@ export interface DebugRecord {
  */
 export const DEBUG_TEXT_LIMIT = 400;
 
+/**
+ * The kinds the session log already holds as the server's own text. The rest
+ * (what the client sent, decided, was asked to do or changed) go to the
+ * session's activity file, so a session can be reconstructed after the debug
+ * ring has rolled or the client has restarted.
+ */
+export const WIRE_KINDS: readonly DebugKind[] = ['in', 'line', 'block'];
+
+/** One record as a line of the activity file: `kind tag text`, one line. */
+export function activityLine(record: DebugRecord): string {
+  const detail = record.detail === undefined ? '' : `  | ${visible(record.detail)}`;
+  return `${record.kind} ${record.tag} ${visible(record.text)}${detail}\n`;
+}
+
 /** Cuts to `DEBUG_TEXT_LIMIT` and says so. */
 export function clip(text: string, limit = DEBUG_TEXT_LIMIT): string {
   if (text.length <= limit) return text;

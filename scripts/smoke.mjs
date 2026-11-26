@@ -17237,10 +17237,12 @@ async function capture(file, label) {
 // now that `logging.capture` defaults on — one of each per connection, and a
 // third file of either kind would mean a reconnect leaked into this session.
 const allFiles = fs.existsSync(LOG_DIR) ? fs.readdirSync(LOG_DIR) : [];
-const logFiles = allFiles.filter((name) => name.endsWith('.log'));
+const logFiles = allFiles.filter((name) => name.endsWith('.log') && !name.endsWith('.activity.log'));
+const activityFiles = allFiles.filter((name) => name.endsWith('.activity.log'));
 const captureFiles = allFiles.filter((name) => name.endsWith('.mudcap.jsonl'));
 check(logFiles.length === 1, 'one log file per connection', JSON.stringify(allFiles));
 check(captureFiles.length === 1, 'one capture file per connection', JSON.stringify(allFiles));
+check(activityFiles.length <= 1, 'at most one activity file per connection', JSON.stringify(allFiles));
 if (logFiles[0]) {
   const body = fs.readFileSync(path.join(LOG_DIR, logFiles[0]), 'utf8');
   check(/Obvious exits: north, south/.test(body), 'the session log captured server output');

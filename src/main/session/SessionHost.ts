@@ -25,6 +25,8 @@ import path from 'node:path';
 
 import { t } from '../app/i18n';
 import { errorMessage } from '../../shared/values';
+import { MASKED_COMMAND } from '../../shared/automation';
+import { WIRE_KINDS, activityLine } from '../../shared/debug';
 import type { Loop } from '../../shared/loops';
 import type { CharacterState } from '../../shared/character';
 import type { RoomReference } from '../../shared/world';
@@ -33,6 +35,7 @@ import { Backscroll } from './Backscroll';
 import { MarkBook } from './MarkBook';
 import { MARKS_FILE } from './markFile';
 import { SessionCapture } from './SessionCapture';
+import { ACTIVITY_SUFFIX } from './filename';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
 import { LowLivesHold } from './LowLivesHold';
@@ -106,6 +109,8 @@ export interface SessionSlot {
   /** Every dial asks it first: a character low on lives waits for the player. See `LowLivesHold`. */
   readonly lowLives: LowLivesHold;
   log: SessionLog | null;
+  /** The client's own record of the session beside the log: see `activityLine`. Open whenever `log` is. */
+  activity: SessionLog | null;
   capture: SessionCapture | null;
   /** The realm the session's records are keyed on: the last known at a dial, then the menu's choice (todo 34). */
   realm: Realm | null;
@@ -425,6 +430,16 @@ export class SessionHost {
     return this.slots.has(id);
   }
 
+  /**
+   * A thing a window or a remote asked of one session, or of the whole client
+   * when `id` names none (a settings write reaches every character).
+   */
+  recordAction(id: SessionId, tag: string, text: string): void {
+    const slot = this.slots.get(id);
+    if (slot) slot.debug.action(tag, text);
+    else for (const each of this.slots.values()) each.debug.action(tag, text);
+  }
+
   get(id: SessionId): SessionSlot | undefined {
     return this.slots.get(id);
   }
@@ -499,9 +514,12 @@ export class SessionHost {
      * Its own route for exactly that reason: sharing the diagnostics flag, a
      * window with the Stream card open paid for records nothing in it read.
      */
-    const debug = new SessionDebug((record) =>
-      this.options.toDebugging(Push.debug, { session: id, payload: record })
-    );
+    const debug = new SessionDebug((record) => {
+      this.options.toDebugging(Push.debug, { session: id, payload: record });
+      // Looked up, not closed over: the slot is built after this.
+      if (!WIRE_KINDS.includes(record.kind))
+        this.slots.get(id)?.activity?.write(activityLine(record), record.at);
+    });
 
     // Beside the backscroll segments its line ids are written into, and bounded by them.
     const marks = new MarkBook({
@@ -588,13 +606,19 @@ export class SessionHost {
           debug.players(registry);
           this.options.toAll(Push.players, { session: id, payload: registry });
         },
-        walk: (progress) => this.options.toAll(Push.walk, { session: id, payload: progress }),
+        walk: (progress) => {
+          debug.walk(progress);
+          this.options.toAll(Push.walk, { session: id, payload: progress });
+        },
         // Where a walk was headed. Nothing is pushed to a window: the palette
         // asks for the recent list when somebody types, so a record kept on
         // every leg of a loop would be a push per step for a list nobody has
         // open.
         destination: (room, name) => this.options.destinationsFor(id).remember({ id: room, name }),
-        loop: (progress) => this.options.toAll(Push.loop, { session: id, payload: progress }),
+        loop: (progress) => {
+          debug.loop(progress);
+          this.options.toAll(Push.loop, { session: id, payload: progress });
+        },
         automation: (snapshot) => {
           debug.automation(snapshot);
           this.options.toAll(Push.automation, { session: id, payload: snapshot });
@@ -673,6 +697,13 @@ export class SessionHost {
           this.options.toAll(Push.questRun, { session: id, payload: progress }),
         gearTrip: (progress) =>
           this.options.toAll(Push.gearTrip, { session: id, payload: progress }),
+        queueRefused: (intent, refusal) =>
+          // A login answer is refused like any command, and its text is the password.
+          debug.refusal(
+            intent.secret === true ? MASKED_COMMAND : intent.command,
+            refusal,
+            intent.priority
+          ),
         command: (command, source) => {
           // Already through `Publisher.reportable`, which is the one place
           // this client redacts a password. Both records take the same value.
@@ -704,6 +735,7 @@ export class SessionHost {
     );
 
     manager.configureInternal(this.options.internal());
+    debug.settings(config.automation);
     const slot: SessionSlot = {
       id,
       manager,
@@ -717,6 +749,7 @@ export class SessionHost {
       reconnect,
       lowLives,
       log: null,
+      activity: null,
       capture: null,
       debug,
       named: null,
@@ -897,10 +930,21 @@ export class SessionHost {
         maxBytes: config.logging.maxBytes,
         onProblem: problem
       });
-      slot.log.open(target, undefined, id);
+      const opened = new Date();
+      slot.log.open(target, opened, id);
+      slot.activity ??= new SessionLog({
+        directory,
+        maxBytes: config.logging.maxBytes,
+        suffix: ACTIVITY_SUFFIX,
+        onProblem: problem
+      });
+      // The same instant as the log, so the two files carry one stamp.
+      slot.activity.open(target, opened, id);
     } else {
       void slot.log?.close();
+      void slot.activity?.close();
       slot.log = null;
+      slot.activity = null;
     }
 
     // Keyed on where this connection actually goes, not where the character's
@@ -954,6 +998,7 @@ export class SessionHost {
     for (const slot of this.slots.values()) {
       const config = this.options.configFor(slot.id);
       slot.manager.configure(config.automation, config.connection.login, config.ui.rewrites);
+      slot.debug.settings(config.automation);
       slot.manager.configureInternal(this.options.internal());
       slot.backscroll.setLimit(config.terminal.scrollback);
       slot.marks.setLimit(config.terminal.scrollback);
@@ -987,6 +1032,7 @@ export class SessionHost {
     slot.reconnect.dispose();
     slot.manager.dispose();
     void slot.log?.close();
+    void slot.activity?.close();
     void slot.capture?.close();
     // Synchronous, unlike the two above: what this loses at quit is the last
     // lines the console will show at the next launch, not a record's tail.
