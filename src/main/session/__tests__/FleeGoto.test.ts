@@ -6,6 +6,7 @@ import type { Intent } from '../../automation/CommandQueue';
 import { FleeGoto } from '../FleeGoto';
 import { blockOf } from '../../../shared/__tests__/blocks';
 import type { BlockType } from '../../../shared/blocks';
+import { BREAK } from '../../../shared/commands';
 import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
@@ -49,8 +50,16 @@ function settings(
 
 function rig(config: AutomationConfig = settings()) {
   const tracker = { current: fighting(15), pendingMoves: 0 };
+  /** The teleport and the panic call; the `break` ahead of a teleport is in `order` only. */
   const sent: Intent[] = [];
-  const queue = { enqueue: vi.fn((intent: Intent) => sent.push(intent) > 0) };
+  /** Every command in the order proposed, `break` included. */
+  const order: string[] = [];
+  const queue = {
+    enqueue: vi.fn((intent: Intent) => {
+      order.push(intent.command);
+      return intent.command === BREAK || sent.push(intent) > 0;
+    })
+  };
   const travel = {
     escapeUnanswered: false,
     leavingHarm: false,
@@ -90,7 +99,7 @@ function rig(config: AutomationConfig = settings()) {
     current = next;
   };
   return {
-    ...{ flee, tracker, sent, travel, noteSafety, grounded, notice, leave, answer },
+    ...{ flee, tracker, sent, order, queue, travel, noteSafety, grounded, notice, leave, answer },
     ...{ reconfigure, harm }
   };
 }
@@ -403,18 +412,53 @@ describe('FleeGoto', () => {
    * wyverns, answered `You may not be in autocombat when you do that.` in the
    * same second, unread; the next round came four seconds later and killed him.
    */
-  describe('refused for an attack still on', () => {
+  describe('an attack still on', () => {
     const REFUSAL = 'You may not be in autocombat when you do that.';
     const config = settings({ command: 'sys go s' });
+    /** In a room that hurts with no fight the client has seen, so no `break` goes ahead. */
+    const unseenFight = (tracker: { current: CharacterState }): void => {
+      tracker.current = { ...fighting(15), inCombat: false, combat: EMPTY_CHARACTER.combat };
+    };
 
-    it('sends break and the teleport again at once, on the same sent clock', () => {
-      const { flee, tracker, sent, leave, answer, travel, notice } = rig(config);
+    it('is sent behind break in a fight, in the same band', () => {
+      const { flee, tracker, order, queue } = rig(config);
+      flee.consider(tracker.current);
+      expect(order).toEqual(['break', 'sys go s']);
+      expect(queue.enqueue.mock.calls[0]?.[0]).toMatchObject({
+        command: 'break',
+        priority: 'emergency',
+        decision: 'teleport'
+      });
+    });
+
+    it('is sent behind break once the attack is started, before a round shows the fight', () => {
+      const { flee, tracker, order } = rig(config);
+      tracker.current = {
+        ...fighting(15),
+        inCombat: false,
+        combat: { ...EMPTY_CHARACTER.combat, target: 'orc' }
+      };
+      flee.consider(tracker.current);
+      expect(order).toEqual(['break', 'sys go s']);
+    });
+
+    it('is sent without break out of a fight', () => {
+      const { flee, tracker, order, harm } = rig(config);
+      unseenFight(tracker);
+      harm.spell = 'Desert Heat';
+      flee.consider(tracker.current);
+      expect(order).toEqual(['sys go s']);
+    });
+
+    it('is sent again behind break when refused for a fight the client had not seen, on the same sent clock', () => {
+      const { flee, tracker, order, leave, answer, travel, notice, harm } = rig(config);
+      unseenFight(tracker);
+      harm.spell = 'Desert Heat';
       flee.consider(tracker.current);
       leave();
       answer('command-echo', 'sys go s', undefined, null);
       answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
-      expect(sent.map((intent) => intent.command)).toEqual(['sys go s', 'break', 'sys go s']);
-      expect(sent[1]).toMatchObject({ priority: 'emergency', decision: 'teleport' });
+      expect(order).toEqual(['sys go s', 'break', 'sys go s']);
       // The heal and the swing stay stood down: the teleport is still on its way.
       expect(travel.teleportRefused).not.toHaveBeenCalled();
       expect(notice).toHaveBeenLastCalledWith(
@@ -427,37 +471,12 @@ describe('FleeGoto', () => {
       expect(travel.teleportLanded).toHaveBeenCalledWith(LAIR, Date.now());
     });
 
-    it('sends break ahead of every teleport after it, until a reconnect', () => {
-      const { flee, tracker, sent, leave, answer } = rig(config);
-      flee.consider(tracker.current);
-      leave();
-      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
-      leave();
-      answer('room-exits', 'Obvious exits: north', BANK, 'sys go s');
-      sent.length = 0;
-      tracker.current = fighting(15);
-      vi.advanceTimersByTime(DEFAULT_CONFIG.automation.safety.retreat.cooldownMs);
-      flee.consider(tracker.current);
-      expect(sent.map((intent) => intent.command)).toEqual(['break', 'sys go s']);
-      leave();
-      answer('room-exits', 'Obvious exits: north', BANK, 'sys go s');
-      sent.length = 0;
-      flee.reset();
-      tracker.current = fighting(15);
-      flee.consider(tracker.current);
-      expect(sent.map((intent) => intent.command)).toEqual(['sys go s']);
-    });
-
     it('is refused as any other once break went ahead of it, and tried again after the cooldown', () => {
-      const { flee, tracker, sent, leave, answer, travel, notice } = rig(config);
+      const { flee, tracker, order, leave, answer, travel, notice } = rig(config);
       flee.consider(tracker.current);
       leave();
       answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
-      leave();
-      // Positive control: the first refusal released nothing.
-      expect(travel.teleportRefused).not.toHaveBeenCalled();
-      answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
-      expect(sent).toHaveLength(3);
+      expect(order).toEqual(['break', 'sys go s']);
       expect(travel.teleportRefused).toHaveBeenCalledWith(Date.now());
       expect(notice).toHaveBeenLastCalledWith(
         t('session.safety.teleportRefused', { command: 'sys go s', answer: REFUSAL }),
@@ -465,20 +484,21 @@ describe('FleeGoto', () => {
       );
       vi.advanceTimersByTime(DEFAULT_CONFIG.automation.safety.retreat.cooldownMs);
       flee.consider(tracker.current);
-      expect(sent.slice(3).map((intent) => intent.command)).toEqual(['break', 'sys go s']);
+      expect(order.slice(2)).toEqual(['break', 'sys go s']);
     });
 
     it('leaves the sentence echoed against another command to that command', () => {
-      const { flee, tracker, sent, leave, answer } = rig(config);
+      const { flee, tracker, order, leave, answer, travel } = rig(config);
       flee.consider(tracker.current);
       leave();
       answer('command-echo', 'sys go khaz', undefined, null);
       answer('autocombat-refused', REFUSAL, undefined, 'sys go khaz');
-      expect(sent).toHaveLength(1);
+      expect(travel.teleportRefused).not.toHaveBeenCalled();
       // Positive control: echoed against the teleport, it is answered.
       answer('command-echo', 'sys go s', undefined, null);
       answer('autocombat-refused', REFUSAL, undefined, 'sys go s');
-      expect(sent).toHaveLength(3);
+      expect(travel.teleportRefused).toHaveBeenCalled();
+      expect(order).toEqual(['break', 'sys go s']);
     });
   });
 

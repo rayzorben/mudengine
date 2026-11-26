@@ -6,8 +6,9 @@
  * until the answer (`Travel.teleportSent`): a new room is the escape landing,
  * `Your command had no effect.` or `sys-refused` (a bad room) echoed against
  * it a refusal kept for the connection (the clock released), a death or
- * leaving the realm drops it, silence gives it up. Refused for an attack
- * still on (stock MajorMUD), it is sent again behind `break`.
+ * leaving the realm drops it, silence gives it up. In a fight it always goes
+ * behind `break` (stock MajorMUD refuses it with the attack on), and a refusal
+ * for an attack still on sends it again behind one.
  * Never on the ground. See `mudengine-automation` › `parts/safety.md`.
  */
 import { t } from '../app/i18n';
@@ -22,7 +23,7 @@ import type { Publisher } from './Publisher';
 import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { Block, BlockType } from '../../shared/blocks';
-import type { CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import { BREAK } from '../../shared/commands';
 import type { AutomationConfig } from '../../shared/config';
 import type { NoticeSink } from '../../shared/decisionSettings';
@@ -97,13 +98,6 @@ export class FleeGoto implements SessionModule {
     /** Whether `break` went ahead of it: refused for the attack again, it is not sent a third time. */
     broke: boolean;
   } | null = null;
-  /**
-   * The realm refuses the teleport while the character's attack is on
-   * (`autocombat-refused`), learned from its answer and kept until the
-   * character leaves the realm: every teleport out of a fight after it goes
-   * behind `break`.
-   */
-  private breaksFirst = false;
   /** The retry floor, the retreat's own `cooldownMs`. */
   private lastAsked = 0;
   /**
@@ -141,7 +135,6 @@ export class FleeGoto implements SessionModule {
     this.lastAsked = 0;
     this.refused = null;
     this.saidThisFight = false;
-    this.breaksFirst = false;
   }
 
   /**
@@ -159,7 +152,7 @@ export class FleeGoto implements SessionModule {
       return;
     }
     const harmed = this.roomHazards.hurtsHere(state) !== null;
-    if (!state.inCombat && state.combat.attackers.length === 0 && !harmed) {
+    if (!fightIsRunning(state) && !harmed) {
       this.saidThisFight = false;
       return;
     }
@@ -219,14 +212,12 @@ export class FleeGoto implements SessionModule {
     return this.awaiting === awaiting && !this.grounded.down;
   }
 
-  /** The teleport into the emergency band, behind `break` where the realm refuses it with an attack on. */
+  /** The teleport into the emergency band, behind `break` in a fight, where stock MajorMUD refuses it. */
   private send(awaiting: NonNullable<FleeGoto['awaiting']>, refused = false): void {
     const stillWanted = (): boolean => this.stillWanted(awaiting);
     const { command, why } = awaiting;
     // Out of a fight (a room that hurts) there is no attack to end, unless the realm just said so.
-    const state = this.tracker.current;
-    const fighting = state.inCombat || state.combat.attackers.length > 0;
-    if (refused || (this.breaksFirst && fighting)) {
+    if (refused || fightIsRunning(this.tracker.current)) {
       awaiting.broke = true;
       this.queue.enqueue({
         command: BREAK,
@@ -287,10 +278,11 @@ export class FleeGoto implements SessionModule {
      * and a step into the next room does not end the attack. Unread, yang
      * waited `retreatPatienceMs` on it with every heal and swing stood down,
      * and died in the next round (OmniverseBBS, 2026-11-25). The attack is
-     * ended and the teleport sent again at once, on the same sent clock.
+     * ended and the teleport sent again at once, on the same sent clock; a
+     * fight the client saw is already behind `break` (`send`), so this is the
+     * attack it did not see.
      */
     if (block.type === 'autocombat-refused' && waiting.echo.answers && !waiting.broke) {
-      this.breaksFirst = true;
       waiting.sent = false;
       waiting.echo = new EchoSince(waiting.command);
       this.session.notice(
