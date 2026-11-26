@@ -503,7 +503,7 @@ export default function App() {
   const foundRooms = useMemo(() => [...roomsWithFinds(view.finds)], [view.finds]);
 
   /** The panels that hang off a name, one at a time. */
-  const slideOuts = useSlideOuts(session, chooseOnMap);
+  const slideOuts = useSlideOuts(session, chooseOnMap, api);
   const { asked, flyout, inspect, selectPlayer, peekRoom, peekPlanned, endPeek } = slideOuts;
 
   const { browsing, close: closeBrowser, reveal } = useHomeBrowser(returnFocus);

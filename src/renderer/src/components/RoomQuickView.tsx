@@ -79,10 +79,11 @@ export interface RoomAsked {
    */
   act: RoomAct | null;
   /**
-   * A second, unfilled action beside `act`: a route list's *run here*, the
-   * same prefix walked with auto-combat off. Null everywhere else.
+   * Unfilled actions beside `act`: a route list's *run here*, the same prefix
+   * walked with auto-combat off, or the map's *Walk* and *Run*, which start the
+   * plan with no dialog. Empty where there are none.
    */
-  also: RoomAct | null;
+  also: RoomAct[];
 }
 
 /** One action on the panel, and what it is called. */
@@ -207,16 +208,17 @@ export default function RoomQuickView({
          */}
         {asked.act !== null && (
           <div className="peek-actions">
-            {asked.also !== null && (
+            {asked.also.map((also) => (
               <button
-                onClick={asked.also.run}
+                key={also.label}
+                onClick={also.run}
                 onMouseDown={keepFocus}
-                title={asked.also.hint}
+                title={also.hint}
                 type="button"
               >
-                {asked.also.label}
+                {also.label}
               </button>
-            )}
+            ))}
             <button
               className="primary"
               onClick={asked.act.run}

@@ -78,7 +78,7 @@ describe('a lair in the room quick view', () => {
             anchor: { box: { left: 0, top: 0, right: 1, bottom: 1 }, within: {} as HTMLElement },
             settled: true,
             act: null,
-            also: null
+            also: []
           },
           load: () => Promise.resolve(brief),
           standing: { alignment: null } as never,

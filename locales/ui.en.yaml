@@ -4081,6 +4081,12 @@ cards:
       turn it back on when you arrive
     walkHereButton: Walk here
     walkHereTooltip: Walk the planned route only as far as this room
+    runNowButton: Run
+    runNowTooltip: Walk the way here now with auto-combat off, and turn it back on when you
+      arrive. Opens the route panel instead if the way needs a decision.
+    walkNowButton: Walk
+    walkNowTooltip: Walk the way here now. Opens the route panel instead if the way needs a
+      decision.
     walkToButton: Plan route
     walkToTooltip: Plan the way here. Nothing is walked until you check the steps and confirm.
   # The spell a room casts on whoever stands in it, on the Room card and the

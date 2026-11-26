@@ -12,11 +12,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GangAsked } from '../components/GangFlyout';
 import type { PlayerAsked } from '../components/PlayerFlyout';
 import type { Asked } from '../components/ReferencePopover';
-import type { RoomAsked } from '../components/RoomQuickView';
+import type { RoomAct, RoomAsked } from '../components/RoomQuickView';
 import type { SlotAsked } from '../components/SlotQuickView';
 import { t } from '../lib/i18n';
 import { outlastingAnchor, type PopoverAnchor } from '../lib/popover';
 import { tuning } from '../lib/tuning';
+import { walkTo as walkNow, type WalkToDeps } from '../lib/walkTo';
 import type { SessionId } from '@shared/ipc';
 import { asRoomReference, type RoomId } from '@shared/world';
 
@@ -91,10 +92,12 @@ function roomAnchor(at: Element): PopoverAnchor {
  * @param session The character on screen: the quick view is opened from its
  *   map, so switching is the dismissal.
  * @param chooseOnMap The route panel on a room, the quick view's *plan route*.
+ * @param api Plans and walks for the quick view's *Walk* and *Run*.
  */
 export function useSlideOuts(
   session: SessionId,
-  chooseOnMap: (map: number, room: number) => void
+  chooseOnMap: (map: number, room: number) => void,
+  api: WalkToDeps['api']
 ): SlideOutSlot {
   const [asked, setAsked] = useState<Asked | null>(null);
   /*
@@ -244,6 +247,40 @@ export function useSlideOuts(
     [chooseOnMap]
   );
   /*
+   * *Walk* and *Run* beside *Plan route*: the same plan, started with no dialog
+   * between. `walkNow` plans from where the character stands and walks it, and
+   * opens the route panel on the room instead when the way is blocked, needs a
+   * key or has a way round, so a press that cannot walk opens the panel. *Run* turns
+   * auto-combat off for the trip, as the route panel's *Run it* does.
+   */
+  const goNow = useCallback(
+    (room: RoomId): RoomAct[] => {
+      const to = asRoomReference(room);
+      if (to === null) return [];
+      const target = { map: to.map, room: to.room, name: '', exits: [] };
+      const deps = { api, session, openRouteOn: () => chooseOnMap(to.map, to.room) };
+      return [
+        {
+          label: t('cards.roomPeek.walkNowButton'),
+          hint: t('cards.roomPeek.walkNowTooltip'),
+          run: () => {
+            setPeek(null);
+            walkNow(target, deps);
+          }
+        },
+        {
+          label: t('cards.roomPeek.runNowButton'),
+          hint: t('cards.roomPeek.runNowTooltip'),
+          run: () => {
+            setPeek(null);
+            walkNow(target, deps, true);
+          }
+        }
+      ];
+    },
+    [api, session, chooseOnMap]
+  );
+  /*
    * Put the room's panel up, whoever asked for it.
    *
    * **One panel at a time, like the other three**: opening this puts away the
@@ -287,9 +324,9 @@ export function useSlideOuts(
     (room: RoomId, at: Element, settled: boolean) => {
       // A room named inside a panel outlasts it: the panel goes as this one opens.
       const anchor = outlastingAnchor(roomAnchor(at));
-      openPeek({ room, anchor, settled, act: walkTo(room), also: null });
+      openPeek({ room, anchor, settled, act: walkTo(room), also: goNow(room) });
     },
-    [openPeek, walkTo]
+    [openPeek, walkTo, goNow]
   );
   /*
    * The pointer left the room, or the panel. A hovered panel goes after the
@@ -344,15 +381,17 @@ export function useSlideOuts(
               },
         also:
           run === null
-            ? null
-            : {
-                label: t('cards.roomPeek.runHereButton'),
-                hint: t('cards.roomPeek.runHereTooltip'),
-                run: () => {
-                  setPeek(null);
-                  run();
+            ? []
+            : [
+                {
+                  label: t('cards.roomPeek.runHereButton'),
+                  hint: t('cards.roomPeek.runHereTooltip'),
+                  run: () => {
+                    setPeek(null);
+                    run();
+                  }
                 }
-              }
+              ]
       });
     },
     [openPeek, walkTo]

@@ -15022,7 +15022,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   );
   check(
     builderPeek !== null &&
-      builderPeek.actions === 1 &&
+      builderPeek.actions === 3 &&
       copyRx('cards.roomPeek.walkToButton').test(builderPeek.walk),
     'and carries the same one action the Map card’s panel carries',
     JSON.stringify(builderPeek)

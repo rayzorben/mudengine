@@ -1,7 +1,7 @@
 /**
  * A room walked to in one click, from a row that names it: the palette's
  * *Goto* and *Nearest* rows (todo 70) and the console's right-click menu
- * (todo 28). Planned and walked through `routeTo` and `walkRoute`, the one
+ * (todo 28), and the room quick view's *Walk* and *Run*. Planned and walked through `routeTo` and `walkRoute`, the one
  * navigation engine; what cannot be walked unread opens the route panel on the
  * room instead, so a click never does nothing. See `mudengine-ui` › `parts/input.md`.
  */
@@ -16,7 +16,12 @@ export interface WalkToDeps {
   openRouteOn(room: WorldRoom, search: null): void;
 }
 
-export function walkTo(room: WorldRoom, { api, session, openRouteOn }: WalkToDeps): void {
+/** `run` is *Run it*: auto-combat off before the first step, as the route panel's button does. */
+export function walkTo(
+  room: WorldRoom,
+  { api, session, openRouteOn }: WalkToDeps,
+  run?: boolean
+): void {
   void api
     .routeTo(session, room.map, room.room)
     .then(async (route) => {
@@ -30,7 +35,10 @@ export function walkTo(room: WorldRoom, { api, session, openRouteOn }: WalkToDep
       if (route.keptOut !== undefined) return route;
       // The plan was drawn from here a moment ago. If the character moved
       // since, main answers with a new plan, and the route panel shows it.
-      const answer = await api.walkRoute(session, route);
+      // A plain walk makes the one-argument call every caller's test expects.
+      const answer = await (run === true
+        ? api.walkRoute(session, route, true)
+        : api.walkRoute(session, route));
       return 'started' in answer ? null : route;
     })
     .then((unwalked) => {
