@@ -168,7 +168,7 @@ export class AttackSpells {
   private rules: readonly MobRule[] = [];
   /** Whether the drain spells stand in while hurt, and which: asked, never decided here. */
   private readonly drain: DrainWhenHurt;
-  /** Whether the swing or the next monster serves better than the spell this round (todo 54). */
+  /** Whether the swing finishes the monster this round, so the spell is held (todo 54). */
   private readonly hold: SpellHold;
   /** Which room spell, and the debuff ahead of it: asked, never decided here. */
   private readonly room: RoomSpells;
@@ -202,10 +202,7 @@ export class AttackSpells {
     );
     this.hold = new SpellHold(
       (message, decision) => events.notice?.(message, decision),
-      realmSpell,
-      realmClass,
-      (spell, monster) => realmLore.hasNoEffect(spell, monster),
-      () => this.spells.killConfidence
+      realmClass
     );
     this.room = new RoomSpells(
       spells,
@@ -665,7 +662,7 @@ export class AttackSpells {
       }
     }
 
-    const held = this.hold.of(state, target, swing, this.rules, this.spells.minMana);
+    const held = this.hold.of(state, target, swing);
     const row = mobRuleFor(
       this.rules,
       target.entity === null ? target.name : { name: target.name, mob: target.entity }

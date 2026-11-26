@@ -128,7 +128,7 @@ export const DECISION_SETTINGS = {
     'automation.spells.attackCasts',
     'automation.spells.killConfidence'
   ],
-  'spell-held-melee': ['automation.spells.minMana', 'automation.combat.mobRules'],
+  'spell-held-melee': ['automation.spells.attack', 'automation.combat.attack'],
   'drain-standin': [
     'automation.spells.drain',
     'automation.spells.areaDrain',

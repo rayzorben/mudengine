@@ -455,11 +455,10 @@ describe('a spell held back while the melee round is expected to finish the mons
 });
 
 /*
- * Todo 54, the second half: a monster worth less a point of mana than the
- * next one the room lists, where the pool cannot pay for both kills, is fought
- * with the attack verb so the mana goes on the better one.
+ * Todo 54, the second half, removed 2026-11-25: a swing is never better than the
+ * best spell, so a better monster in the room holds no cast.
  */
-describe('a spell held back for a monster worth more of the mana', () => {
+describe('a spell is not held back for a monster worth more of the mana', () => {
   const harm: WorldSpell = { id: 12, name: 'harm', level: 1, targets: 8, power: [5, 10] };
   const mob = (name: string, experience: number, hp: number): RoomOccupant => ({
     name,
@@ -502,23 +501,12 @@ describe('a spell held back for a monster worth more of the mana', () => {
     return { spells, notices };
   };
 
-  it('fights with the attack verb when the pool pays for one kill and the orc is worth more', () => {
+  it('casts at the rat even where the pool pays for one kill and the orc is worth more', () => {
     const { spells, notices } = unit();
-    expect(spells.opening(at(20, mob('orc', 500, 40)), target, 'in the room', 'a')).toBeNull();
-    expect(spells.opening(at(20, mob('orc', 500, 40)), target, 'in the room', 'a')).toBeNull();
-    expect(notesOf(notices, 'automation.spells.heldForWorth')).toHaveLength(1);
-  });
-
-  it('casts where the pool pays for both, or nothing better stands here (the controls)', () => {
-    const rich = unit();
-    expect(
-      rich.spells.opening(at(100, mob('orc', 500, 40)), target, 'in the room', 'a')?.command
-    ).toBe('harm rat');
-    const alone = unit();
-    expect(
-      alone.spells.opening(at(20, mob('mouse', 1, 40)), target, 'in the room', 'a')?.command
-    ).toBe('harm rat');
-    expect(notesOf(alone.notices, 'automation.spells.heldForWorth')).toEqual([]);
+    expect(spells.opening(at(20, mob('orc', 500, 40)), target, 'in the room', 'a')?.command).toBe(
+      'harm rat'
+    );
+    expect(notices).toEqual([]);
   });
 
   it('casts where no swing lands, or the mana is unknown', () => {
