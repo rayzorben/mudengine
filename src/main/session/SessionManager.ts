@@ -922,9 +922,8 @@ export class SessionManager {
       { fled }
     );
 
-    // Sitting down: the run is `emergency` and this `probe`, so under both it runs, then rests.
     this.recovery = new Recovery(automation, this.queue, {
-      notice,
+      notice, // the run is `emergency`, this `probe`: it runs, then rests
       // GreaterMUD's refusal while poisoned unless immune (`RestCommand.cs:28`; a Kang is, todo 22).
       poisonRefusesRest: () =>
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family),
@@ -933,7 +932,8 @@ export class SessionManager {
       waitingOn: (state) => this.combat.waitingOn(state) ?? this.walker.waitingFor,
       decided: reports.decided,
       chunk: this.chunk,
-      ...{ signs, stateNow: () => this.tracker.current, followed: () => this.restAway.followed }
+      ...{ signs, stateNow: () => this.tracker.current, followed: () => this.restAway.followed },
+      idle: () => this.travel.standingStill()
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
     const floor = new FloorAfterKill(this.queue, this.tracker);

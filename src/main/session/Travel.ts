@@ -1762,6 +1762,17 @@ export class Travel implements SessionModule {
     return this.errandUnderWay() || this.recoverGear.deciding(this.tracker.current);
   }
 
+  /** Nothing is taking this character anywhere and it follows no one (`goingSomewhere`, `inPlace`). */
+  standingStill(): boolean {
+    const state = this.tracker.current;
+    return (
+      state !== null &&
+      state.party.following === null &&
+      !this.goingSomewhere() &&
+      !this.recoverGear.deciding(state)
+    );
+  }
+
   /**
    * Which way out, and how well the client knows it.
    *

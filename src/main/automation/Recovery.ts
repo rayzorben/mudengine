@@ -354,6 +354,8 @@ export class Recovery implements SessionModule {
       stateNow?(): CharacterState;
       /** The monsters that followed the last step may still be walking in (`RestAway.followed`). */
       followed?(): boolean;
+      /** Nothing is taking this character anywhere: a rest then goes to full health. */
+      idle?(): boolean;
     } = {}
   ) {}
 
@@ -488,8 +490,9 @@ export class Recovery implements SessionModule {
     if (this.needed !== null && hp !== null && hp < this.needed) return true;
     if (this.below(hp, hpMax, this.config.restBelow)) return true;
     if (this.below(hp, hpMax, wait.health)) return true;
-    const { restTo, restBelowMana, restToMana } = this.config;
-    if (restTo > 0 && (this.sitting || resting) && this.below(hp, hpMax, restTo)) return true;
+    const { restBelowMana, restToMana } = this.config;
+    const ceiling = this.ceiling();
+    if (ceiling > 0 && (this.sitting || resting) && this.below(hp, hpMax, ceiling)) return true;
     // And mana, where a rest is how it comes back.
     if (this.meditates(state)) return false;
     if (this.below(mana, manaMax, restBelowMana)) return true;
@@ -766,11 +769,22 @@ export class Recovery implements SessionModule {
     if (this.below(hp, hpMax, this.config.restBelow)) return true;
     // A monster here waits for this share (`waitingOn`): rested up to it, no stretch after.
     if (this.below(hp, hpMax, waitFor)) return true;
-    const { restTo } = this.config;
-    if (restTo <= 0 || !this.sitting) return false;
-    if (this.below(hp, hpMax, restTo)) return true;
+    const ceiling = this.ceiling();
+    if (ceiling <= 0 || !this.sitting) return false;
+    if (this.below(hp, hpMax, ceiling)) return true;
     this.sitting = false;
     return false;
+  }
+
+  /**
+   * Where a stretch of resting ends. `restTo`, or full health once nothing else
+   * is moving the character: Soul stood at 77% and 96% in one room doing
+   * nothing, a cast above `restTo` having ended the stretch (2026-11-26, the
+   * user). Off (`restTo` 0) stays off.
+   */
+  private ceiling(): number {
+    const { restTo } = this.config;
+    return restTo > 0 && this.events.idle?.() === true ? 1 : restTo;
   }
 
   /**

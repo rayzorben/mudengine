@@ -653,6 +653,29 @@ describe('the resting ceiling', () => {
     expect(spellAsked).toEqual([48]);
   });
 
+  /* Idle, the ceiling is full health: Soul stood at 77% after a cast above `restTo`. */
+  it('rests on to full health when nothing else moves the character', () => {
+    let idle = false;
+    const recovery = new Recovery(settings(health({ restBelow: 0.5, restTo: 0.75 })), queue, {
+      idle: () => idle
+    });
+    recovery.onCharacter(state({ hp: 30, hpMax: 100, resting: true }));
+    drain();
+    // Above restTo and walking: the stretch ends as before.
+    recovery.onCharacter(state({ hp: 80, hpMax: 100, resting: true }));
+    drain();
+    expect(sent).toEqual([]);
+    idle = true;
+    recovery.onCharacter(state({ hp: 30, hpMax: 100, resting: true }));
+    recovery.onCharacter(state({ hp: 80, hpMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+    // Full: nothing to ask.
+    recovery.onCharacter(state({ hp: 100, hpMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
   /* And stops at the ceiling rather than at the next thing to break a rest. */
   it('stops asking at the ceiling', () => {
     const recovery = make(health({ restBelow: 0.5, restTo: 0.9 }));
