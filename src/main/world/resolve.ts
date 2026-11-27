@@ -29,6 +29,7 @@
  */
 import type { Direction, RoomId, WorldRoom } from '../../shared/world';
 import { commandRooms, landingRooms, roomId, roomNameKey } from '../../shared/world';
+import { placingRooms, type Presence } from './presence';
 import type { WorldGraph } from './WorldGraph';
 
 /** The three lookups resolution makes: a name, an address, a placed room. */
@@ -62,6 +63,12 @@ export interface ResolveInput {
    * only with no `previous`: a placed room answers better than a set.
    */
   chain?: ChainInput;
+  /**
+   * The monsters and fixtures the block showed that stay where the realm puts
+   * them (`presenceOf`). Asked last, of rooms the rest of the ladder left
+   * tied.
+   */
+  present?: Presence;
 }
 
 /**
@@ -102,6 +109,7 @@ export type ResolveMethod =
   | 'exit-signature'
   | 'dead-reckoning'
   | 'scattered'
+  | 'also-here'
   | 'none';
 
 /**
@@ -347,6 +355,18 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
   const { method } = narrowed;
   let { rooms } = narrowed;
   const printed = (room: WorldRoom): boolean => fitsExits(input.exits, room);
+  /*
+   * Rooms still tied after the name and the exits, settled by who is in them
+   * where that leaves one: in Paradigm's nine Padded Cells with a north exit,
+   * only 9/1259 is the old man's.
+   */
+  const tied = (left: WorldRoom[], rung: ResolveMethod): Resolution => {
+    const here = input.present ? placingRooms(left, input.present) : left;
+    if (here.length === 1 && left.length > 1) {
+      return { room: here[0]!, method: 'also-here', candidates: here, confidence: 0.85 };
+    }
+    return { room: null, method: rung, candidates: here, confidence: 1 / here.length };
+  };
 
   switch (method) {
     case 'scattered': {
@@ -366,8 +386,7 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
       if (bySignature.length === 1) {
         return { room: bySignature[0]!, method, candidates: bySignature, confidence: 0.9 };
       }
-      const left = bySignature.length > 1 ? bySignature : rooms;
-      return { room: null, method, candidates: left, confidence: 1 / left.length };
+      return tied(bySignature.length > 1 ? bySignature : rooms, method);
     }
     case 'movement':
       return { room: rooms[0]!, method, candidates: rooms, confidence: 0.98 };
@@ -378,8 +397,7 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
       if (bySignature.length === 1) {
         return { room: bySignature[0]!, method, candidates: bySignature, confidence: 0.85 };
       }
-      const left = bySignature.length > 1 ? bySignature : rooms;
-      return { room: null, method, candidates: left, confidence: 1 / left.length };
+      return tied(bySignature.length > 1 ? bySignature : rooms, method);
     }
     case 'chain': {
       /*
@@ -399,6 +417,8 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
       if (bySignature.length === 1 && drawn.length === 0) {
         return { room: bySignature[0]!, method, candidates: bySignature, confidence: 0.85 };
       }
+      // A cast exit may have put the character in a room outside the set.
+      if (drawn.length === 0) return tied(bySignature, method);
       return {
         room: null,
         method,
@@ -436,12 +456,7 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
   if (bySignature.length > 1) {
     // Still ambiguous. Report the narrowed set rather than picking one: a
     // confidently wrong location sends the pathfinder somewhere else entirely.
-    return {
-      room: null,
-      method: 'exit-signature',
-      candidates: bySignature,
-      confidence: 1 / bySignature.length
-    };
+    return tied(bySignature, 'exit-signature');
   }
   return { room: null, method: 'none', candidates: rooms, confidence: 0 };
 }

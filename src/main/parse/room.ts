@@ -37,6 +37,7 @@ import type { RealmFamily } from '../../shared/realm';
 import type { Direction, RoomId, WorldRoom } from '../../shared/world';
 import { commandRooms, firstAnswering, mobKey, roomAddress, roomId } from '../../shared/world';
 import { tuning } from '../app/tuning';
+import { presenceOf } from '../world/presence';
 import { resolveByDeadReckoning, resolveRoom, type ResolveGraph } from '../world/resolve';
 import { namedStoppers } from '../world/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -66,6 +67,8 @@ export type RoomWorld = ResolveGraph &
     | 'itemPlacedHere'
     | 'mob'
     | 'buildMobEntity'
+    | 'sourcesOf'
+    | 'supply'
   >;
 
 /** The command queue's readers a room block answers (`expectations.ts` keeps the queue). */
@@ -877,7 +880,8 @@ export class RoomTracker {
       const located = resolveRoom(this.world, {
         ...ladderInput(room.name, previous, answered),
         ...(chain ? { chain } : {}),
-        exits: printed
+        exits: printed,
+        present: presenceOf(this.world, room.occupants, room.items)
       });
       this.chain.keep(room, printed, located);
 

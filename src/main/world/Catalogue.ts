@@ -340,14 +340,7 @@ export class Catalogue {
 
   /** Whether the realm offers any way to be holding this row. See `oneRowNamed`. */
   private holdable(id: number): boolean {
-    const item = this.items.get(id);
-    if (item === undefined || item.gettable !== false) return true;
-    return (
-      (item.shops?.length ?? 0) > 0 ||
-      (item.mobs?.length ?? 0) > 0 ||
-      (item.from?.length ?? 0) > 0 ||
-      this.stockedBy(id).length > 0
-    );
+    return offersHolding(this.items.get(id), () => this.stockedBy(id).length > 0);
   }
 
   /**
@@ -2115,6 +2108,21 @@ const PROFILES_SINCE = 20;
 
 /** The realm format that first wrote a monster's experience (`BuiltMob.xp`). */
 const WORTH_SINCE = 12;
+
+/**
+ * Whether the realm offers any way to be holding an item: it can be picked up,
+ * or something sells, stocks, drops or hands it over. An unknown item is
+ * holdable. `stocked` is asked last, since it scans the shops.
+ */
+export function offersHolding(item: WorldItem | undefined, stocked: () => boolean): boolean {
+  if (item === undefined || item.gettable !== false) return true;
+  return (
+    (item.shops?.length ?? 0) > 0 ||
+    (item.mobs?.length ?? 0) > 0 ||
+    (item.from?.length ?? 0) > 0 ||
+    stocked()
+  );
+}
 
 /**
  * A column's number where it is above zero. Zero and absent are one answer: a

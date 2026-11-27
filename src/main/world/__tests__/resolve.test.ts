@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { WorldGraph } from '../WorldGraph';
+import { placingRooms, presenceOf } from '../presence';
 import { resolveFromCoordinates, resolveRoom } from '../resolve';
 import { landingRooms, roomId, type WorldRoom } from '../../../shared/world';
 
@@ -376,6 +377,68 @@ describe.runIf(available)('the exits the server prints', () => {
     const result = resolveRoom(graph!, { name: 'Black Wasteland', exits: ['n', 'se', 'd'] });
     expect(result.method).toBe('none');
     expect(result.room).toBeNull();
+  });
+
+  /*
+   * Ray, 2026-11-27, from a Padded Cell printed after `s` out of the Warped
+   * Asylum: `Also here: old man, crazed lunatic.`, `Obvious exits: north`.
+   * Nine Padded Cells go north; the old man is the resident of one (9/1259)
+   * and never moves, and the lunatic is every cell's lair.
+   */
+  const cell = (occupants: string[], items: number[][] = []) =>
+    resolveRoom(graph!, {
+      name: 'Padded Cell',
+      exits: ['n'],
+      present: presenceOf(
+        graph!,
+        occupants.map((name) => ({ mob: { name, charmed: false } })),
+        items.map((ids) => ({ ids }))
+      )
+    });
+
+  it('places a Padded Cell by the old man standing in it', () => {
+    const result = cell(['old man', 'crazed lunatic']);
+    expect(result.method).toBe('also-here');
+    expect(at(result)).toBe('9/1259');
+  });
+
+  it('keeps every Padded Cell when only the lair monster is there', () => {
+    const result = cell(['crazed lunatic']);
+    expect(result.room).toBeNull();
+    expect(result.candidates).toHaveLength(9);
+  });
+
+  it('places a Padded Cell by the lever only 9/1259 has', () => {
+    // Row 184, a sign nobody can pick up, sell, drop or hand over.
+    const result = cell([], [[184]]);
+    expect(result.method).toBe('also-here');
+    expect(at(result)).toBe('9/1259');
+  });
+
+  it('counts no monster that moves or is charmed, and no item anyone can hold', () => {
+    const lunatic = presenceOf(graph!, [{ mob: { name: 'crazed lunatic', charmed: false } }], []);
+    expect(lunatic.mobs).toEqual([]);
+    const charmed = presenceOf(graph!, [{ mob: { name: 'old man', charmed: true } }], []);
+    expect(charmed.mobs).toEqual([]);
+    const dagger = graph!.itemIdNamed('dagger');
+    expect(presenceOf(graph!, [], [{ ids: [dagger!] }]).items).toEqual([]);
+  });
+});
+
+describe('placingRooms', () => {
+  const room = (number: number, extra: Partial<WorldRoom>): WorldRoom =>
+    ({ map: 1, room: number, name: 'Crypt', exits: [], ...extra }) as WorldRoom;
+  const cobra = room(1, { lair: '(Max 1): 10' });
+  const wight = room(2, { lair: '(Max 1): 20' });
+  const altar = room(3, { placed: [7] });
+
+  it('keeps the rooms that place what is there', () => {
+    expect(placingRooms([cobra, wight], { mobs: [[20]], items: [] })).toEqual([wight]);
+    expect(placingRooms([cobra, wight, altar], { mobs: [], items: [[7]] })).toEqual([altar]);
+  });
+
+  it('keeps the set when no room of it places the thing', () => {
+    expect(placingRooms([cobra, wight], { mobs: [[30]], items: [] })).toEqual([cobra, wight]);
   });
 });
 

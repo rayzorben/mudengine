@@ -540,6 +540,7 @@ export interface Room {
     | 'exit-signature'
     | 'dead-reckoning'
     | 'scattered'
+    | 'also-here'
     | 'remembered'
     | null;
   confidence: number;
@@ -2112,6 +2113,7 @@ export function placedOn(resolvedBy: Room['resolvedBy']): PlacedOn {
     case 'unique-name':
     case 'exit-signature':
     case 'scattered':
+    case 'also-here':
       return 'own';
     case 'movement':
     case 'neighbour':
