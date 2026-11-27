@@ -4103,6 +4103,36 @@ describe('a floor read whose answer has not come back', () => {
   });
 });
 
+/*
+ * The user's log, 2026-11-26: `search` and `e` went out in the same second, so
+ * the `get spade` its listing earned ran in the next room. The search is
+ * offered from `beforeStep`, and the step waits for its answer.
+ */
+describe('a search sent ahead of a step', () => {
+  it('holds the step until the search is answered', async () => {
+    let searching = false;
+    let searched = false;
+    const walk = new Walker(config, queue, {
+      stateNow: () => at(1, 1),
+      // Once, as `AutoSearch` searches a room once.
+      beforeStep: () => {
+        if (searched) return;
+        searched = searching = true;
+        queue.enqueue({ command: 'search', priority: 'movement', reason: 'search' });
+      },
+      floorInFlight: () => searching
+    });
+    walk.start(ROUTE, at(1, 1));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['search']);
+    searching = false;
+    walk.onBlock(block('status-line'));
+    await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs * 2);
+    expect(sent).toEqual(['search', 'e']);
+    walk.dispose();
+  });
+});
+
 describe('walking while hurt', () => {
   /** A character at a stated fraction of full health, standing in 1/1. */
   const hurt = (fraction: number): CharacterState => {

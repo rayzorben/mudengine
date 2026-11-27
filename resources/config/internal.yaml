@@ -1035,6 +1035,8 @@ tuning:
   # so one still queued after it has walked out would look somewhere else.
   search:
     expiresMs: 3000
+    # How long the walk waits for a sent search's answer before stepping on regardless.
+    answerMs: 2000
 
   # Banking the purse — `AutoDeposit`.
   banking:

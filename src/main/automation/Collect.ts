@@ -11,7 +11,7 @@
 import { taken, type CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { Block } from '../../shared/blocks';
+import { answersBareSearch, type Block } from '../../shared/blocks';
 import { DENOMINATIONS, type CharacterState, type Denomination } from '../../shared/character';
 import type { DecisionKind } from '../../shared/decisionSettings';
 import { sameItem } from '../../shared/items';
@@ -191,8 +191,7 @@ export class Collect {
    */
   onBlock(block: Block): void {
     if (this.phase.kind !== 'searching') return;
-    const bare = block.type === 'user-search-failed' && block.groups['direction'] === undefined;
-    if (block.type === 'room-hidden-items' || bare) this.phase.answered = true;
+    if (answersBareSearch(block)) this.phase.answered = true;
   }
 
   onCharacter(state: CharacterState): void {

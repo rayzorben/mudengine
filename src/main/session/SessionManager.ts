@@ -825,7 +825,7 @@ export class SessionManager {
       pendingMoves: () => this.tracker.pendingMoves,
       // A rest or a floor read asked and unanswered is a move in flight (todo 14; 814).
       restInFlight: () => this.recovery.restInFlight,
-      floorInFlight: () => this.loot.floorInFlight,
+      floorInFlight: () => this.loot.floorInFlight || this.search.inFlight,
       onTheGround,
       // A replan (a fight moved the character) and a refetch need the realm, the purse, the refusals.
       replan: (to, kind, without) => this.travel.replan(to, kind, without),
@@ -1228,7 +1228,8 @@ export class SessionManager {
       stateNow: () => this.tracker.current,
       signs,
       moveInFlight,
-      standsDown: (state) => moveOnly(state) || this.travel.isRetreating()
+      standsDown: (state) => moveOnly(state) || this.travel.isRetreating(),
+      notice
     });
     // And the purse over the threshold, banked at the resolved room's own counter, never by
     // its name: thirteen rooms can share one, and a `deposit` outside a bank is said out loud.
@@ -2580,12 +2581,10 @@ export class SessionManager {
      * not: replaying all 113 recorded sessions through the tracker (2,159
      * rooms, 5,842 commands, no `rm` after the opening fix), the client's room
      * agreed with every `Location:` the server stated.
-     *
      * The one room it lost was a refused command leaving a move queued that
      * no room was coming for, which `command-not-understood` takes back where
      * it is handled. The courtesy reprint the ask guarded against comes on 4
      * of 574 live `*Combat Off*`s, and the ask went out on all 574.
-     *
      * So the ask is gone, and what is left is `LoopRunner`'s bounded locate,
      * which asks only when the client cannot tell. MajorMUD has no `rm`
      * either: there each ask was said out loud to the room, once per fight.
@@ -2596,6 +2595,7 @@ export class SessionManager {
     // the rejoin (Rayzor, 2026-10-28: 1,036 `party` sent, Brakkle still owed).
     const reads = batch ? [block, batch] : [block];
     for (const read of reads) this.loot.onBlock(read, this.tracker.current);
+    this.search.onBlock(block, batch); // after the loot, so the take its listing earns is queued as it closes
     this.deathSummons.onBlock(block, this.tracker.current);
     this.light.onBlock(block, this.tracker.current);
     this.supplies.onBlock(block, this.tracker.current);

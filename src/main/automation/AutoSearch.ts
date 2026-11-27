@@ -64,7 +64,9 @@
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { fightHere, type CharacterState, type FightSigns } from '../../shared/character';
+import { answersBareSearch, refusesSearch, type Block } from '../../shared/blocks';
 import type { SearchConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
@@ -88,6 +90,8 @@ export interface SearchEvents {
   moveInFlight(): boolean;
   /** A timed spell's walk or a run: nothing but the move goes out. */
   standsDown(state: CharacterState): boolean;
+  /** Said and recorded: the walk waits on a sent search, and the wait that ran out. */
+  notice?: NoticeSink;
 }
 
 /**
@@ -123,11 +127,15 @@ function whereIsThis(state: CharacterState): string | null {
   return `${arrival}@${name}|${exits.map((exit) => exit.direction).join(',')}`;
 }
 
+const KEY = 'search:';
+
 export class AutoSearch implements SessionModule {
   /** The room last searched, as `whereIsThis` addresses it. */
   private room: string | null = null;
   /** How many searches have gone out for that room. */
   private tries = 0;
+  /** When the wait for the last search's answer lapses, or 0 once it has been answered. */
+  private answerBy = 0;
 
   constructor(
     private config: SearchConfig,
@@ -166,6 +174,32 @@ export class AutoSearch implements SessionModule {
   reset(): void {
     this.room = null;
     this.tries = 0;
+    this.answerBy = 0;
+  }
+
+  /**
+   * Whether a search is queued or sent and its answer has not come. The walk
+   * stands still for it: a search lists a floor after the step has gone, and
+   * the `get` it earns then ran in the next room (`You don't see spade here.`,
+   * the user's log 2026-11-26, `search` and `e` sent in the same second).
+   * The answer is a bare search's (`answersBareSearch`) or the server's
+   * refusal to look (`refusesSearch`); `tuning.search.answerMs` covers a
+   * refusal with no pattern (`You may not search while attacking!`), and is
+   * said when it runs out.
+   */
+  get inFlight(): boolean {
+    if (this.queue.queued((intent) => intent.coalesceKey?.startsWith(KEY) === true)) return true;
+    if (this.answerBy === 0) return false;
+    if (Date.now() < this.answerBy) return true;
+    this.answerBy = 0;
+    this.events.notice?.(t('automation.search.unanswered'), 'search');
+    return false;
+  }
+
+  /** The block, and the batch a wrapped listing arrives as: its lines alone are `unknown`. */
+  onBlock(block: Block, batch?: Block | null): void {
+    if ([block, batch].some((read) => read && (answersBareSearch(read) || refusesSearch(read))))
+      this.answerBy = 0;
   }
 
   onCharacter(state: CharacterState): void {
@@ -239,7 +273,7 @@ export class AutoSearch implements SessionModule {
        * searches in two rooms are two different intents that happen to spell
        * the same word, which is the distinction the queue exists to make.
        */
-      coalesceKey: `search:${here}`,
+      coalesceKey: `${KEY}${here}`,
       expiresAt: Date.now() + tuning().search.expiresMs,
       /*
        * The fight that started, or the move typed, between the proposal and
@@ -256,6 +290,8 @@ export class AutoSearch implements SessionModule {
        */
       onSent: () => {
         this.tries += 1;
+        this.answerBy = Date.now() + tuning().search.answerMs;
+        this.events.notice?.(t('automation.search.holdsWalk'), 'search');
       },
       reason: t('automation.search.reason'),
       decision: 'search'

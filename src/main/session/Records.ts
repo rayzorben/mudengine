@@ -13,6 +13,7 @@ import { t } from '../app/i18n';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { SessionSink } from './SessionSink';
+import { answersBareSearch } from '../../shared/blocks';
 import { findKey, type Find, type RealmFinds, type Sighting } from '../../shared/finds';
 import {
   describeDiscovery,
@@ -66,13 +67,7 @@ export class Records {
    * The tracker has already parsed the line, so this reads its facts.
    */
   noted(block: Block, batch: Block | null | undefined): void {
-    if (
-      block.type === 'room-hidden-items' ||
-      // The bare search's empty answer; `to the north` asked about an exit.
-      (block.type === 'user-search-failed' && block.groups['direction'] === undefined)
-    ) {
-      this.recordSearch();
-    }
+    if (answersBareSearch(block)) this.recordSearch();
     if (batch?.type === 'shop-list') this.recordListing();
   }
 

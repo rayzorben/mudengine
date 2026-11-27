@@ -1265,6 +1265,23 @@ export function isPrompt(type: BlockType): boolean {
   return PROMPTS.has(type);
 }
 
+/**
+ * A bare `search`'s answer: the listing, retyped `room-hidden-items`
+ * (`Classifier.answerSearch`), or `Your search revealed nothing.`. A `to the
+ * north` failure answers a search of an exit instead.
+ */
+export function answersBareSearch(block: Pick<Block, 'type' | 'groups'>): boolean {
+  return (
+    block.type === 'room-hidden-items' ||
+    (block.type === 'user-search-failed' && block.groups['direction'] === undefined)
+  );
+}
+
+/** The server refusing to look at all (`Player.TrySearch`): a room too dark to see, a blind character. */
+export function refusesSearch(block: Pick<Block, 'type'>): boolean {
+  return block.type === 'room-light' || block.type === 'room-unseen';
+}
+
 /** A prompt the classifier typed, or a line that ended because the server went quiet. */
 export function endsAsPrompt(block: Pick<Block, 'type' | 'terminator'>): boolean {
   return block.terminator === 'flush' || isPrompt(block.type);

@@ -1519,8 +1519,8 @@ export class Walker implements SessionModule {
       this.events.beforeStep?.({ name: step.name, light: step.light }, now);
       // And the ward the room ahead wants, in the same band, after the light.
       this.events.wardFor?.(step.to, now);
-      // The shut door in place of the step (`Barriers.openShutWayFirst`), before the sneak.
-      if (this.barriers.openShutWayFirst(step, now)) return;
+      // The shut door in place of the step (`Barriers.openShutWayFirst`), then a search's floor before it.
+      if (this.barriers.openShutWayFirst(step, now) || this.holds.holdForFloor(now)) return;
       // A hidden exit not opened yet: its lever or item first (`Levers.pullLeversFirst`).
       if (this.levers.pullLeversFirst(step, now)) return;
     }

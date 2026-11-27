@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { AutoSearch } from '../AutoSearch';
+import type { Block } from '../../../shared/blocks';
 import { wireExit } from '../../../shared/entities';
 import { CommandQueue } from '../CommandQueue';
 import type { DecisionKind } from '../../../shared/decisionSettings';
@@ -93,6 +95,53 @@ beforeEach(() => {
 afterEach(() => {
   queue.dispose();
   vi.useRealTimers();
+});
+
+const answer = (type: Block['type']): Block => ({ type, groups: {} }) as unknown as Block;
+
+const TUNING = DEFAULT_INTERNAL.tuning;
+
+describe('a search is in flight until its answer', () => {
+  it('is in flight once sent, and closed by the listing it earns', () => {
+    const search = queueSearch();
+    expect(search.inFlight).toBe(false);
+    at(search, state());
+    expect(sent).toEqual(['search']);
+    expect(search.inFlight).toBe(true);
+    search.onBlock(answer('room-hidden-items'));
+    expect(search.inFlight).toBe(false);
+  });
+
+  it('is closed by a wrapped listing, which only its batch types', () => {
+    const search = queueSearch();
+    at(search, state());
+    search.onBlock(answer('unknown'), answer('room-hidden-items'));
+    expect(search.inFlight).toBe(false);
+  });
+
+  it('is not closed by the answer to a search of an exit', () => {
+    const search = queueSearch();
+    at(search, state());
+    search.onBlock({
+      type: 'user-search-failed',
+      groups: { direction: 'north' }
+    } as unknown as Block);
+    expect(search.inFlight).toBe(true);
+  });
+
+  it('is closed by a search that found nothing', () => {
+    const search = queueSearch();
+    at(search, state());
+    search.onBlock(answer('user-search-failed'));
+    expect(search.inFlight).toBe(false);
+  });
+
+  it('is not held on a line that never came', () => {
+    const search = queueSearch();
+    at(search, state());
+    vi.advanceTimersByTime(TUNING.search.answerMs + 1);
+    expect(search.inFlight).toBe(false);
+  });
 });
 
 describe('searching a room the client arrives in', () => {

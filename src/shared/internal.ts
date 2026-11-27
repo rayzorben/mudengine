@@ -1316,7 +1316,9 @@ const TUNING_DEFAULTS = {
    * about. Loot is about the floor, which is worth waiting a moment for.
    */
   search: {
-    expiresMs: 3000
+    expiresMs: 3000,
+    /** How long the walk waits for a sent search's answer before stepping on regardless. */
+    answerMs: 2000
   },
   /** Banking the purse — `AutoDeposit`. */
   banking: {
