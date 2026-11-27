@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { NavigationOracle } from '../../../shared/navigation';
-import type { FightOdds, Route, RouteStep } from '../../../shared/world';
+import { itemsWanted, type FightOdds, type Route, type RouteStep } from '../../../shared/world';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { boughtOffer, leg, plan, type PlanRealm } from '../navigation/plan';
@@ -399,6 +399,61 @@ describe('a way through a room spell an item stops', () => {
       refusals: [{ kind: 'out-of-reach', item: { ...RAFT, at: 'docks' } }]
     });
   });
+
+  /*
+   * Ray, 2026-11-27: Soul, at the Shadow Fist Temple with no picklocks, was
+   * refused the Bank of Godfrey because the raft is sold past the Silver
+   * River, and the dark monks' key to Rhudaur's Massive Doors was never offered.
+   */
+  it('goes round through a door whose key it fetches, where the raft is out of reach', () => {
+    const DOOR = { id: 1, name: 'bone key' };
+    const round: PlanRealm = {
+      ...wet,
+      route: (from, to, traveller: Traveller) => {
+        if (to === 'docks') return river(traveller.keys ?? []);
+        if (to !== 'water') return way(from, to);
+        // The river, and the door the search passed on the way to it.
+        if (!(traveller.keys ?? []).includes(1)) {
+          return { ...river(traveller.keys ?? []), keysAhead: true };
+        }
+        return { steps: [step(from, 'door', 1), step('door', to)], cost: 8, blocked: false };
+      },
+      sources: (item): ItemSource[] =>
+        item === 690
+          ? [{ kind: 'buy', room: 'docks' }]
+          : item === 1
+            ? [{ kind: 'kill', monster: 'dark monk', room: 'cave' }]
+            : [],
+      keysNamed: () => [1],
+      itemName: (item) => (item === 690 ? 'log raft' : item === 1 ? 'bone key' : undefined),
+      stopperPlace: () => ({
+        item: { ...RAFT, spent: false },
+        room: 'docks',
+        shop: 'Albion Docks',
+        detour: 0
+      })
+    };
+    const made = plan(round, odds(WON), 'here', 'water', nobody);
+    expect(made.kind).toBe('plan');
+    const acts = made.kind === 'plan' ? made.steps.filter((s) => s.kind !== 'walk') : [];
+    expect(acts).toMatchObject([{ kind: 'kill', item: DOOR, room: 'cave' }]);
+    const walked = leg(round, odds(WON), 'here', 'water', nobody);
+    expect(walked.unlocks?.needs).toEqual([DOOR]);
+    // The way round crosses no river, so the offer wants no raft.
+    expect(itemsWanted(walked.unlocks!)).toEqual([DOOR]);
+    expect(walked.reason).toBe(
+      [
+        t('navigation.crossesSpell', { spell: 'river damage', items: 'log raft' }),
+        t('navigation.roundTheSpell', { keys: 'bone key' })
+      ].join('; ')
+    );
+    // With the raft still on sale somewhere reachable, the raft is fetched as before.
+    const reachable = { ...round, stopperPlace: wet.stopperPlace, sources: wet.sources };
+    const rafted = plan(reachable, odds(WON), 'here', 'water', nobody);
+    expect(rafted.kind === 'plan' && rafted.steps.filter((s) => s.kind !== 'walk')).toEqual([
+      { kind: 'buy', item: PLANNED, room: 'launch' }
+    ]);
+  });
 });
 
 describe('a walk with what is held now', () => {
@@ -589,5 +644,31 @@ describe.skipIf(graph === null)('a key bought on the way, on the shipped realm',
   it('offers nothing to a character carrying the pass, or one who cannot pay', () => {
     expect(boughtOffer(world(), paying(true), '6/1334', '6/3108', dwarf([942]))).toBeNull();
     expect(boughtOffer(world(), paying(false), '6/1334', '6/3108', dwarf([]))).toBeNull();
+  });
+});
+
+const stockFile = path.resolve('resources/world/majormud.jsonl.gz');
+const stock = fs.existsSync(stockFile) ? WorldGraph.load(stockFile) : null;
+
+/* Ray, 2026-11-27: Soul (level 29 Paladin, 310 hit points, no picklocks) by the dread mystic. */
+describe.skipIf(stock === null)('the Bank of Godfrey from the Shadow Fist Temple', () => {
+  it('kills a dark monk for the black serpent key, where the raft is sold past the river', () => {
+    const world = stock!;
+    const soul: Traveller = {
+      level: 29,
+      strength: 143,
+      own: { picklocks: 0, strength: 143 },
+      keys: [],
+      packKnown: true,
+      keepOut: { words: ['vortex'] },
+      hazard: (room) => {
+        const damage = world.hazardOf(room, { level: 29 })?.damage;
+        return damage === undefined ? null : damage / 310;
+      }
+    };
+    const made = plan(planRealmOf(world), odds(WON), '9/930', '1/297', soul);
+    expect(made.kind).toBe('plan');
+    const acts = made.kind === 'plan' ? made.steps.filter((s) => s.kind !== 'walk') : [];
+    expect(acts).toMatchObject([{ kind: 'kill', item: { id: 593, name: 'black serpent key' } }]);
   });
 });

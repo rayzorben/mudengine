@@ -9119,6 +9119,10 @@ navigation:
       without {items}; collect one first'
     only: 'the way crosses {spell} at {room} ({address}), which hurts without {items}; collect
       one first'
+  # The same, where nothing that stops it can be had and a way through a door goes round it:
+  # each spell, then the keys that open the way round.
+  crossesSpell: 'the way crosses {spell}, which hurts without {items}'
+  roundTheSpell: 'none of these can be had from here, so the way round needs {keys} first'
   oddsUnread: the fight with {monster} is still being worked out
   outOfReach: everywhere that gives {item} is out of reach
   purse: '{item} costs more than you carry'

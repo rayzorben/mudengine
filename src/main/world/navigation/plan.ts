@@ -182,6 +182,32 @@ function stopperWords(direct: Route): string {
     .join('; ');
 }
 
+/**
+ * Whether a plan fetching `needs` goes round a walkable way's spells rather
+ * than through them: none of `needs` stops one (`keyedRound`).
+ */
+function goesRound(direct: Route, needs: readonly PlannedItem[]): boolean {
+  const hurting = (direct.hazards ?? []).filter(hurtsWithout);
+  return (
+    hurting.length > 0 &&
+    !hurting.some((hazard) =>
+      hazard.needs.some((item) => needs.some((need) => need.id === item.id))
+    )
+  );
+}
+
+/** Why a walkable way is refused where the plan goes round its spells through doors `needs` open. */
+function roundWords(direct: Route, needs: readonly PlannedItem[]): string {
+  const spells = (direct.hazards ?? []).filter(hurtsWithout).map((hazard) =>
+    t('navigation.crossesSpell', {
+      spell: hazard.spell,
+      items: hazard.needs.map((item) => item.name).join(', ')
+    })
+  );
+  const keys = t('navigation.roundTheSpell', { keys: needs.map((need) => need.name).join(', ') });
+  return [...spells, keys].join('; ');
+}
+
 /** The stoppers a leg's walks still want (`stoppersWanted`), each once. */
 function legStoppers(
   realm: PlanRealm,
@@ -413,10 +439,15 @@ export function leg(
   if (made.kind === 'refused') return refusedLeg(direct, planRefusalsWords(made.refusals, t));
   const keyed = keyedRoute(made);
   if (keyed !== null) {
-    // A walkable way that fetches first wants a stopper; a blocked one, its
-    // keys. The way's spells ride on the offer, so a reader can tick the
-    // stopper (`itemsWanted`): the plan's own last walk holds it and names none.
+    // A walkable way that fetches first wants a stopper, or keys to a way round
+    // its spells; a blocked one, its keys. A stopper's spells ride on the
+    // offer, so a reader can tick it (`itemsWanted`): the plan's own last walk
+    // holds it and names none. A way round crosses none of them.
     if (walkable(direct)) {
+      const needs = keyed.needs ?? [];
+      if (goesRound(direct, needs)) {
+        return { ...refusedLeg(direct, roundWords(direct, needs)), unlocks: keyed };
+      }
       const unlocks = direct.hazards === undefined ? keyed : { ...keyed, hazards: direct.hazards };
       return { ...refusedLeg(direct, stopperWords(direct)), unlocks };
     }
@@ -509,17 +540,36 @@ function keyedPlan(
   const beat = direct.cost - alternativeMinSteps;
   if (beat <= 0) return null;
   // Bounded by what would have to be beaten: the search expands only rooms the margin leaves in.
-  const held = wayHolding(realm, from, to, traveller, realm.keysNamed(), beat);
+  // Never the direct route's own rooms again.
+  const made = throughNamedKeys(realm, oracle, from, to, traveller, beat, (way) => {
+    const same =
+      way.steps.length === direct.steps.length &&
+      way.steps.every((step, index) => step.to === direct.steps[index]?.to);
+    return !same;
+  });
+  return made === null || made.cost > beat ? null : made;
+}
+
+/**
+ * The plan through the doors on the way holding every key the realm names,
+ * its keys fetched first; null where that way uses none, `takes` refuses it,
+ * a lair on it is expected to kill, or the keys cannot be had.
+ */
+function throughNamedKeys(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  within: number | undefined,
+  takes: (way: Route) => boolean
+): Extract<Plan, { kind: 'plan' }> | null {
+  const held = wayHolding(realm, from, to, traveller, realm.keysNamed(), within);
   if (held === null || held.needs.length === 0) return null;
-  // Never a way through a lair expected to kill, nor the direct route's own rooms again.
   const { way } = held;
-  if (way.steps.some((step) => step.deadly === true)) return null;
-  const same =
-    way.steps.length === direct.steps.length &&
-    way.steps.every((step, index) => step.to === direct.steps[index]?.to);
-  if (same) return null;
+  if (way.steps.some((step) => step.deadly === true) || !takes(way)) return null;
   const made = planKeys(realm, oracle, from, to, traveller, held.needs);
-  return made.kind === 'refused' || made.cost > beat ? null : made;
+  return made.kind === 'refused' ? null : made;
 }
 
 /**
@@ -553,11 +603,50 @@ function planAfter(
   if (walkable(direct)) {
     const stoppers = fetching.stoppers ? stoppersWanted(realm, direct, from, traveller) : [];
     if (stoppers.length === 0) return finish(realm, oracle, from, to, traveller, [], 0, direct);
-    return planKeys(realm, oracle, from, to, traveller, stoppers);
+    const fetched = planKeys(realm, oracle, from, to, traveller, stoppers);
+    if (fetched.kind !== 'refused' || !unobtainable(fetched.refusals)) return fetched;
+    if (direct.keysAhead !== true) return fetched;
+    return keyedRound(realm, oracle, from, to, traveller) ?? fetched;
   }
   const needs = keysWanted(realm, from, to, traveller, direct);
   if (needs.length === 0) return { kind: 'refused', refusals: [noWay(direct)] };
   return planKeys(realm, oracle, from, to, traveller, needs, fetching);
+}
+
+/**
+ * Where the stopper a walkable way's spell wants is out of reach, the way
+ * through doors round the spell, its keys fetched first; null where none
+ * opens one or the way still wants a stopper. Stock MajorMUD, from the Shadow
+ * Fist Temple to Silvermere with no picklocks: the Silver River wants a raft
+ * sold only past it, and Rhudaur's Massive Doors take the dark monks' black
+ * serpent key (Ray, 2026-11-27).
+ */
+function keyedRound(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller
+): Plan | null {
+  return throughNamedKeys(
+    realm,
+    oracle,
+    from,
+    to,
+    traveller,
+    undefined,
+    (way) => stoppersWanted(realm, way, from, traveller).length === 0
+  );
+}
+
+/**
+ * Whether a refusal says the item cannot be had at all. A purse or a fight
+ * still being worked out may change, so those keep the stopper's refusal.
+ */
+function unobtainable(refusals: readonly PlanRefusal[]): boolean {
+  return refusals.every(
+    (refusal) => refusal.kind === 'out-of-reach' || refusal.kind === 'no-source'
+  );
 }
 
 /** The plan that fetches these keys, cheapest first, else in every order of a few. */
