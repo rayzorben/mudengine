@@ -2556,6 +2556,13 @@ export interface WorldRoom {
   map: number;
   room: number;
   name: string;
+  /**
+   * Paradigm's name for the same room, where the stock database leaves it
+   * blank and the server prints another (format 83): the 1.11p Main Road shop
+   * `Shop Silver House Room` is Paradigm's `Silver Road Shop`, which MegaMUD's
+   * room list names. Absent everywhere else.
+   */
+  paradigmName?: string;
   exits: WorldExit[];
   /** Shop type id, when the room is one. */
   shop?: number;

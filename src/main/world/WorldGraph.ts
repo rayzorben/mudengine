@@ -2021,14 +2021,14 @@ export class WorldGraph {
      * A descriptor naming ids this table lacks is a different answer and is
      * kept — that is a derivative adding monsters, which the lair face reports.
      */
-    if (typeof raw['lair'] === 'string' && parseLair(raw['lair']).ids.length > 0) {
+    if (typeof raw['lair'] === 'string' && parseLair(raw['lair']).ids.length > 0)
       result.lair = raw['lair'];
-    }
     if (typeof raw['li'] === 'number') result.light = raw['li'];
-    // The lair's respawn clock (format 33); no monster follows in (58); nobody can attack (66).
+    // Respawn clock (format 33), no monster follows in (58), nobody can attack (66), Paradigm's name (83).
     if (typeof raw['dl'] === 'number' && raw['dl'] !== 0) result.delay = raw['dl'];
     if (raw['nf'] === 1) result.noFollow = true;
     if (raw['pt'] === 1) result.safe = true;
+    if (typeof raw['pn'] === 'string' && raw['pn'].length > 0) result.paradigmName = raw['pn'];
     const wanderers = readRows(raw['wd'], this.rowLists);
     if (wanderers !== null) result.wanderers = wanderers;
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];

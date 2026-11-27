@@ -5,6 +5,7 @@ import { parse } from 'yaml';
 
 import { NicknameShelf, RoomNicknames, type NicknameRooms } from '../RoomNicknames';
 import { findRooms, type RoomSearchParts } from '../roomSearch';
+import { WorldGraph } from '../WorldGraph';
 import {
   asRoomNicknames,
   roomNameFaults,
@@ -72,6 +73,22 @@ describe('MegaMUD room names on a realm', () => {
     const renamed = new RoomNicknames([VORTEX, FORK], realm([room(3, 784, 'Cave'), ROOMS[2]!]));
     expect(renamed.byCode('vxdf')).toBeNull();
     expect(renamed.size).toBe(1);
+  });
+
+  it("keeps an entry where the realm's room has it as Paradigm's name", () => {
+    const shop = nickname({
+      code: 'MRSS',
+      name: 'Main Road Shop, Silver House',
+      room: { name: 'Silver Road Shop', at: { map: 15, room: 980 } }
+    });
+    const printed = room(15, 980, 'Shop Silver House Room');
+    const stock = new RoomNicknames(
+      [shop],
+      realm([{ ...printed, paradigmName: 'Silver Road Shop' }])
+    );
+    expect(stock.byCode('mrss')?.room.name).toBe('Shop Silver House Room');
+    // The same room without Paradigm's name keeps nothing.
+    expect(new RoomNicknames([shop], realm([printed])).byCode('mrss')).toBeNull();
   });
 
   it('names a room by the entry that stops before it, whichever is listed first', () => {
@@ -204,6 +221,18 @@ describe('the shipped room names', () => {
 
   it('marks the boss rooms MegaMUD stops before entering', () => {
     expect(shipped.filter((each) => each.stopBefore).length).toBeGreaterThan(150);
+  });
+
+  it('names the Main Road gang house shops on stock MajorMUD, where they print another name', () => {
+    const stock = new RoomNicknames(shipped, WorldGraph.load('resources/world/majormud.jsonl.gz'));
+    expect(stock.byCode('MRSS')?.room).toMatchObject({
+      map: 15,
+      room: 980,
+      name: 'Shop Silver House Room',
+      paradigmName: 'Silver Road Shop'
+    });
+    const roadShops = ['MRSR', 'MRSO', 'MRSY', 'MRGR', 'MRSV', 'MRBL', 'MRSK', 'MRSG', 'MRSW'];
+    expect(roadShops.filter((code) => stock.byCode(code) === null)).toEqual([]);
   });
 });
 

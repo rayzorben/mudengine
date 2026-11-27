@@ -5,19 +5,27 @@
  * could never match them and goto never listed them (`mudengine-world` ›
  * parts/realm.md, *A blank room name*). A row applies only where the
  * database's own name is blank: Paradigm and GreaterMUD name the same rooms.
+ * Where the server prints a name other than Paradigm's, the `paradigm` column
+ * has Paradigm's, which MegaMUD's room list is tied to.
  */
 import { roomId } from '../../shared/world';
 import { t } from '../app/i18n';
 import { loadRoomTable, parseRoomTable, type RoomTable } from './roomTable';
 
-/** The name the server prints, by `map/room`. */
-export type BlankRoomNames = RoomTable;
+export interface BlankRoomNames {
+  /** The name the server prints, by `map/room`. */
+  printed: RoomTable;
+  /** Paradigm's name for the same room, only where it is not the printed one. */
+  paradigm: RoomTable;
+}
 
-export const NO_BLANK_ROOM_NAMES: BlankRoomNames = new Map();
+export const NO_BLANK_ROOM_NAMES: BlankRoomNames = { printed: new Map(), paradigm: new Map() };
 
 export const BLANK_ROOM_NAMES_FILE = 'blank-room-names.csv';
 
-export const parseBlankRoomNames = parseRoomTable;
+export function parseBlankRoomNames(text: string): BlankRoomNames {
+  return { printed: parseRoomTable(text), paradigm: parseRoomTable(text, 3) };
+}
 
 /** `name` for a room the database leaves blank, else the database's own. */
 export function nameOfRoom(
@@ -26,7 +34,17 @@ export function nameOfRoom(
   room: number,
   stated: string
 ): string {
-  return stated.trim().length > 0 ? stated : (names.get(roomId(map, room)) ?? stated);
+  return stated.trim().length > 0 ? stated : (names.printed.get(roomId(map, room)) ?? stated);
+}
+
+/** Paradigm's name for a room the database leaves blank, where the server prints another. */
+export function paradigmNameOf(
+  names: BlankRoomNames,
+  map: number,
+  room: number,
+  stated: string
+): string | undefined {
+  return stated.trim().length > 0 ? undefined : names.paradigm.get(roomId(map, room));
 }
 
 /** The shipped table from `dir`, or none with the reason said. */
@@ -39,6 +57,7 @@ export function loadBlankRoomNames(
     BLANK_ROOM_NAMES_FILE,
     (file, message) => t('notices.world.blankRoomNames.readError', { file, message }),
     NO_BLANK_ROOM_NAMES,
+    parseBlankRoomNames,
     notify
   );
 }

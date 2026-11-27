@@ -28,6 +28,7 @@ export function loadProtectedRooms(
     PROTECTED_ROOMS_FILE,
     (file, message) => t('notices.world.protectedRooms.readError', { file, message }),
     NO_PROTECTED_ROOMS,
+    parseProtectedRooms,
     notify
   );
 }

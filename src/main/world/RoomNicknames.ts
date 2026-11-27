@@ -1,9 +1,10 @@
 /**
  * Room names on one realm: the player's own `rooms:` list in front of
  * MegaMUD's shipped one (`src/shared/roomNicknames.ts`), each entry kept only
- * where this realm has its room at the same address under the same name.
- * Every other entry is left out, so the table built against Paradigm keeps
- * what still fits an older Paradigm and nothing of stock MajorMUD. A name only
+ * where this realm has its room at the same address under the same name, or
+ * under Paradigm's name for a room the stock server prints another way
+ * (`WorldRoom.paradigmName`, on the 18 gang house shops). Every other entry is
+ * left out, so a different room at the same address never takes it. A name only
  * ever produces a room id; the walk there is the navigation engine's. See
  * `mudengine-world` › `parts/realm.md`.
  */
@@ -59,7 +60,8 @@ export class RoomNicknames {
   private fits(nickname: RoomNickname, realm: NicknameRooms): WorldRoom | undefined {
     const { at, name } = nickname.room;
     const room = realm.get(at.map, at.room);
-    return room === undefined || room.name.trim() !== name ? undefined : room;
+    if (room === undefined) return undefined;
+    return room.name.trim() === name || room.paradigmName === name ? room : undefined;
   }
 
   /** Lists an entry that fits and whose code nothing before it took; whether it did. */
