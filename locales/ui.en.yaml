@@ -8481,6 +8481,7 @@ automation:
     reasonStatsTrained: stats were trained, so the stat display changed
     reasonLightRefused: the game says something is already lit; reading which
     reasonLevelled: a new level, so your stats and the exp table have changed
+    reasonLevelPaid: enough exp for the next level; reading what the level after it needs
     reasonDied: you died, which dropped what you carried; reading what is left
     reasonBuffEnding: an unrecognized message may have ended a buff; the stats will show which
     reasonBuffOverdue: a blessing has been up longer than it lasts and no wear-off message came; the

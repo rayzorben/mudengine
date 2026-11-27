@@ -1240,6 +1240,30 @@ describe('asking i, st and exp again once they are old', () => {
     expect(shipped.sent).toEqual(['i']);
     expect(never.sent).toEqual([]);
   });
+
+  /* rayzor, 2026-11-27: level 28 with 29 paid for, and `? exp` never asked. */
+  it('asks ? exp once the next level is paid for, after the fight', () => {
+    const { routines, sent } = sending();
+    const paid: CharacterState = {
+      ...inRealm,
+      progress: {
+        ...inRealm.progress,
+        level: 28,
+        exp: 86_145_857,
+        expNeeded: 0,
+        expTable: { rows: [{ level: 29, experience: 86_141_218, source: 'realm' }] }
+      }
+    };
+    routines.onCharacter({ ...paid, inCombat: true });
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+    routines.onCharacter(paid);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['? exp']);
+    routines.onCharacter(paid);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['? exp']);
+  });
 });
 
 /* Todo 118: each ask the client makes on its own has a setting, and off asks nothing. */

@@ -480,6 +480,19 @@ export function experienceOf(facts: ExperienceProgress): {
   return { standing, owed: experienceOwed(facts.expNeeded, standing) };
 }
 
+/**
+ * Whether the next level is paid for and no row prices a level above what is
+ * held. `exp` states only the next level's price, so past it the cards have
+ * nothing to count down to until `? exp` prints the levels after (rayzor,
+ * 2026-11-27: level 28 with 29 paid for read `Exp. needed —` for nine hours).
+ */
+export function pricedLevelsPaid(facts: ExperienceProgress): boolean {
+  if (facts.level === null || facts.exp === null) return false;
+  const { standing } = experienceOf(facts);
+  const paid = facts.expNeeded === 0 || standing?.ahead === true;
+  return paid && (standing?.next ?? null) === null;
+}
+
 export function experienceStanding(
   level: number | null,
   exp: number | null,

@@ -74,6 +74,7 @@ import type { SessionModule } from './Module';
 import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { StaleFacts } from './StaleFacts';
 import { AgedFacts } from './AgedFacts';
+import { PaidLevels } from './PaidLevels';
 import { UnlistedSearcher } from './UnlistedSearcher';
 import { StatAllAsk } from './StatAllAsk';
 
@@ -173,6 +174,8 @@ export class Routines implements SessionModule {
   private readonly stale: StaleFacts;
   /** What `i`, `st`, `exp` or `abil` answered a while ago. */
   private readonly aged = new AgedFacts();
+  /** `? exp` once a level is ready to train and the table prices nothing above it. */
+  private readonly paid = new PaidLevels();
   /** A player searching here whom the room did not list. See `UnlistedSearcher`. */
   private readonly searcher: UnlistedSearcher;
   /** `stat a` once per basis, out of a fight (todo 45). See `StatAllAsk`. */
@@ -228,6 +231,7 @@ export class Routines implements SessionModule {
     this.partyListing.reset();
     this.stale.reset();
     this.aged.reset();
+    this.paid.reset();
     this.searcher.reset();
     this.statAll.reset();
     this.entryOwed = false;
@@ -377,6 +381,9 @@ export class Routines implements SessionModule {
       const aged = fightIsRunning(state) ? [] : this.aged.due(Date.now(), this.config.asks);
       if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'), 'aged-facts');
       else this.stale.ask();
+      // The same wait as an old listing: the kill that pays for a level ends a fight.
+      if (!fightIsRunning(state) && this.paid.owes(state.progress))
+        this.stale.owe(['chart'], t('automation.routines.reasonLevelPaid'));
       if (this.config.asks.statAll) this.statAll.onCharacter(state);
       this.selfLook.onCharacter(state);
       this.briefLook.onCharacter(state);
