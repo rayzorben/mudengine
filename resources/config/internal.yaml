@@ -894,8 +894,9 @@ tuning:
 
   # Getting back into the shadows between fights — `AutoStealth`.
   # `askEveryMs` floors the retry after a failed roll, so a low-Stealth
-  # character is not asking once per status line; `expiresMs` drops an ask
-  # still queued when the room has already changed.
+  # character is not asking once per status line. Outside a walk, an `sn` in a
+  # new room goes at once, since a leader can step again within a second.
+  # `expiresMs` drops an ask still queued when the room has already changed.
   stealth:
     askEveryMs: 4000
     expiresMs: 5000

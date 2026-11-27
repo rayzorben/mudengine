@@ -300,4 +300,36 @@ describe('Auto-Sneak on Move', () => {
     drain();
     expect(sent).toEqual(['sn']);
   });
+
+  /* Cretin following Festus a room a second sneaked every fourth or fifth room (2026-11-27). */
+  it('asks again in each room a leader walks a follower into, and once per floor in one room', () => {
+    const stealth = sneaker();
+    const base = seen();
+    const following = { ...base, party: { ...base.party, following: 'Festus' } };
+    const arrived = (arrival: number): CharacterState => ({
+      ...following,
+      room: { ...following.room, arrival }
+    });
+    stealth.onCharacter(arrived(1));
+    drain();
+    expect(sent).toEqual(['sn']);
+    stealth.onCharacter(arrived(1));
+    drain();
+    expect(sent).toEqual(['sn']);
+    stealth.onCharacter(arrived(2));
+    drain();
+    stealth.onCharacter(arrived(3));
+    drain();
+    expect(sent).toEqual(['sn', 'sn', 'sn']);
+  });
+
+  it('keeps the floor on the hide for an opener in a new room', () => {
+    const stealth = make(combat(), {}, true, true);
+    stealth.onCharacter(seen());
+    drain();
+    expect(sent).toEqual(['hide']);
+    stealth.onCharacter(seen({ room: { ...seen().room, arrival: 1 } }));
+    drain();
+    expect(sent).toEqual(['hide']);
+  });
 });

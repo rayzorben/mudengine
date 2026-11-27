@@ -77,6 +77,8 @@ const HIDE_SNEAK: DecisionKind = 'hide-sneak';
 export class AutoStealth implements SessionModule {
   /** When the shadows were last asked for, so a failed roll retries at a stated rate. */
   private askedAt = 0;
+  /** The arrival that ask was made in (`Room.arrival`); the floor holds within it only. */
+  private askedArrival: number | null = null;
   /** Whether *Stealth 0* has been said this session. */
   private saidNoSkill = false;
   /** Whether the Stealth ceiling has been said this session. */
@@ -97,6 +99,7 @@ export class AutoStealth implements SessionModule {
 
   reset(): void {
     this.askedAt = 0;
+    this.askedArrival = null;
     this.saidCeiling = false;
   }
 
@@ -164,17 +167,27 @@ export class AutoStealth implements SessionModule {
     if (state.vitals.resting && this.events.restsHidden?.() !== true) return;
     // Both end a meditation whatever the class (`HideCommand.cs:24`, `SneakCommand.cs:32`).
     if (state.vitals.meditating) return;
-    const now = this.now();
-    if (now - this.askedAt < tuning().stealth.askEveryMs) return;
-    this.askedAt = now;
-    const { expiresMs } = tuning().stealth;
     /*
      * A backstabber standing on its own hides, the better roll (`sayCeiling`),
      * and its own move asks for `sn` first (`moveSneaks.ts`). One following a
      * leader sneaks, since the leader's step can come at any moment.
      */
     const following = state.party.following !== null;
-    if (moving || (forMove && (!forOpener || following))) {
+    const sneaks = moving || (forMove && (!forOpener || following));
+    /*
+     * The floor spaces retries within one room. A move that prints no
+     * `Sneaking...` leaves the character seen in the new room, and the leader
+     * can step again within a second, so that `sn` goes at once: floored,
+     * Cretin following Festus sneaked every fourth or fifth room (2026-11-27).
+     * A walk asks before each of its own steps (`sneakFirst`).
+     */
+    const newRoom = sneaks && !moving && this.askedArrival !== state.room.arrival;
+    const now = this.now();
+    if (!newRoom && now - this.askedAt < tuning().stealth.askEveryMs) return;
+    this.askedAt = now;
+    this.askedArrival = state.room.arrival;
+    const { expiresMs } = tuning().stealth;
+    if (sneaks) {
       // The walker's own key and band, so its `sn` before the step and this
       // one are one command.
       this.queue.enqueue({
