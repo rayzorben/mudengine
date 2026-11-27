@@ -633,9 +633,9 @@ export class SessionManager {
         now: () => Date.now(),
         design: (plain) => this.promptDesign.design(plain),
         designing: () => this.promptDesign.designing,
-        // The listings the client draws itself, from the batch the classifier
-        // assembled and what the tracker had published before it.
+        // Listings the client draws itself, from the classifier's batch and the tracker's state.
         rewrites: (type) => this.rewriter.wants(type),
+        opensListing: (plain) => this.rewriter.opens(plain),
         rewrite: (block) =>
           this.rewriter.render(block, {
             state: this.tracker.current,

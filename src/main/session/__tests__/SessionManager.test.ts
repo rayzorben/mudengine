@@ -2567,14 +2567,13 @@ describe('a listing reaching the sink', () => {
  * gate's glyph beside each row.
  */
 describe('a listing the player has the client draw', () => {
-  it('draws the pack as a table in place of the listing, at the prompt', async () => {
-    const painted: TimedChunk[] = [];
-    const { sink } = collect();
-    const book = new MarkBook({ lines: 100 });
-    manager = build({ ...sink, data: (chunk) => painted.push(chunk) }, { marks: book });
-    // Automation off: its own `rm` on arrival opens a quiet window this host
-    // never answers, and a listing inside one is withheld as that answer.
-    manager.configure(
+  /**
+   * The pack drawn by the client, with automation off: its own `rm` on
+   * arrival opens a quiet window this host never answers, and a listing
+   * inside one is withheld as that answer.
+   */
+  const drawPack = (session: SessionManager): void =>
+    session.configure(
       { ...DEFAULT_CONFIG.automation, enabled: false },
       DEFAULT_CONFIG.connection.login,
       {
@@ -2584,6 +2583,13 @@ describe('a listing the player has the client draw', () => {
         )
       }
     );
+
+  it('draws the pack as a table in place of the listing, at the prompt', async () => {
+    const painted: TimedChunk[] = [];
+    const { sink } = collect();
+    const book = new MarkBook({ lines: 100 });
+    manager = build({ ...sink, data: (chunk) => painted.push(chunk) }, { marks: book });
+    drawPack(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
@@ -2618,6 +2624,35 @@ describe('a listing the player has the client draw', () => {
     );
     const actions = marks.flatMap((entry) => entry.mark?.inline ?? []).filter((g) => g.commands);
     expect(actions.map((g) => g.commands?.[0])).toEqual(['wear rope and grapple', 'wear torch']);
+  });
+
+  /* Soul's wire, themajorbbs 2026-11-27: the header's first words came 9ms ahead of the rest. */
+  it('draws the pack when the header comes in a packet of its own', async () => {
+    const painted: TimedChunk[] = [];
+    const { sink } = collect();
+    manager = build({ ...sink, data: (chunk) => painted.push(chunk) });
+    drawPack(manager);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=310/310,MA=64/64]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.vitals.hp === 310);
+    socket.write('\x1b[0;37;40m\x1b[79D\x1b[KYou are carrying 55 platinum pieces,');
+    // The first packet is read on its own before the second is sent.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    socket.write(
+      ' 47 gold crowns, rope and\r\ngrapple, 6 brass lamp\r\n' +
+        '\x1b[79D\x1b[K\x1b[0;37;40mYou have no keys.\r\n' +
+        '\x1b[0;32mWealth: \x1b[36m554700 copper farthings\r\n' +
+        '\x1b[0;32mEncumbrance: \x1b[36m5562/8412 - \x1b[33mMedium [66%]\x1b[0m\r\n' +
+        '\x1b[79D\x1b[K\x1b[0;36m[HP=310/310,MA=64/64]:'
+    );
+    await until(() => painted.some((chunk) => chunk.text.includes('Keys:')));
+    const plain = painted
+      .map((chunk) => chunk.text)
+      .join('')
+      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    expect(plain).not.toContain('You are carrying');
+    expect(plain).toContain('6 brass lamp');
   });
 
   /* Festus's wire, 2026-11-03: the folded `southwest` was painted alone, uncoloured. */

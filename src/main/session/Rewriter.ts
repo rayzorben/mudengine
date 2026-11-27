@@ -14,7 +14,7 @@
  */
 import { DEFAULT_CONFIG, type RewritesUiConfig } from '../../shared/config';
 import type { Block, BlockType } from '../../shared/blocks';
-import type { BatchBlock } from '../parse/Classifier';
+import { listingOpenedBy, type BatchBlock } from '../parse/Classifier';
 import type { CarriedItem, CharacterState, Denomination } from '../../shared/character';
 import { roomId, type WorldRoom } from '../../shared/world';
 import { sameItem } from '../../shared/items';
@@ -184,6 +184,12 @@ export class Rewriter {
   /** Whether a block of this type is drawn by the client rather than painted. */
   wants(type: BlockType): boolean {
     return this.entityFor(type) !== null;
+  }
+
+  /** Whether this text is the header of a listing the client draws. */
+  opens(plain: string): boolean {
+    const rule = listingOpenedBy(plain);
+    return rule !== undefined && this.wants(rule.type);
   }
 
   /** The design that draws the prompt row, where one is on and says something. */

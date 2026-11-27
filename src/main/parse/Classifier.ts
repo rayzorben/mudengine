@@ -190,6 +190,11 @@ function opensRoomLikeListing(text: string): boolean {
   return BATCH_RULES.some((rule) => rule.tailsLookLikeRooms === true && rule.header.test(text));
 }
 
+/** The listing whose header this line is, as the batch collector opens one. */
+export function listingOpenedBy(text: string): BatchRule | undefined {
+  return BATCH_RULES.find((rule) => rule.header.test(text));
+}
+
 /**
  * What the server printed after the prompt, on the same framed line.
  *
@@ -1253,7 +1258,7 @@ export class Classifier {
       ended = this.finishBatch();
     }
     if (!this.batch) {
-      const rule = BATCH_RULES.find((candidate) => candidate.header.test(text));
+      const rule = listingOpenedBy(text);
       if (!rule) return ended;
       // A record already whole on its header line was read by the single-line
       // rule; there is nothing to join.

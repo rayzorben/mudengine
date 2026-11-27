@@ -40,7 +40,9 @@
  *   line the player designed (`ui.statline`): a tail that has opened like a
  *   prompt but not closed one waits the same `PARTIAL_DELAY_MS` outside a
  *   window too, so the prompt is drawn once, designed, rather than half raw.
- *   Past the delay it is drawn as it stands.
+ *   Past the delay it is drawn as it stands. And a tail that already reads
+ *   as the header of a listing the client draws is left for the framing, so
+ *   the listing is withheld whole.
  *
  * Only what automation sends is ever quiet. The player's own `l` is a thing
  * they asked to see.
@@ -166,6 +168,12 @@ export interface FeedSource {
    * design: the feed is also driven by tests that rewrite nothing.
    */
   rewrites?(type: BlockType): boolean;
+  /**
+   * Whether an unterminated tail already reads as the header of a listing the
+   * client draws, so it is left for the framing rather than painted. Optional
+   * with `rewrites`.
+   */
+  opensListing?(plain: string): boolean;
   /**
    * The client's own lines in a completed block's place — a whole listing or
    * one line — or null to paint the realm's own. What comes back ends every
@@ -756,6 +764,16 @@ export class TerminalFeed {
     // is queued behind it: it is the prompt row.
     if (!this.answeringQuiet || status) {
       this.cancelHold();
+      /*
+       * The head of a listing the client draws is not painted ahead of its
+       * line: themajorbbs writes `You are carrying 55 platinum pieces,` and
+       * the rest of `i` as two packets (Soul, 2026-11-27: 328 of 4,051 pack
+       * listings, median 10ms apart, longest 1s), and a header painted as a
+       * tail is a listing painted as sent. The feed keeps no clock for it:
+       * the idle flush frames the tail (`sentenceHoldMs` at most) and `line`
+       * opens the listing from it.
+       */
+      if (this.forwarded === 0 && !status && this.source.opensListing?.(plain) === true) return;
       /*
        * The client's own line in the prompt's place — only while nothing of
        * this tail has been painted, since xterm has no unprint. A tail that

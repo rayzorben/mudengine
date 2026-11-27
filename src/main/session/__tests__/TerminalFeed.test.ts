@@ -54,7 +54,7 @@ function typeOf(plain: string): BlockType | null {
 function harness(
   quiet: string[] = ['rm', 'l'],
   design?: FeedSource['design'],
-  rewriting?: Pick<FeedSource, 'rewrites' | 'rewrite' | 'marks'>,
+  rewriting?: Pick<FeedSource, 'rewrites' | 'opensListing' | 'rewrite' | 'marks'>,
   facts: (plain: string, type: BlockType | null) => LineFacts | undefined = () => undefined
 ) {
   const released: Painted[] = [];
@@ -645,7 +645,9 @@ describe('a listing the client draws itself', () => {
       issue: (mark: TerminalMark): string => `drawn.${mark.label}`,
       forget: () => {}
     };
-    const h = harness(['rm'], undefined, { rewrites: wants, rewrite, marks }, facts);
+    const opensListing = (plain: string): boolean =>
+      /^You are carrying/.test(plain) && wants('user-inventory');
+    const h = harness(['rm'], undefined, { rewrites: wants, opensListing, rewrite, marks }, facts);
     return h;
   }
   const drawPack: FeedSource['rewrite'] = (block) =>
@@ -718,6 +720,27 @@ describe('a listing the client draws itself', () => {
       'ying rope and grapple, 6 torch.\r\n' + KEYS
     );
     expect(h.chunk(LOAD + PROMPT)).toBe(LOAD + PROMPT);
+  });
+
+  it('draws a listing whose header came as a packet of its own', () => {
+    // themajorbbs, Soul 2026-11-27: the header's first items, then the rest about 10ms later.
+    const h = listing(drawPack);
+    expect(h.chunk('You are carrying rope and grapple,')).toBe('');
+    expect(h.chunk(' 6 torch.\r\n' + KEYS + LOAD)).toBe(DRAWN_PACK);
+  });
+
+  it('draws a listing whose header the idle flush framed before the rest came', () => {
+    const h = listing(drawPack);
+    expect(h.chunk('You are carrying rope and grapple,')).toBe('');
+    expect(h.flush()).toBe('');
+    expect(h.chunk('6 torch.\r\n' + KEYS + LOAD)).toBe(DRAWN_PACK);
+  });
+
+  it('paints the head of a listing no rewrite draws as it arrives', () => {
+    const h = listing(drawPack, () => false);
+    expect(h.chunk('You are carrying rope and grapple,')).toBe(
+      'You are carrying rope and grapple,'
+    );
   });
 
   it('draws one line in place of one block', () => {
