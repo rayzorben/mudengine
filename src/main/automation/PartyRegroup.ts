@@ -137,8 +137,9 @@ export class PartyRegroup {
    * the same band, so it reaches the wire ahead of the step and the followers
    * hear it in the room they are about to be left in. It is said to every
    * joined member, and the walk waits for those `PartyCompany` saw with this
-   * character here or one room back: the room's roster lags a follower's own
-   * arrival line, which left Brakkle out of Rayzor's `go hole` (2026-10-31).
+   * character since they joined: the room's roster lags a follower's arrival
+   * line (Brakkle, 2026-10-31) and never shows a sneaking one (Cretin,
+   * 2026-11-27), though the server moves both with the leader.
    */
   stepping(
     command: string,

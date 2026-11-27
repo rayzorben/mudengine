@@ -219,6 +219,40 @@ describe('leading the party through a portal', () => {
   });
 
   /*
+   * Festus on OCI, 2026-11-27: Cretin sneaked from three rooms before the
+   * hole, so no room after showed him, and `go hole` waited for nobody.
+   */
+  it('waits for a member seen since joining, though a sneaking follower shows in no room', () => {
+    const notices: string[] = [];
+    const it = new PartyRegroup(config(), queue, { notice: (message) => notices.push(message) });
+    it.onCharacter(state('1/627', ['Cretin']));
+    it.onCharacter(state('1/628', ['Cretin'], []));
+    it.onCharacter(state('1/629', ['Cretin'], []));
+    it.stepping('go hole', 'portal', '1/1617', state('1/630', ['Cretin'], []));
+    drain();
+    expect(sent).toEqual(['.@party go hole']);
+    expect(notices).toEqual([t('automation.party.regroupingUntilBack', { members: 'Cretin' })]);
+    expect(it.regrouping(state('1/1617', [], []))).toBe(true);
+    it.onCharacter(state('1/1617', [], []));
+    it.onBlock(listing);
+    it.onCharacter(state('1/1617', [], ['Cretin']));
+    drain();
+    expect(sent).toEqual(['.@party go hole', PAR, '', 'invite Cretin']);
+    it.onCharacter(state('1/1617', ['Cretin']));
+    expect(it.regrouping(state('1/1617', ['Cretin']))).toBe(false);
+  });
+
+  it('forgets a member who left the party', () => {
+    const it = regroup();
+    it.onCharacter(state('3/24', ['Soul']));
+    it.onCharacter(state('3/24', [], []));
+    it.stepping('go vortex', 'portal', '3/681', state('3/25', ['Soul'], []));
+    drain();
+    expect(sent).toEqual(['.@party go vortex']);
+    expect(it.regrouping(far)).toBe(false);
+  });
+
+  /*
    * Rayzor on OCI, 2026-11-06: Brakkle followed the potion of levitation up
    * the waterfall in the room script's own words, which read as nothing, and
    * the wait did not see him for 36 seconds.
