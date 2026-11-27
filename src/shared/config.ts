@@ -2354,10 +2354,10 @@ export interface AutomationConfig {
 /**
  * Running a quest's plan — the Quest card's *Run it* (todo 102).
  *
- * Off, like everything automated: a run walks across the realm, buys, hunts
- * and fights for as long as the chain takes, and a character left overnight
- * should do that only where somebody said so. The card's press refuses out
- * loud while this is off and names the switch.
+ * On (the user, 2026-11-27): a run starts only when the card's Run it is
+ * pressed. Off, the press refuses out loud and names the switch, for a
+ * character that must not walk, buy, hunt and fight for as long as a chain
+ * takes.
  */
 export interface QuestsConfig {
   enabled: boolean;
@@ -2804,7 +2804,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       upTo: 0,
       statHorizon: 10
     },
-    quests: { enabled: false, rollTries: 12 },
+    quests: { enabled: true, rollTries: 12 },
     gear: {
       enabled: false,
       sets: [],
@@ -3663,7 +3663,7 @@ export const QUESTS_RANGES = {
   rollTries: [1, 100]
 } as const satisfies Partial<Record<keyof QuestsConfig, readonly [number, number]>>;
 
-/** One switch, off unless the file says on, and how many rolls a step is worth. */
+/** One switch, on unless the file says off, and how many rolls a step is worth. */
 export function normalizeQuests(value: unknown): QuestsConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.quests;

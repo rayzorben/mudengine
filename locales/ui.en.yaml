@@ -660,6 +660,15 @@ notices:
         {count} file where they were off only because the client had written that default, not
         because you chose it. Picking locks is unchanged and still off. Turn either one off again in
         the Movement section of settings. The backup next to the file has the old value. {fileList}
+    autoQuestOn:
+      many: Auto-Quest is now on by default. It was turned on in {count} files where it was off only
+        because the client had written that default. A run still starts only when you press Run it
+        on the Quest card. Turn it off again under Quests in settings. The backup next to each file
+        has the old value. {fileList}
+      one: Auto-Quest is now on by default. It was turned on in {count} file where it was off only
+        because the client had written that default. A run still starts only when you press Run it
+        on the Quest card. Turn it off again under Quests in settings. The backup next to the file
+        has the old value. {fileList}
     sheetAnswersSkills:
       many: Picking locks and meditating are now on by default, and each happens only when the stat
         sheet or the abil list says the character can. They were turned on in {count} files
@@ -6495,8 +6504,8 @@ settings:
   quests:
     legend: Quests
     warning: A run walks across the realm, buys, hunts and fights for as long as the quest takes,
-      and stops only for what would stop a route. Turn it on only for a character you mean to leave
-      alone with it.
+      and stops only for what would stop a route. Turn it off for a character you do not mean to
+      leave alone with it.
     enabled: Auto-Quest
     enabledHint: Lets the Quest card's Run it button carry out a plan step by step, using walking,
       shopping and auto-combat. When off, the button refuses and names this switch.

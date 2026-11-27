@@ -139,7 +139,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/main/automation/Walker.ts': 1867,
   // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
   // Lowered by `sameJson`, read from `@shared/values` with the error helper (todo 143).
-  'src/renderer/src/components/SettingsScreen.tsx': 1213,
+  'src/renderer/src/components/SettingsScreen.tsx': 1211,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the

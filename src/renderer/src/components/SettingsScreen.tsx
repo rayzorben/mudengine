@@ -39,6 +39,7 @@ import { useAutoSave } from '../hooks/useAutoSave';
 import { useCharacterRealm, type CharacterRealmLoaders } from '../hooks/useCharacterRealm';
 import { useSettingsPanel } from '../hooks/useSettingsPanel';
 import { useSettingsFind } from '../hooks/useSettingsFind';
+import { useSettingsCaret } from '../hooks/useSettingsCaret';
 import { useDecisionPage } from '../hooks/useDecisionPage';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import type { Loop, ScopedLoop } from '@shared/loops';
@@ -423,11 +424,8 @@ export default function SettingsScreen({
     if (found) loadForm(formOf(found));
   }, [open, selected, form, snapshot]);
 
-  useEffect(() => {
-    if (!open) return;
-    const id = window.requestAnimationFrame(() => firstFieldRef.current?.focus());
-    return () => window.cancelAnimationFrame(id);
-  }, [open, selected, tab]);
+  const nameFirst = selected === NEW_CHARACTER || doorFocus(openAt) !== null;
+  useSettingsCaret(open ? `${tab}:${selected}` : null, body, firstFieldRef, nameFirst);
 
   // Follows the snapshot the same way the character form does, and stands down
   // once a form is loaded so it cannot discard what somebody is typing.

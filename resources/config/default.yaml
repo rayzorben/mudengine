@@ -1819,10 +1819,11 @@ automation:
   # asked again, a bounded number of times; a step whose counter did not move
   # stops the run and says so.
   #
-  # Off, because a run walks across the realm, buys, hunts and fights for as
-  # long as the chain takes, and that is a night to sign up for on purpose.
+  # On, because a run starts only when Run it is pressed. Turn it off for a
+  # character that must not walk across the realm, buy, hunt and fight for as
+  # long as the chain takes; Run it then refuses and names this switch.
   quests:
-    enabled: false
+    enabled: true
     # How many times a step that rolls (`testskill`) is asked before the run
     # gives up on it. Each try is one ask and one listing.
     rollTries: 12

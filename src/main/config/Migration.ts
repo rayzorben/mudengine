@@ -347,6 +347,7 @@ function migrateAll(options: MigrationOptions): void {
   theCombatSwitchLeftTheFiles(home, note);
   // After `theWorldsAreBundled`, which re-files the shared list's archive names first.
   theWalksBecameEachCharacters(home, note, options.worlds);
+  autoQuestOnByDefault(home, note, options.template);
 }
 
 /**
@@ -4839,6 +4840,55 @@ function theDoorsOpenByDefault(home: Home, note: (message: string) => void): voi
   );
 }
 
+/** Both shipped paragraphs above `automation.quests` held this while the block shipped off. */
+const SHIPPED_QUESTS_OFF = 'Off, because a run walks';
+
+/**
+ * Auto-Quest turned on where a file still carries the paragraph that shipped
+ * it off (2026-11-27, the user: auto quest on by default).
+ *
+ * Every options file states `enabled: false`, from the template or from
+ * `statedTheNewAutomation`, so the new default alone reaches nobody. The
+ * shipped paragraph above the block is the record of who wrote that `false`.
+ * The value is moved only under that paragraph, and the paragraph is replaced
+ * in the same edit, so a file is moved once and a switch turned off afterwards
+ * stays off, which `theDoorsOpenByDefault` cannot promise. A block without the
+ * paragraph (a character's own, or one somebody rewrote) is left alone.
+ */
+function autoQuestOnByDefault(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const fresh = templateCommentAt(template, QUESTS_BLOCK) ?? QUESTS_COMMENT;
+  const moved: string[] = [];
+
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const automation = document.get('automation', true);
+      if (!isMap(automation)) return false;
+      const pair = automation.items.find((item) => keyText(item) === QUESTS_BLOCK[1]);
+      // On the key alone: a paragraph the map holds would outlast the edit and move the file again.
+      if (pair === undefined || !isScalar(pair.key) || !isMap(pair.value)) return false;
+      if (pair.key.commentBefore?.includes(SHIPPED_QUESTS_OFF) !== true) return false;
+      pair.key.commentBefore = fresh;
+      if (pair.value.get('enabled') === false) {
+        pair.value.set('enabled', true);
+        moved.push(file);
+      }
+      return true;
+    });
+  }
+
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.autoQuestOn.one', params)
+      : t('notices.migration.autoQuestOn.many', params)
+  );
+}
+
 /**
  * `hangUp.onlyWhenClean` became `hangUp.penalties` (2026-09-23, todo 01): the
  * question is whether the realm charges for a hang-up, which Paradigm's menu
@@ -7291,14 +7341,14 @@ const GEAR_COMMENT = ` Which kit to be in, and when -- the equipment manager.
  \`offRound\` is \`use <item> <target>\` between rounds. It costs the round --
  the server will not use a weapon that is not in hand -- so \`everyRounds\` is
  the floor under it and 0, where it ships, is off.`;
-const QUESTS_DEFAULT = { enabled: false };
+const QUESTS_DEFAULT = { enabled: DEFAULT_CONFIG.automation.quests.enabled };
 const QUESTS_COMMENT = ` Running a quest's plan -- the Quest card's Run it.
 
  With \`enabled\` on, Run it carries a plan one step at a time: the pack is
  read, each item is bought, hunted or asked for the way the plan says, the way
  to the act is walked as a leg, the act is sent, and the counter is read back
- with \`abil\` before the next step starts. Off, because a run walks across
- the realm, buys, hunts and fights for as long as the chain takes.`;
+ with \`abil\` before the next step starts. On, because a run starts only
+ when Run it is pressed; off, Run it refuses and names this switch.`;
 const BANKING_COMMENT = ` Banking the purse, unasked -- MegaMUD's StashCoin. At a bank counter with
  more than \`depositThresholdCopper\` in the purse, deposits everything above
  \`keepCopper\` and asks \`bank\` behind it. Both numbers are copper: 10 to the

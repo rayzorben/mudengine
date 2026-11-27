@@ -7052,7 +7052,7 @@ describe('the quest run is stated', () => {
 
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  it('writes the block off into the options file alone, once, and leaves a stated one alone', () => {
+  it('writes the block into the options file alone, once, and leaves a stated one alone', () => {
     fs.writeFileSync(home.options, 'automation:\n  movement:\n    openDoors: true\n', 'utf8');
     const profile = home.profile('vaelor');
     fs.mkdirSync(path.dirname(profile.file), { recursive: true });
@@ -7068,9 +7068,51 @@ describe('the quest run is stated', () => {
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
 
-    fs.writeFileSync(home.options, 'automation:\n  quests:\n    enabled: true\n', 'utf8');
+    fs.writeFileSync(home.options, 'automation:\n  quests:\n    enabled: false\n', 'utf8');
     migrate();
-    expect(automation()['quests']).toEqual({ ...DEFAULT_CONFIG.automation.quests, enabled: true });
+    expect(automation()['quests']).toEqual({ ...DEFAULT_CONFIG.automation.quests, enabled: false });
+  });
+
+  /** The block as the template shipped it and as `statedTheNewAutomation` wrote it, both off. */
+  const SHIPPED_OFF = [
+    '  # Off, because a run walks across the realm, buys, hunts and fights for as\n' +
+      '  # long as the chain takes, and that is a night to sign up for on purpose.\n',
+    '  # with `abil` before the next step starts. Off, because a run walks across\n' +
+      '  # the realm, buys, hunts and fights for as long as the chain takes.\n'
+  ];
+  const stated = (paragraph: string, enabled: boolean): string =>
+    `automation:\n  movement:\n    openDoors: true\n\n${paragraph}  quests:\n    enabled: ${enabled}\n`;
+  const turnedOn = (): string[] =>
+    notesOf(said, 'notices.migration.autoQuestOn.one', 'notices.migration.autoQuestOn.many');
+
+  it.each(SHIPPED_OFF)('turns Auto-Quest on under the paragraph that shipped it off', (shipped) => {
+    fs.writeFileSync(home.options, stated(shipped, false), 'utf8');
+    migrate();
+    expect(automation()['quests']).toEqual(DEFAULT_CONFIG.automation.quests);
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('Off, because');
+    expect(turnedOn()).toHaveLength(1);
+    expect(said.join(' ')).toContain(home.options);
+  });
+
+  it('leaves Auto-Quest off when it is turned off after the move', () => {
+    fs.writeFileSync(home.options, stated(SHIPPED_OFF[0]!, false), 'utf8');
+    migrate();
+    // Positive control: the move happened, so the second run had its chance.
+    expect(turnedOn()).toHaveLength(1);
+    const off = fs.readFileSync(home.options, 'utf8').replace('enabled: true', 'enabled: false');
+    fs.writeFileSync(home.options, off, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(off);
+    expect(turnedOn()).toEqual([]);
+  });
+
+  it('replaces the paragraph over a block already on, and says nothing', () => {
+    fs.writeFileSync(home.options, stated(SHIPPED_OFF[0]!, true), 'utf8');
+    migrate();
+    expect((automation()['quests'] as Record<string, unknown>)['enabled']).toBe(true);
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('Off, because');
+    expect(turnedOn()).toEqual([]);
   });
 });
 
