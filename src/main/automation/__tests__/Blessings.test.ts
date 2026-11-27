@@ -7,6 +7,7 @@ import type { BlessingConfig } from '../../../shared/blessings';
 import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { DecisionKind } from '../../../shared/decisionSettings';
+import type { WorldSpell } from '../../../shared/world';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -719,6 +720,125 @@ describe("the server's own countdown", () => {
       })
     );
     vi.advanceTimersByTime(31_000);
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+});
+
+describe("the realm's duration while the buff list loses the buff", () => {
+  /*
+   * `st` has no countdown on GreaterMUD and the tracker took `You hear movement
+   * to the southwest.` for the end of protection from evil, so Soul cast it
+   * again while resting (2026-11-26). Twenty three-second ticks at speed 1.
+   */
+  const lasting = { duration: 20 } as WorldSpell;
+  const cast = (): Block =>
+    block('spell-cast', { spell: 'protection', caster: 'You', target: 'yourself' });
+  const noticed: string[] = [];
+  const rig = (speed: number | null = 1): Blessings =>
+    new Blessings(spells([armour]), true, queue, {
+      ...standing,
+      realmSpell: () => lasting,
+      speed: () => speed,
+      notice: (message) => noticed.push(message)
+    });
+
+  it('waits out the duration and its slack, then recasts', () => {
+    const blessings = rig();
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    blessings.onBlock(cast(), lit);
+    blessings.onCharacter(lit);
+    vi.advanceTimersByTime(60_000);
+    expect(sent).toEqual([]);
+    vi.advanceTimersByTime(16_000);
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  it('recasts at once on the wear-off frame', () => {
+    const blessings = rig();
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    blessings.onBlock(cast(), lit);
+    blessings.onCharacter(lit);
+    expect(sent).toEqual([]);
+    blessings.onBlock(block('user-buff-expired', { spell: 'protection' }), lit);
+    blessings.onCharacter(lit);
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  it('says once that the clock holds a recast the list asked for', () => {
+    noticed.length = 0;
+    const blessings = rig();
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    blessings.onBlock(cast(), lit);
+    blessings.onCharacter(lit);
+    blessings.onCharacter(lit);
+    expect(noticed).toHaveLength(1);
+    expect(noticed[0]).toContain('protection');
+    blessings.dispose();
+  });
+
+  it('holds a listed buff the watchdog would call lapsed, and counts a cast naming the character', () => {
+    const blessings = new Blessings(spells([armour]), true, queue, {
+      ...standing,
+      realmSpell: () => lasting,
+      speed: () => 1,
+      learnedDuration: () => 5
+    });
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    blessings.onBlock(
+      block('spell-cast', { spell: 'protection', caster: 'You', target: 'Vaelor' }),
+      lit
+    );
+    blessings.onCharacter({
+      ...lit,
+      buffs: [{ spell: 'protection', by: null, appliedAt: Date.now() }]
+    });
+    vi.advanceTimersByTime(30_000);
+    expect(sent).toEqual([]);
+    blessings.dispose();
+  });
+
+  it('is ended by a death and by reset, and not started by another target or an announcement', () => {
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    for (const end of ['user-dies', 'reset'] as const) {
+      sent.length = 0;
+      const blessings = rig();
+      blessings.onBlock(cast(), lit);
+      if (end === 'reset') blessings.reset();
+      else blessings.onBlock(block(end, {}), lit);
+      blessings.onCharacter(lit);
+      expect(sent).toEqual(['protection']);
+      blessings.dispose();
+    }
+    const others: Record<string, string>[] = [
+      { spell: 'protection', caster: 'You', target: 'Naji' },
+      { spell: 'protection', caster: 'You', announced: 'moves to cast' }
+    ];
+    for (const groups of others) {
+      sent.length = 0;
+      const blessings = rig();
+      blessings.onBlock(block('spell-cast', groups), lit);
+      blessings.onCharacter(lit);
+      expect(sent).toEqual(['protection']);
+      blessings.dispose();
+    }
+  });
+
+  it('starts no clock before the realm speed is measured', () => {
+    const blessings = rig(null);
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    blessings.onBlock(cast(), lit);
+    blessings.onCharacter(lit);
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  it('starts no clock where the level is unread', () => {
+    const blessings = rig();
+    blessings.onBlock(cast(), state());
+    blessings.onCharacter(state());
     expect(sent).toEqual(['protection']);
     blessings.dispose();
   });

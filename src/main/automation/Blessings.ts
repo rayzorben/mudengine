@@ -77,8 +77,17 @@ import {
   type CastGate
 } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { tuning } from '../app/tuning';
+import { realmLastsSeconds } from '../../shared/menace';
 import type { SessionModule } from './Module';
+
+/** Whether a cast confirmation's target is this character: `yourself`, `you` or its own name. */
+function aimedAtSelf(target: string | undefined, before: CharacterState): boolean {
+  if (target === undefined) return true;
+  const lower = target.toLowerCase();
+  return lower === 'yourself' || lower === 'you' || lower === (before.name?.toLowerCase() ?? null);
+}
 
 /** One key per blessing per person, so a party of four is four clocks. */
 function clockKey(entry: BlessingConfig, target: string): string {
@@ -121,6 +130,14 @@ export interface BlessingsDeps {
    * third. See `resolveSpell`.
    */
   readonly realmSpell?: (name: string) => WorldSpell | null;
+  /**
+   * How many times faster than the stock clocks the realm runs, where it is
+   * measured (`RealmSpeed.measured`); null or omitted, the duration clock
+   * starts nothing rather than guess a stock realm's length.
+   */
+  readonly speed?: () => number | null;
+  /** Where a recast held by the duration clock is said, once a cast (`.activity.log`). */
+  readonly notice?: NoticeSink;
   /**
    * Whether the character is on the ground (`Grounded.down`). The tick
    * recasts from the last state it was handed, and a character down is
@@ -173,10 +190,23 @@ export class Blessings implements SessionModule, BlessingsDue {
    * thirds of which is refused.
    */
   private lastProposalAt = 0;
+  /**
+   * When each self blessing's realm duration runs out, from the cast that
+   * landed (`clockKey` → epoch ms). `st` prints no countdown on GreaterMUD,
+   * so this is the clock between the confirmation and the wear-off frame, and
+   * the buff list alone cannot be it: an unrelated line (`You hear movement
+   * to the southwest.`) was read as `protection from evil` ending and Soul
+   * cast it again while resting (2026-11-26).
+   */
+  private readonly runsUntil = new Map<string, number>();
 
   private readonly now: () => number;
   private readonly learnedDuration: (spell: string) => number | null;
   private readonly realmSpell: (name: string) => WorldSpell | null;
+  private readonly speed: () => number | null;
+  private readonly notice: NoticeSink | null;
+  /** The self clocks whose hold has been said, so each cast says it once. */
+  private readonly saidHeld = new Set<string>();
   private readonly onTheGround: () => boolean;
   private readonly due: NegateDue;
   private readonly gate: CastGate;
@@ -192,6 +222,8 @@ export class Blessings implements SessionModule, BlessingsDue {
     this.now = deps.now ?? (() => Date.now());
     this.learnedDuration = deps.learnedDuration ?? (() => null);
     this.realmSpell = deps.realmSpell ?? (() => null);
+    this.speed = deps.speed ?? (() => null);
+    this.notice = deps.notice ?? null;
     this.onTheGround = deps.onTheGround;
     this.due = deps.due ?? NO_NEGATE_DUE;
     this.gate = deps.castGate ?? OPEN_CAST_GATE;
@@ -246,6 +278,8 @@ export class Blessings implements SessionModule, BlessingsDue {
   reset(): void {
     this.proposedAt.clear();
     this.castAt.clear();
+    this.runsUntil.clear();
+    this.saidHeld.clear();
     this.dueNow.clear();
     this.lastPartyCast = null;
     this.lastProposalAt = 0;
@@ -262,8 +296,11 @@ export class Blessings implements SessionModule, BlessingsDue {
   onBlock(block: Block, before: CharacterState): void {
     // The clocks below are facts about the realm and run whatever the switch
     // says; only the telepath to the caster is a send, so only it is withheld.
+    if (block.type === 'user-dies') this.runsUntil.clear();
+    if (block.type === 'spell-cast') this.noteLanded(block, before);
     if (block.type === 'user-buff-expired') {
       const spell = block.groups['spell']?.trim();
+      if (spell) this.noteEnded(spell);
       if (spell && this.enabled) this.notifyCaster(spell, before);
       return;
     }
@@ -293,6 +330,7 @@ export class Blessings implements SessionModule, BlessingsDue {
       }
       return;
     }
+
     /*
      * This character's own cast landing on a party member restarts that
      * member's clock from the confirmation. The clock already started when
@@ -307,9 +345,7 @@ export class Blessings implements SessionModule, BlessingsDue {
       const spell = block.groups['spell']?.trim();
       const target = block.groups['target'];
       if (!spell || target === undefined) return;
-      const own = before.name?.toLowerCase() ?? null;
-      const lower = target.toLowerCase();
-      if (lower === 'yourself' || lower === 'you' || lower === own) return;
+      if (aimedAtSelf(target, before)) return;
       for (const entry of this.entries()) {
         if (entry.target !== 'party' || !this.same(spell, entry.spell)) continue;
         const key = clockKey(entry, target);
@@ -446,7 +482,60 @@ export class Blessings implements SessionModule, BlessingsDue {
     const held = state.buffs.find((buff) =>
       buffNames(buff).some((name) => this.same(name, entry.spell))
     );
+    const key = clockKey(entry, '@self');
+    const until = this.runsUntil.get(key) ?? 0;
+    // The realm's clock outranks the list and the watchdog: what dropped the buff was a guess.
+    if (now < until) {
+      this.sayHeld(entry, key, until, held === undefined);
+      return false;
+    }
     return held === undefined || this.lapsed(held, entry, now);
+  }
+
+  /** Says once a cast that a self row is held by the realm's duration, and why that is not a lapse. */
+  private sayHeld(entry: BlessingConfig, key: string, until: number, lost: boolean): void {
+    if (!lost || this.saidHeld.has(key)) return;
+    this.saidHeld.add(key);
+    this.notice?.(
+      t('automation.blessing.heldByClock', {
+        spell: entry.spell,
+        seconds: Math.max(0, Math.round((until - this.now()) / 1000))
+      }),
+      'bless'
+    );
+  }
+
+  /**
+   * This character's own cast of a self row landing: the blessing holds for
+   * the realm's duration at the realm's speed, plus the watchdog's slack, or
+   * until its wear-off frame. A spell with no stated duration, an unread level
+   * or an unknown realm row starts no clock, and the buff list decides alone.
+   */
+  private noteLanded(block: Block, before: CharacterState): void {
+    const { spell, caster, target, announced, amount } = block.groups;
+    const level = before.progress.level;
+    const speed = this.speed();
+    if (spell === undefined || caster !== 'You' || level === null || speed === null) return;
+    if (announced !== undefined || amount !== undefined) return;
+    if (!aimedAtSelf(target, before)) return;
+    for (const entry of this.entries()) {
+      if (entry.target !== 'self' || !this.same(spell, entry.spell)) continue;
+      const realm = this.realmSpell(spell) ?? this.realmSpell(entry.spell);
+      const seconds = realm === null ? null : realmLastsSeconds(realm, level, speed);
+      if (seconds === null) continue;
+      const key = clockKey(entry, '@self');
+      this.saidHeld.delete(key);
+      this.runsUntil.set(key, block.at + seconds * 1000 * (1 + tuning().spells.blessSlack));
+    }
+  }
+
+  /** A wear-off frame names the spell: the realm's clock has nothing left to hold. */
+  private noteEnded(spell: string): void {
+    for (const entry of this.entries()) {
+      if (entry.target === 'self' && this.same(spell, entry.spell)) {
+        this.runsUntil.delete(clockKey(entry, '@self'));
+      }
+    }
   }
 
   /** Proposes one self recast if this entry is due; true when it did. */

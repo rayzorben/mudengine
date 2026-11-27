@@ -170,7 +170,12 @@ export class RealmSpeed {
 
   /** The realm's figure: until enough rounds are seen, the one kept for this server, else 1. */
   get multiplier(): number {
-    return this.figure ?? this.kept.recall() ?? 1;
+    return this.measured ?? 1;
+  }
+
+  /** The figure where one is read or kept, else null: a clock that must not guess reads this. */
+  get measured(): number | null {
+    return this.figure ?? this.kept.recall();
   }
 
   reset(): void {

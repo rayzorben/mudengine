@@ -13,7 +13,7 @@ import type { BlessingConfig } from '../../shared/blessings';
 import type { CharacterState } from '../../shared/character';
 import { useFromPackSteps, type WornReads } from '../../shared/wornForUse';
 import { carriedBlessings, type BlessingRealm, type ItemBlessing } from '../../shared/invoke';
-import { effectSeconds, scaledDuration } from '../../shared/menace';
+import { realmLastsSeconds } from '../../shared/menace';
 import { castOdds, type ProwessSheet } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
 import { castsOnSelf, sameSpell, spellTargeting } from '../../shared/spellcraft';
@@ -103,7 +103,7 @@ function priced(
   if (effect === null) return null;
   // The book's own spelling, which its measurement was kept under; an item's spell by its whole name.
   const measured = pricing.learnedDuration(via.kind === 'book' ? name : spell.name);
-  const ticks = scaledDuration(spell, pricing.level);
+  const lasts = realmLastsSeconds(spell, pricing.level, pricing.speed);
   return {
     name,
     spell,
@@ -112,8 +112,8 @@ function priced(
     duration:
       measured !== null && measured > 0
         ? { seconds: measured, from: 'measured' }
-        : ticks > 0
-          ? { seconds: effectSeconds(ticks, pricing.speed), from: 'realm' }
+        : lasts !== null
+          ? { seconds: lasts, from: 'realm' }
           : null,
     via
   };

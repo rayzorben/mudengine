@@ -7484,6 +7484,7 @@ automation:
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
+    heldByClock: 'Not casting {spell} again yet: the buff list no longer shows it, and the realm''s duration has {seconds}s left unless its wear-off message comes first.'
     # Auto Choose Blessings (todo 10): what is kept up for the fight being
     # hunted, and why; a refusal names what is cast instead.
     chose: 'Auto Choose Blessings, for the fight at {room}: {picks}.'

@@ -59,7 +59,7 @@ export interface BlessingChoiceParts {
     | undefined;
   readonly errands: Pick<
     Errands,
-    'fitness' | 'realmClass' | 'realmSpeed' | 'gearHandsOf' | 'gearSlotOf'
+    'fitness' | 'realmClass' | 'realmSpeed' | 'realmSpeedMeasured' | 'gearHandsOf' | 'gearSlotOf'
   >;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
@@ -446,6 +446,8 @@ export function blessingsFor(
     ...rest,
     castGate,
     learnedDuration,
+    speed: () => errands.realmSpeedMeasured,
+    notice: session.notice,
     source
   });
   // The realm `AutoInvoke` reads: the choice's own, at the point of use.

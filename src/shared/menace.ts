@@ -473,6 +473,15 @@ export function scaledDuration(
   return base + Math.trunc((capped / growth[0]) * growth[1]);
 }
 
+/**
+ * How long a cast at `level` lasts, in seconds at the realm's speed; null where
+ * the realm states no duration, so a missing one is never read as a short one.
+ */
+export function realmLastsSeconds(spell: WorldSpell, level: number, speed: number): number | null {
+  const ticks = scaledDuration(spell, level);
+  return ticks > 0 ? effectSeconds(ticks, speed) : null;
+}
+
 /** Rounds of a lasting effect: its ticks in five-second rounds, at least one. */
 export function roundsOf(ticks: number): number {
   return Math.max(1, (ticks * EFFECT_TICK_SECONDS) / ROUND_SECONDS);

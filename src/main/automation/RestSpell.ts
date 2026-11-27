@@ -15,7 +15,7 @@ import { tuning } from '../app/tuning';
 import { effectOf, NO_EFFECT } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import { effectSeconds, scaledDuration } from '../../shared/menace';
+import { realmLastsSeconds } from '../../shared/menace';
 import { regeneration, type ProwessClass } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
 import { restSpellWorth, type RestSpellAnswer } from '../../shared/restspell';
@@ -127,7 +127,7 @@ export class RestSpell implements SessionModule {
       need: Math.ceil(hpMax * (restTo > 0 ? restTo : 1)) - hp,
       restTick: without?.restingHealth.value ?? null,
       restTickWith: withIt?.restingHealth.value ?? null,
-      lastsSeconds: effectSeconds(scaledDuration(realm, level), speed),
+      lastsSeconds: realmLastsSeconds(realm, level, speed) ?? 0,
       restTickSeconds: restTickSeconds / speed,
       passiveTickSeconds: passiveTickSeconds / speed,
       cost,
