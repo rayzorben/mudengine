@@ -2561,6 +2561,11 @@ automation:
     # picklocks are enough for it, or else bash it if your strength is.
     helpWithDoors: false
 
+    # The rank you stand in once you have joined a party: front, mid or back.
+    # Nothing is sent for mid, as in MegaMUD. Front and back send frontrank or backrank once after you join, when the party list
+    # puts you in another rank. MegaMUD does the same, once, after an invite.
+    preferredRank: mid
+
   # Keeping a character alive, rather than playing it.
   safety:
     # Running away.

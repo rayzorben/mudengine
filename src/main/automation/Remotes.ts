@@ -131,6 +131,7 @@ import {
 import type { SessionModule } from './Module';
 import { AutoInvite } from './AutoInvite';
 import { AutoJoin, joinIntent } from './AutoJoin';
+import { AutoRank } from './AutoRank';
 import { restoreKit } from './restoreKit';
 import { takeFloor } from './takeFloor';
 import { FOLLOW_UP, InviteFollowUp } from './InviteFollowUp';
@@ -467,6 +468,8 @@ export class Remotes implements SessionModule {
   private seen = false;
   /** Answering an invitation as though `@join` had followed it. See `AutoJoin`. */
   private readonly autoJoin: AutoJoin;
+  /** Standing in the preferred party rank once after joining. See `AutoRank`. */
+  private readonly autoRank: AutoRank;
   /** Inviting a player marked Invite When Seen. See `AutoInvite`. */
   private readonly autoInvite: AutoInvite;
   /** The party a hangup took apart, owed back. See `PartyRejoin`. */
@@ -528,6 +531,7 @@ export class Remotes implements SessionModule {
       ask: (leader, name, state) => this.ask(leader, name, state, undefined, REJOIN)
     });
     this.autoJoin = new AutoJoin(config, queue, this.rejoin, { notice });
+    this.autoRank = new AutoRank(config, queue, { notice });
     this.autoInvite = new AutoInvite(config, queue, this.rejoin, { notice });
     this.regroup = new PartyRegroup(config, queue, { notice });
     this.invites = new InviteFollowUp(config, queue, {
@@ -579,6 +583,7 @@ export class Remotes implements SessionModule {
     this.rejoin.configure(config);
     this.rejoinAsk.configure(config);
     this.autoJoin.configure(config);
+    this.autoRank.configure(config);
     this.autoInvite.configure(config);
     this.regroup.configure(config);
     this.invites.configure(config);
@@ -984,6 +989,7 @@ export class Remotes implements SessionModule {
     this.invites.onCharacter(state);
     this.rejoin.onCharacter(state);
     this.rejoinAsk.onCharacter(state);
+    this.autoRank.onCharacter(state);
     this.autoInvite.onCharacter(state);
     // An ask left unanswered is closed whatever the master switch says; the
     // sheet and the health asks go out under the gate their first answer did (todo 118).
@@ -1223,6 +1229,7 @@ export class Remotes implements SessionModule {
     this.seen = false;
     this.rejoinAsk.reset();
     this.autoJoin.reset();
+    this.autoRank.reset();
     this.autoInvite.reset();
     this.regroup.reset();
     this.invites.reset();

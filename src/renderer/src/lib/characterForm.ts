@@ -15,6 +15,7 @@ import {
   type EngagePolicy,
   type LootConfig,
   type PartyConfig,
+  type PartyRank,
   type PotionRule,
   type RewritesUiConfig,
   type SearchConfig,
@@ -1326,7 +1327,11 @@ export function emptyForm(
  * each figure as typed, a share of health as a percentage.
  */
 export type PartyForm = {
-  [K in keyof PartyConfig]: PartyConfig[K] extends boolean ? boolean : string;
+  [K in keyof PartyConfig]: PartyConfig[K] extends boolean
+    ? boolean
+    : PartyConfig[K] extends PartyRank
+      ? PartyRank
+      : string;
 };
 
 export function partyFormOf(party: PartyConfig): PartyForm {

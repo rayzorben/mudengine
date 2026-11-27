@@ -2223,7 +2223,19 @@ export interface PartyConfig {
   reinviteMinutes: number;
   /** Following, pick or bash a door the leader fails to bash (`LeaderDoors`, todo 03). */
   helpWithDoors: boolean;
+  /**
+   * The rank this character stands in once it has joined a party (`AutoRank`,
+   * todo 863). nothing is sent for `mid`, as MegaMUD
+   * sends nothing for it; `front` and `back` send `frontrank` or
+   * `backrank` once per join, when the party list's row for this character
+   * says another rank.
+   */
+  preferredRank: PartyRank;
 }
+
+/** The ranks of a party, in the order the party list prints them (`PartyMember.rank`). */
+export const PARTY_RANKS = ['front', 'mid', 'back'] as const;
+export type PartyRank = (typeof PARTY_RANKS)[number];
 
 /**
  * Whether the client owns the prompt's shape.
@@ -2678,7 +2690,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       regroupMinutes: 0,
       comebackRooms: 15,
       reinviteMinutes: 1440,
-      helpWithDoors: false
+      helpWithDoors: false,
+      preferredRank: 'mid'
     },
     health: {
       /*
@@ -4141,7 +4154,8 @@ function normalizeParty(value: unknown): PartyConfig {
       d.reinviteMinutes,
       ...PARTY_RANGES.reinviteMinutes
     ),
-    helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors)
+    helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors),
+    preferredRank: oneOf(raw['preferredRank'], PARTY_RANKS, d.preferredRank)
   };
 }
 

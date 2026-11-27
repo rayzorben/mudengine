@@ -33,6 +33,7 @@ import {
   type PotionWhen,
   type PartyConfig,
   PARTY_RANGES,
+  PARTY_RANKS,
   type EncumbranceGate,
   type TabsPreference,
   CARDS_SIDES,
@@ -1095,6 +1096,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         DEFAULT_CONFIG.automation.party.reinviteMinutes
       ),
       helpWithDoors: party['helpWithDoors'] === true,
+      preferredRank: oneOf(
+        party['preferredRank'],
+        PARTY_RANKS,
+        DEFAULT_CONFIG.automation.party.preferredRank
+      ),
       parAtLoss: unit(party['parAtLoss'], DEFAULT_CONFIG.automation.party.parAtLoss)
     },
     health: {

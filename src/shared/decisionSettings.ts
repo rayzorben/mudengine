@@ -613,6 +613,7 @@ export const DECISION_SETTINGS = {
   'party-invite-followup': ['automation.onPartyChange'],
   'party-autoinvite': ['automation.remotes.players'],
   'party-relay-portal': ['automation.party.relayPortals'],
+  'party-rank': ['automation.party.preferredRank'],
   'party-regroup': ['automation.party.regroupMinutes', 'automation.onPartyChange'],
   'party-comeback': ['automation.party.comebackRooms'],
   'party-rejoin': ['automation.party.reinviteMinutes'],

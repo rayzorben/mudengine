@@ -5972,6 +5972,10 @@ settings:
     helpWithDoorsHint: Following, when the leader fails to bash a door, pick it if your picklocks
       are enough for it, or else bash it if your strength is.
     helpWithDoorsLabel: Help Leader With Doors
+    preferredRankHint: The rank to stand in after joining a party. Nothing is sent for mid. For front
+      or back, frontrank or backrank is sent once after you join, when the party list shows you in
+      another rank.
+    preferredRankLabel: Party Rank
     regroupMinutesHint:
       After going through one, or an exit whose spell lands everyone in one room and
       out of the party, send par, invite back a member who is here but not in it, and hold the walk
@@ -8213,6 +8217,9 @@ automation:
     regroupReleased: Stopped waiting for the party; walking on without them.
     # A party a disconnect took apart, formed again (party.reinviteMinutes).
     reasonRejoin: 'joining {leader} again after the disconnect'
+    # Moving to the rank party.preferredRank names, once after joining.
+    reasonRank: 'joined a party in the {listed} rank; standing in the {wanted} rank, as set'
+    rankRefused: 'Not moving to the {wanted} rank: {why}.'
     memberDropped: '{member} disconnected; inviting them back when they are in the room, for {minutes} min.'
     leaderDropped: '{leader} disconnected; joining them again when they invite this character, for {minutes} min.'
     memberBehind: '{member} was left behind; the lap waits for them, and they are invited back when they are in the room, for {minutes} min.'

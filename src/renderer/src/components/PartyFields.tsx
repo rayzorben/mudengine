@@ -7,12 +7,13 @@
  * healing. Each figure
  * is held as typed (`PartyForm`); the page turns a change back into its draft.
  */
-import { CheckField, NumberField } from './FormField';
+import { CheckField, NumberField, SelectField } from './FormField';
 import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { PartyForm } from '../lib/characterForm';
 import type { VitalThresholds } from '@shared/character';
 import type { SettingPath } from '@shared/decisionSettings';
+import { PARTY_RANKS, type PartyRank } from '@shared/config';
 
 export interface PartyFieldsProps {
   party: PartyForm;
@@ -200,6 +201,15 @@ export default function PartyFields({
           name: 'help-with-doors',
           setting: 'automation.party.helpWithDoors'
         })}
+        <SelectField
+          hint={t('settings.party.preferredRankHint')}
+          label={t('settings.party.preferredRankLabel')}
+          name={`${namePrefix}party-preferred-rank`}
+          setting="automation.party.preferredRank"
+          onChange={(value) => set('preferredRank', value as PartyRank)}
+          options={PARTY_RANKS.map((rank) => ({ value: rank, label: rank }))}
+          value={party.preferredRank}
+        />
         <div className="settings-inline">
           <NumberField
             hint={t('settings.party.regroupMinutesHint')}

@@ -2061,11 +2061,19 @@ export function inAParty(state: CharacterState): boolean {
   return joinedMembers(state).length > 0;
 }
 
-/** The party member this character follows, from the party listing, or undefined. */
+/** The row called `name` in the party list, whatever its case and whether or not it has joined, or undefined. */
+export function memberNamed(
+  state: Pick<CharacterState, 'party'>,
+  name: string | null
+): PartyMember | undefined {
+  if (name === null) return undefined;
+  const key = name.toLowerCase();
+  return state.party.members.find((member) => member.name.toLowerCase() === key);
+}
+
+/** The party member this character follows, from the party list, or undefined. */
 export function leaderOf(state: CharacterState): PartyMember | undefined {
-  const leader = state.party.following?.toLowerCase();
-  if (leader === undefined) return undefined;
-  return state.party.members.find((member) => member.name.toLowerCase() === leader);
+  return memberNamed(state, state.party.following);
 }
 
 /** Whether this character follows `who` (`party.following`). */

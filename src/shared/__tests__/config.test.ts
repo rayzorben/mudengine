@@ -760,8 +760,16 @@ describe('following somebody', () => {
       // Walks nothing until a member granted `@comeback` asks.
       comebackRooms: 15,
       reinviteMinutes: 1440,
-      helpWithDoors: false
+      helpWithDoors: false,
+      // The realm's own default, so nothing is sent.
+      preferredRank: 'mid'
     });
+  });
+
+  it('reads a party rank and refuses any other word', () => {
+    expect(party({ preferredRank: 'back' }).preferredRank).toBe('back');
+    expect(party({ preferredRank: 'Front' }).preferredRank).toBe('mid');
+    expect(party({ preferredRank: 2 }).preferredRank).toBe('mid');
   });
 
   it('reads the switches', () => {

@@ -3886,7 +3886,8 @@ function statedThePartyPacing(
     ['parEveryRounds', d.parEveryRounds],
     ['relayPortals', d.relayPortals],
     ['regroupMinutes', d.regroupMinutes],
-    ['helpWithDoors', d.helpWithDoors]
+    ['helpWithDoors', d.helpWithDoors],
+    ['preferredRank', d.preferredRank]
   ]);
   if (stated.length === 0) return;
   const params = { count: stated.length, fileList: stated.join(', ') };
