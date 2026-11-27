@@ -279,6 +279,28 @@ describe('starting a loop', () => {
     expect(runner.progress.hold).toBeNull();
   });
 
+  /* 2026-11-26, Cretin in Darkwood Forest: combat off, five orcs swinging, the lap waited for a fight nothing fought. */
+  it('walks on through a fight auto-combat will not fight', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, { willFight: () => false });
+    expect(runner.start(loop, state())).toBeNull();
+    walked.length = 0;
+    runner.onWalkEnded(false, t('automation.walk.reasonCombat'), state({ inCombat: true }));
+    runner.onCharacter(state({ inCombat: true }));
+    expect(walked).toEqual(['Arena']);
+    expect(runner.progress.hold).toBeNull();
+  });
+
+  it('waits out a fight auto-combat will fight', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, { willFight: () => true });
+    expect(runner.start(loop, state())).toBeNull();
+    walked.length = 0;
+    runner.onCharacter(state({ inCombat: true }));
+    expect(walked).toEqual([]);
+    expect(runner.progress.hold).toBe('fight');
+  });
+
   /* The fighting guard reads the loop's own flag, and the walker reads the
      tracker; if they ever disagree, the walker's combat refusal is a fight to
      wait out — the distinction `onWalkEnded` already draws — never a stop to

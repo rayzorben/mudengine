@@ -7974,6 +7974,7 @@ automation:
     heldOffline: Disconnected; the loop waits until you are back in the realm.
     carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'
     walkingOnAfterReconnect: Back in the realm; the loop continues from here.
+    walkingOutOfFight: Auto-combat will not fight this, so the loop walks on out of the room.
     fallbackStop: a stop
     fallbackWhy: the walk failed
     resumed: Loop resumed from here.

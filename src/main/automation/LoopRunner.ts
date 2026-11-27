@@ -116,6 +116,11 @@ export interface LoopEvents {
    * way out or partway round, it is off only until then (the user, 2026-10-08).
    */
   wantsCombat?(): void;
+  /**
+   * Whether auto-combat will fight what is swinging here (`AutoCombat.wouldFight`).
+   * Unanswered counts as yes, so the lap waits as it always has.
+   */
+  willFight?(): boolean;
   /** A leg the plan refused, for the capture to keep (`RefusedLeg`). */
   legRefused?(leg: RefusedLeg): void;
 }
@@ -127,7 +132,7 @@ export interface LoopPlanner {
     kind: WalkKind
   ): Route | string;
   /** Hand a route to the walker, re-planned as `kind`. Returns the walker's refusal, or null. */
-  walk(route: Route, kind: WalkKind): string | null;
+  walk(route: Route, kind: WalkKind, whileFighting: boolean): string | null;
   /** Whether the character stands on the lap's own leg from `from` to `to`, planned by distance. */
   onLeg(from: RoomId, to: RoomId): boolean;
   /**
@@ -247,6 +252,8 @@ export class LoopRunner implements SessionModule {
   /** Staying put on purpose, rather than waiting out a fight. */
   private lingering = false;
   private fighting = false;
+  /** The lap has said it walks out of the fight running now (`noteWalkingOut`). */
+  private walkingOut = false;
   /** Consecutive locate requests without a plan; bounded by MAX_LOCATES. */
   private locates = 0;
   /**
@@ -986,7 +993,7 @@ export class LoopRunner implements SessionModule {
      * of a pair rots unnoticed. `LOST` above is matched by key for the same
      * reason.
      */
-    if (fightIsRunning(state) || why === t('automation.walk.reasonCombat')) {
+    if (this.fightHeld(state) || why === t('automation.walk.reasonCombat')) {
       this.waiting = true;
       return;
     }
@@ -1060,15 +1067,16 @@ export class LoopRunner implements SessionModule {
      * for as long as the survivor went on biting. Two halves of one gate in
      * two files agree until one is edited, so both read the one predicate.
      */
-    if (this.fighting !== fightIsRunning(state)) {
-      this.fighting = fightIsRunning(state);
+    if (this.fighting !== this.fightHeld(state)) {
+      this.fighting = this.fightHeld(state);
       this.publish();
     }
-    if (fightIsRunning(state)) {
+    if (this.fightHeld(state)) {
       // Fighting is the point; nothing to decide until it is over.
       this.waiting = true;
       return;
     }
+    this.noteWalkingOut(state);
     /*
      * A lap that has stopped working looks exactly like one that is working
      * for as long as nobody is watching. Judged after the fight, so a kill in
@@ -1279,7 +1287,7 @@ export class LoopRunner implements SessionModule {
     if (route.blocked) {
       this.events.legRefused?.(refusedLegOf(this.planner.hereNow(), stop.room, kind, route));
     }
-    const refused = this.planner.walk(route, kind);
+    const refused = this.planner.walk(route, kind, this.events.willFight?.() === false);
     if (refused !== null) {
       /*
        * The walker refusing over combat is the fighting guard above losing a
@@ -1460,6 +1468,24 @@ export class LoopRunner implements SessionModule {
       this.onDwellElapsed();
     }, remaining + 50);
     this.timer.unref?.();
+  }
+
+  /**
+   * Whether the lap waits for the fight around it. Only a fight auto-combat
+   * will fight ends by itself; with combat switched off, or stood down, a
+   * lap that waits stands in the blows for good (2026-11-26, Cretin on
+   * Darkwood Forest, Main Road: five orcs swinging, combat off, the lap
+   * idle). Walking out of the room is what ends it there, as for `Walker`.
+   */
+  private fightHeld(state: CharacterState): boolean {
+    return fightIsRunning(state) && this.events.willFight?.() !== false;
+  }
+
+  /** Says once per fight that the lap walks out of it, and why: nothing fights it. */
+  private noteWalkingOut(state: CharacterState): void {
+    const fighting = fightIsRunning(state);
+    if (fighting && !this.walkingOut) this.events.notice?.(t('automation.loops.walkingOutOfFight'));
+    this.walkingOut = fighting;
   }
 
   /** The dwell timer fired. A fight in progress keeps holding the loop. */

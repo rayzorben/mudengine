@@ -1389,7 +1389,7 @@ export class SessionManager {
          * instead would never call `ended`, and the lap would stand in the room
          * it won and never take another step.
          */
-        walk: (route, kind) =>
+        walk: (route, kind, whileFighting) =>
           this.walker.start(route, this.tracker.current, {
             quiet: true,
             asked: false,
@@ -1398,14 +1398,13 @@ export class SessionManager {
             /*
              * And a leg is never started mid-fight. This is the refusal a
              * route the *player* asked for no longer gets: nobody chose to
-             * leave the room, automation did, and automation can wait —
-             * `LoopRunner.advance` reads the refusal by name to tell a lost
-             * race with the wire from a stop that cannot be reached. Captured
-             * live 2026-09-01: a lap started in a room with two monsters
-             * swinging, sent its opening `n` mid-round, and walked out over
-             * the coins its own kill dropped.
+             * leave the room, automation did, and can wait. `LoopRunner.advance`
+             * reads the refusal by name to tell a lost race with the wire from
+             * a stop that cannot be reached. Captured live 2026-09-01: a lap
+             * started among two swinging monsters, sent its opening `n` and
+             * walked out over its coins. Not where nothing fights (2026-11-26).
              */
-            whileFighting: false,
+            whileFighting,
             // Planned again from wherever the character is when it is back, as after a fight.
             resumeAfterLoss: false,
             // And as the loop planned it, however the walker comes to re-plan it.
@@ -1458,6 +1457,7 @@ export class SessionManager {
         locate: () => this.placing.locate(),
         lapBegun: (stopName) => this.statsBaseline.lapBegun(stopName),
         wantsCombat: () => this.travel.combatOnForLap(),
+        willFight: () => this.combat.wouldFight,
         legRefused: (leg) => this.sink.legRefused?.(leg)
       }
     );
