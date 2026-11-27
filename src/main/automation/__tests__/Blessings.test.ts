@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blessings } from '../Blessings';
 import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
-import type { BlessingConfig } from '../../../shared/blessings';
+import type { BlessingConfig, SheetAsk } from '../../../shared/blessings';
 import { EMPTY_CHARACTER, partyMember, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import type { DecisionKind } from '../../../shared/decisionSettings';
@@ -594,6 +594,14 @@ describe('telling the caster a blessing wore off', () => {
     telling.dispose();
   });
 
+  // `You no longer feel safe from evil!` names no spell; the table's `spells` does.
+  it('reads a wear-off sentence of the realm, which names its spells apart from the frame', () => {
+    const telling = new Blessings(spells([], true), true, queue, standing);
+    telling.onBlock(block('user-buff-expired', { spells: 'chant|bless' }), withBuff('Soul'));
+    expect(sent).toEqual(['/Soul @bless-expired bless']);
+    telling.dispose();
+  });
+
   it('says nothing about its own casts or a caster who left the party', () => {
     const blessings = new Blessings(spells([], true), true, queue, standing);
     blessings.onBlock(
@@ -725,121 +733,144 @@ describe("the server's own countdown", () => {
   });
 });
 
-describe("the realm's duration while the buff list loses the buff", () => {
+describe('a cast that landed and then left the buff list', () => {
   /*
-   * `st` has no countdown on GreaterMUD and the tracker took `You hear movement
-   * to the southwest.` for the end of protection from evil, so Soul cast it
-   * again while resting (2026-11-26). Twenty three-second ticks at speed 1.
+   * Festus on Paradigm, 2026-11-27: `You no longer feel safe from evil!` took
+   * the buff off the list at 13:47:20 and the cast went at 13:47:51, held by a
+   * clock run from the realm's duration. The list is the authority, so a cast
+   * that landed holds nothing once the list has lost the buff.
    */
-  const lasting = { duration: 20 } as WorldSpell;
-  const cast = (): Block =>
-    block('spell-cast', { spell: 'protection', caster: 'You', target: 'yourself' });
-  const noticed: string[] = [];
-  const rig = (speed: number | null = 1): Blessings =>
-    new Blessings(spells([armour]), true, queue, {
+  it('is cast again at once, whatever the realm says the spell lasts', () => {
+    const blessings = new Blessings(spells([armour]), true, queue, {
       ...standing,
-      realmSpell: () => lasting,
-      speed: () => speed,
+      realmSpell: () => ({ duration: 20 }) as WorldSpell
+    });
+    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
+    blessings.onBlock(
+      block('spell-cast', { spell: 'protection', caster: 'You', target: 'yourself' }),
+      lit
+    );
+    blessings.onCharacter(lit);
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+});
+
+describe('a buff still listed past the time it lasts', () => {
+  /*
+   * Soul on themajorbbs, 2026-11-23 to 26: protection from evil was cast
+   * every 45s on a kept duration too short for it, 995 casts in one session
+   * and no wear-off, because each cast renewed the spell before a wear-off
+   * could correct the figure. `st` lists the start of every spell that is up.
+   */
+  const listed = (appliedAt: number): CharacterState =>
+    state({ buffs: [{ spell: 'protection', by: null, appliedAt }] });
+  const rig = (
+    answer: SheetAsk | (() => SheetAsk),
+    lists = true
+  ): { blessings: Blessings; asks: number[]; noticed: string[] } => {
+    const asks: number[] = [];
+    const noticed: string[] = [];
+    const blessings = new Blessings(spells([armour]), true, queue, {
+      ...standing,
+      learnedDuration: () => 36,
+      sheetLists: () => lists,
+      askSheet: () => {
+        const said = typeof answer === 'function' ? answer() : answer;
+        if (said === 'asked') asks.push(Date.now());
+        return said;
+      },
       notice: (message) => noticed.push(message)
     });
+    return { blessings, asks, noticed };
+  };
 
-  it('waits out the duration and its slack, then recasts', () => {
-    const blessings = rig();
-    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
-    blessings.onBlock(cast(), lit);
-    blessings.onCharacter(lit);
-    vi.advanceTimersByTime(60_000);
+  it('asks for the sheet in place of the cast, and again a watchdog later while it stays listed', () => {
+    const { blessings, asks, noticed } = rig('asked');
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(44_000);
+    expect(asks).toEqual([]);
+    expect(noticed).toEqual([]);
+    vi.advanceTimersByTime(2_000);
+    expect(asks).toHaveLength(1);
+    vi.advanceTimersByTime(43_000);
+    expect(asks).toHaveLength(1);
+    vi.advanceTimersByTime(3_000);
+    expect(asks).toHaveLength(2);
     expect(sent).toEqual([]);
-    vi.advanceTimersByTime(16_000);
-    expect(sent).toEqual(['protection']);
-    blessings.dispose();
-  });
-
-  it('recasts at once on the wear-off frame', () => {
-    const blessings = rig();
-    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
-    blessings.onBlock(cast(), lit);
-    blessings.onCharacter(lit);
-    expect(sent).toEqual([]);
-    blessings.onBlock(block('user-buff-expired', { spell: 'protection' }), lit);
-    blessings.onCharacter(lit);
-    expect(sent).toEqual(['protection']);
-    blessings.dispose();
-  });
-
-  it('says once that the clock holds a recast the list asked for', () => {
-    noticed.length = 0;
-    const blessings = rig();
-    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
-    blessings.onBlock(cast(), lit);
-    blessings.onCharacter(lit);
-    blessings.onCharacter(lit);
+    // Said once for the buff, however many sheets are asked for it.
     expect(noticed).toHaveLength(1);
     expect(noticed[0]).toContain('protection');
     blessings.dispose();
   });
 
-  it('holds a listed buff the watchdog would call lapsed, and counts a cast naming the character', () => {
-    const blessings = new Blessings(spells([armour]), true, queue, {
-      ...standing,
-      realmSpell: () => lasting,
-      speed: () => 1,
-      learnedDuration: () => 5
-    });
-    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
-    blessings.onBlock(
-      block('spell-cast', { spell: 'protection', caster: 'You', target: 'Vaelor' }),
-      lit
-    );
-    blessings.onCharacter({
-      ...lit,
-      buffs: [{ spell: 'protection', by: null, appliedAt: Date.now() }]
-    });
-    vi.advanceTimersByTime(30_000);
+  it('casts once the sheet has taken the buff off the list', () => {
+    const { blessings, asks } = rig('asked');
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(46_000);
+    expect(asks).toHaveLength(1);
+    expect(sent).toEqual([]);
+    blessings.onCharacter(state());
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  it('casts again where the client is not asking for the sheet', () => {
+    const { blessings } = rig('off');
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(44_000);
+    expect(sent).toEqual([]);
+    vi.advanceTimersByTime(2_000);
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  it('asks each tick, without casting, until a sheet asked for a moment ago lets the next go', () => {
+    let floor = true;
+    const { blessings, asks } = rig(() => (floor ? 'soon' : 'asked'));
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(50_000);
+    expect(asks).toEqual([]);
+    floor = false;
+    vi.advanceTimersByTime(1_000);
+    expect(asks).toHaveLength(1);
     expect(sent).toEqual([]);
     blessings.dispose();
   });
 
-  it('is ended by a death and by reset, and not started by another target or an announcement', () => {
-    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
-    for (const end of ['user-dies', 'reset'] as const) {
-      sent.length = 0;
-      const blessings = rig();
-      blessings.onBlock(cast(), lit);
-      if (end === 'reset') blessings.reset();
-      else blessings.onBlock(block(end, {}), lit);
-      blessings.onCharacter(lit);
-      expect(sent).toEqual(['protection']);
-      blessings.dispose();
-    }
-    const others: Record<string, string>[] = [
-      { spell: 'protection', caster: 'You', target: 'Naji' },
-      { spell: 'protection', caster: 'You', announced: 'moves to cast' }
-    ];
-    for (const groups of others) {
-      sent.length = 0;
-      const blessings = rig();
-      blessings.onBlock(block('spell-cast', groups), lit);
-      blessings.onCharacter(lit);
-      expect(sent).toEqual(['protection']);
-      blessings.dispose();
-    }
-  });
-
-  it('starts no clock before the realm speed is measured', () => {
-    const blessings = rig(null);
-    const lit = state({ progress: { ...EMPTY_CHARACTER.progress, level: 10 } });
-    blessings.onBlock(cast(), lit);
-    blessings.onCharacter(lit);
+  it('casts again where the sheet does not print the start of the spell', () => {
+    const { blessings, asks } = rig('asked', false);
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(46_000);
     expect(sent).toEqual(['protection']);
+    expect(asks).toEqual([]);
     blessings.dispose();
   });
 
-  it('starts no clock where the level is unread', () => {
-    const blessings = rig();
-    blessings.onBlock(cast(), state());
-    blessings.onCharacter(state());
+  it('casts on a countdown that ran out without asking', () => {
+    const { blessings, asks } = rig('asked');
+    const applied = Date.now();
+    blessings.onCharacter(
+      state({
+        buffs: [{ spell: 'protection', by: null, appliedAt: applied, expiresAt: applied + 20_000 }]
+      })
+    );
+    vi.advanceTimersByTime(21_000);
     expect(sent).toEqual(['protection']);
+    expect(asks).toEqual([]);
+    blessings.dispose();
+  });
+
+  it('starts the wait again from a new cast', () => {
+    const { blessings, asks } = rig('asked');
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(46_000);
+    expect(asks).toHaveLength(1);
+    blessings.onCharacter(listed(Date.now()));
+    vi.advanceTimersByTime(44_000);
+    expect(asks).toHaveLength(1);
+    vi.advanceTimersByTime(2_000);
+    expect(asks).toHaveLength(2);
     blessings.dispose();
   });
 });

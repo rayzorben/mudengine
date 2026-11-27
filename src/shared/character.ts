@@ -167,8 +167,9 @@ export interface ActiveBuff {
    * When the buff will end, epoch ms, where the server has *stated* it — the
    * Paramud `st` sheet's `You feel safe from evil! (90s)` timer, attributed to
    * this buff through the learned onset map. Absent on a realm whose `st` does
-   * not print a countdown (MajorMUD, GreaterMUD), where the watchdog is the
-   * only clock. It is the server's own statement, not the unmeasured `Dur`
+   * not print a countdown (MajorMUD, GreaterMUD), where the wear-off sentence
+   * and the sheet's own listing end the buff. It is the server's own
+   * statement, not the unmeasured `Dur`
    * column, so `Blessings` prefers it: a recast then goes out within a second
    * of the real expiry rather than on a watchdog that may be minutes off.
    */

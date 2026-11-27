@@ -164,7 +164,6 @@ function choice(on: AutomationConfig = config, realmSpeed = 1) {
     } as unknown as BlessingChoiceParts['world'],
     errands: {
       realmSpeed,
-      realmSpeedMeasured: realmSpeed,
       gearHandsOf: () => null,
       gearSlotOf: () => null,
       fitness: (state) => `ac ${state.progress.armourClass} dr ${state.progress.damageResist}`,

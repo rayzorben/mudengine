@@ -15,6 +15,7 @@ import { AutoInvoke, type InvokeSources } from '../automation/AutoInvoke';
 import { Blessings, type BlessingsDeps } from '../automation/Blessings';
 import { BlessRound } from '../automation/BlessRound';
 import type { RoundClock } from '../automation/RoundClock';
+import type { Routines } from '../automation/Routines';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
@@ -59,7 +60,7 @@ export interface BlessingChoiceParts {
     | undefined;
   readonly errands: Pick<
     Errands,
-    'fitness' | 'realmClass' | 'realmSpeed' | 'realmSpeedMeasured' | 'gearHandsOf' | 'gearSlotOf'
+    'fitness' | 'realmClass' | 'realmSpeed' | 'gearHandsOf' | 'gearSlotOf'
   >;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
@@ -412,9 +413,12 @@ export class BlessingChoice
  * Spells page reads it.
  */
 export function blessingsFor(
-  parts: BlessingChoiceParts,
-  deps: Omit<BlessingsDeps, 'source' | 'learnedDuration'> & {
+  // The tracker also says whether `st` lists a spell while it is up, as its own sheet reading does.
+  parts: BlessingChoiceParts & { tracker: Pick<CharacterTracker, 'current' | 'sheetLists'> },
+  deps: Omit<BlessingsDeps, 'source' | 'learnedDuration' | 'sheetLists' | 'askSheet'> & {
     readonly queue: CommandQueue;
+    /** Who asks `st` about a blessing still listed past the time it lasts. */
+    readonly sheet: Pick<Routines, 'askSheetOverdue'>;
     /** A fight asked for or still swinging, which a blessing or a swap must not go out into. */
     readonly signs: FightSigns;
     /** The uses left on each charged item (todo 44). */
@@ -427,7 +431,7 @@ export function blessingsFor(
   session: Omit<BlessingChoiceSession, 'learnedDuration'>,
   automation: AutomationConfig
 ): { blessings: Blessings; invoke: AutoInvoke; choice: BlessingChoiceReport } {
-  const { queue, charges, durations, rounds, ...rest } = deps;
+  const { queue, charges, durations, rounds, sheet, ...rest } = deps;
   const { world, errands, tracker } = parts;
   const fighting = (): boolean => fightHere(tracker.current, rest.signs, Date.now());
   // A blessing or an item's, cast in a fight, waits for the round to go off (`BlessRound`).
@@ -446,7 +450,8 @@ export function blessingsFor(
     ...rest,
     castGate,
     learnedDuration,
-    speed: () => errands.realmSpeedMeasured,
+    sheetLists: (spell) => tracker.sheetLists(spell),
+    askSheet: () => sheet.askSheetOverdue(),
     notice: session.notice,
     source
   });

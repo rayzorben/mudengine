@@ -744,7 +744,9 @@ automation:
     # spells or powers once the prompt shows which, and again when a spell is
     # learned. Off, Auto Choose Best Spell has no book to choose from.
     spellbook: true
-    # st when a line may have ended a buff: the sheet lists each effect up.
+    # st when a line may have ended a buff, or a blessing has been up longer
+    # than it lasts with no wear-off message: the sheet lists each effect up.
+    # Off, a blessing up that long is cast again without asking.
     statsOnBuffEnding: true
     # stat a once for each mix of level, worn gear and buffs, out of a fight:
     # the regeneration figures resting is planned on.

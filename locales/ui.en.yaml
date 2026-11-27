@@ -6364,8 +6364,8 @@ settings:
     spellbookHint: Asks spells or powers once the prompt shows which, and again when a spell is
       learned.
     statsOnBuffEnding: st When Buffs End
-    statsOnBuffEndingHint: Asks st when a line may have ended a buff, so the sheet says which are
-      still up.
+    statsOnBuffEndingHint: Asks st when a line may have ended a buff or a blessing has been up too
+      long, so the sheet says which are up.
     statAll: Ask stat a
     statAllHint: Asks stat a out of a fight once for each mix of level, worn gear and buffs, for
       the regeneration figures.
@@ -7484,7 +7484,7 @@ automation:
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
-    heldByClock: 'Not casting {spell} again yet: the buff list no longer shows it, and the realm''s duration has {seconds}s left unless its wear-off message comes first.'
+    leftToSheet: 'Not casting {spell} again yet: it is still on the buff list past the time it lasts and no wear-off message came, so st is asked and the stats will show whether it is up.'
     # Auto Choose Blessings (todo 10): what is kept up for the fight being
     # hunted, and why; a refusal names what is cast instead.
     chose: 'Auto Choose Blessings, for the fight at {room}: {picks}.'
@@ -8483,6 +8483,8 @@ automation:
     reasonLevelled: a new level, so your stats and the exp table have changed
     reasonDied: you died, which dropped what you carried; reading what is left
     reasonBuffEnding: an unrecognized message may have ended a buff; the stats will show which
+    reasonBuffOverdue: a blessing has been up longer than it lasts and no wear-off message came; the
+      stats will show whether it is still up
     reasonStatline: setting the status line so every prompt shows maximum health and mana, exp and
       cash
     reasonProfile: checking which status line the game has

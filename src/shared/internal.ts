@@ -767,7 +767,9 @@ const TUNING_DEFAULTS = {
      * measured: how long the buff is trusted when no wear-off frame is read.
      * Once a cast→wear-off pair has been observed, the measured duration
      * (plus `blessSlack`) replaces this — the realm's own `Dur` column is
-     * deliberately never used, its units being unestablished.
+     * deliberately never used, its units being unestablished. Past it `st`
+     * is asked where the sheet prints the spell's start, and the spell is
+     * cast again where it does not (`Blessings.leftToSheet`).
      */
     blessWatchdogMs: 300_000,
     /**

@@ -670,11 +670,6 @@ export class Errands implements SessionModule {
     return this.speed.multiplier;
   }
 
-  /** The realm's speed where it is read or kept, else null (`RealmSpeed.measured`). */
-  get realmSpeedMeasured(): number | null {
-    return this.speed.measured;
-  }
-
   /** The server's family moved, so every remembered `fitness` is stale. */
   forgetFitness(): void {
     this.fitted = null;

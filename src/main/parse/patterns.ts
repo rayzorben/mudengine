@@ -989,9 +989,20 @@ export const RULES: Rule[] = [
   },
   {
     /*
+     * A confirmation that names its target in the flavour: `You cast
+     * protection from evil, and Festus is surrounded in a white glow!` is
+     * Festus's own, and Rayzor's cast on a party member prints `…, and Brakkle
+     * is surrounded in a white glow!` (OCI, 2026-11-27 13:25:01). Read as the
+     * targetless frame below, the party cast restarted the spell on Rayzor's
+     * own list, and Rayzor's wear-off a minute later was kept as its duration.
+     */
+    type: 'spell-cast',
+    pattern: /^(?<caster>You) cast (?<spell>[\w' -]+?), and (?<target>[A-Z][\w'-]*) is .+[.!]$/
+  },
+  {
+    /*
      * The self-cast confirmation that has no `on <target>` frame at all:
-     * `You cast protection from evil, and Festus is surrounded in a white
-     * glow!` (live, 22 times), `You cast ethereal shield, and a shimmering
+     * `You cast ethereal shield, and a shimmering
      * field forms about you.` (corpus), and stock MajorMUD's clauses with no
      * `and`: `You cast mageshield, surrounding yourself in a shimmering
      * field!` (captures/188), `You cast camouflage, blending into your

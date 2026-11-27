@@ -51,9 +51,10 @@ import { PartyListing, partyListingIntent } from './PartyListing';
 import { SelfLook } from './SelfLook';
 import { BriefLook } from './BriefLook';
 import type { RoomLook } from '../../shared/roomArt';
-import type { CommandQueue } from './CommandQueue';
+import { taken, type CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
+import type { SheetAsk } from '../../shared/blessings';
 import { askEveryMs } from '../../shared/asks';
 import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
@@ -735,16 +736,38 @@ export class Routines implements SessionModule {
    * for this sheet on the way in.
    */
   askSheet(now: number = Date.now()): void {
-    if (!this.config.enabled || !this.config.asks.statsOnBuffEnding) return;
-    if (this.sheetAskedAt !== null && now - this.sheetAskedAt < tuning().spells.sheetAskMs) return;
-    this.sheetAskedAt = now;
-    this.queue.enqueue({
+    this.sheetAsk(t('automation.routines.reasonBuffEnding'), now);
+  }
+
+  /**
+   * A blessing is still on the buff list past the time it lasts and no
+   * wear-off message was read (`Blessings.leftToSheet`): the sheet lists it
+   * or does not. Under the same switch and floor as `askSheet`.
+   */
+  askSheetOverdue(now: number = Date.now()): SheetAsk {
+    return this.sheetAsk(t('automation.routines.reasonBuffOverdue'), now);
+  }
+
+  /**
+   * One `st` per `sheetAskMs`, under the routines' switch and st When Buffs
+   * End. An `st` the queue refused is `off` and starts no floor: no sheet is
+   * coming, and the queue has recorded the refusal.
+   */
+  private sheetAsk(reason: string, now: number): SheetAsk {
+    if (!this.config.enabled || !this.config.asks.statsOnBuffEnding) return 'off';
+    if (this.sheetAskedAt !== null && now - this.sheetAskedAt < tuning().spells.sheetAskMs) {
+      return 'soon';
+    }
+    const offered = this.queue.offer({
       command: 'st',
       priority: 'probe',
       coalesceKey: 'probe:st',
-      reason: t('automation.routines.reasonBuffEnding'),
+      reason,
       decision: 'ask-sheet-buff'
     });
+    if (!taken(offered)) return 'off';
+    this.sheetAskedAt = now;
+    return 'asked';
   }
 
   /**

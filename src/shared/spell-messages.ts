@@ -225,6 +225,18 @@ export function splitSpells(group: string | undefined): string[] {
     .filter((name) => name.length > 0);
 }
 
+/**
+ * The spells a wear-off block (`user-buff-expired`) ends: those the realm's
+ * table gives its sentence (`spells`), else the one `The effects of <spell>
+ * wear off!` names (`spell`). `You no longer feel safe from evil!` carries
+ * only the first.
+ */
+export function wornOffSpells(groups: Readonly<Record<string, string>>): string[] {
+  const names = splitSpells(groups['spells']);
+  const framed = groups['spell']?.trim();
+  return names.length === 0 && framed ? [framed] : names;
+}
+
 /** Compiled once: `wordsOf` runs on every line the classifier could not type. */
 const SPACES = /\s+/;
 

@@ -20,6 +20,7 @@ import {
   unnamedEffect,
   unnamedEffectSentence,
   wordsOf,
+  wornOffSpells,
   type SpellLore
 } from '../../shared/spell-messages';
 import { confuses, frightens, holdsMovement, poisons } from '../../shared/spellcraft';
@@ -159,6 +160,15 @@ export class EffectTracker {
    */
   private readonly effectEnded = new Map<string, number>();
   private readonly conditionEnded = new Map<keyof Afflictions, number>();
+  /**
+   * When this character's own cast put each buff on the list, by spell key. A
+   * duration is measured only from a buff whose `appliedAt` is that moment:
+   * one the `st` sheet listed at login started some unknown time before. Soul's
+   * protection from evil, listed at 13:50:02 and worn off at 13:50:33, was
+   * kept as the spell's duration and the spell was cast every 45s for four
+   * days (themajorbbs, 2026-11-23).
+   */
+  private readonly ownCasts = new Map<string, number>();
 
   constructor(private readonly sources: EffectSources) {
     this.world = sources.world;
@@ -180,6 +190,7 @@ export class EffectTracker {
     this.effectEnded.clear();
     this.conditionEnded.clear();
     this.recentlyStopped.clear();
+    this.ownCasts.clear();
     this.sheetWanted = false;
   }
 
@@ -234,6 +245,7 @@ export class EffectTracker {
     // Remember it, so the onset that follows can be read, and learned only for a spell that lasts.
     this.lastSelfCast = { spell, at, lasts };
     if (!lasts) return null;
+    if (caster === 'You') this.ownCasts.set(spellKey(spell), at);
     const kept = s.buffs.filter((buff) => buff.spell.toLowerCase() !== spell.toLowerCase());
     return {
       ...s,
@@ -294,6 +306,7 @@ export class EffectTracker {
       if (effect) this.buffEffects.set(effect, cast.spell);
       this.lastSelfCast = null;
       if (base.buffs.some((buff) => this.buffMatches(buff, [cast.spell]))) return held;
+      this.ownCasts.set(spellKey(cast.spell), cast.at);
       return this.withBuff(base, { spell: cast.spell, by: null, appliedAt: cast.at });
     }
 
@@ -329,9 +342,7 @@ export class EffectTracker {
 
   /** `user-buff-expired`: a wear-off ends the buff it names, and whatever its start turned on. */
   expired(s: CharacterState, g: Block['groups'], at: number): CharacterState | null {
-    const spell = g['spell']?.trim();
-    const names = splitSpells(g['spells']);
-    if (names.length === 0 && spell) names.push(spell);
+    const names = wornOffSpells(g);
     if (names.length === 0) return null;
     /*
      * **A wear-off ends whatever its own start turned on**, which for four
@@ -852,13 +863,14 @@ export class EffectTracker {
    * `Dur` column being in units nothing on hand establishes — but only where
    * the ending was *recognised*: a sentence learned this instant is a
    * conclusion, and a duration measured from it would be one too. Own casts
-   * only: a party member's duration scales with their level. The pending
-   * endings drop these as suspects, because whatever ended them was not the
-   * sentence nothing recognised.
+   * only (`ownCasts`): a party member's duration scales with their level, and
+   * a buff the sheet or a potion put on the list began at no known moment.
+   * The pending endings drop these as suspects, because whatever ended them
+   * was not the sentence nothing recognised.
    */
   private buffsEnded(ended: readonly ActiveBuff[], at: number, recognised: boolean): void {
     for (const buff of ended) {
-      if (recognised && buff.by === null) {
+      if (recognised && this.ownCasts.get(spellKey(buff.spell)) === buff.appliedAt) {
         const seconds = (at - buff.appliedAt) / 1000;
         if (seconds > 0) this.sources.belongings().rememberSpellDuration(buff.spell, seconds);
       }
@@ -949,12 +961,20 @@ export class EffectTracker {
     return rowA !== null && rowB !== null && rowA.id === rowB.id;
   }
 
-  private knowsStart(buff: ActiveBuff): boolean {
-    return buffNames(buff).some(
-      (name) =>
-        this.spellLore.startOf(name) !== null ||
-        [...this.buffEffects.values()].some((learned) => this.namesOneSpell(learned, name))
+  /**
+   * Whether `st` prints the start of a spell while it is up, as far as the
+   * table and what was learned say. A sheet without it then says the spell is
+   * off: `readSheet` drops a buff on this, and `Blessings` asks `st` on it.
+   */
+  sheetLists(name: string): boolean {
+    return (
+      this.spellLore.startOf(name) !== null ||
+      [...this.buffEffects.values()].some((learned) => this.namesOneSpell(learned, name))
     );
+  }
+
+  private knowsStart(buff: ActiveBuff): boolean {
+    return buffNames(buff).some((name) => this.sheetLists(name));
   }
 
   private knowsStop(buff: ActiveBuff): boolean {

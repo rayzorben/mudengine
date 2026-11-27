@@ -789,6 +789,32 @@ describe('asking for the stat sheet to settle a buff ending', () => {
     routines.askSheet(1_000);
     expect(commandsIn(queue)).toEqual([]);
   });
+
+  it('asks about a blessing up past the time it lasts, under the same floor, and says it did', () => {
+    const { routines, queue } = make();
+    expect(routines.askSheetOverdue(1_000)).toBe('asked');
+    expect(commandsIn(queue)).toEqual(['st']);
+    // Inside the floor nothing more is queued, and the caller asks again.
+    expect(routines.askSheetOverdue(2_000)).toBe('soon');
+    expect(commandsIn(queue)).toEqual(['st']);
+  });
+
+  it('says it is not asking where the queue refused the st, and asks again once it is taken', () => {
+    const { routines, queue } = make();
+    queue.hold('a screen that is not a prompt');
+    expect(routines.askSheetOverdue(1_000)).toBe('off');
+    expect(commandsIn(queue)).toEqual([]);
+    queue.release();
+    // No floor started on the refusal.
+    expect(routines.askSheetOverdue(2_000)).toBe('asked');
+    expect(commandsIn(queue)).toEqual(['st']);
+  });
+
+  it('says it is not asking with automation off, so the blessing is cast instead', () => {
+    const { routines, queue } = make({ enabled: false });
+    expect(routines.askSheetOverdue(1_000)).toBe('off');
+    expect(commandsIn(queue)).toEqual([]);
+  });
 });
 
 /*
@@ -1262,6 +1288,7 @@ describe('what the client asks on its own, by setting', () => {
     for (const { routines } of [on, off]) routines.askSheet(1_000);
     expect(commandsIn(on.queue)).toEqual(['st']);
     expect(commandsIn(off.queue)).toEqual([]);
+    expect(off.routines.askSheetOverdue(1_000)).toBe('off');
   });
 
   it('asks stat a only with Ask stat a on', () => {

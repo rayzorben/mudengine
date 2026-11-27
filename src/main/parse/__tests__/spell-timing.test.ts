@@ -9,6 +9,8 @@ import { Blessings } from '../../automation/Blessings';
 import { CommandQueue } from '../../automation/CommandQueue';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { BlessingConfig } from '../../../shared/blessings';
+import type { Block } from '../../../shared/blocks';
+import type { CharacterState } from '../../../shared/character';
 import {
   parseSpellMessagesCsv,
   SpellMessageBook,
@@ -38,7 +40,9 @@ function shippedSpellLore(): SpellLore {
  */
 function feeder(
   spellLore?: SpellLore,
-  world?: WorldGraph
+  world?: WorldGraph,
+  /** Handed each block with the state before it, as `SessionManager` hands a module. */
+  hear?: (block: Block, before: CharacterState) => void
 ): {
   tracker: CharacterTracker;
   feed: (text: string, terminator?: 'newline' | 'flush') => string;
@@ -62,6 +66,7 @@ function feeder(
   const feed = (text: string, terminator: 'newline' | 'flush' = 'newline'): string => {
     seq += 1;
     const read = readLine(classifier, { seq, at: stamp(), text, plain: text, terminator });
+    hear?.(read.block, tracker.current);
     for (const act of actsOf(read)) applyAct(tracker, act);
     return read.block.type;
   };
@@ -98,10 +103,31 @@ describe('a self cast with no "on <target>" frame', () => {
   it('establishes the buff', () => {
     const { tracker, feed } = feeder();
     feed('[HP=86/MA=18]:', 'flush');
+    feed('Name: Festus Marcus                    Lives/CP:      9/2');
+    feed('[HP=86/MA=18]:', 'flush');
     expect(feed('You cast protection from evil, and Festus is surrounded in a white glow!')).toBe(
       'spell-cast'
     );
     expect(tracker.current.buffs.map((buff) => buff.spell)).toEqual(['protection from evil']);
+  });
+
+  /*
+   * The same sentence names a party member when the cast was on them: Rayzor's
+   * on Brakkle (OCI, 2026-11-27 13:25:01). Read as Rayzor's own, it restarted
+   * Rayzor's buff and dropped the countdown `st` had just given it.
+   */
+  it('leaves a cast whose flavour names a party member off this character', () => {
+    const { tracker, feed } = feeder();
+    feed('[HP=86/MA=18]:', 'flush');
+    feed('Name: Rayzor Blade                     Lives/CP:      9/2');
+    feed('[HP=86/MA=18]:', 'flush');
+    feed('You cast protection from evil, and Rayzor is surrounded in a white glow!');
+    const own = tracker.current.buffs;
+    expect(own.map((buff) => buff.spell)).toEqual(['protection from evil']);
+    expect(feed('You cast protection from evil, and Brakkle is surrounded in a white glow!')).toBe(
+      'spell-cast'
+    );
+    expect(tracker.current.buffs).toEqual(own);
   });
 
   it('reads the corpus’s other flavour too', () => {
@@ -390,6 +416,123 @@ describe("a renamed spell, through the shipped table and the realm's message rec
     expect(book.match(start!)?.starts).toEqual(
       expect.arrayContaining(['unholy aura', 'vile ward'])
     );
+  });
+});
+
+/*
+ * Festus on Paradigm, verbatim from OCI `logs/2026-11-27_02-51-20_festus.log`
+ * (13:47:20 to 13:47:53). Both wear-off sentences are the realm's own and name
+ * no spell. The tracker took each buff off the list, and the cast went half a
+ * minute later, held by a clock run from the realm's duration.
+ */
+describe("a wear-off in the realm's own words, replayed through the tracker and Blessings", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const row = (spell: string): BlessingConfig => ({
+    spell,
+    target: 'self',
+    minMana: 0,
+    prioritizeOverHeal: false,
+    inCombat: true
+  });
+
+  it('casts protection from evil and zeal again as each wear-off is read', () => {
+    const sent: string[] = [];
+    const queue = new CommandQueue(
+      { ...DEFAULT_CONFIG.automation, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      { send: (command) => sent.push(command) }
+    );
+    const blessings = new Blessings(
+      {
+        ...DEFAULT_CONFIG.automation.spells,
+        blessings: [row('protection from evil'), row('zeal')]
+      },
+      true,
+      queue,
+      { onTheGround: () => false }
+    );
+    const { tracker, feed } = feeder(shippedSpellLore(), undefined, (block, before) =>
+      blessings.onBlock(block, before)
+    );
+    const prompt = (): void => {
+      feed('[HP=786/MA=195]:', 'flush');
+      blessings.onCharacter(tracker.current);
+    };
+    try {
+      feed('[HP=786/MA=195]:', 'flush');
+      feed('Name: Festus Ival                      Lives/CP:      9/0');
+      prompt();
+      expect(sent).toEqual(['protection from evil']);
+      feed('You cast protection from evil, and Festus is surrounded in a white glow!');
+      expect(feed('You feel safe from evil!')).toBe('spell-onset');
+      prompt();
+      vi.advanceTimersByTime(7_000);
+      expect(sent).toEqual(['protection from evil', 'zeal']);
+      expect(feed('You are filled with divine power!')).toBe('spell-onset');
+      prompt();
+      // Both are up: the retry floor passes and nothing is cast.
+      vi.advanceTimersByTime(40_000);
+      expect(sent).toHaveLength(2);
+
+      expect(feed('You no longer feel safe from evil!')).toBe('user-buff-expired');
+      prompt();
+      expect(sent.slice(2)).toEqual(['protection from evil']);
+      feed('You cast protection from evil, and Festus is surrounded in a white glow!');
+      feed('You feel safe from evil!');
+      prompt();
+
+      vi.advanceTimersByTime(10_000);
+      expect(feed('The righteousness wears off.')).toBe('user-buff-expired');
+      prompt();
+      expect(sent.slice(3)).toEqual(['zeal']);
+    } finally {
+      blessings.dispose();
+      queue.dispose();
+    }
+  });
+
+  /* The sheet at 13:47:50 listed three spells and not protection from evil. */
+  it('casts a blessing the sheet has stopped listing', () => {
+    const sent: string[] = [];
+    const queue = new CommandQueue(
+      { ...DEFAULT_CONFIG.automation, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      { send: (command) => sent.push(command) }
+    );
+    const blessings = new Blessings(
+      { ...DEFAULT_CONFIG.automation.spells, blessings: [row('protection from evil')] },
+      true,
+      queue,
+      { onTheGround: () => false }
+    );
+    const { tracker, feed, ask } = feeder(shippedSpellLore());
+    try {
+      feed('[HP=786/MA=195]:', 'flush');
+      feed('Name: Festus Ival                      Lives/CP:      9/0');
+      feed('[HP=786/MA=195]:', 'flush');
+      feed('You cast protection from evil, and Festus is surrounded in a white glow!');
+      feed('You feel safe from evil!');
+      feed('[HP=786/MA=189]:', 'flush');
+      blessings.onCharacter(tracker.current);
+      expect(tracker.current.buffs.map((buff) => buff.spell)).toEqual(['protection from evil']);
+      expect(sent).toEqual([]);
+
+      ask('st');
+      feed('Name: Festus Ival                      Lives/CP:      9/0');
+      feed('Willpower: 80     Charm:   50          MagicRes:       90');
+      feed('You are surrounded by a brilliant light! (309s)');
+      feed('You feel VERY lucky! (18s)');
+      feed('You are filled with divine power! (3s)');
+      feed('[HP=786/MA=195]:', 'flush');
+      blessings.onCharacter(tracker.current);
+      expect(sent).toEqual(['protection from evil']);
+    } finally {
+      blessings.dispose();
+      queue.dispose();
+    }
   });
 });
 

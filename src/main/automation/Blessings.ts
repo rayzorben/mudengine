@@ -6,17 +6,18 @@
  * cast bless on yourself!`, `Naji casts bless on you!`) establishes it on
  * `CharacterState.buffs`, and the wear-off frames (`The effects of bless wear
  * off!`) end it — so a recast goes out the moment the server says the spell
- * is gone rather than on a fixed clock. What the wire cannot say — the
- * per-spell custom endings (`Your skin returns to normal.`) are realm message
- * data none of the realm databases on hand export — is covered by a watchdog
- * clock: for a self blessing, the duration *measured* from this character's
- * own earlier cast→wear-off pairs (`Belongings` keeps it between sessions),
- * plus slack so the honest signal always speaks first, and `blessWatchdogMs`
- * before the first measurement; for a party member, whose wear-off lands on
- * *their* screen, the row's own `fallbackSeconds`. The realm's `Dur` column
- * is deliberately never the clock — its units are unmeasured, and a duration
- * guessed in the reassuring direction is a shield that is down longer than
- * anybody knows.
+ * is gone rather than on a fixed clock. The buff list is the authority for a
+ * self blessing: the realm's start and stop sentences and the `st` sheet keep
+ * it (`EffectTracker`), and a row is cast when the list does not show it or
+ * the sheet's countdown has run out. A buff still listed past the duration
+ * *measured* from this character's own earlier cast→wear-off pairs
+ * (`Belongings` keeps it between sessions) plus slack, or `blessWatchdogMs`
+ * before the first measurement, has `st` asked where the sheet prints the
+ * spell's start, and is cast again only where the sheet cannot say. A party
+ * member's wear-off lands on *their* screen, so that row runs on its own
+ * `fallbackSeconds`. The realm's `Dur` column is never the clock: the hold it
+ * gave a landed cast (2026-11-26) kept Festus's zeal and protection from evil
+ * down half a minute after each wear-off message (2026-11-27).
  *
  * ## Order
  *
@@ -64,7 +65,12 @@ import {
   type CharacterState,
   type FightSigns
 } from '../../shared/character';
-import type { BlessingConfig, BlessingsDue, BlessingSource } from '../../shared/blessings';
+import type {
+  BlessingConfig,
+  BlessingsDue,
+  BlessingSource,
+  SheetAsk
+} from '../../shared/blessings';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
 import type { Block } from '../../shared/blocks';
@@ -76,10 +82,10 @@ import {
   spellCost,
   type CastGate
 } from '../../shared/spellcraft';
+import { wornOffSpells } from '../../shared/spell-messages';
 import type { WorldSpell } from '../../shared/world';
 import type { NoticeSink } from '../../shared/decisionSettings';
 import { tuning } from '../app/tuning';
-import { realmLastsSeconds } from '../../shared/menace';
 import type { SessionModule } from './Module';
 
 /** Whether a cast confirmation's target is this character: `yourself`, `you` or its own name. */
@@ -131,12 +137,17 @@ export interface BlessingsDeps {
    */
   readonly realmSpell?: (name: string) => WorldSpell | null;
   /**
-   * How many times faster than the stock clocks the realm runs, where it is
-   * measured (`RealmSpeed.measured`); null or omitted, the duration clock
-   * starts nothing rather than guess a stock realm's length.
+   * Whether `st` prints this spell's start sentence while it is up
+   * (`SpellLore.startOf`), so a sheet without it says the spell is off.
+   * Omitted, the sheet speaks for no spell and the watchdog casts again.
    */
-  readonly speed?: () => number | null;
-  /** Where a recast held by the duration clock is said, once a cast (`.activity.log`). */
+  readonly sheetLists?: (spell: string) => boolean;
+  /**
+   * Asks for the stat sheet about a buff listed past its watchdog
+   * (`Routines.askSheetOverdue`). Omitted, `off`: the watchdog casts again.
+   */
+  readonly askSheet?: () => SheetAsk;
+  /** Where a cast left to the sheet is said, once a buff (`.activity.log`). */
   readonly notice?: NoticeSink;
   /**
    * Whether the character is on the ground (`Grounded.down`). The tick
@@ -191,22 +202,20 @@ export class Blessings implements SessionModule, BlessingsDue {
    */
   private lastProposalAt = 0;
   /**
-   * When each self blessing's realm duration runs out, from the cast that
-   * landed (`clockKey` → epoch ms). `st` prints no countdown on GreaterMUD,
-   * so this is the clock between the confirmation and the wear-off frame, and
-   * the buff list alone cannot be it: an unrelated line (`You hear movement
-   * to the southwest.`) was read as `protection from evil` ending and Soul
-   * cast it again while resting (2026-11-26).
+   * When `st` was last asked about each self blessing still listed past its
+   * watchdog (`clockKey` → epoch ms). The sheet takes an ended buff off the
+   * list; one it keeps waits a watchdog more from the ask.
    */
-  private readonly runsUntil = new Map<string, number>();
+  private readonly sheetAskedAt = new Map<string, number>();
+  /** The buff, by its `appliedAt`, each self clock last said it left to the sheet. */
+  private readonly saidLeft = new Map<string, number>();
 
   private readonly now: () => number;
   private readonly learnedDuration: (spell: string) => number | null;
   private readonly realmSpell: (name: string) => WorldSpell | null;
-  private readonly speed: () => number | null;
+  private readonly sheetLists: (spell: string) => boolean;
+  private readonly askSheet: () => SheetAsk;
   private readonly notice: NoticeSink | null;
-  /** The self clocks whose hold has been said, so each cast says it once. */
-  private readonly saidHeld = new Set<string>();
   private readonly onTheGround: () => boolean;
   private readonly due: NegateDue;
   private readonly gate: CastGate;
@@ -222,7 +231,8 @@ export class Blessings implements SessionModule, BlessingsDue {
     this.now = deps.now ?? (() => Date.now());
     this.learnedDuration = deps.learnedDuration ?? (() => null);
     this.realmSpell = deps.realmSpell ?? (() => null);
-    this.speed = deps.speed ?? (() => null);
+    this.sheetLists = deps.sheetLists ?? (() => false);
+    this.askSheet = deps.askSheet ?? (() => 'off');
     this.notice = deps.notice ?? null;
     this.onTheGround = deps.onTheGround;
     this.due = deps.due ?? NO_NEGATE_DUE;
@@ -278,8 +288,8 @@ export class Blessings implements SessionModule, BlessingsDue {
   reset(): void {
     this.proposedAt.clear();
     this.castAt.clear();
-    this.runsUntil.clear();
-    this.saidHeld.clear();
+    this.sheetAskedAt.clear();
+    this.saidLeft.clear();
     this.dueNow.clear();
     this.lastPartyCast = null;
     this.lastProposalAt = 0;
@@ -296,12 +306,8 @@ export class Blessings implements SessionModule, BlessingsDue {
   onBlock(block: Block, before: CharacterState): void {
     // The clocks below are facts about the realm and run whatever the switch
     // says; only the telepath to the caster is a send, so only it is withheld.
-    if (block.type === 'user-dies') this.runsUntil.clear();
-    if (block.type === 'spell-cast') this.noteLanded(block, before);
     if (block.type === 'user-buff-expired') {
-      const spell = block.groups['spell']?.trim();
-      if (spell) this.noteEnded(spell);
-      if (spell && this.enabled) this.notifyCaster(spell, before);
+      if (this.enabled) this.notifyCaster(wornOffSpells(block.groups), before);
       return;
     }
     /*
@@ -476,66 +482,17 @@ export class Blessings implements SessionModule, BlessingsDue {
   /** Whether a self row's mana floor is met and its blessing is down or lapsed. */
   private selfRowDue(entry: BlessingConfig, state: CharacterState, now: number): boolean {
     if (!manaAtLeast(state, entry.minMana)) return false;
-    // Under its name or any other the establishing sentence could have
-    // meant: `You feel lucky!` is five spells, and a configured `bless` is up
-    // whichever of them the server actually applied.
-    const held = state.buffs.find((buff) =>
-      buffNames(buff).some((name) => this.same(name, entry.spell))
-    );
-    const key = clockKey(entry, '@self');
-    const until = this.runsUntil.get(key) ?? 0;
-    // The realm's clock outranks the list and the watchdog: what dropped the buff was a guess.
-    if (now < until) {
-      this.sayHeld(entry, key, until, held === undefined);
-      return false;
-    }
+    const held = this.heldAs(entry, state);
     return held === undefined || this.lapsed(held, entry, now);
   }
 
-  /** Says once a cast that a self row is held by the realm's duration, and why that is not a lapse. */
-  private sayHeld(entry: BlessingConfig, key: string, until: number, lost: boolean): void {
-    if (!lost || this.saidHeld.has(key)) return;
-    this.saidHeld.add(key);
-    this.notice?.(
-      t('automation.blessing.heldByClock', {
-        spell: entry.spell,
-        seconds: Math.max(0, Math.round((until - this.now()) / 1000))
-      }),
-      'bless'
-    );
-  }
-
   /**
-   * This character's own cast of a self row landing: the blessing holds for
-   * the realm's duration at the realm's speed, plus the watchdog's slack, or
-   * until its wear-off frame. A spell with no stated duration, an unread level
-   * or an unknown realm row starts no clock, and the buff list decides alone.
+   * The buff a self row is up as, under its name or any other the
+   * establishing sentence could have meant: `You feel lucky!` is five spells,
+   * and a configured `bless` is up whichever of them the server applied.
    */
-  private noteLanded(block: Block, before: CharacterState): void {
-    const { spell, caster, target, announced, amount } = block.groups;
-    const level = before.progress.level;
-    const speed = this.speed();
-    if (spell === undefined || caster !== 'You' || level === null || speed === null) return;
-    if (announced !== undefined || amount !== undefined) return;
-    if (!aimedAtSelf(target, before)) return;
-    for (const entry of this.entries()) {
-      if (entry.target !== 'self' || !this.same(spell, entry.spell)) continue;
-      const realm = this.realmSpell(spell) ?? this.realmSpell(entry.spell);
-      const seconds = realm === null ? null : realmLastsSeconds(realm, level, speed);
-      if (seconds === null) continue;
-      const key = clockKey(entry, '@self');
-      this.saidHeld.delete(key);
-      this.runsUntil.set(key, block.at + seconds * 1000 * (1 + tuning().spells.blessSlack));
-    }
-  }
-
-  /** A wear-off frame names the spell: the realm's clock has nothing left to hold. */
-  private noteEnded(spell: string): void {
-    for (const entry of this.entries()) {
-      if (entry.target === 'self' && this.same(spell, entry.spell)) {
-        this.runsUntil.delete(clockKey(entry, '@self'));
-      }
-    }
+  private heldAs(entry: BlessingConfig, state: CharacterState): ActiveBuff | undefined {
+    return state.buffs.find((buff) => buffNames(buff).some((name) => this.same(name, entry.spell)));
   }
 
   /** Proposes one self recast if this entry is due; true when it did. */
@@ -556,8 +513,38 @@ export class Blessings implements SessionModule, BlessingsDue {
     // what stops the recast — so an unconfirmed cast is retried on the
     // cures' own cadence rather than every state change.
     if (now - proposed < tuning().spells.blessRetryMs) return false;
+    if (this.leftToSheet(entry, state, key, now)) return false;
 
     return this.enqueue(entry, null, state, key, now);
+  }
+
+  /**
+   * A buff still listed past its watchdog with no countdown: where `st` prints
+   * the spell's start, the sheet is asked for instead of the cast, and the
+   * buff waits a watchdog more from the ask. A sheet without the start takes
+   * the buff off the list, and the row is cast then. Soul's protection from
+   * evil was cast every 45s on a duration kept too short, and each cast
+   * renewed the spell before a wear-off could correct it (2026-11-23 to 26).
+   */
+  private leftToSheet(
+    entry: BlessingConfig,
+    state: CharacterState,
+    key: string,
+    now: number
+  ): boolean {
+    const held = this.heldAs(entry, state);
+    if (held === undefined || held.expiresAt !== undefined) return false;
+    // The buff's own names only, as the sheet reading asks: a sheet cannot drop what it cannot name.
+    if (!buffNames(held).some((name) => this.sheetLists(name))) return false;
+    const ask = this.askSheet();
+    if (ask === 'off') return false;
+    // `soon`: a sheet asked for a moment ago may not have this buff's answer, so no wait starts.
+    if (ask === 'asked') this.sheetAskedAt.set(key, now);
+    if (this.saidLeft.get(key) !== held.appliedAt) {
+      this.saidLeft.set(key, held.appliedAt);
+      this.notice?.(t('automation.blessing.leftToSheet', { spell: entry.spell }), 'bless');
+    }
+    return true;
   }
 
   /** Proposes one party recast if any member is due; true when it did. */
@@ -585,9 +572,10 @@ export class Blessings implements SessionModule, BlessingsDue {
   /**
    * Whether a buff this character holds has outlived its watchdog.
    *
-   * The clock runs from the cast confirmation, not from the proposal, and a
-   * wear-off the client read has already taken the buff off the list — this
-   * is only the watchdog for the endings it cannot read. Its length is the
+   * The clock runs from the cast confirmation, not from the proposal, or from
+   * the last `st` asked about it (`leftToSheet`), and a wear-off the client
+   * read has already taken the buff off the list — this is only the watchdog
+   * for the endings it did not read. Its length is the
    * duration measured from earlier cast→wear-off pairs plus slack, so the
    * frame gets to speak first, and the shipped default before anything has
    * been measured. Looked up under both spellings, because the buff carries
@@ -607,7 +595,8 @@ export class Blessings implements SessionModule, BlessingsDue {
       learned !== null && learned > 0
         ? learned * 1000 * (1 + tuning().spells.blessSlack)
         : tuning().spells.blessWatchdogMs;
-    return now - buff.appliedAt >= watchdogMs;
+    const asked = this.sheetAskedAt.get(clockKey(entry, '@self')) ?? 0;
+    return now - Math.max(buff.appliedAt, asked) >= watchdogMs;
   }
 
   /**
@@ -675,12 +664,15 @@ export class Blessings implements SessionModule, BlessingsDue {
    * let it recast on the event instead of its clock. Only with the switch on,
    * and only while the caster is still a listed member: a telepath to
    * somebody who left the party is a stranger's screen written on unasked.
+   * `ended` is every spell the wear-off sentence could be (`wornOffSpells`),
+   * and the telepath names the one on the list.
    */
-  private notifyCaster(spell: string, before: CharacterState): void {
+  private notifyCaster(ended: readonly string[], before: CharacterState): void {
     if (!this.config.notifyPartyOnWearOff) return;
-    const held = before.buffs.find((buff) => this.same(buff.spell, spell));
+    const held = before.buffs.find((buff) => ended.some((name) => this.same(buff.spell, name)));
     const caster = held?.by ?? null;
-    if (caster === null) return;
+    if (held === undefined || caster === null) return;
+    const spell = held.spell;
     const still = before.party.members.some(
       (member) => !member.invited && member.name.toLowerCase() === caster.toLowerCase()
     );

@@ -950,15 +950,14 @@ export class CharacterTracker {
     return this.rememberGear(prior, at);
   }
 
-  /**
-   * Whether an `st` sheet has been wanted since this was last asked.
-   *
-   * A flag taken rather than an event fired, because the answer is wanted
-   * once per burst of questions, not once per line: three emotes in a row
-   * while one buff's ending is unknown are one sheet. Cleared by the taking.
-   */
+  /** Whether an `st` sheet has been wanted since this was last asked (`EffectTracker`). */
   takeSheetRequest(): boolean {
     return this.effects.takeSheetRequest();
+  }
+
+  /** Whether `st` prints this spell's start while it is up (`EffectTracker.sheetLists`). */
+  sheetLists(spell: string): boolean {
+    return this.effects.sheetLists(spell);
   }
 
   /**

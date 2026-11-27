@@ -112,6 +112,14 @@ export interface BlessingsDue {
 export const NO_BLESSINGS_DUE: BlessingsDue = { selfDue: () => [] };
 
 /**
+ * What became of asking `st` about a blessing still listed past the time it
+ * lasts (`Routines.askSheetOverdue`, read by `Blessings`): `asked` now, `soon`
+ * where one went out inside the floor between two and this is asked again, or
+ * `off` where the client is not asking and the blessing is cast instead.
+ */
+export type SheetAsk = 'asked' | 'soon' | 'off';
+
+/**
  * Where the self rows kept up under `autoChooseBlessings` come from
  * (`BlessingChoice`): the port `Blessings` composes, refreshed and put down
  * with it.

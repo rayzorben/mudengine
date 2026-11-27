@@ -214,6 +214,27 @@ describe('the order the buffs spend what they are handed', () => {
     expect(log).toEqual(['duration bless 90']);
   });
 
+  // Soul, themajorbbs 2026-11-23: listed by `st` at 13:50:02, worn off at 13:50:33.
+  it('a buff the sheet put on the list measures nothing when it wears off', () => {
+    const { log, effects } = rig();
+    const s = effects.onset(character(), onset('You feel lucky!', 'bless', T)) ?? character();
+    expect(s.buffs.map((buff) => buff.spell)).toEqual(['bless']);
+    expect(effects.expired(s, { spells: 'bless' }, T + 31_000)?.buffs).toEqual([]);
+    expect(log).toEqual([]);
+  });
+
+  // Rayzor, Paradigm 2026-11-27: the cast on Brakkle names Brakkle, 58s before Rayzor's wear-off.
+  it('a cast on a party member leaves the measure running from this character’s own cast', () => {
+    const { log, effects } = rig();
+    const own = { ...character(), name: 'Rayzor' };
+    const s = cast(effects, own, T, 'bless');
+    expect(effects.cast(s, { spell: 'bless', caster: 'You', target: 'Brakkle' }, T + 92_000)).toBe(
+      null
+    );
+    expect(effects.expired(s, { spells: 'bless' }, T + 150_000)?.buffs).toEqual([]);
+    expect(log).toEqual(['duration bless 150']);
+  });
+
   it('a line taken for the one unknown ending asks for the sheet, though the realm settled it', () => {
     // No lasting effect, this realm said: so it is no candidate onset, and
     // only the ending it was taken for can ask.
