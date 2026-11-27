@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
+import { NO_BELONGINGS } from '../../../shared/belongings';
 import { CharacterTracker } from '../CharacterTracker';
 import { died, levelled, statSheet, StatusLine } from '../sheet';
 import { blockOf } from '../../../shared/__tests__/blocks';
@@ -204,7 +205,7 @@ describe('a new level', () => {
   });
 
   it('reads the sheet’s level the same way', () => {
-    expect(statSheet(at10, { level: '11' }).progress.expNeeded).toBe(233_068);
-    expect(statSheet(at10, { level: '10' }).progress.expNeeded).toBe(0);
+    expect(statSheet(at10, { level: '11' }, NO_BELONGINGS).progress.expNeeded).toBe(233_068);
+    expect(statSheet(at10, { level: '10' }, NO_BELONGINGS).progress.expNeeded).toBe(0);
   });
 });

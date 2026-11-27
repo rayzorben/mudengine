@@ -369,7 +369,13 @@ export function experienceGained(
  * what the sheet said is up (`EffectTracker.listed`). The stat sheet is where
  * maxima come from; the status line has none.
  */
-export function statSheet(s: CharacterState, g: Groups): CharacterState {
+export function statSheet(
+  s: CharacterState,
+  g: Groups,
+  record: Pick<BelongingsSink, 'rememberName'>
+): CharacterState {
+  // Kept as the sheet printed it: the welcome line may have named the login handle instead.
+  if (g['first']) record.rememberName(g['first']);
   const level = figure(g['level']) ?? s.progress.level;
   const exp = figure(g['exp']) ?? s.progress.exp;
   return {

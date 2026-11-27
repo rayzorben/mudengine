@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { asidePath, Belongings, peekLives, peekRoom, peekSpellbook } from '../Belongings';
+import { asidePath, Belongings, peekLives, peekName, peekRoom, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { NOTHING_UNDERWAY } from '../../../shared/underway';
@@ -518,6 +518,30 @@ describe('what abil last summed', () => {
  * character and made a new one on the same login — and `forget` is the one
  * destructive call on this seam, reached only from a player answering.
  */
+/* The name the stat sheet gave, so a tab is not labelled by the login handle after a relaunch. */
+describe('the name the stat sheet gave', () => {
+  it('starts null, because no sheet was ever read', () => {
+    expect(new Belongings({ file, realm: REALM }).recallName()).toBeNull();
+  });
+
+  it('survives a restart, and can be read at launch for its own realm only', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberName('Rayzor');
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallName()).toBe('Rayzor');
+    expect(peekName(file, REALM)).toBe('Rayzor');
+    expect(peekName(file, 'elsewhere:23')).toBeNull();
+  });
+
+  it('goes with the rest when the player says this is somebody else', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberName('Rayzor');
+    expect(store.forget()).toBe(true);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallName()).toBeNull();
+  });
+});
+
 /* The room last stood in, so a relaunch starts the map from it. See `parse/lastRoom.ts`. */
 describe('the room this character last stood in', () => {
   it('starts null, because no room was ever placed', () => {

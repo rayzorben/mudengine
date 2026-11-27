@@ -189,6 +189,12 @@ export interface BelongingsSink {
   /** A room was placed; keep where. */
   rememberRoom(place: KeptRoom): void;
   /**
+   * A stat sheet gave the character's name; keep it, for the tab to take
+   * before any dial (`labelOf`). Only a sheet's name is kept: the welcome line
+   * names what was typed to log in.
+   */
+  rememberName(name: string): void;
+  /**
    * The sheet or a death said how many lives are left; keep the count. Read
    * before a dial, when the realm has not said it yet (`LowLivesHold`).
    */
@@ -235,6 +241,7 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberStatsBase: () => {},
   recallRoom: () => null,
   rememberRoom: () => {},
+  rememberName: () => {},
   rememberLives: () => {},
   forget: () => false
 };

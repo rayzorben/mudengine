@@ -113,6 +113,8 @@ interface BelongingsFile {
   statsBase?: CombatTally;
   /** The room last stood in. Absent means none was ever placed. */
   room?: KeptRoom;
+  /** The name the stat sheet gave. Absent means no sheet was ever read. */
+  name?: string;
   /** The lives last read. Absent means never read. */
   lives?: KeptLives;
   /** The lap and the route the app last saw. Parsed by `asUnderway`; absent is nothing. */
@@ -151,6 +153,8 @@ export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSin
   private statsBase: CombatTally | null = null;
   /** Null is *never placed*. See `recallRoom`. */
   private room: KeptRoom | null = null;
+  /** Null is *never read*. See `recallName`. */
+  private name: string | null = null;
   /** Null is *never read*. See `recallLives`. */
   private lives: KeptLives | null = null;
   private underway: Underway = NOTHING_UNDERWAY;
@@ -361,6 +365,7 @@ export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSin
     this.stats = null;
     this.statsBase = null;
     this.room = null;
+    this.name = null;
     this.lives = null;
     this.underway = NOTHING_UNDERWAY;
     this.schedule();
@@ -379,6 +384,16 @@ export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSin
     this.room = { map, room, confidence };
     // Every step moves it, so it waits with the totals; `close()` writes the last one.
     this.schedule(tuning().records.statsWriteDelayMs);
+  }
+
+  recallName(): string | null {
+    return this.name;
+  }
+
+  rememberName(name: string): void {
+    if (this.suspended || this.name === name) return;
+    this.name = name;
+    this.schedule();
   }
 
   /** The lives last read, for the ask before a dial. Null is *never read*, which is not low. */
@@ -527,6 +542,7 @@ export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSin
     this.stats = file.stats ?? null;
     this.statsBase = file.statsBase ?? null;
     this.room = file.room ?? null;
+    this.name = file.name ?? null;
     this.lives = file.lives ?? null;
     this.underway = asUnderway(file.underway);
   }
@@ -604,6 +620,7 @@ export class Belongings implements BelongingsSink, UnderwaySink, QuestWatchedSin
       ...(this.stats !== null ? { stats: this.stats } : {}),
       ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),
       ...(this.room !== null ? { room: this.room } : {}),
+      ...(this.name !== null ? { name: this.name } : {}),
       ...(this.lives !== null ? { lives: this.lives } : {}),
       ...(sameUnderway(this.underway, NOTHING_UNDERWAY) ? {} : { underway: this.underway })
     };
@@ -697,6 +714,15 @@ export function peekRoom(file: string, realm: string): KeptRoom | null {
   return peek(file, realm)?.room ?? null;
 }
 
+/**
+ * The name the stat sheet last gave, read the same way, for a tab drawn before
+ * any dial. Paradigm's welcome line names the login handle, so a character
+ * that has not read its sheet this launch would otherwise be labelled by it.
+ */
+export function peekName(file: string, realm: string): string | null {
+  return peek(file, realm)?.name ?? null;
+}
+
 /** The lives the record last read, the same way, for the ask before a launch's first dial. */
 export function peekLives(file: string, realm: string): KeptLives | null {
   return peek(file, realm)?.lives ?? null;
@@ -770,6 +796,7 @@ function belongingsFault(value: unknown): string | null {
     if (fault !== null) return fault;
   }
   if (!optional(file.room, isKeptRoom)) return 'room';
+  if (!optional(file.name, isName)) return 'name';
   if (!optional(file.lives, isKeptLives)) return 'lives';
   return null;
 }
@@ -779,6 +806,11 @@ function isKeptLives(value: unknown): value is KeptLives {
   if (typeof value !== 'object' || value === null) return false;
   const { count, at } = value as Record<string, unknown>;
   return Number.isInteger(count) && (count as number) >= 0 && typeof at === 'number';
+}
+
+/** A name the stat sheet gave: text with something in it. */
+function isName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 /** A room by its realm numbers, two whole numbers, and a confidence from 0 to 1. */

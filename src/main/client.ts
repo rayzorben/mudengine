@@ -95,9 +95,10 @@ import {
 } from '../shared/gear';
 import { planNotices } from './automation/gearNotices';
 import { restoreKit } from './automation/restoreKit';
-import { Belongings, peekLives, peekRealm, peekRoom, peekSpellbook } from './session/Belongings';
+import { Belongings, peekRealm, peekSpellbook } from './session/Belongings';
+import { keptFacts } from './session/KeptFacts';
 import { OpenRecords } from './session/OpenRecords';
-import type { CharacterRecord, KeptLives, KeptRoom } from '../shared/belongings';
+import type { CharacterRecord } from '../shared/belongings';
 import { asLowLivesAnswer } from '../shared/lives';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
 import {
@@ -955,36 +956,12 @@ function belongingsAt(id: SessionId, played: Realm): CharacterRecord {
   );
 }
 
-/**
- * Where a character's record last placed it, for the realm its file says it
- * plays, so the tab draws the room before any dial. Read without opening the
- * record: a launch has no window yet to hear what an unreadable one says.
- */
-function lastRoomFor(id: SessionId): KeptRoom | null {
-  const target = profileFor(id)?.target;
-  return target ? fromRecord(id, target, (open) => open.recallRoom(), peekRoom) : null;
-}
-
-/** The lives the record last read on the realm at `target`, for the ask before a dial there. */
-function livesAt(id: SessionId, target: ConnectionTarget): KeptLives | null {
-  return fromRecord(id, target, (open) => open.recallLives(), peekLives);
-}
-
-/**
- * One fact from a character's record for the realm at `target`: the open
- * record's when it is that realm's (the file lags it by a deferred write),
- * else read off the file without opening it.
- */
-function fromRecord<T>(
-  id: SessionId,
-  target: ConnectionTarget,
-  live: (open: Belongings) => T,
-  peek: (file: string, realm: string) => T
-): T {
-  const realm = realmName(realmAt(id, target));
-  const open = belongings.get(id);
-  return open?.realm === realm ? live(open) : peek(home.record('belongings', id), realm);
-}
+const keptOf = keptFacts({
+  open: (id) => belongings.get(id),
+  file: (id) => home.record('belongings', id),
+  realmAt: (id, target) => realmName(realmAt(id, target)),
+  targetOf: (id) => profileFor(id)?.target
+});
 
 /**
  * Whether the realm says an item goes in a slot, **and that this character may
@@ -1039,7 +1016,7 @@ function wearerIn(session: SessionId): Wearer {
  */
 function labelOf(id: SessionId): { name: string; server: string; accent: string } {
   const profile = profileFor(id);
-  const learned = host?.get(id)?.manager.character.name ?? null;
+  const learned = keptOf.nameFor(id) ?? host?.get(id)?.manager.character.name ?? null;
   const target = host?.get(id)?.manager.state.target;
   return {
     name: learned ?? profile?.name ?? id,
@@ -1897,8 +1874,8 @@ function createHost(): SessionHost {
       }
     },
     belongingsAt,
-    lastRoomFor,
-    livesAt,
+    lastRoomFor: keptOf.roomFor,
+    livesAt: keptOf.livesAt,
     playersFor,
     destinationsFor,
     playersAt,
@@ -3612,7 +3589,7 @@ function registerIpc(): void {
    */
   const settingsSpells: NonNullable<SettingsEditorOptions['spells']> = {
     forProfile: (id, target) => {
-      const book = fromRecord(
+      const book = keptOf.from(
         id as SessionId,
         target,
         (open) => open.recallSpellbook(),

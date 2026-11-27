@@ -1208,6 +1208,31 @@ describe('the last room outlives the socket', () => {
     expect(kept).toEqual([41]);
   });
 
+  it('writes the name to the record only when a stat sheet gives it', () => {
+    const kept: string[] = [];
+    const { tracker, feed } = session({
+      ...NO_BELONGINGS,
+      rememberName: (name) => kept.push(name)
+    });
+    tracker.reset();
+    // The welcome line names the login handle on Paradigm, and sets the name without a sheet.
+    feed(['Welcome back, soul!']);
+    expect(tracker.current.name).toBe('soul');
+    expect(kept).toEqual([]);
+    feed([
+      '[HP=56/MA=12]: ',
+      'Name: Rayzor Bennett                   Lives/CP:      9/2',
+      'Race: Kang        Exp: 60410           Perception:     57',
+      'Class: Paladin    Level: 3             Stealth:         0',
+      'Hits:    56/56    Armour Class:  40/5  Thievery:        0',
+      '[HP=56/MA=12]: '
+    ]);
+    expect(kept).toEqual(['Rayzor']);
+    // A welcome line after the sheet sets the name again and keeps nothing.
+    feed(['Welcome back, soul!']);
+    expect(kept).toEqual(['Rayzor']);
+  });
+
   it('places nothing from a record naming a room the realm does not have', () => {
     const { tracker } = session({
       ...NO_BELONGINGS,
@@ -11860,6 +11885,7 @@ describe('the spellbook and the belongings record', () => {
         rememberRoom: (place: KeptRoom) => {
           state.room = { ...place };
         },
+        rememberName: () => {},
         rememberLives: () => {},
         forget: () => false
       }

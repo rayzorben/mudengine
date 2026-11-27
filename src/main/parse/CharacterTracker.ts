@@ -1426,7 +1426,7 @@ export class CharacterTracker {
 
       case 'player-status':
         // What the sheet says is up first, then its figures over that.
-        return statSheet(this.effects.listed(s, block.text, block.at), g);
+        return statSheet(this.effects.listed(s, block.text, block.at), g, this.belongings);
 
       /* ---------------------------------------------------------- room */
       /*
