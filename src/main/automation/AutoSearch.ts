@@ -291,7 +291,6 @@ export class AutoSearch implements SessionModule {
       onSent: () => {
         this.tries += 1;
         this.answerBy = Date.now() + tuning().search.answerMs;
-        this.events.notice?.(t('automation.search.holdsWalk'), 'search');
       },
       reason: t('automation.search.reason'),
       decision: 'search'

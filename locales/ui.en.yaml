@@ -8260,7 +8260,6 @@ automation:
       unavailable: this realm has no such command
   search:
     reason: 'search: looking for what this room did not show'
-    holdsWalk: The walk waits for the search to be answered, so what it lists is picked up before the next step.
     unanswered: The search was not answered in time. The walk goes on.
   potion:
     # A rule from the player's own `health.potions` list (todo 19) -- the only
