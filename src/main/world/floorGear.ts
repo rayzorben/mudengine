@@ -21,9 +21,31 @@ export interface FloorRealm {
 }
 
 /** The realm's row for a worn or floor item, where one row is named. */
-function rowOf(item: ItemEntity, realm: FloorRealm): WorldItem | undefined {
+export function rowOf(item: ItemEntity, realm: FloorRealm): WorldItem | undefined {
   const id = entityNumber(item);
   return id === null ? undefined : realm.item(id);
+}
+
+/**
+ * What the other hand holds that must come off before `row` goes on in `code`.
+ * `EquipCommand` refuses a two-hander with the off-hand worn and an off-hand
+ * item with a two-hander readied.
+ */
+export function handsInTheWay(
+  code: number,
+  row: WorldItem,
+  state: CharacterState,
+  realm: FloorRealm
+): string | null {
+  const offHand = inOffHand(state.inventory.items);
+  if (code === WEAPON_WORN && row.weapon?.hands === 2 && offHand !== undefined) {
+    return offHand.name;
+  }
+  const weapon = (wornBySlot(state).get(WEAPON_WORN) ?? [])[0];
+  if (code === OFF_HAND_WORN && weapon !== undefined && rowOf(weapon, realm)?.weapon?.hands === 2) {
+    return weapon.name;
+  }
+  return null;
 }
 
 /**
@@ -75,20 +97,13 @@ export function floorGear(
   const held = locks.some((worn) => sameItem(worn.item, row.name)) ? undefined : locks[0];
   if (held !== undefined) return refused('locked', held.item);
   /*
-   * `EquipCommand` refuses a two-hander with the off-hand worn and an off-hand
-   * item with a two-hander readied. The first could go on once the off-hand
-   * comes off, but that item's armour is not weighed against the blow here
-   * (open question in todo 77), so both are left lying.
+   * A two-hander could go on once the off-hand comes off, but that item's
+   * armour is not weighed against the blow here (open question in todo 77),
+   * so both are left lying.
    */
   const hands = row.weapon?.hands ?? null;
-  const offHand = inOffHand(state.inventory.items);
-  if (code === WEAPON_WORN && hands === 2 && offHand !== undefined) {
-    return refused('hands', offHand.name);
-  }
-  const weapon = (wornBySlot(state).get(WEAPON_WORN) ?? [])[0];
-  if (code === OFF_HAND_WORN && weapon !== undefined && rowOf(weapon, realm)?.weapon?.hands === 2) {
-    return refused('hands', weapon.name);
-  }
+  const inTheWay = handsInTheWay(code, row, state, realm);
+  if (inTheWay !== null) return refused('hands', inTheWay);
   // `GetCommand` refuses an item heavier than the free weight; unread is not room.
   const { encumbrance, encumbranceMax } = state.inventory;
   if (encumbrance === null || encumbranceMax === null) return refused('unread', null);

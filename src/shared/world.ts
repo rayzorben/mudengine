@@ -10,6 +10,7 @@
  */
 import type { ItemRarity } from './rarity';
 import type { ItemSeen } from './itemSeen';
+import type { WornBeside } from './wornBeside';
 import { asGates, judge, type AbilityBounds, type Gate, type GateFacts } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellDamage';
@@ -1878,6 +1879,8 @@ export interface WorldLookup {
   rarity?: Record<number, ItemRarity>;
   /** Where this client saw each item named, by row, newest first (`main/world/itemSeen.ts`). */
   seen?: Record<number, ItemSeen[]>;
+  /** Each item named this character can wear, beside what it wears in the slot, by row. */
+  beside?: Record<number, WornBeside>;
 }
 
 /** The answer to a query that found nothing. */

@@ -80,6 +80,7 @@ import { asPlaceKind } from '../shared/places';
 import { asQuestMarks } from '../shared/quests';
 import { asMobRuleScope, asMobTreatment, rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import type { ItemRarity } from '../shared/rarity';
+import type { WornBeside } from '../shared/wornBeside';
 import {
   dropAllPlan,
   equip,
@@ -3360,6 +3361,13 @@ function registerIpc(): void {
       },
       world
     );
+    // And each one this character can wear, beside what it wears in the slot.
+    const gear = host?.get(session)?.manager?.gearDesk.reads;
+    const beside: Record<number, WornBeside> = {};
+    for (const item of found.items) {
+      const weighed = gear?.beside(item) ?? null;
+      if (weighed !== null) beside[item.id] = weighed;
+    }
     return {
       ...found,
       ...(Object.keys(learned).length > 0 ? { learned } : {}),
@@ -3369,7 +3377,8 @@ function registerIpc(): void {
       ...(Object.keys(verdicts).length > 0 ? { verdicts } : {}),
       ...(Object.keys(rowPeace).length > 0 ? { rowPeace } : {}),
       ...(Object.keys(rarity).length > 0 ? { rarity } : {}),
-      ...(Object.keys(seen).length > 0 ? { seen } : {})
+      ...(Object.keys(seen).length > 0 ? { seen } : {}),
+      ...(Object.keys(beside).length > 0 ? { beside } : {})
     };
   });
 

@@ -16,6 +16,7 @@ import EntityNumber from './EntityNumber';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
 import EntityName from './EntityName';
 import { usePopoverFrame } from '../hooks/usePopoverFrame';
+import { damageRangeText, perRoundText } from '../lib/figures';
 import { t } from '../lib/i18n';
 import type { PopoverAnchor } from '../lib/popover';
 import type { CharacterState } from '@shared/character';
@@ -78,11 +79,6 @@ function rankedBy(ranking: SlotRanking): string {
   return ranking.rounds
     ? t('cards.slotPeek.rankWeapon', { method: methodWord(ranking.method) })
     : t('cards.slotPeek.rankBlow');
-}
-
-/** One decimal: a round's damage is an average, and a whole number would tie two weapons. */
-function perRoundText(value: number): string {
-  return value.toFixed(1);
 }
 
 export default function SlotQuickView({
@@ -269,7 +265,7 @@ function columnsFor(
       numeric: true,
       // Sorted by the mean blow, drawn as the range the realm states.
       value: (row) => meanBlow(row.damage),
-      cell: (row) => (row.damage === null ? null : `${row.damage.min}–${row.damage.max}`)
+      cell: (row) => (row.damage === null ? null : damageRangeText(row.damage))
     },
     {
       id: 'speed',

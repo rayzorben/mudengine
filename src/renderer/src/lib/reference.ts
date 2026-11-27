@@ -6,6 +6,7 @@
  * Out of `ReferenceDetail` (todo 733), so `lib/paletteFind.ts` reads it
  * without importing a component. See `mudengine-ui` › `parts/tables.md`.
  */
+import { damageRangeText } from './figures';
 import { t } from './i18n';
 import type { Numbered } from '@shared/entities';
 import type { FightSummary } from '@shared/fights';
@@ -15,6 +16,7 @@ import type { ItemRarity } from '@shared/rarity';
 import type { RowPeace } from '@shared/mobRules';
 import type { Verdict } from '@shared/verdict';
 import type { ItemSeen } from '@shared/itemSeen';
+import type { WornBeside } from '@shared/wornBeside';
 import type {
   MobPlaces,
   WorldClass,
@@ -47,6 +49,8 @@ export type ReferenceEntry =
       item: WorldItem;
       rarity: ItemRarity | null;
       seen: readonly ItemSeen[];
+      /** Beside what the character wears in the slot; null where it cannot wear it. */
+      beside: WornBeside | null;
     }
   | { kind: 'spell'; name: string; spell: WorldSpell }
   | { kind: 'race'; name: string; race: WorldRace }
@@ -69,7 +73,8 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       name: item.name,
       item,
       rarity: found.rarity?.[item.id] ?? null,
-      seen: found.seen?.[item.id] ?? []
+      seen: found.seen?.[item.id] ?? [],
+      beside: found.beside?.[item.id] ?? null
     })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
     ...found.races.map((race): ReferenceEntry => ({ kind: 'race', name: race.name, race })),
@@ -168,7 +173,7 @@ export function entryFigure(entry: ReferenceEntry): string | null {
       ? null
       : t('cards.reference.class.combatFigure', { combat: entry.className.combat });
   const { item } = entry;
-  if (item.weapon) return `${item.weapon.min}–${item.weapon.max}`;
+  if (item.weapon) return damageRangeText(item.weapon);
   if (item.armour?.ac !== undefined)
     return t('cards.reference.item.armour.acFigure', { ac: item.armour.ac });
   return item.price === undefined ? null : String(item.price);

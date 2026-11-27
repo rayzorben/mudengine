@@ -9,6 +9,7 @@ import { memo } from 'react';
 
 import type { RoomId } from '@shared/world';
 import type { FloorChoice } from '../../lib/gameFloors';
+import { signed } from '../../lib/figures';
 import { t } from '../../lib/i18n';
 
 export interface FloorStripProps {
@@ -17,8 +18,6 @@ export interface FloorStripProps {
   home: number | null;
   onShow(room: RoomId): void;
 }
-
-const signed = (floor: number): string => (floor > 0 ? `+${floor}` : String(floor));
 
 function FloorStrip({ floors, home, onShow }: FloorStripProps) {
   if (floors.length === 0) return null;

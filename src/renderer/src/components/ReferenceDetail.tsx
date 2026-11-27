@@ -26,6 +26,7 @@ import type { Verdict } from '@shared/verdict';
 import { roomId } from '@shared/world';
 import { GivenBy, SoldBy } from './ReferenceSources';
 import { SeenIn } from './ReferenceSeen';
+import ReferenceWorn from './ReferenceWorn';
 import SpellLearning from './SpellLearning';
 import type { ItemSeen } from '@shared/itemSeen';
 import type {
@@ -1330,6 +1331,10 @@ export default function ReferenceDetail({
           realm={realm}
           verdict={entry.verdict}
         />
+      )}
+      {/* Beside what is worn, ahead of the readout: what decides whether to wear it. */}
+      {entry.kind === 'item' && entry.beside !== null && (
+        <ReferenceWorn beside={entry.beside} realm={realm} />
       )}
       {entry.kind === 'item' && (
         <ItemDetail

@@ -8,6 +8,7 @@
 import { Fragment } from 'react';
 
 import EntityName from './EntityName';
+import { signed } from '../lib/figures';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import type { RoomSurvey, SurveyGroup, SurveyLight, SurveyMob } from '@shared/survey';
@@ -16,11 +17,6 @@ export interface SurveyFaceProps {
   survey: RoomSurvey;
   /** Opens the realm's answer beside a clicked monster; absent, a name is text. */
   inspect?(name: string, anchor: HTMLElement): void;
-}
-
-/** A part of the light as the server signs it: `+75`, `-175`, `0`. */
-function signed(value: number): string {
-  return value > 0 ? `+${value}` : String(value);
 }
 
 function lightText(light: SurveyLight): string {

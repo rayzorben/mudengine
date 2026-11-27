@@ -12,13 +12,15 @@ import { chargedInCopper } from '../../shared/coins';
 import { sheetGain } from '../../shared/gearWorth';
 import { placesOf } from '../../shared/items';
 import type { GearChoices, SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
-import { roomAddress } from '../../shared/world';
+import type { WornBeside } from '../../shared/wornBeside';
+import { roomAddress, type WorldItem } from '../../shared/world';
 import type { ExtensionWorld } from '../extensions/api';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { bestInSlot } from '../world/bestInSlot';
 import { gearUpgrades, type UpgradeRealm } from '../world/gearUpgrades';
 import { slotAskerOf, type SlotAsker, type WeighingSettings } from '../world/slotGear';
 import { wearing } from '../world/wearing';
+import { wornBeside } from '../world/wornBeside';
 import type { Errands } from './Errands';
 
 export interface GearReadParts {
@@ -33,6 +35,8 @@ export interface GearReads {
   gearUpgrades(perSlot: number, as?: CharacterState): SlotUpgrade[];
   bestInSlot(perSlot: number, as?: CharacterState): SlotBest[];
   wearing(items: readonly string[], as?: CharacterState): Wearing;
+  /** A realm row beside what the character wears in its slot; null where it cannot wear it. */
+  beside(item: WorldItem): WornBeside | null;
   attacks(as?: CharacterState, against?: readonly string[]): AttackOption[];
   /**
    * The Gear card's reading: `bestInSlot` with what each item gives on the
@@ -96,6 +100,11 @@ export function gearReads(parts: GearReadParts): GearReads {
         buildItemEntity: (name: string) => world.buildItemEntity(name)
       };
       return wearing(state, items, realm, askerOf(state, world));
+    },
+    beside: (item) => {
+      const world = parts.world();
+      const state = tracker.current;
+      return world === undefined ? null : wornBeside(item, state, world, askerOf(state, world));
     },
     attacks: (as, against = []) => errands.words.options(as ?? tracker.current, against)
   };

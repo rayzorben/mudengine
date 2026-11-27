@@ -11913,8 +11913,77 @@ input.switch:focus-visible {
   width: 96px;
 }
 
-.card[data-card-size='small'] .reference-detail > .readout {
+.card[data-card-size='small'] .reference-detail > .readout,
+.card[data-card-size='small'] .reference-detail > .reference-worn {
   display: none;
+}
+
+/*
+ * The item beside what is worn in its slot (`ReferenceWorn`): a column for the
+ * item, one per worn piece, the figures in the data register. The change
+ * against the piece it replaces is tonal, `--ok` for better and `--danger`
+ * for worse; the piece it replaces carries the accent in its heading.
+ */
+.reference-worn {
+  margin: 0 0 8px;
+}
+
+.reference-worn p {
+  margin: 0 0 4px;
+}
+
+.reference-worn .beside-verdict {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.reference-worn [data-tone='better'] {
+  color: var(--ok);
+}
+
+.reference-worn [data-tone='worse'] {
+  color: var(--danger);
+}
+
+.reference-worn table {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  table-layout: fixed;
+  width: 100%;
+}
+
+.reference-worn caption {
+  caption-side: top;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-sans);
+  text-align: left;
+}
+
+.reference-worn th,
+.reference-worn td {
+  overflow-wrap: anywhere;
+  padding: 2px 6px 2px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.reference-worn thead th {
+  color: var(--text-hi);
+  font-weight: 600;
+}
+
+.reference-worn thead th[data-replaced='true'] {
+  color: var(--accent);
+}
+
+.reference-worn tbody th {
+  color: var(--text-lo);
+  font-weight: 400;
+}
+
+.reference-worn .beside-change {
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /*
