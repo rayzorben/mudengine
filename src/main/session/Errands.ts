@@ -25,6 +25,7 @@ import { killShare } from '../../shared/company';
 import { partyPlan, withParty } from '../../shared/partyFight';
 import type { WalkKind } from '../../shared/walk';
 import { routePricesOf } from '../../shared/walkChoices';
+import { sysGoWaysOf } from '../../shared/sysGo';
 import { t } from '../app/i18n';
 import { nextTurn } from '../app/nextTurn';
 import { tuning } from '../app/tuning';
@@ -1073,6 +1074,7 @@ export class Errands implements SessionModule {
       own: { picklocks: state.progress.picklocks, strength: state.progress.strength },
       perception: state.progress.perception,
       family: this.serverFamily,
+      sysGo: sysGoWaysOf(this.serverFamily, movement.sysGo),
       // Only where the source that states the timers is this server's (todo 62's open question).
       ...(this.serverFamily === 'greatermud'
         ? {

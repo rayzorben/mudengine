@@ -338,6 +338,7 @@ function migrateAll(options: MigrationOptions): void {
   statedKeyBuying(home, note, options.template);
   stoppersFollowHave(home, note);
   statedChanceWaysAndFares(home, note, options.template);
+  statedSysGo(home, note, options.template);
   statedComebackRooms(home, note, options.template);
   statedReinviteMinutes(home, note, options.template);
   theRejoinWaitsADay(home, note);
@@ -5261,6 +5262,27 @@ function statedChanceWaysAndFares(
     stated.length === 1
       ? t('notices.migration.chanceWays.one', params)
       : t('notices.migration.chanceWays.many', params)
+  );
+}
+
+/**
+ * `automation.movement.sysGo` into every file that states `movement:` without
+ * it, after `fareShare`, off, with the template's comment (2026-11-27).
+ */
+function statedSysGo(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateKeysIn(home, template, MOVEMENT_BLOCK, 'fareShare', [
+    ['sysGo', DEFAULT_CONFIG.automation.movement.sysGo]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.sysGo.one', params)
+      : t('notices.migration.sysGo.many', params)
   );
 }
 

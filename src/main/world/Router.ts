@@ -64,6 +64,8 @@ import {
   type WorldRoom
 } from '../../shared/world';
 import type { SpellWard } from '../../shared/spellWard';
+import type { SysGoWay } from '../../shared/sysGo';
+import { SysGoWays } from './navigation/sysGoWays';
 
 /** What the traveller can and cannot do, for edge evaluation. */
 export interface Traveller {
@@ -201,6 +203,11 @@ export interface Traveller {
    * exit types it loads as plain exits (`familyOpens`). Absent is unread.
    */
   family?: RealmFamily | null;
+  /**
+   * The realm's `sys go` towns, taken from the room each search starts in
+   * (`automation.movement.sysGo`, `shared/sysGo.ts`). Absent is none.
+   */
+  sysGo?: readonly SysGoWay[];
   /**
    * Doors and hidden exits this session's walk opened, as `from|direction`,
    * still inside the shortest close timer the server runs (`OpenedWays`,
@@ -1421,6 +1428,8 @@ export class Router {
   private readonly leverDetours = new WeakMap<Traveller, Map<string, LeverWalk | null>>();
   /** Whether a lever detour is being swept, so the sweep prices none of its own. */
   private pricingLever = false;
+  /** The traveller's `sys go` towns as portals. See `SysGoWays`. */
+  private readonly sysGoWays: SysGoWays;
 
   constructor(private readonly index: RoomIndex) {
     // Held rather than asked for: read on every edge of every search, and the
@@ -1428,6 +1437,7 @@ export class Router {
     this.rooms = index.roomsById;
     this.portals = index.portalsByRoom;
     this.spends = index.spendsByEdge;
+    this.sysGoWays = new SysGoWays((id) => this.rooms.has(id));
     this.sweepRooms = {
       roomsById: this.rooms,
       portalsFrom: (id) => this.portalsFrom(id),
@@ -1766,7 +1776,7 @@ export class Router {
      * 1.1 to 2 seconds on gmud for each of the two Sysop trainers nobody
      * walks into, on every trainer price (2026-10-02).
      */
-    if (!this.joins().joined(from, to)) return unjoined();
+    if (!this.joined(from, to, traveller)) return unjoined();
     // Bounded, a way under the bound is all that is wanted, and none is said as that.
     if (options.within !== undefined) {
       const under = this.search(from, to, goal, traveller, false, false, false, options.within);
@@ -2643,12 +2653,22 @@ export class Router {
     const settled = new Set<RoomId>();
     // A room the realm does not join to `from` is never settled, and waiting on one swept the
     // whole of what the character can reach (2026-10-02: the gear upgrades' shops, every brief).
-    const joins = this.joins();
-    const outstanding = new Set([...wanted].filter((id) => joins.joined(from, id)));
+    const outstanding = new Set([...wanted].filter((id) => this.joined(from, id, traveller)));
     const open = new MinHeap<RoomId>();
     open.push(0, from);
     const ceiling = tuning().world.errandSweepRooms;
     const discount = this.discountFor(traveller);
+    // The `sys go` towns, as `search` takes them, so a shop is ranked by the walk that goes there.
+    for (const exit of this.sysGoWays.of(traveller.sysGo)) {
+      const nextId = roomId(exit.map, exit.room);
+      const next = this.rooms.get(nextId);
+      if (next === undefined || nextId === from) continue;
+      const price = this.stepCost(from, exit, next, traveller, false, discount);
+      if (price === null || price >= (best.get(nextId) ?? Infinity)) continue;
+      best.set(nextId, price);
+      moves.set(nextId, 1);
+      open.push(price, nextId);
+    }
 
     while (open.size > 0 && outstanding.size > 0 && settled.size < ceiling) {
       this.spend();
@@ -3252,21 +3272,24 @@ export class Router {
      * realm is one token away from is not a neighbour of anywhere. A bound
      * landing **is** counted there, correctly, because one move from `3/1`
      * really is one move.
+     *
+     * A `sys go` town is the same shape with nothing spent, so every search
+     * takes it, priced as a portal: from Silvermere to the Barren Hills is
+     * `sys go lost` and the walk on from the Lost City.
      */
-    if (useLandings) {
-      for (const exit of this.index.itemLandings()) {
-        const nextId = roomId(exit.map, exit.room);
-        const next = this.rooms.get(nextId);
-        if (next === undefined || nextId === from) continue;
-        if (traveller.avoid?.has(nextId) === true) continue;
-        const price = this.stepCost(from, exit, next, traveller, openGates, discount, true);
-        if (price === null) continue;
-        if (price >= (best.get(nextId) ?? Infinity)) continue;
-        best.set(nextId, price);
-        cameFrom.set(nextId, { prev: from, exit });
-        open.push(price + heuristic(next), nextId);
-      }
-    }
+    const fromHere = (exit: PortalExit, invoked: boolean): void => {
+      const nextId = roomId(exit.map, exit.room);
+      const next = this.rooms.get(nextId);
+      if (next === undefined || nextId === from) return;
+      if (traveller.avoid?.has(nextId) === true) return;
+      const price = this.stepCost(from, exit, next, traveller, openGates, discount, invoked);
+      if (price === null || price >= (best.get(nextId) ?? Infinity)) return;
+      best.set(nextId, price);
+      cameFrom.set(nextId, { prev: from, exit });
+      open.push(price + heuristic(next), nextId);
+    };
+    for (const exit of this.sysGoWays.of(traveller.sysGo)) fromHere(exit, false);
+    if (useLandings) for (const exit of this.index.itemLandings()) fromHere(exit, true);
 
     while (open.size > 0) {
       this.spend();
@@ -4057,6 +4080,17 @@ export class Router {
       const rooms = landing === undefined ? [] : (draws.get(landing.spell)?.rooms ?? []);
       return rooms.map((to) => ({ exit, to }));
     });
+  }
+
+  /** Whether the realm joins the two rooms, from where the character stands or a `sys go` town. */
+  private joined(from: RoomId, to: RoomId, traveller: Traveller): boolean {
+    const joins = this.joins();
+    return (
+      joins.joined(from, to) ||
+      this.sysGoWays
+        .of(traveller.sysGo)
+        .some((exit) => joins.joined(roomId(exit.map, exit.room), to))
+    );
   }
 
   /** The rooms an item used anywhere puts the character in. */

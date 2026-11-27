@@ -565,7 +565,8 @@ export const DECISION_SETTINGS = {
     'automation.movement.fightCost',
     'automation.movement.dangerCost',
     'automation.movement.anotherWayPenalty',
-    'automation.movement.anotherWayLonger'
+    'automation.movement.anotherWayLonger',
+    'automation.movement.sysGo'
   ],
   // Party and remotes
   'remote-gate': ['automation.remotes.enabled'],

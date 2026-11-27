@@ -60,6 +60,12 @@ export interface MovementChoices {
    * ship's passage or a toll above it asks first (todo 20261024-0804-01).
    */
   fareShare: number;
+  /**
+   * A walk takes the realm's `sys go` to a town where that is shorter
+   * (`shared/sysGo.ts`): on stock MajorMUD, Silvermere to the Barren Hills is
+   * `sys go lost` first. Off.
+   */
+  sysGo: boolean;
 }
 
 /** What the router prices a way by, handed in per request (`Traveller.prices`). */
@@ -87,7 +93,8 @@ export const DEFAULT_MOVEMENT_CHOICES: MovementChoices = {
   buyKeys: true,
   buyKeysMaxGold: 500,
   chanceTries: 3,
-  fareShare: 10
+  fareShare: 10,
+  sysGo: false
 };
 
 /** The whole-number choices' bounds, one statement for the file and the settings screen. */
@@ -132,7 +139,8 @@ export function movementChoices(raw: Record<string, unknown>): MovementChoices {
     buyKeys: bool(raw['buyKeys'], d.buyKeys),
     buyKeysMaxGold: whole('buyKeysMaxGold'),
     chanceTries: whole('chanceTries'),
-    fareShare: whole('fareShare')
+    fareShare: whole('fareShare'),
+    sysGo: bool(raw['sysGo'], d.sysGo)
   };
 }
 

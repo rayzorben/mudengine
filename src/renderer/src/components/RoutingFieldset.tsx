@@ -3,7 +3,8 @@
  * character form and the options page beside Avoiding: a fight and a lair in
  * steps, how Another way is looked for, and how long a trip goes round a room
  * this character ran from, whether a walk buys a key on the way (todo 02), how
- * long a chance way is tried and the most a fare may be (todo 20261024-0804-01).
+ * long a chance way is tried and the most a fare may be (todo 20261024-0804-01),
+ * and whether a walk takes the realm's `sys go` to a town.
  * The router reads them per request, so each character's own figures price
  * its own routes.
  */
@@ -126,6 +127,14 @@ export default function RoutingFieldset({
           />
         )}
       </div>
+      <CheckField
+        checked={choices.sysGo}
+        hint={t('settings.movement.sysGoHint')}
+        label={t('settings.movement.sysGo')}
+        name={`${namePrefix}sys-go`}
+        setting="automation.movement.sysGo"
+        onChange={(checked) => onChoice({ sysGo: checked })}
+      />
     </fieldset>
   );
 }

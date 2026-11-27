@@ -1119,6 +1119,13 @@ automation:
     # send asks first; a loop or an errand stops and says so.
     fareShare: 10
 
+    # Take `sys go` to a town where it is shorter than walking. Stock MajorMUD
+    # has four: `sys go sil` (Silvermere), `sys go khaz` (Khazarad), `sys go
+    # lost` (the Lost City) and `sys go rhud` (Rhudaur). From Silvermere to the
+    # Barren Hills a walk says `sys go lost` first. On a realm without them
+    # this does nothing.
+    sysGo: false
+
     # The key to the door in front of you.
     #
     # A keyed exit with no key and nothing a picklock can do about it is a wall

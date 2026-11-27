@@ -504,6 +504,9 @@ notices:
     chanceWays:
       many: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {count} files: {fileList}'
       one: 'Tries Before Another Way ({tries}) and Highest Fare ({share}%) were added to {fileList}'
+    sysGo:
+      many: 'Use Sys Go to Reach a Town was added, off, to {count} files: {fileList}'
+      one: 'Use Sys Go to Reach a Town was added, off, to {fileList}'
     restSpell:
       many: 'Cast Before Resting was added, empty, to {count} files: {fileList}'
       one: 'Cast Before Resting was added, empty, to {fileList}'
@@ -5732,6 +5735,10 @@ settings:
     fareShare: Highest Fare, Percent of Cash
     fareShareHint: A ship's passage or a toll is paid only when it is at most this share of the cash
       you carry and have in banks. Above it, a walk you send asks first; a loop or an errand stops.
+    sysGo: Use Sys Go to Reach a Town
+    sysGoHint: A walk starts with sys go where that is shorter than walking. On stock MajorMUD that
+      is sys go sil, khaz, lost and rhud, so from Silvermere to the Barren Hills it says sys go lost
+      first. Other realms have none, and this does nothing there. Off by default.
     doorsLegend: Doors
     stealthLegend: Sneaking and Running
     lightLegend: Light
