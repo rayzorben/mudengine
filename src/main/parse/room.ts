@@ -391,6 +391,22 @@ function stoodUp(s: CharacterState): Afflictions {
 }
 
 /**
+ * The rooms a block was considered against, and which one it took. Bounded
+ * by `maxRoomCandidates`; past that, `Room.ambiguous` holds the count.
+ */
+function listCandidates(
+  rooms: readonly WorldRoom[],
+  chosen: WorldRoom | null = null
+): Room['candidates'] {
+  return rooms.slice(0, tuning().parse.maxRoomCandidates).map((candidate) => ({
+    map: candidate.map,
+    room: candidate.room,
+    name: candidate.name,
+    chosen: candidate.map === chosen?.map && candidate.room === chosen?.room
+  }));
+}
+
+/**
  * The room being assembled, and the lookups that turn the wire's words into
  * the realm's rows. One call per room case in `CharacterTracker.reduce`, and
  * two readings of the occupants other cases need: `withOccupant` (the fight's)
@@ -519,7 +535,13 @@ export class RoomTracker {
         const to = promised ?? (exit ? { map: exit.map, number: exit.room } : null);
         const destination = to ? this.world.byId(roomId(to.map, to.number)) : null;
         const destinationName = destination?.name.trim().toLowerCase();
-        if (destinationName !== undefined && destinationName !== hereName) {
+        // A draw's landing is any of its rooms: a reprint only where none has this name.
+        const drawn = portal ? expectation.landing : undefined;
+        if (drawn !== undefined) {
+          const named = (id: RoomId): boolean =>
+            this.world?.byId(id)?.name.trim().toLowerCase() === hereName;
+          if (!drawn.some(named)) expectation = null;
+        } else if (destinationName !== undefined && destinationName !== hereName) {
           expectation = null;
         } else if (
           here !== undefined &&
@@ -885,16 +907,7 @@ export class RoomTracker {
       });
       this.chain.keep(room, printed, located);
 
-      // What it considered, and which one it took. Bounded: a name shared
-      // by thirty rooms is interesting as a count, not as a list.
-      room.candidates = located.candidates
-        .slice(0, tuning().parse.maxRoomCandidates)
-        .map((candidate) => ({
-          map: candidate.map,
-          room: candidate.room,
-          name: candidate.name,
-          chosen: candidate.map === located.room?.map && candidate.room === located.room?.room
-        }));
+      room.candidates = listCandidates(located.candidates, located.room);
 
       if (located.room) {
         room.map = located.room.map;
@@ -1075,6 +1088,7 @@ export class RoomTracker {
     const afflictions = stoodUp(s);
 
     const room: Room = emptyRoom();
+    room.arrival = s.room.arrival + 1;
     if (arrived) {
       room.map = arrived.map;
       room.number = arrived.room;
@@ -1101,14 +1115,14 @@ export class RoomTracker {
       // The realm data named a destination and called it lit. Keep it as the
       // candidate that was ruled out rather than dropping the working.
       room.ambiguous = located.candidates.length;
-      room.candidates = located.candidates
-        .slice(0, tuning().parse.maxRoomCandidates)
-        .map((candidate) => ({
-          map: candidate.map,
-          room: candidate.room,
-          name: candidate.name,
-          chosen: false
-        }));
+      room.candidates = listCandidates(located.candidates);
+    } else if (drawn !== undefined && drawn.length > 1) {
+      // A draw into the dark: still one of the draw's rooms, and the block
+      // after the light or the next step is looked for among them.
+      const rooms = drawn.flatMap((id) => this.world?.byId(id) ?? []);
+      room.ambiguous = rooms.length;
+      room.candidates = listCandidates(rooms);
+      this.chain.keepUnseen(room.arrival, drawn);
     }
 
     /*

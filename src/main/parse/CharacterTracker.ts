@@ -346,10 +346,10 @@ export class CharacterTracker {
 
   /**
    * The walker's word that a command walks an exit whose cast moves the
-   * character — and so answers with two room blocks. See
-   * `Expectations.hintCast`.
+   * character, and so answers with two room blocks, or, with no direction, a
+   * room command that draws. See `Expectations.hintCast`.
    */
-  hintCast(command: string, direction: Direction, rooms: readonly RoomId[]): void {
+  hintCast(command: string, direction: Direction | null, rooms: readonly RoomId[]): void {
     this.expect.hintCast(command, direction, rooms);
   }
 

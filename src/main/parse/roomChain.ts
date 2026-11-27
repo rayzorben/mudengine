@@ -14,9 +14,12 @@ import { fitsExits, type ChainInput, type Resolution } from '../world/resolve';
 interface Kept {
   rooms: readonly RoomId[];
   drawn: readonly RoomId[];
-  /** The block the set was read from, and the arrival it was (`Room.arrival`). */
-  name: string;
-  exits: string;
+  /**
+   * The block the set was read from, and the arrival it was (`Room.arrival`).
+   * A null name is a dark or blind arrival, which printed neither.
+   */
+  name: string | null;
+  exits: string | null;
   arrival: number;
 }
 
@@ -41,20 +44,28 @@ export class RoomChain {
       kept === null ||
       was.map !== null ||
       was.number !== null ||
-      was.name === null ||
-      roomNameKey(was.name) !== kept.name ||
+      (was.name === null ? null : roomNameKey(was.name)) !== kept.name ||
       was.arrival !== kept.arrival
     ) {
       return undefined;
     }
     // A cast exit's second block can print what its first did, so a step that
-    // may have walked one is never read as a reprint.
+    // may have walked one is never read as a reprint. An unseen room printed
+    // nothing to compare, so any block no move caused is that room lit.
     const stayed =
       unmoved &&
       kept.drawn.length === 0 &&
-      roomNameKey(name) === kept.name &&
-      listed(exits) === kept.exits;
+      (kept.name === null || (roomNameKey(name) === kept.name && listed(exits) === kept.exits));
     return { rooms: kept.rooms, drawn: kept.drawn, stayed };
+  }
+
+  /**
+   * A draw into a room nobody could see: the draw's rooms are the set, so the
+   * block after the light, or after the next step, is looked for among them
+   * (Soul, 2026-11-27: `go portal` from 9/1291 into the dark Caves of Chaos).
+   */
+  keepUnseen(arrival: number, drawn: readonly RoomId[]): void {
+    this.kept = { rooms: drawn, drawn: [], name: null, exits: null, arrival };
   }
 
   /**

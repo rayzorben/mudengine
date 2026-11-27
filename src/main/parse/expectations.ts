@@ -84,6 +84,11 @@ export type Expectation = (
        * or written off.
        */
       landing?: readonly RoomId[];
+      /**
+       * A room command's landing, with no exit-table block before it: the
+       * portal's guards hold for it (`isPortalClaim`, todo 808).
+       */
+      portal?: true;
     }
   | { kind: 'peek' }
   | { kind: 'reread' }
@@ -115,12 +120,17 @@ export type Expectation = (
 type Claim = Expectation & { at: number; probedAt?: number };
 
 /**
- * A scripted teleport the walker hinted (`hintTeleport`): a move no exit
- * names and no cast-exit landing rides on. One reading for the queue's
- * `portalOwed` and the room reader's guard (todo 808).
+ * A scripted teleport the walker hinted (`hintTeleport`), or a room command
+ * that draws (`hintCast` with no direction): a move no exit names and no
+ * cast exit's second block. One reading for the queue's `portalOwed` and the
+ * room reader's guard (todo 808).
  */
 export function isPortalClaim(claim: Expectation | null | undefined): boolean {
-  return claim?.kind === 'move' && claim.direction === null && claim.landing === undefined;
+  return (
+    claim?.kind === 'move' &&
+    claim.direction === null &&
+    (claim.landing === undefined || claim.portal === true)
+  );
 }
 
 /** The head claim named for a probe, and the clock it was named on. */
@@ -313,10 +323,10 @@ export class Expectations {
   private answering: string | null = null;
   /** The walker's word that a command is a scripted teleport. See `hintTeleport`. */
   private hintedTeleport: { command: string; map: number; number: number } | null = null;
-  /** The walker's word that a command walks an exit whose cast moves you. */
+  /** The walker's word that a command walks an exit whose cast moves you, or a room command that draws. */
   private hintedCast: {
     command: string;
-    direction: Direction;
+    direction: Direction | null;
     rooms: readonly RoomId[];
     at: number;
   } | null = null;
@@ -440,8 +450,12 @@ export class Expectations {
    * the *table's* room inside the draw's rooms, which is why the client said
    * the name and exits could not tell them apart: it was asking the wrong
    * question about the wrong room.
+   *
+   * A null direction is a room command whose run draws (`go portal` from
+   * 9/1291 without PhoenixQuest 5 lands in one of 9/1292–1327): no exit is
+   * walked, so the landing is the one block and the one claim.
    */
-  hintCast(command: string, direction: Direction, rooms: readonly RoomId[]): void {
+  hintCast(command: string, direction: Direction | null, rooms: readonly RoomId[]): void {
     this.hintedCast = { command: command.trim().toLowerCase(), direction, rooms, at: Date.now() };
   }
 
@@ -544,8 +558,16 @@ export class Expectations {
       this.unmodelled = null;
       // The step the exit table describes, then the room the spell moves them
       // to. Two blocks are coming and both are this command's answer.
-      this.push({ kind: 'move', direction: cast.direction, command: cast.command });
-      this.push({ kind: 'move', direction: null, command: cast.command, landing: cast.rooms });
+      if (cast.direction !== null) {
+        this.push({ kind: 'move', direction: cast.direction, command: cast.command });
+      }
+      this.push({
+        kind: 'move',
+        direction: null,
+        command: cast.command,
+        landing: cast.rooms,
+        ...(cast.direction === null ? { portal: true as const } : {})
+      });
       return true;
     }
 

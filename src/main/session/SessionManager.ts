@@ -88,13 +88,7 @@ import { TimedPassage } from './TimedPassage';
 import { Events } from '../automation/Events';
 import type { SessionModule } from '../automation/Module';
 import type { Loop } from '../../shared/loops';
-import {
-  roomAddress,
-  landingRooms,
-  type RoomId,
-  type Route,
-  type WorldSpell
-} from '../../shared/world';
+import { roomAddress, type RoomId, type Route, type WorldSpell } from '../../shared/world';
 import { CharacterTracker } from '../parse/CharacterTracker';
 import { withPeerSheets } from '../parse/presence';
 import type { SharedSheet } from '../../shared/peers';
@@ -200,6 +194,7 @@ import { tuning } from '../app/tuning';
 import { NOT_KEPT } from '../../shared/hunting';
 import type { SessionSink } from './SessionSink';
 import { ResetWatch } from './ResetWatch';
+import { hintStep } from './stepHint';
 
 /**
  * Silence after which a partial line is released as one.
@@ -798,22 +793,7 @@ export class SessionManager {
       },
       stepping: (command, direction, to, landing) => {
         this.remotes.stepping(command, direction, to, this.tracker.current, landing);
-        if (landing !== undefined && direction !== 'portal') {
-          // An exit whose cast moves the character answers with two room blocks, the exit
-          // table's and the spell's: both are this command's (`Expectations.hintCast`).
-          this.tracker.hintCast(command, direction, landingRooms(landing));
-          return;
-        }
-        if (direction === 'portal') {
-          // A scripted teleport lands by the script's coordinates, never by an exit;
-          // `to` is `map/room` by construction, parsed rather than trusted.
-          const target = /^(\d{1,3})\/(\d{1,6})$/.exec(to);
-          if (target) {
-            this.tracker.hintTeleport(command, Number(target[1]), Number(target[2]));
-          }
-          return;
-        }
-        this.tracker.hintMove(command, direction);
+        hintStep(this.tracker, command, direction, to, landing);
       },
       ...this.errands.walkFacts(),
       // Every walk supersedes a journey owed from a lost connection; only an asked one is recent.
