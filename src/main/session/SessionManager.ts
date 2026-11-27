@@ -67,7 +67,7 @@ import {
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
 import type { OutgrownGear } from '../automation/OutgrownGear';
-import { hostTrips, type HostTrips } from './hostTrips';
+import { hostTrips, tripPushes, type HostTrips } from './hostTrips';
 import { gearDesk, type GearDesk } from './gearDesk';
 import { handReach } from './weaponReach';
 import { placeDesk, type PlaceDesk } from './placeDesk';
@@ -1097,7 +1097,7 @@ export class SessionManager {
     };
     this.gearLocks = new GearLockWatch(automation.movement, releaseLocks, reports);
     const held = () => this.errandHeld();
-    const tripReports = { ...reports, gearTrip: sink.gearTrip?.bind(sink) };
+    const tripReports = { ...reports, ...tripPushes(sink) };
     this.hostTrips = hostTrips(automation, this.queue, tripReports, { ...trip, busy: held });
     this.areaSearch = areaSearchTrip(automation, this.queue, reports, { ...trip, busy: held });
     this.trainLevel = trainTrip(automation, this.queue, reports, trip);

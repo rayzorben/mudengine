@@ -79,7 +79,7 @@ function Stop({ stop, inspect, goToRoom }: { stop: GearStop } & Openers) {
   }
 }
 
-function Leg({ leg, inspect }: { leg: GearLeg; inspect: Inspect | undefined }) {
+export function Leg({ leg, inspect }: { leg: GearLeg; inspect: Inspect | undefined }) {
   return (
     <div className="gear-leg">
       <span className="chip quiet cased">
@@ -127,7 +127,7 @@ function Leg({ leg, inspect }: { leg: GearLeg; inspect: Inspect | undefined }) {
 }
 
 /** One figure at the head of the trip: a small label over a large value. */
-function Figure({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
+export function Figure({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
   return (
     <div className="gear-figure" data-tone={tone}>
       <span className="gear-figure-label">{label}</span>

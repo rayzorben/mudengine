@@ -5,6 +5,7 @@
  * optional members are diagnostics by design. See `mudengine-session`.
  */
 import type { GearTripProgress } from '../../shared/gearTrip';
+import type { SellRunProgress } from '../../shared/sellRun';
 import type { Intent, QueueRefusal } from '../automation/CommandQueue';
 import type { StandDown } from '../automation/LoginAutomator';
 import type { AliasFile } from './aliasAnswers';
@@ -132,6 +133,8 @@ export interface SessionSink {
   questRun?(progress: QuestRunProgress): void;
   /** How the gear trip is going, on every change. See `GearTrip`. */
   gearTrip?(progress: GearTripProgress | null): void;
+  /** How the sell run is going, on every change. See `SellRun`. */
+  sellRun?(progress: SellRunProgress | null): void;
   /**
    * A command the client committed to the wire, reassembled from keystrokes.
    * One place does this, so a capture and the tracker cannot disagree.

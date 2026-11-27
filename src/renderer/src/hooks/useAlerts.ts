@@ -15,7 +15,6 @@ import type { Block } from '@shared/blocks';
 import type { CharacterState } from '@shared/character';
 import type { AlertsUiConfig, VitalsUiConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
-import type { GearTripProgress } from '@shared/gearTrip';
 import { mentionNotice } from '@shared/mentions';
 import {
   alertQuiet,
@@ -32,7 +31,7 @@ import {
   type AlertQuiet,
   type Notice
 } from '@shared/notifications';
-import { gearTripNotices, questRunNotices } from '@shared/planNotices';
+import { questRunNotices, tripNotices, type TripEnd } from '@shared/planNotices';
 import { levelReadyNotices, telepathNotice } from '@shared/characterNotices';
 import type { QuestRunProgress } from '@shared/quests';
 import type { ConnectionState } from '@shared/types';
@@ -52,8 +51,8 @@ export interface AlertRaiser {
   walk(id: SessionId, was: WalkProgress, now: WalkProgress): Notice[];
   /** A quest run, finishing. */
   questRun(id: SessionId, was: QuestRunProgress, now: QuestRunProgress): Notice[];
-  /** A gear trip, finishing. */
-  gearTrip(id: SessionId, was: GearTripProgress | null, now: GearTripProgress | null): Notice[];
+  /** A gear trip or a sell run, finishing. */
+  trip(id: SessionId, was: TripEnd | null, now: TripEnd | null): Notice[];
   /** A block, read against the character it happened to. */
   block(id: SessionId, block: Block, character: CharacterState): Notice[];
 }
@@ -157,7 +156,7 @@ export function useAlerts(vitals: VitalsUiConfig, alerts: AlertsUiConfig): Alert
       // route the player asked for; a plan they started arrives at its end.
       walk: (id, was, now) => worth(id, walkNotices(was, now, Date.now(), t)),
       questRun: (id, was, now) => worth(id, questRunNotices(was, now, Date.now())),
-      gearTrip: (id, was, now) => worth(id, gearTripNotices(was, now, Date.now())),
+      trip: (id, was, now) => worth(id, tripNotices(was, now, Date.now())),
       // Telepaths and `@name` mentions (todo 29) each only while a row asks.
       block: (id, block, character) =>
         worth(id, [

@@ -1,19 +1,20 @@
 import { memo, useMemo, useState } from 'react';
 
-import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
+import BentoCard, { type CardAction, type CardChrome, type CardTab } from './BentoCard';
 import Icon from './Icon';
-import ItemThumb from './ItemThumb';
 import PackLoad from './PackLoad';
 import PurseMix from './PurseMix';
 import { findAction } from './findAction';
 import CardTable, { type Column } from './CardTable';
 import type { Facet } from './ListTools';
-import EntityNumber, { entityNumberText } from './EntityNumber';
 import EntityName, { RoomName } from './EntityName';
 import Sentence, { NameList } from './Sentence';
+import SellFace from './SellFace';
+import { itemColumn, numberColumn, weightColumn } from './packColumns';
 import { keepFocus } from '../lib/focus';
-import { entityNumber } from '@shared/entities';
+import { sellRows, type SellDesk } from '../lib/sellWords';
 import { equipVerdict, type GearAction, type Wearer } from '@shared/gear';
+import type { SellRunProgress } from '@shared/sellRun';
 import { useFitTier } from '../hooks/useFitTier';
 import { useItemArt } from '../hooks/useItemArt';
 import { useWearer } from '../hooks/useWearer';
@@ -123,6 +124,10 @@ export interface InventoryCardProps extends CardChrome {
   gear?(action: GearAction, item?: string): void;
   /** Opens the route panel at a stash's room. Null on a pinned float, which cannot. */
   goToRoom?: ((room: string) => void) | null;
+  /** The Sell face's asks of main, addressed at this character; absent out of the realm. */
+  sell?: SellDesk;
+  /** The sell run under way, or the last one as it ended. */
+  sale?: SellRunProgress | null;
 }
 
 /**
@@ -145,6 +150,8 @@ function InventoryCard({
   gear,
   goToRoom,
   session,
+  sell,
+  sale,
   ...chrome
 }: InventoryCardProps) {
   const { items } = character.inventory;
@@ -181,6 +188,49 @@ function InventoryCard({
     });
   }
 
+  const tabs: CardTab[] = [
+    {
+      id: 'pack',
+      label: t('cards.inventory.title'),
+      paned: true,
+      actions,
+      content: (
+        <InventoryBody
+          character={character}
+          finding={finding}
+          gear={gear}
+          goToRoom={goToRoom}
+          inspect={inspect}
+          loadWearer={loadWearer}
+          onFindDismiss={() => setFinding(false)}
+          returnFocus={chrome.returnFocus}
+          session={session}
+        />
+      )
+    },
+    // Offered where a walk can start, and only with something to list or a run to show.
+    ...(sell === undefined || !(sellRows(character, []).length > 0 || sale != null)
+      ? []
+      : [
+          {
+            id: 'sell',
+            label: t('cards.sell.face'),
+            paned: true,
+            content: (
+              <SellFace
+                character={character}
+                desk={sell}
+                goToRoom={goToRoom ?? null}
+                inspect={inspect}
+                returnFocus={chrome.returnFocus}
+                run={sale ?? null}
+                session={session}
+              />
+            )
+          }
+        ])
+  ];
+
   return (
     <BentoCard
       badge={
@@ -190,25 +240,12 @@ function InventoryCard({
           </span>
         ) : undefined
       }
-      actions={actions}
       className="inventory-card"
       {...chrome}
       copyText={() => packCopyText(character)}
-      paned
+      tabs={tabs}
       title={t('cards.inventory.title')}
-    >
-      <InventoryBody
-        character={character}
-        finding={finding}
-        gear={gear}
-        goToRoom={goToRoom}
-        inspect={inspect}
-        loadWearer={loadWearer}
-        onFindDismiss={() => setFinding(false)}
-        returnFocus={chrome.returnFocus}
-        session={session}
-      />
-    </BentoCard>
+    />
   );
 }
 
@@ -323,6 +360,7 @@ export function InventoryBody({
    * make. The column sorts those to the bottom whichever way it points, so
    * "what is heaviest" is one click and not a screen of blanks.
    */
+  const itself = (item: CarriedItem): CarriedItem => item;
   const columns: Column<CarriedItem>[] = [
     /*
      * Put this one on, or take it off again, from its own row.
@@ -397,56 +435,10 @@ export function InventoryBody({
         }
       }
     },
-    {
-      id: 'item',
-      label: t('cards.room.shop.columnItem'),
-      wide: true,
-      value: (item) => item.name,
-      cell: (item) => (
-        <>
-          {/* Large, each row carries the thing's picture. */}
-          <ItemThumb art={art} className="from-large" realm={realm} thing={item} />
-          <EntityName className="what" inspect={inspect} name={item.name} />
-        </>
-      )
-    },
-    {
-      /*
-       * The realm's own `Items` row — the number MegaMUD printed and the
-       * number the realm editor is indexed by, which the client has held
-       * since the data was indexed and drew nowhere.
-       *
-       * A column rather than a figure beside the name, because in a table it
-       * earns the two things a column is: it is **findable**, so typing
-       * `1234` narrows a hundred-item pack to the thing, and sortable, which
-       * groups a realm's content by when it was authored. Numeric, so it
-       * sorts as a magnitude and sits under a right-aligned heading like the
-       * weight beside it.
-       *
-       * `value` is the plain text and `cell` the drawn figure, which is the
-       * split every column here makes — and it is what puts the *rows* answer
-       * (`iron key` is three) into the find text as well as on screen.
-       */
-      id: 'number',
-      label: t('entity.numberColumn'),
-      // Small, the pack is the weight bar and what is in it (`lib/cardSize.ts`).
-      from: 'medium',
-      name: t('entity.numberColumnLabel'),
-      numeric: true,
-      value: (item) => entityNumber(item) ?? entityNumberText(item),
-      cell: (item) => <EntityNumber of={item} />
-    },
-    {
-      id: 'weight',
-      label: t('cards.inventory.columns.weight'),
-      from: 'medium',
-      numeric: true,
-      value: (item) => item.encumbrance ?? null,
-      // The figure and nothing around it: the cell is already the `weight`
-      // column, and a span inside it carrying the same name would be a second
-      // thing to select by that can disagree with the first.
-      cell: (item) => item.encumbrance ?? null
-    },
+    // The thing, its row number and its weight, as the Sell face draws them too.
+    itemColumn(itself, { art, realm, inspect }),
+    numberColumn(itself),
+    weightColumn(itself),
     {
       /*
        * Worn and wielded things read differently from things in the pack,

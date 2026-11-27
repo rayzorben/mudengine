@@ -223,7 +223,7 @@ function vaultThings(
  * keys fetched first (`Route.unlocks`): that way's fights and keys are what
  * is shown, and the leg says it is not walked as it stands.
  */
-function legOf(route: Route | string): GearLeg {
+export function legOf(route: Route | string): GearLeg {
   if (typeof route === 'string') {
     return { steps: null, fights: [], hazards: [], walls: [], needs: [], blocked: route };
   }

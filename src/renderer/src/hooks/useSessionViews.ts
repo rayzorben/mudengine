@@ -8,6 +8,7 @@
  * window redraws what changed*.
  */
 import type { GearTripProgress } from '@shared/gearTrip';
+import type { SellRunProgress } from '@shared/sellRun';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { keepRoster } from '../lib/roster';
@@ -141,6 +142,8 @@ export interface SessionView extends TalkBacklog {
   questRun: QuestRunProgress;
   /** The gear trip under way, or the last one as it ended; null before any. */
   gearTrip: GearTripProgress | null;
+  /** The sell run under way, or the last one as it ended; null before any. */
+  sellRun: SellRunProgress | null;
 }
 
 export const EMPTY_VIEW: SessionView = {
@@ -163,7 +166,8 @@ export const EMPTY_VIEW: SessionView = {
   shops: [],
   questSaid: {},
   questRun: IDLE_QUEST_RUN,
-  gearTrip: null
+  gearTrip: null,
+  sellRun: null
 };
 
 /** Keeps a log bounded without reallocating it on every append. */
@@ -207,6 +211,7 @@ export type ViewFeeds = Pick<
   | 'onQuestSaid'
   | 'onQuestRun'
   | 'onGearTrip'
+  | 'onSellRun'
   | 'onAutomation'
   | 'onVerdict'
   | 'onAsks'
@@ -340,7 +345,8 @@ export function useSessionViews(
         shops: snapshot.shops,
         questSaid: snapshot.questSaid,
         questRun: snapshot.questRun,
-        gearTrip: snapshot.gearTrip
+        gearTrip: snapshot.gearTrip,
+        sellRun: snapshot.sellRun
       }));
     },
     [patchView]
@@ -445,8 +451,14 @@ export function useSessionViews(
       ),
       feeds.onGearTrip(({ session: id, payload }) =>
         patchView(id, (v) => {
-          const raised = alerts.gearTrip(id, v.gearTrip, payload);
+          const raised = alerts.trip(id, v.gearTrip, payload);
           return { ...v, gearTrip: payload, ...heard(v, raised, shownRef.current.has(id)) };
+        })
+      ),
+      feeds.onSellRun(({ session: id, payload }) =>
+        patchView(id, (v) => {
+          const raised = alerts.trip(id, v.sellRun, payload);
+          return { ...v, sellRun: payload, ...heard(v, raised, shownRef.current.has(id)) };
         })
       ),
       feeds.onAutomation(({ session: id, payload }) =>

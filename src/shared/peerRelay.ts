@@ -168,6 +168,10 @@ export const RELAY_INVOKE: { readonly [K in keyof typeof Invoke]: RelayRule } = 
   gearPlan: forward,
   gearTrip: forward,
   gearStop: forward,
+  sellChoices: forward,
+  sellPlan: forward,
+  sellRun: forward,
+  sellStop: forward,
   localMap: forward,
   gameMap: forward,
   roomBrief: forward,
@@ -238,7 +242,8 @@ export const RELAY_PUSH: { readonly [K in keyof typeof Push]: boolean } = {
   lowLives: false,
   questSaid: true,
   questRun: true,
-  gearTrip: true
+  gearTrip: true,
+  sellRun: true
 };
 
 const byWire = <T>(

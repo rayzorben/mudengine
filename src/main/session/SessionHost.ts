@@ -697,6 +697,7 @@ export class SessionHost {
           this.options.toAll(Push.questRun, { session: id, payload: progress }),
         gearTrip: (progress) =>
           this.options.toAll(Push.gearTrip, { session: id, payload: progress }),
+        sellRun: (progress) => this.options.toAll(Push.sellRun, { session: id, payload: progress }),
         queueRefused: (intent, refusal) =>
           // A login answer is refused like any command, and its text is the password.
           debug.refusal(

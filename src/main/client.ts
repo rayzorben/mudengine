@@ -181,6 +181,7 @@ import { t } from './app/i18n';
 import { listHome } from './app/browse';
 import { handleCharacterTransfer } from './app/transfer';
 import { handleLayoutFiles } from './app/layoutFiles';
+import { handleSelling } from './app/sellHandlers';
 import { claimHome, type HomeLock } from './app/homeLock';
 import type { Caller, Host } from './host/Host';
 import {
@@ -3693,6 +3694,10 @@ function registerIpc(): void {
     }
   });
   handleLayoutFiles({ host: platform });
+  handleSelling({
+    transport: platform.transport,
+    sale: (id) => host?.get(id)?.manager?.hostTrips.sale
+  });
   handlePortraitFiles({
     host: platform,
     picture: (id) => art?.portraits.picture(id) ?? null,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { GearTripProgress } from '../gearTrip';
-import { gearTripNotices, questRunNotices } from '../planNotices';
+import { tripNotices, questRunNotices } from '../planNotices';
 import { IDLE_QUEST_RUN, type QuestRunProgress } from '../quests';
 
 const running: QuestRunProgress = { ...IDLE_QUEST_RUN, status: 'running', name: 'Dao Lord' };
@@ -37,15 +37,15 @@ describe('a plan the player started, finishing', () => {
 
   it('raises an arrival when a gear trip serves every stop, once', () => {
     const ended = trip({ stage: 'ended', ended: 'Bought 2 of 2', done: true });
-    const raised = gearTripNotices(trip({}), ended, 8);
+    const raised = tripNotices(trip({}), ended, 8);
     expect(raised).toHaveLength(1);
     expect(raised[0]!.event).toBe('arrived');
     expect(raised[0]!.text).toBe('Bought 2 of 2');
-    expect(gearTripNotices(ended, ended, 9)).toHaveLength(0);
+    expect(tripNotices(ended, ended, 9)).toHaveLength(0);
   });
 
   it('says nothing for a gear trip stopped on the way', () => {
     const stopped = trip({ stage: 'ended', ended: 'Stopped' });
-    expect(gearTripNotices(trip({}), stopped, 10)).toHaveLength(0);
+    expect(tripNotices(trip({}), stopped, 10)).toHaveLength(0);
   });
 });

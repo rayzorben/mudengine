@@ -41,7 +41,8 @@ function loaded() {
     foundHere: [],
     questProgress: {},
     questDesk: { progress: IDLE_QUEST_RUN },
-    gearDesk: { progress: null }
+    gearDesk: { progress: null },
+    hostTrips: { sale: { progress: null } }
   };
   const slot: AttachSlot = {
     manager,

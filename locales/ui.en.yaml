@@ -1638,6 +1638,7 @@ palette:
     importLabel: 'Loops: import MegaMUD paths'
     huntLabel: Where should I hunt?
     gearLabel: What gear should I get?
+    sellLabel: 'Sell items: open the Inventory card'
     routeLabel: Route to room
     searchLabel: Search the console
     areaSearchLabel: Search the area…
@@ -3232,6 +3233,50 @@ cards:
     title: Inventory
     wealthLabel: Wealth
     purseMix: Wealth by coin
+  # The Inventory card's Sell face: pick what to sell, plan the shops, walk them.
+  sell:
+    face: Sell
+    loading: Looking up what each item sells for…
+    none: Nothing unworn in your inventory or on the floor here.
+    tableCaption: What this character could sell
+    groupPack: In your inventory
+    groupFloor: On the floor here
+    columnPays: Pays
+    columnShop: Shop
+    shopMoves: '{moves} moves away'
+    pickTitle: 'Sell {item}'
+    pickAll: Pick all
+    pickNone: Pick none
+    pickedNone: Nothing picked.
+    picked:
+      one: '1 item, about {pays}'
+      many: '{count} items, about {pays}'
+    plan: Plan the sale
+    unplanned: The sale could not be planned. The character is not in the realm.
+    go: Sell
+    back: Pick again
+    going: Selling…
+    pickUp: Pick up
+    figurePays: Pays
+    figureTrips: Shop trips
+    blocked: A stop below has no way there as it stands, and the selling ends there.
+    leftItem: '{item} ({why})'
+    nothingPicked: Nothing is picked to sell.
+    nothingSells: Nothing picked can be sold from here.
+    kept:
+      unknownRow: not in the world database
+      severalRows: several items share this name
+      unpriced: worth nothing to a shop
+      noCounter: no shop buys it
+      quest: 'needed for {quest}'
+      questUnnamed: needed for a quest
+      fixed: cannot be picked up
+    left:
+      unreachable: no shop buying it can be reached
+      tooHeavy: too heavy to pick up, even after selling
+      tooManyRounds: left for the next sale
+      notCarried: no longer in your inventory
+      notHere: no longer on the floor here
   link:
     flagBinary: BINARY
     flagEcho: ECHO
@@ -7764,6 +7809,28 @@ automation:
     notWorn: 'Not put on, the command queue would not take: {commands}'
     ended: 'Gear trip stopped: {why}'
     done: 'Gear trip done: bought {bought} of {wanted}.'
+  sellRun:
+    because: selling the items picked on the Inventory card
+    going:
+      one: 'Going to sell {items} items: 1 stop, {moves} steps.'
+      many: 'Going to sell {items} items: {stops} stops, {moves} steps.'
+    refused: 'Not going to sell: {why}'
+    refusalUnreadable: the items picked could not be read
+    refusalDropped: it was stopped before the plan was made
+    reasonTake: 'picking up {item} to sell'
+    reasonSell: 'selling {item} at {shop}'
+    took: 'Picked up {items}.'
+    notTaken: 'Not picked up in {place}: {items}.'
+    sold: 'Sold at {shop}: {items}.'
+    notSold: '{shop} did not buy: {items}.'
+    notCarried: 'No longer in your inventory, so not sold: {items}.'
+    goingBack: 'Going back to pick up {items}.'
+    leftLying: 'Left on the floor: {items}.'
+    planFailed: 'going back for the rest could not be planned: {why}'
+    notReached: 'did not reach {place}: {why}'
+    stoppedByPlayer: you pressed Stop
+    ended: 'Selling stopped: {why}'
+    done: 'Selling done: {sold} sold, {missed} not sold.'
   cashRun:
     because: collecting cash on a loop and taking it to the bank by token
     refused: 'Not starting the cash run: {why}'

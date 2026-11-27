@@ -988,6 +988,19 @@ tuning:
     vaultMs: 8000
     maxLegs: 4
 
+  # Selling what the Inventory card's Sell face picked. A round's counters are
+  # ordered exactly up to `exactStops` and past that nearest first, shortened
+  # by swaps; the order weighs the nearest `counters` of each item; a get or
+  # sell the pack does not confirm in `confirmMs` is refused; a stop is given
+  # up on after `maxLegs` legs; a plan holds at most `maxRounds` rounds, and a
+  # run plans again that many times for what a get left lying.
+  sellRun:
+    exactStops: 10
+    counters: 3
+    confirmMs: 8000
+    maxLegs: 4
+    maxRounds: 20
+
   # Collecting cash on a loop and banking it by token -- `CashRun`. A look or
   # use still queued after `sendMs` is dropped; a look not answered by its uses
   # left in `lookMs` is unread; a use that has not moved the character in

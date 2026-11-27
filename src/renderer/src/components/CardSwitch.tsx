@@ -335,6 +335,8 @@ function cardBody(id: CardId, ctx: CardContext): ReactNode {
           goToRoom={ctx.goToRoom}
           inspect={ctx.inspect}
           loadWearer={ctx.loadWearer}
+          sale={view.sellRun}
+          sell={ctx.inGame ? ctx.sell : undefined}
           session={ctx.session}
         />
       );

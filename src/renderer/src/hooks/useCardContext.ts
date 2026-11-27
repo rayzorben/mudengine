@@ -38,6 +38,7 @@ import { canRestore, type GearAction } from '@shared/gear';
 import { stockCeiling, supplyFor, withSupply } from '@shared/supplies';
 import type { Find } from '@shared/finds';
 import type { GearPick } from '@shared/gearTrip';
+import type { SellDesk } from '../lib/sellWords';
 import type { HuntingRoom } from '@shared/hunting';
 import type { RoomArtApi } from './useRoomArt';
 import type { SharedControlApi } from './useShares';
@@ -152,6 +153,8 @@ export interface CardContext {
   planGear(picks: GearPick[]): ReturnType<IpcApi['gearPlan']>;
   goGear(picks: GearPick[], run: boolean): ReturnType<IpcApi['gearTrip']>;
   stopGear(): void;
+  /** The Inventory card's Sell face: its rows, the plan, the run and its stop, addressed like the Gear card's. */
+  sell: SellDesk;
   /**
    * Walks a loop the Hunting card built, filed nowhere or under this
    * character — the builder's own save, offered for the *shown* character
@@ -266,6 +269,7 @@ export interface AddressedActions {
   planGear(picks: GearPick[]): ReturnType<IpcApi['gearPlan']>;
   goGear(picks: GearPick[], run: boolean): ReturnType<IpcApi['gearTrip']>;
   stopGear(): void;
+  sell: SellDesk;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   walkOnWithoutParty(): void;
@@ -319,6 +323,10 @@ export type CardApi = Pick<
   | 'gearPlan'
   | 'gearTrip'
   | 'gearStop'
+  | 'sellChoices'
+  | 'sellPlan'
+  | 'sellRun'
+  | 'sellStop'
   | 'stopMoving'
   | 'walkOnWithoutParty'
   | 'treatMonster'
@@ -522,6 +530,16 @@ export function useCardContext({
             return refused;
           }),
         stopGear: () => void api.gearStop(sid),
+        sell: {
+          load: () => api.sellChoices(sid),
+          plan: (picks) => api.sellPlan(sid, picks),
+          go: (picks) =>
+            api.sellRun(sid, picks).then((refused) => {
+              sayRefusal(sid)(refused);
+              return refused;
+            }),
+          stop: () => void api.sellStop(sid)
+        },
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         walkOnWithoutParty: () => void api.walkOnWithoutParty(sid),
@@ -703,6 +721,7 @@ export function useCardContext({
         planGear: bound.planGear,
         goGear: bound.goGear,
         stopGear: bound.stopGear,
+        sell: bound.sell,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
         realmAt,

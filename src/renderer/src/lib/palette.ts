@@ -550,6 +550,15 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       keywords: ['gear', 'kit', 'armour', 'armor', 'weapon', 'buy', 'shop', 'slot', 'upgrade'],
       run: () => cards.show('gear')
     },
+    // The Inventory card, whose Sell face picks what to sell and walks the shops.
+    {
+      id: 'sell:items',
+      icon: 'coins' as const,
+      label: t('palette.navigate.sellLabel'),
+      group: 'navigate' as const,
+      keywords: ['sell', 'sale', 'shop', 'loot', 'inventory', 'floor', 'cash'],
+      run: () => cards.show('inventory')
+    },
     /*
      * Walking every room near the character and searching each (`AreaSearch`).
      * Not `search`'s keywords: that word is the backscroll's find.

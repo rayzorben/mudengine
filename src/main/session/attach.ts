@@ -42,6 +42,7 @@ export interface AttachView {
   readonly questProgress: AttachSnapshot['questSaid'];
   readonly questDesk: { readonly progress: AttachSnapshot['questRun'] };
   readonly gearDesk: { readonly progress: AttachSnapshot['gearTrip'] };
+  readonly hostTrips: { readonly sale: { readonly progress: AttachSnapshot['sellRun'] } };
 }
 
 /** A loaded character as attach sees it. `SessionSlot` is one. */
@@ -100,6 +101,7 @@ export async function attachSnapshot(
     questSaid: { ...(manager?.questProgress ?? {}) },
     questRun: manager?.questDesk.progress ?? IDLE_QUEST_RUN,
     gearTrip: manager?.gearDesk.progress ?? null,
+    sellRun: manager?.hostTrips.sale.progress ?? null,
     talk: slot ? sources.talk(session) : NO_TALK_PAGE
   };
 }

@@ -59,6 +59,7 @@ const QUIET: ReadonlySet<string> = new Set([
   Invoke.previewAreaSearch,
   Invoke.previewMobFind,
   Invoke.cashRunTokens,
+  Invoke.sellChoices,
   Invoke.inheritedMobRules,
   Invoke.readCardLayout,
   Invoke.settingsSnapshot,

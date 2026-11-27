@@ -37,6 +37,7 @@ import type { GearAction, Wearer } from './gear';
 import type { SlotGear } from './slotGear';
 import type { ChosenWords } from './attackChoice';
 import type { GearPick, GearTripPlan, GearTripProgress } from './gearTrip';
+import type { SellChoice, SellPick, SellRunPlan, SellRunProgress } from './sellRun';
 import type { BlessItem } from './blessItems';
 import type { GearChoices } from './upgrades';
 import type {
@@ -354,6 +355,8 @@ export interface AttachSnapshot {
   questRun: QuestRunProgress;
   /** The gear trip under way, or the last one as it ended; null before any. See `GearTrip`. */
   gearTrip: GearTripProgress | null;
+  /** The sell run under way, or the last one as it ended; null before any. See `SellRun`. */
+  sellRun: SellRunProgress | null;
   /**
    * The Talk card's history — the conversation log's tail, oldest first, so a
    * restart restores the conversation instead of starting the card empty.
@@ -1162,6 +1165,14 @@ export const Invoke = {
   gearTrip: 'world:gear-trip',
   /** Stop the gear trip. */
   gearStop: 'world:gear-stop',
+  /** The Sell face's rows: what is carried unworn and what lies here, with what each pays and where. */
+  sellChoices: 'world:sell',
+  /** The rounds that sell the picked items, from where the character stands. */
+  sellPlan: 'world:sell-plan',
+  /** Walk that plan, made again from here. The refusal, or null once under way. */
+  sellRun: 'world:sell-run',
+  /** Stop the sell run. */
+  sellStop: 'world:sell-stop',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
   /** A square of one map's whole plane, themed, for the game view (todo 140). */
@@ -1370,7 +1381,9 @@ export const Push = {
    */
   questRun: 'world:quest-run-progress',
   /** How the gear trip is going, on every change. See `GearTripProgress`. */
-  gearTrip: 'world:gear-trip-progress'
+  gearTrip: 'world:gear-trip-progress',
+  /** How the sell run is going, on every change. See `SellRunProgress`. */
+  sellRun: 'world:sell-run-progress'
 } as const;
 
 /**
@@ -1807,6 +1820,17 @@ export interface IpcApi {
   gearTrip(session: SessionId, picks: readonly GearPick[], run: boolean): Promise<string | null>;
   gearStop(session: SessionId): Promise<void>;
   /**
+   * What could be sold: each name carried unworn and each lying in the room,
+   * with what one pays, the nearest counter taking it, or why it cannot go.
+   * Empty with no session, no realm data or no placed room.
+   */
+  sellChoices(session: SessionId): Promise<SellChoice[]>;
+  /** The rounds that sell `picks`, from here: what fits picked up, the counters, back for the rest. */
+  sellPlan(session: SessionId, picks: readonly SellPick[]): Promise<SellRunPlan | null>;
+  /** Walk the plan, made again from here. The refusal, or null once under way. */
+  sellRun(session: SessionId, picks: readonly SellPick[]): Promise<string | null>;
+  sellStop(session: SessionId): Promise<void>;
+  /**
    * The flat map round a room: the cells inside `ask.window` (cells from that
    * room) that `ask.held` does not cover, in the kept placement's own
    * coordinates, with the region's extent (`MapPiece`). An unreadable window
@@ -1999,6 +2023,7 @@ export interface IpcApi {
   onQuestSaid(handler: (message: Addressed<QuestWatched>) => void): () => void;
   onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;
   onGearTrip(handler: (message: Addressed<GearTripProgress | null>) => void): () => void;
+  onSellRun(handler: (message: Addressed<SellRunProgress | null>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
 }
@@ -2042,6 +2067,7 @@ export const PUSH_METHODS = [
   'onQuestSaid',
   'onQuestRun',
   'onGearTrip',
+  'onSellRun',
   'onConfig',
   'onInternal'
 ] as const satisfies ReadonlyArray<keyof IpcApi>;

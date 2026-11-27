@@ -6652,6 +6652,7 @@ button.gear-fold:hover:not(:disabled) {
 
 /* The foot of both faces: what it comes to, and the presses. */
 /* One line at every size: the words ellipsise and the press keeps its label. */
+.sell-bar,
 .gear-bar {
   align-items: center;
   border-top: var(--rule) solid var(--ink-line);
@@ -6698,6 +6699,7 @@ button.gear-fold:hover:not(:disabled) {
   flex: 1 1 auto;
 }
 
+.sell-bar button,
 .gear-bar button {
   align-items: center;
   display: inline-flex;

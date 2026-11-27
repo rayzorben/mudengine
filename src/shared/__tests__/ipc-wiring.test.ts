@@ -25,6 +25,7 @@ const main = [
   'src/main/client.ts',
   'src/main/app/transfer.ts',
   'src/main/app/layoutFiles.ts',
+  'src/main/app/sellHandlers.ts',
   'src/main/art/portraitFiles.ts',
   'src/main/peers/controlChannels.ts',
   'src/main/peers/sharedSettings.ts'

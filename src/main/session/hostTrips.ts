@@ -1,10 +1,11 @@
 /**
  * The trips the client walks on request: a fetch from a room (`StashFetch`)
  * and a sale at a counter (`SellTrip`), which only an extension starts, a
- * gear trip (`GearTrip`), which the player starts from the Gear card, and a
- * cash run (`CashRun`), which the player starts from the palette. The client
- * decides none of them; it walks, searches, takes, buys, sells, banks and says
- * how each ended. One module to the session, so the walk's end, the pack and a
+ * gear trip (`GearTrip`), which the player starts from the Gear card, a sell
+ * run (`SellRun`), started from the Inventory card's Sell face, and a cash run
+ * (`CashRun`), which the player starts from the palette. The client decides
+ * none of them; it walks, searches, takes, buys, sells, banks and says how
+ * each ended. One module to the session, so the walk's end, the pack and a
  * death reach every one.
  */
 import type { CommandQueue } from '../automation/CommandQueue';
@@ -15,6 +16,7 @@ import { CashRun, type CashRunEvents, type CashRunPlanner } from '../automation/
 import type { ChargeLedger } from '../automation/ItemCharges';
 import { GearTrip, type GearTripEvents } from '../automation/GearTrip';
 import { MobFinder, type MobFinderEvents, type MobFinderPlanner } from '../automation/MobFinder';
+import { SellRun, type SellRunEvents } from '../automation/SellRun';
 import { SellTrip, type SellTripEvents } from '../automation/SellTrip';
 import type { StashFetch, StashFetchEvents } from '../automation/StashFetch';
 import type { Block } from '../../shared/blocks';
@@ -41,6 +43,15 @@ import { tuning } from '../app/tuning';
 import type { Walker } from '../automation/Walker';
 import type { Travel } from './Travel';
 import { ERRAND_LEG } from './Travel';
+import { sellRunPlanner, type SellDeskParts } from './sellDesk';
+import type { SessionSink } from './SessionSink';
+
+/** How each card's trip is going, as the session's sink pushes it to the windows. */
+export function tripPushes(
+  sink: Pick<SessionSink, 'gearTrip' | 'sellRun'>
+): Pick<GearTripEvents, 'gearTrip'> & Pick<SellRunEvents, 'sellRun'> {
+  return { gearTrip: sink.gearTrip?.bind(sink), sellRun: sink.sellRun?.bind(sink) };
+}
 
 export class HostTrips implements SessionModule {
   constructor(
@@ -48,7 +59,8 @@ export class HostTrips implements SessionModule {
     readonly sell: SellTrip,
     readonly gear: GearTrip,
     readonly cash: CashRun,
-    readonly find: MobFinder
+    readonly find: MobFinder,
+    readonly sale: SellRun
   ) {}
 
   get busy(): boolean {
@@ -94,7 +106,7 @@ export class HostTrips implements SessionModule {
   }
 
   private endTrips(why: string): void {
-    for (const trip of [this.stash, this.sell, this.gear, this.cash]) trip.abandon(why);
+    for (const trip of [this.stash, this.sell, this.gear, this.cash, this.sale]) trip.abandon(why);
   }
 
   onBlock(block: Block): void {
@@ -111,8 +123,10 @@ export class HostTrips implements SessionModule {
     for (const trip of this.trips) trip.onWalkEnded(arrived, reason, state);
   }
 
-  private get trips(): ReadonlyArray<StashFetch | SellTrip | GearTrip | CashRun | MobFinder> {
-    return [this.stash, this.sell, this.gear, this.cash, this.find];
+  private get trips(): ReadonlyArray<
+    StashFetch | SellTrip | GearTrip | CashRun | MobFinder | SellRun
+  > {
+    return [this.stash, this.sell, this.gear, this.cash, this.find, this.sale];
   }
 }
 
@@ -123,7 +137,7 @@ export interface HostTripParts extends CollectParts {
   /** The settings that keep an item off the cash run's sale. */
   config(): AutomationConfig;
   modules(): CollectModules & {
-    errands: SaleModules['errands'];
+    errands: SaleModules['errands'] & ReturnType<SellDeskParts['modules']>['errands'];
     world:
       | (Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried' | 'spellById'> &
           Pick<WorldGraph, 'mob' | 'lairRoomsOf' | 'sweepTo'> &
@@ -132,7 +146,12 @@ export interface HostTripParts extends CollectParts {
     walker: CollectModules['walker'] & Pick<Walker, 'stop'>;
     travel: Pick<
       Travel,
-      'escaping' | 'combatOffForRun' | 'combatOnAfterRun' | 'switchedOnFor' | 'startMoving'
+      | 'escaping'
+      | 'combatOffForRun'
+      | 'combatOnAfterRun'
+      | 'switchedOnFor'
+      | 'startMoving'
+      | 'walkIsAsked'
     >;
     loot: CollectModules['loot'] &
       Pick<AutoLoot, 'collectCoins' | 'collectCoinsAsConfigured' | 'dropCoins'>;
@@ -146,7 +165,12 @@ export interface HostTripParts extends CollectParts {
 export function hostTrips(
   automation: AutomationConfig,
   queue: CommandQueue,
-  events: StashFetchEvents & SellTripEvents & GearTripEvents & CashRunEvents & MobFinderEvents,
+  events: StashFetchEvents &
+    SellTripEvents &
+    GearTripEvents &
+    CashRunEvents &
+    MobFinderEvents &
+    SellRunEvents,
   parts: HostTripParts
 ): HostTrips {
   const legs = legPlanner(parts.modules);
@@ -202,7 +226,9 @@ export function hostTrips(
   );
   const cash = new CashRun(automation.enabled, queue, cashRunPlanner(parts), parts.charges, events);
   const find = new MobFinder(automation.enabled, mobFinderPlanner(parts), events);
-  return new HostTrips(stashFetchTrip(automation, queue, events, parts), sell, gear, cash, find);
+  const sale = new SellRun(automation.enabled, queue, sellRunPlanner(parts), events);
+  const stash = stashFetchTrip(automation, queue, events, parts);
+  return new HostTrips(stash, sell, gear, cash, find, sale);
 }
 
 /**

@@ -1260,6 +1260,19 @@ const TUNING_DEFAULTS = {
     /** Legs one stop may take (a fight ends a leg) before the trip gives up on it. */
     maxLegs: 4
   },
+  /** Selling what the Inventory card's Sell face picked — `sellRunPlan`, `SellRun`. */
+  sellRun: {
+    /** The most counters a round's order is solved exactly for; more are nearest first, shortened by swaps. */
+    exactStops: 10,
+    /** The nearest counters of each item weighed for the order. */
+    counters: 3,
+    /** A `get` or `sell` the pack does not confirm within this is refused. */
+    confirmMs: 8000,
+    /** Legs one stop may take (a fight ends a leg) before the run gives up on it. */
+    maxLegs: 4,
+    /** Rounds of selling one plan may hold, and times a run plans again for what a `get` left lying. */
+    maxRounds: 20
+  },
   /** Collecting cash on a loop and taking it to the bank by token — `CashRun`. */
   cashRun: {
     /** A look or a use still queued after this is for a moment already gone. */
