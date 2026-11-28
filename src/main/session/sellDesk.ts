@@ -24,6 +24,8 @@ export interface SellDeskParts {
   release(): void;
   /** What an unfinished quest still needs (todo 52). */
   kept: QuestKeep;
+  /** A fight here, which a search in the floor's room waits out. */
+  fighting(): boolean;
 }
 
 export function sellRunPlanner(parts: SellDeskParts): SellRunPlanner {
@@ -42,6 +44,7 @@ export function sellRunPlanner(parts: SellDeskParts): SellRunPlanner {
     busy: parts.busy,
     release: parts.release,
     escaping: () => m().travel.escaping,
+    fighting: parts.fighting,
     choices: () => sellChoices(planning),
     plan: (picks) => planSellRun(planning, picks),
     again: (floor, room) => planRounds(planning, [], floor, room),

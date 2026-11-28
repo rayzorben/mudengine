@@ -4,6 +4,7 @@ import { t } from '../../app/i18n';
 import { CommandQueue } from '../CommandQueue';
 import { SellRun, type SellRunPlanner } from '../SellRun';
 import type { SafetyDecision } from '../../../shared/automation';
+import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
@@ -52,12 +53,37 @@ const AGAIN: SellRunPlan = {
   ]
 };
 
+/** The pack, and the room listing the sword in the open until the pack holds it. */
 function carrying(...pack: string[]): CharacterState {
   const base = structuredClone(EMPTY_CHARACTER);
   return {
     ...base,
     phase: 'in-game',
+    room: { ...base.room, items: pack.includes('iron sword') ? [] : [wireItem('iron sword')] },
     inventory: { ...base.inventory, listedAt: 1, items: pack.map((name) => wireItem(name)) }
+  };
+}
+
+/** The same with nothing lying in the open, and what a search has turned up. */
+function searched(state: CharacterState, ...hidden: string[]): CharacterState {
+  return {
+    ...state,
+    room: { ...state.room, items: [], hidden: hidden.map((name) => wireItem(name)) }
+  };
+}
+
+let seq = 0;
+function block(type: BlockType): Block {
+  seq += 1;
+  return {
+    seq,
+    at: Date.now(),
+    type,
+    domain: domainOf(type),
+    groups: {},
+    text: '',
+    terminator: 'newline',
+    confidence: 0.8
   };
 }
 
@@ -262,6 +288,49 @@ describe('a sell run', () => {
     expect(run.busy).toBe(true);
     see(run, carrying('silk robe', 'iron sword'));
     expect(log.filter((line) => line === 'walk')).toHaveLength(2);
+  });
+
+  it('searches for a picked item no list shows, then takes what the search turned up', async () => {
+    current = searched(carrying('silk robe'));
+    const run = make();
+    await run.start([]);
+    drain();
+    expect(sent).toEqual(['search']);
+    // The first search misses it, as a Perception roll can.
+    run.onBlock(block('user-search-failed'));
+    see(run, searched(carrying('silk robe')));
+    expect(sent).toEqual(['search', 'search']);
+    run.onBlock(block('room-hidden-items'));
+    see(run, searched(carrying('silk robe'), 'iron sword'));
+    expect(sent.at(-1)).toBe('get iron sword');
+    see(run, searched(carrying('silk robe', 'iron sword')));
+    expect(run.progress?.taken).toEqual(['iron sword']);
+    expect(log.slice(-2)).toEqual([`route:${STORE}`, 'walk']);
+  });
+
+  it('says what is no longer on the floor, and sells the rest', async () => {
+    current = searched(carrying('silk robe'));
+    const run = make();
+    await run.start([]);
+    drain();
+    for (let nth = 0; nth < 3; nth += 1) {
+      run.onBlock(block('user-search-failed'));
+      see(run, searched(carrying('silk robe')));
+    }
+    expect(sent).toEqual(['search', 'search', 'search']);
+    expect(notices).toContain(
+      t('automation.sellRun.notThere', { items: 'iron sword', place: 'Town Square' })
+    );
+    arrive(run, STORE);
+    expect(sent.at(-1)).toBe('sell silk robe');
+    see(run, searched(carrying()));
+    // Said once, in its room: the shop is not told it was never carried.
+    expect(notices.some((line) => line.includes('No longer in your inventory'))).toBe(false);
+    expect(progress.at(-1)).toMatchObject({
+      sold: ['silk robe'],
+      missed: ['iron sword'],
+      done: true
+    });
   });
 
   it('does not set off when Stop comes while the plan is being made', async () => {

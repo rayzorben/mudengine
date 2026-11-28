@@ -538,7 +538,8 @@ export function useCardContext({
               sayRefusal(sid)(refused);
               return refused;
             }),
-          stop: () => void api.sellStop(sid)
+          stop: () => void api.sellStop(sid),
+          search: () => void api.ask(sid, 'search')
         },
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),

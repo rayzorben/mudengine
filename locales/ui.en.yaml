@@ -1643,7 +1643,7 @@ palette:
     importLabel: 'Loops: import MegaMUD paths'
     huntLabel: Where should I hunt?
     gearLabel: What gear should I get?
-    sellLabel: 'Sell items: open the Inventory card'
+    sellLabel: 'Auto sell: pick items to sell on the Inventory card'
     routeLabel: Route to room
     searchLabel: Search the console
     areaSearchLabel: Search the area…
@@ -3242,27 +3242,37 @@ cards:
   sell:
     face: Sell
     loading: Looking up what each item sells for…
-    none: Nothing unworn in your inventory or on the floor here.
-    tableCaption: What this character could sell
+    asking: looking it up…
     groupPack: In your inventory
     groupFloor: On the floor here
-    columnPays: Pays
-    columnShop: Shop
-    shopMoves: '{moves} moves away'
+    floorNone: Nothing lies in the open here. Search to see what is hidden.
+    packNone: Nothing unworn in your inventory.
+    search: Search
+    searchTitle: Search the room for hidden items
+    hiddenChip: hidden
+    shopAway: '{shop} · {moves} moves'
+    shopOnly: '{shop}'
     pickTitle: 'Sell {item}'
-    pickAll: Pick all
-    pickNone: Pick none
-    pickedNone: Nothing picked.
-    picked:
-      one: '1 item, about {pays}'
-      many: '{count} items, about {pays}'
+    pickAll: All
+    fewer: Sell one fewer
+    more: Sell one more
+    countOf: '{picked} of {count}'
+    sumPays: Pays
+    sumCount:
+      one: 1 item
+      many: '{count} items'
+    sumFree: 'Free weight {weight}'
+    sumLifting: 'To pick up {weight}'
+    sumLiftingOver: More than the inventory holds now, so it takes more than one trip
+    pickedNone: Click an item to pick it.
+    pickedHint: Click a picked item to leave it.
     plan: Plan the sale
     unplanned: The sale could not be planned. The character is not in the realm.
     go: Sell
     back: Pick again
     going: Selling…
     pickUp: Pick up
-    figurePays: Pays
+    figurePays: Pays, in copper
     figureTrips: Shop trips
     blocked: A stop below has no way there as it stands, and the selling ends there.
     leftItem: '{item} ({why})'
@@ -7873,6 +7883,9 @@ automation:
     refusalUnreadable: the items picked could not be read
     refusalDropped: it was stopped before the plan was made
     reasonTake: 'picking up {item} to sell'
+    reasonSearch: searching for what was picked to sell
+    notThere: 'No longer on the floor in {place}: {items}.'
+    leftRoom: 'the character left {place} before everything was picked up'
     reasonSell: 'selling {item} at {shop}'
     took: 'Picked up {items}.'
     notTaken: 'Not picked up in {place}: {items}.'

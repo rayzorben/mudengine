@@ -998,13 +998,15 @@ tuning:
   # by swaps; the order weighs the nearest `counters` of each item; a get or
   # sell the pack does not confirm in `confirmMs` is refused; a stop is given
   # up on after `maxLegs` legs; a plan holds at most `maxRounds` rounds, and a
-  # run plans again that many times for what a get left lying.
+  # run plans again that many times for what a get left lying. Back in the
+  # floor's room it searches up to `searches` times for a picked item no list shows.
   sellRun:
     exactStops: 10
     counters: 3
     confirmMs: 8000
     maxLegs: 4
     maxRounds: 20
+    searches: 3
 
   # Collecting cash on a loop and banking it by token -- `CashRun`. A look or
   # use still queued after `sendMs` is dropped; a look not answered by its uses

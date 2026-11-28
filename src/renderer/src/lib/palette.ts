@@ -556,7 +556,7 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       icon: 'coins' as const,
       label: t('palette.navigate.sellLabel'),
       group: 'navigate' as const,
-      keywords: ['sell', 'sale', 'shop', 'loot', 'inventory', 'floor', 'cash'],
+      keywords: ['sell', 'auto', 'autosell', 'sale', 'shop', 'loot', 'inventory', 'floor', 'cash'],
       run: () => cards.show('inventory')
     },
     /*

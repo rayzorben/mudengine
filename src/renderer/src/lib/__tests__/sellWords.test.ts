@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { paysOf, picksOf, sellAskKey, sellRows, sells } from '../sellWords';
+import {
+  paysOf,
+  pickedOf,
+  picksOf,
+  sellAskKey,
+  sellRows,
+  sells,
+  weightOf,
+  withAll,
+  withPicked
+} from '../sellWords';
 import { EMPTY_CHARACTER, type CharacterState } from '@shared/character';
 import { wireItem } from '@shared/entities';
 import type { SellChoice } from '@shared/sellRun';
@@ -42,27 +52,41 @@ const CHOICES: SellChoice[] = [
 ];
 
 describe('the Sell face`s rows', () => {
-  it('lists what is carried unworn, then the floor, a pile one row', () => {
-    const rows = sellRows(character(), CHOICES);
-    expect(rows.map((row) => `${row.from} ${row.count} ${row.thing.name}`)).toEqual([
-      'pack 1 silk robe',
-      'pack 1 torch',
-      'floor 3 iron sword',
-      'floor 1 rock'
-    ]);
+  it('lists the floor, open then hidden, then what is carried unworn, a name one row', () => {
+    const twice = character();
+    twice.inventory.items.push(wireItem('silk robe'));
+    const rows = sellRows(twice, CHOICES);
+    expect(
+      rows.map((row) => `${row.from} ${row.count} ${row.thing.name}${row.hidden ? ' hidden' : ''}`)
+    ).toEqual(['floor 3 iron sword', 'floor 1 rock hidden', 'pack 2 silk robe', 'pack 1 torch']);
     // Kept by a reason, or not answered for yet: neither can be picked.
     expect(rows.map(sells)).toEqual([true, false, true, false]);
   });
 
-  it('turns the picked rows into a count a name, and what they pay', () => {
+  it('turns the picked rows into a count a name, and what they pay and weigh', () => {
     const rows = sellRows(character(), CHOICES);
-    const picked = new Set(rows.map((row) => row.key));
-    expect(picksOf(rows, picked)).toEqual([
-      { name: 'silk robe', from: 'pack', count: 1 },
-      { name: 'iron sword', from: 'floor', count: 3 }
+    const sword = rows[0]!;
+    sword.thing.encumbrance = 30;
+    const all = withAll(new Map(), rows);
+    expect(picksOf(rows, all)).toEqual([
+      { name: 'iron sword', from: 'floor', count: 3 },
+      { name: 'silk robe', from: 'pack', count: 1 }
     ]);
-    expect(paysOf(rows, picked)).toBe(825 + 3 * 300);
-    expect(picksOf(rows, new Set())).toEqual([]);
+    expect(paysOf(rows, all)).toBe(825 + 3 * 300);
+    expect(weightOf(rows, all, 'floor')).toBe(90);
+    // The robe is unweighed, so what the pack's picks weigh is not known.
+    expect(weightOf(rows, all, 'pack')).toBeNull();
+    // Everything picked, All takes every pick back.
+    expect(picksOf(rows, withAll(all, rows))).toEqual([]);
+
+    // Two of the three swords, never more than lie there, and none takes the row out.
+    const two = withPicked(new Map(), sword, 2);
+    expect(pickedOf(sword, two)).toBe(2);
+    expect(paysOf(rows, two)).toBe(600);
+    expect(pickedOf(sword, withPicked(two, sword, 9))).toBe(3);
+    expect(withPicked(two, sword, 0).size).toBe(0);
+    // A row that cannot go is never picked, whatever the map says.
+    expect(pickedOf(rows[1]!, new Map([[rows[1]!.key, 1]]))).toBe(0);
   });
 
   it('asks again when the pack, the floor or the room moves', () => {

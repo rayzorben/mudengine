@@ -7,6 +7,7 @@ import Sentence, { NameList } from './Sentence';
 import { copperWords } from '../lib/gearPicks';
 import { t } from '../lib/i18n';
 import { progressAt, type Progress } from '../lib/progression';
+import { compact } from '../lib/rates';
 import { keptWords } from '../lib/sellWords';
 import { countedLabel } from '@shared/items';
 import type { SellLeft, SellRunPlan, SellRunProgress, SellStop } from '@shared/sellRun';
@@ -128,7 +129,7 @@ export default function SellRunView({
         <div className="gear-figures">
           <Figure label={t('cards.gear.figureStops')} value={String(plan.stops.length)} />
           <Figure label={t('cards.gear.figureSteps')} value={plan.moves.toLocaleString()} />
-          <Figure label={t('cards.sell.figurePays')} value={copperWords(plan.copper)} />
+          <Figure label={t('cards.sell.figurePays')} value={compact(plan.copper)} />
           {plan.rounds > 1 ? (
             <Figure label={t('cards.sell.figureTrips')} value={String(plan.rounds)} />
           ) : null}

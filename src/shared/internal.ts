@@ -1276,7 +1276,9 @@ const TUNING_DEFAULTS = {
     /** Legs one stop may take (a fight ends a leg) before the run gives up on it. */
     maxLegs: 4,
     /** Rounds of selling one plan may hold, and times a run plans again for what a `get` left lying. */
-    maxRounds: 20
+    maxRounds: 20,
+    /** Bare searches in the floor's room for a picked item no list shows; each can miss it. */
+    searches: 3
   },
   /** Collecting cash on a loop and taking it to the bank by token — `CashRun`. */
   cashRun: {

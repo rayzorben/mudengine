@@ -113,6 +113,7 @@ export class HostTrips implements SessionModule {
     this.stash.onBlock(block);
     this.gear.onBlock(block);
     this.cash.onBlock(block);
+    this.sale.onBlock(block);
   }
 
   onCharacter(state: CharacterState): void {
@@ -226,7 +227,13 @@ export function hostTrips(
   );
   const cash = new CashRun(automation.enabled, queue, cashRunPlanner(parts), parts.charges, events);
   const find = new MobFinder(automation.enabled, mobFinderPlanner(parts), events);
-  const sale = new SellRun(automation.enabled, queue, sellRunPlanner(parts), events);
+  const { fighting } = collectPlanner(parts);
+  const sale = new SellRun(
+    automation.enabled,
+    queue,
+    sellRunPlanner({ ...parts, fighting }),
+    events
+  );
   const stash = stashFetchTrip(automation, queue, events, parts);
   return new HostTrips(stash, sell, gear, cash, find, sale);
 }

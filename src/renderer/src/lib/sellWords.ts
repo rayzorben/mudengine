@@ -23,46 +23,87 @@ export interface SellDesk {
   plan(picks: SellPick[]): ReturnType<IpcApi['sellPlan']>;
   go(picks: SellPick[]): ReturnType<IpcApi['sellRun']>;
   stop(): void;
+  /** A bare `search` of the room, for what lies hidden in it. */
+  search(): void;
 }
 
-/** One line of the face: a carried item, or a pile on the floor. */
+/** One tile of the face: a name carried unworn, or a name lying in the room. */
 export interface SellRow {
+  /** `from` and the name, so a pick stays with its row however the pack is ordered. */
   key: string;
   from: SellFrom;
   thing: ItemEntity;
-  /** How many the row is: one carried item, or the pile's count. */
+  /** How many there are: the unworn copies carried, or the piles' counts together. */
   count: number;
+  /** Only a search shows it: the room does not list it in the open. */
+  hidden: boolean;
   /** Main's answer for the name; null until it has answered. */
   choice: SellChoice | null;
 }
 
-/** The rows: what is carried unworn, then what lies in the room, open and searched. */
+/** How many of each row are picked, by the row's key. */
+export type SellPicked = ReadonlyMap<string, number>;
+
+/** The rows, a name once: what lies in the room, open then searched, then what is carried unworn. */
 export function sellRows(character: CharacterState, choices: readonly SellChoice[]): SellRow[] {
-  const choiceOf = (from: SellFrom, name: string): SellChoice | null =>
-    choices.find((choice) => choice.from === from && sameItem(choice.name, name)) ?? null;
-  const carried = character.inventory.items.filter((item) => !item.equipped);
-  const floor = [...character.room.items, ...character.room.hidden];
-  return [
-    ...carried.map((thing, at) => ({
-      key: `pack:${thing.name}:${at}`,
-      from: 'pack' as const,
-      thing,
-      count: 1,
-      choice: choiceOf('pack', thing.name)
-    })),
-    ...floor.map((thing, at) => ({
-      key: `floor:${thing.name}:${at}`,
-      from: 'floor' as const,
-      thing,
-      count: thing.count ?? 1,
-      choice: choiceOf('floor', thing.name)
-    }))
-  ];
+  const rows: SellRow[] = [];
+  const add = (thing: ItemEntity, from: SellFrom, count: number, hidden: boolean): void => {
+    const row = rows.find((each) => each.from === from && sameItem(each.thing.name, thing.name));
+    if (row !== undefined) {
+      row.count += count;
+      row.hidden = row.hidden && hidden;
+      return;
+    }
+    const choice =
+      choices.find((each) => each.from === from && sameItem(each.name, thing.name)) ?? null;
+    rows.push({ key: sellKey({ name: thing.name, from }), from, thing, count, hidden, choice });
+  };
+  for (const item of character.room.items) add(item, 'floor', item.count ?? 1, false);
+  for (const item of character.room.hidden) add(item, 'floor', item.count ?? 1, true);
+  for (const item of character.inventory.items) if (!item.equipped) add(item, 'pack', 1, false);
+  return rows;
 }
 
 /** Whether a row can be picked: main has answered for it and nothing keeps it. */
 export function sells(row: SellRow): row is SellRow & { choice: SellChoice } {
   return row.choice !== null && row.choice.kept === null;
+}
+
+/** How many of a row are picked: never more than there are, none of a row that cannot go. */
+export function pickedOf(row: SellRow, picked: SellPicked): number {
+  return sells(row) ? Math.min(picked.get(row.key) ?? 0, row.count) : 0;
+}
+
+/** The picks with `row` set to `count` of it; none takes the row out. */
+export function withPicked(picked: SellPicked, row: SellRow, count: number): SellPicked {
+  const next = new Map(picked);
+  const most = Math.max(0, Math.min(count, row.count));
+  if (most === 0) next.delete(row.key);
+  else next.set(row.key, most);
+  return next;
+}
+
+/** Every row of `rows` that can go, picked whole; or none of them, where all already are. */
+export function withAll(picked: SellPicked, rows: readonly SellRow[]): SellPicked {
+  const sellable = rows.filter(sells);
+  const every = sellable.length > 0 && sellable.every((row) => pickedOf(row, picked) === row.count);
+  return sellable.reduce((next, row) => withPicked(next, row, every ? 0 : row.count), picked);
+}
+
+/** What the picks of one place weigh together; null where any picked row is unweighed. */
+export function weightOf(
+  rows: readonly SellRow[],
+  picked: SellPicked,
+  from: SellFrom
+): number | null {
+  let weight = 0;
+  for (const row of rows) {
+    const count = row.from === from ? pickedOf(row, picked) : 0;
+    if (count === 0) continue;
+    if (row.thing.encumbrance === undefined) return null;
+    weight += count * row.thing.encumbrance;
+  }
+  return weight;
 }
 
 /** What changes main's answer: the unworn pack, the floor and the room. */
@@ -76,27 +117,19 @@ export function sellAskKey(character: CharacterState): string {
   ].join('\u0001');
 }
 
-/** The picked rows as main is asked for them: a name once, with how many of it. */
-export function picksOf(rows: readonly SellRow[], picked: ReadonlySet<string>): SellPick[] {
-  const picks = new Map<string, SellPick>();
-  for (const row of rows) {
-    if (!picked.has(row.key) || !sells(row)) continue;
-    const key = sellKey(row.choice);
-    const pick = picks.get(key);
-    if (pick === undefined) {
-      picks.set(key, { name: row.choice.name, from: row.from, count: row.count });
-    } else pick.count += row.count;
-  }
-  return [...picks.values()];
+/** The picked rows as main is asked for them: a name, where it is and how many of it. */
+export function picksOf(rows: readonly SellRow[], picked: SellPicked): SellPick[] {
+  return rows.flatMap((row) => {
+    const count = pickedOf(row, picked);
+    return count === 0 || row.choice === null
+      ? []
+      : [{ name: row.choice.name, from: row.from, count }];
+  });
 }
 
 /** What the picked rows pay together, in copper. */
-export function paysOf(rows: readonly SellRow[], picked: ReadonlySet<string>): number {
-  return rows.reduce(
-    (sum, row) =>
-      picked.has(row.key) && sells(row) ? sum + (row.choice.copper ?? 0) * row.count : sum,
-    0
-  );
+export function paysOf(rows: readonly SellRow[], picked: SellPicked): number {
+  return rows.reduce((sum, row) => sum + (row.choice?.copper ?? 0) * pickedOf(row, picked), 0);
 }
 
 /** Why a row cannot be picked. */

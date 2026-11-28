@@ -3,13 +3,16 @@
  * picked floor items taken with one `get` each and the picked items sold with
  * one `sell` each (`Handover`, the pack gaining or losing it the
  * confirmation). Started only by the player from the Inventory card's Sell
- * face. A `get` the pack did not confirm leaves the item in its room, and
+ * face. In the floor's room it takes what the room lists now, searching first
+ * for a picked item no list shows (`Collect`), and what is no longer there is
+ * said. A `get` the pack did not confirm leaves the item in its room, and
  * once a round has sold something the rest is planned again from there, up
  * to `tuning.sellRun.maxRounds`. Each leg is planned from where the character
  * stands; a fight on the way is waited out. Yields to an escape; holds the
  * lap; dropped on a death; every ending said. See `mudengine-automation` ›
  * `parts/gear.md`.
  */
+import { Collect, type CollectEnd, type CollectPlanner } from './Collect';
 import type { CommandQueue } from './CommandQueue';
 import { Handover, type HandoverEnd, type HandoverPlanner } from './Handover';
 import type { SessionModule } from './Module';
@@ -19,6 +22,7 @@ import { stoppedByPerson } from './personStop';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
+import type { Block } from '../../shared/blocks';
 import { fightIsRunning, type CharacterState } from '../../shared/character';
 import { sameItem } from '../../shared/items';
 import {
@@ -34,7 +38,7 @@ import {
 import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 
-export interface SellRunPlanner extends TripPlanner, HandoverPlanner {
+export interface SellRunPlanner extends TripPlanner, HandoverPlanner, CollectPlanner {
   /** The character as it stands. */
   current(): CharacterState;
   /** An escape in flight, which outranks the run once it is under way. */
@@ -75,6 +79,8 @@ interface Run {
   missed: string[];
   /** What a take did not get, by the room it lies in. */
   lying: { room: RoomId; items: SellItem[] } | null;
+  /** Picked off the floor and no longer there when the run came for it. */
+  absent: string[];
 }
 
 const ACTION = 'sell run';
@@ -90,9 +96,18 @@ function unworn(state: CharacterState, name: string): number {
   return state.inventory.items.filter((item) => !item.equipped && sameItem(item.name, name)).length;
 }
 
+/** How many of `name` the room's floors list: in the open, or turned up by a search. */
+function listed(state: CharacterState, name: string): number {
+  return [...state.room.items, ...state.room.hidden]
+    .filter((pile) => sameItem(pile.name, name))
+    .reduce((sum, pile) => sum + (pile.count ?? 1), 0);
+}
+
 export class SellRun implements SessionModule {
   private run: Run | null = null;
   private readonly handover: Handover;
+  /** The search for a picked item no floor lists, and the first `get` of each it turns up. */
+  private readonly collect: Collect;
   private last: SellRunProgress | null = null;
   /** A start still planning; a Stop, a reset or the switch going off drops it before it sets off. */
   private asked: symbol | null = null;
@@ -105,6 +120,8 @@ export class SellRun implements SessionModule {
     private readonly now: () => number = () => Date.now()
   ) {
     this.handover = new Handover(queue, planner, { ended: (end) => this.served(end) }, now);
+    const looked = { ended: (end: CollectEnd, state: CharacterState) => this.looked(end, state) };
+    this.collect = new Collect(queue, planner, looked, now);
   }
 
   configure(enabled: boolean): void {
@@ -116,6 +133,7 @@ export class SellRun implements SessionModule {
 
   reset(): void {
     this.handover.cancel();
+    this.collect.cancel();
     this.run = null;
     this.asked = null;
   }
@@ -188,7 +206,8 @@ export class SellRun implements SessionModule {
       sold: [],
       taken: [],
       missed: [],
-      lying: null
+      lying: null,
+      absent: []
     };
     this.run = run;
     if (held) this.planner.hold();
@@ -208,10 +227,16 @@ export class SellRun implements SessionModule {
     return null;
   }
 
+  /** A search's answer, for the look round the floor's room. */
+  onBlock(block: Block): void {
+    if (this.run !== null) this.collect.onBlock(block);
+  }
+
   onCharacter(state: CharacterState): void {
     const run = this.run;
     if (run === null) return;
     this.handover.onCharacter(state);
+    if (this.run === run) this.collect.onCharacter(state);
     if (this.run === run && run.waiting) {
       if (fightIsRunning(state) || this.planner.moveInFlight()) return;
       run.waiting = false;
@@ -281,18 +306,7 @@ export class SellRun implements SessionModule {
       case 'floor':
         run.stage = 'taking';
         this.publish(run);
-        this.handover.start(
-          {
-            at: null,
-            verb: 'get',
-            items: copies(stop.items),
-            key: KEY,
-            reason: (item) => t('automation.sellRun.reasonTake', { item }),
-            receives: true,
-            confirmMs
-          },
-          state
-        );
+        this.look(run, stop, state);
         return;
       case 'shop': {
         run.stage = 'selling';
@@ -304,7 +318,7 @@ export class SellRun implements SessionModule {
         }));
         const short = stop.items
           .map((item, at) => ({ name: item.name, count: item.count - carried[at]!.count }))
-          .filter((item) => item.count > 0 && !this.liesWaiting(run, item.name));
+          .filter((item) => item.count > 0 && !this.neverTaken(run, item.name));
         if (short.length > 0) {
           const names = short.map((item) => item.name);
           run.missed.push(...copies(short));
@@ -333,8 +347,126 @@ export class SellRun implements SessionModule {
     }
   }
 
-  private liesWaiting(run: Run, name: string): boolean {
-    return run.lying?.items.some((item) => sameItem(item.name, name)) === true;
+  /** Still in its room for a later round, or gone from it: either way it was said there. */
+  private neverTaken(run: Run, name: string): boolean {
+    return (
+      run.lying?.items.some((item) => sameItem(item.name, name)) === true ||
+      run.absent.some((gone) => sameItem(gone, name))
+    );
+  }
+
+  /**
+   * In the floor's room: what the room lists now is what is taken. A picked
+   * item on neither list is searched for first, since a hidden pile is listed
+   * only by a search and each search can miss it (`Collect`).
+   */
+  private look(run: Run, stop: SellStop, state: CharacterState): void {
+    const unseen = stop.items.filter((item) => listed(state, item.name) < item.count);
+    if (unseen.length === 0) {
+      this.take(run, stop, state, [], []);
+      return;
+    }
+    const { confirmMs, searches } = tuning().sellRun;
+    const started = this.collect.start(
+      {
+        to: stop.room as RoomId,
+        items: unseen.map((item) => item.name),
+        search: { times: searches, reason: t('automation.sellRun.reasonSearch') },
+        key: `${KEY}-look`,
+        reason: (item) => t('automation.sellRun.reasonTake', { item }),
+        collectMs: confirmMs,
+        expiresMs: confirmMs
+      },
+      state
+    );
+    // The run stands in the room, so anything but a start here is a room it is no longer in.
+    if (started.kind !== 'here') this.end(t('automation.sellRun.leftRoom', { place: stop.place }));
+  }
+
+  /** What the search and its first `get`s came to; the rest of each pile is taken after. */
+  private looked(end: CollectEnd, state: CharacterState): void {
+    const run = this.run;
+    const stop = run?.plan.stops[run.stop];
+    if (run === null || stop?.kind !== 'floor') return;
+    switch (end.kind) {
+      case 'not-reached':
+      case 'left':
+        this.end(t('automation.sellRun.leftRoom', { place: stop.place }));
+        return;
+      case 'nothing-here':
+        this.take(run, stop, state, [], []);
+        return;
+      case 'taken': {
+        const refused = end.asked.filter((item) => !end.arrived.includes(item));
+        this.take(run, stop, state, end.arrived, refused);
+        return;
+      }
+      default: {
+        const never: never = end;
+        return never;
+      }
+    }
+  }
+
+  /**
+   * One `get` a copy the room still lists. `got` came with the search, one
+   * of each; `refused` the pack did not take then, so they wait for a later
+   * round with the rest of their pile. What no list shows is gone, and said.
+   */
+  private take(
+    run: Run,
+    stop: SellStop,
+    state: CharacterState,
+    got: readonly string[],
+    refused: readonly string[]
+  ): void {
+    const named = (names: readonly string[], item: SellItem): boolean =>
+      names.some((name) => sameItem(name, item.name));
+    if (got.length > 0) {
+      run.taken.push(...got);
+      this.events.notice?.(t('automation.sellRun.took', { items: got.join(', ') }));
+    }
+    const wanted = stop.items.map((item) => {
+      const left = item.count - (named(got, item) ? 1 : 0);
+      const there = Math.min(left, listed(state, item.name));
+      return { name: item.name, left, there, waits: named(refused, item) };
+    });
+    const waiting = wanted.filter((item) => item.waits);
+    if (waiting.length > 0) {
+      const names = copies(waiting.map((item) => ({ name: item.name, count: item.left })));
+      this.leave(run, stop, names);
+      this.say(
+        t('automation.sellRun.notTaken', { items: names.join(', '), place: stop.place }),
+        names.join(', ')
+      );
+    }
+    const gone = wanted
+      .filter((item) => !item.waits && item.there < item.left)
+      .map((item) => ({ name: item.name, count: item.left - item.there }));
+    if (gone.length > 0) {
+      const names = copies(gone);
+      run.absent.push(...names);
+      run.missed.push(...names);
+      this.say(
+        t('automation.sellRun.notThere', { items: names.join(', '), place: stop.place }),
+        names.join(', ')
+      );
+    }
+    const taking = wanted
+      .filter((item) => !item.waits)
+      .map((item) => ({ name: item.name, count: item.there }));
+    this.handover.start(
+      {
+        at: null,
+        verb: 'get',
+        items: copies(taking),
+        key: KEY,
+        reason: (item) => t('automation.sellRun.reasonTake', { item }),
+        receives: true,
+        confirmMs: tuning().sellRun.confirmMs
+      },
+      state
+    );
   }
 
   /** What the stop's verbs came to. */
@@ -443,6 +575,7 @@ export class SellRun implements SessionModule {
     const run = this.run;
     if (run === null) return;
     this.handover.cancel();
+    this.collect.cancel();
     this.run = null;
     if (run.held) this.planner.release();
     const ended =

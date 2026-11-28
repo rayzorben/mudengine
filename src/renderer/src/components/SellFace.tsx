@@ -1,65 +1,51 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import CardTable, { type Column } from './CardTable';
 import type { Inspect } from './EntityName';
 import Icon from './Icon';
 import SellRunView from './SellRunView';
-import { itemColumn, numberColumn, weightColumn } from './packColumns';
+import SellTile from './SellTile';
 import { useItemArt } from '../hooks/useItemArt';
-import { keepFocus } from '../lib/focus';
 import { copperWords } from '../lib/gearPicks';
 import { t } from '../lib/i18n';
 import {
-  keptWords,
   paysOf,
+  pickedOf,
   picksOf,
   sellAskKey,
   sellRows,
   sells,
+  weightOf,
+  withAll,
+  withPicked,
   type SellDesk,
+  type SellPicked,
   type SellRow
 } from '../lib/sellWords';
-import type { Group } from '../lib/table';
 import type { CharacterState } from '@shared/character';
-import type { SessionId } from '@shared/ipc';
-import type { SellChoice, SellRunPlan, SellRunProgress } from '@shared/sellRun';
+import type { SellChoice, SellFrom, SellRunPlan, SellRunProgress } from '@shared/sellRun';
 import { errorMessage } from '@shared/values';
 
 /**
- * The Inventory card's Sell face: the pack as the pack face lists it, less
- * what is worn, and what lies on the floor of the room, each row with what it
- * pays and the nearest shop that buys it. A row is picked with its own
- * button; *Plan the sale* asks main for the rounds (what fits picked up, the
- * shops in the shortest order, back for the rest) and *Sell* walks them.
+ * The Inventory card's Sell face: a tile for each thing lying in the room,
+ * then one for each thing carried and not worn. A tile says what the thing
+ * pays and the nearest shop that buys it, and is its own control: a click
+ * picks it, green, and a pile picked says how many of it go. The panel above
+ * adds the picks up and weighs the floor's against what the pack still
+ * holds. *Plan the sale* asks main for the stops and *Sell* walks them.
  */
 export interface SellFaceProps {
   character: CharacterState;
-  session: SessionId;
   desk: SellDesk;
   run: SellRunProgress | null;
   inspect: Inspect | undefined;
   goToRoom: ((room: string) => void) | null;
-  returnFocus?: () => void;
 }
 
-const GROUPS: readonly Group[] = [
-  { id: 'pack', label: t('cards.sell.groupPack') },
-  { id: 'floor', label: t('cards.sell.groupFloor') }
-];
+const NONE: SellPicked = new Map();
 
-const thingOf = (row: SellRow): SellRow['thing'] => row.thing;
-
-export default function SellFace({
-  character,
-  session,
-  desk,
-  run,
-  inspect,
-  goToRoom,
-  returnFocus
-}: SellFaceProps) {
+export default function SellFace({ character, desk, run, inspect, goToRoom }: SellFaceProps) {
   const [choices, setChoices] = useState<SellChoice[] | null>(null);
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setPicked] = useState<SellPicked>(NONE);
   const [plan, setPlan] = useState<SellRunPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   /** Why the last ask of main failed, said on the face rather than left loading. */
@@ -92,14 +78,10 @@ export default function SellFace({
   const pays = useMemo(() => paysOf(rows, picked), [rows, picked]);
   const count = picks.reduce((sum, pick) => sum + pick.count, 0);
   const art = useItemArt();
-
-  const toggle = useCallback((key: string) => {
-    setPicked((was) => {
-      const now = new Set(was);
-      if (!now.delete(key)) now.add(key);
-      return now;
-    });
-  }, []);
+  const pick = useCallback(
+    (row: SellRow, some: number) => setPicked((was) => withPicked(was, row, some)),
+    []
+  );
 
   // A plan is for the pack, floor and room it was asked from: once any moves it is put away.
   const asked = useRef(askKey);
@@ -136,7 +118,7 @@ export default function SellFace({
           // The run plans again from here; what it walks is what main pushes back.
           void desk.go(picks).then(
             (refused) => {
-              if (refused === null) setPicked(new Set());
+              if (refused === null) setPicked(NONE);
               // Why it did not set off, on the face as well as in the console.
               else setFailed(refused);
               setPlan(null);
@@ -154,99 +136,109 @@ export default function SellFace({
     );
   }
 
-  const columns: Column<SellRow>[] = [
-    {
-      id: 'pick',
-      label: '',
-      control: true,
-      unsortable: true,
-      unsearchable: true,
-      value: (row) => row.thing.name,
-      // No control on a row that cannot go: the reason is in its last cell.
-      cell: (row) =>
-        sells(row) ? (
-          <button
-            aria-pressed={picked.has(row.key)}
-            className={picked.has(row.key) ? 'row-action worn' : 'row-action'}
-            data-action="sell-pick"
-            onClick={() => toggle(row.key)}
-            onMouseDown={keepFocus}
-            title={t('cards.sell.pickTitle', { item: row.thing.name })}
-            type="button"
-          >
-            <Icon name={picked.has(row.key) ? 'check' : 'plus'} />
-          </button>
-        ) : null
-    },
-    itemColumn(thingOf, { art, realm: character.realm, inspect }),
-    numberColumn(thingOf),
-    weightColumn(thingOf),
-    {
-      id: 'pays',
-      label: t('cards.sell.columnPays'),
-      numeric: true,
-      value: (row) => (sells(row) ? (row.choice.copper ?? 0) * row.count : null),
-      cell: (row) =>
-        row.choice === null ? null : row.choice.kept === null ? (
-          copperWords((row.choice.copper ?? 0) * row.count)
-        ) : (
-          <span className="chip quiet cased">{keptWords(row.choice.kept, row.choice.quest)}</span>
-        )
-    },
-    {
-      id: 'shop',
-      label: t('cards.sell.columnShop'),
-      from: 'medium',
-      value: (row) => row.choice?.shop ?? null,
-      cell: (row) =>
-        row.choice?.shop == null ? null : (
-          <span title={t('cards.sell.shopMoves', { moves: row.choice.moves ?? 0 })}>
-            {row.choice.shop}
-          </span>
-        )
-    }
-  ];
+  const { encumbrance, encumbranceMax } = character.inventory;
+  // What the pack still holds now; what the picks carried weigh comes off it on the way.
+  const free =
+    encumbrance === null || encumbranceMax === null ? null : encumbranceMax - encumbrance;
+  const lifting = weightOf(rows, picked, 'floor');
+  const section = (from: SellFrom): SellRow[] => rows.filter((row) => row.from === from);
+  const floor = section('floor');
+  const pack = section('pack');
 
-  const sellable = rows.filter(sells);
-  const everyPicked = sellable.length > 0 && sellable.every((row) => picked.has(row.key));
+  const tiles = (list: readonly SellRow[]) => (
+    <ul className="sell-tiles">
+      {list.map((row) => (
+        <SellTile
+          art={art}
+          key={row.key}
+          onPick={pick}
+          picked={pickedOf(row, picked)}
+          realm={character.realm}
+          row={row}
+        />
+      ))}
+    </ul>
+  );
+  const head = (from: SellFrom, list: readonly SellRow[], title: string) => (
+    <header className="sell-head">
+      <h3>{title}</h3>
+      <span className="chip quiet">{list.reduce((sum, row) => sum + row.count, 0)}</span>
+      <span className="gear-bar-spacer" />
+      {from === 'floor' ? (
+        <button
+          data-action="sell-search"
+          onClick={desk.search}
+          title={t('cards.sell.searchTitle')}
+          type="button"
+        >
+          <Icon name="search" /> {t('cards.sell.search')}
+        </button>
+      ) : null}
+      <button
+        data-action={`sell-all-${from}`}
+        disabled={!list.some(sells)}
+        onClick={() => setPicked((was) => withAll(was, list))}
+        type="button"
+      >
+        {t('cards.sell.pickAll')}
+      </button>
+    </header>
+  );
+
   return (
     <>
+      <div className="gear-budget sell-sum">
+        <div className="gear-budget-figure">
+          <span>{t('cards.sell.sumPays')}</span>
+          <strong className="sell-sum-figure">{copperWords(pays)}</strong>
+        </div>
+        <div className="gear-cash">
+          <span className="chip cased">
+            {count === 1 ? t('cards.sell.sumCount.one') : t('cards.sell.sumCount.many', { count })}
+          </span>
+          {free === null ? null : (
+            <span className="chip cased quiet">
+              {t('cards.sell.sumFree', { weight: free.toLocaleString() })}
+            </span>
+          )}
+          {lifting === null || lifting === 0 ? null : (
+            <span
+              className={`chip cased ${free !== null && lifting > free ? 'warn' : 'quiet'}`}
+              title={free !== null && lifting > free ? t('cards.sell.sumLiftingOver') : undefined}
+            >
+              {t('cards.sell.sumLifting', { weight: lifting.toLocaleString() })}
+            </span>
+          )}
+        </div>
+      </div>
       {failed === null ? null : <p className="gear-reach">{failed}</p>}
       {run?.ended == null ? null : <p className="gear-reach">{run.ended}</p>}
-      <CardTable
-        caption={t('cards.sell.tableCaption')}
-        className="carried"
-        columns={columns}
-        empty={choices === null ? t('cards.sell.loading') : t('cards.sell.none')}
-        groupOf={(row) => row.from}
-        groups={GROUPS}
-        keyOf={(row) => row.key}
-        name="sell"
-        returnFocus={returnFocus}
-        rows={rows}
-        session={session}
-      />
+      <div className="scroller gear-scroller sell-scroller">
+        {choices === null ? <p className="gear-reach">{t('cards.sell.loading')}</p> : null}
+        <section className="sell-section" data-from="floor">
+          {head('floor', floor, t('cards.sell.groupFloor'))}
+          {floor.length === 0 ? (
+            <p className="gear-reach">{t('cards.sell.floorNone')}</p>
+          ) : (
+            tiles(floor)
+          )}
+        </section>
+        <section className="sell-section" data-from="pack">
+          {head('pack', pack, t('cards.sell.groupPack'))}
+          {pack.length === 0 ? (
+            <p className="gear-reach">{t('cards.sell.packNone')}</p>
+          ) : (
+            tiles(pack)
+          )}
+        </section>
+      </div>
       <footer className="sell-bar">
         <span className="gear-bar-words">
-          {count === 0
-            ? t('cards.sell.pickedNone')
-            : count === 1
-              ? t('cards.sell.picked.one', { pays: copperWords(pays) })
-              : t('cards.sell.picked.many', { count, pays: copperWords(pays) })}
+          {count === 0 ? t('cards.sell.pickedNone') : t('cards.sell.pickedHint')}
         </span>
         <span className="gear-bar-spacer" />
         <button
-          data-action="sell-pick-all"
-          disabled={sellable.length === 0}
-          onClick={() =>
-            setPicked(everyPicked ? new Set() : new Set(sellable.map((row) => row.key)))
-          }
-          type="button"
-        >
-          {everyPicked ? t('cards.sell.pickNone') : t('cards.sell.pickAll')}
-        </button>
-        <button
-          className="primary"
+          className="primary gear-plan"
           data-action="sell-plan"
           disabled={count === 0 || planning}
           onClick={doPlan}

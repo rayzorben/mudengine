@@ -12,7 +12,7 @@ import Sentence, { NameList } from './Sentence';
 import SellFace from './SellFace';
 import { itemColumn, numberColumn, weightColumn } from './packColumns';
 import { keepFocus } from '../lib/focus';
-import { sellRows, type SellDesk } from '../lib/sellWords';
+import type { SellDesk } from '../lib/sellWords';
 import { equipVerdict, type GearAction, type Wearer } from '@shared/gear';
 import type { SellRunProgress } from '@shared/sellRun';
 import { useFitTier } from '../hooks/useFitTier';
@@ -208,8 +208,8 @@ function InventoryCard({
         />
       )
     },
-    // Offered where a walk can start, and only with something to list or a run to show.
-    ...(sell === undefined || !(sellRows(character, []).length > 0 || sale != null)
+    // Offered where a walk can start. It always has its Search, for what the room hides.
+    ...(sell === undefined
       ? []
       : [
           {
@@ -222,9 +222,7 @@ function InventoryCard({
                 desk={sell}
                 goToRoom={goToRoom ?? null}
                 inspect={inspect}
-                returnFocus={chrome.returnFocus}
                 run={sale ?? null}
-                session={session}
               />
             )
           }
