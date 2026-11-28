@@ -26,7 +26,7 @@ import type { Verdict } from '@shared/verdict';
 import { roomId } from '@shared/world';
 import { GivenBy, SoldBy } from './ReferenceSources';
 import { SeenIn } from './ReferenceSeen';
-import ReferenceWorn from './ReferenceWorn';
+import { BesideCards } from './ReferenceBeside';
 import SpellLearning from './SpellLearning';
 import type { ItemSeen } from '@shared/itemSeen';
 import type {
@@ -48,6 +48,7 @@ import {
   entryWord,
   mobDefence,
   mobHealth,
+  usesText,
   type ReferenceEntry
 } from '../lib/reference';
 
@@ -858,11 +859,7 @@ function ItemDetail({
               unstated were the same absence. Drawn as a word: a row reading
               `-1 charges` is the number leaking through a label.
             */}
-            {item.uses === -1
-              ? t('cards.reference.item.usesUnlimited')
-              : item.uses === 1
-                ? t('cards.reference.item.usesOnce')
-                : t('cards.reference.item.usesMany', { count: item.uses })}
+            {usesText(item.uses)}
           </dd>
         </>
       )}
@@ -1275,6 +1272,11 @@ export interface ReferenceDetailProps {
    * them scrolling away, would say the same word twice and only sometimes.
    */
   heading?: boolean;
+  /**
+   * Whether to draw the worn pieces an item is compared with under it. False
+   * inside the slide-out panel, which draws them as cards beside itself.
+   */
+  besideInline?: boolean;
 }
 
 /**
@@ -1298,7 +1300,8 @@ export default function ReferenceDetail({
   onAsk = null,
   supplies = null,
   onAcquire = null,
-  heading = true
+  heading = true,
+  besideInline = true
 }: ReferenceDetailProps) {
   const names: EffectNames = { classNames, referred, onName };
   return (
@@ -1332,10 +1335,6 @@ export default function ReferenceDetail({
           verdict={entry.verdict}
         />
       )}
-      {/* Beside what is worn, ahead of the readout: what decides whether to wear it. */}
-      {entry.kind === 'item' && entry.beside !== null && (
-        <ReferenceWorn beside={entry.beside} realm={realm} />
-      )}
       {entry.kind === 'item' && (
         <ItemDetail
           item={entry.item}
@@ -1349,6 +1348,15 @@ export default function ReferenceDetail({
           supplies={supplies}
           onAcquire={onAcquire}
         />
+      )}
+      {besideInline && entry.kind === 'item' && entry.beside !== null && (
+        <div className="reference-beside inline">
+          <BesideCards
+            beside={entry.beside}
+            item={entry.item}
+            names={{ family: realm, classNames, referred }}
+          />
+        </div>
       )}
       {entry.kind === 'spell' && (
         <SpellDetail

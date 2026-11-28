@@ -7136,6 +7136,96 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   };
 
   /*
+   * An item for a slot something is worn in, set beside what is worn there
+   * (user, 2026-11-27): the padded vest the pack lists on the torso gets a card
+   * of its own with every stat against the chainmail hauberk, Stealth
+   * included, which the hauberk carries as an effect rather than a column.
+   */
+  {
+    await detail('chainmail hauberk');
+    await waitFor(
+      async () =>
+        await evaluate(
+          `!!document.querySelector('.reference-card .reference-beside .beside-card table')`
+        )
+    );
+    const worn = await evaluate(`
+      (() => {
+        const card = document.querySelector('.reference-card .reference-beside .beside-card');
+        if (!card) return null;
+        return {
+          head: card.querySelector('h3')?.innerText.trim() ?? '',
+          text: card.innerText.replace(/\\s+/g, ' ')
+        };
+      })()
+    `);
+    check(
+      worn?.head === 'padded vest',
+      'an item for a worn slot opens a card for the piece worn there',
+      JSON.stringify(worn)
+    );
+    check(
+      copyRx('cards.slotPeek.columnAc').test(worn?.text ?? '') && /stealth/i.test(worn?.text ?? ''),
+      'and the card sets every stat beside the item, effects as well as armour',
+      worn?.text?.slice(0, 200) ?? ''
+    );
+    await evaluate(
+      `document.querySelector('.reference-card .reference-beside')?.scrollIntoView({ block: 'end' })`
+    );
+    await capture('smoke-beside-card.png', 'the worn piece beside an item on the Reference card');
+
+    // And from the palette, the slide-out: the same piece, as a card beside it.
+    await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
+    await paletteReady();
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.palette input');
+        if (!el) return false;
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+        set.call(el, 'chainmail hauberk');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await waitFor(async () =>
+      evaluate(`document.querySelector('.palette li[data-command="lookup:item:0"]') !== null`)
+    );
+    await evaluate(
+      `(document.querySelector('.palette li[data-command="lookup:item:0"]')?.click(), true)`
+    );
+    await waitFor(
+      async () =>
+        await evaluate(
+          `!!document.querySelector('.reference-beside:not(.inline) .beside-card table')`
+        )
+    );
+    const placed = await evaluate(`
+      (() => {
+        const panel = document.querySelector('.reference-popover')?.getBoundingClientRect();
+        const beside = document.querySelector('.reference-beside:not(.inline)')?.getBoundingClientRect();
+        if (!panel || !beside) return null;
+        return { panel: [panel.left, panel.right], beside: [beside.left, beside.right] };
+      })()
+    `);
+    check(
+      placed !== null &&
+        (placed.beside[0] >= placed.panel[1] || placed.beside[1] <= placed.panel[0]),
+      'the slide-out draws the worn piece as a card beside itself',
+      JSON.stringify(placed)
+    );
+    await capture('smoke-beside-panel.png', 'the worn-piece card beside the slide-out');
+    for (const type of ['keyDown', 'keyUp']) {
+      await cdp('Input.dispatchKeyEvent', {
+        type,
+        key: 'Escape',
+        code: 'Escape',
+        windowsVirtualKeyCode: 27
+      });
+    }
+    await gone('.reference-popover');
+  }
+
+  /*
    * A shop that sells an item is a **place**, not a word (todo 02).
    *
    * `Sold by: General Store, Newhaven General Store, …` was the client printing
@@ -7486,6 +7576,29 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     check(
       await evaluate(`!!document.querySelector('.reference-popover .reference-detail')`),
       'drawn by the same component the Reference card uses'
+    );
+    /*
+     * The weapon hand holds nothing the pack names, so the card beside the
+     * panel says so.
+     */
+    await waitFor(
+      async () => await evaluate(`!!document.querySelector('.reference-beside:not(.inline)')`)
+    );
+    const besidePanel = await evaluate(`
+      (() => {
+        const panel = document.querySelector('.reference-popover')?.getBoundingClientRect();
+        const beside = document.querySelector('.reference-beside:not(.inline)')?.getBoundingClientRect();
+        if (!panel || !beside) return null;
+        return { panel: [panel.left, panel.right], beside: [beside.left, beside.right], inline: !!document.querySelector('.reference-popover .reference-beside') };
+      })()
+    `);
+    check(
+      besidePanel !== null &&
+        !besidePanel.inline &&
+        (besidePanel.beside[0] >= besidePanel.panel[1] ||
+          besidePanel.beside[1] <= besidePanel.panel[0]),
+      'with nothing in the weapon hand, the card beside the slide-out says so',
+      JSON.stringify(besidePanel)
     );
     /*
      * The panel's three switches (user, 2026-11-09): Auto-collect and Auto-buy

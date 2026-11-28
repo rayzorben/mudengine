@@ -86,6 +86,13 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
   ];
 }
 
+/** How many uses an item has, as every surface words it (`-1` is for ever). */
+export function usesText(uses: number): string {
+  if (uses === -1) return t('cards.reference.item.usesUnlimited');
+  if (uses === 1) return t('cards.reference.item.usesOnce');
+  return t('cards.reference.item.usesMany', { count: uses });
+}
+
 /**
  * The word in the chip beside a name: what kind of thing this is.
  *

@@ -2,18 +2,27 @@
  * An item looked up, set beside what this character wears in its slot: the
  * Reference panel's comparison. Built in main (`world/wornBeside.ts`) with
  * the floor loot's ranking (`slotGear`, `versusWorn`); drawn by
- * `ReferenceWorn`. Absent where the character cannot wear it.
+ * `ReferenceBeside`, a card per worn piece beside the item's panel. Absent
+ * where the character cannot wear it.
  */
 import type { SlotFigures, SlotGearRow, SlotRanking } from './slotGear';
+import type { WorldItem } from './world';
+
+/** The columns of an item every stat in the comparison is read from. */
+export type ComparedItem = Pick<
+  WorldItem,
+  'armour' | 'weapon' | 'abilities' | 'encumbrance' | 'price' | 'uses'
+>;
 
 /** One item worn in the slot, with what it gives there. */
 export interface WornPiece {
   /** As the listing spelled it. */
   name: string;
+  /** The realm's row; null where several rows share the name and none is settled. */
+  id: number | null;
+  /** The realm's row; null where it has no single row for the name, so every stat is unknown. */
+  item: ComparedItem | null;
   figures: SlotFigures;
-  /** Null where the realm holds no single row for the name. */
-  weight: number | null;
-  speed: number | null;
 }
 
 /** How the item weighs against the piece it would replace. */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { CSSProperties, PointerEvent as ReactPointerEvent, Ref } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, Ref, RefObject } from 'react';
 
 import {
   anchorNode,
@@ -75,6 +75,8 @@ export interface PopoverFrame {
     'data-sized'?: 'true';
     'data-moving'?: 'true';
   };
+  /** The panel's element, for a companion placed beside it (`useBesidePlacement`). */
+  panel: RefObject<HTMLDivElement | null>;
   /** Whether a click outside still puts the panel away. */
   pinned: boolean;
   togglePin(): void;
@@ -417,6 +419,7 @@ export function usePopoverFrame({
       ...(size !== null ? { 'data-sized': 'true' as const } : {}),
       ...(moving ? { 'data-moving': 'true' as const } : {})
     },
+    panel: ref,
     pinned,
     togglePin: useCallback(() => setPinned((on) => !on), []),
     onGrab,

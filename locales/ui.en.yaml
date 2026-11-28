@@ -3746,18 +3746,25 @@ cards:
         drFigure: DR {dr}
         madeOfLabel: Made of
         stopsLabel: Damage Reduction (DR)
-      # The item beside what this character wears in its slot, drawn only
-      # where the character can wear it (`ReferenceWorn`).
+      # The worn pieces in an item's slot, a card each beside the item's panel,
+      # drawn only where the character can wear it (`ReferenceBeside`).
       beside:
         better: 'Better than the {item} you wear'
         same: 'As good as the {item} you wear'
         worse: 'Not as good as the {item} you wear'
-        caption: 'Against what you wear: {slot}'
+        caption: 'Worn on {slot}'
         free: '{slot} has a free place, so this replaces nothing.'
         nothing: 'Nothing is worn on {slot}.'
         unlisted: "What you wear isn't known yet. Type i to list it."
         handsFree: '{item} has to come off first: a two-handed weapon leaves no hand for the off-hand.'
         worth: Worth
+        change: Change
+        none: none
+        present: 'yes'
+        unread: Effects not read
+        accuracy: Accuracy
+        hands: Hands
+        rowUnknown: 'The world data has no single item named {item}, so its stats are unknown.'
       effectPercent: '{value}%'
       effectPlus: '+{value}'
       effectReference: '#{value}'

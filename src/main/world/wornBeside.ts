@@ -15,14 +15,14 @@ import { figuresOf, versusWorn, WEAR_SLOTS, weakestWorn, wornBySlot } from './ge
 import { slotGear, type SlotAsker } from './slotGear';
 
 /** A worn piece with its figures: its own row where the realm names one, else the pack's. */
-function pieceOf(item: ItemEntity, gear: SlotGear, asker: SlotAsker): WornPiece {
+function pieceOf(item: ItemEntity, gear: SlotGear, asker: SlotAsker, realm: FloorRealm): WornPiece {
   const id = entityNumber(item);
   const row = id === null ? undefined : gear.rows.find((each) => each.id === id);
   return {
     name: item.name,
-    figures: row ?? figuresOf(gear.rows, item, asker.weighing),
-    weight: row?.weight ?? item.encumbrance ?? null,
-    speed: row?.speed ?? item.weapon?.speed ?? null
+    id,
+    item: rowOf(item, realm) ?? null,
+    figures: row ?? figuresOf(gear.rows, item, asker.weighing)
   };
 }
 
@@ -57,7 +57,7 @@ export function wornBeside(
     slot: gear.slot,
     ranking: gear.ranking,
     item,
-    worn: listed ? wornHere.map((piece) => pieceOf(piece, gear, asker)) : null,
+    worn: listed ? wornHere.map((piece) => pieceOf(piece, gear, asker, realm)) : null,
     replaces: weakest?.item.name ?? null,
     verdict: weakest === null ? null : verdictOf(versusWorn(gear.ranking, item, weakest.figures)),
     handsFree: listed ? handsInTheWay(code, row, state, realm) : null,

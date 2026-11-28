@@ -3,6 +3,7 @@ import type { SupplyList } from './SupplyControls';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import ReferenceBeside from './ReferenceBeside';
 import ReferenceDetail from './ReferenceDetail';
 import { entryNumber, entryWord, flattenLookup, type ReferenceEntry } from '../lib/reference';
 import EntityNumber from './EntityNumber';
@@ -211,6 +212,7 @@ export default function ReferencePopover({
           <div className="empty">{t('cards.reference.notFound')}</div>
         ) : (
           <ReferenceDetail
+            besideInline={false}
             classNames={classNames}
             entry={entry}
             heading={false}
@@ -228,6 +230,16 @@ export default function ReferencePopover({
         )}
       </div>
       <PopoverSizer onReset={frame.onSizeReset} onSize={frame.onSize} />
+      {/* What is worn in the item's slot, as cards of their own beside this one. */}
+      {entry !== 'pending' && entry?.kind === 'item' && entry.beside !== null && (
+        <ReferenceBeside
+          beside={entry.beside}
+          item={entry.item}
+          names={{ family: realm, classNames, referred }}
+          at={frame.props.style}
+          panel={frame.panel}
+        />
+      )}
     </div>,
     document.body
   );

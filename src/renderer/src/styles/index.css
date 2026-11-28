@@ -12383,75 +12383,134 @@ input.switch:focus-visible {
 }
 
 .card[data-card-size='small'] .reference-detail > .readout,
-.card[data-card-size='small'] .reference-detail > .reference-worn {
+.card[data-card-size='small'] .reference-detail > .reference-beside {
   display: none;
 }
 
 /*
- * The item beside what is worn in its slot (`ReferenceWorn`): a column for the
- * item, one per worn piece, the figures in the data register. The change
- * against the piece it replaces is tonal, `--ok` for better and `--danger`
- * for worse; the piece it replaces carries the accent in its heading.
+ * What is worn in a looked-up item's slot (`ReferenceBeside`): a card per worn
+ * piece, beside the panel a clicked name opens and under the readout on the
+ * Reference card. Each lists every stat of the piece against the item, the
+ * figures in the data register; the change is tonal, `--ok` better and
+ * `--danger` worse. The piece the item replaces carries the accent seam.
  */
-.reference-worn {
-  margin: 0 0 8px;
+.reference-beside {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.reference-worn p {
+.reference-beside:not(.inline) {
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: fixed;
+  z-index: 55;
+}
+
+.reference-beside.inline {
+  margin: 8px 0 0;
+}
+
+.beside-card {
+  background: var(--glass-fill-strong);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--r-card);
+  padding: 8px 10px 10px;
+}
+
+.reference-beside:not(.inline) .beside-card {
+  backdrop-filter: saturate(1.2);
+  -webkit-backdrop-filter: saturate(1.2);
+  box-shadow: var(--glass-rim), var(--glass-shadow);
+}
+
+.reference-beside.inline .beside-card {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border-color: transparent;
+  /* A rail card can be narrower than four columns of figures. */
+  overflow-x: auto;
+}
+
+.beside-card[data-replaced='true'] {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.beside-head {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
   margin: 0 0 4px;
 }
 
-.reference-worn .beside-verdict {
+.beside-head h3 {
+  color: var(--text-hi);
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: normal;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.beside-card p {
+  margin: 0 0 4px;
+}
+
+.beside-card .beside-verdict {
   color: var(--text-hi);
   font-weight: 600;
 }
 
-.reference-worn [data-tone='better'] {
+.beside-card [data-tone='better'] {
   color: var(--ok);
 }
 
-.reference-worn [data-tone='worse'] {
+.beside-card [data-tone='worse'] {
   color: var(--danger);
 }
 
-.reference-worn table {
+.beside-card table {
   border-collapse: collapse;
   font-family: var(--font-mono);
-  table-layout: fixed;
   width: 100%;
 }
 
-.reference-worn caption {
+.beside-card caption {
   caption-side: top;
   color: var(--text-lo-quiet);
   font-family: var(--font-sans);
   text-align: left;
 }
 
-.reference-worn th,
-.reference-worn td {
-  overflow-wrap: anywhere;
-  padding: 2px 6px 2px 0;
+.beside-card th,
+.beside-card td {
+  overflow-wrap: break-word;
+  padding: 2px 8px 2px 0;
   text-align: left;
   vertical-align: top;
 }
 
-.reference-worn thead th {
+.beside-card thead th {
   color: var(--text-hi);
   font-weight: 600;
 }
 
-.reference-worn thead th[data-replaced='true'] {
-  color: var(--accent);
-}
-
-.reference-worn tbody th {
+.beside-card tbody th {
   color: var(--text-lo);
   font-weight: 400;
 }
 
-.reference-worn .beside-change {
+.beside-card td[data-absent='true'] {
+  color: var(--text-lo-quiet);
+}
+
+.beside-card thead th:last-child,
+.beside-card .beside-change {
   font-weight: 600;
+  text-align: right;
   white-space: nowrap;
 }
 

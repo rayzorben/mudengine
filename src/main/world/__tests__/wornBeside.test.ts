@@ -88,7 +88,7 @@ describe('an item looked up beside what is worn', () => {
       verdict: 'better',
       handsFree: null,
       item: { name: 'leather boots', ac: 20, weight: 50 },
-      worn: [{ name: 'sandals', weight: 50 }]
+      worn: [{ name: 'sandals', id: 1, item: { armour: { ac: 10 }, encumbrance: 50 } }]
     });
     expect(beside?.worn?.[0]?.figures.ac).toBe(10);
   });
