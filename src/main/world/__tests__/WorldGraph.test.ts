@@ -6053,6 +6053,8 @@ describe('the quest book’s item and room joins', () => {
       expect(roots?.room).toBe('9/500');
       expect(roots?.place).toBe('Earthy Cave');
       expect(roots?.say).toContain('get roots');
+      // MajorMUD v1.11p reads `get roots` as its get command; `cut` is typed.
+      expect(roots?.say?.[0]).toBe('cut roots');
     });
 
     /*

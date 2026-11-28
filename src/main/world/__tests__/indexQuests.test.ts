@@ -278,7 +278,8 @@ describe('where a script hands an item over', () => {
         Number: 1446,
         Action: [
           'get roots:failitem 995:checkability 133 5:giveitem 995',
-          'pick roots:failitem 995:checkability 133 5:giveitem 995'
+          'pick roots:failitem 995:checkability 133 5:giveitem 995',
+          'cut roots:failitem 995:checkability 133 5:giveitem 995'
         ].join('\n'),
         LinkTo: 0
       },
@@ -306,9 +307,14 @@ describe('where a script hands an item over', () => {
     expect(read().from.get(966)).toEqual([{ k: 'death', w: 'white jelly', at: '9/146' }]);
   });
 
-  it('gathers a room’s spellings into one place rather than one place each', () => {
+  /*
+   * The first spelling is the one typed: MajorMUD v1.11p reads `get roots` as
+   * its own get command, so the cave hands over nothing for it, and `cut roots`
+   * on the same block does (the user, live, 2026-11-27).
+   */
+  it('gathers a room’s spellings into one place, `cut roots` first', () => {
     expect(read().from.get(995)).toEqual([
-      { k: 'room', at: '9/500', say: ['get roots', 'pick roots'] }
+      { k: 'room', at: '9/500', say: ['cut roots', 'get roots', 'pick roots'] }
     ]);
   });
 
