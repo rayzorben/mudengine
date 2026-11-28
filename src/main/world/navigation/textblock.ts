@@ -14,6 +14,7 @@ import type { Denomination } from '../../../shared/character';
 import { TB_STATS, type TbStat } from '../../../shared/gates';
 import { DIRECTIONS, type Direction } from '../../../shared/world';
 import type { RealmSource } from '../RealmSource';
+import { typedFirst } from '../typedFirst';
 import { number, text } from '../values';
 
 /**
@@ -469,24 +470,16 @@ export interface Textblock {
 }
 
 /**
- * Phrases the server is seen to run where an earlier spelling on the same
- * block does not, read ahead of the others because every reader types a
- * block's first phrase. MajorMUD v1.11p reads `get roots` in the Earthy Cave
- * (9/500) as its own get command and hands over no cave roots; `cut roots`, on
- * the same block 1446, does (the user, live, 2026-11-27). `pick` is the
- * server's picklock command, and `pull` and `grab` are not captured. A typed
- * phrase skips every line whose first field differs (`TextBlockPart.cs:1340`),
- * so for a typed block the order between phrases changes nothing it runs.
+ * A block's lines, a `typedFirst` phrase's ahead of the others. A typed phrase
+ * skips every line whose first field differs (`TextBlockPart.cs:1340`), so for
+ * a typed block the order between phrases changes nothing the server runs.
  */
-const TYPED_FIRST: ReadonlySet<string> = new Set(['cut roots']);
-
 export function readLines(action: string): TbLine[] {
   const lines = action
     .split('\n')
     .map((line) => line.split(':'))
     .map((fields) => ({ fields, steps: fields.map(readStep) }));
-  const typedFirst = (line: TbLine): boolean => TYPED_FIRST.has(phraseOf(line) ?? '');
-  return [...lines.filter(typedFirst), ...lines.filter((line) => !typedFirst(line))];
+  return typedFirst(lines, phraseOf);
 }
 
 /**

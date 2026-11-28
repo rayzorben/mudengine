@@ -22,6 +22,7 @@
 import { asAlignment } from '../../shared/alignment';
 import { COPPER_PER } from '../../shared/coins';
 import type { Requirement, RequirementKind } from '../../shared/world';
+import { typedFirst } from './typedFirst';
 
 /** Ordered: the first pattern that matches wins, so specific precedes general. */
 /**
@@ -305,12 +306,8 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
 
   if (kind === 'text') {
     // Everything after `Text:` is a comma-separated list of accepted phrasings.
-    // The first is the canonical one; the rest are synonyms the game also takes.
-    const commands = text
-      .slice(text.indexOf(':') + 1)
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
+    // The first is the one typed; the rest are spellings the realm also lists.
+    const commands = phrasesOf(text.slice(text.indexOf(':') + 1));
     if (commands.length > 0) requirement.commands = commands;
   }
 
@@ -390,10 +387,7 @@ export function parseAction(raw: unknown): ParsedAction | null {
     if (id > 0) item = id;
     phrases = phrases.slice(0, clause.index);
   }
-  const say = phrases
-    .split(',')
-    .map((phrase) => phrase.trim())
-    .filter((phrase) => phrase.length > 0);
+  const say = phrasesOf(phrases);
   if (say.length === 0) return null;
   const action: ParsedAction = { direction: match[2]!.toLowerCase(), say };
   if (item !== undefined) action.item = item;
@@ -407,11 +401,20 @@ export function parseAction(raw: unknown): ParsedAction | null {
   return action;
 }
 
+/** A cell's comma-separated phrases, the one to type first (`typedFirst`). */
+function phrasesOf(list: string): string[] {
+  const phrases = list
+    .split(',')
+    .map((phrase) => phrase.trim())
+    .filter((phrase) => phrase.length > 0);
+  return typedFirst(phrases, (phrase) => phrase);
+}
+
 /** One `Action …` cell, read. `map`/`room` absent means the room it sits in. */
 export interface ParsedAction {
   /** The exit it opens, canonical short. */
   direction: string;
-  /** Every phrase the realm accepts, its own first. */
+  /** Every phrase the realm accepts, the one to type first (`typedFirst`). */
   say: string[];
   /** The `Items` row that must be carried to say any of them. See `RequirementAction.item`. */
   item?: number;

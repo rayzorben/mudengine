@@ -222,6 +222,16 @@ describe('a lever in a direction column', () => {
     expect(parseAction('Action [on the N exit of this room]: pull lever')?.item).toBeUndefined();
   });
 
+  // MajorMUD v1.11p opens the catacombs' hidden exits only for `aim fork`
+  // (the user, live, 2026-11-27), and the first phrase is the one typed.
+  it('puts the catacombs’ `aim fork` ahead of the spellings the server ignores', () => {
+    expect(
+      parseAction(
+        'Action [on the E exit of this room]: use fork east, use titanium fork east, aim fork east (Item: 983)'
+      )?.say
+    ).toEqual(['aim fork east', 'use fork east', 'use titanium fork east']);
+  });
+
   it('refuses a lever with no phrase behind it', () => {
     expect(parseAction('Action [on the N exit of this room]:')).toBeNull();
     expect(parseAction('Action [on the N exit of this room]:   ')).toBeNull();

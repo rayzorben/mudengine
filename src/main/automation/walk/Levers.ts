@@ -262,9 +262,8 @@ export class Levers {
    * is what `Requirement.actions` is sorted in, which is what `specific order`
    * wants; `any order` does not care, so one order serves both.
    *
-   * The first phrase of each, because the realm lists its own spelling first
-   * and the rest are synonyms for the same lever — `Requirement.commands` on a
-   * text exit is read exactly this way.
+   * The first phrase of each, the one `parseAction` puts first (`typedFirst`);
+   * `Requirement.commands` on a text exit is read exactly this way.
    *
    * Reported as todo 01: the realm said a concealed passage led south out of
    * Small Chamber 10/4 and that `pull lever` opened it, in the room's own `W`
