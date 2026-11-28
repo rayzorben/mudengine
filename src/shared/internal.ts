@@ -3100,6 +3100,30 @@ const TUNING_DEFAULTS = {
      */
     mapFinderIdleMs: 60_000,
     /**
+     * The fewest rooms the route panel's Legs view makes a leg of. A shorter
+     * run of one name, a square or a gate between two streets, joins the leg
+     * before it.
+     */
+    routeAreaRooms: 3,
+    /**
+     * How many rooms longer or shorter another way's detour must be before a
+     * leg names it, when it crosses the same gates and lairs. A room or two
+     * round a corner is the same way.
+     */
+    routeForkRooms: 3,
+    /**
+     * The share of the bar a lair takes for the route panel's views to draw
+     * it in amber, and give it its figure on the Line view. Red is main's
+     * `deadly`, never this.
+     */
+    routeHeavyShare: 0.4,
+    /**
+     * Where the Forecast view's walking line rests to full before a lair, as
+     * a share of the bar. It stands for the rest the character's health
+     * settings decide, which the panel cannot read.
+     */
+    routeRestShare: 0.5,
+    /**
      * How often a card redraws a running clock — the uptime readout, and how
      * long a loop has been going. A second, because that is the unit shown.
      */

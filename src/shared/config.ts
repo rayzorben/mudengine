@@ -130,6 +130,24 @@ export type TabsPreference = 'top' | 'left' | 'right';
 export const CARDS_SIDES = ['left', 'right'] as const;
 export type CardsSide = (typeof CARDS_SIDES)[number];
 
+/**
+ * How the route panel draws a way (`ui.routeView`): by area (`legs`), as
+ * lines on one scale beside the other ways (`line`), or as the health it is
+ * expected to cost (`forecast`). The panel's own toggle changes it for the
+ * route on screen; this is what it opens in.
+ */
+export const ROUTE_VIEWS = ['legs', 'line', 'forecast'] as const;
+export type RouteView = (typeof ROUTE_VIEWS)[number];
+
+/**
+ * The closed words of `ui` a person picks, which the activity log prints when
+ * they change (`SessionDebug.settings`): words from a fixed list, never text
+ * anybody typed.
+ */
+export function uiWords(ui: { cards: CardsSide; routeView: RouteView }): Record<string, string> {
+  return { cards: ui.cards, routeView: ui.routeView };
+}
+
 /** One realm-specific prompt the block vocabulary does not cover. */
 export interface LoginStep {
   /** Substring of the prompt line. */
@@ -414,6 +432,8 @@ export interface UiConfig {
   tabsAutoHide: boolean;
   /** Which side of the console the card rail sits on. */
   cards: CardsSide;
+  /** The view the route panel opens a way in (`RouteView`). */
+  routeView: RouteView;
   /**
    * Show the Vitals and Room cards once in the realm.
    *
@@ -2556,6 +2576,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     tabs: 'left',
     tabsAutoHide: false,
     cards: 'right',
+    routeView: 'legs',
     showHud: true,
     showLogo: true,
     partyRecap: true,
@@ -3031,6 +3052,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, DEFAULT_CONFIG.ui.tabs),
       tabsAutoHide: bool(ui['tabsAutoHide'], DEFAULT_CONFIG.ui.tabsAutoHide),
       cards: oneOf(ui['cards'], CARDS_SIDES, DEFAULT_CONFIG.ui.cards),
+      routeView: oneOf(ui['routeView'], ROUTE_VIEWS, DEFAULT_CONFIG.ui.routeView),
       density: oneOf(
         ui['density'],
         ['auto', 'comfortable', 'compact'] as const,

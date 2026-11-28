@@ -10,6 +10,34 @@
  * its head*.
  */
 import type { RouteStep } from '@shared/world';
+import { tuning } from './tuning';
+
+/**
+ * What a step's gate is called on its chip: the obstacle's label, which
+ * carries the price a toll charges, else the requirement's kind. Null where
+ * the step is ungated.
+ */
+export function gateWord(step: RouteStep): string | null {
+  return step.obstacle?.label ?? step.requirement?.kind ?? null;
+}
+
+/**
+ * How hard a lair, or the worst of a stretch's lairs, is drawn: `deadly` only
+ * where main said so (`RouteStep.deadly`, `tuning.world.deadlyShare`), `heavy`
+ * at `tuning().routeHeavyShare` of the bar or more, else `light`. Null where
+ * no figure was weighed, which is never drawn as light.
+ */
+export type LairGrade = 'deadly' | 'heavy' | 'light';
+
+export function shareGrade(share: number | null, deadly: boolean): LairGrade | null {
+  if (deadly) return 'deadly';
+  if (share === null) return null;
+  return share >= tuning().routeHeavyShare ? 'heavy' : 'light';
+}
+
+export function lairGrade(step: RouteStep): LairGrade | null {
+  return shareGrade(step.danger ?? null, step.deadly === true);
+}
 
 /** A run of consecutive steps, `count` long from `start`. One is a plain step. */
 export interface StepRun {
@@ -44,7 +72,7 @@ export function stepDanger(
 }
 
 export function stepSignature(step: RouteStep): string {
-  const gate = step.obstacle?.label ?? step.requirement?.kind ?? '';
+  const gate = gateWord(step) ?? '';
   const hazard =
     step.hazardKind !== undefined
       ? step.hazardKind

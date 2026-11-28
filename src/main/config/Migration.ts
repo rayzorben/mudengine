@@ -239,6 +239,7 @@ function migrateAll(options: MigrationOptions): void {
   statedThePartyRecap(home, note, options.template);
   statedTheTabsAutoHide(home, note, options.template);
   statedTheCardsSide(home, note, options.template);
+  statedTheRouteView(home, note, options.template);
   statedTheDarkConsole(home, note, options.template);
   statedTheConsolePalette(home, note, options.template);
   theDoorsOpenByDefault(home, note);
@@ -4466,6 +4467,16 @@ function statedTheCardsSide(
 ): void {
   if (statedUiKey(home, template, 'cards', DEFAULT_CONFIG.ui.cards, 'tabsAutoHide'))
     note(t('notices.migration.cardsSideStated', { file: home.options }));
+}
+
+/** States `ui.routeView`, legs, after `cards`, as `statedThePartyRecap` does. */
+function statedTheRouteView(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (statedUiKey(home, template, 'routeView', DEFAULT_CONFIG.ui.routeView, 'cards'))
+    note(t('notices.migration.routeViewStated', { file: home.options }));
 }
 
 /**

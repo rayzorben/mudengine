@@ -1069,6 +1069,18 @@ async function shown(selector) {
   return waitFor(async () => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`));
 }
 
+/**
+ * Opens every leg of the route panel's Legs view and waits for their rows, so
+ * a check reads the steps as the whole list drew them. A new way on screen
+ * closes the legs again.
+ */
+async function openLegs() {
+  await evaluate(
+    `document.querySelectorAll('.route-legs .route-leg-head[aria-expanded="false"]').forEach((leg) => leg.click())`
+  );
+  return shown('.route-legs .route-steps li');
+}
+
 /** And the other half: waits for it to be gone. A negative with its own probe. */
 async function gone(selector) {
   return waitFor(
@@ -3248,6 +3260,46 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'and says how far without pricing it',
     plan
   );
+  /*
+   * The way opens in the view `ui.routeView` names, Legs as shipped, with the
+   * toggle at the end of the head. Line and Forecast draw it; back on Legs,
+   * every leg is opened, so the rows the checks below read are drawn as the
+   * whole list drew them.
+   */
+  const views = await evaluate(
+    `[...document.querySelectorAll('.route-panel .route-view-toggle button')].map((b) => b.dataset.view + ':' + b.getAttribute('aria-pressed')).join(' ')`
+  );
+  check(
+    views === 'legs:true line:false forecast:false',
+    'the way opens in Legs, with a toggle to Line and Forecast',
+    views
+  );
+  check(
+    (await evaluate(`document.querySelectorAll('.route-panel .route-legs .route-leg').length`)) > 0,
+    'and Legs lists the way by area'
+  );
+  // A picture of each, for the geometry no assertion here catches.
+  await painted();
+  await capture('smoke-route-legs.png', 'the route panel in Legs');
+  for (const [view, drawn] of [
+    ['line', '.route-lines .route-lane[data-shown="true"]'],
+    ['forecast', '.route-forecast .route-forecast-walk']
+  ]) {
+    await evaluate(
+      `document.querySelector('.route-view-toggle button[data-view="${view}"]').click()`
+    );
+    check(
+      await readUntil(
+        () => evaluate(`!!document.querySelector('.route-panel ${drawn}')`),
+        (seen) => seen
+      ),
+      `and ${view} draws the way`
+    );
+    await painted();
+    await capture(`smoke-route-${view}.png`, `the route panel in ${view}`);
+  }
+  await evaluate(`document.querySelector('.route-view-toggle button[data-view="legs"]').click()`);
+  await openLegs();
 
   /*
    * *Run it* and *Walk it* are one choice made two ways, so they sit on one
@@ -17237,12 +17289,18 @@ async function capture(file, label) {
 // now that `logging.capture` defaults on — one of each per connection, and a
 // third file of either kind would mean a reconnect leaked into this session.
 const allFiles = fs.existsSync(LOG_DIR) ? fs.readdirSync(LOG_DIR) : [];
-const logFiles = allFiles.filter((name) => name.endsWith('.log') && !name.endsWith('.activity.log'));
+const logFiles = allFiles.filter(
+  (name) => name.endsWith('.log') && !name.endsWith('.activity.log')
+);
 const activityFiles = allFiles.filter((name) => name.endsWith('.activity.log'));
 const captureFiles = allFiles.filter((name) => name.endsWith('.mudcap.jsonl'));
 check(logFiles.length === 1, 'one log file per connection', JSON.stringify(allFiles));
 check(captureFiles.length === 1, 'one capture file per connection', JSON.stringify(allFiles));
-check(activityFiles.length <= 1, 'at most one activity file per connection', JSON.stringify(allFiles));
+check(
+  activityFiles.length <= 1,
+  'at most one activity file per connection',
+  JSON.stringify(allFiles)
+);
 if (logFiles[0]) {
   const body = fs.readFileSync(path.join(LOG_DIR, logFiles[0]), 'utf8');
   check(/Obvious exits: north, south/.test(body), 'the session log captured server output');

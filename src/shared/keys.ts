@@ -69,6 +69,7 @@ export type ClientKey =
   | 'hangUp'
   | 'hangUpQuit'
   | 'runRoute'
+  | 'routeView'
   | 'walkRoute';
 
 export const CLIENT_KEYS: Readonly<Record<ClientKey, ClientChord>> = {
@@ -91,6 +92,8 @@ export const CLIENT_KEYS: Readonly<Record<ClientKey, ClientChord>> = {
   hangUpQuit: { key: 'q', mod: true },
   // The route panel's, only while a plan is on screen.
   runRoute: { key: 'r', alt: true },
+  // The route panel's next view, bound only while the panel shows a way.
+  routeView: { key: 'v', alt: true },
   walkRoute: { key: 'g', alt: true }
 };
 

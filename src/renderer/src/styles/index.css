@@ -3645,8 +3645,13 @@ kbd {
    * Taller than the 150px the fitted strip took, because the map here is now
    * the map everywhere — `MapView`, with the legend under it — and the legend
    * wraps to about two rows at this width. The picture keeps what it had.
+   *
+   * And shorter on a short window: the panel is at most 60vh, and the view
+   * under the head (Legs, Line, Forecast) needs about 250px of it to show
+   * more than a row. At a 1080-row window the picture keeps its 210px; at 768
+   * it gives way down to 120px.
    */
-  height: 210px;
+  height: clamp(120px, calc(60vh - 440px), 210px);
   margin-bottom: 6px;
   padding: 6px 0;
 }
@@ -11674,6 +11679,298 @@ input.switch:focus-visible {
 .route-direct > span {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/*
+ * The view toggle at the end of the head (`ui.routeView`): three words in one
+ * tonal track. The pressed one is raised, never filled, because `Walk it` is
+ * the panel's one filled control.
+ */
+.route-view-toggle {
+  border: var(--rule) solid var(--ink-line);
+  border-radius: var(--r-control);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+}
+
+.route-view-toggle > button {
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--r-control) - 2px);
+  box-shadow: none;
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  height: auto;
+  padding: 2px 8px;
+}
+
+.route-view-toggle > button[aria-pressed='true'] {
+  background: var(--ink-raised);
+  color: var(--text-hi);
+}
+
+/*
+ * Legs: one row per area, its name and size, its worst lair on the right, and
+ * one quiet line of what it holds. Colour only where a lair can hurt: over
+ * 40% of the bar amber, over the bar red.
+ */
+.route-legs {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.route-leg {
+  border-left: 2px solid var(--ink-line);
+  margin-left: 4px;
+  padding: 2px 0 4px 10px;
+}
+
+.route-leg[data-open='true'] {
+  border-left-color: var(--accent);
+}
+
+.route-leg-head {
+  display: grid;
+  gap: 0 8px;
+  grid-template-columns: auto 1fr auto;
+  text-align: left;
+  width: 100%;
+}
+
+.route-leg-name {
+  color: var(--text-hi);
+}
+
+.route-leg-size {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.route-leg-risk {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  white-space: nowrap;
+}
+
+.route-leg-facts {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.route-legs, .route-fork) [data-tone='warn'] {
+  color: var(--pending);
+}
+
+:is(.route-legs, .route-fork) :is([data-tone='bad'], [data-tone='worse']) {
+  color: var(--danger);
+}
+
+:is(.route-legs, .route-fork) [data-tone='better'] {
+  color: var(--ok);
+}
+
+.route-leg > .route-steps {
+  margin: 2px 0 2px;
+}
+
+.route-fork {
+  align-items: baseline;
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.route-fork > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Line and Forecast: a drawing scaled to the panel's width, then the picked
+ * room's own row with *Walk here* under it.
+ */
+.route-lines > svg,
+.route-forecast > svg {
+  display: block;
+  margin: 4px 0;
+  overflow: visible;
+  width: 100%;
+}
+
+.route-lane {
+  cursor: pointer;
+}
+
+.route-lane[data-shown='true'] {
+  cursor: default;
+}
+
+.route-lane-hit {
+  fill: transparent;
+}
+
+.route-lane[data-shown='false']:hover .route-lane-hit {
+  fill: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+}
+
+.route-lane-name {
+  fill: var(--text-lo);
+  font: 600 11px var(--font-mono);
+}
+
+.route-lane[data-shown='true'] .route-lane-name {
+  fill: var(--accent);
+}
+
+.route-lane-figures,
+.route-forecast-axis {
+  fill: var(--text-lo);
+  font: 10px var(--font-mono);
+}
+
+.route-lane-area {
+  opacity: 0.35;
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.route-lane[data-shown='true'] .route-lane-area {
+  opacity: 0.6;
+  stroke-width: 6;
+}
+
+.route-lane-area.area-0 {
+  stroke: var(--section-a);
+}
+
+.route-lane-area.area-1 {
+  stroke: var(--section-b);
+}
+
+.route-lane-area.area-2 {
+  stroke: var(--section-c);
+}
+
+.route-lane-area.area-3 {
+  stroke: var(--section-d);
+}
+
+.route-lair.light {
+  fill: var(--marker);
+}
+
+/* A lair nobody weighed is hollow: unknown, never drawn as a light one. */
+.route-lair.unweighed {
+  fill: none;
+  stroke: var(--text-lo);
+}
+
+.route-lair.heavy {
+  fill: var(--pending);
+}
+
+.route-lair.deadly {
+  fill: var(--danger);
+}
+
+.route-lair-figure {
+  font: 9px var(--font-mono);
+}
+
+.route-gate {
+  fill: var(--ink-void);
+  stroke: var(--accent);
+  stroke-width: 1.3;
+}
+
+.route-gate.trap {
+  fill: var(--danger);
+  stroke: var(--danger);
+}
+
+.route-spell {
+  fill: var(--pending);
+}
+
+.route-step-hit {
+  cursor: pointer;
+  fill: transparent;
+}
+
+.route-step-hit:hover {
+  fill: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+}
+
+.route-lane-end {
+  fill: var(--accent);
+}
+
+.route-lane[data-shown='false'] .route-lane-end {
+  fill: var(--text-lo);
+}
+
+.route-lane-picked,
+.route-forecast-picked {
+  fill: none;
+  stroke: var(--text-hi);
+  stroke-width: 2;
+}
+
+.route-forecast-dead {
+  fill: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+}
+
+.route-forecast-zero,
+.route-forecast-deadly {
+  stroke: var(--danger);
+  stroke-dasharray: 3 3;
+}
+
+.route-forecast-half {
+  stroke: var(--ink-line);
+}
+
+.route-forecast-walk,
+.route-forecast-run,
+.route-forecast-other {
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.route-forecast-walk {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.route-forecast-run {
+  stroke: var(--marker);
+  stroke-width: 2;
+}
+
+.route-forecast-other {
+  opacity: 0.4;
+  stroke: var(--text-lo);
+  stroke-dasharray: 2 3;
+}
+
+.route-forecast-says {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin: 0 0 4px;
+}
+
+.route-forecast-says [data-line='walk'] {
+  color: var(--text);
 }
 
 .chip.direct {

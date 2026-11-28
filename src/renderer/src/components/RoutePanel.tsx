@@ -5,7 +5,21 @@ import ClearField from './ClearField';
 import Icon from './Icon';
 import PlanFights from './PlanFights';
 import FareAsk from './FareAsk';
-import { commandsOf, keptOutRooms, runsOf, stepDanger, stepSignature } from '../lib/route';
+import RouteLegs from './RouteLegs';
+import RouteLines from './RouteLines';
+import RouteForecast from './RouteForecast';
+import { type RouteStepsProps } from './RouteSteps';
+import { keptOutRooms } from '../lib/route';
+import {
+  ROUTE_VIEW_LABEL,
+  factsOf,
+  plannedWays,
+  roundWay,
+  wayName,
+  wayRoute,
+  type Way
+} from '../lib/routeViews';
+import { ROUTE_VIEWS, type RouteView } from '@shared/config';
 import { percent } from '../lib/outlook';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
@@ -37,7 +51,6 @@ import {
   type RoomId,
   type Route,
   type RouteBlock,
-  type RouteStep,
   type WorldRoom
 } from '@shared/world';
 import { keepFocus } from '../lib/focus';
@@ -48,9 +61,6 @@ import type { PlannedHere } from '../hooks/useSlideOuts';
 import type { FoundRoom } from '@shared/destinations';
 import type { RoomNickname } from '@shared/roomNicknames';
 import { nicknamedLabel, nicknameMarks } from '../lib/nicknames';
-
-/** Which of the plan's routes is on screen — see `chosen`. */
-type Way = 'plan' | 'round' | 'carrying' | 'viaItem' | 'another' | 'direct' | 'keyed' | 'keptOut';
 
 /**
  * What walking a way is expected to cost, in words, for the two ways a kept-out
@@ -64,7 +74,7 @@ function survival(way: Route): string {
   const traps = trapsAlong(way.steps);
   const spells = (way.hazards ?? []).filter((hazard) => hazard.corridor === undefined).length;
   // A lair nobody could weigh is not a lair that costs nothing.
-  const unweighed = way.steps.filter((step) => step.lairUnweighed === true).length;
+  const unweighed = factsOf(way.steps).unweighed;
   // Nor are wanderers whose fights have not run (todo 25).
   const wandering = way.steps.filter((step) => step.wanderersUnweighed === true).length;
   const parts = [
@@ -108,27 +118,9 @@ function survival(way: Route): string {
   return parts.filter((part) => part !== null).join(' · ');
 }
 
-/**
- * The way round what the player keeps out of, as it would be walked: the way
- * itself, or where there is none without a key the pack lacks, the way once
- * it is fetched (`Route.unlocks`). Null where there is no way round at all.
- */
-function roundWay(route: Route): Route | null {
-  const round = route.keptOut?.round;
-  if (round === undefined) return null;
-  return round.blocked ? (round.unlocks ?? null) : round;
-}
-
-/** The ways main planned beside the plan, any of which may be on screen. */
-function alternativesOf(route: Route): ReadonlyArray<Route | undefined> {
-  return [
-    route.otherWay,
-    route.carrying,
-    route.viaItem,
-    route.another,
-    route.direct,
-    route.unlocks
-  ];
+/** The ways main planned beside the plan, any of which may be on screen (`plannedWays`). */
+function alternativesOf(route: Route): ReadonlyArray<Route> {
+  return plannedWays(route).flatMap(({ way, route: one }) => (way === 'plan' ? [] : [one]));
 }
 
 /** Every item's name, for the one sentence that names what is fetched. */
@@ -234,105 +226,8 @@ export interface RoutePanelProps {
    * leg is on screen the press starts the loop, and the lap walks the leg.
    */
   joining?: LoopJoining | null;
-}
-
-/**
- * The chips a step wears after its name: the gate, the room's own spell, the
- * lair. Written once because a folded run's row wears its first step's, and
- * the two rows must never disagree about what a room costs.
- */
-function chips(step: RouteStep) {
-  return (
-    <>
-      {/* A gated step is shown, not hidden: the player decides whether a door
-      or a trap is acceptable — and decides it on the *number*. The chip said
-      `toll` for a phase, with the price the gate charges sitting unread in
-      the same object; `obstacle.label` carries it, and the realm's own words
-      are still the tooltip. A trap wears the danger chip and everything else
-      the pending one: a door is opened and a toll is paid, and a trap is
-      walked through and taken — the same split the map draws as a bar
-      against a hazard triangle. */}
-      {step.requirement && step.invoke === undefined && (
-        <span
-          className={step.requirement.kind === 'trap' ? 'chip bad' : 'chip warn'}
-          title={step.obstacle?.detail ?? step.requirement.raw}
-        >
-          {step.obstacle?.label ?? step.requirement.kind}
-        </span>
-      )}
-      {/* And what the step **spends**, where it uses an item rather than
-      making a move. This is the one thing on a plan that is not undone by
-      walking back: a corridor costs nothing to re-walk and a potion is gone,
-      so the count the realm states is on the row beside the command that
-      spends it. It replaces the gate chip rather than sitting beside it —
-      that requirement is the item itself (`edgePenalty`'s `item` rung is what
-      prices the pack), so both drawn would say *needs potion of levitation*
-      next to *single use* about one thing. */}
-      {step.invoke !== undefined && (
-        <span className="chip warn" title={step.invoke.command}>
-          {step.invoke.uses === null
-            ? t('cards.route.spendsForever')
-            : step.invoke.uses === 1
-              ? t('cards.route.spendsOnce')
-              : t('cards.route.spendsUses', { useCount: step.invoke.uses })}
-        </span>
-      )}
-      {/* And what the room itself does to whoever stands in it. A chip
-      rather than a figure per step: on a route that crosses eight hundred of
-      them the number is the same eight hundred times, and the figure that
-      decides is at the head. A discouragement — a chain nobody could read,
-      a summons — is the word, never the share it was priced at: `2%` beside
-      a room whose spell is unread was read as a lair figure. */}
-      {step.hazard !== undefined && (
-        <span
-          className={step.hazardKind === undefined ? 'chip bad' : 'chip warn'}
-          /* The two words that are a *discouragement* rather than a figure say
-             so on hover: neither is a reading that the room is dangerous, and
-             `unread` in particular is the absence of a reading — which is not
-             what the word says on its own (todo 01). */
-          title={
-            step.hazardKind === 'unread'
-              ? t('cards.route.stepUnreadTitle')
-              : step.hazardKind === 'summons'
-                ? t('cards.route.stepSummonsTitle')
-                : undefined
-          }
-        >
-          {step.hazardKind === 'unread'
-            ? t('cards.route.stepUnread')
-            : step.hazardKind === 'summons'
-              ? t('cards.route.stepSummons')
-              : step.hazard * 100 < 1
-                ? t('cards.route.stepSlight')
-                : t('cards.route.stepHazard', { percent: Math.round(step.hazard * 100) })}
-        </span>
-      )}
-      {/* And the lair the router priced this step by. The head says how many
-      and names the worst; **this is where the reader finds out which rooms
-      they are**, which is the half that was missing — a count at the top of
-      a hundred-step plan is a number with nowhere to look. */}
-      {/* And a way or place the player keeps out of (todo 806), named by the
-      word on their list, so the reader sees where the way through goes. */}
-      {step.keptOut !== undefined && (
-        <span className="chip bad" title={t('cards.route.stepKeptOutTitle')}>
-          {t('cards.route.stepKeptOut', { word: step.keptOut })}
-        </span>
-      )}
-      {(() => {
-        const danger = stepDanger(step);
-        if (danger === null) return null;
-        return (
-          <span className={danger.kind === 'deadly' ? 'chip bad' : 'chip warn'}>
-            {danger.kind === 'deadly'
-              ? t('cards.route.stepDeadly')
-              : danger.kind === 'lair'
-                ? t('cards.route.stepLair', { percent: danger.percent })
-                : t('cards.route.stepRoad', { percent: danger.percent })}
-          </span>
-        );
-      })()}
-    </>
-  );
+  /** The view a way opens in (`ui.routeView`); the panel's toggle changes it until it closes. */
+  routeView: RouteView;
 }
 
 /**
@@ -371,7 +266,8 @@ export default function RoutePanel({
   finds,
   onPeek,
   onPeekEnd,
-  joining = null
+  joining = null,
+  routeView
 }: RoutePanelProps) {
   const [query, setQuery] = useState('');
   const [route, setRoute] = useState<Route | null>(null);
@@ -469,24 +365,31 @@ export default function RoutePanel({
   const [offering, setOffering] = useState(false);
   /** Folded runs of same-reading rooms that have been opened, by first step. */
   const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set());
-  const shown: Route | null =
-    route === null
-      ? null
-      : chosen === 'round'
-        ? (route.otherWay ?? route)
-        : chosen === 'carrying'
-          ? (route.carrying ?? route)
-          : chosen === 'viaItem'
-            ? (route.viaItem ?? route)
-            : chosen === 'another'
-              ? (route.another ?? route)
-              : chosen === 'direct'
-                ? (route.direct ?? route)
-                : chosen === 'keyed'
-                  ? (route.unlocks ?? route)
-                  : chosen === 'keptOut'
-                    ? (roundWay(route) ?? route)
-                    : route;
+  const toggleRun = useCallback(
+    (start: number) =>
+      setUnfolded((current) => {
+        const next = new Set(current);
+        if (next.has(start)) next.delete(start);
+        else next.add(start);
+        return next;
+      }),
+    []
+  );
+  const shown: Route | null = route === null ? null : wayRoute(route, chosen);
+  /**
+   * How the way is drawn under the head: by area, as lines beside the other
+   * ways, or as the health it costs. Opens at the setting each time the panel
+   * opens; the toggle changes it until then.
+   */
+  const [view, setView] = useState<RouteView>(routeView);
+  useEffect(() => {
+    if (open) setView(routeView);
+  }, [open, routeView]);
+  const nextView = useCallback(
+    () =>
+      setView((current) => ROUTE_VIEWS[(ROUTE_VIEWS.indexOf(current) + 1) % ROUTE_VIEWS.length]!),
+    []
+  );
   /** The loop whose leg is on screen, if one is: its press starts the loop. */
   const forLoop = joining !== null && shown === joining.route ? joining : null;
   /**
@@ -880,7 +783,8 @@ export default function RoutePanel({
     open && walkable && shown !== null
       ? [
           ...(forLoop === null ? [{ ...CLIENT_KEYS.runRoute, run: () => walk(shown, true) }] : []),
-          { ...CLIENT_KEYS.walkRoute, run: () => walk(shown) }
+          { ...CLIENT_KEYS.walkRoute, run: () => walk(shown) },
+          { ...CLIENT_KEYS.routeView, run: nextView }
         ]
       : []
   );
@@ -1051,6 +955,28 @@ export default function RoutePanel({
                         )
                         .join(', ')
                     })}
+                  </span>
+                )}
+                {/* How the way below is drawn; the setting picks the first (`ui.routeView`). */}
+                {shown !== null && shown.steps.length > 0 && (
+                  <span
+                    aria-label={t('cards.route.view.toggleAria')}
+                    className="route-view-toggle"
+                    role="group"
+                    title={t('cards.route.view.toggleTooltip')}
+                  >
+                    {ROUTE_VIEWS.map((key) => (
+                      <button
+                        aria-pressed={view === key}
+                        data-view={key}
+                        key={key}
+                        onClick={() => setView(key)}
+                        onMouseDown={keepFocus}
+                        type="button"
+                      >
+                        {ROUTE_VIEW_LABEL[key]}
+                      </button>
+                    ))}
                   </span>
                 )}
               </div>
@@ -1260,19 +1186,7 @@ export default function RoutePanel({
                     the choice. */}
                     {chosen !== 'plan' && (
                       <span className={chosen === 'direct' ? 'chip direct' : 'chip off'}>
-                        {chosen === 'round'
-                          ? t('cards.route.showing.round')
-                          : chosen === 'viaItem'
-                            ? t('cards.route.showing.viaItem')
-                            : chosen === 'another'
-                              ? t('cards.route.showing.another')
-                              : chosen === 'direct'
-                                ? t('cards.route.showing.direct')
-                                : chosen === 'keyed'
-                                  ? t('cards.route.showing.keyed')
-                                  : chosen === 'keptOut'
-                                    ? t('cards.route.showing.keptOut')
-                                    : t('cards.route.showing.carrying')}
+                        {wayName(chosen)}
                       </span>
                     )}
                     {/* The traps, counted at the head of the list where the
@@ -1815,183 +1729,53 @@ export default function RoutePanel({
                     );
                   })()}
                   {/*
-                   * The steps — with a run of rooms that read the same folded
-                   * into one row wearing the count (`runsOf`). *Slum Street*
-                   * three times is one row saying ×3 until its chevron is
-                   * pressed; a room with a chip of its own keeps its own line,
-                   * because a chip folded into a neighbour's row is one the
-                   * reader never sees.
+                   * The way, drawn as the view on the toggle says: by area,
+                   * as lines beside the other ways, or as the health it costs.
+                   * A room in any of them can be picked, for *Walk here*.
                    */}
-                  <ol className="route-steps">
-                    {(() => {
-                      const steps = shown.steps;
-                      /*
-                       * The step *Stop before entering* drops is drawn as its
-                       * own row, never folded into a run of rooms that will be
-                       * walked: a head saying ×3 cannot also say that one of
-                       * the three is skipped. The tick is at the top of a list
-                       * that scrolls, so by the time the reader is down here it
-                       * is off the screen — and a list that draws the last step
-                       * exactly like the others is a list stating the opposite
-                       * of what the press will do.
-                       */
-                      const skipped = stopping && steps.length > 0 ? steps.length - 1 : -1;
-                      const signatures = steps.map(stepSignature);
-                      const runs =
-                        skipped < 0
-                          ? runsOf(signatures)
-                          : [...runsOf(signatures.slice(0, -1)), { start: skipped, count: 1 }];
-                      const row = (
-                        step: (typeof steps)[number],
-                        index: number,
-                        folded: boolean
-                      ) => (
-                        <li
-                          className="step"
-                          data-folded={folded ? 'true' : undefined}
-                          data-picked={picked === index ? 'true' : 'false'}
-                          data-skipped={index === skipped ? 'true' : undefined}
-                          key={`${step.to}-${index}`}
-                        >
-                          <span className="step-command">{step.command}</span>
-                          {/* **Where a teleport is used**, which is the room
-                          the character is standing in. Every other row reads
-                          *direction, then the room it reaches*, so its origin
-                          is the row above and needs no saying; a teleport has
-                          no row above, so the destination sat at the top of
-                          the plan and the whole thing read as though it began
-                          in a room the reader was not in. Drawn before the
-                          destination, in the order the step happens. */}
-                          {step.invoke !== undefined && (
-                            <span className="step-here">
-                              {t('cards.route.usedHere', { roomName: step.invoke.at.name })}
-                            </span>
-                          )}
-                          {/*
-                            The room, and the way to stop short at it.
-
-                            `button.lookup` rather than a control of its own: a
-                            name in a row of text is text that happens to be
-                            clickable and takes the row's height, which is the
-                            rule that keeps this list from turning into a column
-                            of 32px controls holding 12px of text.
-
-                            Picking toggles, so the same click undoes it — there
-                            is no other way back from a pick, and a selection you
-                            cannot clear is a mode.
-                          */}
-                          <button
-                            aria-pressed={picked === index}
-                            className="lookup step-name"
-                            onClick={() => setPicked(picked === index ? null : index)}
-                            /*
-                             * Pointing at a room on the list opens the realm's
-                             * answer about it — the same panel the map opens, so
-                             * *four lairs on the way* can be read one room at a
-                             * time rather than walked into. The dwell and the
-                             * linger are the window's, like the map's.
-                             */
-                            onPointerEnter={(event) => peek(step.to, event.currentTarget, false)}
-                            onPointerLeave={onPeekEnd ?? undefined}
-                            title={step.name}
-                            type="button"
-                          >
-                            {step.name}
-                          </button>
-                          {picked === index && (
-                            /*
-                              On the row rather than beside `Walk it`, because
-                              `.route-body` scrolls as one: on a forty-seven-step
-                              route the summary is off the top of the panel by
-                              the time somebody has clicked a room near the
-                              bottom, and a button they cannot see is a button
-                              that is not there. `type="button"` because the form
-                              already submits as `Walk it`, and the whole point of
-                              this one is that it walks somewhere else.
-                            */
-                            <>
-                              {forLoop === null && (
-                                <button
-                                  className="step-walk"
-                                  disabled={choosing}
-                                  onClick={() => walk(prefixTo(shown, index), true)}
-                                  title={t('cards.route.runHereTooltip', { roomName: step.name })}
-                                  type="button"
-                                >
-                                  {t('cards.route.runHereButton')}
-                                </button>
-                              )}
-                              <button
-                                className="step-walk"
-                                disabled={choosing}
-                                onClick={() => walk(prefixTo(shown, index))}
-                                title={t('cards.route.walkHereTooltip', { roomName: step.name })}
-                                type="button"
-                              >
-                                {t('cards.route.walkHereButton')}
-                              </button>
-                            </>
-                          )}
-                          {index === skipped && (
-                            <span className="chip quiet">{t('cards.route.stepSkipped')}</span>
-                          )}
-                          {chips(step)}
-                        </li>
-                      );
-                      return runs.flatMap(({ start, count }) => {
-                        if (count === 1) return [row(steps[start]!, start, false)];
-                        const first = steps[start]!;
-                        const open = unfolded.has(start);
-                        const members = steps.slice(start, start + count);
-                        const head = (
-                          <li
-                            className="group"
-                            data-open={open ? 'true' : 'false'}
-                            key={`run-${start}`}
-                          >
-                            <span
-                              className="step-command"
-                              title={members.map((step) => step.command).join(' ')}
-                            >
-                              {commandsOf(members)}
-                            </span>
-                            <button
-                              aria-expanded={open}
-                              className="lookup step-fold"
-                              onClick={() =>
-                                setUnfolded((current) => {
-                                  const next = new Set(current);
-                                  if (next.has(start)) next.delete(start);
-                                  else next.add(start);
-                                  return next;
-                                })
-                              }
-                              onMouseDown={keepFocus}
-                              title={
-                                open
-                                  ? t('cards.route.unfoldTooltip')
-                                  : t('cards.route.foldTooltip', { count })
-                              }
-                              type="button"
-                            >
-                              <span className="fold-name">{first.name}</span>
-                              <span className="chip quiet">
-                                {t('cards.route.foldCount', { count })}
-                              </span>
-                              <Icon name={open ? 'chevronUp' : 'chevronDown'} />
-                            </button>
-                            {chips(first)}
-                          </li>
+                  {(() => {
+                    const stepList: Omit<RouteStepsProps, 'steps' | 'from' | 'to'> = {
+                      skipped: stopping && shown.steps.length > 0 ? shown.steps.length - 1 : -1,
+                      picked,
+                      onPick: setPicked,
+                      unfolded,
+                      onToggleRun: toggleRun,
+                      walkHere: (index) => walk(prefixTo(shown, index)),
+                      // A loop's leg has no *Run it* in the head, so no *run here* either.
+                      runHere:
+                        forLoop === null ? (index) => walk(prefixTo(shown, index), true) : null,
+                      disabled: choosing,
+                      onPeek: (room, at) => peek(room, at, false),
+                      onPeekEnd: onPeekEnd ?? undefined
+                    };
+                    switch (view) {
+                      case 'legs':
+                        return (
+                          <RouteLegs
+                            onChoose={setChosen}
+                            plan={route}
+                            shown={shown}
+                            steps={stepList}
+                          />
                         );
-                        return open
-                          ? [
-                              head,
-                              ...members.map((step, offset) => row(step, start + offset, true))
-                            ]
-                          : [head];
-                      });
-                    })()}
-                  </ol>
+                      case 'line':
+                        return (
+                          <RouteLines
+                            chosen={chosen}
+                            onChoose={setChosen}
+                            plan={route}
+                            shown={shown}
+                            steps={stepList}
+                          />
+                        );
+                      case 'forecast':
+                        return <RouteForecast plan={route} shown={shown} steps={stepList} />;
+                      default: {
+                        const never: never = view;
+                        return never;
+                      }
+                    }
+                  })()}
                 </>
               )}
             </div>

@@ -67,7 +67,7 @@ import {
   type SessionId,
   type SessionSummary
 } from '../../shared/ipc';
-import type { AppConfig, ConfigSwitch } from '../../shared/config';
+import { uiWords, type AppConfig, type ConfigSwitch } from '../../shared/config';
 import type { RealmWords } from '../../shared/profiles';
 import {
   realmName,
@@ -736,7 +736,7 @@ export class SessionHost {
     );
 
     manager.configureInternal(this.options.internal());
-    debug.settings(config.automation);
+    debug.settings(config.automation, uiWords(config.ui));
     const slot: SessionSlot = {
       id,
       manager,
@@ -999,7 +999,7 @@ export class SessionHost {
     for (const slot of this.slots.values()) {
       const config = this.options.configFor(slot.id);
       slot.manager.configure(config.automation, config.connection.login, config.ui.rewrites);
-      slot.debug.settings(config.automation);
+      slot.debug.settings(config.automation, uiWords(config.ui));
       slot.manager.configureInternal(this.options.internal());
       slot.backscroll.setLimit(config.terminal.scrollback);
       slot.marks.setLimit(config.terminal.scrollback);

@@ -1362,10 +1362,9 @@ export default function App() {
       />
 
       {/*
-        Find a room, read the way there, walk it. Beside the palette and the
-        loops modal rather than inside the console column, because it floats
-        over the console on the palette's own scrim now: a strip docked under
-        the terminal took rows from it, and taking rows resizes the terminal.
+        Find a room, read the way there, walk it. Beside the palette and the loops modal rather
+        than inside the console column, because it floats over the console on the palette's own
+        scrim now: a strip docked under the terminal took rows from it, and taking rows resizes it.
       */}
       <RoutePanel
         destination={routeTarget}
@@ -1385,6 +1384,7 @@ export default function App() {
         onSearch={searchRooms}
         onCollectThenWalk={collectThenWalk}
         joining={routeJoining}
+        routeView={config.ui.routeView}
         onWalk={walkRoute}
         open={routeOpen}
         search={routeSearch}

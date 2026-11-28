@@ -527,6 +527,8 @@ notices:
       character tabs away behind a strip of their circles.'
     cardsSideStated: '"ui.cards" was added to {file}, set to right. The cards no longer follow the
       character tabs to the other side of the console; set it to left to put them there.'
+    routeViewStated: '"ui.routeView" was added to {file}, set to legs. The route panel lists the
+      way by area, one line each; set it to line or forecast, or use the toggle on the panel.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
       channels. A channel only said what kind of thing a row was about, not what happened. Channel
       rows were moved to the closest event ({pairs}), which is narrower than a whole channel, so
@@ -4295,7 +4297,9 @@ cards:
       direct: The most direct way, {stepCount} steps, {savedCount} fewer
       directThrough: The most direct way, {stepCount} steps, {savedCount} fewer, through {wordList}
       keyed: 'Fetching {itemList} first, then {stepCount} steps'
+    # A way's name: the head's chip once it is shown, its line, and where it leaves the way on screen.
     showing:
+      plan: the planned way
       round: the way around
       carrying: the way with the items
       viaItem: the way using an item
@@ -4351,6 +4355,48 @@ cards:
     stepSkipped: not walked
     alreadyBefore: You are already in the room before {roomName}.
     otherWayButton: Show it
+    # The three ways the panel draws a route (`ui.routeView`), and the toggle between them.
+    view:
+      legs: Legs
+      line: Line
+      forecast: Forecast
+      toggleAria: How the way is drawn
+      toggleTooltip: Legs lists the way by area, Line draws every way on one scale, Forecast
+        charts your health along it (Alt V)
+      lineAria: The ways to this room, drawn on one scale
+      forecastAria: Your health along the way, walking and running
+    legs:
+      roomOne: one room
+      roomMany: '{count} rooms'
+      lairOne: one lair
+      lairMany: '{count} lairs'
+      spellOne: a room spell
+      spellMany: room spells in {count} rooms
+      nothing: nothing on the way
+      worst: 'worst {percent}%'
+      forkOr: '↳ or {wayName}:'
+      forkMore: '{count} more rooms'
+      forkFewer: '{count} fewer rooms'
+      forkSame: as many rooms
+      forkNoLairs: no lairs
+      forkWorst: 'worst lair {percent}%'
+    forecast:
+      stepTitle: '{roomName} · walking {walking}% · running {running}%'
+      walkUnhurt: Walking it costs no health anybody could weigh.
+      walkDies: Walking it is expected to kill you at {roomName}.
+      walkLow: Walking it, you get as low as {percent}% at {roomName}.
+      restOne: It rests once.
+      restMany: It rests {count} times.
+      runUnhurt: Running it, the chance of dying on the way is {percent}%.
+      runLow: Running it, you get as low as {percent}%, and the chance of dying on the way is
+        {deathPercent}%.
+      unweighedOne: One lair on it was not weighed and is left out.
+      unweighedMany: '{count} lairs on it were not weighed and are left out.'
+      runUnweighedOne: One lair has not been fought yet, so its chance is not in that figure.
+      runUnweighedMany: '{count} lairs have not been fought yet, so their chances are not in that
+        figure.'
+      runWanderersOne: One room of wanderers nobody has fought yet is not in that figure.
+      runWanderersMany: '{count} rooms of wanderers nobody has fought yet are not in that figure.'
     otherWayTooltip: Show this route instead. Nothing is walked until you say so.
     foldTooltip: Show the {count} rooms this row stands for
     unfoldTooltip: Fold these rooms back into one row
@@ -5117,6 +5163,8 @@ settings:
       cardsSideHint: On the same side as the character tabs, the tabs take the window's edge.
       cardsLeft: Left of the console
       cardsRight: Right of the console
+      routeViewLabel: Route View
+      routeViewHint: How the route panel shows a way when it opens; its toggle switches for that route.
       uiFontHint: Everything except the console, which is always fixed-width. Blank uses the console
         font.
       uiFontLabel: Interface Font

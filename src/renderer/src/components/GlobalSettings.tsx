@@ -56,9 +56,11 @@ import RewritesDesigner from './RewriteDesigner';
 import TrainStatFields from './TrainStatFields';
 
 import { t } from '../lib/i18n';
+import { ROUTE_VIEW_LABEL } from '../lib/routeViews';
 import {
   CARDS_SIDES,
   type CardsSide,
+  ROUTE_VIEWS,
   DEFAULT_CONFIG,
   GEAR_RANGES,
   QUESTS_RANGES,
@@ -544,6 +546,20 @@ export default function GlobalSettings({
                   label: CARDS_SIDE_LABEL[side]
                 }))}
                 value={draft.ui.cards}
+              />
+              <SelectField
+                hint={t('settings.client.appearance.routeViewHint')}
+                label={t('settings.client.appearance.routeViewLabel')}
+                name="global-route-view"
+                onChange={(value) => {
+                  const routeView = ROUTE_VIEWS.find((view) => view === value);
+                  if (routeView) patch('ui', { routeView });
+                }}
+                options={ROUTE_VIEWS.map((view) => ({
+                  value: view,
+                  label: ROUTE_VIEW_LABEL[view]
+                }))}
+                value={draft.ui.routeView}
               />
               <SelectField
                 hint={t('settings.client.appearance.gameDockHint')}

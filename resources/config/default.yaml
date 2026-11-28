@@ -247,6 +247,14 @@ ui:
   # them and the console.
   cards: right
 
+  # legs | line | forecast: how the route panel shows the way to a room when it
+  # opens. legs lists the way by area, one line each, with where the other ways
+  # leave it. line draws the planned way and the other ways as lines on one
+  # scale, with their lairs and doors. forecast charts the health the way is
+  # expected to cost, walking and running. The toggle on the panel switches
+  # between them for the route on screen.
+  routeView: legs
+
   # dark | light | system
   #
   # `system` follows the OS appearance and repaints live when it changes.

@@ -56,6 +56,12 @@ describe('what the activity record holds', () => {
     expect(records.map((r) => r.text)).toEqual(['health.restBelow: 0.5 → 0.4']);
   });
 
+  it('records a closed ui word that changed, under ui', () => {
+    debug.settings({}, { routeView: 'legs' });
+    debug.settings({}, { routeView: 'forecast' });
+    expect(records.map((r) => r.text)).toEqual(['ui.routeView: "legs" → "forecast"']);
+  });
+
   it('writes a record as one line, and keeps wire text out of the activity file', () => {
     debug.action('call', 'loop:start "x"');
     expect(activityLine(records[0]!)).toBe('event call loop:start "x"\n');

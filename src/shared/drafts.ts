@@ -37,7 +37,9 @@ import {
   type EncumbranceGate,
   type TabsPreference,
   CARDS_SIDES,
+  ROUTE_VIEWS,
   type CardsSide,
+  type RouteView,
   combatChoices,
   type CombatChoices,
   spellWeights,
@@ -255,6 +257,7 @@ export interface GlobalDraft {
     tabs: TabsPreference;
     tabsAutoHide: boolean;
     cards: CardsSide;
+    routeView: RouteView;
     showHud: boolean;
     showLogo: boolean;
     partyRecap: boolean;
@@ -1495,6 +1498,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       tabs: oneOf(ui['tabs'], ['top', 'left', 'right'] as const, 'left'),
       tabsAutoHide: ui['tabsAutoHide'] === true,
       cards: oneOf(ui['cards'], CARDS_SIDES, DEFAULT_CONFIG.ui.cards),
+      routeView: oneOf(ui['routeView'], ROUTE_VIEWS, DEFAULT_CONFIG.ui.routeView),
       showHud: ui['showHud'] !== false,
       showLogo: ui['showLogo'] !== false,
       partyRecap: ui['partyRecap'] !== false,

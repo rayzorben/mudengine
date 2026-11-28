@@ -1082,6 +1082,7 @@ export class SettingsEditor {
         tabs: config.ui.tabs,
         tabsAutoHide: config.ui.tabsAutoHide,
         cards: config.ui.cards,
+        routeView: config.ui.routeView,
         showHud: config.ui.showHud,
         showLogo: config.ui.showLogo,
         partyRecap: config.ui.partyRecap,
@@ -1223,6 +1224,7 @@ export class SettingsEditor {
         set(['ui', 'tabs'], draft.ui.tabs);
         set(['ui', 'tabsAutoHide'], draft.ui.tabsAutoHide);
         set(['ui', 'cards'], draft.ui.cards);
+        set(['ui', 'routeView'], draft.ui.routeView);
         set(['ui', 'showHud'], draft.ui.showHud);
         set(['ui', 'showLogo'], draft.ui.showLogo);
         set(['ui', 'partyRecap'], draft.ui.partyRecap);

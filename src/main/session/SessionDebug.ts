@@ -246,19 +246,26 @@ export class SessionDebug {
     this.push('event', 'refused', clip(`${command} [${priority}] ${refusal}${again}`));
   }
 
-  /** The automation settings as of the last reload, null before the first. */
+  /** The automation settings and `ui`'s closed words as of the last reload, null before the first. */
   private settingsWere: unknown = null;
+  private uiWere: unknown = null;
 
   /**
    * The settings the session now runs on. A reload that changed nothing is
-   * recorded as nothing; the first is the baseline. Only `automation` is
-   * passed: it holds no credential, which is why this is allowed to print values.
+   * recorded as nothing; the first is the baseline. Only `automation` and the
+   * closed words of `ui` a person picks (`uiWords`) are passed: neither holds
+   * a credential, which is why this is allowed to print values.
    */
-  settings(automation: unknown): void {
+  settings(automation: unknown, ui: Readonly<Record<string, string>> = {}): void {
     const before = this.settingsWere;
+    const uiBefore = this.uiWere;
     this.settingsWere = automation;
+    this.uiWere = ui;
     if (before === null) return;
-    const changes = changedPaths(before, automation);
+    const changes = [
+      ...changedPaths(before, automation),
+      ...changedPaths(uiBefore ?? {}, ui).map((change) => `ui.${change}`)
+    ];
     if (changes.length === 0) return;
     const shownChanges = changes.slice(0, 20);
     const more =
