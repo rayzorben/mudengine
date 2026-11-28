@@ -941,6 +941,18 @@ export function opensStatScreen(input: string): boolean {
   return commandOf(input) === 'Train' && argumentOf(input) === 'stats';
 }
 
+/**
+ * Whether the server throws away every line that reaches it before this
+ * command's prompt. MajorMUD's `top` does (themajorbbs, OCI
+ * `2026-11-27_23-08-08_soul.mudcap.jsonl`): a walk's `w` sent 27ms behind
+ * `top` (t=1360966), and an `i` and an `e` sent while `to 100` printed its
+ * rows (t=1396855, 1397206), were echoed and never answered, and the walk
+ * gave up on its step after 8s.
+ */
+export function swallowsTypeAhead(input: string): boolean {
+  return commandOf(input) === 'Top';
+}
+
 /** What follows the command word, trimmed and in the case it was typed; empty for a bare word. */
 export function argumentOf(input: string): string {
   const text = input.trim();

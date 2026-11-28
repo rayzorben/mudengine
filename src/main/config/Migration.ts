@@ -9135,6 +9135,8 @@ function theTuningBlockGainedKeys(
     addKey('spells', 'blessOffRoundShare', DEFAULT_INTERNAL.tuning.spells.blessOffRoundShare);
     // A collect loop whose ring held one lair looks this far for more (2026-11-24).
     addKey('hunting', 'lonelyLairRadius', DEFAULT_INTERNAL.tuning.hunting.lonelyLairRadius);
+    // How long nothing is sent behind a top that has not been answered (2026-11-27).
+    addKey('queue', 'typeAheadHoldMs', DEFAULT_INTERNAL.tuning.queue.typeAheadHoldMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

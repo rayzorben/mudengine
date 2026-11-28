@@ -2086,10 +2086,9 @@ export class SessionManager {
         // Nothing to observe; the bytes still go out below.
       } else if (command.length > 0) {
         /*
-         * The tracker is the one thing here that knows the command table, the
-         * walker's hint and this room's own text exits, so it is what says
-         * whether this was a step — `go manhole` is a move and `gossip` is
-         * not, and neither is decidable from the word.
+         * The tracker knows the command table, the walker's hint and this
+         * room's text exits, so it says whether this was a step: `go manhole`
+         * is a move and `gossip` is not, undecidable from the word.
          */
         if (this.tracker.observeCommand(command)) {
           this.steering.arm(this.tracker.current.room);
@@ -2099,6 +2098,7 @@ export class SessionManager {
         this.classifier.observeCommand(command);
         // Armed off what the player typed, before the bytes reach the socket.
         this.statHold.noteSent(command, Date.now());
+        this.queue.notePlayerLine(command);
         this.statScreen.noteSent(command, 'user');
         this.noteSent(command, 'user');
         this.questWatch.noteSaid(command);

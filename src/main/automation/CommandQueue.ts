@@ -33,7 +33,9 @@ import {
   type QueueSnapshot
 } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
+import { swallowsTypeAhead } from '../../shared/commands';
 import type { DecisionKind } from '../../shared/decisionSettings';
+import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 
 export { PRIORITY, type Priority, type QueueSnapshot };
@@ -338,6 +340,14 @@ export class CommandQueue {
    * form for as long as it is up. That is the bug this exists for.
    */
   private held: string | null = null;
+  /**
+   * A command whose answer swallows what is sent behind it is out
+   * (`swallowsTypeAhead`, a `top`): the prompts still owed up to and including
+   * its own, and when it went. Nothing is sent until they are in, and the
+   * queue is kept, unlike `held`; `queue.typeAheadHoldMs` bounds a prompt
+   * that never comes.
+   */
+  private alone: { command: string; owed: number; since: number } | null = null;
 
   constructor(
     private config: AutomationConfig,
@@ -607,6 +617,7 @@ export class CommandQueue {
     this.pending.length = 0;
     this.inFlight = 0;
     this.outstanding = [];
+    this.alone = null;
     this.typingHeld = false;
     // Nothing is in flight any more, so there is nothing a fumble could be
     // about — and replaying a command from before a disconnect is the one
@@ -665,7 +676,26 @@ export class CommandQueue {
       this.inFlight -= 1;
       this.outstanding.shift();
     }
+    if (this.alone !== null) {
+      this.alone.owed -= 1;
+      if (this.alone.owed <= 0) this.alone = null;
+    }
     this.pump();
+  }
+
+  /**
+   * The player's own line went out. A talk-box line the queue sends arrives
+   * here inside `drain`, which has counted it already.
+   */
+  notePlayerLine(command: string): void {
+    if (this.pumping || !swallowsTypeAhead(command)) return;
+    this.standAlone(command, (this.alone?.owed ?? this.inFlight) + 1, Date.now());
+  }
+
+  /** Arms the hold behind a `swallowsTypeAhead` line, said so the log shows why sends stopped. */
+  private standAlone(command: string, owed: number, now: number): void {
+    this.alone = { command, owed, since: now };
+    this.events.notice?.(t('automation.queue.typeAheadHeld', { command }));
   }
 
   dispose(): void {
@@ -775,6 +805,7 @@ export class CommandQueue {
     );
     this.recentlySent.push({ intent: next, at: now });
     this.events.send(next.command, next);
+    if (swallowsTypeAhead(next.command)) this.standAlone(next.command, this.inFlight, now);
     // After the write, because that is the fact being reported: the bytes are
     // on the socket and whatever answers now is answering this.
     next.onSent?.();
@@ -824,6 +855,16 @@ export class CommandQueue {
       // emergency wakes it when it falls due.
       if (lapse > 0 && !emergency) return Math.min(lapse, 1000, due);
       if (lapse <= 0) this.typingHeld = false;
+    }
+
+    if (this.alone !== null) {
+      const lapse = this.alone.since + tuning().queue.typeAheadHoldMs - now;
+      if (lapse > 0) return lapse;
+      const seconds = Math.round(tuning().queue.typeAheadHoldMs / 1000);
+      this.events.notice?.(
+        t('automation.queue.typeAheadLapsed', { command: this.alone.command, seconds })
+      );
+      this.alone = null;
     }
 
     if (this.inFlight >= this.config.pacing.window) {

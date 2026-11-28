@@ -841,6 +841,73 @@ describe('a screen that is not the command prompt', () => {
   });
 });
 
+// MajorMUD throws away every line that reaches it before a `top`'s prompt
+// (themajorbbs, 2026-11-27): Soul's walk lost its step twice.
+describe('a command that swallows what is sent behind it', () => {
+  it('sends nothing behind the player’s top until the prompts for the step and the top are both in', () => {
+    queue.enqueue({ command: 's', priority: 'movement' });
+    queue.notePlayerLine('top');
+    queue.enqueue({ command: 'w', priority: 'movement' });
+
+    // The room for `s` comes back first.
+    queue.notePrompt();
+    vi.advanceTimersByTime(1000);
+    expect(sent).toEqual(['s']);
+
+    queue.notePrompt();
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['s', 'w']);
+  });
+
+  it('holds behind its own top as well, keeping what is queued', () => {
+    queue.enqueue({ command: 'to 100', priority: 'probe' });
+    queue.enqueue({ command: 'i', priority: 'probe' });
+    vi.advanceTimersByTime(900);
+    expect(sent).toEqual(['to 100']);
+    expect(queue.snapshot.depth).toBe(1);
+
+    queue.notePrompt();
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['to 100', 'i']);
+  });
+
+  it('counts a talk-box top once, though it reaches the player’s path too', () => {
+    sent = [];
+    const q: CommandQueue = new CommandQueue(base, {
+      send: (command) => {
+        sent.push(command);
+        q.notePlayerLine(command);
+      }
+    });
+    q.enqueue({ command: 'top', priority: 'user', typed: true });
+    q.enqueue({ command: 'w', priority: 'movement' });
+    q.notePrompt();
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['top', 'w']);
+    q.dispose();
+  });
+
+  it('lets go after typeAheadHoldMs when the prompt never comes', () => {
+    queue.notePlayerLine('top 20');
+    queue.enqueue({ command: 'w', priority: 'movement' });
+    vi.advanceTimersByTime(4900);
+    expect(sent).toEqual([]);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['w']);
+  });
+
+  it('ignores every other line the player sends, and is lifted by clear', () => {
+    queue.notePlayerLine('gossip top');
+    queue.enqueue({ command: 'w', priority: 'movement' });
+    expect(sent).toEqual(['w']);
+
+    queue.notePlayerLine('top');
+    queue.clear();
+    queue.enqueue({ command: 'n', priority: 'movement' });
+    expect(sent).toEqual(['w', 'n']);
+  });
+});
+
 // A macro step worked out at its turn (todo 83).
 describe('an intent resolved at the send', () => {
   it('asks at the send, sends the first and keeps the rest ahead of later intents', () => {

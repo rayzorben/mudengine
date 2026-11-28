@@ -8345,6 +8345,10 @@ automation:
     helpDoorCannot: 'Not helping {leader} with the {barrier} {direction}: picklocks and strength are both short of it.'
   queue:
     fumbledResend: The game ignored "{command}"; sending it again.
+    # A top's answer throws away every line sent before its prompt (MajorMUD).
+    typeAheadHeld: Holding commands until "{command}" has finished. The game throws away anything
+      sent before its prompt.
+    typeAheadLapsed: '"{command}" had not finished after {seconds}s, so the client is sending again.'
     # Why a proposal sent nothing, said by the peer controls and the Automations card.
     refused:
       held: the stat screen is open, so nothing is sent
