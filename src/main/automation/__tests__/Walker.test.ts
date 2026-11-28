@@ -1130,6 +1130,42 @@ describe('stopping', () => {
   });
 
   /*
+   * MajorMUD's `sys go rhud` answers with its echo and a bare prompt, and only
+   * an Enter prints the room (Yang, 2026-11-28, OmniverseBBS), so the Enter
+   * goes as soon as that prompt arrives, where it waited 3.3 seconds for the
+   * nudge's clock. From a pitch-black room it waits for the clock (808).
+   */
+  it('asks for a portal’s room the moment it landed unseen', () => {
+    const PORTAL: Route = {
+      ...ROUTE,
+      steps: [{ ...ROUTE.steps[0]!, direction: 'portal', command: 'sys go rhud' }]
+    };
+    walker.askLanding();
+    expect(sent).toEqual([]);
+    walker.start(PORTAL, at(1, 1));
+    expect(sent).toEqual(['sys go rhud']);
+
+    walker.askLanding();
+    expect(sent).toEqual(['sys go rhud', NUDGE]);
+    expect(walker.progress.status).toBe('walking');
+  });
+
+  it('leaves a portal landed unseen from a pitch-black room to the nudge’s clock', () => {
+    const dark = at(1, 1, {
+      room: { ...EMPTY_CHARACTER.room, map: 1, number: 1, light: 'pitch black' }
+    });
+    walker = new Walker(config, queue, { stateNow: () => dark });
+    const PORTAL: Route = {
+      ...ROUTE,
+      steps: [{ ...ROUTE.steps[0]!, direction: 'portal', command: 'sys go rhud' }]
+    };
+    walker.start(PORTAL, dark);
+    expect(sent).toEqual(['sys go rhud']);
+    walker.askLanding();
+    expect(sent).toEqual(['sys go rhud']);
+  });
+
+  /*
    * Except from a room nothing can be seen in: a dark reprint names nothing,
    * so the Enter's answer would still be taken as the landing (todo 808,
    * review). Said, and the step is left to its own deadline.

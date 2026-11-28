@@ -336,10 +336,7 @@ export class CharacterTracker {
     this.expect.hintMove(command, direction);
   }
 
-  /**
-   * The walker's word that a command is a scripted teleport to exact
-   * coordinates — a portal step. See `Expectations.hintTeleport`.
-   */
+  /** The walker's word that a command is a portal step to exact coordinates (`Expectations.hintTeleport`). */
   hintTeleport(command: string, map: number, number: number): void {
     this.expect.hintTeleport(command, map, number);
   }
@@ -354,16 +351,17 @@ export class CharacterTracker {
   }
 
   /**
-   * A bare Enter went out — `REREAD_ROOM`, or the player pressing Return on an
-   * empty line — which prints the room the character is standing in.
-   *
-   * Separate from `observeCommand` because an empty line is deliberately not a
-   * command here: `SessionManager` skips all three observers for one, so that
-   * the slots interpreting the *previous* command survive it. See
-   * `Expectations.noteReread`, which is the only thing this touches.
+   * A bare Enter went out (`REREAD_ROOM`, or Return on an empty line), which prints the room.
+   * Not `observeCommand`: the slots reading the *previous* command survive an empty line.
+   * See `Expectations.noteReread`, which is the only thing this touches.
    */
   observeReread(): void {
     this.expect.noteReread(this.state.phase === 'in-game');
+  }
+
+  /** A portal landed with no room printed, and no Enter has asked for it. See `Expectations.unseen`. */
+  get landedUnseen(): boolean {
+    return this.expect.landedUnseen;
   }
 
   /** The claim the latest bare Enter filed, for its sender to ask after. See `Expectations.reread`. */

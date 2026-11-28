@@ -8756,6 +8756,7 @@ automation:
     stoppedAtStart: the walk stopped before its first step went out
     reasonNotSent: '{command} never left the client'
     reasonNudge: forcing an answer after {command}
+    reasonLanded: asking for the room {command} moved you to, which the realm did not print
     # A portal left from a pitch-black room is not nudged: nothing in a dark reprint
     # tells the Enter's answer from the landing (todo 808).
     noNudgeUnseen: 'No Enter after {command}: the room is too dark to tell its reprint from

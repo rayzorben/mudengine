@@ -783,7 +783,7 @@ export class SessionManager {
       sink
     );
     this.walker = new Walker(automation, this.queue, {
-      ...{ realmSpeed, sneakRefusals, combatOn },
+      ...{ realmSpeed, sneakRefusals, combatOn, onTheGround },
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
@@ -806,7 +806,6 @@ export class SessionManager {
       // A rest or a floor read asked and unanswered is a move in flight (todo 14; 814).
       restInFlight: () => this.recovery.restInFlight,
       floorInFlight: () => this.loot.floorInFlight || this.search.inFlight,
-      onTheGround,
       // A replan (a fight moved the character) and a refetch need the realm, the purse, the refusals.
       replan: (to, kind, without) => this.travel.replan(to, kind, without),
       fetchAgain: (items, to, kind) => this.travel.fetchAgain(items, to, kind),
@@ -2669,6 +2668,7 @@ export class SessionManager {
     if (this.tracker.takeSheetRequest()) this.routines.askSheet();
     // Likewise a prompt that stopped fitting what `pro` said the line was.
     if (this.tracker.takeStatlineRequest()) this.routines.askProfile();
+    if (this.tracker.landedUnseen) this.walker.askLanding(); // A portal that printed no room.
     /*
      * A pack listing is the fact a requested deposit is waiting on: it is what
      * restates the purse, and the figure the deposit names is composed from it

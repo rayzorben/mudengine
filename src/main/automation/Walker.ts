@@ -925,6 +925,15 @@ export class Walker implements SessionModule {
     }
   }
 
+  /** A portal step landed with no room printed (`CharacterTracker.landedUnseen`): ask for it now. */
+  askLanding(): void {
+    const step = this.route?.steps[this.index];
+    if (this.status !== 'walking' || !this.stepSent || step === undefined) return;
+    // From a room left unseen the reprint names nothing and would spend the promise (808).
+    if (!portalLeftUnseen(step, this.events.stateNow?.()))
+      this.reprint(t('automation.walk.reasonLanded', { command: step.command }), 'walk-nudge');
+  }
+
   /** `Holds.answerFight`, keeping the rooms of a leg it stopped for the map (`FoughtPath`). */
   private answerFight(): boolean {
     const answered = this.holds.answerFight();
@@ -1756,14 +1765,9 @@ export class Walker implements SessionModule {
   /**
    * One bare Enter, to make the server say something.
    *
-   * An empty line is answered with a status line and a reprint of the room the
-   * character is standing in — measured, in the capture that produced
-   * `session/editorInput.ts` (twenty Escapes and an Enter, answered with a
-   * bare room reprint, because the server had kept none of them). That is
-   * exactly the fact a stalled step is waiting for, for one command.
-   *
-   * `REREAD_ROOM`, the named empty command every other client-side re-read sends,
-   * rather than a bare `''`: one fact, one spelling, and every sender findable.
+   * An empty line is answered with a status line and a reprint of the room
+   * (the capture behind `session/editorInput.ts`), the fact a stalled step is
+   * waiting for. `REREAD_ROOM`, the spelling every client-side re-read sends.
    *
    * `probe`, the least urgent band, and coalesced: this must never displace an
    * attack or an escape, and **one per command sent** is the whole budget — the
@@ -1772,19 +1776,14 @@ export class Walker implements SessionModule {
    * be the client answering its own silence with more of it. Through the arbiter,
    * which keeps it off a half-typed line (the failure `CommandQueue` exists for).
    *
-   * The cost this used to carry is paid off (2026-09-02). A reprint is a room
-   * block, and arriving rooms consume the expectation queue, so when the step's
-   * real answer was merely late the server answered both in one packet and the
-   * nudge's reprint landed against the *next* step as its arrival. In a
-   * corridor of namesakes nothing said it was wrong — the walk did not stop,
-   * it simply ran a room ahead of the character for the rest of the lap
-   * (`2026-09-02_18-07-07_festus.mudcap.jsonl`, t=4862445: `e` sent twice
-   * inside three milliseconds, then a fight opened out of a room block the
-   * character was already leaving). `SessionManager` files the bare Enter
-   * through `CharacterTracker.observeReread` now, so the block answering it is
-   * attributed to it and **takes no move**. Still cancelled while queued the
-   * moment the step confirms: a command not sent is cheaper than one correctly
-   * accounted for. Behind a portal too, save from a room left unseen (808).
+   * A reprint is a room block, so a late step's answer and the nudge's once
+   * arrived together and the reprint was read as the *next* step's arrival:
+   * the walk ran a room ahead of the character for the lap (2026-09-02,
+   * `festus.mudcap.jsonl` t=4862445). `CharacterTracker.observeReread` files
+   * the Enter so its block **takes no move**, and a queued nudge is cancelled
+   * when the step confirms. Behind a portal too, save from a room left unseen
+   * (808). The room of a portal that landed unseen is asked for at once
+   * (`askLanding`).
    */
   private nudge(command: string): void {
     this.reprint(t('automation.walk.reasonNudge', { command }), 'walk-nudge');

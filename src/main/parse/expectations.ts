@@ -26,11 +26,11 @@
  */
 import type { Direction, RoomId } from '../../shared/world';
 import { mobKey } from '../../shared/world';
-import { commandOf, movementEffect, type RereadClaim } from '../../shared/commands';
+import { asEchoed, commandOf, movementEffect, type RereadClaim } from '../../shared/commands';
 import type { Block } from '../../shared/blocks';
 import { AnswerTimes } from '../../shared/answerTimes';
 import { tuning } from '../app/tuning';
-import { answeringAfter, EchoSince } from './echo';
+import { answeringAfter, EchoSince, echoedCommand } from './echo';
 import { ROOM_EXITS_HEADER } from './patterns';
 
 /**
@@ -386,6 +386,19 @@ export class Expectations {
    */
   private reread: RereadClaim | null = null;
   /**
+   * A portal's claim the realm answered with its echo and a bare prompt and no
+   * room. MajorMUD's `sys go rhud` moves the character and prints nothing else
+   * (OmniverseBBS and MajorBBS, every `sys go` in the 2026-11-26 to 11-28
+   * sessions), so the room the next Enter prints is the portal's answer and
+   * files no claim of its own (`noteReread`). Filed, it sat ahead of the next
+   * step and every room after was credited one claim behind, each step waiting
+   * out `staleMoveMs` (Yang and Soul, 2026-11-28). Read through `landedUnseen`.
+   * Its hole: a slow portal with a broadcast and its prompt repaint between the
+   * echo and the room reads as landed, and the Enter's reprint, arriving after
+   * the next step is sent, would answer that step. No capture shows it.
+   */
+  private unseen: Claim | null = null;
+  /**
    * What the last `Location:` settled ahead of itself, until the session
    * takes it to say (`takeSettledByLocate`). An outbox, not a claim about the
    * next thing the server says, so `forget` leaves it to be said.
@@ -686,7 +699,13 @@ export class Expectations {
       this.reread = null;
       return;
     }
-    const claim = this.push({ kind: 'reread', command: '' });
+    const landing = this.unseen;
+    this.unseen = null;
+    // A portal's room is what this Enter prints when the portal printed none (`unseen`).
+    const claim =
+      landing !== null && this.pending.includes(landing)
+        ? landing
+        : this.push({ kind: 'reread', command: '' });
     // Owed while it is on the queue: whatever takes it off, a room or not, closes it.
     this.reread = { owed: () => this.pending.includes(claim) };
   }
@@ -1169,7 +1188,23 @@ export class Expectations {
         this.teleport = null;
       }
     }
+    const head = this.pending[0];
+    if (
+      block.type === 'status-line' &&
+      echoedCommand(block.text) === null &&
+      isPortalClaim(head) &&
+      head?.command != null &&
+      this.answering !== null &&
+      asEchoed(this.answering) === asEchoed(head.command)
+    ) {
+      this.unseen = head;
+    }
     this.answering = answeringAfter(block, this.answering);
+  }
+
+  /** Whether a portal landed with no room shown and no Enter has asked for it yet (`unseen`). */
+  get landedUnseen(): boolean {
+    return this.unseen !== null && this.pending.includes(this.unseen);
   }
 
   /** Where a `sys go` said it was going, consumed by the room that answers it. */

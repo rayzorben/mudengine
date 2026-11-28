@@ -11238,6 +11238,64 @@ describe('a scripted teleport the walker hinted', () => {
     expect(tracker.pendingMoves).toBe(0);
   });
 
+  /*
+   * MajorMUD's `sys go rhud` moves the character and answers with its echo and
+   * a bare prompt; the room arrives with the next Enter (Yang, OmniverseBBS,
+   * `2026-11-28_01-39-37_yang.mudcap.jsonl` t=11132159, and t=11006495 with
+   * the echo on the prompt). Filed, the Enter's own claim sat ahead of the next
+   * step, and every room after was credited one claim behind.
+   */
+  for (const [shape, echo] of [
+    ['echoed on a line of its own', ['sys go far', '[HP=62]:']],
+    ['echoed on the prompt', ['[HP=62]:sys go far', '[HP=62]:']]
+  ] as const) {
+    it(`takes an Enter’s room as the answer to a portal that printed none, ${shape}`, () => {
+      const { tracker, feed, send } = session();
+      tracker.hintTeleport('sys go far', 2, 1);
+      send('sys go far');
+      feed([...echo]);
+      expect(tracker.landedUnseen).toBe(true);
+      tracker.observeReread();
+      expect(tracker.landedUnseen).toBe(false);
+      expect(tracker.lastReread?.owed()).toBe(true);
+      feed(['', 'Far Cavern', 'Obvious exits: west', '[HP=62]:']);
+      expect(tracker.current.room.number).toBe(1);
+      expect(tracker.current.room.resolvedBy).toBe('coordinates');
+      expect(tracker.pendingMoves).toBe(0);
+      expect(tracker.lastReread?.owed()).toBe(false);
+
+      send('w');
+      expect(tracker.pendingMoves).toBe(1);
+      feed(['Hollow', 'Obvious exits: none']);
+      expect(tracker.current.room.number).toBe(3);
+      expect(tracker.pendingMoves).toBe(0);
+    });
+  }
+
+  // The positive control: a portal that prints its room leaves the next Enter its own claim.
+  it('files an Enter after a portal that printed its room as a re-read', () => {
+    const { tracker, feed, send } = session();
+    tracker.hintTeleport('sys go far', 2, 1);
+    send('sys go far');
+    feed(['sys go far', 'Far Cavern', 'Obvious exits: west', '[HP=62]:']);
+    expect(tracker.pendingMoves).toBe(0);
+    expect(tracker.landedUnseen).toBe(false);
+    tracker.observeReread();
+    expect(tracker.lastReread?.owed()).toBe(true);
+    feed(['', 'Far Cavern', 'Obvious exits: west']);
+    expect(tracker.lastReread?.owed()).toBe(false);
+    expect(tracker.current.room.number).toBe(1);
+  });
+
+  // A prompt before the portal's echo is the last command's, not the portal's answer.
+  it('does not read a prompt ahead of the portal’s echo as its landing', () => {
+    const { tracker, feed, send } = session();
+    tracker.hintTeleport('sys go far', 2, 1);
+    send('sys go far');
+    feed(['[HP=62]:']);
+    expect(tracker.landedUnseen).toBe(false);
+  });
+
   it('resolves a dark arrival the same way, when the realm agrees it is dark', () => {
     const { tracker, feed, send } = session();
     tracker.hintTeleport('jump pit', 2, 2);

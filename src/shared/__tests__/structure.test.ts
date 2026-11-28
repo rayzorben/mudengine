@@ -110,7 +110,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).
   // Lowered by the party listing, folded by `Company` with the registry it seeds from (todo 142).
   // Lowered by `leftRoom`, out to `steps.ts` with the step port (todo 20261018-1314-02).
-  'src/main/parse/CharacterTracker.ts': 2505,
+  'src/main/parse/CharacterTracker.ts': 2503,
   // Lowered by handing the settings screen its api whole (todo 03).
   // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
   // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).
@@ -136,7 +136,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the fight hold's skeleton comment, condensed as the session's
   // combat switch came (todo 20261102-1830-01).
   // Lowered by the landing's one `rm`, out whole (`walk/Landings.ts`, todo 20261103-0045-01).
-  'src/main/automation/Walker.ts': 1867,
+  'src/main/automation/Walker.ts': 1866,
   // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
   // Lowered by `sameJson`, read from `@shared/values` with the error helper (todo 143).
   'src/renderer/src/components/SettingsScreen.tsx': 1211,
